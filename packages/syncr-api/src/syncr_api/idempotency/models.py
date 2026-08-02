@@ -14,10 +14,9 @@ from datetime import datetime
 from uuid import UUID  # noqa: F401 - the tenancy mixin's annotation resolves in this namespace
 
 from sqlalchemy import CheckConstraint, DateTime, Index, PrimaryKeyConstraint, String
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from syncr_api.core.columns import JsonObject, values_in
+from syncr_api.core.columns import NULLABLE_JSONB, JsonObject, values_in
 from syncr_api.core.orm import Base
 from syncr_api.core.tenancy import TENANT_ID_COLUMN, TenantScoped
 from syncr_api.idempotency.config import (
@@ -40,7 +39,7 @@ class IdempotencyKey(Base, TenantScoped):
     idempotency_key: Mapped[str] = mapped_column(String(KEY_MAX_LENGTH), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(REQUEST_HASH_LENGTH), nullable=False)
     state: Mapped[str] = mapped_column(String(STATE_MAX_LENGTH), nullable=False)
-    response_body: Mapped[JsonObject | None] = mapped_column(JSONB, nullable=True)
+    response_body: Mapped[JsonObject | None] = mapped_column(NULLABLE_JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

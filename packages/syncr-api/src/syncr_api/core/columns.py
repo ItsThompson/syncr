@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.dialects.postgresql import JSONB
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
@@ -31,6 +33,13 @@ type JsonObject = dict[str, Any]
 # What a caller hands a repository to store in one. Read-only, so a document cannot be
 # mutated by its author after the write was composed from it.
 type JsonDocument = Mapping[str, Any]
+
+# The type a NULLABLE JSONB column is declared with. Without ``none_as_null`` a Python ``None``
+# is stored as the JSON value ``null``, which is not SQL NULL: a check constraint reading
+# ``IS NOT NULL`` would hold for a column nobody set, and so would a query looking for one. The
+# instance is shared between columns, which SQLAlchemy supports, because a type carries no
+# per-column state.
+NULLABLE_JSONB = JSONB(none_as_null=True)
 
 # `2026-W07`: four digits, `-W`, two digits.
 ISO_WEEK_LENGTH = 8

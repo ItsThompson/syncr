@@ -36,7 +36,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from syncr_api.core.columns import ISO_WEEK_LENGTH, JsonObject, values_in
+from syncr_api.core.columns import ISO_WEEK_LENGTH, NULLABLE_JSONB, JsonObject, values_in
 from syncr_api.core.orm import Base
 from syncr_api.core.tenancy import TENANT_ID_COLUMN, TenantScoped
 from syncr_api.plans import facts as _facts  # noqa: F401 - see the note below
@@ -128,7 +128,7 @@ class PendingProposal(Base, TenantScoped):
     operation_id: Mapped[UUID] = mapped_column(nullable=False)
     # A tradeoff concession awaiting approval rides in the slot, so it needs no lifecycle
     # of its own and it is discarded when the slot is replaced.
-    candidate_adjustment: Mapped[JsonObject | None] = mapped_column(JSONB, nullable=True)
+    candidate_adjustment: Mapped[JsonObject | None] = mapped_column(NULLABLE_JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (PrimaryKeyConstraint(TENANT_ID_COLUMN, "iso_week"),)

@@ -25,10 +25,9 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from syncr_api.core.columns import ISO_WEEK_LENGTH, JsonObject, values_in
+from syncr_api.core.columns import ISO_WEEK_LENGTH, NULLABLE_JSONB, JsonObject, values_in
 from syncr_api.core.orm import Base
 from syncr_api.core.tenancy import TENANT_ID_COLUMN, TenantScoped
 from syncr_api.plans.config import PLAN_REVISIONS_TABLE
@@ -69,7 +68,7 @@ class Operation(Base, TenantScoped):
     # An UNPERSISTED tradeoff concession this solve must fold into its inputs. The only
     # channel from the request to the worker, because requesting a tradeoff persists
     # nothing.
-    candidate_adjustment: Mapped[JsonObject | None] = mapped_column(JSONB, nullable=True)
+    candidate_adjustment: Mapped[JsonObject | None] = mapped_column(NULLABLE_JSONB, nullable=True)
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -85,7 +84,7 @@ class Operation(Base, TenantScoped):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The exact resolved inputs a failed solve read, so a production failure is reproducible
     # locally. Written only on failure, and pruned with the row at 90 days.
-    failed_input_snapshot: Mapped[JsonObject | None] = mapped_column(JSONB, nullable=True)
+    failed_input_snapshot: Mapped[JsonObject | None] = mapped_column(NULLABLE_JSONB, nullable=True)
 
     __table_args__ = (
         CheckConstraint(values_in("kind", OPERATION_KINDS), name="kind_is_known"),
