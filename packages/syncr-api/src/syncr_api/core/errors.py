@@ -15,10 +15,12 @@ it names the capabilities that survive.
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from typing import TYPE_CHECKING, ClassVar
 
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException
 from starlette.responses import Response
 
 from syncr_common.logging import current_correlation_id, get_logger
@@ -155,6 +157,26 @@ class InternalError(SyncrError):
     title = "Internal server error"
 
 
+# The domain error each framework-raised status maps onto, so a routing 404 and a
+# service-raised 404 are the same shape on the wire. A status with no entry (405,
+# say) still renders as problem details, under a generic type.
+_ERROR_BY_STATUS: dict[int, type[SyncrError]] = {
+    error.status: error
+    for error in (
+        MalformedRequest,
+        Unauthorized,
+        Forbidden,
+        NotFound,
+        Conflict,
+        ValidationFailed,
+        RateLimited,
+        DependencyUnavailable,
+    )
+}
+
+GENERIC_HTTP_ERROR_TYPE = "syncr:http-error"
+
+
 def _render(problem: Problem, *, retry_after_seconds: int | None = None) -> Response:
     headers = {"Retry-After": str(retry_after_seconds)} if retry_after_seconds else None
     return Response(
@@ -193,6 +215,29 @@ async def handle_request_validation_error(_request: Request, exc: Exception) -> 
     )
 
 
+async def handle_http_exception(request: Request, exc: Exception) -> Response:
+    """Map a framework-raised ``HTTPException`` into the same problem shape.
+
+    Without this, an unrouted path and a wrong method answer in Starlette's own
+    ``{"detail": ...}`` shape while every other error answers problem details, so a
+    client would have to parse two error formats.
+    """
+    if not isinstance(exc, HTTPException):  # pragma: no cover - registered for this type
+        raise exc
+    error_class = _ERROR_BY_STATUS.get(exc.status_code)
+    if error_class is not None:
+        return await handle_syncr_error(request, error_class(str(exc.detail)))
+    return _render(
+        Problem(
+            type=GENERIC_HTTP_ERROR_TYPE,
+            title=HTTPStatus(exc.status_code).phrase,
+            status=exc.status_code,
+            detail=str(exc.detail),
+            instance=current_correlation_id(),
+        )
+    )
+
+
 async def handle_unexpected(request: Request, exc: Exception) -> Response:
     """Render an unhandled exception as a generic 500.
 
@@ -210,12 +255,14 @@ def build_exception_handlers() -> Mapping[ExceptionKey, ExceptionHandler]:
     """The handler map every app wires, so no route can forget to map its errors.
 
     One handler for the whole :class:`SyncrError` hierarchy (Starlette dispatches by
-    MRO), the ``RequestValidationError`` override, and a catch-all so an unhandled
-    fault renders as problem details instead of leaking. The three keys are
-    MRO-disjoint, so registration order is irrelevant.
+    MRO), one for the framework's own ``HTTPException`` and request-validation
+    failure, and a catch-all so an unhandled fault renders as problem details
+    instead of leaking. The keys are MRO-disjoint, so registration order is
+    irrelevant.
     """
     return {
         SyncrError: handle_syncr_error,
+        HTTPException: handle_http_exception,
         RequestValidationError: handle_request_validation_error,
         Exception: handle_unexpected,
     }

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.correlation import CORRELATION_ID_HEADER
 from syncr_api.core.errors import (
+    GENERIC_HTTP_ERROR_TYPE,
     PROBLEM_JSON_MEDIA_TYPE,
     Conflict,
     DependencyUnavailable,
@@ -165,3 +166,28 @@ def test_an_unhandled_exception_renders_a_generic_500(settings: ServiceSettings)
     assert body["detail"] == "An unexpected error occurred. The request was not applied."
     assert "asyncpg" not in response.text
     assert body["instance"]
+
+
+def test_an_unrouted_path_answers_problem_details(settings: ServiceSettings) -> None:
+    # Without a handler for the framework's own HTTPException, this would answer in
+    # Starlette's {"detail": ...} shape and a client would parse two error formats.
+    with client_for(settings, NotFound("unused")) as http:
+        response = http.get("/api/v1/no-such-resource")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"] == PROBLEM_JSON_MEDIA_TYPE
+    assert response.json()["type"] == "syncr:not-found"
+    assert response.json()["instance"]
+
+
+def test_a_wrong_method_answers_problem_details_under_a_generic_type(
+    settings: ServiceSettings,
+) -> None:
+    with client_for(settings, NotFound("unused")) as http:
+        response = http.delete(BODY_PATH)
+
+    assert response.status_code == 405
+    assert response.headers["content-type"] == PROBLEM_JSON_MEDIA_TYPE
+    body = response.json()
+    assert body["type"] == GENERIC_HTTP_ERROR_TYPE
+    assert body["title"] == "Method Not Allowed"
