@@ -102,7 +102,7 @@ def test_the_learning_image_carries_no_web_stack() -> None:
 def test_the_api_image_carries_the_web_stack_it_serves() -> None:
     # The mirror of the test above: the extra is requested here, so a missing
     # fastapi would be a packaging break rather than a boundary win.
-    assert WEB_STACK_PACKAGES <= api_closure()
+    assert api_closure() >= WEB_STACK_PACKAGES
 
 
 def test_the_solver_depends_on_the_domain() -> None:
