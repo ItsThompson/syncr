@@ -79,7 +79,7 @@ class TestResolveZone:
             with pytest.raises(DomainError):
                 entry_point()
 
-    def test_a_rejection_carries_no_filesystem_path(self) -> None:
+    def test_a_directory_shaped_rejection_carries_no_filesystem_path(self) -> None:
         """The leaked IsADirectoryError named the tz database's path on disk, and this
         message reaches the wire as the stated reason."""
         with pytest.raises(UnknownZoneError) as rejected:
@@ -182,6 +182,24 @@ class TestFallBack:
         later = datetime.combine(FALL_BACK, time(1, 30), tzinfo=ZoneInfo(LONDON)).replace(fold=1)
 
         assert to_instant(time(1, 30), FALL_BACK, LONDON) != later.astimezone(UTC)
+
+    def test_a_wall_time_carrying_fold_still_takes_the_first_occurrence(self) -> None:
+        """`datetime.combine` copies `fold` from the `time`, so the rule is unconditional
+        only because `to_instant` normalizes it. Without that normalization this input
+        would return the later occurrence, which is the rule inverted, and no other test
+        would notice.
+        """
+        plain = to_instant(time(1, 30), FALL_BACK, LONDON)
+
+        assert to_instant(time(1, 30, fold=1), FALL_BACK, LONDON) == plain
+        assert plain == datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
+
+    def test_the_later_occurrence_is_a_different_instant(self) -> None:
+        """The control on the test above: an hour apart, so ignoring `fold` and honoring
+        it are distinguishable outcomes."""
+        naive = datetime.combine(FALL_BACK, time(1, 30), tzinfo=ZoneInfo(LONDON))
+
+        assert naive.replace(fold=1).astimezone(UTC) == datetime(2026, 10, 25, 1, 30, tzinfo=UTC)
 
     def test_the_frame_keeps_its_order_and_distinctness_through_the_repeat(self) -> None:
         """Unlike the gap, this rule maps distinct wall times to distinct instants:
