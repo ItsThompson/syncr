@@ -4,8 +4,10 @@ version = "0.1.0"
 description = "syncr FastAPI application, persistence, calendar adapters, and the worker entrypoint. Two entrypoints, one package, because both need the same repositories, ORM session handling, and settings."
 requires-python = ">=3.12"
 # Upper-major caps are a safety net; the committed root uv.lock is the source of
-# truth and `uv sync --frozen` enforces it. structlog (calver) and cryptography
-# (security-sensitive) are left uncapped so patches are never blocked.
+# truth and `uv sync --frozen` enforces it. structlog (calver) is left uncapped so
+# patches are never blocked. The `http` extra on syncr-common is what pulls the
+# shared health router's fastapi dependency, which the offline learning job does
+# not install.
 dependencies = [
     "fastapi>=0.115.0,<1",
     "uvicorn[standard]>=0.32.0,<1",
@@ -14,7 +16,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36,<3",
     "asyncpg>=0.30.0,<1",
     "alembic>=1.14.0,<2",
-    "syncr-common",
+    "syncr-common[http]",
     "syncr-domain",
     "syncr-solver",
 ]

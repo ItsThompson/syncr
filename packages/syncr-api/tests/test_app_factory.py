@@ -6,9 +6,9 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from syncr_api.core.app_factory import FEATURE_ROUTERS, create_app
+from syncr_api.core.observability import METRICS_ENDPOINT
 from syncr_api.core.settings import API_PREFIX, ServiceSettings
 from syncr_common.health import HEALTHZ_ENDPOINT, READYZ_ENDPOINT, RETRY_AFTER_SECONDS
-from syncr_common.metrics import METRICS_ENDPOINT
 from tests.conftest import failing_check, passing_check
 
 

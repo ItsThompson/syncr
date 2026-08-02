@@ -6,16 +6,26 @@ requires-python = ">=3.12"
 # Upper-major caps are a safety net; the committed root uv.lock is the source of
 # truth and `uv sync --frozen` enforces it. structlog (calver) is left uncapped
 # so patches are never blocked.
+#
+# fastapi is NOT a required dependency. `health.py` is the only module that needs
+# it, and the offline learning job installs this package without a web stack. A
+# member that serves HTTP depends on `syncr-common[http]` instead.
 dependencies = [
-    "fastapi>=0.115.0,<1",
     "structlog>=24.4.0",
     "prometheus-client>=0.21.0,<1",
     "pydantic>=2.9.0,<3",
     "pydantic-settings>=2.6.0,<3",
 ]
 
+[project.optional-dependencies]
+http = [
+    "fastapi>=0.115.0,<1",
+]
+
 [dependency-groups]
 dev = [
+    # The health tests exercise the router, so the suite needs the http extra.
+    "syncr-common[http]",
     "pytest>=8.3.0,<10",
     "pytest-asyncio>=0.24.0,<2",
     "ruff>=0.8.0,<1",

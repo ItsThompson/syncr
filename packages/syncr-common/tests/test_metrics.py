@@ -1,19 +1,10 @@
-"""The per-method decorator and the ``/metrics`` exposition."""
+"""The per-method decorator and the Prometheus exposition."""
 
 from __future__ import annotations
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from prometheus_client import CollectorRegistry
 
-from syncr_common.metrics import (
-    METRICS_ENDPOINT,
-    REGISTRY,
-    create_metrics_router,
-    measured,
-    render,
-)
+from syncr_common.metrics import REGISTRY, measured, render
 
 COMPONENT = "test_component"
 
@@ -108,27 +99,3 @@ def test_render_carries_no_client_library_default_families() -> None:
 
     assert b"python_gc_objects_collected_total" not in payload
     assert b"process_start_time_seconds" not in payload
-
-
-def test_metrics_endpoint_serves_prometheus_exposition() -> None:
-    app = FastAPI()
-    app.include_router(create_metrics_router())
-
-    with TestClient(app) as client:
-        response = client.get(METRICS_ENDPOINT)
-
-    assert response.status_code == 200
-    assert "text/plain" in response.headers["content-type"]
-    assert "syncr_method_duration_seconds" in response.text
-
-
-def test_metrics_router_serves_an_injected_registry() -> None:
-    private = CollectorRegistry()
-    app = FastAPI()
-    app.include_router(create_metrics_router(private))
-
-    with TestClient(app) as client:
-        response = client.get(METRICS_ENDPOINT)
-
-    assert response.status_code == 200
-    assert "syncr_method_duration_seconds" not in response.text

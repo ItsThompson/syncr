@@ -17,9 +17,9 @@ from fastapi import APIRouter, FastAPI
 
 from syncr_api.core.correlation import CorrelationMiddleware
 from syncr_api.core.errors import build_exception_handlers
+from syncr_api.core.observability import create_metrics_router
 from syncr_common.health import create_health_router
 from syncr_common.logging import configure_logging, get_logger
-from syncr_common.metrics import create_metrics_router
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

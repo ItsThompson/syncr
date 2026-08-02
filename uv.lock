@@ -1111,7 +1111,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
-    { name = "syncr-common" },
+    { name = "syncr-common", extra = ["http"] },
     { name = "syncr-domain" },
     { name = "syncr-solver" },
     { name = "uvicorn", extra = ["standard"] },
@@ -1135,7 +1135,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.9.0,<3" },
     { name = "pydantic-settings", specifier = ">=2.6.0,<3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<3" },
-    { name = "syncr-common", editable = "packages/syncr-common" },
+    { name = "syncr-common", extras = ["http"], editable = "packages/syncr-common" },
     { name = "syncr-domain", editable = "packages/syncr-domain" },
     { name = "syncr-solver", editable = "packages/syncr-solver" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1" },
@@ -1185,11 +1185,15 @@ name = "syncr-common"
 version = "0.1.0"
 source = { editable = "packages/syncr-common" }
 dependencies = [
-    { name = "fastapi" },
     { name = "prometheus-client" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "structlog" },
+]
+
+[package.optional-dependencies]
+http = [
+    { name = "fastapi" },
 ]
 
 [package.dev-dependencies]
@@ -1199,16 +1203,18 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
+    { name = "syncr-common", extra = ["http"] },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.115.0,<1" },
+    { name = "fastapi", marker = "extra == 'http'", specifier = ">=0.115.0,<1" },
     { name = "prometheus-client", specifier = ">=0.21.0,<1" },
     { name = "pydantic", specifier = ">=2.9.0,<3" },
     { name = "pydantic-settings", specifier = ">=2.6.0,<3" },
     { name = "structlog", specifier = ">=24.4.0" },
 ]
+provides-extras = ["http"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1217,6 +1223,7 @@ dev = [
     { name = "pytest", specifier = ">=8.3.0,<10" },
     { name = "pytest-asyncio", specifier = ">=0.24.0,<2" },
     { name = "ruff", specifier = ">=0.8.0,<1" },
+    { name = "syncr-common", extras = ["http"] },
 ]
 
 [[package]]

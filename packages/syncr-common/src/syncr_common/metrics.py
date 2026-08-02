@@ -1,7 +1,7 @@
 """The Prometheus registry and the per-method metric decorator.
 
-One private :class:`CollectorRegistry` holds every syncr family, so ``/metrics``
-serves exactly what this application declares and nothing the client library
+One private :class:`CollectorRegistry` holds every syncr family, so the exposition
+carries exactly what this application declares and nothing the client library
 collects by default. Host and container metrics come from node_exporter and
 cadvisor instead.
 
@@ -10,6 +10,10 @@ exit and an error counter on a failing one, then re-raises. Wrapping the method
 rather than counting at call sites means a failure exit cannot be forgotten, and
 the single decorator argument (the component name) keeps the label set bounded to
 component plus method.
+
+This module carries no web-stack import, so the offline learning job can measure
+its own fitters. Serving the exposition over HTTP belongs to the process that has
+an HTTP surface.
 """
 
 from __future__ import annotations
@@ -19,7 +23,6 @@ import inspect
 import time
 from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast
 
-from fastapi import APIRouter
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     CollectorRegistry,
@@ -27,12 +30,9 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
-from starlette.responses import Response
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
-
-METRICS_ENDPOINT = "/metrics"
 
 REGISTRY = CollectorRegistry()
 
@@ -116,16 +116,3 @@ def _wrap_async[**P, R](component: str, fn: Callable[P, Awaitable[R]]) -> Callab
 def render(registry: CollectorRegistry | None = None) -> tuple[bytes, str]:
     """The Prometheus text exposition of ``registry`` and its content type."""
     return generate_latest(registry or REGISTRY), CONTENT_TYPE_LATEST
-
-
-def create_metrics_router(registry: CollectorRegistry | None = None) -> APIRouter:
-    """Build the ``/metrics`` router. Reachable only inside ``app-net``."""
-    router = APIRouter(tags=["observability"])
-    exposed = registry or REGISTRY
-
-    @router.get(METRICS_ENDPOINT, include_in_schema=False)
-    async def metrics() -> Response:
-        payload, content_type = render(exposed)
-        return Response(content=payload, media_type=content_type)
-
-    return router
