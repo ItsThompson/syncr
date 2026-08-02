@@ -42,7 +42,10 @@ def import_every_module(package: str) -> tuple[list[str], set[str]]:
         [sys.executable, "-c", _PROBE.format(package=package)],
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
+    )
+    assert completed.returncode == 0, (
+        f"the probe could not import {package}: {completed.stderr.strip()}"
     )
     payload = json.loads(completed.stdout)
     return payload["imported"], {name.split(".", 1)[0] for name in payload["loaded"]}
