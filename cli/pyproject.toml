@@ -14,6 +14,7 @@ syncr-common = { workspace = true }
 [dependency-groups]
 dev = [
     "pytest>=8.3.0,<10",
+    "pytest-asyncio>=0.24.0,<2",
     "ruff>=0.8.0,<1",
     "mypy>=1.13.0,<3",
 ]
@@ -43,3 +44,4 @@ files = ["src/syncr_cli", "tests"]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
 addopts = "--strict-markers --strict-config"
+asyncio_mode = "auto"
