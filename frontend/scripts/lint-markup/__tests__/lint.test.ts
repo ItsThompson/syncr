@@ -98,6 +98,91 @@ describe("the markup rules", () => {
   });
 });
 
+/* THE SHAPES THAT COMPILED. Each one produced real CSS through Tailwind's own compiler while every
+ * check was green, and four of them reach a prohibition the design language states without exception.
+ * The theme cannot fence any of them: `[prop:value]` is not namespace-driven, so clearing
+ * `--color-*` and `--animate-*` does not touch it. */
+describe("Tailwind v4 shapes the theme cannot fence", () => {
+  it("catches the arbitrary-property form, which no theme namespace covers", async () => {
+    const outcome = await lint(["compiling.tsx"]);
+    const properties = outcome.findings.filter(
+      (finding) => finding.check === "no-arbitrary-property",
+    );
+
+    expect(properties.map((finding) => finding.message.split(" ")[0])).toEqual([
+      "[color:red]",
+      "[background:#ff0000]",
+      "[box-shadow:0_0_8px_red]",
+      "[--my-var:3px]",
+      "[color:red]",
+    ]);
+  });
+
+  it("catches it behind a variant prefix, which the old tokenizer destroyed", async () => {
+    const outcome = await lint(["compiling.tsx"]);
+
+    // `md:[color:red]` used to become `red]` before any rule ran.
+    expect(
+      outcome.findings.filter((finding) => finding.check === "no-arbitrary-property"),
+    ).toHaveLength(5);
+  });
+
+  it.each(["-translate-x-2", "-rotate-3", "-skew-y-2"])(
+    "catches the negative transform utility %s",
+    async (utility) => {
+      const outcome = await lint(["compiling.tsx"]);
+      const motion = outcome.findings
+        .filter((finding) => finding.check === "motion-is-zero")
+        .map((finding) => finding.message);
+
+      expect(motion.some((message) => message.startsWith(utility))).toBe(true);
+    },
+  );
+
+  it("catches all seven shapes and nothing else", async () => {
+    const outcome = await lint(["compiling.tsx"]);
+
+    expect(outcome.findings).toHaveLength(8);
+    expect(checksOf(outcome.findings).toSorted()).toEqual([
+      "motion-is-zero",
+      "no-arbitrary-property",
+    ]);
+  });
+});
+
+/* THE INLINE STYLE PROP, which stylelint never sees. Only the absolutes are refused: a computed
+ * length is how the week grid has to work, and a custom property is how an Area's ink is passed. */
+describe("an inline style prop", () => {
+  it("refuses a raw colour, a blurred shadow and a transition", async () => {
+    const outcome = await lint(["inline-style.tsx"]);
+    const style = outcome.findings
+      .filter((finding) => finding.check === "no-raw-value-in-style")
+      .map((finding) => finding.message);
+
+    expect(style.some((message) => message.includes("a raw colour literal"))).toBe(true);
+    expect(style.some((message) => message.includes("shadow other than --shadow-hard"))).toBe(true);
+    expect(style.some((message) => message.includes("a transition"))).toBe(true);
+  });
+
+  it("permits a computed length and a custom property, which the grid and the chips need", async () => {
+    const outcome = await lint(["inline-style.tsx"]);
+    const lines = outcome.findings
+      .filter((finding) => finding.check === "no-raw-value-in-style")
+      .map((finding) => finding.line);
+
+    // Every finding is on the first element; the computed one produces none.
+    expect([...new Set(lines)]).toEqual([10]);
+  });
+
+  it("says why, naming the rule rather than the mechanism", async () => {
+    const outcome = await lint(["inline-style.tsx"]);
+    const first = outcome.findings.find((finding) => finding.check === "no-raw-value-in-style");
+
+    expect(first?.message).toContain("reads tokens rather than restating");
+    expect(first?.message).toContain("A computed length is fine");
+  });
+});
+
 describe("the radius rules", () => {
   it("permits rounded-* inside the kit", async () => {
     const outcome = await lintMarkup({

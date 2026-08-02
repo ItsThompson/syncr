@@ -80,13 +80,31 @@ export function classStringsIn(source: string): ClassString[] {
   return found;
 }
 
-/** The individual utility names in a class list, dropping the variant prefixes. */
+/** The individual utility names in a class list, with the variant prefixes stripped. */
 export function utilitiesIn(classList: string): string[] {
   return classList
     .split(/\s+/)
     .filter((token) => token !== "")
-    .map((token) => {
-      const segments = token.split(":");
-      return segments[segments.length - 1];
-    });
+    .map(stripVariants);
+}
+
+/* Variants are stripped at TOP-LEVEL colons only.
+ *
+ * Splitting on every colon destroyed Tailwind v4's arbitrary-PROPERTY form before any rule saw it:
+ * `[color:red]` became `red]`, so the motion rule, the radius rule and the circle allowlist were all
+ * structurally blind to it, and `md:[color:red]` was mangled the same way. Seven shapes compiled to
+ * real CSS through that gap, including a raw hex and a blurred shadow.
+ *
+ * This is the same class as the CSS string tokenizer and the oxlint report parser before it: a
+ * parser inside a check, wrong about a shape the language permits. */
+function stripVariants(token: string): string {
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < token.length; index += 1) {
+    const character = token[index];
+    if (character === "[" || character === "(") depth += 1;
+    else if (character === "]" || character === ")") depth -= 1;
+    else if (character === ":" && depth === 0) start = index + 1;
+  }
+  return token.slice(start);
 }
