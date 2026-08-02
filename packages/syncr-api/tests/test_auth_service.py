@@ -419,3 +419,28 @@ async def test_revoking_another_tenants_session_is_a_404_and_changes_nothing(
 async def test_an_unknown_session_id_is_a_404(service: SessionService) -> None:
     with pytest.raises(NotFound):
         await service.describe(Principal(tenant_id=uuid4(), user_id=uuid4()), "0" * 64)
+
+
+async def test_describing_a_revoked_session_is_a_404_even_with_its_own_principal(
+    authenticator: Authenticator, service: SessionService
+) -> None:
+    # The service layer does not assume the caller already applied the expiry rule. Over
+    # HTTP the principal dependency rejects this first; a later caller resolving a session
+    # for another reason has no such guard.
+    established = await authenticator.log_in(EMAIL, PASSWORD)
+    session_id = make_token_digest(SIGNING_SECRET)(established.token)
+    await service.log_out(established.principal, session_id)
+
+    with pytest.raises(NotFound):
+        await service.describe(established.principal, session_id)
+
+
+async def test_describing_an_expired_session_is_a_404(
+    authenticator: Authenticator, service: SessionService, clock: MovableClock
+) -> None:
+    established = await authenticator.log_in(EMAIL, PASSWORD)
+    session_id = make_token_digest(SIGNING_SECRET)(established.token)
+    clock.advance(SESSION_IDLE_TIMEOUT + timedelta(seconds=1))
+
+    with pytest.raises(NotFound):
+        await service.describe(established.principal, session_id)

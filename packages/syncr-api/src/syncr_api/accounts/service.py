@@ -60,6 +60,12 @@ class SessionService:
         if session is None:
             raise NotFound(f"No {SESSION_RESOURCE} matches that identifier.")
         authorize_tenant(principal, session.tenant_id, resource=SESSION_RESOURCE)
+        # Checked here and not only in the dependency that resolved the principal. The
+        # service layer is the authorization boundary, so it does not assume its caller
+        # already applied the rule: a later caller resolving a session for another reason
+        # would otherwise read one that stopped working.
+        if not session.is_usable_at(self._clock()):
+            raise NotFound(f"No {SESSION_RESOURCE} matches that identifier.")
 
         user = await self._users.find(session.user_id)
         if user is None:
