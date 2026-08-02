@@ -20,9 +20,16 @@ import { createPositionResolver } from "../lib/css-scan.ts";
 import type { Finding } from "../lib/findings.ts";
 
 const basename = (file: string): string => path.basename(file, path.extname(file));
-/* An arbitrary value carries its own brackets, a form no English sentence produces, so this one is
- * matched over the whole file rather than only inside a class list. */
+/* An arbitrary value carries its own delimiters, a form no English sentence produces, so these are
+ * matched over the whole file rather than only inside a class list.
+ *
+ * TWO DELIMITERS, NOT ONE. Tailwind v4 accepts `w-[13px]` and `w-(--wide)`, and the paren form is
+ * what its own documentation recommends for a CSS variable. Both patterns were written around `[`,
+ * so the paren form was invisible and `w-(--wide)` shipped `width: var(--wide)`, which is criterion
+ * 11's own `w-[13px]` case in a different spelling. Section 14's `--ai` makes the paren form the
+ * first thing the week grid will reach for. */
 const ARBITRARY_VALUE = /\b[a-z][a-z0-9-]*-\[[^\]\s]+\]/g;
+const ARBITRARY_VARIABLE = /\b[a-z][a-z0-9-]*-\(--[^)\s]+\)/g;
 
 /* Layer 0 is the pigment ramps. Every step ends in a number, which is what separates
  * `--amber-500` from the layer 1 `--amber-wash`. */
@@ -111,6 +118,17 @@ export function lintSource(context: MarkupRuleContext): Finding[] {
       ...at(match.index),
       check: "no-arbitrary-value",
       message: `${match[0]} is an arbitrary value. A value not on the scale becomes a token first.`,
+    });
+  }
+
+  for (const match of code.matchAll(ARBITRARY_VARIABLE)) {
+    findings.push({
+      file: context.file,
+      ...at(match.index),
+      check: "no-arbitrary-value",
+      message:
+        `${match[0]} is an arbitrary value in Tailwind's parenthesised form, which is the same ` +
+        "thing as the bracket form. A value not on the scale becomes a token first.",
     });
   }
 

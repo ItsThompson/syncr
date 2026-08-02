@@ -4,14 +4,34 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { appSourceDir } from "../../lib/paths.ts";
+import { emittedDeclarationsFor } from "../../lib/tailwind.ts";
+import { refusedByEmittedCss } from "../emitted.ts";
 import { lintMarkup } from "../lint.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string): string => path.join(here, "..", "__fixtures__", name);
 const themeFile = path.join(appSourceDir, "theme.css");
 
+const sourceRoot = path.join(here, "..", "..", "..", "src");
+
 async function lint(names: string[], kitDir = path.join(here, "..", "__fixtures__", "kit")) {
-  return lintMarkup({ sourceFiles: names.map(fixture), themeFile, kitDir });
+  return lintMarkup({
+    sourceFiles: names.map(fixture),
+    styleSheets: [],
+    themeFile,
+    kitDir,
+    sourceRoot,
+  });
+}
+
+async function lintStyleSheets(names: string[]) {
+  return lintMarkup({
+    sourceFiles: [],
+    styleSheets: names.map(fixture),
+    themeFile,
+    kitDir: path.join(here, "..", "__fixtures__"),
+    sourceRoot,
+  });
 }
 
 const checksOf = (findings: readonly { check: string }[]): string[] => [
@@ -36,7 +56,12 @@ describe("on-brand markup", () => {
 
   it("reports the vocabulary it read, so a silent empty set is visible", async () => {
     const outcome = await lint(["clean.tsx"]);
-    expect(outcome.notes[1]).toContain("data-current");
+    expect(outcome.notes.some((note) => note.includes("data-current"))).toBe(true);
+  });
+
+  it("reports how many utilities it compiled, so a silent zero is visible", async () => {
+    const outcome = await lint(["clean.tsx"]);
+    expect(outcome.notes.some((note) => /[1-9]\d* distinct utilit/.test(note))).toBe(true);
   });
 });
 
@@ -44,6 +69,7 @@ describe("the markup rules", () => {
   it("catches every violation in one file", async () => {
     const outcome = await lint(["offender.tsx"]);
     expect(checksOf(outcome.findings).toSorted()).toEqual([
+      "banned-emitted-css",
       "closed-state-vocabulary",
       "motion-is-zero",
       "no-arbitrary-value",
@@ -92,6 +118,7 @@ describe("the markup rules", () => {
   it("reaches a utility hidden in a variant map", async () => {
     const outcome = await lint(["variants.tsx"]);
     expect(checksOf(outcome.findings).toSorted()).toEqual([
+      "banned-emitted-css",
       "motion-is-zero",
       "no-radius-outside-the-kit",
     ]);
@@ -139,14 +166,20 @@ describe("Tailwind v4 shapes the theme cannot fence", () => {
     },
   );
 
-  it("catches all seven shapes and nothing else", async () => {
+  it("catches all seven shapes, by pattern and by emitted CSS", async () => {
     const outcome = await lint(["compiling.tsx"]);
 
-    expect(outcome.findings).toHaveLength(8);
     expect(checksOf(outcome.findings).toSorted()).toEqual([
+      "banned-emitted-css",
       "motion-is-zero",
       "no-arbitrary-property",
     ]);
+    // Eight by pattern, and the four that actually compile are refused a second time by what they
+    // emit: the three negative transforms and the arbitrary box-shadow.
+    expect(
+      outcome.findings.filter((finding) => finding.check === "banned-emitted-css"),
+    ).toHaveLength(4);
+    expect(outcome.findings).toHaveLength(12);
   });
 });
 
@@ -187,10 +220,12 @@ describe("the radius rules", () => {
   it("permits rounded-* inside the kit", async () => {
     const outcome = await lintMarkup({
       sourceFiles: [fixture("variants.tsx")],
+      styleSheets: [],
       themeFile,
       kitDir: path.join(here, "..", "__fixtures__"),
+      sourceRoot,
     });
-    expect(checksOf(outcome.findings)).toEqual(["motion-is-zero"]);
+    expect(checksOf(outcome.findings).toSorted()).toEqual(["banned-emitted-css", "motion-is-zero"]);
   });
 
   it("permits rounded-full on an allowlisted circle", async () => {
@@ -203,8 +238,10 @@ describe("the radius rules", () => {
   it("refuses a circle in a file merely sitting inside an allowlisted directory", async () => {
     const outcome = await lintMarkup({
       sourceFiles: [fixture(path.join("Avatar", "Banner.tsx"))],
+      styleSheets: [],
       themeFile,
       kitDir: path.join(here, "..", "__fixtures__"),
+      sourceRoot,
     });
 
     expect(checksOf(outcome.findings)).toEqual(["circle-allowlist"]);
@@ -220,10 +257,112 @@ describe("the radius rules", () => {
   it("refuses rounded-full anywhere else, even inside the kit", async () => {
     const outcome = await lintMarkup({
       sourceFiles: [fixture("Panel.tsx")],
+      styleSheets: [],
       themeFile,
       kitDir: path.join(here, "..", "__fixtures__"),
+      sourceRoot,
     });
     expect(checksOf(outcome.findings)).toEqual(["circle-allowlist"]);
     expect(outcome.findings[0].message).toContain("closed at those four");
+  });
+});
+
+/* THE VERDICT DERIVED FROM WHAT A UTILITY COMPILES TO, rather than from how it is spelled.
+ *
+ * Every shape below put a banned declaration into `dist` with all seven checks, tsc, prettier and
+ * `vite build` green. The two arbitrary-value patterns were written around `[`, so Tailwind's paren
+ * form was invisible; `MOTION_UTILITY` had no root for `delay-` or `will-change-`; and `@apply` in a
+ * stylesheet was read by nothing, since the markup scan took .ts and .tsx while stylelint's rules are
+ * declaration-based. */
+describe("the emitted-CSS verdict", () => {
+  it.each([
+    ["blur-(--haze)", "print has no blur"],
+    ["backdrop-blur-(--haze)", "print has no blur"],
+    ["shadow-(--halo)", "the system has one shadow"],
+    ["delay-300", "motion is zero without exception"],
+    ["will-change-transform", "motion is zero without exception"],
+  ])("refuses %s because %s", async (utility, reason) => {
+    const outcome = await lint(["paren-forms.tsx"]);
+    const emitted = outcome.findings
+      .filter((finding) => finding.check === "banned-emitted-css")
+      .map((finding) => finding.message);
+
+    expect(emitted.some((message) => message.startsWith(utility))).toBe(true);
+    expect(emitted.some((message) => message.startsWith(utility) && message.includes(reason))).toBe(
+      true,
+    );
+  });
+
+  /* `w-(--wide)` is criterion 11's own `w-[13px]` in another spelling. No emitted declaration
+   * distinguishes it from `w-sidebar`, since both emit `width: var(...)`, so the arbitrary-value rule
+   * is the only thing that can refuse it. Both halves are load-bearing. */
+  it.each(["w-(--wide)", "bg-(--tint)", "blur-(--haze)", "shadow-(--halo)"])(
+    "refuses the paren form %s as an arbitrary value",
+    async (utility) => {
+      const outcome = await lint(["paren-forms.tsx"]);
+      const arbitrary = outcome.findings
+        .filter((finding) => finding.check === "no-arbitrary-value")
+        .map((finding) => finding.message);
+
+      expect(arbitrary.some((message) => message.startsWith(utility))).toBe(true);
+    },
+  );
+
+  it("reaches @apply in a stylesheet, which every check used to miss", async () => {
+    const outcome = await lintStyleSheets(["applied.css"]);
+    const emitted = outcome.findings
+      .filter((finding) => finding.check === "banned-emitted-css")
+      .map((finding) => finding.message);
+
+    expect(emitted.some((message) => message.startsWith("blur-(--haze)"))).toBe(true);
+    expect(emitted.some((message) => message.startsWith("shadow-(--halo)"))).toBe(true);
+    expect(emitted.some((message) => message.startsWith("transition-(--pace)"))).toBe(true);
+    expect(emitted.some((message) => message.startsWith("delay-300"))).toBe(true);
+  });
+
+  it("points at the @apply that named the utility", async () => {
+    const outcome = await lintStyleSheets(["applied.css"]);
+    const first = outcome.findings.find((finding) => finding.check === "banned-emitted-css");
+
+    expect(first?.line).toBe(9);
+  });
+
+  /* WHY BOTH MECHANISMS STAY. The theme CLEARS `--animate-*`, `--blur-*` and the stock shadow scale,
+   * so `animate-spin` and `blur-sm` compile to nothing: the emitted-CSS verdict cannot see them and
+   * only the pattern rule tells the author the class is dead. The reverse holds for `delay-300`, which
+   * no pattern listed. Deleting either half loses real cases. */
+  it("cannot see a utility the theme neutralised, which is why the pattern rule stays", async () => {
+    const neutralised = await emittedDeclarationsFor(sourceRoot, [
+      "animate-spin",
+      "blur-sm",
+      "shadow-lg",
+      "ease-in",
+    ]);
+
+    for (const [, declarations] of neutralised) expect(declarations).toEqual([]);
+    expect(refusedByEmittedCss(neutralised)).toEqual([]);
+  });
+
+  it("does see the compiling shapes no pattern listed, which is why it stays", async () => {
+    const compiling = await emittedDeclarationsFor(sourceRoot, [
+      "delay-300",
+      "will-change-transform",
+      "blur-(--haze)",
+    ]);
+
+    expect(
+      refusedByEmittedCss(compiling)
+        .map((verdict) => verdict.utility)
+        .toSorted(),
+    ).toEqual(["blur-(--haze)", "delay-300", "will-change-transform"]);
+  });
+
+  it("leaves the one legal animation and the one legal shadow alone", async () => {
+    const legal = await emittedDeclarationsFor(sourceRoot, [
+      "animate-none",
+      "shadow-sm",
+      "bg-paper",
+    ]);
+    expect(refusedByEmittedCss(legal)).toEqual([]);
   });
 });
