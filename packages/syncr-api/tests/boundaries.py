@@ -16,7 +16,8 @@ from __future__ import annotations
 import ast
 import inspect
 import textwrap
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass
+from importlib import import_module
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -28,9 +29,11 @@ from typing import (
 )
 
 from syncr_api.core.principal import Principal
+from syncr_api.core.tenancy import IDENTITY_TABLES
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
+    from pathlib import Path
 
     from fastapi import FastAPI
     from fastapi.dependencies.models import Dependant
@@ -44,6 +47,20 @@ PRINCIPAL_ANNOTATION = Principal.__name__
 # what counts as a service is a naming convention the whole package follows rather
 # than a registry someone has to remember to add to.
 SERVICE_MODULE_SUFFIX = ".service"
+SERVICE_MODULE_NAME = "service.py"
+REPOSITORY_MODULE_NAME = "repository.py"
+MODELS_MODULE_NAME = "models.py"
+PACKAGE_NAME = "syncr_api"
+
+# The statement constructors a scoped repository must not call directly. `insert` is
+# absent on purpose: a scope is a column value on an insert rather than a predicate, so
+# there is nothing a scoped helper would add.
+STATEMENT_CONSTRUCTORS = frozenset({"select", "update", "delete"})
+
+# `syncr_api.<package>.models` is three parts, and the package is the second from last.
+MODELS_MODULE_DEPTH = 3
+SERVICE_MODULE_NAME = "service.py"
+PACKAGE_NAME = "syncr_api"
 
 METHODS_WITHOUT_A_BODY = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -183,6 +200,27 @@ def public_methods(service_class: type) -> list[str]:
     )
 
 
+def service_classes(source_root: Path) -> list[type]:
+    """Every service class the package defines, discovered rather than listed.
+
+    Found by walking ``*/service.py``, the same way the route rule walks ``*/api.py``, so
+    a service class added by a later feature module is covered without that ticket
+    remembering to extend an import here. Value types are excluded: a frozen dataclass in
+    the same module is a return shape, not a service, and has no authorization to do.
+    """
+    discovered: list[type] = []
+    for path in sorted(source_root.glob(f"*/{SERVICE_MODULE_NAME}")):
+        module = import_module(f"{PACKAGE_NAME}.{path.parent.name}.service")
+        discovered.extend(
+            member
+            for name, member in inspect.getmembers(module, inspect.isclass)
+            if not name.startswith("_")
+            and member.__module__ == module.__name__
+            and not is_dataclass(member)
+        )
+    return discovered
+
+
 def imported_modules(source: str) -> set[str]:
     """Every module name this source imports, as written."""
     tree = ast.parse(source)
@@ -193,6 +231,61 @@ def imported_modules(source: str) -> set[str]:
         elif isinstance(node, ast.ImportFrom) and node.module is not None:
             names.add(node.module)
     return names
+
+
+def bare_statement_calls(source: str) -> list[str]:
+    """Every statement built without the scope: ``select(...)``, not ``self.scoped_*``.
+
+    A repository over a table that holds a plan must build its statements through the
+    scoped base, or the tenant predicate is something each method remembers rather than
+    something the base applies. A call on an attribute (``self.scoped_select(Model)``) is
+    not a bare call and is not reported.
+    """
+    return sorted(
+        node.func.id
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in STATEMENT_CONSTRUCTORS
+    )
+
+
+def packages_with_scoped_tables(models: Iterable[type]) -> set[str]:
+    """The feature packages owning at least one table the tenancy rules apply to.
+
+    Derived from the mapped classes rather than from a list, so a package added by a
+    later feature module comes under the rule without that ticket registering it. A
+    package whose tables are all identity tables is exempt, and that exemption is
+    ``IDENTITY_TABLES``, which is itself asserted.
+    """
+    packages = set()
+    for model in models:
+        tablename = getattr(model, "__tablename__", None)
+        if tablename is None or tablename in IDENTITY_TABLES:
+            continue
+        parts = model.__module__.split(".")
+        if len(parts) >= MODELS_MODULE_DEPTH:
+            packages.add(parts[-2])
+    return packages
+
+
+def mapped_classes(source_root: Path) -> list[type]:
+    """Every model class the package declares, importing each models module first.
+
+    Filesystem-driven rather than read from the mapper registry. A registry only knows
+    the modules something has already imported, so a feature module whose models nothing
+    in the suite happens to import would fall outside every schema rule silently. This
+    also populates ``Base.metadata``, which the metadata rules read.
+    """
+    discovered: list[type] = []
+    for path in sorted(source_root.glob(f"*/{MODELS_MODULE_NAME}")):
+        module = import_module(f"{PACKAGE_NAME}.{path.parent.name}.models")
+        discovered.extend(
+            member
+            for _name, member in inspect.getmembers(module, inspect.isclass)
+            if member.__module__ == module.__name__ and hasattr(member, "__tablename__")
+        )
+    return discovered
 
 
 def _service_parameters(endpoint: Callable[..., object]) -> dict[str, type]:

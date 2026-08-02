@@ -26,7 +26,7 @@ from fastapi import Depends, FastAPI
 
 from syncr_api.accounts.config import AUTH_PREFIX
 from syncr_api.accounts.injection import require_principal, require_trusted_origin
-from syncr_api.accounts.service import SessionService
+from syncr_api.accounts.service import SessionDescription, SessionService
 from syncr_api.core.observability import METRICS_ENDPOINT
 from syncr_common.health import HEALTHZ_ENDPOINT, READYZ_ENDPOINT
 from tests.boundaries import (
@@ -38,6 +38,7 @@ from tests.boundaries import (
     resolved_dependencies,
     route_identity,
     service_calls,
+    service_classes,
 )
 
 if TYPE_CHECKING:
@@ -142,16 +143,32 @@ def test_every_route_maps_to_a_service_method_taking_a_principal(app: FastAPI) -
     )
 
 
-def test_every_public_service_method_takes_a_principal_first() -> None:
-    # The rule stated over the class rather than over the routes that happen to reach
-    # it, so a method added ahead of its route is covered too.
+def test_every_public_service_method_takes_a_principal_first(source_root: Path) -> None:
+    # Stated over every service class the package defines, discovered by walking
+    # `*/service.py`, so a method added ahead of its route is covered and a service class
+    # a later feature module adds needs no edit here.
+    discovered = service_classes(source_root)
+    assert discovered, f"no service class was found under {source_root}"
+
     failures = [
         reason
-        for name in public_methods(SessionService)
-        if (reason := principal_position(SessionService, name)) is not None
+        for service_class in discovered
+        for name in public_methods(service_class)
+        if (reason := principal_position(service_class, name)) is not None
     ]
 
     assert failures == [], f"{failures}"
+
+
+def test_the_service_class_walk_finds_the_service_this_module_ships(source_root: Path) -> None:
+    # The control for the discovery above: a walk that found nothing would leave the rule
+    # passing vacuously, and it would keep passing as later modules arrive.
+    discovered = service_classes(source_root)
+
+    assert SessionService in discovered
+    assert public_methods(SessionService) == ["describe", "log_out"]
+    # The value type in the same module is a return shape, not a service.
+    assert SessionDescription not in discovered
 
 
 def test_every_unsafe_route_carries_the_origin_check(app: FastAPI) -> None:

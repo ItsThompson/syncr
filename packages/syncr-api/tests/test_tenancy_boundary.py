@@ -22,11 +22,14 @@ The rules:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import uuid4
+from typing import TYPE_CHECKING
+from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import MetaData, select
+from sqlalchemy import MetaData, Uuid, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.sql.sqltypes import NullType
 
 from syncr_api.accounts import models as accounts_models
 from syncr_api.core.orm import Base
@@ -35,13 +38,29 @@ from syncr_api.core.tenancy import (
     IDENTITY_TABLES,
     SESSIONS_TABLE,
     TENANT_ID_COLUMN,
+    TENANTS_TABLE,
     USER_ID_COLUMN,
+    TenantScoped,
 )
-from tests.control_models import ControlBase, ScopedThing
+from tests.boundaries import (
+    REPOSITORY_MODULE_NAME,
+    bare_statement_calls,
+    mapped_classes,
+    packages_with_scoped_tables,
+)
+from tests.control_models import ControlBase, ScopedThing, table_of
 
-# The tables in the metadata Alembic diffs. Imported for the registration side effect
-# so the walk sees the accounts tables whether or not another test imported them first.
-assert accounts_models.Tenant is not None
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+# The tables in the metadata Alembic diffs. Every models module is imported before the
+# metadata is read, so a feature module whose models nothing else imports still comes
+# under these rules rather than falling outside them silently.
+@pytest.fixture(autouse=True)
+def _every_models_module_imported(source_root: Path) -> list[type]:
+    return mapped_classes(source_root)
+
 
 ALEMBIC_TABLE = "alembic_version"
 
@@ -152,7 +171,8 @@ def test_one_user_per_tenant_is_enforced_by_the_schema() -> None:
 
 
 # --------------------------------------------------------------------------------
-# The SQL rule. A scoped repository's statements are compiled and read.
+# The SQL rule. A scoped repository's statements are compiled and read, and every
+# scoped package's repository module is read for a statement built without the scope.
 # --------------------------------------------------------------------------------
 
 
@@ -171,18 +191,107 @@ def test_every_statement_a_scoped_repository_builds_carries_a_tenant_predicate()
     # integration tier is where the executed form is asserted.
     repository = TenantScopedRepository(AsyncSession(), tenant_id)
 
-    sql = compiled(repository.scoped_select(ScopedThing))
-
-    assert "WHERE scoped_things.tenant_id = " in sql, sql
+    for statement in (
+        repository.scoped_select(ScopedThing),
+        repository.scoped_update(ScopedThing),
+        repository.scoped_delete(ScopedThing),
+    ):
+        assert "scoped_things.tenant_id = " in compiled(statement), compiled(statement)
     assert repository.tenant_id == tenant_id
 
 
 def test_the_sql_check_reports_a_statement_built_without_the_scope() -> None:
-    # The control for the assertion above: the same reading applied to the statement a
+    # The control for the assertions above: the same reading applied to the statement a
     # repository would produce if it bypassed the base and called `select` itself.
     sql = compiled(select(ScopedThing))
 
     assert "WHERE" not in sql, sql
+
+
+def test_no_repository_over_a_scoped_table_builds_a_statement_without_the_scope(
+    source_root: Path,
+) -> None:
+    # The half the compiled assertions above cannot reach: nothing forces a repository to
+    # USE the base's helpers. A module that subclasses `TenantScopedRepository` and then
+    # writes `select(PlanBlock).where(PlanBlock.id == ...)` would satisfy every other
+    # test in this file.
+    #
+    # Vacuous today, and armed: no package owns a scoped table yet, which the test below
+    # asserts rather than leaves implied. Plan storage is the first package it examines.
+    violations = {}
+    for package in sorted(packages_with_scoped_tables(mapped_classes(source_root))):
+        module = source_root / package / REPOSITORY_MODULE_NAME
+        assert module.exists(), f"{package} owns a scoped table and has no repository module"
+        if bare := bare_statement_calls(module.read_text(encoding="utf-8")):
+            violations[package] = bare
+
+    assert violations == {}, (
+        f"{violations}. Build these from `self.scoped_select`, `self.scoped_update`, or "
+        "`self.scoped_delete`, so the tenant predicate is applied by the base rather "
+        "than remembered by each method."
+    )
+
+
+def test_only_identity_tables_exist_yet_so_the_repository_walk_examines_nothing(
+    source_root: Path,
+) -> None:
+    # A tripwire, and its failure is the message. The repository rule above iterates over
+    # scoped packages, and there are none yet, so it currently proves nothing on its own.
+    # The first ticket to add a table that holds a plan will fail HERE and nowhere else,
+    # which is the notice that the rule has engaged: delete this test at that point, and
+    # keep the one above.
+    models = mapped_classes(source_root)
+    scoped = packages_with_scoped_tables(models)
+
+    assert scoped == set(), (
+        f"{sorted(scoped)} now own a table that holds a plan, so the repository rule above "
+        "is live rather than vacuous. That is the intended state: delete this test."
+    )
+    # Read with a default, the same way the walk reads it: `type` carries no
+    # `__tablename__`, and narrowing it here would be a cast in a test.
+    assert {getattr(model, "__tablename__", None) for model in models} == IDENTITY_TABLES
+
+
+class _PlanModelStandingInForTicketSeven:
+    """What a scoped model in a feature package looks like to the walk."""
+
+    __tablename__ = "plan_blocks"
+    __module__ = "syncr_api.plans.models"
+
+
+def test_the_repository_walk_names_the_package_of_a_scoped_table() -> None:
+    # The discovery half's control. Without it, "no package owns a scoped table" and "the
+    # walk cannot see one" are indistinguishable.
+    assert packages_with_scoped_tables([_PlanModelStandingInForTicketSeven]) == {"plans"}
+    assert packages_with_scoped_tables([accounts_models.BrowserSession]) == set()
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("rows = select(PlanBlock).where(PlanBlock.id == block_id)", ["select"]),
+        ("await self._session.execute(update(PlanBlock).values(pinned=True))", ["update"]),
+        ("await self._session.execute(delete(PlanBlock))", ["delete"]),
+        ("rows = self.scoped_select(PlanBlock).where(PlanBlock.id == block_id)", []),
+        ("stmt = self.scoped_update(PlanBlock).values(pinned=True)", []),
+        ("self._session.add(PlanBlock(id=block_id))", []),
+    ],
+)
+def test_the_bare_statement_check_reports_what_it_should(source: str, expected: list[str]) -> None:
+    assert bare_statement_calls(source) == expected
+
+
+def test_the_identity_repository_is_exempt_and_would_otherwise_be_reported(
+    source_root: Path,
+) -> None:
+    # `accounts/repository.py` legitimately calls `select` and `update` directly, because
+    # its tables are read before a tenant is known. This asserts the exemption is doing
+    # real work rather than being untested: the module WOULD be reported if its package
+    # owned a scoped table.
+    accounts_repository = source_root / "accounts" / REPOSITORY_MODULE_NAME
+
+    assert bare_statement_calls(accounts_repository.read_text(encoding="utf-8")) != []
+    assert "accounts" not in packages_with_scoped_tables(mapped_classes(source_root))
 
 
 @pytest.mark.parametrize(
@@ -212,11 +321,46 @@ def test_the_user_id_check_reports_a_table_that_names_a_user() -> None:
     assert tables_carrying_a_user_id(ControlBase.metadata) == ["unscoped_things"]
 
 
+def test_the_scoped_column_carries_a_type_of_its_own_rather_than_a_borrowed_one() -> None:
+    # The condition the explicit type exists for. A column produced through
+    # `declared_attr` takes none from its annotation, and falls back to inferring one
+    # from its foreign key's target, so in a metadata where `tenants` is absent it is
+    # left typeless: every statement still compiles and only CREATE TABLE fails, in a
+    # tier a unit-only run skips.
+    class OrphanBase(DeclarativeBase):
+        metadata = MetaData()
+
+    class Orphan(OrphanBase, TenantScoped):
+        __tablename__ = "orphan_things"
+
+        id: Mapped[UUID] = mapped_column(primary_key=True)
+
+    column = table_of(Orphan).columns[TENANT_ID_COLUMN]
+
+    assert TENANTS_TABLE not in OrphanBase.metadata.tables
+    assert not isinstance(column.type, NullType), (
+        "the scoped column has no SQL type of its own, so a table carrying it cannot be "
+        "created wherever its foreign key target is not in the same metadata"
+    )
+    assert isinstance(column.type, Uuid)
+
+
 def test_the_scoped_mixin_produces_a_usable_column_per_table() -> None:
     # A ForeignKey object cannot be shared between mapped classes, so a mixin that
     # assigned one column would fail on the second table rather than on the first.
-    assert ScopedThing.__table__.columns[TENANT_ID_COLUMN].nullable is False
-    assert accounts_models.BrowserSession.__table__.columns[TENANT_ID_COLUMN].nullable is False
+    for column in (
+        table_of(ScopedThing).columns[TENANT_ID_COLUMN],
+        table_of(accounts_models.BrowserSession).columns[TENANT_ID_COLUMN],
+    ):
+        assert column.nullable is False
+        # The type is asserted, not just the nullability. A column produced through
+        # `declared_attr` takes no type from its annotation, so dropping the explicit one
+        # leaves it typeless: every statement still compiles and only CREATE TABLE fails,
+        # in a tier a unit-only run skips.
+        assert not isinstance(column.type, NullType), (
+            "the scoped column has no SQL type, so a table carrying it cannot be created"
+        )
+        assert isinstance(column.type, Uuid)
 
 
 def test_a_scoped_model_records_instants_as_aware_datetimes() -> None:
