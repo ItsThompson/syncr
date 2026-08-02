@@ -27,10 +27,11 @@ from syncr_api.core.tenancy import TENANT_ID_COLUMN
 from syncr_api.plans.config import FIRST_INPUT_VERSION
 from syncr_api.plans.models import WeekInputVersion
 
+# Runtime, not type-only: `tracked_weeks` parses the stored key back into a week.
+from syncr_domain.weeks import IsoWeek
+
 if TYPE_CHECKING:
     from datetime import datetime
-
-    from syncr_domain.weeks import IsoWeek
 
 
 class WeekInputVersionRepository(TenantScopedRepository):
@@ -72,6 +73,29 @@ class WeekInputVersionRepository(TenantScopedRepository):
             .where(WeekInputVersion.iso_week == str(iso_week))
             .with_only_columns(WeekInputVersion.version)
         )
+
+    async def tracked_weeks(
+        self, first: IsoWeek, last: IsoWeek | None = None
+    ) -> tuple[IsoWeek, ...]:
+        """Every week with a row in ``[first, last]``, in order. ``None`` is open-ended.
+
+        A mutation whose effect reaches a set of future weeks, a home-zone change say, has
+        to enumerate what to bump. A week with no row is not enumerated and needs no bump:
+        it has no plan and no running solve to invalidate, and :meth:`holds_version`
+        already treats an absent row as a mismatch.
+
+        The key sorts chronologically as text, because ``2026-W07`` is zero-padded, so both
+        bounds are the primary key's own ordering rather than a parse per row.
+        """
+        statement = (
+            self.scoped_select(WeekInputVersion)
+            .where(WeekInputVersion.iso_week >= str(first))
+            .order_by(WeekInputVersion.iso_week)
+            .with_only_columns(WeekInputVersion.iso_week)
+        )
+        if last is not None:
+            statement = statement.where(WeekInputVersion.iso_week <= str(last))
+        return tuple(IsoWeek.parse(key) for key in await self._session.scalars(statement))
 
     async def holds_version(self, iso_week: IsoWeek, version: int, *, at: datetime) -> bool:
         """Whether the week is still at ``version``, with the row locked until this commits.
