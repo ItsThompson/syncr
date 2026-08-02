@@ -31,8 +31,17 @@ members = [
     "cli",
 ]
 
-# Repo-wide tooling that belongs to no member: the pre-commit secret scan.
+# Repo-wide tooling that belongs to no member: the pre-commit secret scan and the
+# hook runner itself.
+#
+# lefthook is declared here rather than left to a system package manager for two
+# reasons. `just setup` becomes self-contained on a machine that has only uv and
+# just, and the floor is recorded: `lefthook.yml` sets `no_auto_install`, which
+# landed in 2.0.10. An older lefthook ignores that key, resumes auto-installing on
+# every hook invocation, and prints the exact permission error the key exists to
+# prevent, with no signal anywhere in the tree.
 [dependency-groups]
 dev = [
     "detect-secrets>=1.5.0,<2",
+    "lefthook>=2.0.10,<3",
 ]

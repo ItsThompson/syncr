@@ -39,7 +39,7 @@ jobs:
       - name: Sync the workspace (one shared root venv, every member)
         run: uv sync --all-packages --frozen
 
-      - name: Lint and typecheck
+      - name: Lint, typecheck, and validate the hook config
         run: just lint
 
   # ---------------------------------------------------------------------------
@@ -85,9 +85,28 @@ jobs:
       - name: Sync the workspace
         run: uv sync --all-packages --frozen
 
-      - name: Solver, learning, and CLI suites, including the zero-ML boundary
+      - name: Solver suite, including the zero-ML dependency boundary
+        run: just test-solver
+
+  test-learning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Sync the workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Learning and CLI suites
         run: |
-          just test-solver
           just test-learning
           just test-cli
 
@@ -100,7 +119,7 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:16.10-alpine
+        image: postgres:16.10-bookworm
         env:
           POSTGRES_USER: syncr
           POSTGRES_PASSWORD: syncr
@@ -140,6 +159,12 @@ jobs:
   # checked statically; this one catches a Dockerfile that copies a member it must
   # not. It is a real assertion today (no member pulls scipy yet) and becomes
   # load-bearing when the learning fitters land.
+  #
+  # Each negative assertion is paired with a POSITIVE CONTROL, because a negative
+  # assertion alone reads any non-zero exit as "the boundary holds": a missing
+  # interpreter, a wrong entrypoint, a platform mismatch, an OOM, or a container that
+  # never starts would all pass it silently. The control runs first, so a broken image
+  # fails on the control rather than passing on the negative.
   # ---------------------------------------------------------------------------
   image-boundary:
     runs-on: ubuntu-latest
@@ -149,6 +174,11 @@ jobs:
 
       - name: Build the api image
         run: docker build -f packages/syncr-api/Dockerfile -t syncr-api:boundary-check .
+
+      - name: Control, the api image must import its own stack
+        run: |
+          docker run --rm --entrypoint python syncr-api:boundary-check \
+            -c "import fastapi, sqlalchemy, syncr_api, syncr_solver, syncr_domain, syncr_common"
 
       - name: Importing scipy inside the api image must fail
         run: |
@@ -160,6 +190,11 @@ jobs:
 
       - name: Build the learning image
         run: docker build -f packages/syncr-learning/Dockerfile -t syncr-learning:boundary-check .
+
+      - name: Control, the learning image must import its own package
+        run: |
+          docker run --rm syncr-learning:boundary-check \
+            python -c "import syncr_learning, syncr_domain, syncr_common"
 
       - name: Importing fastapi inside the learning image must fail
         run: |

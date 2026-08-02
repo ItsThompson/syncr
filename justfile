@@ -33,16 +33,45 @@ setup:
 # with no formatter, linter, or secret scan. Point hooksPath at the repository's
 # own hook directory for the install, then hand it back. Such agents delegate to
 # .git/hooks, so their checks and lefthook's both run.
+#
+# The trap is load-bearing, not defensive dressing. A local core.hooksPath
+# OUTRANKS the system value, so a borrowed setting left behind does not add
+# lefthook on top of the corporate agent: it takes that agent out of the path
+# entirely. A failed install without the trap therefore leaves the repository
+# scanning nothing, which is the failure this recipe exists to prevent, and it
+# wedges the recipe because a re-run sees a writable .git/hooks and takes the else
+# branch. Restoring on every exit path also makes that stuck state unreachable.
 hooks:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Check the VENV rather than the PATH. `uv run` prepends the venv's bin but does
+    # not hide the rest of PATH, so a `command -v lefthook` preflight passes on a
+    # system install that may predate the `no_auto_install` floor. The lockfile
+    # carries that floor, so confirming the declared package is installed is the
+    # whole check.
+    uv pip show lefthook >/dev/null 2>&1 || {
+        echo "lefthook is not in the venv; run 'uv sync --all-packages' first" >&2
+        exit 1
+    }
+    # lefthook's generated hook script prefers a PATH binary over the venv's, so a
+    # stale system install silently becomes what actually runs the hooks. Warn rather
+    # than fail: it is the developer's PATH, not the repository's, but a shadow that
+    # predates the no_auto_install floor must not be invisible.
+    declared="$(uv pip show lefthook | awk '/^Version:/ {print $2}')"
+    if system="$(command -v lefthook 2>/dev/null)" \
+       && found="$("$system" version 2>/dev/null)" \
+       && [ "$found" != "$declared" ]; then
+        echo "warning: $system reports $found but this repository declares $declared;" >&2
+        echo "         the installed hooks will prefer the PATH binary. Export" >&2
+        echo "         LEFTHOOK_BIN=\"\$PWD/.venv/bin/lefthook\" or upgrade it." >&2
+    fi
     if [ -n "$(git config --get core.hooksPath || true)" ] \
        && [ ! -w "$(git rev-parse --git-path hooks)" ]; then
+        trap 'git config --local --unset core.hooksPath || true' EXIT
         git config --local core.hooksPath .git/hooks
-        lefthook install --force
-        git config --local --unset core.hooksPath
+        uv run --no-sync lefthook install --force
     else
-        lefthook install
+        uv run --no-sync lefthook install
     fi
 
 # --- Dev stack --------------------------------------------------------------
@@ -92,14 +121,16 @@ migration-heads:
 
 # --- Tests ------------------------------------------------------------------
 
-# Every backend suite
+# Every backend suite. One failing member no longer hides the rest
 test:
     #!/usr/bin/env bash
-    set -euo pipefail
+    set -uo pipefail
+    failed=0
     for member in {{members}}; do
       echo "--- $member"
-      (cd "$member" && uv run --no-sync pytest)
+      (cd "$member" && uv run --no-sync pytest) || failed=1
     done
+    exit "$failed"
 
 # The shared infrastructure suite. Pure, fast
 test-common:
@@ -127,26 +158,37 @@ test-cli:
 
 # --- Lint and format --------------------------------------------------------
 
-# Every static gate over every member: ruff, the format check, and mypy
-lint: lint-style typecheck
+# Every static gate: ruff, the format check, mypy, and the hook config
+lint: lint-style typecheck lint-hooks
 
 # ruff check plus the format check over every member
 lint-style:
     #!/usr/bin/env bash
-    set -euo pipefail
+    set -uo pipefail
+    failed=0
     for member in {{members}}; do
       echo "--- $member"
-      (cd "$member" && uv run --no-sync ruff check . && uv run --no-sync ruff format --check .)
+      (cd "$member" && uv run --no-sync ruff check . && uv run --no-sync ruff format --check .) \
+        || failed=1
     done
+    exit "$failed"
 
 # mypy over every member. The pre-push hook runs this
 typecheck:
     #!/usr/bin/env bash
-    set -euo pipefail
+    set -uo pipefail
+    failed=0
     for member in {{members}}; do
       echo "--- $member"
-      (cd "$member" && uv run --no-sync mypy)
+      (cd "$member" && uv run --no-sync mypy) || failed=1
     done
+    exit "$failed"
+
+# Validate lefthook.yml. Nothing else reads it, and with no_auto_install the
+# installed hooks can drift from the file, so a malformed config must fail a gate
+# rather than a developer's next commit
+lint-hooks:
+    uv run --no-sync lefthook validate
 
 # Format and apply safe fixes over every member
 fmt:
@@ -178,8 +220,25 @@ secret-baseline:
     uv run --no-sync detect-secrets scan --baseline .secrets.baseline --exclude-files '^\.venv/'
     @echo "review the new entries in .secrets.baseline before committing"
 
-# Assert the api image cannot import scipy, which is the zero-ML rule at runtime
+# Assert the zero-ML rule at runtime: the api image must import its own stack and
+# must NOT be able to import scipy. The control comes first, because a bare negative
+# assertion reads any non-zero exit as a held boundary, including a container that
+# never started.
 image-boundary:
+    #!/usr/bin/env bash
+    set -euo pipefail
     docker build -f packages/syncr-api/Dockerfile -t syncr-api:boundary-check .
-    ! docker run --rm --entrypoint python syncr-api:boundary-check -c "import scipy"
-    @echo "image boundary holds: scipy is not importable in the api image"
+    docker run --rm --entrypoint python syncr-api:boundary-check \
+      -c "import fastapi, sqlalchemy, syncr_api, syncr_solver, syncr_domain, syncr_common"
+    if docker run --rm --entrypoint python syncr-api:boundary-check -c "import scipy"; then
+      echo "scipy is importable in the api image: the zero-ML boundary is broken" >&2
+      exit 1
+    fi
+    docker build -f packages/syncr-learning/Dockerfile -t syncr-learning:boundary-check .
+    docker run --rm syncr-learning:boundary-check \
+      python -c "import syncr_learning, syncr_domain, syncr_common"
+    if docker run --rm syncr-learning:boundary-check python -c "import fastapi"; then
+      echo "fastapi is importable in the learning image: the offline boundary is broken" >&2
+      exit 1
+    fi
+    echo "both image boundaries hold, and both images run"
