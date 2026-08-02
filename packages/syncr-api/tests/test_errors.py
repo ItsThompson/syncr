@@ -8,10 +8,12 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException
 
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.correlation import CORRELATION_ID_HEADER
 from syncr_api.core.errors import (
+    GENERIC_HTTP_ERROR_TITLE,
     GENERIC_HTTP_ERROR_TYPE,
     PROBLEM_JSON_MEDIA_TYPE,
     Conflict,
@@ -191,3 +193,19 @@ def test_a_wrong_method_answers_problem_details_under_a_generic_type(
     body = response.json()
     assert body["type"] == GENERIC_HTTP_ERROR_TYPE
     assert body["title"] == "Method Not Allowed"
+
+
+def test_a_non_standard_status_keeps_its_status_and_the_problem_shape(
+    settings: ServiceSettings,
+) -> None:
+    # HTTPStatus(599) raises, and a raise inside the error handler hands the request to
+    # the catch-all, which answers 500 and loses the status that was raised.
+    with client_for(settings, HTTPException(status_code=599, detail="Upstream said no")) as http:
+        response = http.get(RAISE_PATH)
+
+    assert response.status_code == 599
+    assert response.headers["content-type"] == PROBLEM_JSON_MEDIA_TYPE
+    body = response.json()
+    assert body["type"] == GENERIC_HTTP_ERROR_TYPE
+    assert body["title"] == GENERIC_HTTP_ERROR_TITLE
+    assert body["detail"] == "Upstream said no"

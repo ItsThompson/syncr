@@ -16,13 +16,14 @@ it names the capabilities that survive.
 from __future__ import annotations
 
 from http import HTTPStatus
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException
 from starlette.responses import Response
 
+from syncr_common.health import RETRY_AFTER_SECONDS
 from syncr_common.logging import current_correlation_id, get_logger
 
 if TYPE_CHECKING:
@@ -36,7 +37,10 @@ PROBLEM_JSON_MEDIA_TYPE = "application/problem+json"
 type ExceptionKey = type[Exception] | int
 type ExceptionHandler = Callable[[Request, Exception], Response | Awaitable[Response]]
 
-_log = get_logger("syncr-api")
+# This module is imported by both entrypoints, so the logger names the module rather
+# than a process. A fault raised in the worker must not log `service: "syncr-api"`,
+# which would be wrong exactly when someone is grepping by service to find it.
+_log = get_logger("syncr.errors")
 
 
 class FieldError(BaseModel):
@@ -148,7 +152,9 @@ class DependencyUnavailable(SyncrError):
     type = "syncr:dependency-unavailable"
     status = 503
     title = "Dependency unavailable"
-    retry_after_seconds = 5
+    # The same wait a not-ready readiness answer asks for, derived rather than
+    # restated, because both mean "come back when the dependency is up".
+    retry_after_seconds = RETRY_AFTER_SECONDS
 
 
 class InternalError(SyncrError):
@@ -175,6 +181,19 @@ _ERROR_BY_STATUS: dict[int, type[SyncrError]] = {
 }
 
 GENERIC_HTTP_ERROR_TYPE = "syncr:http-error"
+GENERIC_HTTP_ERROR_TITLE = "HTTP error"
+
+
+def _status_phrase(status: int) -> str:
+    """The reason phrase for ``status``, or a generic title for a non-standard code.
+
+    ``HTTPStatus(599)`` raises, and raising inside the error handler hands the request
+    to the catch-all, which answers 500 and loses the status that was raised.
+    """
+    try:
+        return HTTPStatus(status).phrase
+    except ValueError:
+        return GENERIC_HTTP_ERROR_TITLE
 
 
 def _render(problem: Problem, *, retry_after_seconds: int | None = None) -> Response:
@@ -230,7 +249,7 @@ async def handle_http_exception(request: Request, exc: Exception) -> Response:
     return _render(
         Problem(
             type=GENERIC_HTTP_ERROR_TYPE,
-            title=HTTPStatus(exc.status_code).phrase,
+            title=_status_phrase(exc.status_code),
             status=exc.status_code,
             detail=str(exc.detail),
             instance=current_correlation_id(),
@@ -266,3 +285,20 @@ def build_exception_handlers() -> Mapping[ExceptionKey, ExceptionHandler]:
         RequestValidationError: handle_request_validation_error,
         Exception: handle_unexpected,
     }
+
+
+# The error responses every route can answer, so the generated OpenAPI document
+# describes the shape the api actually sends. Without this, FastAPI documents its own
+# `HTTPValidationError` for 422 and nothing at all for 500, and the frontend would
+# generate types for an error contract that never appears on the wire. A feature module
+# adds the statuses it actually raises with `responses={**PROBLEM_RESPONSES, 409: ...}`.
+#
+# The document lists these under `application/json` because that is the media type
+# FastAPI attaches to a `model`, while the wire carries `application/problem+json`.
+# The schema is what codegen consumes, so it is the part that must be right here;
+# pinning the documented media type belongs with the codegen slice that owns the
+# committed document.
+PROBLEM_RESPONSES: Mapping[int | str, dict[str, Any]] = {
+    ValidationFailed.status: {"model": Problem, "description": ValidationFailed.title},
+    InternalError.status: {"model": Problem, "description": InternalError.title},
+}
