@@ -1,13 +1,14 @@
 /* One finding shape and one report format for every committed check, so a failure reads
- * the same whether it came from the token validator, the markup scan or the channel
- * assertion. */
+ * the same whether it came from the token validator, the markup scan, the channel
+ * assertion or the zone probe.
+ *
+ * Optional fields are declared `?: T | undefined` throughout this codebase rather than `?: T`.
+ * Under `exactOptionalPropertyTypes` the bare form forbids passing an absent value through, and
+ * the workaround is a spread-to-omit at every call site. */
 
 export interface Finding {
   /** Absolute path of the file the finding is about. */
   readonly file: string;
-  /* `| undefined` is explicit throughout this codebase rather than left to `?` alone, because
-   * `exactOptionalPropertyTypes` otherwise forbids passing an absent value through, and the
-   * workaround is a spread-to-omit at every call site. */
   /** 1-based. Absent when the finding is about the file as a whole. */
   readonly line?: number | undefined;
   /** 1-based. Absent when the finding is about a whole line. */

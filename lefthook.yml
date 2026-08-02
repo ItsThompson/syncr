@@ -31,11 +31,11 @@ pre-commit:
       fail_text: "ruff found an issue it cannot fix. Fix it before committing."
 
     frontend-lint:
-      # oxlint, stylelint, the token validator, the markup scan and the channel assertion, over
-      # the whole frontend rather than the staged subset. The token validator and the channel
-      # assertion are whole-layer questions by nature: a renamed token breaks a file nobody
-      # staged, and a duplicated channel is a relationship between two files. Running the same
-      # recipe CI runs also means the hook and the gate cannot drift.
+      # oxlint, stylelint, prettier, the token validator, the markup scan and the channel
+      # assertion: all six checks `just lint-frontend` runs, over the whole frontend rather than
+      # the staged subset. Two of the six are whole-layer questions by nature: a renamed token
+      # breaks a file nobody staged, and a duplicated channel is a relationship between two files.
+      # Running the same recipe CI runs also means the hook and the gate cannot drift.
       #
       # The glob includes docs/design, because the six reference sheets render live from the
       # token layer and a sheet that stops resolving is exactly what the validator exists to catch.

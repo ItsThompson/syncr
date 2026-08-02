@@ -167,6 +167,24 @@
   --breakpoint-narrow: 1280px;
   --breakpoint-wide: 1536px;
 
+  /* --- Spacing is DELIBERATELY left open, and it is the one namespace that is ---------
+
+     Every other reachable namespace here is either cleared or exhaustively mapped and pinned by a
+     test. Spacing is neither, so `p-7` at 28px is as reachable as `px-3.75` at 15px, and the markup
+     scan cannot see either because neither carries brackets.
+
+     That is the design language's own ruling rather than an omission. `tokens/layout.css` states it:
+     "Spacing is deliberately absent. Tailwind's default 4px scale already offers 2px granularity
+     through its half steps, so redefining it would surprise every reader for no gain." The odd
+     rhythm the system reads in -- 3, 5, 7, 9, 11, 13, 15 -- is reachable through those half steps,
+     which is why `px-3.25` is 13px and `py-2.75` is 11px rather than an arbitrary value. Section
+     14's lint table lists no spacing rule either.
+
+     So the fence is open here on purpose, and the cost is that an odd step reads as a fraction at
+     the call site. If a later ticket finds that unreadable, the fix is named `--spacing-*` keys
+     carrying the odd rhythm plus an equality test against the token file, exactly as the colour
+     namespace and the two breakpoints are pinned. It is not an arbitrary value. */
+
   /* --- Motion is zero, without exception --------------------------------
      Clearing --animate-* deletes animate-spin, animate-pulse and animate-bounce,
      and clearing --ease-* deletes every timing function, so the policy is

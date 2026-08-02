@@ -308,10 +308,23 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
       - name: Set up just
         uses: extractions/setup-just@v2
 
-      - name: Audit the locked dependency graph
+      # `npm audit` reads the lockfile rather than the installed tree, but it needs the
+      # dependency metadata resolved, so the install is not optional.
+      - name: Install the locked dependency tree
+        run: npm ci
+        working-directory: frontend
+
+      - name: Audit both locked dependency graphs
         run: just audit
 
   # ---------------------------------------------------------------------------

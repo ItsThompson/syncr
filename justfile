@@ -287,9 +287,31 @@ contract:
 # working. Failing on any advisory is strictly stronger and cannot rot. Suppress a
 # specific finding by adding `--ignore <ID>` below with a comment saying why.
 
-# Scan the locked dependency graph for known advisories
-audit:
+# Scan both locked dependency graphs for known advisories
+audit: audit-python audit-js
+
+# The Python graph. Any advisory, per the reasoning above
+audit-python:
     uv audit --preview-features audit-command
+
+# The JS graph, at TWO thresholds, because the two halves carry different risk and npm
+# offers no per-advisory suppression the way `uv audit --ignore` does.
+#
+# Production dependencies are held to any severity, matching the Python gate: they are the
+# five packages that reach a browser, so an advisory there is a shipped defect.
+#
+# The whole graph, dev tooling included, is held to high and above. That is deliberately
+# weaker than the Python gate and the reason is npm, not appetite: there is no
+# `--ignore <ID>`, so a moderate advisory in a transitive build dependency could not be
+# suppressed with a comment saying why. It would have to be pinned through an `overrides`
+# block, which is a change to the resolved graph made under time pressure by whichever
+# ticket happened to be open. A gate that cannot be answered honestly gets answered by
+# weakening it, so this one states its threshold instead.
+#
+# Both are clean today: 0 advisories at every severity across 283 packages.
+audit-js:
+    cd frontend && npm audit --omit=dev --audit-level=low
+    cd frontend && npm audit --audit-level=high
 
 # The scan the pre-commit hook runs on staged files, over the whole tree
 secret-scan:

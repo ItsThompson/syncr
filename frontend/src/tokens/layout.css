@@ -242,7 +242,8 @@
   --w-detail-closed: var(--h-control); /* closed, the panel stays a column: a 26px rail */
   --col-min: 137px;    /* the narrowest day column that still holds 17 characters, rounded
                           up from 132.3px to the width 1280px happens to yield */
-  --bp-compact: 1280px;
+  --bp-compact: 1280px;  /* reachable as the `narrow:` variant, not `compact:`, which the closed
+                            state vocabulary claims for [data-compact]. theme.css states why. */
   --bp-wide: 1536px;
 
   /* ------------------------------------------------------------------------
