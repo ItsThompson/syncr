@@ -111,3 +111,18 @@ def test_retry_after_is_injectable(retry_after_seconds: int) -> None:
         response = http.get(READYZ_ENDPOINT)
 
     assert response.headers["Retry-After"] == str(retry_after_seconds)
+
+
+def test_both_endpoints_are_in_the_openapi_document() -> None:
+    """The browser reads readiness through the client generated from this document.
+
+    A hidden route would leave the frontend hand-writing the one type the codegen
+    contract exists to generate, so the document must describe both endpoints.
+    """
+    app = FastAPI()
+    app.include_router(create_health_router())
+
+    paths = app.openapi()["paths"]
+
+    assert HEALTHZ_ENDPOINT in paths
+    assert READYZ_ENDPOINT in paths

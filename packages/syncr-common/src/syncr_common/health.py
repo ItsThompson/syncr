@@ -11,6 +11,11 @@ and a load balancer knows when to come back.
 Checks are injected as a sequence, so this module stays free of any dependency:
 the caller supplies Postgres connectivity and the migration-head check.
 
+Both endpoints appear in the OpenAPI document. The browser reads readiness through the
+client generated from that document, so a hidden route would force the frontend to
+hand-write the one thing the codegen contract exists to generate. ``/metrics`` stays
+hidden, because it serves Prometheus text rather than the JSON a schema would claim.
+
 No failure path puts a raised exception's text on the wire. A check that reports
 ``CheckResult(ok=False)`` chooses its own detail; a check that raises gets a fixed
 reason and its text goes to the log.
@@ -70,11 +75,11 @@ def create_health_router(
     """Build the health router. Checks run concurrently; any failure answers 503."""
     router = APIRouter(tags=["health"])
 
-    @router.get(HEALTHZ_ENDPOINT, include_in_schema=False)
+    @router.get(HEALTHZ_ENDPOINT)
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
-    @router.get(READYZ_ENDPOINT, include_in_schema=False)
+    @router.get(READYZ_ENDPOINT)
     async def readyz() -> JSONResponse:
         results = await asyncio.gather(
             *(check() for check in readiness_checks),
