@@ -16,3 +16,5 @@ from uuid import UUID
 
 type TenantId = UUID
 type UserId = UUID
+type PlanRevisionId = UUID
+type OperationId = UUID
