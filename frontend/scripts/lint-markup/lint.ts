@@ -85,6 +85,7 @@ export async function lintMarkup(input: LintMarkupInput): Promise<CheckOutcome> 
         source,
         vocabulary,
         isKitFile: !path.relative(input.kitDir, file).startsWith(".."),
+        isTestFile: file.includes(".test."),
       }),
     );
     uses.push(...classUsesIn(file, source));

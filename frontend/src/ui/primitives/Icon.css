@@ -1,0 +1,31 @@
+/* Layer 2: icons, at three sizes and nothing else.
+ *
+ * THE COMPONENT READS THE TOKENS RATHER THAN RESTATING THEM. Hard-coding `strokeLinecap="round"` is a
+ * review failure even though it produces the same output today, and the reason is on the record: the two
+ * reference sheets of the inherited language diverged once when its tokens were silent on caps. Round
+ * caps are the one rounded form this system tolerates, and --icon-cap is where that is decided.
+ *
+ * lucide sets `stroke-width`, `stroke-linecap` and `stroke-linejoin` as presentation attributes on the
+ * svg it renders. A presentation attribute loses to any declaration in a stylesheet, so these three
+ * declarations are what the browser uses, and `Icon.test.tsx` asserts exactly that rather than assuming
+ * it. Sizing through width and height rather than the `size` prop is the same decision: a prop would put
+ * 14, 16 or 20 in TypeScript, where no token can reach it. */
+
+.icon {
+  flex: 0 0 auto;
+  width: var(--icon);
+  height: var(--icon);
+  stroke-width: var(--icon-stroke);
+  stroke-linecap: var(--icon-cap);
+  stroke-linejoin: var(--icon-join);
+}
+
+.icon--sm {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.icon--lg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}

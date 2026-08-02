@@ -113,6 +113,16 @@ export interface MarkupRuleContext {
   readonly vocabulary: ReadonlySet<string>;
   /** True while the file is part of the kit, where `rounded-*` is permitted. */
   readonly isKitFile: boolean;
+  /**
+   * True for a test file, which is exempt from the closed-vocabulary rule and from nothing else.
+   *
+   * A test asserts what a component RENDERS, and a Radix control renders `data-state` and `data-highlighted`
+   * whether or not the kit's vocabulary names them: `toHaveAttribute("data-state", "active")` is a claim about
+   * a library's own attribute rather than a state the kit invented. The rule's purpose is that a COMPONENT
+   * cannot invent an attribute, and a component file is still read, so the fence is unchanged. This is the
+   * same exemption `check-channels` and `check-imports` already make, for the same reason.
+   */
+  readonly isTestFile: boolean;
 }
 
 export function lintSource(context: MarkupRuleContext): Finding[] {
@@ -247,7 +257,7 @@ export function lintSource(context: MarkupRuleContext): Finding[] {
   }
 
   const seen = new Set<string>();
-  for (const shape of DATA_ATTRIBUTE_SHAPES) {
+  for (const shape of context.isTestFile ? [] : DATA_ATTRIBUTE_SHAPES) {
     for (const match of code.matchAll(shape)) {
       if (context.vocabulary.has(match[1])) continue;
       // One finding per position, so a name matched by both shapes is reported once.

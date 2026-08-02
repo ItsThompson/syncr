@@ -97,23 +97,36 @@ describe("the count at the right edge", () => {
   });
 });
 
-/* THE CURRENT ITEM'S CHANNEL, which is the criterion's own subject: a wash fill plus a 3px
- * --ink-deep left rule, the same channel a selected block uses.
+/* THE CURRENT ITEM'S CHANNEL, which is the criterion's own subject: a wash fill plus a 3px --ink-deep left
+ * rule, the same channel a selected block uses.
  *
- * Asserted against the stylesheet rather than against the rendered element, because the rule lives
- * in a plain co-located stylesheet that jsdom never applies: `getComputedStyle` on the link would
- * report nothing and an assertion over it would pass on a deleted rule. The token INDIRECTION is
- * what is worth pinning, so the rule must reach --state-hover and --state-selected-*, and those
- * must separately resolve to the values the criterion names. */
+ * Asserted against the stylesheet rather than against the rendered element, because the rule lives in a plain
+ * co-located stylesheet that jsdom never applies: `getComputedStyle` on the link would report nothing and an
+ * assertion over it would pass on a deleted rule. The token INDIRECTION is what is worth pinning, so the rule
+ * must reach --state-hover and --state-selected-*, and those must separately resolve to the values the
+ * criterion names.
+ *
+ * THE RULE MOVED TO `ui/primitives/states.css` IN TICKET 8, and the assertions moved with it. It was declared
+ * here while the sidebar was the only row-shaped surface in the kit; a select item and a command-palette row
+ * need the same three declarations, and the channel assertion refuses a second file assigning a state's
+ * channel. So the sidebar row now takes the shared `state-row` class, which is what these tests check first:
+ * a rule that exists in a file nothing imports would pass every assertion below and render nothing. */
 describe("the current item's channel", () => {
-  const sidebarCss = readFile(path.join(srcDir, "ui", "domain", "shell", "SidebarNav.css"), "utf8");
+  const statesCss = readFile(path.join(srcDir, "ui", "primitives", "states.css"), "utf8");
   const layoutCss = readFile(path.join(srcDir, "tokens", "layout.css"), "utf8");
 
   const currentRule = async (): Promise<string> => {
-    const rule = /\.sidebar-nav__item\[data-current\]\s*\{([^}]*)\}/.exec(await sidebarCss);
-    if (rule === null) throw new Error("SidebarNav.css declares no [data-current] rule");
+    const rule = /\.state-row\[data-current\]\s*\{([^}]*)\}/.exec(await statesCss);
+    if (rule === null) throw new Error("states.css declares no [data-current] rule");
     return rule[1];
   };
+
+  it("is the class the sidebar row actually carries", async () => {
+    await renderSignedInAt("/week");
+    const current = screen.getByRole("link", { name: /areas/ });
+
+    expect(current.classList).toContain("state-row");
+  });
 
   it("takes the fill from --state-hover rather than restating a wash", async () => {
     expect(await currentRule()).toMatch(/background-color:\s*var\(--state-hover\)/);
@@ -124,7 +137,7 @@ describe("the current item's channel", () => {
   });
 
   it("reserves the rule's width at rest, so becoming current changes no geometry", async () => {
-    const atRest = /\.sidebar-nav__item\s*\{([^}]*)\}/.exec(await sidebarCss);
+    const atRest = /\.state-row\s*\{([^}]*)\}/.exec(await statesCss);
     expect(atRest?.[1]).toMatch(
       /border-left:\s*var\(--state-selected-border\)\s+solid\s+transparent/,
     );

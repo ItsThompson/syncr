@@ -1,0 +1,76 @@
+/* Layer 2: the button's four ranks.
+ *
+ * NO RANK CARRIES A SHADOW. The one hard offset lifts an overlay off the page, and a button is not an
+ * overlay: it sits in the flow of the surface it belongs to. `overlay.css` is the only file that names it.
+ *
+ * THE PRIMARY RANK KEEPS THE STANDARD FOCUS RING. Its fill is ink but its parent is paper, and the ring
+ * is drawn at a 2px offset, so it lands on the parent's fill and not on the button's own. Inverting it
+ * would give --paper-raised on --paper at 1.08:1. The ring itself comes from `base.css`, scoped to the
+ * surface rather than to the control, which is why no rank declares one here.
+ *
+ * DISABLED IS A DASHED BORDER at --text-muted, the same form a disabled field takes. That is the one
+ * meaning a dashed border carries in this system, which is why a proposal block has no fill instead.
+ * `[aria-disabled]` is styled alongside `:disabled` because a control that must stay focusable to explain
+ * itself uses the ARIA form, and both are the same visual state. */
+
+.button {
+  height: var(--h-control);
+  padding: 0 14px;
+  border: var(--hairline) solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--on-ink);
+  font: inherit;
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.button--secondary {
+  border-color: var(--rule-control);
+  background: var(--paper-raised);
+  color: var(--ink-deep);
+}
+
+/* Tertiary is bare ink with a dotted underline, so it reads as an action without spending a box. The
+ * hover change is the border STYLE rather than a fill, which leaves the fill channel to the row states. */
+.button--tertiary {
+  height: auto;
+  padding: 0 3px;
+  border-color: transparent;
+  border-bottom: var(--hairline) dotted var(--rule-strong);
+  background: transparent;
+  color: var(--ink);
+  line-height: 1.7;
+}
+
+.button--tertiary:hover {
+  border-bottom-style: solid;
+}
+
+/* A quiet button: the tertiary rank without the underline, for a control whose position says what it
+ * does, such as a stepper's own two buttons or a dialog's dismiss. */
+.button--quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink);
+}
+
+.button--sm {
+  height: var(--h-control-sm);
+  padding: 0 9px;
+}
+
+.button--lg {
+  height: var(--h-control-lg);
+}
+
+.button:disabled,
+.button[aria-disabled="true"] {
+  border-style: dashed;
+  border-color: var(--text-muted);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}

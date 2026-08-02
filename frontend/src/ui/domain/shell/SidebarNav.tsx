@@ -1,10 +1,8 @@
 /* The sidebar. PAPER, NOT INK.
  *
- * A deliberate departure from the inherited language, which fills its sidebar with
- * --ink-deep. On a screen whose whole point is a calm grid, an ink sidebar dominated, and it
- * spent the loudest treatment in the system on the most permanently visible surface. */
-
-import "./SidebarNav.css";
+ * A deliberate departure from the inherited language, which fills its sidebar with --ink-deep. On a screen
+ * whose whole point is a calm grid, an ink sidebar dominated, and it spent the loudest treatment in the
+ * system on the most permanently visible surface. */
 
 import { SidebarNavItem } from "./SidebarNavItem";
 import type { Screen } from "./navigation";

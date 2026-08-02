@@ -115,6 +115,22 @@ describe("the markup rules", () => {
     expect(invented.some((message) => message.startsWith("data-spread"))).toBe(true);
   });
 
+  /* A TEST IS EXEMPT FROM THIS ONE RULE AND FROM NO OTHER. A test asserts what a component RENDERS, and a Radix
+   * control renders `data-state` and `data-highlighted` whether or not the kit's vocabulary names them: a suite
+   * that could not write those strings could not check the kit's own state channels. The rule's purpose is that a
+   * component cannot invent an attribute, and a component file is still read, which the next case proves. */
+  it("leaves a test file's assertions about a library's attributes alone", async () => {
+    const outcome = await lint(["vocabulary.test.tsx"]);
+
+    expect(checksOf(outcome.findings)).toEqual([]);
+  });
+
+  it("still catches the same attribute in a component, so the exemption is the file and not the name", async () => {
+    const outcome = await lint(["offender.tsx"]);
+
+    expect(checksOf(outcome.findings)).toContain("closed-state-vocabulary");
+  });
+
   it("reaches a utility hidden in a variant map", async () => {
     const outcome = await lint(["variants.tsx"]);
     expect(checksOf(outcome.findings).toSorted()).toEqual([

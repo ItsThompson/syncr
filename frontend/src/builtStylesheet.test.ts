@@ -44,6 +44,29 @@ describe("the built stylesheet", () => {
     expect(css).toContain("width:var(--w-sidebar)");
   });
 
+  /* A component stylesheet nobody imports is invisible to every other test in the suite: the rules would be
+   * correct, the tests that read the FILE would pass, and a browser would receive none of it. These are the
+   * layer's load-bearing rules, read out of the artifact. */
+  it("carries the kit's own stylesheets, so an unimported one cannot pass unnoticed", async () => {
+    const css = await builtCss();
+
+    expect(css).toContain(".state-row[data-current]");
+    expect(css).toContain(".state-row[data-highlighted]");
+    expect(css).toContain("--glyph-check");
+    expect(css).toContain(".control");
+    expect(css).toContain(".button");
+    expect(css).toContain(".overlay");
+    expect(css).toContain(".icon");
+  });
+
+  it("draws the focus ring and the inverse ring, which no component declares", async () => {
+    const css = await builtCss();
+
+    expect(css).toContain("outline:var(--state-focus-ring)");
+    expect(css).toContain(".on-ink-surface :focus-visible");
+    expect(css).toContain("outline:var(--state-focus-ring-inverse)");
+  });
+
   it("does not compile a utility named in a test file's string", async () => {
     expect(NAMED_IN_A_TEST).toBe("will-change-transform");
     expect(await builtCss()).not.toContain("will-change");
