@@ -23,7 +23,27 @@ default:
 # Build the shared root venv from the single root lockfile and install the hooks
 setup:
     uv sync --all-packages
-    lefthook install
+    just hooks
+
+# Install the git hooks.
+#
+# lefthook installs into git's *effective* core.hooksPath. A corporate agent may
+# own that directory and make it unwritable, in which case a plain
+# `lefthook install` fails, and the failure is easy to miss: the tree then commits
+# with no formatter, linter, or secret scan. Point hooksPath at the repository's
+# own hook directory for the install, then hand it back. Such agents delegate to
+# .git/hooks, so their checks and lefthook's both run.
+hooks:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "$(git config --get core.hooksPath || true)" ] \
+       && [ ! -w "$(git rev-parse --git-path hooks)" ]; then
+        git config --local core.hooksPath .git/hooks
+        lefthook install --force
+        git config --local --unset core.hooksPath
+    else
+        lefthook install
+    fi
 
 # --- Dev stack --------------------------------------------------------------
 

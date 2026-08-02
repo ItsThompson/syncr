@@ -7,6 +7,12 @@
 # suite; the pure ones are fast enough not to be resented and cover the modules
 # where a silent break does the most damage. CI runs the rest.
 
+# Never re-install on the way to running a hook. Where a corporate agent owns
+# core.hooksPath, the install lefthook would attempt cannot succeed, so an implicit
+# one only prints a permission error on every commit. `just hooks` owns installing,
+# and must be re-run after editing this file.
+no_auto_install: true
+
 pre-commit:
   # Sequential: the formatter rewrites the files the linter then reads, and the
   # secret scan must see the final staged content.
