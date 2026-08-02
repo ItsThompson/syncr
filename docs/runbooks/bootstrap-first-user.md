@@ -77,7 +77,9 @@ Expect:
 
 - `200` with a body naming `tenantId`, `userId`, `email`, and `expiresAt`
 - a `Set-Cookie` header carrying `syncr_session`, with `HttpOnly`, `Secure`,
-  `SameSite=Lax`, and a `Max-Age`
+  `SameSite=Lax`, and a `Max-Age` of the absolute session lifetime. The server, not the
+  browser, decides when the session stops working: `expiresAt` in the body is the shorter,
+  sliding expiry
 - one log line, `accounts.sign_in.succeeded`, carrying the tenant and user ids and no
   email
 
@@ -104,10 +106,12 @@ server-side rather than only clearing the cookie.
 | Sign-in answers `403` with `syncr:origin-rejected` | The `Origin` header is missing or is not in `ALLOWED_ORIGINS` | Send the deployment's own origin, and check `ALLOWED_ORIGINS` names the tunnel hostname |
 | Sign-in answers `401` with a password you are sure of | The stored email differs, or the session signing secret was rotated | Emails are compared lowercased and trimmed. A rotated secret invalidates sessions, not passwords, so re-check the email first |
 
-There is no password-reset path in P0. If the password is lost, delete the `users` and
-`tenants` rows for that account and bootstrap again: with no plan data yet that costs
-nothing, and after plan data exists it would cost everything, so change the password
-before then. `rotate-secrets.md` owns that procedure when it lands.
+There is no password-reset path in P0, and no command changes a password: re-running
+`just bootstrap-user` with an existing email reports "nothing to do" and leaves the stored
+hash alone. If the password is lost, delete the `users` and `tenants` rows for that
+account and bootstrap again. With no plan data yet that costs nothing; once plan data
+exists it would cost all of it, because every row is scoped to the tenant being deleted.
+`rotate-secrets.md` owns the procedure that replaces this one when it lands.
 
 ## Tenancy: why row-level security is not enabled
 
