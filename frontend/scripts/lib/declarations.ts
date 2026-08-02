@@ -59,9 +59,17 @@ const LEGAL_SHADOW_VALUES = new Set(["var(--shadow-hard)", "none", "0 0 #0000"])
 const LEGAL_MOTION_VALUES = new Set(["none"]);
 
 /* Removing the ring without an equivalent replacement leaves a keyboard-first tool with no focus
- * indicator. The ring itself is legal: `base.css` draws it, so `outline: var(--state-focus-ring)`
- * has to survive every one of these consumers. */
-const REMOVED_OUTLINE_VALUES = new Set(["none", "0"]);
+ * indicator. The ring itself is legal: `base.css` draws it, so `outline: var(--state-focus-ring)` has
+ * to survive every one of these consumers.
+ *
+ * THE LONGHANDS ARE HERE BECAUSE A UTILITY REACHES THEM AND NOT THE SHORTHAND. `outline-none` compiles
+ * to `outline-style: none`, so a rule written only against `outline: none` refuses the CSS spelling and
+ * permits the class every Radix example reaches for. */
+const REMOVED_OUTLINE: Readonly<Record<string, ReadonlySet<string>>> = {
+  outline: new Set(["none", "0"]),
+  "outline-style": new Set(["none", "hidden"]),
+  "outline-width": new Set(["0", "0px"]),
+};
 
 /**
  * Why the design language refuses this declaration, or null when it permits it.
@@ -94,7 +102,7 @@ export function refusalFor(property: string, value: string): string | null {
     return "the system has one shadow, --shadow-hard, and print has no blur";
   }
 
-  if (name === "outline" && REMOVED_OUTLINE_VALUES.has(normalized)) {
+  if (REMOVED_OUTLINE[name]?.has(normalized) === true) {
     return "the system draws its own focus ring, and removing one leaves a keyboard-first tool with none";
   }
 

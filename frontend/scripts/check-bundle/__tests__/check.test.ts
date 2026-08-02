@@ -36,6 +36,8 @@ describe("a declaration the design language refuses", () => {
     [".a{box-shadow:0 0 8px red}", "box-shadow"],
     [".a{--tw-shadow:var(--halo)}", "--tw-shadow"],
     [".a{outline:none}", "outline"],
+    [".a{outline-style:none}", "outline-style"],
+    [".a{outline-width:0}", "outline-width"],
   ])("%s is refused, naming %s", (css, property) => {
     const found = reasons(css);
 
@@ -75,6 +77,9 @@ describe("a declaration the design language permits", () => {
     ".a{--tw-shadow:0 0 #0000}",
     ".a{box-shadow:var(--tw-inset-shadow), var(--tw-ring-shadow), var(--tw-shadow)}",
     ".a{outline:var(--state-focus-ring)}",
+    ".a{outline:auto}",
+    ".a{outline-style:solid}",
+    ".a{outline-width:2px}",
     ".a{outline-offset:var(--state-focus-offset)}",
     ".a{border-radius:50%}",
     ".a{background-color:var(--paper)}",
