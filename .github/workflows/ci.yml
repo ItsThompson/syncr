@@ -184,7 +184,7 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: oxlint, stylelint, the token validator, the markup scan, the channel assertion
+      - name: oxlint, stylelint, prettier, the token validator, the markup scan, the channels
         run: just lint-frontend
 
       - name: tsc
