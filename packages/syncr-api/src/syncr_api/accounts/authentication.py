@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 from syncr_api.accounts.config import SESSION_ABSOLUTE_LIFETIME, SESSION_SLIDE_INTERVAL
 from syncr_api.accounts.emails import normalize_email
-from syncr_api.accounts.passwords import verify_password
+from syncr_api.accounts.passwords import verify_password_in_thread
 from syncr_api.accounts.records import SessionRecord
 from syncr_api.accounts.session_tokens import mint_session_token
 from syncr_api.core.errors import Unauthorized
@@ -76,7 +76,7 @@ class Authenticator:
     async def log_in(self, email: str, password: str) -> EstablishedSession:
         """Verify a password and establish a session. Raises 401 on any rejection."""
         user = await self._users.find_by_email(normalize_email(email))
-        verified = verify_password(password, user.password_hash if user else None)
+        verified = await verify_password_in_thread(password, user.password_hash if user else None)
         if user is None or not verified:
             _log.warning(
                 "accounts.sign_in.rejected",

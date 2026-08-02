@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from syncr_api.accounts.config import MINIMUM_PASSWORD_LENGTH
 from syncr_api.accounts.emails import normalize_email
-from syncr_api.accounts.passwords import hash_password
+from syncr_api.accounts.passwords import hash_password_in_thread
 from syncr_common.logging import get_logger
 
 if TYPE_CHECKING:
@@ -83,7 +83,7 @@ class AccountProvisioner:
 
         user = await self._users.create_tenant_with_user(
             email=normalized,
-            password_hash=hash_password(password),
+            password_hash=await hash_password_in_thread(password),
             created_at=self._clock(),
         )
         _log.info(

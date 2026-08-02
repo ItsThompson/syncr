@@ -13,10 +13,19 @@ budget the api already spends 400 MB of; a parameter set four times heavier woul
 turn a handful of simultaneous attempts into an out-of-memory kill. Cloudflare fronts
 the only ingress, so request-rate limiting belongs there rather than in a per-attempt
 memory cost this process pays.
+
+That 120 ms is CPU held, not time waited, so an async caller must NOT call the plain
+functions: a derivation on the event loop stalls every other in-flight request on the
+same worker for its whole duration, which turns an unthrottled endpoint from slow into
+an availability problem for the rest of the API. :func:`hash_password_in_thread` and
+:func:`verify_password_in_thread` are what an ``async def`` calls. OpenSSL releases the
+GIL during the derivation, so a thread genuinely runs it in parallel, and each thread
+still allocates its own 34 MB, so the memory reasoning above is unchanged.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import secrets
@@ -71,6 +80,16 @@ def verify_password(password: str, encoded: str | None) -> bool:
     salt, expected, cost, block_size, parallelism = parsed
     actual = _derive(password, salt, cost, block_size, parallelism)
     return hmac.compare_digest(actual, expected)
+
+
+async def hash_password_in_thread(password: str) -> str:
+    """:func:`hash_password`, off the event loop. What an ``async def`` calls."""
+    return await asyncio.to_thread(hash_password, password)
+
+
+async def verify_password_in_thread(password: str, encoded: str | None) -> bool:
+    """:func:`verify_password`, off the event loop. What an ``async def`` calls."""
+    return await asyncio.to_thread(verify_password, password, encoded)
 
 
 def _derive(password: str, salt: bytes, cost: int, block_size: int, parallelism: int) -> bytes:
