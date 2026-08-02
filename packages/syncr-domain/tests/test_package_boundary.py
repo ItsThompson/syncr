@@ -23,6 +23,12 @@ loaded by the interpreter itself long before this package is imported, so an
 `open()` call is invisible there too. The source walk resolves import aliases before
 matching, so `from datetime import datetime as dt; dt.now()` is caught as well as
 `datetime.datetime.now()`.
+
+`FORBIDDEN_ATTRIBUTES` matches a call's final attribute whatever its receiver, because no
+alias can resolve a method on a value held in a local. That is deliberately blunt: a
+future domain method named `today()` fails this walk. When it does, rename the method, or
+add it to a narrow allowlist here with the reason. Do not widen the receiver rule, which
+is what makes `path.read_text()` visible at all.
 """
 
 from __future__ import annotations
@@ -59,8 +65,10 @@ FORBIDDEN_IMPORTS = frozenset(
     }
 )
 
-# Standard-library I/O, named in source because the import walk cannot see them: the
-# interpreter loads several of these itself, so `sys.modules` says nothing.
+# Standard-library I/O and unseeded randomness, named in source because the import walk
+# cannot see them: the interpreter loads several of these itself, so `sys.modules` says
+# nothing. Randomness belongs here for the same reason a clock does. A domain function's
+# output must follow from its inputs, and the solver's determinism rests on it.
 FORBIDDEN_SOURCE_IMPORTS = frozenset(
     {
         "os",
@@ -75,13 +83,18 @@ FORBIDDEN_SOURCE_IMPORTS = frozenset(
         "urllib",
         "http",
         "sqlite3",
+        "random",
+        "secrets",
     }
 )
 
-# A pure function is given its instants; it never asks what time it is. Reading a clock
-# would make an arithmetic result depend on when the test ran, which is the one thing a
-# property test cannot pin down. Matched on the fully qualified name, after alias
-# resolution.
+# A pure function is given its instants; it never asks what time it is, and it never mints
+# a value from nowhere. Either would make a result depend on something other than the
+# inputs, which is the one thing a property test cannot pin down. Matched on the fully
+# qualified name, after alias resolution.
+#
+# `uuid.UUID` is not here and must not be: `identifiers.py` imports it as a type, and
+# naming a type is not minting a value.
 FORBIDDEN_CALLS = frozenset(
     {
         "datetime.datetime.now",
@@ -97,6 +110,8 @@ FORBIDDEN_CALLS = frozenset(
         "time.perf_counter",
         "time.gmtime",
         "time.localtime",
+        "uuid.uuid1",
+        "uuid.uuid4",
         "open",
     }
 )
@@ -114,6 +129,8 @@ FORBIDDEN_ATTRIBUTES = frozenset(
         "monotonic",
         "monotonic_ns",
         "perf_counter",
+        "uuid1",
+        "uuid4",
         "open",
         "read_text",
         "write_text",
@@ -268,7 +285,7 @@ def scan_every_module() -> dict[str, Scan]:
     }
 
 
-def test_no_domain_module_reads_a_clock_or_touches_the_filesystem() -> None:
+def test_no_domain_module_reads_a_clock_a_file_or_a_random_value() -> None:
     found = {
         name: sorted(
             (scanned.calls & FORBIDDEN_CALLS) | (scanned.attributes & FORBIDDEN_ATTRIBUTES)
@@ -277,7 +294,7 @@ def test_no_domain_module_reads_a_clock_or_touches_the_filesystem() -> None:
     }
 
     assert {name: calls for name, calls in found.items() if calls} == {}, (
-        f"{PACKAGE} is given its instants and its data, never reading either: {found}"
+        f"every {PACKAGE} result follows from its inputs, so it reads none of these: {found}"
     )
 
 
@@ -319,6 +336,8 @@ EVASIONS = [
     ("an aliased module", "import time as t\nAT = t.monotonic()\n"),
     ("a bare builtin", "DATA = open('/etc/hosts').read()\n"),
     ("a method on a local", "def load(path):\n    return path.read_text()\n"),
+    ("a minted identifier", "import uuid\n\nID = uuid.uuid4()\n"),
+    ("an aliased mint", "from uuid import uuid4 as fresh\n\nID = fresh()\n"),
 ]
 
 
@@ -340,6 +359,7 @@ def test_the_source_walk_catches_every_evasion(evasion: str, source: str, tmp_pa
         ("import socket\n", "socket"),
         ("from pathlib import Path\n", "pathlib"),
         ("import urllib.request\n", "urllib.request"),
+        ("import secrets\n", "secrets"),
     ],
 )
 def test_the_import_rule_can_fail(planted_import: str, expected: str, tmp_path: Path) -> None:
@@ -347,6 +367,15 @@ def test_the_import_rule_can_fail(planted_import: str, expected: str, tmp_path: 
     planted.write_text(planted_import, encoding="utf-8")
 
     assert expected in scan(planted).imports
+
+
+def test_the_walk_allows_a_type_import_of_the_identifier_it_forbids_minting() -> None:
+    """`identifiers.py` imports `uuid.UUID` as a type. Naming a type is not minting a
+    value, so the rule must not read the two as the same thing."""
+    scanned = scan_every_module()
+
+    assert "identifiers.py" in scanned, "expected the identifier aliases to be scanned"
+    assert not scanned["identifiers.py"].calls & FORBIDDEN_CALLS
 
 
 # Six ways a runtime module can reach the fixtures. The three relative forms are the
