@@ -67,11 +67,15 @@ def test_metrics_serves_prometheus_exposition(client: TestClient) -> None:
     assert "syncr_method_duration_seconds" in response.text
 
 
-def test_health_and_metrics_stay_out_of_the_openapi_document(app: FastAPI) -> None:
+def test_metrics_stays_out_of_the_openapi_document_and_health_does_not(app: FastAPI) -> None:
+    # The browser reads readiness through the client generated from this document, so a
+    # hidden health route would force the frontend to hand-write the one thing the
+    # codegen contract exists to generate. `/metrics` serves Prometheus text rather than
+    # the JSON a schema would claim, so it stays out.
     paths = app.openapi()["paths"]
 
-    assert HEALTHZ_ENDPOINT not in paths
-    assert READYZ_ENDPOINT not in paths
+    assert HEALTHZ_ENDPOINT in paths
+    assert READYZ_ENDPOINT in paths
     assert METRICS_ENDPOINT not in paths
 
 

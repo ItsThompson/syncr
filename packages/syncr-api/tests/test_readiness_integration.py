@@ -5,10 +5,9 @@ two real checks against a live database, which is the claim a deploy depends on:
 ``/readyz`` answers 200 only when Postgres is reachable AND the shipped migration
 head is applied.
 
-Skipped only when `SYNCR_SKIP_DB_TESTS` is set, never merely because no database
-answered. Reachability is the wrong condition: an unreachable Postgres in an
-environment that is supposed to have one is the failure this tier exists to catch,
-and skipping on it turns a broken developer loop into a green run.
+The reachability gate lives in ``conftest.py`` as ``live_database_url``, shared with
+every other integration module: skipped only when ``SYNCR_SKIP_DB_TESTS`` is set, never
+merely because no database answered.
 
 Two shapes of test appear here for one reason: an asyncpg connection belongs to the
 event loop that opened it, and ``TestClient`` runs the app in its own loop. So a test
@@ -18,13 +17,10 @@ process does, while a test that calls a check directly uses the suite's own loop
 
 from __future__ import annotations
 
-import asyncio
-import os
 from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import (
@@ -35,7 +31,7 @@ from syncr_api.core.db import (
 )
 from syncr_api.core.migrations import expected_head, migration_readiness_check
 from syncr_common.health import READYZ_ENDPOINT, RETRY_AFTER_SECONDS
-from tests.conftest import UNREACHABLE_DATABASE_URL, database_url
+from tests.conftest import UNREACHABLE_DATABASE_URL
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -47,47 +43,7 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-SKIP_ENV_VAR = "SYNCR_SKIP_DB_TESTS"
-_TRUTHY = frozenset({"1", "true", "yes"})
-
 MIGRATE_HINT = "run `just migrate` first"
-SETUP_HINT = (
-    "start it with `just dev-infra`, apply migrations with `just migrate`, "
-    f"or set {SKIP_ENV_VAR}=1 to skip this tier deliberately"
-)
-
-
-@pytest.fixture(scope="session")
-def live_database_url() -> str:
-    """The database URL, once it is confirmed reachable. Fails the tier otherwise.
-
-    The probe engine is fully disposed before the URL is handed out, so no connection
-    outlives the probe's loop.
-    """
-    if os.environ.get(SKIP_ENV_VAR, "").strip().lower() in _TRUTHY:
-        pytest.skip(f"{SKIP_ENV_VAR} is set")
-
-    url = database_url()
-
-    async def probe() -> None:
-        engine = create_db_engine(url)
-        try:
-            async with engine.connect() as connection:
-                await connection.execute(text("SELECT 1"))
-        finally:
-            await engine.dispose()
-
-    reason: str | None = None
-    try:
-        asyncio.run(probe())
-    except Exception as exc:
-        reason = f"{type(exc).__name__}: {exc}"
-    if reason is not None:
-        # Reported without a traceback and outside the except block: a refused
-        # connection is a setup condition, and a driver stack trace per test buries
-        # the one line that says what to do about it.
-        pytest.fail(f"Postgres is not reachable at {url} ({reason}). {SETUP_HINT}", pytrace=False)
-    return url
 
 
 @pytest.fixture
@@ -188,7 +144,12 @@ async def test_the_migration_check_reports_a_reachable_database_at_a_stale_revis
     )()
 
     assert result.ok is False
-    assert result.detail == "head 0002_unapplied is not applied (database is at 0001_baseline)"
+    # The applied revision is read rather than written out, so this assertion states the
+    # rule ("the shipped head is not the applied one") rather than today's chain, which
+    # every later migration would otherwise break.
+    assert result.detail == (
+        f"head 0002_unapplied is not applied (database is at {expected_head()})"
+    )
 
 
 def test_readyz_answers_503_when_the_database_is_reachable_but_the_head_is_stale(

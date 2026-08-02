@@ -44,7 +44,14 @@ def test_the_api_entrypoint_configures_logging() -> None:
         capture_output=True,
         text=True,
         check=True,
-        env={"PATH": "/usr/bin:/bin", "ENVIRONMENT": "production", "LOG_LEVEL": "info"},
+        env={
+            "PATH": "/usr/bin:/bin",
+            "ENVIRONMENT": "production",
+            "LOG_LEVEL": "info",
+            # A production process refuses to be built with the development session
+            # signing secret, so the probe supplies one exactly as a deployment does.
+            "SESSION_SIGNING_SECRET": "a-signing-secret-for-this-probe",  # pragma: allowlist secret
+        },
     )
 
     lines = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith("{")]
