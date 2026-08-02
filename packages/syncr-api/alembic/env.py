@@ -18,6 +18,12 @@ from typing import TYPE_CHECKING
 from alembic import context
 
 import syncr_api.accounts.models as _accounts  # noqa: F401 - registers its tables
+import syncr_api.idempotency.models as _idempotency  # noqa: F401 - registers its tables
+import syncr_api.learned.models as _learned  # noqa: F401 - registers its tables
+import syncr_api.oauth.models as _oauth  # noqa: F401 - registers its tables
+import syncr_api.plans.models as _plans  # noqa: F401 - registers its tables
+import syncr_api.solving.models as _solving  # noqa: F401 - registers its tables
+import syncr_api.user_settings.models as _user_settings  # noqa: F401 - registers its tables
 from syncr_api.core.db import create_db_engine
 from syncr_api.core.orm import Base
 from syncr_api.core.settings import EnvSettings
