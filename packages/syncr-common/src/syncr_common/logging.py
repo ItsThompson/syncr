@@ -10,10 +10,14 @@ content is not. The redaction is by key NAME and runs immediately before the
 renderer, so a field added by any later processor is covered too, at every level
 including debug.
 
-Event names. ``solve.completed``, not a free-text sentence, so lines aggregate.
-The shape is checked in development and test only: a malformed event name is a
-call-site bug worth failing on while it is being written, and not worth raising
-on in production, where the line itself is the more useful artifact.
+Event names. ``solve.completed``, not a free-text sentence, so lines aggregate. The
+shape is checked in every environment, because ``event`` is the one field present on
+every line and the redactor cannot inspect a value it has no key for: an
+interpolated ``f"placing {block.title}"`` would otherwise walk a title straight onto
+disk. Development and test raise, because a malformed name there is a call-site bug
+worth failing on while it is being written. Production does not raise, because the
+line is the more useful artifact, so it replaces the name with a fixed event and
+carries the original under a redacted key.
 
 Correlation ids propagate through ``structlog.contextvars``, which
 ``merge_contextvars`` folds onto every line. The HTTP edge binds the id per
@@ -47,9 +51,21 @@ _STRICT_ENVIRONMENTS = frozenset({"development", "test"})
 # `solve.completed`, `calendar.sync.rejected`. At least one dot, lowercase.
 EVENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
-# Keys whose value is user CONTENT rather than an identifier. Matched exactly or
-# as a `_`-suffix, so `block_title` and `anchor_location` are covered too.
-_CONTENT_KEYS = frozenset({"title", "location"})
+# What a malformed event name is replaced with outside development and test. The
+# original is carried under a redacted key, so the line survives, the call site is
+# findable by querying this event, and an interpolated title cannot reach disk.
+MALFORMED_EVENT = "log.malformed_event_name"
+MALFORMED_EVENT_KEY = "malformed_event_title"
+
+# Keys whose value is user CONTENT rather than an identifier. Matched exactly or as
+# a `_`-suffix, so `block_title` and `anchor_location` are covered too.
+#
+# `name` is here because the product's Areas, Projects, Habits, Routines, Templates,
+# and AnchorTypes all carry user-authored names, and `area_name="Job search"`
+# discloses exactly what a block title does. The cost is accepted deliberately: a
+# genuinely benign `event_name` or `metric_name` is redacted too, so log the
+# identifier instead, which is what every diagnostic question actually needs.
+_CONTENT_KEYS = frozenset({"title", "location", "name", "summary", "description", "notes"})
 
 # Substrings that mark a key as secret-bearing. Matched anywhere in the key, so
 # `refresh_token`, `oauth_client_secret`, and `db_password` are all covered.
@@ -119,7 +135,11 @@ def redact_sensitive(_logger: WrappedLogger, _method_name: str, event_dict: Even
 def validate_event_name(
     _logger: WrappedLogger, _method_name: str, event_dict: EventDict
 ) -> EventDict:
-    """structlog processor: reject a free-text event name (development and test only)."""
+    """structlog processor: reject a free-text event name. Raises.
+
+    Used in development and test, where a malformed name is a call-site bug worth
+    failing on while it is being written.
+    """
     event = event_dict.get("event")
     if isinstance(event, str) and not EVENT_NAME_PATTERN.fullmatch(event):
         raise ValueError(
@@ -129,20 +149,40 @@ def validate_event_name(
     return event_dict
 
 
+def quarantine_event_name(
+    _logger: WrappedLogger, _method_name: str, event_dict: EventDict
+) -> EventDict:
+    """structlog processor: move a free-text event name out of ``event``. Never raises.
+
+    Used outside development and test. ``event`` is the one field on every line, and
+    the redactor works by key name, so an interpolated event carries whatever the
+    call site interpolated straight to disk. Relocating a malformed name under a
+    redacted key keeps the line, makes every offending call site findable by querying
+    one event, and closes the leak without raising inside the logging path.
+    """
+    event = event_dict.get("event")
+    if isinstance(event, str) and not EVENT_NAME_PATTERN.fullmatch(event):
+        event_dict["event"] = MALFORMED_EVENT
+        event_dict[MALFORMED_EVENT_KEY] = event
+    return event_dict
+
+
 def build_processors(*, strict_event_names: bool) -> list[Processor]:
-    """The ordered processor chain. Redaction is always the step before rendering."""
-    processors: list[Processor] = [
+    """The ordered processor chain. Redaction is always the step before rendering.
+
+    The event-name step sits before redaction on purpose, so a quarantined name is
+    redacted by the same pass that redacts every other content key.
+    """
+    return [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
+        validate_event_name if strict_event_names else quarantine_event_name,
+        redact_sensitive,
+        structlog.processors.JSONRenderer(),
     ]
-    if strict_event_names:
-        processors.append(validate_event_name)
-    processors.append(redact_sensitive)
-    processors.append(structlog.processors.JSONRenderer())
-    return processors
 
 
 def configure_logging(*, environment: str, log_level: str, stream: TextIO | None = None) -> None:

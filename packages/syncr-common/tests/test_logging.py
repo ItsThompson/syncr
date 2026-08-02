@@ -16,6 +16,8 @@ import pytest
 import structlog
 
 from syncr_common.logging import (
+    MALFORMED_EVENT,
+    MALFORMED_EVENT_KEY,
     REDACTED,
     bind_correlation_id,
     bind_tenant_id,
@@ -93,6 +95,17 @@ def test_location_never_reaches_the_line(emit: Emit, level: str) -> None:
 
     assert line["location"] == REDACTED
     assert ANCHOR_LOCATION not in json.dumps(line)
+
+
+@pytest.mark.parametrize("key", ["name", "area_name", "summary", "description", "notes"])
+def test_other_user_authored_content_never_reaches_the_line(emit: Emit, key: str) -> None:
+    # Areas, Projects, Habits, Routines, Templates and AnchorTypes all carry
+    # user-authored names, and `area_name="Job search"` discloses what a title does.
+    line = emit("info", "areas.budget.computed", **{key: "Job search"}, area_id="a-1")
+
+    assert line[key] == REDACTED
+    assert "Job search" not in json.dumps(line)
+    assert line["area_id"] == "a-1"
 
 
 @pytest.mark.parametrize("level", LEVELS)
@@ -212,13 +225,29 @@ def test_free_text_event_name_raises_in_development() -> None:
         get_logger("syncr-test").info("solve finished successfully")
 
 
-def test_free_text_event_name_passes_through_in_production() -> None:
+def test_free_text_event_name_is_quarantined_and_redacted_in_production() -> None:
+    # `event` is the one field on every line and the redactor works by key name, so an
+    # interpolated event would otherwise walk a block title straight onto disk.
     stream = io.StringIO()
     configure_logging(environment="production", log_level="debug", stream=stream)
 
-    get_logger("syncr-test").info("solve finished successfully")
+    get_logger("syncr-test").info(f"placing {BLOCK_TITLE} at 09:00")
 
-    assert json.loads(stream.getvalue())["event"] == "solve finished successfully"
+    line = json.loads(stream.getvalue())
+    assert line["event"] == MALFORMED_EVENT
+    assert line[MALFORMED_EVENT_KEY] == REDACTED
+    assert BLOCK_TITLE not in json.dumps(line)
+
+
+def test_a_dotted_event_name_is_untouched_in_production() -> None:
+    stream = io.StringIO()
+    configure_logging(environment="production", log_level="debug", stream=stream)
+
+    get_logger("syncr-test").info("solve.completed", iso_week="2026-W07")
+
+    line = json.loads(stream.getvalue())
+    assert line["event"] == "solve.completed"
+    assert MALFORMED_EVENT_KEY not in line
 
 
 @pytest.mark.parametrize(
