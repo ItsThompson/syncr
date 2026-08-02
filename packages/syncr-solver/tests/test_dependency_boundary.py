@@ -99,9 +99,20 @@ def test_the_learning_image_carries_no_web_stack() -> None:
     assert leaked == [], f"syncr-learning must ship no web stack, found {leaked}"
 
 
+def test_the_http_extra_is_what_pulls_the_web_stack_into_common() -> None:
+    # The control for the test above, and the only one that works. Asserting that the
+    # api closure CONTAINS fastapi proves nothing about extras, because syncr-api
+    # declares fastapi directly: that assertion would still pass if the traversal
+    # ignored `optional-dependencies` entirely, and then the learning assertion above
+    # would pass vacuously. This asserts the traversal observes the extra at all.
+    assert "fastapi" not in runtime_closure("syncr-common")
+    assert "fastapi" in runtime_closure("syncr-common", ("http",))
+
+
 def test_the_api_image_carries_the_web_stack_it_serves() -> None:
-    # The mirror of the test above: the extra is requested here, so a missing
-    # fastapi would be a packaging break rather than a boundary win.
+    # A packaging break rather than a boundary win. Note this passes through
+    # syncr-api's OWN fastapi and uvicorn requirements, so it is not the extras
+    # control; the test above is.
     assert api_closure() >= WEB_STACK_PACKAGES
 
 
