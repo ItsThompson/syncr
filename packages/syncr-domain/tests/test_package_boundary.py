@@ -192,13 +192,44 @@ def _aliases(tree: ast.Module) -> dict[str, str]:
     return bound
 
 
-def _imported_modules(tree: ast.Module) -> set[str]:
+def _package_of(module: Path) -> str:
+    """The dotted package a module's relative imports resolve against.
+
+    ``zones.py`` resolves against ``syncr_domain``, ``fixtures/dst_weeks.py`` against
+    ``syncr_domain.fixtures``.
+    """
+    parents = module.relative_to(SOURCE_ROOT).parent.parts
+    return ".".join((PACKAGE, *parents))
+
+
+def _resolve_relative(node: ast.ImportFrom, package: str) -> str:
+    """The absolute package a relative import names.
+
+    ``level`` counts dots: one is the module's own package, two its parent. Without
+    this, ``from .fixtures.dst_weeks import ...`` records ``fixtures.dst_weeks``, which
+    matches no rule stated in absolute terms.
+    """
+    parts = package.split(".")
+    base = ".".join(parts[: len(parts) - (node.level - 1)])
+    return f"{base}.{node.module}" if node.module else base
+
+
+def _imported_modules(tree: ast.Module, package: str) -> set[str]:
     modules: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             modules.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            modules.add(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0:
+                if node.module is not None:
+                    modules.add(node.module)
+                continue
+            resolved = _resolve_relative(node, package)
+            modules.add(resolved)
+            # `from . import fixtures` names a submodule rather than a member, so the
+            # imported names carry the module this rule is about.
+            if node.module is None:
+                modules.update(f"{resolved}.{alias.name}" for alias in node.names)
     return modules
 
 
@@ -216,12 +247,12 @@ def _qualified(dotted: str, aliases: dict[str, str]) -> str:
     return f"{resolved}.{rest}" if rest else resolved
 
 
-def scan(source: Path) -> Scan:
+def scan(source: Path, package: str = PACKAGE) -> Scan:
     tree = ast.parse(source.read_text(encoding="utf-8"))
     aliases = _aliases(tree)
     called = [_dotted_name(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)]
     return Scan(
-        imports=frozenset(_imported_modules(tree)),
+        imports=frozenset(_imported_modules(tree, package)),
         calls=frozenset(_qualified(name, aliases) for name in called if name),
         attributes=frozenset(name.rsplit(".", 1)[-1] for name in called if name),
     )
@@ -231,7 +262,10 @@ def scan_every_module() -> dict[str, Scan]:
     modules = sorted(SOURCE_ROOT.rglob("*.py"))
 
     assert modules, f"expected source under {SOURCE_ROOT}"
-    return {module.relative_to(SOURCE_ROOT).as_posix(): scan(module) for module in modules}
+    return {
+        module.relative_to(SOURCE_ROOT).as_posix(): scan(module, _package_of(module))
+        for module in modules
+    }
 
 
 def test_no_domain_module_reads_a_clock_or_touches_the_filesystem() -> None:
@@ -315,11 +349,32 @@ def test_the_import_rule_can_fail(planted_import: str, expected: str, tmp_path: 
     assert expected in scan(planted).imports
 
 
-def test_the_fixtures_rule_can_fail(tmp_path: Path) -> None:
+# Six ways a runtime module can reach the fixtures. The three relative forms are the
+# ones a walk reading `node.module` alone records under a name no absolute rule matches.
+FIXTURE_IMPORTS = [
+    f"from {FIXTURES_MODULE}.dst_weeks import FALL_BACK\n",
+    f"from {FIXTURES_MODULE} import dst_weeks\n",
+    f"import {FIXTURES_MODULE}.dst_weeks as data\n",
+    "from .fixtures.dst_weeks import FALL_BACK\n",
+    "from .fixtures import dst_weeks\n",
+    "from . import fixtures\n",
+]
+
+
+@pytest.mark.parametrize("planted_import", FIXTURE_IMPORTS)
+def test_the_fixtures_rule_catches_every_import_style(planted_import: str, tmp_path: Path) -> None:
     planted = tmp_path / "reads_a_fixture.py"
-    planted.write_text(
-        f"from {FIXTURES_MODULE}.dst_weeks import FALL_BACK\n\nWEEK = FALL_BACK\n",
-        encoding="utf-8",
+    planted.write_text(planted_import, encoding="utf-8")
+
+    imported = scan(planted, PACKAGE).imports
+
+    assert any(module.startswith(FIXTURES_MODULE) for module in imported), (
+        f"a runtime module could import the fixtures as: {planted_import.strip()}"
     )
 
-    assert any(module.startswith(FIXTURES_MODULE) for module in scan(planted).imports)
+
+def test_a_relative_import_resolves_against_the_scanned_module_s_own_package() -> None:
+    """The control on the resolution itself: a sibling import inside `fixtures/` must
+    resolve to `syncr_domain.fixtures`, not to `syncr_domain`."""
+    assert _package_of(SOURCE_ROOT / "zones.py") == PACKAGE
+    assert _package_of(SOURCE_ROOT / "fixtures" / "dst_weeks.py") == FIXTURES_MODULE
