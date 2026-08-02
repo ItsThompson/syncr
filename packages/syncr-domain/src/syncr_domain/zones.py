@@ -55,6 +55,13 @@ type Date = date
 # rules fall out of it, so neither is implemented a second time here.
 _EARLIER_OFFSET: Final = 0
 
+# A zone identifier becomes a filesystem path inside `zoneinfo`, and one longer than the
+# platform's filename limit fails there as a plain OSError rather than as a missing zone.
+# The longest real key is 32 characters, so this bounds the input clear of both. Zone
+# identifiers arrive from the wire, so the bound is not theoretical, and a boundary
+# validating a zone field can read it from here rather than inventing a second number.
+MAX_ZONE_KEY_LENGTH: Final = 64
+
 
 class ZoneError(DomainError):
     """A zone, a wall time, or a travel override was rejected."""
@@ -69,10 +76,23 @@ class OverlappingTravelError(ZoneError):
 
 
 def resolve_zone(zone: ZoneId) -> ZoneInfo:
-    """The tz database entry for ``zone``, or a stated rejection."""
+    """The tz database entry for ``zone``, or a stated rejection.
+
+    Every rejection is an ``UnknownZoneError``, whatever shape the identifier had,
+    because these arrive from the wire and a boundary needs exactly one error to catch.
+    A key naming a directory in the tz tree is the trap: ``Europe`` and ``America`` are
+    directories, so ``zoneinfo`` raises ``IsADirectoryError`` rather than reporting a
+    missing zone.
+
+    A genuine filesystem fault, a permission error on the tz database say, propagates
+    as itself. Relabelling that as an unknown zone would send a deployment problem to
+    the wrong place.
+    """
+    if len(zone) > MAX_ZONE_KEY_LENGTH:
+        raise UnknownZoneError(f"a zone identifier of {len(zone)} characters names no IANA zone")
     try:
         return ZoneInfo(zone)
-    except (ZoneInfoNotFoundError, ValueError) as error:
+    except (ZoneInfoNotFoundError, ValueError, IsADirectoryError) as error:
         raise UnknownZoneError(f"{zone!r} names no IANA time zone") from error
 
 
@@ -81,6 +101,12 @@ def to_instant(local: LocalTime, on: Date, zone: ZoneId) -> Instant:
 
     A nonexistent time shifts forward by the gap; an ambiguous one takes the earlier
     offset. Both come from ``fold=0``; see the module docstring.
+
+    The mapping is not one-to-one across a spring-forward gap. Every wall time inside
+    the gap shifts onto a real time later in the day, so on ``Europe/London``,
+    2026-03-29, both 01:30 and 02:30 resolve to ``2026-03-29T01:30Z``. Two frame
+    entries whose target times straddle a gap therefore start at one instant, and a
+    caller needing them distinct must separate them itself.
     """
     if local.tzinfo is not None:
         raise ZoneError(f"{local!r} carries a zone, but a wall time names none")

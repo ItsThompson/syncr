@@ -8,11 +8,14 @@ believe rather than what the tz database says.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta, timezone
-from zoneinfo import ZoneInfo
+from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo, available_timezones
 
 import pytest
 
+from syncr_domain.errors import DomainError
 from syncr_domain.zones import (
+    MAX_ZONE_KEY_LENGTH,
     OverlappingTravelError,
     TravelOverride,
     UnknownZoneError,
@@ -22,6 +25,9 @@ from syncr_domain.zones import (
     resolve_zone,
     to_instant,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 LONDON = "Europe/London"
 TOKYO = "Asia/Tokyo"
@@ -36,10 +42,58 @@ class TestResolveZone:
     def test_a_real_zone_resolves(self) -> None:
         assert resolve_zone(LONDON) == ZoneInfo(LONDON)
 
-    @pytest.mark.parametrize("unknown", ["Europe/Lundon", "", "GMT+1", "../etc/passwd"])
+    @pytest.mark.parametrize(
+        "unknown",
+        [
+            "Europe/Lundon",
+            "",
+            "GMT+1",
+            "../etc/passwd",
+            # A directory in the tz tree rather than a zone. zoneinfo reports this by
+            # failing to read the path, not by reporting a missing key, and a user typing
+            # a continent into a zone field produces it.
+            "Europe",
+            "America",
+            "US",
+            # Longer than any filename the platform will take, so the read fails before
+            # the key can be looked up at all.
+            "Europe/" + "L" * 300,
+        ],
+    )
     def test_an_unknown_zone_is_rejected(self, unknown: str) -> None:
-        with pytest.raises(UnknownZoneError, match="names no IANA time zone"):
+        with pytest.raises(UnknownZoneError, match="names no IANA"):
             resolve_zone(unknown)
+
+    @pytest.mark.parametrize("unknown", ["Europe", "Europe/" + "L" * 300])
+    def test_every_rejection_a_boundary_sees_is_a_domain_error(self, unknown: str) -> None:
+        """Ticket 12 accepts a zone from the wire, so a rejection that escapes
+        `DomainError` reaches the client as a 500 rather than a stated refusal."""
+        entry_points: list[Callable[[], object]] = [
+            lambda: resolve_zone(unknown),
+            lambda: to_instant(time(9, 0), date(2026, 2, 1), unknown),
+            lambda: TravelOverride(date(2026, 2, 1), date(2026, 2, 2), unknown),
+            lambda: ZoneProfile(unknown),
+        ]
+
+        for entry_point in entry_points:
+            with pytest.raises(DomainError):
+                entry_point()
+
+    def test_a_rejection_carries_no_filesystem_path(self) -> None:
+        """The leaked IsADirectoryError named the tz database's path on disk, and this
+        message reaches the wire as the stated reason."""
+        with pytest.raises(UnknownZoneError) as rejected:
+            resolve_zone("Europe")
+
+        assert "/" not in str(rejected.value)
+
+    def test_the_length_bound_rejects_no_zone_the_database_ships(self) -> None:
+        """The control on the bound: it must reject nothing real. Over every key rather
+        than a sample, because the bound is the only shape rule in `resolve_zone`."""
+        keys = available_timezones()
+
+        assert len(keys) > 100, "the tz database looks unreadable, so this proves nothing"
+        assert max(len(key) for key in keys) <= MAX_ZONE_KEY_LENGTH
 
 
 class TestSpringForward:
@@ -82,7 +136,28 @@ class TestSpringForward:
         resolved = [to_instant(target, SPRING_FORWARD, LONDON) for target in frame]
 
         assert resolved == sorted(resolved)
-        assert len(set(resolved)) == len(frame)
+
+    def test_two_target_times_straddling_the_gap_resolve_to_one_instant(self) -> None:
+        """The rule is a shift, not a bijection, so the mapping is not injective here.
+
+        Pinned rather than left incidental: a frame holding both a 01:30 and a 02:30
+        routine gets two occurrences starting together, and a caller needing them
+        distinct must separate them. A change that made the mapping injective would
+        break the stated spring-forward rule, so it fails here rather than quietly
+        altering the frame.
+        """
+        inside_the_gap = to_instant(time(1, 30), SPRING_FORWARD, LONDON)
+        after_the_gap = to_instant(time(2, 30), SPRING_FORWARD, LONDON)
+
+        assert inside_the_gap == after_the_gap == datetime(2026, 3, 29, 1, 30, tzinfo=UTC)
+
+    def test_times_clear_of_the_gap_collide_with_nothing(self) -> None:
+        """The control: the collision belongs to the gap, not to the mapping."""
+        morning = [time(0, 30), time(3, 30), time(4, 30)]
+
+        resolved = [to_instant(target, SPRING_FORWARD, LONDON) for target in morning]
+
+        assert len(set(resolved)) == len(morning)
 
 
 class TestFallBack:
@@ -108,7 +183,9 @@ class TestFallBack:
 
         assert to_instant(time(1, 30), FALL_BACK, LONDON) != later.astimezone(UTC)
 
-    def test_the_frame_keeps_its_order_through_the_repeat(self) -> None:
+    def test_the_frame_keeps_its_order_and_distinctness_through_the_repeat(self) -> None:
+        """Unlike the gap, this rule maps distinct wall times to distinct instants:
+        taking the earlier offset moves nothing onto another wall time's instant."""
         frame = [time(0, 30), time(1, 30), time(3, 0)]
 
         resolved = [to_instant(target, FALL_BACK, LONDON) for target in frame]
