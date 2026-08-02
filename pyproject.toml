@@ -1,0 +1,38 @@
+# uv workspace root. Virtual: it defines the workspace and its single shared
+# lockfile, declares no [project], and builds no artifact. Every member resolves
+# against one root uv.lock, so a shared library (pydantic, say) has exactly one
+# version across every image.
+#
+# Members and the dependency direction between them:
+#
+#   packages/syncr-common     infra only: logging, metrics, health, config
+#   packages/syncr-domain     pure entities, invariants, arithmetic. No I/O
+#   packages/syncr-solver     placement. Depends on domain. ZERO ML DEPENDENCIES
+#   packages/syncr-api        FastAPI + persistence + the worker entrypoint
+#   packages/syncr-learning   offline fitters. scipy and scikit-learn live here
+#   cli                       the OAuth client, separate from the api package
+#
+# Sync model:
+#   Dev and CI: `uv sync --all-packages` builds one shared root .venv holding
+#     every member, then each tool runs with `uv run --no-sync`.
+#   Images: uv resolves ONE shared environment, so a plain
+#     `uv sync --package syncr-api` installs EVERY member and would put scipy in
+#     the API image. Each Dockerfile instead runs
+#     `uv export --frozen --no-emit-workspace --package <member>` for that
+#     member's locked third-party set, then editable-installs only that member
+#     plus its workspace dependencies.
+[tool.uv.workspace]
+members = [
+    "packages/syncr-common",
+    "packages/syncr-domain",
+    "packages/syncr-solver",
+    "packages/syncr-api",
+    "packages/syncr-learning",
+    "cli",
+]
+
+# Repo-wide tooling that belongs to no member: the pre-commit secret scan.
+[dependency-groups]
+dev = [
+    "detect-secrets>=1.5.0,<2",
+]

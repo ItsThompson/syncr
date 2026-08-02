@@ -1,0 +1,89 @@
+# Shared ruff base for every Python workspace member.
+#
+# Only settings that are identical across members live here. Each member's
+# `pyproject.toml` does `extend = "../../ruff.toml"` (or `"../ruff.toml"` for
+# `cli/`) and keeps its own bits local: `src`, per-file-ignores, mypy `files`,
+# the coverage target.
+#
+# `src` is intentionally NOT set here: ruff resolves it relative to the file that
+# declares it, so a value here would misresolve to `<repo-root>/src`. Each member
+# sets `src = ["src", "tests"]` in its own `pyproject.toml` instead.
+
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "SIM",
+    "ASYNC",
+    "S",    # flake8-bandit
+    "RUF",  # includes RUF100 (unused-noqa)
+    "BLE",  # blind-except: activates the `# noqa: BLE001` readiness-probe annotations
+    "DTZ",  # tz-aware datetimes; the whole product is instant arithmetic
+    "PT",   # pytest style
+    "LOG",  # structlog is a core dependency
+    "G",    # logging-format
+    "C4",   # comprehension hygiene
+    "RET",  # return hygiene
+    "TID",  # tidy imports
+    "TC",   # flake8-type-checking: type-only imports live under TYPE_CHECKING
+]
+
+[lint.isort]
+# The workspace members live outside each consumer's own `src`, so ruff's
+# src-based first-party detection cannot see them. Declare them first-party so
+# their imports group with the consuming package's own imports rather than with
+# third-party libraries.
+known-first-party = [
+    "syncr_api",
+    "syncr_cli",
+    "syncr_common",
+    "syncr_domain",
+    "syncr_learning",
+    "syncr_solver",
+]
+
+[lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom calls Depends()/Query()/... in argument
+# defaults by design; these are immutable markers, not mutable-default bugs.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Body",
+]
+
+[lint.flake8-type-checking]
+# TC moves type-only imports into `if TYPE_CHECKING:`. Some framework seams read
+# annotations at RUNTIME, so their imports must stay runtime-visible or the app
+# fails to construct:
+#   - Pydantic builds validators from field annotations at class-creation time.
+#   - SQLAlchemy resolves `Mapped[...]` annotations when it maps a model.
+#   - FastAPI evaluates a route handler's parameter and return annotations to
+#     build validation and the response model.
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "pydantic_settings.BaseSettings",
+    "sqlalchemy.orm.DeclarativeBase",
+    "syncr_api.core.orm.Base",
+    "syncr_common.config.SyncrSettings",
+]
+runtime-evaluated-decorators = [
+    "fastapi.APIRouter.get",
+    "fastapi.APIRouter.post",
+    "fastapi.APIRouter.put",
+    "fastapi.APIRouter.patch",
+    "fastapi.APIRouter.delete",
+    "fastapi.FastAPI.get",
+    "fastapi.FastAPI.post",
+    "fastapi.FastAPI.put",
+    "fastapi.FastAPI.patch",
+    "fastapi.FastAPI.delete",
+]

@@ -1,0 +1,27 @@
+# Python toolchain
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+dist/
+build/
+*.egg-info/
+
+# Node toolchain
+node_modules/
+*.tsbuildinfo
+
+# Secrets and local config. .env.example is committed; .env is not.
+.env
+.env.*
+!.env.example
+
+# OS noise
+.DS_Store
