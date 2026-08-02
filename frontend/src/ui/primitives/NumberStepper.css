@@ -1,0 +1,58 @@
+/* Layer 2: the number stepper's two buttons and the field between them.
+ *
+ * The buttons collapse their borders into the field's, so the three elements read as one control rather
+ * than as a field with two neighbours. 22px is the sheet's own width: narrower than a control's height,
+ * because the button is a nudge and the field is the value.
+ *
+ * The native spin buttons are removed. Two sets of increment controls on one field is the sort of thing
+ * that reads as a rendering fault, and the native pair cannot be styled to 22px square with zero radius
+ * on every platform. */
+
+.number-stepper {
+  display: inline-flex;
+  align-items: center;
+}
+
+.number-stepper__field {
+  border-right-width: 0;
+  appearance: textfield;
+}
+
+.number-stepper__field::-webkit-inner-spin-button,
+.number-stepper__field::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.number-stepper__step {
+  width: 22px;
+  height: var(--h-control);
+  padding: 0;
+  border: var(--hairline) solid var(--rule-control);
+  border-right-width: 0;
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-chrome);
+  cursor: pointer;
+}
+
+.number-stepper__step:last-child {
+  border-right-width: var(--hairline);
+}
+
+.number-stepper__step:disabled {
+  border-style: dashed;
+  border-color: var(--text-muted);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* The unit sits outside the control and is prose about it: `min`, or `min · 3h30m`. */
+.number-stepper__unit {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+}

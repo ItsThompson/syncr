@@ -1,0 +1,66 @@
+/* Layer 2: the field family. Input, Textarea, Select, NumberStepper and TimeInput share this.
+ *
+ * THE RESTING BORDER IS --rule-control AND NEVER --rule-strong. A control border is the only thing
+ * marking where the control begins, which makes it an indicator under the 3:1 rule rather than
+ * decoration: --rule-control measures 5.28:1 against --paper-raised and --rule-strong measures 2.65:1,
+ * so --rule-strong is banned on a control and stays on containers that merely enclose one.
+ * `Input.contrast.test.ts` computes both ratios from the token files rather than trusting this comment.
+ *
+ * INVALID TAKES A 3px --signal-oxide LEFT BORDER AND NOTHING ELSE. The fill and the text never change
+ * colour, because a fill is not a signal channel, and the message beside the control carries the words.
+ * It keys on `aria-invalid`, so the accessible state and the styling hook cannot diverge.
+ *
+ * DISABLED IS A DASHED BORDER at --text-muted, which is the one place a dashed border means disabled.
+ * That is why a proposal block has no fill instead of a dashed one: one visual, one meaning.
+ *
+ * The two minimum widths are the sheet's own: 186px for a text field and 82px for a figure, which is
+ * what a four-digit duration plus its stepper buttons needs without the box growing. */
+
+.control {
+  height: var(--h-control);
+  min-width: 186px;
+  padding: 0 8px;
+  border: var(--hairline) solid var(--rule-control);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-chrome);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A figure rather than prose: an estimate, a minute count, a clock time. */
+.control--figure {
+  min-width: 82px;
+  text-align: right;
+}
+
+.control--prose {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 5px 8px;
+  line-height: var(--lh-chrome);
+  /* Vertical only: a horizontal resize lets a reader break the column the form lives in. */
+  resize: vertical;
+}
+
+.control:disabled,
+.control[data-disabled] {
+  border-style: dashed;
+  border-color: var(--text-muted);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.control[aria-invalid="true"] {
+  border-left-width: var(--state-conflict-border);
+  border-left-color: var(--state-conflict-color);
+}
+
+/* The native picker indicator arrives in a platform-drawn well with its own corner radius, so the box
+ * would stop being square on exactly one platform. The typographic mark in `glyphs.css` replaces it. */
+.control::-webkit-calendar-picker-indicator {
+  display: none;
+}
