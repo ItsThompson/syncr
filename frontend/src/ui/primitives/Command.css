@@ -1,0 +1,67 @@
+/* Layer 2: the command palette's own geometry.
+ *
+ * The rows take `.state-row`, so hover's fill and the keyboard cursor's ring are the kit's, not this
+ * component's. The cursor's ring sits at a NEGATIVE offset there, because rows pitch at --h-row 28px and an
+ * outset ring would be clipped by the row above.
+ *
+ * The surface itself is not an overlay here. `Command` is the control; the palette that floats it is a
+ * domain component, and it is the one that composes `.overlay` and the shadow. */
+
+.command {
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-raised);
+}
+
+.command__query {
+  padding: 8px 11px;
+  border: 0;
+  border-bottom: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-chrome);
+}
+
+.command__list {
+  max-height: 264px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.command__group {
+  padding: 5px 11px 3px;
+  background: var(--paper);
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}
+
+.command__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: var(--h-row);
+  padding: 0 11px;
+  color: var(--ink);
+  font-size: var(--fs-chrome);
+  cursor: default;
+}
+
+.command__hint {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.command__empty {
+  padding: 9px 11px;
+  color: var(--text-muted);
+  font-size: var(--fs-chrome);
+}

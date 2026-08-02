@@ -1,0 +1,88 @@
+/* Layer 2: the month grid.
+ *
+ * TODAY IS AN INK RULE AND NOT AMBER. Today is a calendar fact, not a system status, and the signal pigments
+ * are sealed to status and severity. It takes the --rule-emphasis weight, which is the same weight an Area's
+ * top rule and an active tab's bottom rule take, so it reads as a mark on the day rather than as a second
+ * selection.
+ *
+ * IT IS A REAL BORDER RATHER THAN AN INSET SHADOW, which is where this file departs from
+ * `docs/design/components.html`. The sheet draws the same mark as `box-shadow: inset ...` because it draws
+ * its calendar with table cells, and a `td` cannot carry a border that survives `border-collapse`. A day
+ * here is a button, so a border is available, and the system has exactly ONE shadow: stylelint and the
+ * bundle gate both refuse a `box-shadow` that is not --shadow-hard, which is the rule working rather than an
+ * obstacle. The border is reserved transparent at rest so becoming today changes a colour and not a height.
+ *
+ * The selected day is the one place in the kit where an ink FILL lands on a figure, and it is legal because
+ * --on-ink on --ink-deep measures 14.83:1. A wash would not do: at 1.1:1 it cannot carry a meaning alone. */
+
+.calendar {
+  width: 198px;
+  padding: 8px;
+  font-size: var(--fs-label);
+}
+
+.calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: var(--ink-deep);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}
+
+.calendar__step {
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-deep);
+  font: inherit;
+  cursor: pointer;
+}
+
+.calendar__grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar__weekday {
+  padding-bottom: 3px;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  font-weight: 400;
+  letter-spacing: var(--ls-nav);
+}
+
+.calendar__cell {
+  padding: 1px 0;
+  text-align: center;
+}
+
+.calendar__day {
+  padding: 1px 0;
+  border-bottom: var(--rule-emphasis) solid transparent;
+  color: var(--ink);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.calendar__day--outside {
+  color: var(--text-muted);
+}
+
+.calendar__day[aria-selected="true"] {
+  /* The border matches the fill, so nothing changes on paper. It is what carries the choice in forced-colors
+     mode, where a fill is dropped and a border is not: without it the chosen day and its neighbours render
+     identically there. The bottom width stays at the emphasised weight so the cell's height does not move. */
+  border: var(--hairline) solid var(--ink-deep);
+  border-bottom-width: var(--rule-emphasis);
+  background: var(--ink-deep);
+  color: var(--on-ink);
+}
+
+.calendar__day[aria-current="date"] {
+  border-bottom-color: var(--ink-deep);
+}

@@ -1,0 +1,38 @@
+/* Layer 2: the date picker's field and its popover.
+ *
+ * The field is a control like any other, and the mark beside it is the same typographic arrow the select
+ * uses, so a reader meets one form for "this control opens a list" rather than two. The popover carries
+ * `.overlay`, which is the only file naming --shadow-hard. */
+
+.date-picker {
+  display: inline-flex;
+  align-items: center;
+}
+
+.date-picker__field {
+  border-right-width: 0;
+}
+
+.date-picker__trigger {
+  width: 22px;
+  height: var(--h-control);
+  padding: 0;
+  border: var(--hairline) solid var(--rule-control);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-chrome);
+  cursor: pointer;
+}
+
+.date-picker__trigger:disabled {
+  border-style: dashed;
+  border-color: var(--text-muted);
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.date-picker__panel {
+  z-index: 40;
+}

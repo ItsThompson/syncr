@@ -39,6 +39,25 @@
 @source not "./**/*.test.{ts,tsx}";
 @source not "./**/__fixtures__/**";
 
+/* AND THE WORDS THIS CODEBASE'S PROSE HAS TO BE ABLE TO USE.
+
+   Tailwind's extractor takes candidates from every string in a scanned file, comments included, and a bare
+   `transform` is a real utility name. So the comment in `Dialog.tsx` explaining why the dialog needs no
+   transform compiled `.transform` into the bundle, and the sentence documenting a prohibition became an
+   instance of it. That is the third time in this repository that prose has generated CSS.
+
+   Excluding the candidates makes the prohibition structural for these names, the same way clearing a theme
+   namespace does: the utility cannot be produced, so it cannot be shipped, and a file may explain the rule
+   in the words the rule is about. Every one of them is already banned by the design language, so nothing
+   legitimate is lost, and the markup scan still reports the class as dead if somebody writes it.
+
+   THIS LIST IS A CONVENIENCE, NOT THE FENCE. `scripts/check-bundle` reads the built stylesheet and refuses a
+   banned declaration whatever produced it, which is what covers the word nobody thought to exclude. */
+@source not inline("transform");
+@source not inline("filter");
+@source not inline("transition");
+@source not inline("animate");
+
 @import "./tokens/index.css";
 @import "./base.css";
 
@@ -240,3 +259,13 @@
 @custom-variant collecting  (&[data-collecting]);
 @custom-variant compact     ([data-compact] &);
 @custom-variant panel-open  ([data-panel="open"] &);
+
+/* THE KEYBOARD CURSOR. Radix writes `data-highlighted` on the active row of a listbox or a combobox, and
+   section 14 maps it to FOCUS and nothing else: a command palette's CURRENT row is `data-current`, like any
+   other current row, so the cursor and the current row are two states rather than one.
+
+   It arrives with the kit's first control that writes the attribute itself. Section 14's channel table
+   named it from the start and the variant set did not, and the markup scan refuses an attribute with no
+   variant, which is the mechanism working: the state is styleable and lintable by the same name or by
+   neither. Its channel, the outline, is assigned in `ui/primitives/states.css`. */
+@custom-variant highlighted (&[data-highlighted]);
