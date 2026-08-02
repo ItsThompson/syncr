@@ -56,6 +56,7 @@ export {
 export {
   WEEKDAY_INITIALS,
   WEEKDAY_NAMES,
+  dayLabel,
   formatIsoDate,
   monthGrid,
   monthLabel,

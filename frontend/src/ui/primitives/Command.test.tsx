@@ -42,8 +42,19 @@ describe("Command", () => {
     renderCommand();
     const field = screen.getByRole("combobox", { name: "Command palette" });
 
-    expect(field).toHaveAttribute("aria-controls", "command-list");
-    expect(screen.getByRole("listbox")).toHaveAttribute("id", "command-list");
+    /* The ids are scoped rather than fixed, so two palettes cannot both answer to `command-list`. What
+     * matters is that the field points at the list that is actually there. */
+    expect(field.getAttribute("aria-controls")).toBe(screen.getByRole("listbox").id);
+    expect(screen.getByRole("listbox").id).not.toBe("");
+  });
+
+  it("points at the cursor's row by the row's own id, not by the caller's action id", () => {
+    renderCommand();
+    const field = screen.getByRole("combobox");
+    const cursor = screen.getByRole("option", { name: /Approve week/ });
+
+    expect(field.getAttribute("aria-activedescendant")).toBe(cursor.id);
+    expect(cursor.id).toMatch(/approve$/);
   });
 
   it("lists every action, under the group it belongs to", () => {
@@ -75,7 +86,9 @@ describe("Command", () => {
   it("starts with the cursor on the first row", () => {
     renderCommand();
 
-    expect(screen.getByRole("combobox")).toHaveAttribute("aria-activedescendant", "approve");
+    expect(screen.getByRole("combobox").getAttribute("aria-activedescendant")).toBe(
+      screen.getByRole("option", { name: /Approve week/ }).id,
+    );
   });
 
   it("moves the cursor with the arrow keys and keeps focus in the field", async () => {
@@ -85,7 +98,9 @@ describe("Command", () => {
     field.focus();
     await userEvent.keyboard("{ArrowDown}");
 
-    expect(field).toHaveAttribute("aria-activedescendant", "capture");
+    expect(field.getAttribute("aria-activedescendant")).toBe(
+      screen.getByRole("option", { name: /Capture a task/ }).id,
+    );
     expect(field).toHaveFocus();
   });
 
@@ -96,7 +111,9 @@ describe("Command", () => {
     field.focus();
     await userEvent.keyboard("{ArrowUp}");
 
-    expect(field).toHaveAttribute("aria-activedescendant", "today");
+    expect(field.getAttribute("aria-activedescendant")).toBe(
+      screen.getByRole("option", { name: /Go to Today/ }).id,
+    );
   });
 
   it("selects the cursor's row on Enter", async () => {
@@ -126,7 +143,9 @@ describe("Command", () => {
     await userEvent.keyboard("{ArrowDown}");
     await userEvent.type(field, "capture");
 
-    expect(field).toHaveAttribute("aria-activedescendant", "capture");
+    expect(field.getAttribute("aria-activedescendant")).toBe(
+      screen.getByRole("option", { name: /Capture a task/ }).id,
+    );
   });
 
   it("falls back to the first result when the cursor's row is filtered out", async () => {
@@ -137,7 +156,9 @@ describe("Command", () => {
     await userEvent.keyboard("{ArrowDown}");
     await userEvent.type(field, "go to");
 
-    expect(field).toHaveAttribute("aria-activedescendant", "week");
+    expect(field.getAttribute("aria-activedescendant")).toBe(
+      screen.getByRole("option", { name: /Go to Week/ }).id,
+    );
   });
 });
 

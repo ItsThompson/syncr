@@ -80,6 +80,25 @@ export function monthLabel(month: CalendarMonth): string {
 }
 
 /**
+ * How a day reads to a screen reader: `Wednesday 19 February 2025`.
+ *
+ * The cell's visible text is the day of the month alone, which says nothing on its own out of the grid's
+ * visual context, and an ISO string read aloud is a run of digits. The weekday is included because
+ * choosing a deadline is usually a question about which weekday it lands on.
+ */
+export function dayLabel(iso: string): string {
+  const parsed = parseIsoDate(iso);
+  if (parsed === null) return iso;
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  return formatter.format(new Date(parsed.year, parsed.month - 1, parsed.day));
+}
+
+/**
  * The weeks a month is drawn as, Monday first, each a full seven days.
  *
  * The leading and trailing days belong to the neighbouring months and are marked, because a grid that

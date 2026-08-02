@@ -22,6 +22,7 @@ import "./glyphs.css";
 import {
   WEEKDAY_INITIALS,
   WEEKDAY_NAMES,
+  dayLabel,
   monthGrid,
   monthLabel,
   parseIsoDate,
@@ -143,7 +144,7 @@ export function Calendar({
                   tabIndex={day.iso === tabStop ? 0 : -1}
                   aria-selected={day.iso === selected}
                   aria-current={day.iso === today ? "date" : undefined}
-                  aria-label={day.iso}
+                  aria-label={dayLabel(day.iso)}
                   ref={(node) => {
                     if (isKeyboardDriven && day.iso === cursor) node?.focus();
                   }}

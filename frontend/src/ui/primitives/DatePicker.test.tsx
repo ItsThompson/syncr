@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { kitStylesheet } from "../../testing/kitStylesheets";
 import { DatePicker } from "./DatePicker";
+import { dayLabel } from "./month";
 
 const TODAY = "2025-02-11";
 
@@ -38,9 +39,13 @@ async function openCalendar(): Promise<void> {
 /* A day is found by its label rather than by its role. The cell IS a gridcell in a browser, where HTML's own
  * mapping reads a `td` inside a `table[role="grid"]` that way, but Testing Library computes a role from the
  * element alone and reports `cell`. The label is the stable handle, and the grid semantics are asserted once
- * below rather than in every case. */
+ * below rather than in every case.
+ *
+ * The label itself is the formatted date, because a cell's visible text is the day of the month alone and an
+ * ISO string read aloud is a run of digits. `dayLabel` is the component's own formatter, so a test cannot
+ * drift from what a screen reader hears. */
 function day(iso: string): HTMLElement {
-  return screen.getByLabelText(iso);
+  return screen.getByLabelText(dayLabel(iso));
 }
 
 describe("the date field", () => {
@@ -166,7 +171,7 @@ describe("the month grid", () => {
       .filter((cell) => cell.getAttribute("tabindex") === "0");
 
     expect(stops).toHaveLength(1);
-    expect(stops[0]).toHaveAttribute("aria-label", "2025-02-19");
+    expect(stops[0]).toHaveAttribute("aria-label", dayLabel("2025-02-19"));
   });
 
   it("moves the cursor a day at a time with the arrow keys", async () => {

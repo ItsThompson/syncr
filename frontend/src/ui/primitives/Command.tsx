@@ -14,7 +14,7 @@
  * component keeps the highlighted ACTION ID and falls back to the first result whenever that id is not in
  * the current results, so there is no state to synchronise and no effect at all. */
 
-import { useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 
 import "./Command.css";
 import "./states.css";
@@ -41,10 +41,6 @@ export interface CommandProps {
   readonly emptyLabel: string;
 }
 
-/* The field points at the list with `aria-controls`, so both need the same id and only one control of this
- * kind is on screen at a time: a palette is a modal surface. */
-const LIST_ID = "command-list";
-
 function matching(actions: readonly CommandAction[], query: string): readonly CommandAction[] {
   const needle = query.trim().toLowerCase();
   if (needle === "") return actions;
@@ -66,11 +62,18 @@ function grouped(actions: readonly CommandAction[]): readonly [string, CommandAc
 export function Command({ actions, onSelect, label, placeholder, emptyLabel }: CommandProps) {
   const [query, setQuery] = useState("");
   const [requestedId, setRequestedId] = useState<string | null>(null);
+  /* The field points at the list and at the cursor's row by id, so the ids have to be unique in the
+   * document rather than merely unique in this component: two of these on one screen would otherwise both
+   * answer to `command-list`. An action's own id is the caller's and stays out of the DOM. */
+  const scope = useId();
+  const listId = `${scope}-list`;
+  const rowId = (action: CommandAction) => `${scope}-${action.id}`;
 
   const results = matching(actions, query);
   const hasResults = results.length > 0;
   const highlighted =
     results.find((action) => action.id === requestedId)?.id ?? results[0]?.id ?? null;
+  const highlightedRowId = highlighted === null ? undefined : `${scope}-${highlighted}`;
 
   const move = (offset: number) => {
     if (!hasResults) return;
@@ -106,22 +109,26 @@ export function Command({ actions, onSelect, label, placeholder, emptyLabel }: C
         placeholder={placeholder}
         aria-label={label}
         aria-expanded={hasResults}
-        aria-controls={LIST_ID}
-        aria-activedescendant={highlighted ?? undefined}
+        aria-controls={listId}
+        aria-activedescendant={highlightedRowId}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={onKeyDown}
       />
       {hasResults ? (
         // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a select cannot hold a group heading and a right-aligned hint, and a datalist cannot be styled: this is the ARIA combobox pattern
-        <div id={LIST_ID} role="listbox" aria-label={label} className="command__list">
+        <div id={listId} role="listbox" aria-label={label} className="command__list">
           {grouped(results).map(([group, rows]) => (
-            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- `group` inside a listbox heads a run of options; `optgroup` exists only inside a select
-            <div key={group === "" ? "ungrouped" : group} role="group" aria-label={group}>
+            <div
+              key={group === "" ? "ungrouped" : group}
+              // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- `group` inside a listbox heads a run of options; `optgroup` exists only inside a select
+              role="group"
+              aria-label={group === "" ? undefined : group}
+            >
               {group === "" ? null : <p className="command__group">{group}</p>}
               {rows.map((action) => (
                 <CommandItem
                   key={action.id}
-                  id={action.id}
+                  id={rowId(action)}
                   label={action.label}
                   hint={action.hint}
                   isCurrent={action.isCurrent}
