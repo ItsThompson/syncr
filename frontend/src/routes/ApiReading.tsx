@@ -9,7 +9,7 @@
  * booleans. */
 
 import type { Readiness } from "../api/hooks/useReadiness";
-import type { Resource } from "../api/resource";
+import type { Resource } from "../contract";
 
 export interface ApiReadingProps {
   readonly readiness: Resource<Readiness>;

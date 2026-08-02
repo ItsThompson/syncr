@@ -15,7 +15,7 @@ import {
   unreachableHandler,
 } from "../../testing/apiStub";
 import { FreshCache, renderAt, renderSignedInAt } from "../../testing/renderRoute";
-import { UNEXPECTED_PROBLEM_TYPE, UNREACHABLE_PROBLEM_TYPE } from "../problem";
+import { UNEXPECTED_PROBLEM_TYPE, UNREACHABLE_PROBLEM_TYPE } from "../../contract";
 import { unreadyChecks, useReadiness } from "./useReadiness";
 
 /* The row is in the DOM from the first paint, so an assertion has to wait for the VALUE to settle

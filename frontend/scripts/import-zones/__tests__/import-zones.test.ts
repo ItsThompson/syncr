@@ -31,8 +31,13 @@ describe("the kit's import zones", () => {
   /* One oxlint run for the whole matrix: spawning the binary per case would dominate the suite. */
   const results = lintZoneProbes(PROBES);
 
+  /* The matrix size is self-reporting, so a table that silently shrinks fails here and a changeset
+   * quoting a denominator has one number to quote. This is the OXLINT-BACKED count: the other cases
+   * in this file are unit tests over `policy.ts` and cannot fail on a config change. */
   it("crosses every zone with every specifier the policy names", () => {
+    expect(everySpecifier()).toHaveLength(38);
     expect(PROBES).toHaveLength(KIT_LAYERS.length * everySpecifier().length);
+    expect(PROBES).toHaveLength(114);
   });
 
   it.each(PROBES.map((probe) => [probe.zone, probe.specifier, probe.isRefused] as const))(
@@ -88,8 +93,8 @@ describe("the policy itself", () => {
     for (const zone of KIT_LAYERS) expect(isRefusedByPolicy(zone, specifier)).toBe(true);
   });
 
-  it("permits the api's types to domain and to no other zone", () => {
-    for (const specifier of ["../../api/problem", "../../api/resource"]) {
+  it("permits the contract's types to domain and to no other zone", () => {
+    for (const specifier of ["../../contract", "../../contract/problem"]) {
       expect(isRefusedByPolicy("domain", specifier)).toBe(false);
       expect(isRefusedByPolicy("layout", specifier)).toBe(true);
       expect(isRefusedByPolicy("primitives", specifier)).toBe(true);

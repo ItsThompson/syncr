@@ -8,8 +8,8 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import type { Session } from "../api/hooks/useSession";
-import type { Problem } from "../api/problem";
-import type { Resource } from "../api/resource";
+import type { Problem } from "../contract";
+import type { Resource } from "../contract";
 import { AuthGate } from "./AuthGate";
 import { DEFAULT_RETURN_PATH, returnPathFrom, signInTarget } from "./signIn";
 

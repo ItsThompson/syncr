@@ -21,7 +21,8 @@
     "fmt": "prettier --write .",
     "lint:tokens": "node scripts/validate-tokens/cli.ts",
     "lint:markup": "node scripts/lint-markup/cli.ts",
-    "lint:channels": "node scripts/check-channels/cli.ts"
+    "lint:channels": "node scripts/check-channels/cli.ts",
+    "lint:imports": "node scripts/check-imports/cli.ts"
   },
   "dependencies": {
     "openapi-fetch": "^0.17.0",

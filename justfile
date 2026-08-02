@@ -231,13 +231,20 @@ fmt:
 # Every frontend static gate. The pre-commit hook runs this, and so does CI, so the hook and
 # the gate cannot drift.
 #
-# Six checks, none of which the others can cover:
-#   oxlint          the language and React rules, plus the kit's import zones
+# Seven checks, none of which the others can cover:
+#   oxlint          the language and React rules, plus the kit's import zones by SPECIFIER
 #   stylelint       the design rules that live in CSS: no raw color, no motion, no radius
 #   prettier        formatting, so twenty tickets of TypeScript accumulate no drift
 #   tokens-validate the token layer, the sheets that render from it, and the theme that reads it
 #   lint-markup     the design rules that reach the DOM as a class name or a data attribute
 #   check-channels  each state channel assigned in exactly one file under the kit
+#   check-imports   the kit's import zones again, by RESOLVED DIRECTORY rather than by specifier
+#
+# The last two overlap deliberately. oxlint matches a specifier's spelling, and three holes reached
+# review that way: a barrel it did not name, a `.ts` extension, a `.js` extension resolving to a
+# `.ts` file. check-imports resolves each import against the filesystem and asks which directory the
+# file actually lives in, so a spelling nobody anticipated cannot slip past. Two checks, two
+# different inputs, one rule.
 #
 # Every check runs even when an earlier one fails: one red linter must not hide the rest.
 lint-frontend:
@@ -245,7 +252,7 @@ lint-frontend:
     set -uo pipefail
     cd frontend
     failed=0
-    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels; do
+    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels lint:imports; do
       echo "--- $check"
       npm run --silent "$check" || failed=1
     done
@@ -297,8 +304,9 @@ audit-python:
 # The JS graph, at TWO thresholds, because the two halves carry different risk and npm
 # offers no per-advisory suppression the way `uv audit --ignore` does.
 #
-# Production dependencies are held to any severity, matching the Python gate: they are the
-# five packages that reach a browser, so an advisory there is a shipped defect.
+# Production dependencies are held to `info`, which is npm's lowest level and so the literal
+# "any advisory" reading that matches the Python gate. Those are the packages that reach a
+# browser, so an advisory there is a shipped defect.
 #
 # The whole graph, dev tooling included, is held to high and above. That is deliberately
 # weaker than the Python gate and the reason is npm, not appetite: there is no
@@ -308,9 +316,16 @@ audit-python:
 # ticket happened to be open. A gate that cannot be answered honestly gets answered by
 # weakening it, so this one states its threshold instead.
 #
-# Both are clean today: 0 advisories at every severity across 283 packages.
+# WHEN THIS GOES RED, the sanctioned response is, in order: `npm audit fix` if it resolves
+# within the declared ranges; then a version bump of the direct dependency that pulls the
+# advisory in, committed with the advisory ID in the message; then, only if neither works, an
+# `overrides` entry in package.json with a comment naming the advisory and why the pin is
+# safe. Never lower the threshold in this recipe to make a red gate green.
+#
+# Counts, reproducible from `npm audit --json` metadata: 11 production and 394 total
+# dependencies, 0 advisories at every severity.
 audit-js:
-    cd frontend && npm audit --omit=dev --audit-level=low
+    cd frontend && npm audit --omit=dev --audit-level=info
     cd frontend && npm audit --audit-level=high
 
 # The scan the pre-commit hook runs on staged files, over the whole tree

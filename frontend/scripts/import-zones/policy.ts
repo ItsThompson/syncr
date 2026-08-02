@@ -29,41 +29,61 @@ const EVERY_ZONE = KIT_LAYERS;
 
 /* One table, and it is the whole policy for everything outside the kit's own layers.
  *
- * Note which zones may read the api's TYPES: `domain` only. A Problem or a Resource is a domain
- * concept, so a primitive or a layout container that needs to name one is misfiled rather than
- * under-permitted. Writing this out is what corrected a forward constraint I had stated as "the kit
- * may read the api's types": the config has always been stricter than that, and the generated
- * matrix is what surfaced the disagreement. */
+ * EVERY SPECIFIER LISTED IS A SHAPE THE LANGUAGE PERMITS, not a shape someone thought of. That
+ * distinction is the whole reason this file exists: a rule enumerating `api/client` permitted
+ * `api/client.ts`, `api/keys.js` and `api/index`, because `allowImportingTsExtensions` is on and
+ * `moduleResolution: bundler` resolves a `.js` specifier to a `.ts` file. So each capability lists
+ * the barrel, the plain module, the explicit `.ts` form and the `.js` form, and the config denies the
+ * DIRECTORY rather than any of them individually. The list is the test's coverage, not the fence.
+ *
+ * `contract/` is the one directory a `domain` component may read: it holds the Problem and Resource
+ * types a component renders and nothing that fetches. It is a separate directory from `api/`
+ * precisely so the fence can be directory-shaped. */
 export const CAPABILITIES: readonly Capability[] = [
   {
     capability: "the fetch client",
-    // The bare barrel reaches it too, because `api/index` could re-export the client later.
-    specifiers: ["../../api", "../../api/client"],
+    specifiers: [
+      "../../api",
+      "../../api/index",
+      "../../api/client",
+      "../../api/client.ts",
+      "../../api/client.js",
+    ],
     permittedZones: NO_ZONE,
   },
   {
     capability: "the SWR key registry, and so cache invalidation",
-    specifiers: ["../../api/keys"],
+    specifiers: ["../../api/keys", "../../api/keys.ts", "../../api/keys.js"],
     permittedZones: NO_ZONE,
   },
   {
     capability: "a data hook",
-    specifiers: ["../../api/hooks", "../../api/hooks/useWeek"],
+    specifiers: ["../../api/hooks", "../../api/hooks/index", "../../api/hooks/useWeek"],
+    permittedZones: NO_ZONE,
+  },
+  {
+    capability: "the generated schema, which is the fetching layer's own input",
+    specifiers: ["../../api/schema"],
     permittedZones: NO_ZONE,
   },
   {
     capability: "a route",
-    specifiers: ["../../routes", "../../routes/WeekRoute"],
+    specifiers: ["../../routes", "../../routes/index", "../../routes/WeekRoute"],
     permittedZones: NO_ZONE,
   },
   {
     capability: "the application shell and its session",
-    specifiers: ["../../app", "../../app/signIn", "../../app/GatedShell"],
+    specifiers: ["../../app", "../../app/index", "../../app/signIn", "../../app/GatedShell"],
     permittedZones: NO_ZONE,
   },
   {
-    capability: "the api's types",
-    specifiers: ["../../api/problem", "../../api/resource"],
+    capability: "the wire contract's types",
+    specifiers: [
+      "../../contract",
+      "../../contract/index",
+      "../../contract/problem",
+      "../../contract/resource",
+    ],
     permittedZones: ["domain"],
   },
   {
@@ -90,7 +110,13 @@ export function layerSpecifiers(layer: KitZone): string[] {
 
 /** The layer a specifier reaches, or null when it names none. */
 function targetLayer(specifier: string): KitZone | null {
-  return KIT_LAYERS.find((layer) => specifier.startsWith(`../${layer}`)) ?? null;
+  // Boundary-checked rather than a bare prefix, so a sibling named `layoutish` is not read as
+  // `layout`. No such directory exists; the model should still not be able to misclassify one.
+  return (
+    KIT_LAYERS.find(
+      (layer) => specifier === `../${layer}` || specifier.startsWith(`../${layer}/`),
+    ) ?? null
+  );
 }
 
 /** The policy, as one predicate: a zone may reach its own layer, any lower one, and what the table permits it. */

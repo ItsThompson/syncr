@@ -14,8 +14,13 @@ import useSWR from "swr";
 
 import { client } from "../client";
 import { readinessKey } from "../keys";
-import { toProblem, unreachableProblem, type Problem } from "../problem";
-import { toResource, type Resource } from "../resource";
+import {
+  toProblem,
+  toResource,
+  unreachableProblem,
+  type Problem,
+  type Resource,
+} from "../../contract";
 import type { components } from "../schema";
 
 type ReadinessReading = components["schemas"]["ReadinessReading"];

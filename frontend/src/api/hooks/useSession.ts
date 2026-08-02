@@ -13,8 +13,13 @@ import useSWR from "swr";
 
 import { client } from "../client";
 import { sessionKey } from "../keys";
-import { toProblem, unreachableProblem, type Problem } from "../problem";
-import { toResource, type Resource } from "../resource";
+import {
+  toProblem,
+  toResource,
+  unreachableProblem,
+  type Problem,
+  type Resource,
+} from "../../contract";
 import type { components } from "../schema";
 
 /** Null when no session is presented, which the api reports as 401. */

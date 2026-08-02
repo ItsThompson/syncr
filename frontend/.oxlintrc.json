@@ -26,10 +26,17 @@
       // `primitives`, and `domain` may import both. Enforcing it preserves the option of
       // extracting a generic kit later without paying for it now.
       //
-      // EVERY PATTERN NAMES BOTH THE DIRECTORY AND ITS CONTENTS. `**/domain/**` alone requires a
-      // segment after `domain`, so it misses a bare barrel import, and a pattern containing `ui`
-      // cannot match a relative specifier at all, because a relative specifier has no `ui`
-      // segment. Both shapes are this codebase's house style, so both were escaping.
+      // EVERY GROUP DENIES A DIRECTORY, AND NONE ENUMERATES A MODULE. Three holes in this file
+      // came from the other shape. A glob requiring a segment after the directory misses a bare
+      // barrel; a glob naming `ui` cannot match a relative specifier; and a list naming
+      // `api/client` permits `api/client.ts`, `api/keys.js` and `api/index`. Each denied a
+      // mechanism rather than a capability. A directory pair, `**/x` and `**/x/**`, denies the
+      // capability whatever file extension or barrel a caller reaches for.
+      //
+      // The one thing a kit component may read from outside its own layers is `contract/`, and it
+      // is a separate directory for exactly this reason: it holds the Problem and Resource types a
+      // component renders, and nothing that fetches. Keeping them under `api/` is what forced the
+      // enumeration that kept springing leaks.
       "files": ["src/ui/primitives/**"],
       "rules": {
         "no-restricted-imports": [
@@ -47,9 +54,11 @@
                   "**/api",
                   "**/api/**",
                   "**/app",
-                  "**/app/**"
+                  "**/app/**",
+                  "**/contract",
+                  "**/contract/**"
                 ],
-                "message": "a kit component accepts dependencies as props: it never fetches, reads config, or knows a route."
+                "message": "a primitive accepts dependencies as props: it never fetches, reads config, knows a route, or names a domain type. A control that needs a Problem is misfiled."
               }
             ]
           }
@@ -74,9 +83,11 @@
                   "**/api",
                   "**/api/**",
                   "**/app",
-                  "**/app/**"
+                  "**/app/**",
+                  "**/contract",
+                  "**/contract/**"
                 ],
-                "message": "a kit component accepts dependencies as props: it never fetches, reads config, or knows a route."
+                "message": "a layout container accepts dependencies as props: it never fetches, reads config, knows a route, or names a domain type."
               }
             ]
           }
@@ -84,14 +95,9 @@
       }
     },
     {
-      // `domain` may read the api's TYPES, because a component that renders a Problem has to name
-      // one. It may not reach the CLIENT, the KEY REGISTRY, or a hook.
-      //
-      // Naming all three matters, and getting it wrong here is what the previous pass missed. The
-      // rule is not "may not reach a hook": the hook is not the fetching, `client.ts` is, and it
-      // exports the one `createClient` instance. `keys.ts` is the invalidation surface. A zone that
-      // bans the hook and permits either of those has banned a mechanism rather than a capability,
-      // which is the same mistake the globs above made about a barrel import.
+      // `domain` may read `contract/`, because a component that renders a Problem has to name one.
+      // It may reach nothing under `api/`: the client is the fetching, `keys.ts` is cache
+      // invalidation, and the generated schema is the fetching layer's own input.
       "files": ["src/ui/domain/**"],
       "rules": {
         "no-restricted-imports": [
@@ -103,14 +109,11 @@
                   "**/routes",
                   "**/routes/**",
                   "**/api",
-                  "**/api/client",
-                  "**/api/keys",
-                  "**/api/hooks",
-                  "**/api/hooks/**",
+                  "**/api/**",
                   "**/app",
                   "**/app/**"
                 ],
-                "message": "a kit component accepts dependencies as props: it may read the api's types, and may not reach the client, the key registry, a hook, a route, or the app."
+                "message": "a kit component accepts dependencies as props: it never fetches, invalidates a cache, reads config, or knows a route. Read the types from contract/ instead."
               }
             ]
           }

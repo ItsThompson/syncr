@@ -6,7 +6,7 @@
  * connection produces no body at all. A component renders `problem.detail`, so the boundary
  * owes it a real Problem rather than an `unknown` cast. */
 
-import type { components } from "./schema";
+import type { components } from "../api/schema";
 
 export type Problem = components["schemas"]["Problem"];
 

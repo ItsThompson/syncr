@@ -15,7 +15,7 @@ import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router";
 
 import type { Session } from "../api/hooks/useSession";
-import type { Resource } from "../api/resource";
+import type { Resource } from "../contract";
 import { signInTarget } from "./signIn";
 
 export interface AuthGateProps {
