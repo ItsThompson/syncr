@@ -78,9 +78,13 @@ type Runner = Callable[[WorkerContext], Awaitable[None]]
 # THE RUNNER REGISTRY. APPEND ONLY.
 #
 # One line per duty, added at the END of this tuple: the solve runner, the calendar
-# sync scheduler, the projection writer, the plan horizon maintainer.
+# sync scheduler, the projection writer, the plan horizon maintainer. Written
+# multi-line while empty so the first appending ticket adds a line rather than
+# reformatting the one every later ticket then edits.
 # ---------------------------------------------------------------------------
-RUNNERS: tuple[Runner, ...] = ()
+RUNNERS: tuple[Runner, ...] = (
+    # run_solve_runner,
+)
 
 _log = get_logger(WORKER_SERVICE)
 
@@ -92,12 +96,20 @@ async def run_iteration(context: WorkerContext, runners: Sequence[Runner]) -> in
     bind_correlation_id(new_correlation_id())
     failures = 0
     for runner in runners:
+        # A Runner is any awaitable callable, so a partial, a callable object, or a
+        # closure from a factory is a legal registry entry and none of those is
+        # guaranteed to carry `__name__`. Resolving it defensively matters because this
+        # runs INSIDE the handler that exists to isolate one duty's failure: an
+        # AttributeError here would escape the except block, unwind the loop, and exit
+        # the process, which under `restart: unless-stopped` is a crash loop.
+        name = getattr(runner, "__name__", repr(runner))
         try:
             await runner(context)
         except Exception:  # noqa: BLE001 - one failing duty must not stop the others
             failures += 1
-            RUNNER_FAILURES.labels(runner=runner.__name__).inc()
-            _log.exception("worker.runner.failed", runner=runner.__name__)
+            RUNNER_FAILURES.labels(runner=name).inc()
+            _log.exception("worker.runner.failed", runner=name)
+    return failures
     return failures
 
 

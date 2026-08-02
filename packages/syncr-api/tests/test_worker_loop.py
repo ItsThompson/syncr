@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 
 import pytest
 
@@ -70,6 +71,42 @@ async def test_a_failing_runner_does_not_stop_the_others(context: WorkerContext)
     # The loop swallows the exception so the other duties run, so `measured` records
     # no error and the failure would otherwise be invisible to monitoring.
     assert _failure_count("calendar_sync") == before + 1
+
+
+async def test_a_failing_runner_without_a_name_does_not_take_the_loop_down(
+    context: WorkerContext,
+) -> None:
+    # A partial is a legal registry entry and has no __name__. Reading it unguarded
+    # inside the handler that exists to isolate failures would unwind the loop and exit
+    # the process, which under `restart: unless-stopped` is a crash loop.
+    async def sync_source(_context: WorkerContext, source_id: str) -> None:
+        raise RuntimeError(f"{source_id} failed")
+
+    nameless = functools.partial(sync_source, source_id="ics-1")
+    assert not hasattr(nameless, "__name__")
+    calls: list[str] = []
+
+    failures = await run_iteration(context, [nameless, counting_runner(calls, "projection")])
+
+    assert failures == 1
+    assert calls == ["projection"], "a nameless runner's failure must not stop the others"
+
+
+async def test_a_nameless_runner_is_still_counted(context: WorkerContext) -> None:
+    async def raise_it(_context: WorkerContext) -> None:
+        raise RuntimeError("boom")
+
+    class Duty:
+        """A callable object, which is what a service-backed runner will look like."""
+
+        async def __call__(self, context: WorkerContext) -> None:
+            await raise_it(context)
+
+    duty = Duty()
+    before = _failure_count(repr(duty))
+
+    assert await run_iteration(context, [duty]) == 1
+    assert _failure_count(repr(duty)) == before + 1
 
 
 async def test_the_loop_runs_a_bounded_number_of_iterations(context: WorkerContext) -> None:
