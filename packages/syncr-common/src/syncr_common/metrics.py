@@ -1,9 +1,8 @@
 """The Prometheus registry and the per-method metric decorator.
 
-One private :class:`CollectorRegistry` holds every syncr family, so the exposition
-carries exactly what this application declares and nothing the client library
-collects by default. Host and container metrics come from node_exporter and
-cadvisor instead.
+One :class:`CollectorRegistry` holds every syncr family, so the exposition carries
+exactly what this application declares and nothing the client library collects by
+default. Host and container metrics come from node_exporter and cadvisor instead.
 
 :func:`measured` is the per-method seam: it records a latency histogram on every
 exit and an error counter on a failing one, then re-raises. Wrapping the method

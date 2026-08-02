@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+from importlib.metadata import version
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from syncr_api.core.app_factory import FEATURE_ROUTERS, create_app
 from syncr_api.core.observability import METRICS_ENDPOINT
-from syncr_api.core.settings import API_PREFIX, ServiceSettings
+from syncr_api.core.settings import API_PREFIX
 from syncr_common.health import HEALTHZ_ENDPOINT, READYZ_ENDPOINT, RETRY_AFTER_SECONDS
 from tests.conftest import failing_check, passing_check
+
+if TYPE_CHECKING:
+    from syncr_api.core.settings import ServiceSettings
 
 
 def test_liveness_answers_200_without_checking_a_dependency(
@@ -101,3 +107,32 @@ def test_registry_entries_all_build_a_router(settings: ServiceSettings) -> None:
 def test_settings_and_logger_are_reachable_on_app_state(app: FastAPI) -> None:
     assert app.state.settings.service == "syncr-api-test"
     assert app.state.log is not None
+
+
+def test_the_generated_document_describes_the_problem_shape(
+    settings: ServiceSettings,
+) -> None:
+    # Without the registered defaults FastAPI documents its own HTTPValidationError
+    # for 422 and nothing for 500, so the frontend would generate types for an error
+    # contract the api never sends. The document is a committed contract.
+    def build_router() -> APIRouter:
+        router = APIRouter(prefix=f"{API_PREFIX}/areas", tags=["areas"])
+
+        @router.post("")
+        async def create_area(body: dict[str, str]) -> dict[str, str]:
+            return body
+
+        return router
+
+    document = create_app(settings, feature_routers=(build_router,)).openapi()
+    responses = document["paths"][f"{API_PREFIX}/areas"]["post"]["responses"]
+    problem_ref = "#/components/schemas/Problem"
+
+    assert "Problem" in document["components"]["schemas"]
+    assert "HTTPValidationError" not in document["components"]["schemas"]
+    assert responses["422"]["content"]["application/json"]["schema"]["$ref"] == problem_ref
+    assert responses["500"]["content"]["application/json"]["schema"]["$ref"] == problem_ref
+
+
+def test_the_version_comes_from_the_package_metadata(settings: ServiceSettings) -> None:
+    assert create_app(settings).openapi()["info"]["version"] == version("syncr-api")

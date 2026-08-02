@@ -67,7 +67,7 @@ python_version = "3.12"
 plugins = ["pydantic.mypy"]
 strict = true
 mypy_path = "src"
-files = ["src/syncr_api", "alembic/env.py", "tests"]
+files = ["src/syncr_api", "alembic", "tests"]
 
 [tool.pytest.ini_options]
 # "." puts the packaged `tests` on the import path so test modules use absolute

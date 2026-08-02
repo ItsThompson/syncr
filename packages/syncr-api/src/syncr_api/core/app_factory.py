@@ -1,8 +1,12 @@
 """The application factory and the feature-router registry.
 
-:func:`create_app` assembles a configured app: structured logging, the health and
-metrics routers, the error contract, correlation, and every router the registry
-below declares.
+:func:`create_app` assembles a configured app: the health and metrics routers, the
+error contract, correlation, and every router the registry below declares.
+
+It deliberately does NOT configure logging. That is a process-global side effect, and
+an entrypoint owns it: ``api/main.py`` and ``worker/main.py`` each call
+``configure_logging`` before building anything, so a factory stays a factory and a
+test is not fighting a global it did not ask for.
 
 Wiring only. This module imports feature modules; a feature module must never
 import this one, or the composition root becomes a cycle. A feature module builds
@@ -11,15 +15,16 @@ its own path from ``syncr_api.core.settings.API_PREFIX``.
 
 from __future__ import annotations
 
+from importlib.metadata import version
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, FastAPI
 
 from syncr_api.core.correlation import CorrelationMiddleware
-from syncr_api.core.errors import build_exception_handlers
+from syncr_api.core.errors import PROBLEM_RESPONSES, build_exception_handlers
 from syncr_api.core.observability import create_metrics_router
 from syncr_common.health import create_health_router
-from syncr_common.logging import configure_logging, get_logger
+from syncr_common.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -43,7 +48,9 @@ type RouterFactory = Callable[[], APIRouter]
 # ---------------------------------------------------------------------------
 FEATURE_ROUTERS: tuple[RouterFactory, ...] = ()
 
-API_VERSION = "0.1.0"
+# The one place the api's version is stated: the package metadata uv installs from
+# pyproject.toml.
+API_VERSION = version("syncr-api")
 
 
 def create_app(
@@ -54,10 +61,15 @@ def create_app(
     lifespan: Lifespan[FastAPI] | None = None,
 ) -> FastAPI:
     """Assemble the configured app from injected settings and mount points."""
-    configure_logging(environment=settings.environment, log_level=settings.log_level)
     log = get_logger(settings.service)
 
-    app = FastAPI(title=settings.service, version=API_VERSION, lifespan=lifespan)
+    app = FastAPI(
+        title=settings.service,
+        version=API_VERSION,
+        lifespan=lifespan,
+        # So the generated document describes the error shape the api actually sends.
+        responses=dict(PROBLEM_RESPONSES),
+    )
     app.state.settings = settings
     app.state.log = log
 

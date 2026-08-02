@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.settings import EnvSettings, ServiceSettings, build_service_settings
 from syncr_common.health import CheckResult, ReadinessCheck
-from syncr_common.logging import clear_context
+from syncr_common.logging import clear_context, configure_logging
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -21,6 +21,17 @@ TEST_SERVICE = "syncr-api-test"
 
 # A closed port, so a connection attempt fails fast and for one obvious reason.
 UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://syncr:syncr@127.0.0.1:1/syncr"
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _configure_logging() -> None:
+    """Configure logging once, as an entrypoint does.
+
+    ``create_app`` deliberately does not, so a suite that never asserts on a log line
+    would otherwise run against structlog's defaults. ``test`` also turns on the
+    strict event-name check, so a malformed event name in api code fails here.
+    """
+    configure_logging(environment="test", log_level="info")
 
 
 @pytest.fixture(autouse=True)

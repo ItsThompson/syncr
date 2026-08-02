@@ -87,8 +87,6 @@ def test_every_log_line_emitted_during_the_request_carries_the_id(
 ) -> None:
     app = create_app(settings, feature_routers=(lambda: build_logging_app(settings),))
     stream = io.StringIO()
-    # Reconfigure after create_app, which configures logging itself, so the lines
-    # this request emits land in the stream under test.
     configure_logging(environment="production", log_level="info", stream=stream)
 
     with TestClient(app) as http:
