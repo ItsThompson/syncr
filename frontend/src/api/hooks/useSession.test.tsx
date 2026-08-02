@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { apiServer } from "../../testing/apiServer";
 import {
+  originRejectedResponse,
   pendingHandler,
   readyz,
   session,
@@ -57,6 +58,14 @@ describe("useSession, through the gate", () => {
     expect(
       await screen.findByText("The request could not be completed. Nothing was changed."),
     ).toBeInTheDocument();
+  });
+
+  it("does not treat a rejected origin as signed out, because the credential was not the problem", async () => {
+    apiServer.use(session(originRejectedResponse));
+    renderAt("/week");
+
+    expect(await screen.findByText(/does not serve/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
   });
 
   it("shows a static reading while the session is being read", () => {

@@ -61,10 +61,24 @@ export const sessionResponse: StubbedResponse = {
 export const signedOutResponse: StubbedResponse = {
   status: 401,
   body: {
-    type: "syncr:unauthenticated",
+    type: "syncr:unauthorized",
     title: "Authentication required",
     status: 401,
-    detail: "No session was presented. Signing in restores every read and write.",
+    detail: "Sign in to continue.",
+  },
+};
+
+/* An origin this deployment does not serve. Not a signed-out state: the credential was never
+ * the problem, so the gate must not send the reader to sign in. */
+export const originRejectedResponse: StubbedResponse = {
+  status: 403,
+  body: {
+    type: "syncr:origin-rejected",
+    title: "Cross-origin request rejected",
+    status: 403,
+    detail:
+      "This request states an origin this deployment does not serve, so it was not applied. " +
+      "Nothing was changed. Reading is unaffected.",
   },
 };
 
