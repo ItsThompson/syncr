@@ -5,7 +5,7 @@
  * third step appearing without a decision: the step comes from a table keyed by the measure, and the buttons
  * announce the step they will apply. */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -54,6 +54,14 @@ describe("a duration stepper", () => {
     renderStepper();
 
     expect(screen.getByRole("spinbutton")).toHaveAttribute("step", "15");
+  });
+
+  it("hands a typed figure through unsnapped until it is committed", () => {
+    const { onValueChange } = renderStepper({ value: 210 });
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "50" } });
+
+    expect(onValueChange).toHaveBeenLastCalledWith(50);
   });
 
   it("snaps a typed figure to the quarter hour on commit", async () => {

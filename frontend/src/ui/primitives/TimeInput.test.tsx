@@ -3,7 +3,7 @@
  * The snap is 15 minutes and it is applied on commit rather than on every keystroke, because snapping while a
  * reader types turns 13:4 into 13:00 before they reach the second digit. */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -34,6 +34,14 @@ describe("TimeInput", () => {
     const { container } = renderTime();
 
     expect(timeField(container)).toHaveAttribute("step", "900");
+  });
+
+  it("hands each keystroke through unsnapped, so a half-typed value is not corrected", () => {
+    const { container, onValueChange } = renderTime({ value: "09:00" });
+
+    fireEvent.change(timeField(container), { target: { value: "09:07" } });
+
+    expect(onValueChange).toHaveBeenLastCalledWith("09:07");
   });
 
   it("snaps to the nearest quarter hour on commit", async () => {

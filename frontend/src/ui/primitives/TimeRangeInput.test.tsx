@@ -5,7 +5,7 @@
  * only the caller knows which day each end belongs to. A control that refused it would forbid the case the
  * product exists to handle. */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -41,6 +41,15 @@ describe("TimeRangeInput", () => {
     await userEvent.tab();
 
     expect(onValueChange).toHaveBeenLastCalledWith({ start: "13:00", end: "14:30" });
+  });
+
+  it("hands back the whole interval when the end changes", async () => {
+    const { onValueChange } = renderRange();
+    const end = screen.getByLabelText("Moved to, to");
+
+    fireEvent.change(end, { target: { value: "15:00" } });
+
+    expect(onValueChange).toHaveBeenLastCalledWith({ start: "13:00", end: "15:00" });
   });
 
   it("snaps each end with the same snap the single control uses", async () => {
