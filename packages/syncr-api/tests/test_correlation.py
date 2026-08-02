@@ -7,6 +7,7 @@ import json
 import re
 from typing import TYPE_CHECKING
 
+import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
@@ -19,6 +20,8 @@ from syncr_common.health import HEALTHZ_ENDPOINT
 from syncr_common.logging import configure_logging, current_correlation_id, get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from syncr_api.core.settings import ServiceSettings
 
 LOG_PATH = "/logged"
@@ -82,16 +85,32 @@ def test_the_handler_sees_the_same_id_the_response_echoes(
     assert response.headers[CORRELATION_ID_HEADER] == "one-user-action"
 
 
-def test_every_log_line_emitted_during_the_request_carries_the_id(
-    settings: ServiceSettings,
-) -> None:
-    app = create_app(settings, feature_routers=(lambda: build_logging_app(settings),))
+@pytest.fixture
+def production_log_stream() -> Iterator[io.StringIO]:
+    """Render to a captured stream in ``production`` mode, then hand the config back.
+
+    Logging configuration is process-global. Restoring on teardown keeps this test's
+    reconfiguration from leaking into any other, which is belt-and-braces beside the
+    per-test autouse fixture in ``conftest.py``.
+    """
     stream = io.StringIO()
     configure_logging(environment="production", log_level="info", stream=stream)
+    yield stream
+    configure_logging(environment="test", log_level="info")
+
+
+def test_every_log_line_emitted_during_the_request_carries_the_id(
+    settings: ServiceSettings, production_log_stream: io.StringIO
+) -> None:
+    app = create_app(settings, feature_routers=(lambda: build_logging_app(settings),))
+    # Drop the factory's own boot line: it is emitted outside any request and so carries
+    # no correlation id by design. What is under test is the lines a request produces.
+    production_log_stream.seek(0)
+    production_log_stream.truncate()
 
     with TestClient(app) as http:
         http.get(LOG_PATH, headers={CORRELATION_ID_HEADER: "traced-1"})
 
-    lines = [json.loads(line) for line in stream.getvalue().splitlines() if line]
+    lines = [json.loads(line) for line in production_log_stream.getvalue().splitlines() if line]
     assert lines, "expected the handler's line to be captured"
     assert all(line["correlation_id"] == "traced-1" for line in lines)
