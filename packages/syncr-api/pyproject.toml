@@ -29,6 +29,7 @@ syncr-solver = { workspace = true }
 [project.scripts]
 syncr-api = "syncr_api.api.main:main"
 syncr-worker = "syncr_api.worker.main:main"
+syncr-bootstrap-user = "syncr_api.accounts.bootstrap:main"
 
 [dependency-groups]
 dev = [
@@ -52,11 +53,11 @@ extend = "../../ruff.toml"
 src = ["src", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests assert liberally (S101), pass dummy secrets as arguments (S106), bundle
-# multi-condition assertions (PT018), catch broad exceptions to skip when a
-# dependency is unavailable (BLE001), and exercise the bind-all host as test data
-# (S104).
-"tests/**/*.py" = ["S101", "S104", "S106", "PT018", "BLE001"]
+# Tests assert liberally (S101), name dummy credentials as constants (S105) and pass
+# them as arguments (S106), bundle multi-condition assertions (PT018), catch broad
+# exceptions to skip when a dependency is unavailable (BLE001), and exercise the
+# bind-all host as test data (S104).
+"tests/**/*.py" = ["S101", "S104", "S105", "S106", "PT018", "BLE001"]
 # Alembic generates a revision from alembic/script.py.mako, whose header imports
 # Sequence at runtime for the revision-identifier annotations. A generated file must
 # not need a hand edit to pass lint.

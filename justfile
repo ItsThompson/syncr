@@ -20,9 +20,11 @@ default:
 
 # --- Setup ------------------------------------------------------------------
 
-# Build the shared root venv from the single root lockfile and install the hooks
+# Build the shared root venv from the single root lockfile, install the frontend's locked
+# dependency tree, and install the hooks
 setup:
     uv sync --all-packages
+    cd frontend && npm ci
     just hooks
 
 # Install the git hooks.
@@ -108,6 +110,11 @@ dev-api:
 dev-worker:
     cd packages/syncr-api && uv run --no-sync syncr-worker
 
+# The Vite dev server. Proxies the api paths to `just dev-api`, so the browser talks to one
+# origin and the client's `credentials: include` behaves as it will in the deployed stack
+dev-frontend:
+    cd frontend && npm run dev
+
 # --- Migrations -------------------------------------------------------------
 # The chain is forward-only with one head, and migrations run as a one-shot before
 # the api and the worker start, never at application startup.
@@ -123,6 +130,20 @@ migration NAME:
 # Print the migration chain, so a second head is visible before it is a problem
 migration-heads:
     cd packages/syncr-api && uv run --no-sync alembic heads
+
+# --- Accounts ---------------------------------------------------------------
+
+# Create the first tenant and user. P0 has no sign-up flow, so this is the only
+# thing that creates an account. Needs migrations applied first.
+#
+# The password is prompted for, never taken as an argument: an argument would be in
+# the shell history and in the process table. Set SYNCR_BOOTSTRAP_PASSWORD to script
+# it. Re-running with the same email changes nothing and exits 0.
+#
+# See docs/runbooks/bootstrap-first-user.md
+bootstrap-user EMAIL:
+    cd packages/syncr-api && SYNCR_BOOTSTRAP_EMAIL="{{EMAIL}}" \
+      uv run --no-sync syncr-bootstrap-user
 
 # --- Tests ------------------------------------------------------------------
 
@@ -160,6 +181,10 @@ test-learning:
 # The CLI suite
 test-cli:
     cd cli && uv run --no-sync pytest
+
+# The frontend unit suite, with coverage. The pre-push hook runs this
+test-frontend:
+    cd frontend && npm run test:coverage
 
 # --- Lint and format --------------------------------------------------------
 
@@ -202,6 +227,52 @@ fmt:
     for member in {{members}}; do
       (cd "$member" && uv run --no-sync ruff format . && uv run --no-sync ruff check --fix .)
     done
+
+# Every frontend static gate. The pre-commit hook runs this, and so does CI, so the hook and
+# the gate cannot drift.
+#
+# Five checks, none of which the others can cover:
+#   oxlint          the language and React rules, plus the kit's import zones
+#   stylelint       the design rules that live in CSS: no raw color, no motion, no radius
+#   tokens-validate the token layer and the six reference sheets that render from it
+#   lint-markup     the design rules that reach the DOM as a class name or a data attribute
+#   check-channels  each state channel assigned in exactly one file under the kit
+#
+# Every check runs even when an earlier one fails: one red linter must not hide the rest.
+lint-frontend:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd frontend
+    failed=0
+    for check in lint:js lint:css lint:tokens lint:markup lint:channels; do
+      echo "--- $check"
+      npm run --silent "$check" || failed=1
+    done
+    exit "$failed"
+
+# The token file validator, standalone. A broken comment in a token file is a silent, total
+# failure: it discards every declaration after it and renders a plausible page with no values
+tokens-validate:
+    cd frontend && npm run --silent lint:tokens
+
+# tsc over the frontend. Separate from `lint-frontend` because it is a whole-tree check and
+# belongs with the other whole-tree checks at pre-push. It is not optional: vitest transpiles
+# with esbuild, which strips types without checking them, so a green suite says nothing at all
+# about type safety
+typecheck-frontend:
+    cd frontend && npm run --silent typecheck
+
+# --- Contract ---------------------------------------------------------------
+# The frontend never hand-writes a response type. `openapi.json` is generated from the FastAPI
+# app and `schema.d.ts` from that, both committed, and a CI job regenerates both and fails on a
+# diff, so a backend change that alters the contract cannot merge without the frontend seeing it.
+
+# Regenerate frontend/openapi.json and frontend/src/api/schema.d.ts. Commit both
+contract:
+    cd packages/syncr-api && uv run --no-sync python scripts/export_openapi.py \
+      ../../frontend/openapi.json
+    cd frontend && npm run --silent codegen
+    @echo "regenerated. commit frontend/openapi.json and frontend/src/api/schema.d.ts together"
 
 # --- Security ---------------------------------------------------------------
 
