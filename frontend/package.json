@@ -1,0 +1,52 @@
+{
+  "name": "syncr-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "syncr React SPA. Vite build, Tailwind v4 mapped onto the token layer, SWR over a client typed from the committed OpenAPI document.",
+  "engines": {
+    "node": ">=22.22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "codegen": "openapi-typescript openapi.json --output src/api/schema.d.ts",
+    "lint:js": "oxlint",
+    "lint:css": "stylelint \"src/**/*.css\"",
+    "lint:tokens": "node scripts/validate-tokens/cli.ts",
+    "lint:markup": "node scripts/lint-markup/cli.ts",
+    "lint:channels": "node scripts/check-channels/cli.ts"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router": "^8.3.0",
+    "swr": "^2.4.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.10",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "@vitest/coverage-v8": "^4.1.10",
+    "jsdom": "^30.0.1",
+    "msw": "^2.15.0",
+    "openapi-typescript": "^7.13.0",
+    "oxlint": "^1.76.0",
+    "stylelint": "^17.14.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
+  }
+}

@@ -17,6 +17,7 @@ build/
 # Node toolchain
 node_modules/
 *.tsbuildinfo
+coverage/
 
 # Secrets and local config. .env.example is committed; .env is not.
 .env
