@@ -69,11 +69,16 @@ export const CHANNELS: readonly Channel[] = [
    * same drift as two files assigning the fill.
    *
    * A glyph reaches the DOM as generated content or as a pseudo-element's own text, which is why the
-   * properties are the `::before`/`::after` family rather than a colour. Ticket 8's pinned mark and
-   * ticket 35's overlap count are the first two things that will claim it. */
+   * properties are the `::before`/`::after` family rather than a colour.
+   *
+   * `--glyph` is here because that is what the kit's glyph table actually assigns. `glyphs.css` states
+   * `content: var(--glyph)` once, on the slot, and a state switches the MARK by setting `--glyph`: the
+   * accordion's `[ + ]` becoming `[ - ]` is `[data-state="open"]` setting that property. Reading only
+   * `content` would have called the glyph slot unassigned while a state was driving it, which is a
+   * check reporting a claim rather than a fact. */
   {
     name: "glyph slot",
-    properties: ["content", "list-style-type", "list-style"],
+    properties: ["content", "--glyph", "list-style-type", "list-style"],
     utilityPrefixes: ["content-", "before:content", "after:content"],
   },
   /* QUARTER-LINE WEIGHT belongs to `data-dragging` on the grid: at rest the quarter hour is drawn at

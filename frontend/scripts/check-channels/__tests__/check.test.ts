@@ -70,6 +70,24 @@ describe("the glyph slot and the quarter-line weight", () => {
     expect(outcome.findings[0].message).toContain("data-pinned -> glyph slot");
   });
 
+  /* THE WAY THIS KIT ACTUALLY ASSIGNS IT. `glyphs.css` states `content: var(--glyph)` once, on the slot, and
+   * a state switches the MARK by setting that property. Reading only `content` reported the glyph slot as
+   * unassigned while `[data-state="open"]` was driving it, so the script agreed with a claim the kit could
+   * not support. */
+  it("sees a state that switches the mark through --glyph rather than through content", async () => {
+    const outcome = await check(["glyph-property.css"]);
+
+    expect(outcome.notes).toContain("  data-state -> glyph slot");
+    expect(outcome.findings).toEqual([]);
+  });
+
+  it("fails when a second file switches the same state's mark", async () => {
+    const outcome = await check(["glyph-property.css", "glyph-property-again.css"]);
+
+    expect(outcome.findings.map((finding) => finding.check)).toEqual(["one-file-per-channel"]);
+    expect(outcome.findings[0].message).toContain("data-state -> glyph slot");
+  });
+
   it("sees the quarter-line weight, which is the drag state on the grid", async () => {
     const outcome = await check(["drag-weight.css"]);
 
