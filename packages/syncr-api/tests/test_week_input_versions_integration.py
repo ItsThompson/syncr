@@ -238,7 +238,7 @@ async def test_two_concurrent_first_solves_cannot_both_commit(
     release_first.set()
     outcomes = await asyncio.wait_for(asyncio.gather(first, second), timeout=LOCK_TIMEOUT_SECONDS)
 
-    assert outcomes == [False, False], (
+    assert list(outcomes) == [False, False], (
         "a first solve was told the week still held the version it read, so two solves for one "
         "week would both have committed"
     )
