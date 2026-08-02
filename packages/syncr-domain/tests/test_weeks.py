@@ -117,7 +117,10 @@ class TestWeekSpan:
         # Monday's zone bounds the start, the following Monday's the end: London is
         # nine hours behind Tokyo in February, so the week loses those nine hours.
         assert span.total_minutes() == (168 - 9) * 60
-        assert span == week_span(IsoWeek(2026, 7), travelling)
+        assert (
+            span.start.astimezone(ZoneInfo(LONDON)).strftime("%Y-%m-%d %H:%M") == "2026-02-09 00:00"
+        )
+        assert span.end.astimezone(ZoneInfo(TOKYO)).strftime("%Y-%m-%d %H:%M") == "2026-02-16 00:00"
 
     def test_returning_mid_week_lengthens_the_span(self) -> None:
         returning = ZoneProfile(
@@ -144,3 +147,25 @@ class TestWeekSpan:
 
         assert spring.end == following.start
         assert not spring.overlaps(following)
+
+    @pytest.mark.parametrize(
+        ("zone", "week", "minutes"),
+        [
+            # A two-hour transition, so neither 167 nor 169.
+            ("Antarctica/Troll", 13, 166 * 60),
+            ("Antarctica/Troll", 43, 170 * 60),
+            # A thirty-minute transition, so not a whole number of hours at all.
+            ("Australia/Lord_Howe", 40, 167 * 60 + 30),
+            ("Australia/Lord_Howe", 14, 168 * 60 + 30),
+        ],
+    )
+    def test_a_transition_that_is_not_an_hour_gives_a_span_outside_the_usual_three(
+        self, zone: str, week: int, minutes: int
+    ) -> None:
+        """167, 168 and 169 are what most weeks are, not a rule the arithmetic enforces.
+        A downstream check that enumerates hour counts, or divides by 60, is wrong for
+        these zones, so the spans are pinned here rather than left to a reader's
+        assumption."""
+        span = week_span(IsoWeek(2026, week), ZoneProfile(zone))
+
+        assert span.total_minutes() == minutes

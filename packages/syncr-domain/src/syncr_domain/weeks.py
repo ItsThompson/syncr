@@ -1,11 +1,17 @@
 """ISO week identity and the week span every downstream figure derives from.
 
-An ISO week is not 168 hours. It is 167, 168, or 169, and it starts at a local
-midnight that resolves against the zone active on that Monday, which may differ from
-the zone active on the following Monday if the user travels mid-week. Because every
-downstream figure derives from ``span.total_minutes()``, a transition week needs no
-special case anywhere: a spring-forward week simply has one hour less discretionary
-time than the week before it.
+An ISO week is not 168 hours. It starts at a local midnight that resolves against the
+zone active on that Monday, which may differ from the zone active on the following
+Monday if the user travels mid-week. Because every downstream figure derives from
+``span.total_minutes()``, a transition week needs no special case anywhere: a
+spring-forward week simply has one hour less discretionary time than the week before it.
+
+Most weeks are 167, 168, or 169 hours, and none of those three is a rule. A zone whose
+transition is not an hour gives something else: ``Antarctica/Troll`` shifts two hours, so
+its 2026 weeks are 166 and 170, and ``Australia/Lord_Howe`` shifts thirty minutes, so its
+weeks are 167.5 and 168.5 and are not a whole number of hours at all. **Read
+``total_minutes()``.** A check that enumerates hour counts, or that assumes the span
+divides by 60, is wrong for a real user in a real zone.
 """
 
 from __future__ import annotations
