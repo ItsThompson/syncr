@@ -5,6 +5,8 @@ export function Offender() {
     <div className="w-[13px] rounded-md transition-colors" data-busy="">
       <span className={"text-[11px] animate-spin"} />
       <span style={{ color: "var(--cobalt-600)" }} />
+      <span data-bare />
+      <span {...{ "data-spread": "x" }} />
     </div>
   );
 }

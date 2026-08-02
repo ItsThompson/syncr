@@ -9,8 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string): string => path.join(here, "..", "__fixtures__", name);
 const themeFile = path.join(appSourceDir, "theme.css");
 
-const check = async (names: string[]) =>
-  checkChannels({ kitFiles: names.map(fixture), themeFile });
+const check = async (names: string[]) => checkChannels({ kitFiles: names.map(fixture), themeFile });
 
 describe("one file per state channel", () => {
   it("passes when one file owns a state's channels", async () => {
@@ -57,7 +56,7 @@ describe("one file per state channel", () => {
 describe("variantStates", () => {
   it("reads each variant's state selector from the theme, not from a second list", () => {
     const states = variantStates(
-      "@custom-variant pinned (&[data-pinned]);\n@custom-variant frame (&[data-origin=\"frame\"]);",
+      '@custom-variant pinned (&[data-pinned]);\n@custom-variant frame (&[data-origin="frame"]);',
     );
 
     expect(states.get("pinned")).toBe("data-pinned");

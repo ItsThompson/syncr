@@ -8,6 +8,7 @@ import { readFile } from "node:fs/promises";
 
 import { classStringsIn } from "../lib/class-strings.ts";
 import { codeWithoutComments, createPositionResolver } from "../lib/css-scan.ts";
+import { parseCustomVariants } from "../lib/custom-variants.ts";
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
 import { relativeToRepo } from "../lib/paths.ts";
 import { PSEUDO_STATES, channelFor, channelForUtility } from "./channels.ts";
@@ -27,15 +28,13 @@ interface Assignment {
   readonly column: number;
 }
 
-const CUSTOM_VARIANT = /@custom-variant\s+([a-z-]+)\s*\(([^)]*)\)/g;
 const RULE = /([^{}]+)\{([^{}]*)\}/g;
 
 /** Maps a variant name onto the state selector it stands for, read from the theme. */
 export function variantStates(themeSource: string): Map<string, string> {
   const states = new Map<string, string>();
-  for (const match of themeSource.matchAll(CUSTOM_VARIANT)) {
-    const attribute = /data-[a-z][a-z0-9-]*/.exec(match[2]);
-    if (attribute !== null) states.set(match[1], attribute[0]);
+  for (const variant of parseCustomVariants(themeSource)) {
+    if (variant.attribute !== undefined) states.set(variant.name, variant.attribute);
   }
   for (const pseudo of PSEUDO_STATES) {
     states.set(pseudo.replace(/^[:]/, ""), pseudo);
@@ -124,11 +123,13 @@ export async function checkChannels(input: CheckChannelsInput): Promise<CheckOut
   for (const [pair, claims] of byPair) {
     const files = [...new Set(claims.map((claim) => claim.file))];
     if (files.length < 2) continue;
-    const claim = claims[claims.length - 1];
+    /* Located at the first claim from a file OTHER than the one seen first, so the position points at
+     * the assignment that arrived second rather than at the file that was already there. */
+    const offender = claims.find((claim) => claim.file !== files[0]) ?? claims[0];
     findings.push({
-      file: claim.file,
-      line: claim.line,
-      column: claim.column,
+      file: offender.file,
+      line: offender.line,
+      column: offender.column,
       check: "one-file-per-channel",
       message:
         `${pair} is assigned in ${files.length} files: ${files.map(relativeToRepo).join(", ")}. ` +

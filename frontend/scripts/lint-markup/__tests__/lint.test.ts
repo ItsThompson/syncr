@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -23,6 +24,16 @@ describe("on-brand markup", () => {
     expect(outcome.findings).toEqual([]);
   });
 
+  /* The fixture's own comment names an invented attribute and an arbitrary value. A check that fired
+   * on the prose documenting it would be one people learn to route around. */
+  it("reads code rather than prose, so a comment cannot trip a rule", async () => {
+    const source = await readFile(fixture("clean.tsx"), "utf8");
+
+    expect(source).toContain("data-busy");
+    expect(source).toContain("w-[13px]");
+    expect((await lint(["clean.tsx"])).findings).toEqual([]);
+  });
+
   it("reports the vocabulary it read, so a silent empty set is visible", async () => {
     const outcome = await lint(["clean.tsx"]);
     expect(outcome.notes[1]).toContain("data-current");
@@ -43,9 +54,7 @@ describe("the markup rules", () => {
 
   it("names the arbitrary value and points at it", async () => {
     const outcome = await lint(["offender.tsx"]);
-    const arbitrary = outcome.findings.filter(
-      (finding) => finding.check === "no-arbitrary-value",
-    );
+    const arbitrary = outcome.findings.filter((finding) => finding.check === "no-arbitrary-value");
     expect(arbitrary.map((finding) => finding.message)).toEqual([
       "w-[13px] is an arbitrary value. A value not on the scale becomes a token first.",
       "text-[11px] is an arbitrary value. A value not on the scale becomes a token first.",
@@ -60,6 +69,24 @@ describe("the markup rules", () => {
     );
     expect(vocabulary?.message).toContain("data-busy");
     expect(vocabulary?.message).toContain("@custom-variant");
+  });
+
+  it("catches a valueless boolean attribute, which is how the state is usually written", async () => {
+    const outcome = await lint(["offender.tsx"]);
+    const invented = outcome.findings
+      .filter((finding) => finding.check === "closed-state-vocabulary")
+      .map((finding) => finding.message);
+
+    expect(invented.some((message) => message.startsWith("data-bare"))).toBe(true);
+  });
+
+  it("catches an attribute spread onto an element rather than written on it", async () => {
+    const outcome = await lint(["offender.tsx"]);
+    const invented = outcome.findings
+      .filter((finding) => finding.check === "closed-state-vocabulary")
+      .map((finding) => finding.message);
+
+    expect(invented.some((message) => message.startsWith("data-spread"))).toBe(true);
   });
 
   it("reaches a utility hidden in a variant map", async () => {

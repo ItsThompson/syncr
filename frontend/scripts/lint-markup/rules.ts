@@ -13,9 +13,9 @@
  * a `@custom-variant`, so a state cannot be styleable without being lintable or the reverse. */
 
 import { classStringsIn, utilitiesIn } from "../lib/class-strings.ts";
+import { blankJsComments } from "../lib/comments.ts";
 import { createPositionResolver } from "../lib/css-scan.ts";
 import type { Finding } from "../lib/findings.ts";
-
 /* An arbitrary value carries its own brackets, a form no English sentence produces, so this one is
  * matched over the whole file rather than only inside a class list. */
 const ARBITRARY_VALUE = /\b[a-z][a-z0-9-]*-\[[^\]\s]+\]/g;
@@ -33,8 +33,19 @@ const MOTION_UTILITY =
 const LEGAL_ANIMATION = "animate-none";
 const CIRCLE_ALLOWLIST = ["StatusDot", "RadioDot", "Radio", "AreaChip", "Avatar"];
 
-const DATA_ATTRIBUTE_IN_MARKUP = /(?<=[\s{])(data-[a-z][a-z0-9-]*)\s*=/g;
-const DATA_ATTRIBUTE_ANYWHERE = /data-[a-z][a-z0-9-]*/g;
+/* Three JSX shapes reach the DOM as the same attribute, and all three are the state a component
+ * should not be inventing:
+ *
+ *   <span data-busy="true">        written with a value
+ *   <span data-busy>               valueless, which React renders as data-busy="true"
+ *   <span {...{ "data-busy": x }}> spread, where the name is a quoted property
+ *
+ * Two patterns rather than one loose one. The first covers attribute position; the second covers a
+ * FULLY quoted name, so a data attribute merely mentioned inside a longer sentence is not a match. */
+const DATA_ATTRIBUTE_SHAPES = [
+  /(?<=[\s{])(data-[a-z][a-z0-9-]*)(?=[\s/>=}])/g,
+  /(?<=["'])(data-[a-z][a-z0-9-]*)(?=["'])/g,
+];
 
 export interface MarkupRuleContext {
   readonly file: string;
@@ -45,16 +56,14 @@ export interface MarkupRuleContext {
   readonly isKitFile: boolean;
 }
 
-/** Reads the closed vocabulary out of the theme, which is where each state is declared. */
-export function vocabularyOf(themeSource: string): Set<string> {
-  return new Set(themeSource.match(DATA_ATTRIBUTE_ANYWHERE) ?? []);
-}
-
 export function lintSource(context: MarkupRuleContext): Finding[] {
   const at = createPositionResolver(context.source);
+  /* Every pattern below runs over CODE, not prose. Offsets are preserved, so a finding still points
+   * at the real line and column. */
+  const code = blankJsComments(context.source);
   const findings: Finding[] = [];
 
-  for (const match of context.source.matchAll(ARBITRARY_VALUE)) {
+  for (const match of code.matchAll(ARBITRARY_VALUE)) {
     findings.push({
       file: context.file,
       ...at(match.index),
@@ -63,7 +72,7 @@ export function lintSource(context: MarkupRuleContext): Finding[] {
     });
   }
 
-  for (const match of context.source.matchAll(LAYER_ZERO_REFERENCE)) {
+  for (const match of code.matchAll(LAYER_ZERO_REFERENCE)) {
     findings.push({
       file: context.file,
       ...at(match.index),
@@ -72,7 +81,7 @@ export function lintSource(context: MarkupRuleContext): Finding[] {
     });
   }
 
-  for (const classString of context.source.length === 0 ? [] : classStringsIn(context.source)) {
+  for (const classString of code.length === 0 ? [] : classStringsIn(code)) {
     for (const utility of utilitiesIn(classString.text)) {
       const position = { line: classString.line, column: classString.column };
 
@@ -110,17 +119,23 @@ export function lintSource(context: MarkupRuleContext): Finding[] {
     }
   }
 
-  for (const match of context.source.matchAll(DATA_ATTRIBUTE_IN_MARKUP)) {
-    if (context.vocabulary.has(match[1])) continue;
-    findings.push({
-      file: context.file,
-      ...at(match.index),
-      check: "closed-state-vocabulary",
-      message:
-        `${match[1]} is not in the closed state vocabulary. Declare the state as a ` +
-        "@custom-variant in theme.css, so the same name is both styleable and lintable.",
-    });
+  const seen = new Set<string>();
+  for (const shape of DATA_ATTRIBUTE_SHAPES) {
+    for (const match of code.matchAll(shape)) {
+      if (context.vocabulary.has(match[1])) continue;
+      // One finding per position, so a name matched by both shapes is reported once.
+      if (seen.has(`${match[1]}:${match.index}`)) continue;
+      seen.add(`${match[1]}:${match.index}`);
+      findings.push({
+        file: context.file,
+        ...at(match.index),
+        check: "closed-state-vocabulary",
+        message:
+          `${match[1]} is not in the closed state vocabulary. Declare the state as a ` +
+          "@custom-variant in theme.css, so the same name is both styleable and lintable.",
+      });
+    }
   }
 
-  return findings;
+  return findings.toSorted((left, right) => (left.line ?? 0) - (right.line ?? 0));
 }

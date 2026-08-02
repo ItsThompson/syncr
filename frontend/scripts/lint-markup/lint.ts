@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
-import { lintSource, vocabularyOf } from "./rules.ts";
+import { vocabularyOf } from "../lib/custom-variants.ts";
+import { lintSource } from "./rules.ts";
 
 export interface LintMarkupInput {
   /** Absolute paths of the TypeScript and TSX files to check. */
