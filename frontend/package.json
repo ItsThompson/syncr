@@ -17,6 +17,8 @@
     "codegen": "openapi-typescript openapi.json --output src/api/schema.d.ts",
     "lint:js": "oxlint",
     "lint:css": "stylelint \"src/**/*.css\"",
+    "lint:format": "prettier --check .",
+    "fmt": "prettier --write .",
     "lint:tokens": "node scripts/validate-tokens/cli.ts",
     "lint:markup": "node scripts/lint-markup/cli.ts",
     "lint:channels": "node scripts/check-channels/cli.ts"
@@ -43,6 +45,7 @@
     "msw": "^2.15.0",
     "openapi-typescript": "^7.13.0",
     "oxlint": "^1.76.0",
+    "prettier": "^3.9.6",
     "stylelint": "^17.14.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",

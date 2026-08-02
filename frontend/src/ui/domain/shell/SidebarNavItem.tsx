@@ -12,7 +12,7 @@ export interface SidebarNavItemProps {
   readonly screen: Screen;
   readonly isCurrent: boolean;
   /** Rendered at the right edge when the screen has one to report. */
-  readonly count?: number;
+  readonly count?: number | undefined;
 }
 
 export function SidebarNavItem({ screen, isCurrent, count }: SidebarNavItemProps) {
@@ -24,9 +24,7 @@ export function SidebarNavItem({ screen, isCurrent, count }: SidebarNavItemProps
       aria-current={isCurrent ? "page" : undefined}
     >
       <span className="grow">{screen.label}</span>
-      {count === undefined ? null : (
-        <span className="text-text-muted tabular-nums">{count}</span>
-      )}
+      {count === undefined ? null : <span className="text-text-muted tabular-nums">{count}</span>}
     </Link>
   );
 }

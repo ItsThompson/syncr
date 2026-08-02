@@ -14,7 +14,7 @@ export interface SidebarNavProps {
   /** The path the router is on, so the row does not have to ask. */
   readonly currentPath: string;
   /** Counts by screen path. A screen with nothing to count is absent. */
-  readonly counts?: Readonly<Record<string, number>>;
+  readonly counts?: Readonly<Record<string, number>> | undefined;
 }
 
 export function SidebarNav({ screens, currentPath, counts }: SidebarNavProps) {
@@ -28,7 +28,7 @@ export function SidebarNav({ screens, currentPath, counts }: SidebarNavProps) {
           key={screen.path}
           screen={screen}
           isCurrent={currentPath === screen.path}
-          {...(counts?.[screen.path] === undefined ? {} : { count: counts[screen.path] })}
+          count={counts?.[screen.path]}
         />
       ))}
     </nav>

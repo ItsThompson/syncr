@@ -24,6 +24,12 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/testing/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
+    /* Well above the 5s default. The first test in a file pays the module transform and the
+     * interceptor start that the rest of the file amortises, and on a loaded host that alone can
+     * exceed 5s: two tests timed out in review at load average 395 and passed at 30s. A flaky first
+     * test teaches a reader to re-run rather than to read, which is worse than a slow suite. */
+    testTimeout: 20000,
+    hookTimeout: 20000,
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

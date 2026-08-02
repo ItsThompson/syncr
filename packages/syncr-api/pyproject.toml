@@ -68,7 +68,9 @@ python_version = "3.12"
 plugins = ["pydantic.mypy"]
 strict = true
 mypy_path = "src"
-files = ["src/syncr_api", "alembic", "tests"]
+# `scripts` holds the committed OpenAPI exporter, which a CI job executes. A script a gate runs
+# belongs inside the gate.
+files = ["src/syncr_api", "alembic", "scripts", "tests"]
 
 [tool.pytest.ini_options]
 # "." puts the packaged `tests` on the import path so test modules use absolute

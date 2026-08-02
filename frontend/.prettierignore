@@ -1,0 +1,17 @@
+# Generated, never hand-edited. Reformatting would fight `just contract`.
+openapi.json
+src/api/schema.d.ts
+
+# The token layer PREDATES this slice and the six reference sheets in docs/design render live from
+# it. Reformatting it would rewrite the design authority's own source for no behavioural gain and
+# make the sheets' provenance harder to read in a diff.
+src/tokens/
+
+# A fixture's exact text IS the test input: several tests assert the line a finding sits on, and a
+# formatter that rewrapped a fixture would silently change what is being tested.
+scripts/**/__fixtures__/
+
+# Build output and lockfile.
+dist/
+coverage/
+package-lock.json

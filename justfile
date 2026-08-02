@@ -231,10 +231,11 @@ fmt:
 # Every frontend static gate. The pre-commit hook runs this, and so does CI, so the hook and
 # the gate cannot drift.
 #
-# Five checks, none of which the others can cover:
+# Six checks, none of which the others can cover:
 #   oxlint          the language and React rules, plus the kit's import zones
 #   stylelint       the design rules that live in CSS: no raw color, no motion, no radius
-#   tokens-validate the token layer and the six reference sheets that render from it
+#   prettier        formatting, so twenty tickets of TypeScript accumulate no drift
+#   tokens-validate the token layer, the sheets that render from it, and the theme that reads it
 #   lint-markup     the design rules that reach the DOM as a class name or a data attribute
 #   check-channels  each state channel assigned in exactly one file under the kit
 #
@@ -244,11 +245,15 @@ lint-frontend:
     set -uo pipefail
     cd frontend
     failed=0
-    for check in lint:js lint:css lint:tokens lint:markup lint:channels; do
+    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels; do
       echo "--- $check"
       npm run --silent "$check" || failed=1
     done
     exit "$failed"
+
+# Apply the frontend formatter. The Python members' equivalent is `just fmt`
+fmt-frontend:
+    cd frontend && npm run --silent fmt
 
 # The token file validator, standalone. A broken comment in a token file is a silent, total
 # failure: it discards every declaration after it and renders a plausible page with no values

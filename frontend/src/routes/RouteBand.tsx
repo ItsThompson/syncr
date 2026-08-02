@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 export interface RouteBandProps {
   readonly title: string;
   /** The eyebrow line under the title: a range, a count, a date. */
-  readonly sub?: string;
+  readonly sub?: string | undefined;
   readonly children?: ReactNode;
 }
 
