@@ -115,6 +115,23 @@ class EnvSettings(SyncrSettings):
             raise ValueError(still_the_default)
         return self
 
+    @model_validator(mode="after")
+    def _refuse_an_empty_origin_list(self) -> EnvSettings:
+        """Fail construction rather than serve a stack that rejects every mutation.
+
+        An unset variable interpolates to an empty value, and an empty allowlist trusts
+        no origin, so every unsafe request answers 403. That reads as an application bug
+        rather than as a missing variable, which is the failure this refuses to ship.
+        """
+        if not self.allowed_origins:
+            message = (
+                "ALLOWED_ORIGINS is empty, so every unsafe request would be rejected with "
+                "403. Name the origins the browser sends from, comma separated, for "
+                "example ALLOWED_ORIGINS=https://syncr.example"
+            )
+            raise ValueError(message)
+        return self
+
 
 class ServiceSettings(BaseModel):
     """Full settings for one process: shared env config plus its own identity.

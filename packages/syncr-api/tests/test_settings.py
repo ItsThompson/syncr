@@ -87,11 +87,28 @@ def test_the_allowed_origins_default_covers_the_local_loop() -> None:
         ("https://syncr.example", ("https://syncr.example",)),
         ("https://a.example,https://b.example", ("https://a.example", "https://b.example")),
         (" https://a.example , https://b.example ", ("https://a.example", "https://b.example")),
-        ("", ()),
     ],
 )
 def test_a_comma_separated_origin_list_is_parsed(value: str, expected: tuple[str, ...]) -> None:
     assert env(allowed_origins=value).allowed_origins == expected
+
+
+@pytest.mark.parametrize("value", ["", "   ", ",", " , "])
+def test_an_empty_origin_list_is_refused(value: str) -> None:
+    # An unset variable interpolates to empty, and an empty allowlist trusts no origin, so
+    # the stack would sign in, read everything, and 403 every write. That reads as an
+    # application bug rather than as a missing variable.
+    with pytest.raises(ValidationError, match="ALLOWED_ORIGINS"):
+        env(allowed_origins=value)
+
+
+def test_the_empty_origin_error_names_the_variable_and_an_example() -> None:
+    with pytest.raises(ValidationError) as refused:
+        env(allowed_origins="")
+
+    message = str(refused.value)
+    assert "ALLOWED_ORIGINS" in message
+    assert "https://syncr.example" in message
 
 
 def test_a_process_carries_both_settings_through_to_its_own_view() -> None:
