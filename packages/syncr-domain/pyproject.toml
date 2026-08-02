@@ -6,6 +6,11 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.9.0,<3",
     "syncr-common",
+    # The IANA database, declared rather than inherited. `zoneinfo` prefers the
+    # system copy and falls back to this wheel, so zone resolution works the same in
+    # a slim image, in CI, and on a developer's machine. Zone correctness is a P0
+    # requirement, and a missing database fails at the first routine, not at import.
+    "tzdata>=2024.1",
 ]
 
 [tool.uv.sources]
