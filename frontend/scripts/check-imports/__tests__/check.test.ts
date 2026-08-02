@@ -102,6 +102,81 @@ describe("an import that resolves to nothing", () => {
   });
 });
 
+/* THE TWO ESCAPES THAT REACHED REVIEW ITERATION 4. Both worked in dev, in test and in production, and
+ * one of them moved `vite build` from 118 to 119 modules with the fetch code in the chunk. */
+describe("a backtick-quoted specifier", () => {
+  it("is caught, because the quote style is not the rule", async () => {
+    const outcome = await check(["ui/primitives/Backtick.ts"]);
+    const zones = messagesFor(outcome.findings, "import-zone");
+
+    expect(zones).toHaveLength(1);
+    expect(zones[0]).toContain("resolves into api/");
+    expect(zones[0]).toContain("it fetches");
+  });
+});
+
+describe("a specifier assembled at runtime", () => {
+  it("is refused rather than ignored, since nothing can tell what it reaches", async () => {
+    const outcome = await check(["ui/primitives/Computed.ts"]);
+
+    expect(messagesFor(outcome.findings, "computed-import-specifier")).toEqual([
+      '"../../api/${part}" is assembled at runtime, so no check can tell what it reaches. ' +
+        "Write the specifier as a literal.",
+    ]);
+  });
+});
+
+describe("a re-export in a directory every zone may read", () => {
+  it("is caught one hop past the permitted first hop", async () => {
+    const outcome = await check(["ui/primitives/Laundered.ts"]);
+    const chains = messagesFor(outcome.findings, "import-zone-through-chain");
+
+    expect(chains).toHaveLength(1);
+    expect(chains[0]).toContain('"../../lib/handy.ts" is permitted, but it reaches api/');
+  });
+
+  it("names the whole chain, not the innocent first hop", async () => {
+    const outcome = await check(["ui/primitives/Laundered.ts"]);
+    const chain = messagesFor(outcome.findings, "import-zone-through-chain")[0];
+
+    expect(chain).toContain("lib/handy.ts -> ");
+    expect(chain).toContain("api/client.ts");
+  });
+
+  it("follows more than one hop", async () => {
+    const outcome = await check(["ui/primitives/DeepLaundered.ts"]);
+    const chains = messagesFor(outcome.findings, "import-zone-through-chain");
+
+    expect(chains).toHaveLength(1);
+    expect(chains[0]).toContain("lib/deep.ts -> ");
+    expect(chains[0]).toContain("lib/handy.ts -> ");
+    expect(chains[0]).toContain("api/client.ts");
+  });
+
+  /* A walk without a visited set spins forever on this, and the timeout would look like a hang rather
+   * than a bug. The cycle is legal and must stay clean. */
+  it("terminates on an import cycle and reports nothing for it", async () => {
+    const outcome = await check(["ui/primitives/DeepLaundered.ts"]);
+    const cycle = messagesFor(outcome.findings, "import-zone-through-chain").filter((text) =>
+      text.includes("loop-"),
+    );
+
+    expect(cycle).toEqual([]);
+  });
+
+  it("reports how far past the first hop it walked", async () => {
+    const outcome = await check(["ui/primitives/DeepLaundered.ts"]);
+
+    expect(outcome.notes[2]).toMatch(/[1-9]\d* module\(s\) walked past the first hop/);
+    expect(outcome.notes[2]).toContain("lib, contract, tokens");
+  });
+
+  it("leaves a conduit that reaches nothing denied alone", async () => {
+    const outcome = await check(["ui/domain/shell/Legal.ts"]);
+    expect(outcome.findings).toEqual([]);
+  });
+});
+
 describe("areaOf", () => {
   it.each([
     ["ui/domain/shell/TopBar.tsx", "ui/domain"],
