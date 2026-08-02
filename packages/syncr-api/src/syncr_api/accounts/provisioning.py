@@ -9,6 +9,12 @@ This is the one account operation with no principal, because it is the trust roo
 there is nobody to authorize against before the first user exists. It lives outside
 ``service.py`` for that reason. Every method in ``service.py`` takes a principal, with
 no exception and therefore no exemption list, and this file is why that stays true.
+
+It also seeds the tenant's weight set, in the same transaction. A tenant with no active
+weight set is a tenant nothing can plan for: ``PlanRevision.weight_set_version`` is
+non-optional from the first revision onwards, and the migration that created the table
+seeded only the tenants that existed when it ran. Creating the tenant is the one moment that
+can guarantee the row, so it is done here rather than by whatever reads it first.
 """
 
 from __future__ import annotations
@@ -22,11 +28,19 @@ from syncr_api.accounts.passwords import hash_password_in_thread
 from syncr_common.logging import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from syncr_api.accounts.repository import UserRepository
     from syncr_api.core.clock import Clock
+    from syncr_api.learned.repository import WeightSetRepository
     from syncr_domain.identifiers import TenantId, UserId
 
 _log = get_logger("syncr.accounts")
+
+# A weight-set repository is scoped to a tenant at construction, and the tenant does not
+# exist until this command creates it, so the provisioner takes the factory rather than the
+# repository.
+type WeightSetFactory = Callable[[TenantId], WeightSetRepository]
 
 
 class BootstrapRejected(Exception):
@@ -51,9 +65,10 @@ class ProvisionedAccount:
 class AccountProvisioner:
     """Creates the first tenant and user, and says so if one already exists."""
 
-    def __init__(self, users: UserRepository, clock: Clock) -> None:
+    def __init__(self, users: UserRepository, clock: Clock, weight_sets: WeightSetFactory) -> None:
         self._users = users
         self._clock = clock
+        self._weight_sets = weight_sets
 
     async def provision(self, email: str, password: str) -> ProvisionedAccount:
         """Create a tenant and its one user, or report the existing one.
@@ -81,15 +96,18 @@ class AccountProvisioner:
                 created=False,
             )
 
+        created_at = self._clock()
         user = await self._users.create_tenant_with_user(
             email=normalized,
             password_hash=await hash_password_in_thread(password),
-            created_at=self._clock(),
+            created_at=created_at,
         )
+        weights = await self._weight_sets(user.tenant_id).seed_hand_tuned(at=created_at)
         _log.info(
             "accounts.bootstrap.provisioned",
             tenant_id=str(user.tenant_id),
             user_id=str(user.id),
+            weight_set_version=weights.version,
         )
         return ProvisionedAccount(
             tenant_id=user.tenant_id,

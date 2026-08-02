@@ -39,6 +39,7 @@ from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import OriginRejected, Unauthorized
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.learned.repository import WeightSetRepository
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine, Iterator
@@ -80,7 +81,11 @@ def owner(live_database_url: str) -> Iterator[ProvisionedAccount]:
         database = create_database(live_database_url)
         try:
             async with database.sessionmaker() as session, session.begin():
-                provisioner = AccountProvisioner(users=UserRepository(session), clock=utc_now)
+                provisioner = AccountProvisioner(
+                    users=UserRepository(session),
+                    clock=utc_now,
+                    weight_sets=lambda tenant_id: WeightSetRepository(session, tenant_id),
+                )
                 return await provisioner.provision(email, PASSWORD)
         finally:
             await database.engine.dispose()

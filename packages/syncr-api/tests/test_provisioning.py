@@ -1,9 +1,10 @@
 """Provisioning the first account, which is the one operation with no principal.
 
-Two properties matter for a command an operator runs once during a first deployment and
+Three properties matter for a command an operator runs once during a first deployment and
 then possibly again by accident. It must refuse a password too weak for an account that is
-reachable from the public internet, and it must be safe to run twice: reporting the
-existing account rather than creating a second one or failing on a constraint.
+reachable from the public internet, it must be safe to run twice: reporting the existing
+account rather than creating a second one or failing on a constraint, and the tenant it
+creates must come out able to be planned for, which means holding an active weight set.
 """
 
 from __future__ import annotations
@@ -19,9 +20,12 @@ from syncr_api.accounts.passwords import hash_password, verify_password
 from syncr_api.accounts.provisioning import AccountProvisioner, BootstrapRejected
 from syncr_api.accounts.records import UserRecord
 from syncr_api.accounts.repository import UserRepository
+from syncr_api.learned.config import FIRST_WEIGHT_SET_VERSION, HAND_TUNED, P0_WEIGHTS
+from syncr_api.learned.records import WeightSetRecord
+from syncr_api.learned.repository import WeightSetRepository
 
 if TYPE_CHECKING:
-    from syncr_domain.identifiers import UserId
+    from syncr_domain.identifiers import TenantId, UserId
 
 EMAIL = "owner@syncr.test"
 PASSWORD = "correct-horse-battery-staple"  # pragma: allowlist secret
@@ -51,8 +55,41 @@ class FakeUserRepository(UserRepository):
         return created
 
 
-def provisioner(users: FakeUserRepository) -> AccountProvisioner:
-    return AccountProvisioner(users=users, clock=lambda: NOW)
+class FakeWeightSetRepository(WeightSetRepository):
+    """Records the version-1 seed a real one would have written, per tenant."""
+
+    def __init__(self, tenant_id: TenantId, seeded: dict[TenantId, WeightSetRecord]) -> None:
+        self._seeded_tenant_id = tenant_id
+        self.seeded = seeded
+
+    async def seed_hand_tuned(self, *, at: datetime) -> WeightSetRecord:
+        assert at == NOW
+        record = WeightSetRecord(
+            tenant_id=self._seeded_tenant_id,
+            version=FIRST_WEIGHT_SET_VERSION,
+            active=True,
+            origin=HAND_TUNED,
+            duration_multiplier={},
+            time_of_day_fitness={},
+            skip_probability={},
+            fitted_at=None,
+            maturity=[],
+            created_at=at,
+            **P0_WEIGHTS,
+        )
+        self.seeded[self._seeded_tenant_id] = record
+        return record
+
+
+def provisioner(
+    users: FakeUserRepository, seeded: dict[TenantId, WeightSetRecord] | None = None
+) -> AccountProvisioner:
+    recorded = {} if seeded is None else seeded
+    return AccountProvisioner(
+        users=users,
+        clock=lambda: NOW,
+        weight_sets=lambda tenant_id: FakeWeightSetRepository(tenant_id, recorded),
+    )
 
 
 async def test_provisioning_creates_a_tenant_and_its_user() -> None:
@@ -121,3 +158,32 @@ async def test_a_password_at_the_minimum_length_is_accepted() -> None:
     account = await provisioner(users).provision(EMAIL, "x" * MINIMUM_PASSWORD_LENGTH)
 
     assert account.created is True
+
+
+async def test_the_created_tenant_holds_an_active_hand_tuned_weight_set() -> None:
+    # Without it the first user has no weights to solve under, and every revision's
+    # `weight_set_version` would name a row that does not exist. The migration seeds the
+    # tenants that existed when it ran, which on a first deployment is none.
+    users = FakeUserRepository()
+    seeded: dict[TenantId, WeightSetRecord] = {}
+
+    account = await provisioner(users, seeded).provision(EMAIL, PASSWORD)
+
+    weights = seeded[account.tenant_id]
+    assert weights.version == FIRST_WEIGHT_SET_VERSION
+    assert weights.active is True
+    assert weights.origin == HAND_TUNED
+    assert weights.deadline_risk == P0_WEIGHTS["deadline_risk"]
+
+
+async def test_an_account_that_already_exists_is_not_seeded_again() -> None:
+    # A second seed for one tenant is rejected by the primary key, so a re-run must not
+    # attempt one: the command's whole point is that running it twice is safe.
+    existing = UserRecord(
+        id=uuid4(), tenant_id=uuid4(), email=EMAIL, password_hash=hash_password(PASSWORD)
+    )
+    seeded: dict[TenantId, WeightSetRecord] = {}
+
+    await provisioner(FakeUserRepository([existing]), seeded).provision(EMAIL, PASSWORD)
+
+    assert seeded == {}

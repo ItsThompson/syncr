@@ -28,6 +28,7 @@ from syncr_api.accounts.repository import UserRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_database
 from syncr_api.core.settings import EnvSettings
+from syncr_api.learned.repository import WeightSetRepository
 from syncr_common.logging import configure_logging
 
 EMAIL_ENV_VAR = "SYNCR_BOOTSTRAP_EMAIL"
@@ -59,7 +60,11 @@ async def run(settings: EnvSettings) -> int:
     database = create_database(settings.database_url)
     try:
         async with database.sessionmaker() as session, session.begin():
-            provisioner = AccountProvisioner(users=UserRepository(session), clock=utc_now)
+            provisioner = AccountProvisioner(
+                users=UserRepository(session),
+                clock=utc_now,
+                weight_sets=lambda tenant_id: WeightSetRepository(session, tenant_id),
+            )
             account = await provisioner.provision(email, password)
     except BootstrapRejected as rejected:
         print(f"refused: {rejected}", file=sys.stderr)
