@@ -88,10 +88,49 @@ describe("the return path", () => {
     expect(returnPathFrom("")).toBe(DEFAULT_RETURN_PATH);
   });
 
-  it.each(["https://elsewhere.example/steal", "//elsewhere.example/steal", "javascript:alert(1)"])(
-    "refuses %s, so a crafted value cannot redirect off-site",
-    (crafted) => {
-      expect(returnPathFrom(`?next=${encodeURIComponent(crafted)}`)).toBe(DEFAULT_RETURN_PATH);
-    },
-  );
+  it.each([
+    "https://elsewhere.example/steal",
+    "//elsewhere.example/steal",
+    "javascript:alert(1)",
+    // The four a first-two-characters check accepts. The URL parser normalises a backslash to a
+    // slash and strips tab and newline BEFORE parsing, so each of these resolves to another origin
+    // while still starting with a single slash.
+    String.raw`/\elsewhere.example/steal`,
+    String.raw`/\/elsewhere.example`,
+    "/\t/elsewhere.example/steal",
+    "/\n/elsewhere.example/steal",
+  ])("refuses %j, so a crafted value cannot redirect off-site", (crafted) => {
+    expect(returnPathFrom(`?next=${encodeURIComponent(crafted)}`)).toBe(DEFAULT_RETURN_PATH);
+  });
+
+  /* The guard's own claim, checked against the parser the browser uses rather than against the
+   * guard's reasoning. A value that survives must resolve to the origin it was resolved against. */
+  it.each([
+    "/week",
+    "/week?mode=session",
+    "/areas?mode=review",
+    "/backlog#top",
+    "/settings?next=%2Fweek",
+  ])("keeps %j, which resolves on-origin", (local) => {
+    const kept = returnPathFrom(`?next=${encodeURIComponent(local)}`);
+
+    expect(kept).toBe(local);
+    expect(new URL(kept, "https://syncr.example").origin).toBe("https://syncr.example");
+  });
+
+  it("refuses every accepted value that resolves off-origin, checked by resolution", () => {
+    const hostile = [
+      "https://elsewhere.example/steal",
+      "//elsewhere.example/steal",
+      String.raw`/\elsewhere.example/steal`,
+      String.raw`/\/elsewhere.example`,
+      "/\t/elsewhere.example/steal",
+      "/\n/elsewhere.example/steal",
+    ];
+
+    for (const crafted of hostile) {
+      const kept = returnPathFrom(`?next=${encodeURIComponent(crafted)}`);
+      expect(new URL(kept, "https://syncr.example").origin).toBe("https://syncr.example");
+    }
+  });
 });

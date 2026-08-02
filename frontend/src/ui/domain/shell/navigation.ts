@@ -30,3 +30,6 @@ export const SETUP_PATH = "/setup";
 
 /** Where an unauthenticated request is sent, and where it returns from. */
 export const SIGN_IN_PATH = "/sign-in";
+
+/** The landing screen: where `/` goes, and where a sign-in with no recorded origin returns to. */
+export const DEFAULT_RETURN_PATH = "/week";
