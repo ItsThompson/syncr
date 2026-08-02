@@ -103,6 +103,19 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * CheckReading
+         * @description One check's contribution to readiness, as it appears on the wire.
+         */
+        CheckReading: {
+            /**
+             * Detail
+             * @description Why the check failed, chosen by the check. Never a raised exception's text.
+             */
+            detail?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
          * FieldError
          * @description One field-level validation failure. Present on 422 responses only.
          */
@@ -111,6 +124,17 @@ export interface components {
             field: string;
             /** Message */
             message: string;
+        };
+        /**
+         * LivenessReading
+         * @description ``GET /healthz``. Checks nothing, so it has one field and one value.
+         */
+        LivenessReading: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "ok";
         };
         /**
          * LoginRequest
@@ -139,6 +163,25 @@ export interface components {
             title: string;
             /** Type */
             type: string;
+        };
+        /**
+         * ReadinessReading
+         * @description ``GET /readyz``, at 200 and at 503 alike.
+         *
+         *     Declared rather than left as an untyped body because the browser reads it through the
+         *     generated client. Without a model the frontend has to hard-code the 503 and cannot reach
+         *     ``checks`` at all, which is the one payload that says WHICH capability is unavailable.
+         */
+        ReadinessReading: {
+            /** Checks */
+            checks: {
+                [key: string]: components["schemas"]["CheckReading"];
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "not_ready";
         };
         /**
          * SessionResponse
@@ -384,9 +427,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["LivenessReading"];
                 };
             };
             /** @description Validation failed */
@@ -424,7 +465,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ReadinessReading"];
                 };
             };
             /** @description Validation failed */
@@ -443,6 +484,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A dependency is not ready. Retry-After names when to come back. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadinessReading"];
                 };
             };
         };

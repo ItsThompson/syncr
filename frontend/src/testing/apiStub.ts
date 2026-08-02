@@ -40,12 +40,17 @@ export function pendingHandler(path: string): RequestHandler {
 
 export const readyResponse: StubbedResponse = {
   status: 200,
-  body: { status: "ready", checks: {} },
+  body: { status: "ready", checks: { postgres: { ok: true, detail: null } } },
+};
+
+export const notReadyChecks = {
+  postgres: { ok: true, detail: null },
+  migrations: { ok: false, detail: "head not applied" },
 };
 
 export const notReadyResponse: StubbedResponse = {
   status: 503,
-  body: { status: "not_ready", checks: { migrations: { ok: false, detail: "head not applied" } } },
+  body: { status: "not_ready", checks: notReadyChecks },
 };
 
 export const sessionResponse: StubbedResponse = {

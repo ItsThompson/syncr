@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { apiServer } from "../../testing/apiServer";
 import {
+  notReadyChecks,
   notReadyResponse,
   pendingHandler,
   readyz,
@@ -15,6 +16,7 @@ import {
 } from "../../testing/apiStub";
 import { renderAt, renderSignedInAt } from "../../testing/renderRoute";
 import { UNEXPECTED_PROBLEM_TYPE, UNREACHABLE_PROBLEM_TYPE } from "../problem";
+import { unreadyChecks } from "./useReadiness";
 
 /* The row is in the DOM from the first paint, so an assertion has to wait for the VALUE to settle
  * rather than for the element to appear. */
@@ -33,6 +35,33 @@ describe("useReadiness", () => {
     renderAt("/settings");
 
     await waitFor(() => expect(reading()).toBe("not ready"));
+  });
+
+  /* The 503 body declares the same model as the 200, which is what lets the reading come from the
+   * contract rather than from a status code the frontend hard-codes. */
+  it("carries the checks payload, which names WHICH capability is unavailable", async () => {
+    apiServer.use(readyz(notReadyResponse));
+    renderAt("/settings");
+
+    await waitFor(() => expect(reading()).toBe("not ready"));
+    expect(unreadyChecks({ isReady: false, checks: notReadyChecks })).toEqual(["migrations"]);
+  });
+
+  it("does not read a fault as a healthy answer, even though Problem also carries a status", async () => {
+    apiServer.use(
+      readyz({
+        status: 500,
+        body: {
+          type: "syncr:internal-error",
+          title: "Internal server error",
+          status: 500,
+          detail: "The readiness aggregate could not be computed.",
+        },
+      }),
+    );
+    renderAt("/settings");
+
+    await waitFor(() => expect(reading()).toBe("The readiness aggregate could not be computed."));
   });
 
   it("renders the api's own problem detail when the contract describes the failure", async () => {

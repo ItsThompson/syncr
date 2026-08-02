@@ -1,6 +1,32 @@
 {
   "components": {
     "schemas": {
+      "CheckReading": {
+        "description": "One check's contribution to readiness, as it appears on the wire.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the check failed, chosen by the check. Never a raised exception's text.",
+            "title": "Detail"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "CheckReading",
+        "type": "object"
+      },
       "FieldError": {
         "description": "One field-level validation failure. Present on 422 responses only.",
         "properties": {
@@ -18,6 +44,21 @@
           "message"
         ],
         "title": "FieldError",
+        "type": "object"
+      },
+      "LivenessReading": {
+        "description": "``GET /healthz``. Checks nothing, so it has one field and one value.",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "LivenessReading",
         "type": "object"
       },
       "LoginRequest": {
@@ -95,6 +136,32 @@
           "detail"
         ],
         "title": "Problem",
+        "type": "object"
+      },
+      "ReadinessReading": {
+        "description": "``GET /readyz``, at 200 and at 503 alike.\n\nDeclared rather than left as an untyped body because the browser reads it through the\ngenerated client. Without a model the frontend has to hard-code the 503 and cannot reach\n``checks`` at all, which is the one payload that says WHICH capability is unavailable.",
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CheckReading"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadinessReading",
         "type": "object"
       },
       "SessionResponse": {
@@ -364,11 +431,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Healthz Healthz Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/LivenessReading"
                 }
               }
             },
@@ -408,7 +471,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessReading"
+                }
               }
             },
             "description": "Successful Response"
@@ -432,6 +497,16 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessReading"
+                }
+              }
+            },
+            "description": "A dependency is not ready. Retry-After names when to come back."
           }
         },
         "summary": "Readyz",
