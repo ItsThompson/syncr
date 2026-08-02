@@ -5,10 +5,7 @@ import path from "node:path";
 
 const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "coverage", "__fixtures__"]);
 
-export async function filesUnder(
-  root: string,
-  extensions: readonly string[],
-): Promise<string[]> {
+export async function filesUnder(root: string, extensions: readonly string[]): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true, recursive: true });
   return entries
     .filter((entry) => entry.isFile())

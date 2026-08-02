@@ -10,9 +10,7 @@ import type { SWRResponse } from "swr";
 import type { Problem } from "./problem";
 
 export type Resource<T> =
-  | { status: "loading" }
-  | { status: "error"; problem: Problem }
-  | { status: "ready"; data: T };
+  { status: "loading" } | { status: "error"; problem: Problem } | { status: "ready"; data: T };
 
 /* Error wins over stale data. A hook that needs to keep the previous rendering while a
  * refetch fails owns that decision itself, because it is the only thing that knows whether

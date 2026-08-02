@@ -23,7 +23,17 @@ export default {
     // outside layer 0 is a pigment nobody sealed.
     "color-no-hex": true,
     "color-named": "never",
-    "function-disallowed-list": ["rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch"],
+    "function-disallowed-list": [
+      "rgb",
+      "rgba",
+      "hsl",
+      "hsla",
+      "hwb",
+      "lab",
+      "lch",
+      "oklab",
+      "oklch",
+    ],
 
     // A component reads a layer 1 semantic name. Layer 0 is raw pigment ramps, and every step
     // there ends in a number, which is what separates --amber-500 from the layer 1 --amber-wash.

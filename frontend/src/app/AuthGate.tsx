@@ -35,9 +35,7 @@ export function AuthGate({ session, children }: AuthGateProps) {
   }
 
   if (session.status === "error") {
-    return (
-      <p className="px-3.75 py-2.75 text-base text-ink-soft">{session.problem.detail}</p>
-    );
+    return <p className="px-3.75 py-2.75 text-base text-ink-soft">{session.problem.detail}</p>;
   }
 
   if (session.data === null) {

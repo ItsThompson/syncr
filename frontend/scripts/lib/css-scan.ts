@@ -193,7 +193,8 @@ function findBlockEnd(code: string, openBrace: number): number {
   return code.length;
 }
 
-export function scanCss(text: string): CssScan {  const at = createPositionResolver(text);
+export function scanCss(text: string): CssScan {
+  const at = createPositionResolver(text);
   const { code, commentText, problems } = stripComments(text, at);
 
   const declarations: Declaration[] = [];

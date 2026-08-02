@@ -26,7 +26,9 @@ describe("scanCss", () => {
   });
 
   it("ignores a declaration-shaped string inside a comment", () => {
-    const scan = scanCss(":root {\n  /* a caller writes --hatch-ink: var(--rule) */\n  --a: 1px;\n}");
+    const scan = scanCss(
+      ":root {\n  /* a caller writes --hatch-ink: var(--rule) */\n  --a: 1px;\n}",
+    );
     expect(scan.declarations.map((declaration) => declaration.name)).toEqual(["--a"]);
     expect(scan.varReferences).toEqual([]);
   });
@@ -57,7 +59,9 @@ describe("scanCss", () => {
   });
 
   it("reads a caller-provided annotation out of a comment", () => {
-    const scan = scanCss("/* @caller-provided --hatch-ink\n   the drawing element owns it */\n:root {}");
+    const scan = scanCss(
+      "/* @caller-provided --hatch-ink\n   the drawing element owns it */\n:root {}",
+    );
     expect(scan.callerProvided.map((annotation) => annotation.name)).toEqual(["--hatch-ink"]);
   });
 });
