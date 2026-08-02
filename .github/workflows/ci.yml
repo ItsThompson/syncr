@@ -161,6 +161,10 @@ jobs:
   # result names whether a design rule or a type broke. Both must pass: vitest
   # transpiles with esbuild, which strips types without checking them.
   #
+  # One of the eight checks builds the frontend and reads the emitted stylesheet, which
+  # is why this job is also the first one to compile the application at all: a banned
+  # declaration reached production for three review iterations because no job did.
+  #
   # Node 22 is a floor, not a preference: the committed checks are TypeScript and are
   # run directly by node, which needs 22.18 or later to strip types.
   # ---------------------------------------------------------------------------
@@ -184,7 +188,7 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: The seven frontend checks, by specifier and by resolved directory alike
+      - name: The eight frontend checks, by specifier, by resolved directory, and by emitted bytes
         run: just lint-frontend
 
       - name: tsc

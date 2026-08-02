@@ -231,7 +231,7 @@ fmt:
 # Every frontend static gate. The pre-commit hook runs this, and so does CI, so the hook and
 # the gate cannot drift.
 #
-# Seven checks, none of which the others can cover:
+# Eight checks, none of which the others can cover:
 #   oxlint          the language and React rules, plus the kit's import zones by SPECIFIER
 #   stylelint       the design rules that live in CSS: no raw color, no motion, no radius
 #   prettier        formatting, so twenty tickets of TypeScript accumulate no drift
@@ -239,12 +239,16 @@ fmt:
 #   lint-markup     the design rules that reach the DOM as a class name or a data attribute
 #   check-channels  each state channel assigned in exactly one file under the kit
 #   check-imports   the kit's import zones again, by RESOLVED DIRECTORY rather than by specifier
+#   check-bundle    the built stylesheet, declaration by declaration, read with postcss
 #
-# The last two overlap deliberately. oxlint matches a specifier's spelling, and three holes reached
-# review that way: a barrel it did not name, a `.ts` extension, a `.js` extension resolving to a
-# `.ts` file. check-imports resolves each import against the filesystem and asks which directory the
-# file actually lives in, so a spelling nobody anticipated cannot slip past. Two checks, two
-# different inputs, one rule.
+# Three of them overlap deliberately, because each takes a different INPUT and each input has a blind
+# spot the others cover. oxlint matches a specifier's spelling, and three holes reached review that
+# way: a barrel it did not name, a `.ts` extension, a `.js` extension resolving to a `.ts` file.
+# check-imports resolves each import against the filesystem and asks which directory the file
+# actually lives in. check-bundle reads the artifact: a banned utility named in a comment, in a plain
+# string or in a `__fixtures__` file reaches the stylesheet a browser downloads without ever being a
+# class on an element, which is how `backdrop-filter` shipped for three review iterations with every
+# other check green.
 #
 # Every check runs even when an earlier one fails: one red linter must not hide the rest.
 lint-frontend:
@@ -252,7 +256,7 @@ lint-frontend:
     set -uo pipefail
     cd frontend
     failed=0
-    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels lint:imports; do
+    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels lint:imports lint:bundle; do
       echo "--- $check"
       npm run --silent "$check" || failed=1
     done

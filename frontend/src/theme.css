@@ -19,16 +19,25 @@
 /* THE CONTENT SCAN IS DECLARED, NOT INFERRED, AND IT IS A CORRECTNESS RULE RATHER THAN A
    PERFORMANCE ONE.
 
-   Tailwind v4 detects sources automatically across the whole project, which means the
-   `__fixtures__` files that exist to PROVE a utility is banned were themselves compiled
-   into the bundle. `dist` shipped `box-shadow: 0 0 8px red`, `rotate:`, `--tw-blur` and
-   `backdrop-filter`, every one of them from a fixture asserting that shape is refused. The
-   artifacts proving the prohibitions were shipping the prohibited CSS to production.
+   Tailwind v4 detects sources automatically across the whole project, which means every file that
+   exists to PROVE a utility is banned was itself compiled into the bundle. `dist` shipped
+   `box-shadow: 0 0 8px red`, `rotate:`, `--tw-blur` and `backdrop-filter`. The artifacts proving the
+   prohibitions were shipping the prohibited CSS to production.
 
-   `source(none)` turns the automatic scan off and the one `@source` below turns it back on
-   for the application only. A fixture may now name any shape it needs without that shape
-   reaching a user. */
+   `source(none)` turns the automatic scan off and the `@source` rules below turn it back on for the
+   application only. THREE ROUTES REMAINED OPEN AFTER THE FIRST NARROWING, all because Tailwind's
+   extractor reads a file more widely than any check reads it: it takes candidates from a comment,
+   from a plain string that is not a class list, and from a `__fixtures__` directory the checks skip.
+   A test naming four banned utilities in an array shipped `will-change`, `transition-delay` and
+   `transition-behavior`; a fixture moved under `src/` shipped a blur and an unfenced shadow; and one
+   word of prose in a comment shipped `.backdrop-filter` for three review iterations.
+
+   So a test and a fixture are excluded, and `scripts/check-bundle` reads the built stylesheet and
+   refuses a banned declaration in it. The exclusions keep dead bytes out; the gate is what makes the
+   guarantee true, because it judges the artifact rather than the scan. Neither replaces the other. */
 @source "./**/*.{ts,tsx}";
+@source not "./**/*.test.{ts,tsx}";
+@source not "./**/__fixtures__/**";
 
 @import "./tokens/index.css";
 @import "./base.css";

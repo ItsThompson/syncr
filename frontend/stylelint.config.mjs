@@ -5,13 +5,23 @@
  * therefore tell what the linter is FOR by reading it.
  *
  * The markup half of the same rules lives in `scripts/lint-markup`, which sees the class names and
- * data attributes no CSS linter can.
+ * data attributes no CSS linter can, and the artifact half lives in `scripts/check-bundle`, which
+ * reads the stylesheet a browser downloads. The three ask the same question of three inputs, so the
+ * banned property list is IMPORTED from the module they share rather than restated here: three copies
+ * is how a shape came to be refused in CSS and permitted in a TSX style object.
  *
  * ESCAPE HATCH. A `stylelint-disable` comment must carry a reason, and an unused one fails, so an
  * exception is auditable and cannot outlive the case it was written for. */
 
+import { BANNED_PROPERTIES, FILTER_PROPERTIES } from "./scripts/lib/declarations.ts";
+
 const LAYER_ZERO_REFERENCE = String.raw`/var\(\s*--(cobalt|cream|oxide|verdigris|amber)-\d/`;
 const LAYER_ZERO_PIGMENT = String.raw`/var\(\s*--pigment-area-/`;
+
+/* Print has no blur, in every spelling a browser accepts. An empty allowed list means no value is. */
+const NO_VALUE_ALLOWED = Object.fromEntries(
+  [...FILTER_PROPERTIES].map((property) => [property, []]),
+);
 
 export default {
   reportDescriptionlessDisables: true,
@@ -49,31 +59,11 @@ export default {
     },
 
     // MOTION IS ZERO, WITHOUT EXCEPTION. Nothing eases, fades, slides, shimmers or spins.
-    "property-disallowed-list": [
-      "transition",
-      "transition-property",
-      "transition-duration",
-      "transition-timing-function",
-      "transition-delay",
-      "animation",
-      "animation-name",
-      "animation-duration",
-      "animation-timing-function",
-      "animation-delay",
-      "animation-iteration-count",
-      "transform",
-      "translate",
-      "rotate",
-      "scale",
-      "will-change",
-    ],
+    "property-disallowed-list": [...BANNED_PROPERTIES],
     "at-rule-disallowed-list": ["keyframes"],
 
     // Print has no blur.
-    "declaration-property-value-allowed-list": {
-      "backdrop-filter": [],
-      filter: [],
-    },
+    "declaration-property-value-allowed-list": NO_VALUE_ALLOWED,
   },
 
   overrides: [

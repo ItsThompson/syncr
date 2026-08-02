@@ -246,13 +246,15 @@ describe("the breakpoint namespace", () => {
 /* THE CONTENT SCAN, which is a correctness rule and not a performance one.
  *
  * Tailwind v4 detects sources across the whole project by default, so the `__fixtures__` files that
- * exist to prove a utility is BANNED were compiled into the bundle. `dist` shipped
- * `box-shadow: 0 0 8px red`, `rotate:`, `--tw-blur` and `backdrop-filter`, each one from a fixture
- * asserting that exact shape is refused, and the stylesheet was 20.50 kB of which 5.67 kB was fixture
- * pollution. Neither the checks nor two review iterations noticed, because everything involved was
- * passing: the fixtures were correct, the rules were correct, and the build was green.
+ * exist to prove a utility is BANNED were compiled into the bundle, and so were the tests and the
+ * comments that merely NAME one: Tailwind's extractor reads every string in a scanned file, while the
+ * markup scan blanks comments, reads only class strings, and ignores `__fixtures__`. Two input sets,
+ * kept in step by hand, and the artifact was the thing nobody read. `dist` shipped a blurred shadow,
+ * a rotate, a blur and a backdrop filter, and the last of them came from the prose in this very
+ * comment, one word of which was the whole candidate.
  *
- * The scan is declared explicitly now. These tests fail if the declaration is dropped. */
+ * The scan is declared and narrowed now, and a check reads the built stylesheet rather than trusting
+ * the narrowing. These tests fail if either half is dropped. */
 describe("the content scan", () => {
   it("is declared rather than inferred, so a fixture cannot reach the bundle", () => {
     expect(themeSource).toContain('@import "tailwindcss" source(none)');

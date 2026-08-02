@@ -22,7 +22,8 @@
     "lint:tokens": "node scripts/validate-tokens/cli.ts",
     "lint:markup": "node scripts/lint-markup/cli.ts",
     "lint:channels": "node scripts/check-channels/cli.ts",
-    "lint:imports": "node scripts/check-imports/cli.ts"
+    "lint:imports": "node scripts/check-imports/cli.ts",
+    "lint:bundle": "node scripts/check-bundle/cli.ts"
   },
   "dependencies": {
     "openapi-fetch": "^0.17.0",
@@ -46,6 +47,7 @@
     "msw": "^2.15.0",
     "openapi-typescript": "^7.13.0",
     "oxlint": "^1.76.0",
+    "postcss": "^8.5.25",
     "prettier": "^3.9.6",
     "stylelint": "^17.14.1",
     "tailwindcss": "^4.3.3",
