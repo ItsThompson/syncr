@@ -336,8 +336,11 @@ def test_two_overrides_that_abut_exactly_are_both_accepted(
 def test_the_settings_read_states_the_zone_an_override_makes_active_today(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
-    today = http.get(SETTINGS, headers=signed_in).json()["activeZoneDate"]
+    # The home zone is set FIRST and the date read afterwards, because the date is resolved
+    # IN the home zone: read before the change and the answer can be yesterday's, which is
+    # a real difference for a few hours either side of midnight rather than a nicety.
     http.patch(SETTINGS, json={"homeZone": LONDON}, headers=signed_in)
+    today = http.get(SETTINGS, headers=signed_in).json()["activeZoneDate"]
 
     declared = http.post(
         TRAVEL_OVERRIDES,

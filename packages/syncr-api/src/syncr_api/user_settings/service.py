@@ -5,7 +5,8 @@ Three rules live here rather than anywhere else.
 **Zone resolution is the domain's, not this module's.** The active zone for a date comes
 from ``syncr_domain.zones.active_zone`` over a ``ZoneProfile`` built from the stored rows.
 Nothing here compares a date against a range, so there is no second implementation to
-disagree with the one the solver and the assembler read.
+disagree with the one the solver and the assembler read. ``zone_reading.py`` holds the
+three helpers that reading needs, and the mapping from a refused zone to a status.
 
 **The overlap rejection is a caught domain error.** ``ZoneProfile`` refuses an overlapping
 pair at construction, so declaring an override builds the profile the declaration would
@@ -30,26 +31,24 @@ another tenant's override into a 404 rather than a deletion.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
-from syncr_api.core.errors import Conflict, NotFound, ValidationFailed
+from syncr_api.core.errors import NotFound, ValidationFailed
 from syncr_api.core.principal import authorize_tenant
 from syncr_api.user_settings.solve_inputs import weeks_covering, weeks_from
+from syncr_api.user_settings.zone_reading import (
+    as_domain,
+    local_date,
+    stated_rejection,
+    zone_profile,
+)
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
-from syncr_domain.zones import (
-    OverlappingTravelError,
-    TravelOverride,
-    ZoneError,
-    ZoneProfile,
-    active_zone,
-    resolve_zone,
-)
+from syncr_domain.zones import TravelOverride, active_zone
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Sequence
     from datetime import date, datetime, time
 
     from syncr_api.core.clock import Clock
@@ -184,9 +183,9 @@ class SettingsService:
         settings = await self._settings.lock(created_at=now)
         existing = await self._overrides.list_all()
 
-        with _stated_rejection(field="zone"):
+        with stated_rejection(field="zone"):
             candidate = TravelOverride(start_date=start_date, end_date=end_date, zone=zone)
-            _profile(settings.home_zone, (*_as_domain(existing), candidate))
+            zone_profile(settings.home_zone, (*as_domain(existing), candidate))
 
         created = await self._overrides.create(
             start_date=start_date, end_date=end_date, zone=zone, created_at=now
@@ -196,7 +195,7 @@ class SettingsService:
             tenant_id=str(principal.tenant_id),
             override_id=str(created.id),
         )
-        await self._bump_for(created, today=_local_date(now, settings.home_zone))
+        await self._bump_for(created, today=local_date(now, settings.home_zone))
         return created
 
     @measured("user_settings")
@@ -216,7 +215,7 @@ class SettingsService:
             override_id=str(override_id),
         )
         settings = await self._settings.read()
-        await self._bump_for(found, today=_local_date(self._clock(), settings.home_zone))
+        await self._bump_for(found, today=local_date(self._clock(), settings.home_zone))
 
     async def _bump_for(self, override: TravelOverrideRecord, *, today: date) -> None:
         """Bump the future weeks this override's range covers, if it covers any."""
@@ -231,9 +230,9 @@ class SettingsService:
         *,
         now: datetime,
     ) -> SettingsView:
-        with _stated_rejection(field="home zone"):
-            profile = _profile(record.home_zone, _as_domain(overrides))
-        on = _local_date(now, record.home_zone)
+        with stated_rejection(field="home zone"):
+            profile = zone_profile(record.home_zone, as_domain(overrides))
+        on = local_date(now, record.home_zone)
         return SettingsView(
             visible_hours=record.visible_hours,
             day_start=record.day_start,
@@ -247,30 +246,6 @@ class SettingsService:
 
 def _or_current[ValueT](change: ValueT | None, current: ValueT) -> ValueT:
     return current if change is None else change
-
-
-def _as_domain(overrides: Sequence[TravelOverrideRecord]) -> tuple[TravelOverride, ...]:
-    return tuple(override.as_domain() for override in overrides)
-
-
-def _profile(home_zone: str, overrides: Sequence[TravelOverride]) -> ZoneProfile:
-    """The domain value zone resolution is stated over.
-
-    A declaration is checked by building the profile it WOULD produce, including it among
-    the stored ones, which is what makes the overlap rule the domain's alone.
-    """
-    return ZoneProfile(home_zone=home_zone, travel_overrides=tuple(overrides))
-
-
-def _local_date(moment: datetime, zone: ZoneId) -> date:
-    """The local date ``moment`` falls on in ``zone``.
-
-    The zone is the HOME zone wherever this is called, never the active one: the date is
-    what selects a travel override, so resolving the date in the override's own zone
-    would need the answer before it could be computed. The two differ only for a few
-    hours either side of a date change at the start or end of a trip.
-    """
-    return moment.astimezone(resolve_zone(zone)).date()
 
 
 def _require_a_positive_day(merged: SettingsRecord) -> None:
@@ -288,28 +263,3 @@ def _require_a_positive_day(merged: SettingsRecord) -> None:
         "so it has no length. Day start must be earlier than day end. Nothing was "
         "changed; every other setting still reads as it did."
     )
-
-
-@contextmanager
-def _stated_rejection(*, field: str) -> Iterator[None]:
-    """Turn a domain zone rejection into the status the boundary owes it.
-
-    An overlap is a state conflict, so 409. Anything else the zone layer rejects is a bad
-    value in the request, so 422. Every rejection ``resolve_zone`` can produce arrives as
-    a ``ZoneError``, whatever shape the identifier had, which is why one clause covers an
-    absent zone, a malformed one, an over-length one, and one naming a directory in the
-    tz database.
-    """
-    try:
-        yield
-    except OverlappingTravelError as error:
-        raise Conflict(
-            f"That range overlaps one already declared: {error}. Nothing was changed. "
-            "Shorten or remove the overlapping override and declare this range again. "
-            "Two ranges that abut exactly are accepted, because adjacency is not overlap."
-        ) from error
-    except ZoneError as error:
-        raise ValidationFailed(
-            f"The {field} was not accepted: {error}. Nothing was changed. "
-            "Use an IANA identifier such as 'Europe/London'."
-        ) from error
