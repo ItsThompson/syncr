@@ -4,11 +4,13 @@
  * Both are asserted against the compiled stylesheet rather than against a class name, so a renamed
  * utility that stops producing the fill fails here. */
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
-import { compileUtilities, declarationsOf } from "../../../testing/compileTheme";
+import { compileUtilities, declarationsOf, srcDir } from "../../../testing/compileTheme";
 import { renderSignedInAt } from "../../../testing/renderRoute";
 import { SidebarNav } from "./SidebarNav";
 import { SCREENS } from "./navigation";
@@ -73,11 +75,7 @@ describe("SidebarNav", () => {
 function renderNav(counts?: Record<string, number>) {
   return render(
     <MemoryRouter>
-      <SidebarNav
-        screens={SCREENS}
-        currentPath="/week"
-        {...(counts === undefined ? {} : { counts })}
-      />
+      <SidebarNav screens={SCREENS} currentPath="/week" counts={counts} />
     </MemoryRouter>,
   );
 }
@@ -96,5 +94,54 @@ describe("the count at the right edge", () => {
   it("renders no count at all when none is supplied", () => {
     renderNav();
     expect(screen.getByRole("link", { name: "backlog" })).toHaveTextContent(/^backlog$/);
+  });
+});
+
+/* THE CURRENT ITEM'S CHANNEL, which is the criterion's own subject: a wash fill plus a 3px
+ * --ink-deep left rule, the same channel a selected block uses.
+ *
+ * Asserted against the stylesheet rather than against the rendered element, because the rule lives
+ * in a plain co-located stylesheet that jsdom never applies: `getComputedStyle` on the link would
+ * report nothing and an assertion over it would pass on a deleted rule. The token INDIRECTION is
+ * what is worth pinning, so the rule must reach --state-hover and --state-selected-*, and those
+ * must separately resolve to the values the criterion names. */
+describe("the current item's channel", () => {
+  const sidebarCss = readFile(path.join(srcDir, "ui", "domain", "shell", "SidebarNav.css"), "utf8");
+  const layoutCss = readFile(path.join(srcDir, "tokens", "layout.css"), "utf8");
+
+  const currentRule = async (): Promise<string> => {
+    const rule = /\.sidebar-nav__item\[data-current\]\s*\{([^}]*)\}/.exec(await sidebarCss);
+    if (rule === null) throw new Error("SidebarNav.css declares no [data-current] rule");
+    return rule[1];
+  };
+
+  it("takes the fill from --state-hover rather than restating a wash", async () => {
+    expect(await currentRule()).toMatch(/background-color:\s*var\(--state-hover\)/);
+  });
+
+  it("takes a left rule from --state-selected-color rather than restating --ink-deep", async () => {
+    expect(await currentRule()).toMatch(/border-left-color:\s*var\(--state-selected-color\)/);
+  });
+
+  it("reserves the rule's width at rest, so becoming current changes no geometry", async () => {
+    const atRest = /\.sidebar-nav__item\s*\{([^}]*)\}/.exec(await sidebarCss);
+    expect(atRest?.[1]).toMatch(
+      /border-left:\s*var\(--state-selected-border\)\s+solid\s+transparent/,
+    );
+  });
+
+  it("resolves those tokens to the wash, the 3px and the ink the criterion names", async () => {
+    const layout = await layoutCss;
+
+    expect(layout).toMatch(/--state-hover:\s*var\(--ink-wash\)/);
+    expect(layout).toMatch(/--state-selected-border:\s*3px/);
+    expect(layout).toMatch(/--state-selected-color:\s*var\(--ink-deep\)/);
+  });
+
+  it("names no raw value of its own, so the channel cannot drift from the block's", async () => {
+    const rule = await currentRule();
+
+    expect(rule).not.toMatch(/#[0-9a-f]{3,6}/i);
+    expect(rule).not.toMatch(/\b3px\b/);
   });
 });
