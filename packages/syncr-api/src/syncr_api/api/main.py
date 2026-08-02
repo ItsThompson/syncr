@@ -39,6 +39,11 @@ app = build_app()
 
 
 def main() -> None:
-    """Serve the api. The container entrypoint; `just dev-api` adds autoreload."""
+    """Serve the api. The container entrypoint; `just dev-api` adds autoreload.
+
+    ``log_config=None`` leaves uvicorn's stdlib logging unconfigured, so the process
+    emits one log format: syncr's JSON lines. Uvicorn's own warnings and errors still
+    surface through the standard-library fallback handler.
+    """
     settings = build_service_settings(service=API_SERVICE, port=API_PORT)
     uvicorn.run(app, host=settings.host, port=settings.port, log_config=None)
