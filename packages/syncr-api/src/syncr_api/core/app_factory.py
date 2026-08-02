@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, FastAPI
 
 from syncr_api.core.correlation import CorrelationMiddleware
-from syncr_api.core.errors import PROBLEM_RESPONSES, build_exception_handlers
+from syncr_api.core.error_handlers import PROBLEM_RESPONSES, build_exception_handlers
 from syncr_api.core.observability import create_metrics_router
 from syncr_common.health import create_health_router
 from syncr_common.logging import get_logger
@@ -44,9 +44,13 @@ type RouterFactory = Callable[[], APIRouter]
 # THE FEATURE-ROUTER REGISTRY. APPEND ONLY.
 #
 # One line per feature module, added at the END of this tuple. Adding a feature
-# changes this list and nothing else in this file.
+# changes this list and nothing else in this file. Written multi-line while empty so
+# the first appending ticket adds a line rather than reformatting the one every later
+# ticket then edits.
 # ---------------------------------------------------------------------------
-FEATURE_ROUTERS: tuple[RouterFactory, ...] = ()
+FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
+    # build_accounts_router,
+)
 
 # The one place the api's version is stated: the package metadata uv installs from
 # pyproject.toml.

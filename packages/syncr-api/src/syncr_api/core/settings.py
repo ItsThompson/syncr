@@ -48,7 +48,12 @@ class EnvSettings(SyncrSettings):
 
 
 class ServiceSettings(BaseModel):
-    """Full settings for one process: shared env config plus its own identity."""
+    """Full settings for one process: shared env config plus its own identity.
+
+    ``is_dev`` is deliberately not repeated here: read it from the
+    :class:`~syncr_common.config.SyncrSettings` instance that produced these values, or
+    compare ``environment`` directly. One predicate, one definition.
+    """
 
     service: str
     port: int
@@ -56,10 +61,6 @@ class ServiceSettings(BaseModel):
     log_level: str
     host: str
     database_url: str
-
-    @property
-    def is_dev(self) -> bool:
-        return self.environment.lower() == "development"
 
 
 def build_service_settings(

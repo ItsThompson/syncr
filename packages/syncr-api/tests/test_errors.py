@@ -145,6 +145,35 @@ def test_a_404_carries_no_retry_after(settings: ServiceSettings) -> None:
     assert "Retry-After" not in response.headers
 
 
+def test_an_error_can_carry_its_own_response_header(settings: ServiceSettings) -> None:
+    # Section 13 requires no header beyond Retry-After, but an OAuth 401 needs
+    # WWW-Authenticate, so the seam exists here rather than in the slice that needs it.
+    raised = Unauthorized(
+        "No credential presented. Reading the plan needs a session.",
+        headers={"WWW-Authenticate": 'Bearer realm="syncr"'},
+    )
+
+    with client_for(settings, raised) as http:
+        response = http.get(RAISE_PATH)
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == 'Bearer realm="syncr"'
+    assert response.headers["content-type"] == PROBLEM_JSON_MEDIA_TYPE
+
+
+def test_a_framework_exception_keeps_its_own_headers(settings: ServiceSettings) -> None:
+    raised = HTTPException(
+        status_code=401, detail="Token expired", headers={"WWW-Authenticate": "Bearer"}
+    )
+
+    with client_for(settings, raised) as http:
+        response = http.get(RAISE_PATH)
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+    assert response.json()["type"] == "syncr:unauthorized"
+
+
 def test_request_validation_uses_the_same_problem_shape(settings: ServiceSettings) -> None:
     with client_for(settings, NotFound("unused")) as http:
         response = http.post(BODY_PATH, json={"block_id": "b-1"})
