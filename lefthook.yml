@@ -1,0 +1,48 @@
+# syncr git hooks. Installed by `just setup`.
+#
+# The split is deliberate. Pre-commit runs only checks that are fast on the files
+# being committed, so it never becomes something a developer routes around.
+# Pre-push runs the checks that need the whole tree: the type checker, and the two
+# pure suites whose failures are quiet. Pre-push deliberately does NOT run every
+# suite; the pure ones are fast enough not to be resented and cover the modules
+# where a silent break does the most damage. CI runs the rest.
+
+pre-commit:
+  # Sequential: the formatter rewrites the files the linter then reads, and the
+  # secret scan must see the final staged content.
+  parallel: false
+  commands:
+    ruff-format:
+      glob: "*.py"
+      run: uv run --no-sync ruff format {staged_files}
+      stage_fixed: true
+      fail_text: "ruff format rewrote a staged file. Review the change and commit again."
+
+    ruff-check:
+      glob: "*.py"
+      run: uv run --no-sync ruff check --fix {staged_files}
+      stage_fixed: true
+      fail_text: "ruff found an issue it cannot fix. Fix it before committing."
+
+    secret-scan:
+      # High-entropy detection plus the known-provider patterns, against the
+      # committed baseline. A new finding fails the commit; a reviewed false
+      # positive is added to the baseline with `just secret-scan` and an audit, or
+      # marked inline with `pragma: allowlist secret`.
+      run: uv run --no-sync detect-secrets-hook --baseline .secrets.baseline {staged_files}
+      fail_text: "A possible secret is staged. Never commit one; see the mitigations above."
+
+pre-push:
+  parallel: true
+  commands:
+    typecheck:
+      run: just typecheck
+      fail_text: "mypy failed. Fix the types before pushing."
+
+    test-domain:
+      run: just test-domain
+      fail_text: "The domain suite failed. The pure layer must be green before pushing."
+
+    test-solver:
+      run: just test-solver
+      fail_text: "The solver suite failed, which may mean the zero-ML boundary broke."

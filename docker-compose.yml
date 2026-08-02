@@ -1,0 +1,157 @@
+# =============================================================================
+# syncr base stack. The deployable artifact every environment layers on.
+#
+# Two networks. `app-net` carries the services. `data-net` is `internal: true`,
+# so Postgres is unreachable from outside the host and a leaked credential is not
+# remotely exploitable. Only api, worker, and learning join both.
+#
+# No host `ports:` anywhere: the Cloudflare tunnel is the only ingress and is
+# added by the tunnel overlay at deploy time. Locally the dev overlay publishes
+# what a host-run inner loop needs.
+#
+# `api` and `worker` are two entrypoints of ONE image, because they need the same
+# repositories, ORM session handling, and settings.
+#
+# Migrations run as a one-shot before either starts, never at application startup,
+# so two replicas cannot race. `just migrate` is that one-shot in development.
+#
+# Third-party images are pinned to exact tags here; the deploy overlay repins them
+# by digest, because a floating tag makes a redeploy an unreviewed change.
+# =============================================================================
+name: syncr
+
+services:
+  api:
+    image: syncr-api:${SYNCR_IMAGE_TAG:-latest}
+    build:
+      # Repo-root context so the build reaches the workspace root, the lockfile,
+      # and every member's pyproject. The Dockerfile copies only the members the
+      # api image is allowed to carry.
+      context: .
+      dockerfile: packages/syncr-api/Dockerfile
+    command: ["syncr-api"]
+    env_file:
+      # Absent locally is fine: the in-network overrides below plus the settings
+      # defaults keep the process bootable.
+      - path: .env
+        required: false
+    environment:
+      # Inside the stack the database is reached by service name, never localhost,
+      # so this overrides any host-oriented value in .env.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-syncr}:${POSTGRES_PASSWORD:-syncr}@postgres:5432/${POSTGRES_DB:-syncr}
+      HOST: 0.0.0.0
+      # Named here rather than left implicit in `env_file`, so the credentials a
+      # service needs are readable from the topology. These interpolate from the
+      # host secret file, which is Compose's env file. Empty is a valid result:
+      # the stack stays bootable on a machine that has no Google credentials.
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
+    expose:
+      - "8000"
+    networks:
+      - app-net
+      - data-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # urlopen raises on a non-2xx (a 503 not-ready) and on connection refusal,
+      # both of which mean unhealthy.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/readyz', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: unless-stopped
+
+  worker:
+    image: syncr-api:${SYNCR_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: packages/syncr-api/Dockerfile
+    command: ["syncr-worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-syncr}:${POSTGRES_PASSWORD:-syncr}@postgres:5432/${POSTGRES_DB:-syncr}
+      # The worker owns the projection write, so it needs the same credentials as
+      # the api. See the api service for why these are named rather than implicit.
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
+    networks:
+      - app-net
+      - data-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16.10-alpine
+    # Tuned for a 8 GB host holding roughly 16 MB per user-year, so the working
+    # set fits many times over: this is headroom, not necessity. `wal_level`
+    # replica is required for the WAL archiving the backup path depends on.
+    # There is deliberately NO connection pooler in front of this.
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=1536MB"
+      - "-c"
+      - "effective_cache_size=4GB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "max_connections=50"
+      - "-c"
+      - "wal_level=replica"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-syncr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-syncr}
+      POSTGRES_DB: ${POSTGRES_DB:-syncr}
+    expose:
+      - "5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      # data-net exclusively: never reachable from the edge.
+      - data-net
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-syncr} -d ${POSTGRES_DB:-syncr}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+    restart: unless-stopped
+
+networks:
+  app-net:
+    driver: bridge
+  data-net:
+    driver: bridge
+    # The one boundary that is not a convention: the database is not routable
+    # from outside the host at all.
+    internal: true
+
+volumes:
+  pgdata:

@@ -1,0 +1,220 @@
+name: CI
+
+# Every job runs on every pull request, and on a push to main. No job is gated
+# behind another: a lint failure must not hide a broken boundary, and the pure
+# suites are fast enough that ordering buys nothing.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ["**"]
+
+# One in-flight run per ref; a new push cancels the previous run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # ruff check, the format check, and mypy over every member. `just lint` is the
+  # same command a developer runs, so the gate cannot drift from the local one.
+  # ---------------------------------------------------------------------------
+  lint-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Sync the workspace (one shared root venv, every member)
+        run: uv sync --all-packages --frozen
+
+      - name: Lint and typecheck
+        run: just lint
+
+  # ---------------------------------------------------------------------------
+  # The pure suites. First in the file because they are the fastest signal and the
+  # modules whose failures are quietest.
+  # ---------------------------------------------------------------------------
+  test-domain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Sync the workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Domain and shared-infrastructure suites
+        run: |
+          just test-common
+          just test-domain
+
+  test-solver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Sync the workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Solver suite, including the zero-ML dependency boundary
+        run: |
+          just test-solver
+          just test-learning
+          just test-cli
+
+  # ---------------------------------------------------------------------------
+  # The api suite against a real Postgres. The migration one-shot runs first,
+  # exactly as a deploy does, so /readyz has a head to compare against.
+  # ---------------------------------------------------------------------------
+  test-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16.10-alpine
+        env:
+          POSTGRES_USER: syncr
+          POSTGRES_PASSWORD: syncr
+          POSTGRES_DB: syncr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U syncr -d syncr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://syncr:syncr@localhost:5432/syncr
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Sync the workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Apply migrations as a pre-traffic one-shot
+        run: just migrate
+
+      - name: Api suite
+        run: just test-api
+
+  # ---------------------------------------------------------------------------
+  # The zero-ML rule at runtime: build the api image and require `import scipy` to
+  # fail inside it. The lockfile-closure test in the solver suite is the same rule
+  # checked statically; this one catches a Dockerfile that copies a member it must
+  # not. It is a real assertion today (no member pulls scipy yet) and becomes
+  # load-bearing when the learning fitters land.
+  # ---------------------------------------------------------------------------
+  image-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the api image
+        run: docker build -f packages/syncr-api/Dockerfile -t syncr-api:boundary-check .
+
+      - name: Importing scipy inside the api image must fail
+        run: |
+          if docker run --rm --entrypoint python syncr-api:boundary-check -c "import scipy"; then
+            echo "scipy is importable in the api image: the zero-ML boundary is broken"
+            exit 1
+          fi
+          echo "image boundary holds"
+
+      - name: Build the learning image
+        run: docker build -f packages/syncr-learning/Dockerfile -t syncr-learning:boundary-check .
+
+      - name: Importing fastapi inside the learning image must fail
+        run: |
+          if docker run --rm syncr-learning:boundary-check python -c "import fastapi"; then
+            echo "fastapi is importable in the learning image: the offline boundary is broken"
+            exit 1
+          fi
+          echo "learning image carries no web stack"
+
+  # ---------------------------------------------------------------------------
+  # Dependency advisories over the locked graph.
+  #
+  # This fails on ANY advisory rather than only on high severity: `uv audit` has no
+  # severity threshold, and its JSON schema is preview and may change, so parsing a
+  # severity out of it would be a gate that silently stops working. Failing on any
+  # advisory is strictly stronger and cannot rot. Suppress a specific finding with
+  # `--ignore <ID>` in the recipe and a comment saying why.
+  # ---------------------------------------------------------------------------
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Audit the locked dependency graph
+        run: just audit
+
+  # ---------------------------------------------------------------------------
+  # A high-entropy secret must never reach the default branch, so the pre-commit
+  # hook's check is repeated over the whole tree where it cannot be skipped.
+  # ---------------------------------------------------------------------------
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Sync the workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Scan the tree for secrets
+        run: just secret-scan

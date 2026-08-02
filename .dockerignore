@@ -1,0 +1,53 @@
+# Repo-root build-context excludes. The single source for every image build, all of
+# which use the repository root as their context so the resolve layer can read the
+# workspace root, the lockfile, and every member's pyproject.
+#
+# Each Dockerfile then selectively COPYs only the members its image is allowed to
+# carry, which is what keeps the api image free of scipy and the learning image free
+# of the web stack. This file keeps every context lean and, critically, keeps
+# secrets (.env*) and rebuilt artifacts out.
+
+# Rebuilt inside the image (Python toolchain)
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.hypothesis
+**/.coverage
+**/.coverage.*
+**/htmlcov
+**/coverage.xml
+**/dist
+**/build
+**/*.egg-info
+
+# Rebuilt inside the image (JS toolchain)
+**/node_modules
+**/*.tsbuildinfo
+
+# Tests never ship in an image
+**/tests
+
+# VCS, CI, and secrets (.env* keeps any local secret file out of every context)
+.git
+.gitignore
+.github
+.env*
+
+# Directories no image build copies
+docs
+e2e
+deployments
+
+# `frontend` is deliberately NOT excluded: the SPA image the frontend slice adds
+# needs it in its context, and the JS toolchain excludes above already keep it lean.
+
+# Root tooling and scratch
+docker-compose*.yml
+justfile
+lefthook.yml
+ruff.toml
+.secrets.baseline
+.DS_Store

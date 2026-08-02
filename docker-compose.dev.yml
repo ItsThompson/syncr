@@ -1,0 +1,60 @@
+# =============================================================================
+# syncr dev overrides. Layered ON TOP of docker-compose.yml and NEVER valid
+# standalone: this file carries overrides only, so `docker compose -f
+# docker-compose.dev.yml up` has no image, no network, and no volume to work with.
+# Drive it through `just dev` and `just dev-infra`, which pass both files.
+#
+# It adds the three things production must not have: bind mounts, autoreload, and
+# published host ports.
+#
+# The project name differs from the base stack, so the dev stack gets its own
+# volume and network namespace (syncr-dev_pgdata vs syncr_pgdata). Always use the
+# paired just recipes rather than a bare `docker compose` mixing the two.
+# =============================================================================
+name: syncr-dev
+
+services:
+  api:
+    # Autoreload replaces the console-script entrypoint, and the bind mounts below
+    # are what it watches. The editable install in the image means an edit under
+    # src/ is picked up without a rebuild.
+    command:
+      [
+        "uvicorn",
+        "syncr_api.api.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+        "--reload-dir",
+        "/app/packages",
+      ]
+    environment:
+      ENVIRONMENT: development
+    ports:
+      # Published so a browser and the host-run frontend dev server reach the api.
+      - "8000:8000"
+    volumes:
+      # Paths mirror the image layout, which mirrors the repository.
+      - ./packages/syncr-api/src:/app/packages/syncr-api/src
+      - ./packages/syncr-api/alembic:/app/packages/syncr-api/alembic
+      - ./packages/syncr-common/src:/app/packages/syncr-common/src
+      - ./packages/syncr-domain/src:/app/packages/syncr-domain/src
+      - ./packages/syncr-solver/src:/app/packages/syncr-solver/src
+
+  worker:
+    environment:
+      ENVIRONMENT: development
+    volumes:
+      - ./packages/syncr-api/src:/app/packages/syncr-api/src
+      - ./packages/syncr-common/src:/app/packages/syncr-common/src
+      - ./packages/syncr-domain/src:/app/packages/syncr-domain/src
+      - ./packages/syncr-solver/src:/app/packages/syncr-solver/src
+
+  postgres:
+    # Published so the host-run inner loop reaches it: `just migrate`, `just
+    # test-api`, and a host-run `just dev-api`. Production is expose-only, on an
+    # internal network, in the base file.
+    ports:
+      - "5432:5432"
