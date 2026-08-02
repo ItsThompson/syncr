@@ -39,6 +39,7 @@ from syncr_api.accounts.service import SessionService
 from syncr_api.accounts.session_tokens import (
     SessionId,
     SessionToken,
+    TokenDigest,
     make_token_digest,
 )
 from syncr_api.core.clock import utc_now
@@ -85,13 +86,26 @@ def require_session_token(request: Request) -> SessionToken:
 type SessionTokenDep = Annotated[SessionToken, Depends(require_session_token)]
 
 
-def get_authenticator(request: Request, transaction: TransactionDep) -> Authenticator:
-    """The sign-in and cookie-resolution collaborator, wired for this request."""
+def get_token_digest(request: Request) -> TokenDigest:
+    """The token-to-row-id function for this deployment's signing secret.
+
+    One owner of that derivation per request. Both the authenticator and the session-id
+    dependency take it from here, so the secret is read and the function built once, and
+    there is a single place the row id is derived from a token.
+    """
     settings: ServiceSettings = request.app.state.settings
+    return make_token_digest(settings.session_signing_secret.get_secret_value())
+
+
+type TokenDigestDep = Annotated[TokenDigest, Depends(get_token_digest)]
+
+
+def get_authenticator(transaction: TransactionDep, digest: TokenDigestDep) -> Authenticator:
+    """The sign-in and cookie-resolution collaborator, wired for this request."""
     return Authenticator(
         users=UserRepository(transaction),
         sessions=SessionRepository(transaction),
-        digest=make_token_digest(settings.session_signing_secret.get_secret_value()),
+        digest=digest,
         clock=utc_now,
     )
 
@@ -113,10 +127,9 @@ async def require_principal(
 type PrincipalDep = Annotated[Principal, Depends(require_principal)]
 
 
-def require_session_id(request: Request, token: SessionTokenDep) -> SessionId:
+def require_session_id(token: SessionTokenDep, digest: TokenDigestDep) -> SessionId:
     """The row id of the presented session, which is the token's keyed digest."""
-    settings: ServiceSettings = request.app.state.settings
-    return make_token_digest(settings.session_signing_secret.get_secret_value())(token)
+    return digest(token)
 
 
 type SessionIdDep = Annotated[SessionId, Depends(require_session_id)]
