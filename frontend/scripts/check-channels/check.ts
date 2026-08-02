@@ -63,10 +63,10 @@ function assignmentsInCss(file: string, source: string): Assignment[] {
     let offset = rule.index + rule[1].length + 1;
     for (const statement of rule[2].split(";")) {
       const property = statement.split(":")[0].trim();
-      const channel = channelFor(property);
-      if (channel !== null) {
-        const position = at(offset + (statement.length - statement.trimStart().length));
-        for (const state of states) assignments.push({ state, channel, file, ...position });
+      const position = at(offset + (statement.length - statement.trimStart().length));
+      for (const state of states) {
+        const channel = channelFor(property, state);
+        if (channel !== null) assignments.push({ state, channel, file, ...position });
       }
       offset += statement.length + 1;
     }
@@ -85,11 +85,11 @@ function assignmentsInMarkup(
     for (const token of classString.text.split(/\s+/).filter((part) => part !== "")) {
       const segments = token.split(":");
       const utility = segments[segments.length - 1];
-      const channel = channelForUtility(utility);
-      if (channel === null) continue;
       for (const variant of segments.slice(0, -1)) {
         const state = states.get(variant);
         if (state === undefined) continue;
+        const channel = channelForUtility(utility, state);
+        if (channel === null) continue;
         assignments.push({
           state,
           channel,

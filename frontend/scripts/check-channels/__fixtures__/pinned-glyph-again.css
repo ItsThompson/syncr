@@ -1,0 +1,5 @@
+/* Fixture: a second file claiming the same glyph slot for the same state. */
+
+.ledger-row[data-pinned]::after {
+  content: "\2022";
+}

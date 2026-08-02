@@ -1,0 +1,5 @@
+/* Fixture: the quarter-line weight stepping up during a drag, which is `data-dragging` on the grid. */
+
+[data-dragging] .grid__quarter {
+  border-top-color: var(--grid-line-quarter-drag);
+}

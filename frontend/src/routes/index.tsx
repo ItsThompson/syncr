@@ -15,6 +15,7 @@ import { SETUP_PATH, SIGN_IN_PATH } from "../ui/domain/shell/navigation";
 import { AreasRoute } from "./AreasRoute";
 import { BacklogRoute } from "./BacklogRoute";
 import { LearnedRoute } from "./LearnedRoute";
+import { NotFoundRoute } from "./NotFoundRoute";
 import { SettingsRoute } from "./SettingsRoute";
 import { SetupRoute } from "./SetupRoute";
 import { SignInRoute } from "./SignInRoute";
@@ -38,6 +39,9 @@ export const routes: RouteObject[] = [
       { path: "/templates", element: <TemplatesRoute /> },
       { path: "/learned", element: <LearnedRoute /> },
       { path: "/settings", element: <SettingsRoute /> },
+      // Last, and last on purpose: `*` matches whatever the entries above did not, so a typo lands
+      // on a syncr surface rather than on React Router's developer error page.
+      { path: "*", element: <NotFoundRoute /> },
     ],
   },
 ];

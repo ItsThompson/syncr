@@ -53,6 +53,30 @@ describe("one file per state channel", () => {
   });
 });
 
+/* The two channels section 14 names that the script did not cover until iteration 3. Tickets 8 and
+ * 35 assign them first, so they are the next two that would have drifted unseen. */
+describe("the glyph slot and the quarter-line weight", () => {
+  it("sees the glyph slot as a channel", async () => {
+    const outcome = await check(["pinned-glyph.css"]);
+
+    expect(outcome.notes).toContain("  data-pinned -> glyph slot");
+    expect(outcome.findings).toEqual([]);
+  });
+
+  it("fails when a second file claims the same state's glyph slot", async () => {
+    const outcome = await check(["pinned-glyph.css", "pinned-glyph-again.css"]);
+
+    expect(outcome.findings.map((finding) => finding.check)).toEqual(["one-file-per-channel"]);
+    expect(outcome.findings[0].message).toContain("data-pinned -> glyph slot");
+  });
+
+  it("sees the quarter-line weight, which is the drag state on the grid", async () => {
+    const outcome = await check(["drag-weight.css"]);
+
+    expect(outcome.notes).toContain("  data-dragging -> quarter-line weight");
+  });
+});
+
 describe("variantStates", () => {
   it("reads each variant's state selector from the theme, not from a second list", () => {
     const states = variantStates(

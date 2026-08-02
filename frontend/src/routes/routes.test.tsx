@@ -66,4 +66,24 @@ describe("rendering each screen", () => {
     expect(screen.queryByLabelText("Screens")).not.toBeInTheDocument();
     expect(screen.getByText("/backlog")).toBeInTheDocument();
   });
+
+  /* Without the catch-all, an unmatched path rendered React Router's developer error page:
+   * "Unexpected Application Error!", a "Hey developer" line with emoji, and an inline rgba() with a
+   * hard-coded padding. Off-brand on six counts and reachable from the URL bar by a typo. */
+  it("answers an unmatched path with a syncr surface, not the framework's error page", async () => {
+    apiServer.use(readyz());
+    renderAt("/wek");
+
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Not found");
+    expect(screen.queryByText(/Unexpected Application Error/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Hey developer/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the unmatched surface inside the gate and the shell", async () => {
+    apiServer.use(readyz());
+    renderAt("/nope/deeper/still");
+
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Not found");
+    expect(screen.getByLabelText("Screens")).toBeInTheDocument();
+  });
 });
