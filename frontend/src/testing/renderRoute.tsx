@@ -6,7 +6,7 @@
  * Each render gets its own SWR cache. A shared cache would let one test's response satisfy the
  * next test's hook, and retries are off so a stubbed failure is a failure once. */
 
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { render, screen, type RenderResult } from "@testing-library/react";
 import { SWRConfig } from "swr";
@@ -14,6 +14,18 @@ import { SWRConfig } from "swr";
 import { routes } from "../routes";
 
 export function withFreshCache(children: ReactElement): ReactElement {
+  return (
+    <SWRConfig
+      value={{ provider: () => new Map(), dedupingInterval: 0, shouldRetryOnError: false }}
+    >
+      {children}
+    </SWRConfig>
+  );
+}
+
+/* The same isolation as a component wrapper, for `renderHook`, which wants a component rather than
+ * an element. Asserting on a hook's own output is the only way to pin a field no rendering shows. */
+export function FreshCache({ children }: { readonly children: ReactNode }): ReactElement {
   return (
     <SWRConfig
       value={{ provider: () => new Map(), dedupingInterval: 0, shouldRetryOnError: false }}
