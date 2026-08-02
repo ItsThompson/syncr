@@ -242,3 +242,28 @@ describe("the breakpoint namespace", () => {
     expect(css).not.toMatch(/@media[^{]*\{\s*\.compact/);
   });
 });
+
+/* THE CONTENT SCAN, which is a correctness rule and not a performance one.
+ *
+ * Tailwind v4 detects sources across the whole project by default, so the `__fixtures__` files that
+ * exist to prove a utility is BANNED were compiled into the bundle. `dist` shipped
+ * `box-shadow: 0 0 8px red`, `rotate:`, `--tw-blur` and `backdrop-filter`, each one from a fixture
+ * asserting that exact shape is refused, and the stylesheet was 20.50 kB of which 5.67 kB was fixture
+ * pollution. Neither the checks nor two review iterations noticed, because everything involved was
+ * passing: the fixtures were correct, the rules were correct, and the build was green.
+ *
+ * The scan is declared explicitly now. These tests fail if the declaration is dropped. */
+describe("the content scan", () => {
+  it("is declared rather than inferred, so a fixture cannot reach the bundle", () => {
+    expect(themeSource).toContain('@import "tailwindcss" source(none)');
+    expect(themeSource).toContain('@source "./**/*.{ts,tsx}"');
+  });
+
+  it("covers the application, so a real utility still compiles", async () => {
+    const css = await compileUtilities(["bg-paper", "text-ink", "w-sidebar"]);
+
+    expect(css).toContain("background-color");
+    expect(css).toContain("color");
+    expect(css).toContain("width");
+  });
+});

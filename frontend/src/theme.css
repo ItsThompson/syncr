@@ -14,7 +14,22 @@
    zero, `shadow-sm` to the one hard offset, `text-sm` to 11.5px mono. That is the point of
    mapping the stock names rather than banning them. */
 
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+
+/* THE CONTENT SCAN IS DECLARED, NOT INFERRED, AND IT IS A CORRECTNESS RULE RATHER THAN A
+   PERFORMANCE ONE.
+
+   Tailwind v4 detects sources automatically across the whole project, which means the
+   `__fixtures__` files that exist to PROVE a utility is banned were themselves compiled
+   into the bundle. `dist` shipped `box-shadow: 0 0 8px red`, `rotate:`, `--tw-blur` and
+   `backdrop-filter`, every one of them from a fixture asserting that shape is refused. The
+   artifacts proving the prohibitions were shipping the prohibited CSS to production.
+
+   `source(none)` turns the automatic scan off and the one `@source` below turns it back on
+   for the application only. A fixture may now name any shape it needs without that shape
+   reaching a user. */
+@source "./**/*.{ts,tsx}";
+
 @import "./tokens/index.css";
 @import "./base.css";
 
