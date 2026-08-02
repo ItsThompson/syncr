@@ -58,3 +58,15 @@ services:
     # internal network, in the base file.
     ports:
       - "5432:5432"
+
+networks:
+  # A service attached ONLY to an internal network is not reachable through a
+  # published port: the internal network has no gateway to the host, so the
+  # published-port DNAT rule has nowhere to deliver. Postgres joins no other
+  # network, so publishing 5432 above is inert unless the isolation is lifted here.
+  #
+  # Lifting it in the DEV OVERLAY ONLY is the point. The base file keeps
+  # `internal: true`, so the deployed database stays unreachable from outside the
+  # host and a leaked credential stays locally exploitable at worst.
+  data-net:
+    internal: false
