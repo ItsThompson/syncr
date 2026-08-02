@@ -17,6 +17,11 @@
 #
 # Third-party images are pinned to exact tags here; the deploy overlay repins them
 # by digest, because a floating tag makes a redeploy an unreviewed change.
+#
+# Memory limits and the restart policy live in this file rather than the deploy
+# overlay, which is a deliberate deviation from section 21's assignment: a limit that
+# exists only in production is a limit nobody has watched work. The overlay's job is
+# then narrower and safer, repinning digests only.
 # =============================================================================
 name: syncr
 
@@ -72,7 +77,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 768M
     restart: unless-stopped
 
   worker:
@@ -100,11 +105,17 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 768M
     restart: unless-stopped
 
   postgres:
-    image: postgres:16.10-alpine
+    # The Debian variant, not alpine. Alpine builds against musl, whose default
+    # collation differs from glibc's, and collation is baked into text index ordering:
+    # switching variants after data exists means a REINDEX, and section 21 already
+    # commits to testing every migration against a restored copy of the real database.
+    # The size saving does not pay for a one-way door on an 80 GB disk. The CI service
+    # container pins the same tag so the two never diverge.
+    image: postgres:16.10-bookworm
     # Tuned for a 8 GB host holding roughly 16 MB per user-year, so the working
     # set fits many times over: this is headroom, not necessity. `wal_level`
     # replica is required for the WAL archiving the backup path depends on.

@@ -17,6 +17,13 @@ API_SERVICE = "syncr-api"
 WORKER_SERVICE = "syncr-worker"
 API_PORT = 8000
 
+# The import string uvicorn needs to fork workers. Passing an app OBJECT makes
+# uvicorn ignore `workers=` silently and serve one process, so the target is named
+# here and `main()` passes this rather than the module-level `app`.
+API_APP_TARGET = "syncr_api.api.main:app"
+# Two workers, per the resource budget and the deployment topology.
+API_WORKERS = 2
+
 # Domain routes live under one versioned prefix. `/oauth`, `/.well-known`,
 # `/healthz`, `/readyz`, and `/metrics` sit outside it, so a feature module builds
 # its own full prefix from this constant rather than the app factory imposing one.
