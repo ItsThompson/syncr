@@ -37,6 +37,12 @@ interface UtilityUse {
 
 const APPLY_AT_RULE = /@apply\s+([^;{}]+)/g;
 
+/* A composed `var(--tw-*)` chain runs to several hundred characters and says nothing a reader needs. */
+function abbreviate(value: string): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length <= 96 ? collapsed : `${collapsed.slice(0, 93)}...`;
+}
+
 /** Every utility named in an `@apply`, with the position of the directive that names it. */
 async function applyUsesIn(file: string): Promise<UtilityUse[]> {
   const source = await readFile(file, "utf8");
@@ -96,7 +102,10 @@ export async function lintMarkup(input: LintMarkupInput): Promise<CheckOutcome> 
     uses.map((use) => use.utility),
   );
   const refused = new Map(
-    refusedByEmittedCss(emitted).map((verdict) => [verdict.utility, verdict.reason]),
+    refusedByEmittedCss(emitted).map((verdict) => [
+      verdict.utility,
+      `it emits ${verdict.property}: ${abbreviate(verdict.value)}, and ${verdict.reason}`,
+    ]),
   );
 
   for (const use of uses) {

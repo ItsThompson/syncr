@@ -23,13 +23,16 @@ import type { Declaration, EmittedDeclarations } from "../lib/tailwind.ts";
 
 export interface EmittedVerdict {
   readonly utility: string;
+  /** The emitted declaration that decided it, so a finding can name what the utility became. */
+  readonly property: string;
+  readonly value: string;
   readonly reason: string;
 }
 
 function verdictFor(utility: string, declarations: readonly Declaration[]): EmittedVerdict | null {
   for (const [property, value] of declarations) {
-    const refusal = refusalFor(property, value);
-    if (refusal !== null) return { utility, reason: refusal };
+    const reason = refusalFor(property, value);
+    if (reason !== null) return { utility, property, value, reason };
   }
   return null;
 }

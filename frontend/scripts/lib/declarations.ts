@@ -66,6 +66,9 @@ const REMOVED_OUTLINE_VALUES = new Set(["none", "0"]);
 /**
  * Why the design language refuses this declaration, or null when it permits it.
  *
+ * The reason names the RULE and not the declaration: every caller already holds the property and the
+ * value it read, and a caller that echoes them plus a reason that echoes them again reads as a stutter.
+ *
  * Only the absolutes live here: a rule that depends on WHICH file the declaration is in, such as the
  * radius allowlist, belongs to the check that knows the file.
  */
@@ -73,14 +76,14 @@ export function refusalFor(property: string, value: string): string | null {
   const name = property.trim().toLowerCase();
   const normalized = value.replace(/\s+/g, " ").trim();
 
-  if (FILTER_PROPERTIES.has(name)) return `it sets ${name}, and print has no blur`;
+  if (FILTER_PROPERTIES.has(name)) return "print has no blur";
 
   if (BANNED_PROPERTIES.has(name) && !LEGAL_MOTION_VALUES.has(normalized)) {
-    return `it sets ${name}: ${normalized}, and motion is zero without exception`;
+    return "motion is zero, without exception";
   }
 
   if (name === SHADOW_CARRIER && !LEGAL_SHADOW_VALUES.has(normalized)) {
-    return `it sets a shadow of ${normalized}, and the system has one shadow, --shadow-hard`;
+    return "the system has one shadow, --shadow-hard, and print has no blur";
   }
 
   if (
@@ -88,11 +91,11 @@ export function refusalFor(property: string, value: string): string | null {
     !normalized.includes(COMPOSED_FROM_VARIABLES) &&
     !LEGAL_SHADOW_VALUES.has(normalized)
   ) {
-    return `it sets box-shadow: ${normalized} directly, and the system has one shadow, --shadow-hard`;
+    return "the system has one shadow, --shadow-hard, and print has no blur";
   }
 
   if (name === "outline" && REMOVED_OUTLINE_VALUES.has(normalized)) {
-    return "it removes the focus ring with no equivalent replacement";
+    return "the system draws its own focus ring, and removing one leaves a keyboard-first tool with none";
   }
 
   return null;

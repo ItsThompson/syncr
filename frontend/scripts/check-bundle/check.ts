@@ -73,9 +73,9 @@ export function checkBundle(input: CheckBundleInput): CheckOutcome {
           : { line: declaration.source.start.line, column: declaration.source.start.column }),
         check: "banned-declaration-in-the-bundle",
         message:
-          `${contextOf(declaration)} ships ${declaration.prop}: ${abbreviate(declaration.value)}. ` +
-          `Refused because ${refusal}. The bytes a browser downloads are the artifact, so no ` +
-          "question about which files a check scanned can excuse this one.",
+          `${contextOf(declaration)} ships ${declaration.prop}: ${abbreviate(declaration.value)}, ` +
+          `and ${refusal}. The bytes a browser downloads are the artifact, so no question about ` +
+          "which files a check scanned can excuse this one.",
       });
     });
   }

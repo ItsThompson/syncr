@@ -184,27 +184,56 @@ describe("Tailwind v4 shapes the theme cannot fence", () => {
 });
 
 /* THE INLINE STYLE PROP, which stylelint never sees. Only the absolutes are refused: a computed
- * length is how the week grid has to work, and a custom property is how an Area's ink is passed. */
+ * length is how the week grid has to work, and a custom property is how an Area's ink is passed.
+ *
+ * The camelCase cases below are review iteration 5's finding, and they are the one defect in that
+ * round that was applied CSS rather than dead bytes: a rendered blur on the real sidebar, a
+ * `will-change` this repository's own stylelint list bans, and `outline: none` on a keyboard-first
+ * product. Each passed all seven checks. */
 describe("an inline style prop", () => {
-  it("refuses a raw colour, a blurred shadow and a transition", async () => {
+  async function styleFindings() {
     const outcome = await lint(["inline-style.tsx"]);
-    const style = outcome.findings
-      .filter((finding) => finding.check === "no-raw-value-in-style")
-      .map((finding) => finding.message);
+    return outcome.findings.filter((finding) => finding.check.endsWith("-in-style"));
+  }
 
-    expect(style.some((message) => message.includes("a raw colour literal"))).toBe(true);
-    expect(style.some((message) => message.includes("shadow other than --shadow-hard"))).toBe(true);
-    expect(style.some((message) => message.includes("a transition"))).toBe(true);
+  it("refuses a raw colour literal, whatever property carries it", async () => {
+    const messages = (await styleFindings()).map((finding) => finding.message);
+
+    expect(messages.some((message) => message.includes("a raw colour literal"))).toBe(true);
+    expect(messages.some((message) => message.includes("a named colour"))).toBe(true);
   });
 
-  it("permits a computed length and a custom property, which the grid and the chips need", async () => {
-    const outcome = await lint(["inline-style.tsx"]);
-    const lines = outcome.findings
-      .filter((finding) => finding.check === "no-raw-value-in-style")
-      .map((finding) => finding.line);
+  it.each([
+    ["boxShadow", "box-shadow"],
+    ["transition", "transition"],
+    ["backdropFilter", "backdrop-filter"],
+    ["willChange", "will-change"],
+    ["WebkitFilter", "-webkit-filter"],
+    ["outline", "outline"],
+  ])("refuses %s, and names it as %s", async (key, property) => {
+    const refusal = (await styleFindings()).find((finding) => finding.message.includes(`${key},`));
 
-    // Every finding is on the first element; the computed one produces none.
-    expect([...new Set(lines)]).toEqual([10]);
+    expect(refusal?.check).toBe("no-banned-property-in-style");
+    expect(refusal?.message).toContain(property);
+  });
+
+  it("refuses a radius, which defeats the radius rule and the circle allowlist together", async () => {
+    const radii = (await styleFindings()).filter(
+      (finding) => finding.check === "no-radius-in-style",
+    );
+
+    expect(radii.map((finding) => finding.line)).toEqual([19, 20]);
+    expect(radii[0].message).toContain('borderRadius: "8px"');
+    expect(radii[0].message).toContain("Radius is zero");
+  });
+
+  it("permits a computed length, a custom property and a square radius", async () => {
+    const lines = (await styleFindings()).map((finding) => finding.line);
+
+    // The computed element is line 17 and produces nothing. Every other element is a finding.
+    expect([...new Set(lines)].toSorted((left, right) => (left ?? 0) - (right ?? 0))).toEqual([
+      16, 18, 19, 20,
+    ]);
   });
 
   it("says why, naming the rule rather than the mechanism", async () => {
@@ -279,8 +308,8 @@ describe("the emitted-CSS verdict", () => {
     ["blur-(--haze)", "print has no blur"],
     ["backdrop-blur-(--haze)", "print has no blur"],
     ["shadow-(--halo)", "the system has one shadow"],
-    ["delay-300", "motion is zero without exception"],
-    ["will-change-transform", "motion is zero without exception"],
+    ["delay-300", "motion is zero, without exception"],
+    ["will-change-transform", "motion is zero, without exception"],
   ])("refuses %s because %s", async (utility, reason) => {
     const outcome = await lint(["paren-forms.tsx"]);
     const emitted = outcome.findings
