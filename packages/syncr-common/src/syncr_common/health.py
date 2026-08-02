@@ -10,6 +10,10 @@ and a load balancer knows when to come back.
 
 Checks are injected as a sequence, so this module stays free of any dependency:
 the caller supplies Postgres connectivity and the migration-head check.
+
+No failure path puts a raised exception's text on the wire. A check that reports
+``CheckResult(ok=False)`` chooses its own detail; a check that raises gets a fixed
+reason and its text goes to the log.
 """
 
 from __future__ import annotations
@@ -21,6 +25,8 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from syncr_common.logging import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
 
@@ -30,6 +36,14 @@ READYZ_ENDPOINT = "/readyz"
 # Seconds a not-ready answer asks the caller to wait. Sized to a migration
 # one-shot plus a Postgres restart, not to a request retry.
 RETRY_AFTER_SECONDS = 5
+
+# What a misbehaving check reports on the wire. A raised exception's text can carry a
+# host, a port, executed SQL, or a credential's user, and a deploy gate is often the
+# most widely reachable endpoint a stack has. The text goes to the log instead, which is
+# where it is useful. A well-behaved check never reaches this path.
+RAISED_REASON = "check raised"
+
+_log = get_logger("syncr.health")
 
 
 @dataclass(frozen=True)
@@ -69,9 +83,11 @@ def create_health_router(
         checks: dict[str, dict[str, object]] = {}
         ready = True
         for index, result in enumerate(results):
+            name = f"check_{index}"
             if isinstance(result, BaseException):
                 ready = False
-                checks[f"check_{index}"] = {"ok": False, "detail": str(result)}
+                _log.warning("health.readiness.check_raised", check=name, error=str(result))
+                checks[name] = {"ok": False, "detail": RAISED_REASON}
                 continue
             ready = ready and result.ok
             checks[result.name] = {"ok": result.ok, "detail": result.detail}

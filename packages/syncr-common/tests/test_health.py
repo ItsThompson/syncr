@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from syncr_common.health import (
     HEALTHZ_ENDPOINT,
+    RAISED_REASON,
     READYZ_ENDPOINT,
     RETRY_AFTER_SECONDS,
     CheckResult,
@@ -75,12 +76,25 @@ def test_readiness_answers_503_with_retry_after_when_a_check_fails() -> None:
 
 
 def test_readiness_degrades_a_raising_check_to_503_rather_than_500() -> None:
-    with client(raising("driver exploded")) as http:
+    with client(raising("driver exploded: password=hunter2 at 10.0.0.5:5432")) as http:
         response = http.get(READYZ_ENDPOINT)
 
     assert response.status_code == 503
     assert response.json()["checks"]["check_0"]["ok"] is False
-    assert "driver exploded" in response.json()["checks"]["check_0"]["detail"]
+    # A fixed reason, not the raised text: a deploy gate is often the most widely
+    # reachable endpoint a stack has, and the text can carry a host or a credential.
+    assert response.json()["checks"]["check_0"]["detail"] == RAISED_REASON
+    assert "hunter2" not in response.text
+    assert "10.0.0.5" not in response.text
+
+
+def test_a_raising_check_still_names_which_one_failed() -> None:
+    with client(passing("postgres"), raising("boom")) as http:
+        checks = http.get(READYZ_ENDPOINT).json()["checks"]
+
+    # Positional, because a check that raised never returned a name to key on.
+    assert checks["postgres"]["ok"] is True
+    assert checks["check_1"]["ok"] is False
 
 
 def test_readiness_with_no_checks_is_ready() -> None:
