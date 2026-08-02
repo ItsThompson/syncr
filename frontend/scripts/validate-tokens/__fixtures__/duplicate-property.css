@@ -1,0 +1,8 @@
+/* The later declaration wins, silently, and the earlier one reads as the live value to
+   anyone scanning the file top to bottom. */
+
+:root {
+  --h-control: 26px;
+  --h-row: 28px;
+  --h-control: 30px;
+}

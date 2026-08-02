@@ -1,0 +1,7 @@
+/* A renamed token leaves a dangling reference. `--ink-deepest` never existed, so the border
+   resolves to nothing and the panel renders with no edge at all. */
+
+:root {
+  --ink-deep: #0d1f5c;
+  --panel-border: 1px solid var(--ink-deepest);
+}

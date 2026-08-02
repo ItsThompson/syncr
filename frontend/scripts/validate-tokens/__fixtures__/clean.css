@@ -1,0 +1,14 @@
+/* A valid miniature of the real layer: one balanced comment, declarations only inside
+   `:root`, no duplicate, every reference resolving, and one property the caller supplies.
+
+   @caller-provided --hatch-ink
+   The element drawing the hatch owns the value, because it derives from the fill the hatch
+   sits on. */
+
+:root {
+  --cobalt-700: #0d1f5c;
+
+  --ink-deep: var(--cobalt-700);
+  --panel-border: 1px solid var(--ink-deep);
+  --hatch-fwd: repeating-linear-gradient(45deg, var(--hatch-ink) 0 1px, transparent 1px 5px);
+}

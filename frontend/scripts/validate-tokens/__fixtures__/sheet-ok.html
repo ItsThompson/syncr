@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>fixture: a sheet that renders from the tokens</title>
+    <link rel="stylesheet" href="./clean.css" />
+  </head>
+  <body>
+    <p style="color: var(--ink-deep); --ai: var(--cobalt-700)">
+      A local declaration resolves too: <span style="border: var(--panel-border)">edge</span>
+    </p>
+    <script>
+      const chip = (token) => `--ai:var(${token});--hatch-ink:${token}`;
+    </script>
+  </body>
+</html>

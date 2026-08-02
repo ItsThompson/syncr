@@ -146,7 +146,13 @@
           recovery shadow an anchor casts. Without it a forbidden gap and an ordinary empty
           gap render identically, and the solver appears to decline a gap for no reason.
      Six patterns is the honest ceiling: past that they stop separating at wedge scale, so a
-     pattern repeats only between hues that are far apart. */
+     pattern repeats only between hues that are far apart.
+
+     @caller-provided --hatch-ink
+     The element drawing the hatch owns that value, because it is derived from the fill the
+     hatch sits on and the layer cannot know which fill that is. Declaring a default here
+     would silently paint a hatch wherever a caller forgot to set one. The validator reads
+     this annotation, so the reference stays checked rather than excused. */
   --hatch-fwd:  repeating-linear-gradient(45deg,  var(--hatch-ink) 0 1px, transparent 1px 5px);
   --hatch-back: repeating-linear-gradient(135deg, var(--hatch-ink) 0 1px, transparent 1px 5px);
   --hatch-vert: repeating-linear-gradient(90deg,  var(--hatch-ink) 0 1px, transparent 1px 5px);

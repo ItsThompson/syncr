@@ -1,0 +1,7 @@
+/* A comment that never closes. Everything below is swallowed, so both declarations resolve
+   to nothing while the file still looks like it declares them.
+
+:root {
+  --h-control: 26px;
+  --h-row: 28px;
+}

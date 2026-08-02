@@ -1,0 +1,16 @@
+/* The incident this validator exists for.
+   A paragraph of prose lost its opening marker, so what reads as a comment is a CSS parse
+   error. The browser discards every declaration after it, `--block-h-label` resolves to
+   nothing, every block computes as a sliver, and the sheets render a plausible-looking week
+   grid with no titles at all. Nothing in the output says anything is wrong. */
+
+:root {
+  --block-h-sliver: 8px;
+
+  THE LABEL TIER LADDER. A block's height is proportional to its duration, and at high zoom
+  levels a short block falls below the height its own title needs. The block degrades rather
+  than the axis lying. The floor is the sum of what has to fit, not a round number. */
+
+  --block-h-label: 19px;
+  --block-h-compact: 13px;
+}
