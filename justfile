@@ -76,7 +76,12 @@ hooks:
 
 # --- Dev stack --------------------------------------------------------------
 
-# The full dev stack: Postgres, the api with autoreload, and the worker
+# The full dev stack: Postgres, the api with autoreload, and the worker.
+#
+# The stack comes up first and the migration one-shot runs after, so the api is briefly
+# unready and its healthcheck says so. That ordering is a development convenience ONLY:
+# section 21 requires the one-shot to complete BEFORE api and worker start, so the
+# deploy path must not copy it.
 dev:
     docker compose {{dev_compose}} up -d --build
     docker compose {{dev_compose}} run --rm api alembic upgrade head
@@ -220,11 +225,18 @@ secret-baseline:
     uv run --no-sync detect-secrets scan --baseline .secrets.baseline --exclude-files '^\.venv/'
     @echo "review the new entries in .secrets.baseline before committing"
 
-# Assert the zero-ML rule at runtime: the api image must import its own stack and
-# must NOT be able to import scipy. The control comes first, because a bare negative
-# assertion reads any non-zero exit as a held boundary, including a container that
-# never started.
-image-boundary:
+# Assert the zero-ML rule at runtime. Split per image so CI keeps per-step failure
+# attribution while each check has exactly one definition: the workflow calls these
+# recipes rather than inlining the same docker commands.
+#
+# Each control comes FIRST, because a bare negative assertion reads any non-zero exit as
+# a held boundary, including a container that never started.
+
+# Both image boundaries: each image runs, and neither can import what it must not
+image-boundary: image-boundary-api image-boundary-learning
+
+# The api image must import its own stack and must NOT be able to import scipy
+image-boundary-api:
     #!/usr/bin/env bash
     set -euo pipefail
     docker build -f packages/syncr-api/Dockerfile -t syncr-api:boundary-check .
@@ -234,6 +246,12 @@ image-boundary:
       echo "scipy is importable in the api image: the zero-ML boundary is broken" >&2
       exit 1
     fi
+    echo "api image boundary holds, and the image runs"
+
+# The learning image must import its own package and must NOT be able to import fastapi
+image-boundary-learning:
+    #!/usr/bin/env bash
+    set -euo pipefail
     docker build -f packages/syncr-learning/Dockerfile -t syncr-learning:boundary-check .
     docker run --rm syncr-learning:boundary-check \
       python -c "import syncr_learning, syncr_domain, syncr_common"
@@ -241,4 +259,4 @@ image-boundary:
       echo "fastapi is importable in the learning image: the offline boundary is broken" >&2
       exit 1
     fi
-    echo "both image boundaries hold, and both images run"
+    echo "learning image boundary holds, and the image runs"

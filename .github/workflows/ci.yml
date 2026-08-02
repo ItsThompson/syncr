@@ -160,11 +160,13 @@ jobs:
   # not. It is a real assertion today (no member pulls scipy yet) and becomes
   # load-bearing when the learning fitters land.
   #
-  # Each negative assertion is paired with a POSITIVE CONTROL, because a negative
-  # assertion alone reads any non-zero exit as "the boundary holds": a missing
-  # interpreter, a wrong entrypoint, a platform mismatch, an OOM, or a container that
-  # never starts would all pass it silently. The control runs first, so a broken image
-  # fails on the control rather than passing on the negative.
+  # Each recipe pairs its negative assertion with a POSITIVE CONTROL, run first,
+  # because a negative assertion alone reads any non-zero exit as "the boundary holds":
+  # a missing interpreter, a wrong entrypoint, a platform mismatch, an OOM, or a
+  # container that never starts would all pass it silently.
+  #
+  # Two steps rather than one recipe, so a red result names which image broke, and both
+  # call the recipe a developer runs so the check has exactly one definition.
   # ---------------------------------------------------------------------------
   image-boundary:
     runs-on: ubuntu-latest
@@ -172,37 +174,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build the api image
-        run: docker build -f packages/syncr-api/Dockerfile -t syncr-api:boundary-check .
+      - name: Set up just
+        uses: extractions/setup-just@v2
 
-      - name: Control, the api image must import its own stack
-        run: |
-          docker run --rm --entrypoint python syncr-api:boundary-check \
-            -c "import fastapi, sqlalchemy, syncr_api, syncr_solver, syncr_domain, syncr_common"
+      - name: The api image runs and cannot import scipy
+        run: just image-boundary-api
 
-      - name: Importing scipy inside the api image must fail
-        run: |
-          if docker run --rm --entrypoint python syncr-api:boundary-check -c "import scipy"; then
-            echo "scipy is importable in the api image: the zero-ML boundary is broken"
-            exit 1
-          fi
-          echo "image boundary holds"
-
-      - name: Build the learning image
-        run: docker build -f packages/syncr-learning/Dockerfile -t syncr-learning:boundary-check .
-
-      - name: Control, the learning image must import its own package
-        run: |
-          docker run --rm syncr-learning:boundary-check \
-            python -c "import syncr_learning, syncr_domain, syncr_common"
-
-      - name: Importing fastapi inside the learning image must fail
-        run: |
-          if docker run --rm syncr-learning:boundary-check python -c "import fastapi"; then
-            echo "fastapi is importable in the learning image: the offline boundary is broken"
-            exit 1
-          fi
-          echo "learning image carries no web stack"
+      - name: The learning image runs and cannot import fastapi
+        run: just image-boundary-learning
 
   # ---------------------------------------------------------------------------
   # Dependency advisories over the locked graph.
