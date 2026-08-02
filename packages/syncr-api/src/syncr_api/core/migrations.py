@@ -20,6 +20,7 @@ from sqlalchemy import text
 
 import syncr_api
 from syncr_common.health import CheckResult
+from syncr_common.logging import get_logger
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
@@ -32,6 +33,14 @@ if TYPE_CHECKING:
 ALEMBIC_DIR = Path(syncr_api.__file__).resolve().parents[2] / "alembic"
 
 MIGRATION_CHECK_NAME = "migrations"
+# What a probe failure reports on the wire. A missing ``alembic_version`` surfaces as
+# a driver message carrying the executed SQL and a documentation URL, and a deploy
+# gate is often the most widely reachable endpoint a stack has. The revision mismatch
+# below is different: it names two revision identifiers and nothing else, which is
+# exactly what an operator needs and discloses nothing.
+PROBE_FAILED_REASON = "revision could not be read"
+
+_log = get_logger("syncr.migrations")
 
 _APPLIED_REVISION_SQL = text("SELECT version_num FROM alembic_version")
 
@@ -71,7 +80,8 @@ def migration_readiness_check(
             head = expected_head(alembic_dir)
             applied = await applied_revision(engine)
         except Exception as exc:  # noqa: BLE001 - any failure here is "not ready"
-            return CheckResult(name=MIGRATION_CHECK_NAME, ok=False, detail=str(exc))
+            _log.warning("migrations.readiness.failed", error=str(exc))
+            return CheckResult(name=MIGRATION_CHECK_NAME, ok=False, detail=PROBE_FAILED_REASON)
         if applied != head:
             return CheckResult(
                 name=MIGRATION_CHECK_NAME,

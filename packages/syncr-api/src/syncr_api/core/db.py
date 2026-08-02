@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import (
 from starlette.requests import Request  # noqa: TC002
 
 from syncr_common.health import CheckResult
+from syncr_common.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -48,6 +49,13 @@ MAX_OVERFLOW = 5
 POOL_TIMEOUT_SECONDS = 30
 
 DB_CHECK_NAME = "postgres"
+# What an unreachable database reports on the wire. The driver's own message names
+# the host, the port, the executed SQL, and the credentials' user, and a deploy gate
+# is often the most widely reachable endpoint a stack has. The detail goes to the log,
+# where it is needed; the wire gets a stable reason.
+DB_UNREACHABLE_REASON = "unreachable"
+
+_log = get_logger("syncr.db")
 
 
 def create_db_engine(database_url: str, *, echo: bool = False) -> AsyncEngine:
@@ -112,7 +120,8 @@ def db_readiness_check(engine: AsyncEngine) -> ReadinessCheck:
 
     Never raises: a connectivity failure resolves to a failed
     :class:`~syncr_common.health.CheckResult`, so ``/readyz`` answers 503 rather
-    than 500.
+    than 500. The driver's message is logged rather than returned, so the endpoint
+    discloses no topology.
     """
 
     async def check() -> CheckResult:
@@ -120,7 +129,8 @@ def db_readiness_check(engine: AsyncEngine) -> ReadinessCheck:
             async with engine.connect() as connection:
                 await connection.execute(text("SELECT 1"))
         except Exception as exc:  # noqa: BLE001 - any driver error is "not ready"
-            return CheckResult(name=DB_CHECK_NAME, ok=False, detail=str(exc))
+            _log.warning("db.readiness.failed", error=str(exc))
+            return CheckResult(name=DB_CHECK_NAME, ok=False, detail=DB_UNREACHABLE_REASON)
         return CheckResult(name=DB_CHECK_NAME, ok=True)
 
     return check

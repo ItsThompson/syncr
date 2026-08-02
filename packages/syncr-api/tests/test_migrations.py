@@ -10,6 +10,7 @@ from syncr_api.core.db import create_db_engine
 from syncr_api.core.migrations import (
     ALEMBIC_DIR,
     MIGRATION_CHECK_NAME,
+    PROBE_FAILED_REASON,
     expected_head,
     migration_readiness_check,
     script_heads,
@@ -65,4 +66,6 @@ async def test_readiness_reports_not_ready_when_the_database_is_unreachable() ->
 
     assert result.name == MIGRATION_CHECK_NAME
     assert result.ok is False
-    assert result.detail
+    # A stable reason, not the driver's message: it names the host, the port, the
+    # executed SQL, and the connecting user, and /readyz is widely reachable.
+    assert result.detail == PROBE_FAILED_REASON
