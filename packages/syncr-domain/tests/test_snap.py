@@ -56,7 +56,7 @@ def test_both_bounds_of_a_snapped_interval_land_on_a_quarter_hour() -> None:
 )
 def test_an_exempt_interval_keeps_its_real_time(exempt: str, real_time: Interval) -> None:
     assert not is_on_snap_grid(real_time.start), exempt
-    assert real_time.total_minutes() > 0
+    assert not is_on_snap_grid(real_time.end), exempt
 
 
 def test_a_transit_computed_from_an_anchor_inherits_the_anchor_minute() -> None:

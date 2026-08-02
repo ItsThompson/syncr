@@ -36,9 +36,10 @@ _HALF_SNAP = SNAP / 2
 def is_on_snap_grid(moment: Instant) -> bool:
     """Whether ``moment`` lands on a quarter hour.
 
-    Read in UTC, which is safe because every current IANA offset is a whole number
-    of quarter hours, ``+05:45`` and ``+12:45`` included. A local quarter hour is
+    Read in UTC, which is safe because every offset in force since 1970 is a whole
+    number of quarter hours, ``+05:45`` and ``+12:45`` included. A local quarter hour is
     therefore a UTC quarter hour, so the grid needs no zone to be checked against.
+    Pre-standardization local mean time was not, but no date this product handles is.
     """
     instant = as_instant(moment)
     return instant.minute % SNAP_MINUTES == 0 and instant.second == 0 and instant.microsecond == 0
