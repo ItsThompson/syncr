@@ -28,7 +28,6 @@ from syncr_api.accounts.injection import (
     SessionServiceDep,
 )
 from syncr_api.accounts.schemas import LoginRequest, SessionResponse
-from syncr_api.core.clock import utc_now
 
 router = APIRouter()
 
@@ -39,9 +38,7 @@ async def log_in(
 ) -> SessionResponse:
     """Verify credentials, establish a session, and set the cookie that carries it."""
     established = await authenticator.log_in(body.email, body.password)
-    set_session_cookie(
-        response, established.token, expires_at=established.expires_at, now=utc_now()
-    )
+    set_session_cookie(response, established.token)
     return SessionResponse(
         tenant_id=established.principal.tenant_id,
         user_id=established.principal.user_id,

@@ -17,6 +17,7 @@ secure origin, but the test client is not one of them.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -173,14 +174,25 @@ def test_the_cookie_is_httponly_secure_lax_and_persistent(
     assert "max-age=" in cookie
 
 
-def test_the_cookie_expires_with_the_idle_window_not_the_absolute_cap(
+def test_the_cookie_lasts_the_absolute_lifetime_while_the_server_owns_the_idle_window(
     http: TestClient, owner: ProvisionedAccount
 ) -> None:
-    _status, headers = sign_in(http, owner.email)
+    # The cookie is written once, at sign-in, and the idle window slides on every use, so
+    # a cookie carrying the idle window would sign a daily user out on day 14 and make
+    # the absolute cap unreachable. The server stays the only authority on validity: the
+    # body's `expiresAt` is the shorter, derived expiry, and a browser holding a cookie
+    # the server will reject is harmless because the server answers 401.
+    response = http.post(
+        LOGIN,
+        json={"email": owner.email, "password": PASSWORD},
+        headers={"Origin": BROWSER_ORIGIN},
+    )
 
-    max_age = int(headers["set-cookie"].split("Max-Age=", 1)[1].split(";", 1)[0])
-    assert max_age == pytest.approx(SESSION_IDLE_TIMEOUT.total_seconds(), abs=5)
-    assert max_age < SESSION_ABSOLUTE_LIFETIME.total_seconds()
+    max_age = int(response.headers["set-cookie"].split("Max-Age=", 1)[1].split(";", 1)[0])
+    assert max_age == int(SESSION_ABSOLUTE_LIFETIME.total_seconds())
+    reported_expiry = datetime.fromisoformat(response.json()["expiresAt"])
+    assert reported_expiry < datetime.now(UTC) + SESSION_ABSOLUTE_LIFETIME
+    assert reported_expiry > datetime.now(UTC) + SESSION_IDLE_TIMEOUT - timedelta(minutes=1)
 
 
 def test_no_response_body_carries_the_token(http: TestClient, owner: ProvisionedAccount) -> None:
