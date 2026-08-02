@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { filesUnder } from "../../lib/files.ts";
-import { areaOf, checkImports } from "../check.ts";
+import { areaOf, checkImports, isUnderSourceRoot } from "../check.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sourceRoot = path.join(here, "..", "__fixtures__", "src");
@@ -194,6 +194,74 @@ describe("areaOf", () => {
 
   it("does not read a sibling directory as an area by prefix", () => {
     expect(areaOf(sourceRoot, path.join(sourceRoot, "apiary", "thing.ts"))).toBeNull();
+  });
+});
+
+/* NULL FROM `areaOf` MEANT TWO THINGS AND WAS TREATED AS ONE. A package is always reachable; a
+ * directory under `src/` that nobody modelled is not, and treating the second as permitted let a kit
+ * component fetch through `src/shared/` with every check green. These are the tests for the
+ * distinction. */
+describe("isUnderSourceRoot", () => {
+  it.each(["shared/plumbing.ts", "main.tsx", "ui/primitives/Button.tsx"])(
+    "reads %s as source the model is responsible for",
+    (relative) => {
+      expect(isUnderSourceRoot(sourceRoot, path.join(sourceRoot, relative))).toBe(true);
+    },
+  );
+
+  it.each(["../package.json", "../../node_modules/react/index.js"])(
+    "reads %s as outside src, which is a package and always reachable",
+    (relative) => {
+      expect(isUnderSourceRoot(sourceRoot, path.join(sourceRoot, relative))).toBe(false);
+    },
+  );
+
+  it("does not read src itself as a file under src", () => {
+    expect(isUnderSourceRoot(sourceRoot, sourceRoot)).toBe(false);
+  });
+});
+
+describe("a directory the zone model does not name", () => {
+  it("is a finding rather than a silent permission", async () => {
+    const outcome = await check(["ui/domain/shell/Unmodelled.ts"]);
+    const unmodelled = messagesFor(outcome.findings, "unmodelled-area");
+
+    expect(unmodelled).toHaveLength(1);
+    expect(unmodelled[0]).toContain('"../../../shared/plumbing.ts"');
+    expect(unmodelled[0]).toContain("shared/plumbing.ts");
+  });
+
+  it("says what to do about it, naming both halves of the model", async () => {
+    const outcome = await check(["ui/domain/shell/Unmodelled.ts"]);
+
+    expect(messagesFor(outcome.findings, "unmodelled-area")[0]).toContain("AREAS");
+    expect(messagesFor(outcome.findings, "unmodelled-area")[0]).toContain(".oxlintrc.json");
+  });
+
+  it("does not report a package, which every zone may import", async () => {
+    const outcome = await check(["ui/domain/shell/Legal.ts"]);
+
+    expect(outcome.findings).toEqual([]);
+  });
+
+  it("stops a chain from going dark, so a hop into it is named with the whole chain", async () => {
+    const outcome = await check(["ui/primitives/LaunderedThroughUnmodelled.ts"]);
+    const chains = messagesFor(outcome.findings, "import-zone-through-chain");
+
+    expect(chains).toHaveLength(1);
+    expect(chains[0]).toContain("the chain leaves the model");
+    expect(chains[0]).toContain("lib/via-unmodelled.ts -> ");
+    expect(chains[0]).toContain("shared/plumbing.ts");
+  });
+});
+
+describe("a kit file in no zone", () => {
+  it("is reported, because nothing constrains it while every zone may read it", async () => {
+    const outcome = await check(["ui/rogue.ts"]);
+    const zones = messagesFor(outcome.findings, "unmodelled-zone");
+
+    expect(zones).toHaveLength(1);
+    expect(zones[0]).toContain("no zone the model names");
   });
 });
 

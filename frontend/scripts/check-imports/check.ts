@@ -24,7 +24,19 @@
  *   finding names the whole chain rather than the innocent-looking first hop.
  *
  * It also reports an import that resolves to nothing, which is a broken module the bundler would
- * fail on later and which no other check here would name. */
+ * fail on later and which no other check here would name.
+ *
+ * ONE MORE FAIL-OPEN BRANCH CLOSED IN ITERATION 5. `areaOf` returned null both for a package, which is
+ * always reachable, and for a file under `src/` in a directory nobody had added to `AREAS`, which was
+ * treated as permitted and also stopped the transitive walk. So `src/shared/plumbing.ts` re-exporting
+ * the fetch client let a `ui/domain` component fetch in dev, in test and in production, with all seven
+ * checks, oxlint, tsc, prettier and `vite build` green. `AREAS` was a list of the directories that
+ * existed the day it was written, which is the same sentence this repository has now written eight
+ * times: the rule was stated against the shapes someone enumerated rather than against the capability.
+ *
+ * An unmodelled directory under `src/` is now a finding of its own, so adding a directory is a
+ * deliberate act that updates the model. This is the choice `scripts/import-zones/policy.ts` already
+ * made when it throws on a specifier that names no capability. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -49,7 +61,6 @@ const AREAS = [
 ] as const;
 
 export type Area = (typeof AREAS)[number];
-
 /** What each kit zone may reach, by resolved area. A package is always reachable. */
 const REACHABLE: Readonly<Record<string, readonly Area[]>> = {
   "ui/primitives": ["ui/primitives", "lib", "tokens"],
@@ -65,6 +76,17 @@ const DENIAL_REASON: Readonly<Record<string, string>> = {
   contract: "a Problem is a domain concept: a control or a container that names one is misfiled",
   testing: "it is test-only",
 };
+
+/** What the model says about a directory it does not name. Denied, and it says so as a finding. */
+function unmodelledMessage(resolved: string): string {
+  return (
+    `it resolves to ${relativeToRepo(resolved)}, which sits under src/ in a directory the zone ` +
+    "model does not name, so no rule here can say what it may reach. Add the directory to AREAS and " +
+    "to REACHABLE in scripts/check-imports/check.ts, and to the glob groups in .oxlintrc.json. A " +
+    "directory nobody modelled is how a primitive came to reach the fetch client through " +
+    "src/shared/ with every check green."
+  );
+}
 
 /* Areas a kit zone may read that are NOT themselves kit zones, so nothing else checks what they
  * import. A chain is followed through these, and only these: a kit file reached in a chain is checked
@@ -134,6 +156,25 @@ export function areaOf(sourceRoot: string, resolved: string): Area | null {
   return AREAS.find((area) => relative === area || relative.startsWith(`${area}/`)) ?? null;
 }
 
+/**
+ * True when a resolved file sits inside `src/`, which is what makes an unnamed area a finding.
+ *
+ * A file outside `src/` is a package, and a package is always reachable. Telling the two apart is the
+ * whole of the fix: `areaOf` returning null meant both, and both were treated as permitted.
+ */
+export function isUnderSourceRoot(sourceRoot: string, resolved: string): boolean {
+  const relative = path.relative(sourceRoot, resolved);
+  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+/** A denied destination the walk reached, with the chain of files that got there. */
+interface Denial {
+  /** The area reached, or null when the resolved file's directory is not in the model. */
+  readonly area: Area | null;
+  readonly resolved: string;
+  readonly chain: readonly string[];
+}
+
 export async function checkImports(input: CheckImportsInput): Promise<CheckOutcome> {
   const findings: Finding[] = [];
   let resolvedImports = 0;
@@ -162,7 +203,7 @@ export async function checkImports(input: CheckImportsInput): Promise<CheckOutco
     entry: string,
     zone: string,
     seen: Set<string>,
-  ): Promise<{ area: Area; chain: readonly string[] } | null> => {
+  ): Promise<Denial | null> => {
     const queue: { file: string; chain: readonly string[] }[] = [{ file: entry, chain: [entry] }];
 
     while (queue.length > 0) {
@@ -178,11 +219,15 @@ export async function checkImports(input: CheckImportsInput): Promise<CheckOutco
         if (resolved === null) continue;
 
         const area = areaOf(input.sourceRoot, resolved);
-        if (area === null) continue;
-        if (!REACHABLE[zone].includes(area)) return { area, chain: [...step.chain, resolved] };
-        if (CONDUITS.includes(area)) {
-          queue.push({ file: resolved, chain: [...step.chain, resolved] });
+        const chain = [...step.chain, resolved];
+        if (area === null) {
+          // A package is reachable from anywhere. A directory under `src/` that the model does not
+          // name is not: it is where the chain would otherwise go dark.
+          if (!isUnderSourceRoot(input.sourceRoot, resolved)) continue;
+          return { area: null, resolved, chain };
         }
+        if (!REACHABLE[zone].includes(area)) return { area, resolved, chain };
+        if (CONDUITS.includes(area)) queue.push({ file: resolved, chain });
       }
     }
     return null;
@@ -190,7 +235,18 @@ export async function checkImports(input: CheckImportsInput): Promise<CheckOutco
 
   for (const file of input.kitFiles) {
     const zone = areaOf(input.sourceRoot, file);
-    if (zone === null || REACHABLE[zone] === undefined) continue;
+    if (zone === null || REACHABLE[zone] === undefined) {
+      /* A kit file the model gives no zone, so nothing constrains what it imports while every zone
+       * may read it. Reported rather than skipped, for the same reason an unmodelled destination is. */
+      findings.push({
+        file,
+        check: "unmodelled-zone",
+        message:
+          "this file is inside the kit but in no zone the model names, so no import rule applies to " +
+          "it while every zone may read it. Add its directory to AREAS and give it a REACHABLE entry.",
+      });
+      continue;
+    }
 
     const source = await readFile(file, "utf8");
     const at = createPositionResolver(source);
@@ -222,7 +278,18 @@ export async function checkImports(input: CheckImportsInput): Promise<CheckOutco
 
       resolvedImports += 1;
       const area = areaOf(input.sourceRoot, resolved);
-      if (area === null) continue;
+      if (area === null) {
+        // Outside `src/` is a package, which every zone may import. Inside it, the model is silent,
+        // and silence used to read as permission.
+        if (!isUnderSourceRoot(input.sourceRoot, resolved)) continue;
+        findings.push({
+          file,
+          ...at(site.index),
+          check: "unmodelled-area",
+          message: `"${site.specifier}" is permitted by no rule and denied by none: ${unmodelledMessage(resolved)}`,
+        });
+        continue;
+      }
 
       if (!REACHABLE[zone].includes(area)) {
         findings.push({
@@ -249,9 +316,13 @@ export async function checkImports(input: CheckImportsInput): Promise<CheckOutco
         ...at(site.index),
         check: "import-zone-through-chain",
         message:
-          `"${site.specifier}" is permitted, but it reaches ${laundered.area}/, which ${zone}/ may ` +
-          `not: ${DENIAL_REASON[laundered.area] ?? "it is above this zone"}. Chain: ` +
-          `${laundered.chain.map((step) => relativeToRepo(step)).join(" -> ")}.`,
+          laundered.area === null
+            ? `"${site.specifier}" is permitted, but the chain leaves the model: ` +
+              `${unmodelledMessage(laundered.resolved)} Chain: ` +
+              `${laundered.chain.map((step) => relativeToRepo(step)).join(" -> ")}.`
+            : `"${site.specifier}" is permitted, but it reaches ${laundered.area}/, which ${zone}/ ` +
+              `may not: ${DENIAL_REASON[laundered.area] ?? "it is above this zone"}. Chain: ` +
+              `${laundered.chain.map((step) => relativeToRepo(step)).join(" -> ")}.`,
       });
     }
   }
