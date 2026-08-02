@@ -154,6 +154,111 @@ jobs:
         run: just test-api
 
   # ---------------------------------------------------------------------------
+  # The frontend static gates. `just lint-frontend` is the same recipe the pre-commit
+  # hook runs, so a shadowed hook binary cannot put an unlinted change on main.
+  #
+  # The typecheck is a separate step rather than folded into the recipe, so a red
+  # result names whether a design rule or a type broke. Both must pass: vitest
+  # transpiles with esbuild, which strips types without checking them.
+  #
+  # Node 22 is a floor, not a preference: the committed checks are TypeScript and are
+  # run directly by node, which needs 22.18 or later to strip types.
+  # ---------------------------------------------------------------------------
+  lint-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Install the locked dependency tree
+        run: npm ci
+        working-directory: frontend
+
+      - name: oxlint, stylelint, the token validator, the markup scan, the channel assertion
+        run: just lint-frontend
+
+      - name: tsc
+        run: just typecheck-frontend
+
+  # ---------------------------------------------------------------------------
+  # The frontend unit suite, with coverage.
+  # ---------------------------------------------------------------------------
+  test-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Install the locked dependency tree
+        run: npm ci
+        working-directory: frontend
+
+      - name: Vitest with coverage
+        run: just test-frontend
+
+  # ---------------------------------------------------------------------------
+  # The codegen contract. Regenerate the committed OpenAPI document and the types
+  # generated from it, and fail on any diff, so a backend change that alters the
+  # contract cannot merge without the frontend seeing it.
+  #
+  # `git diff --exit-code` rather than a checksum: a red job then shows exactly which
+  # field moved, which is the whole reason both files are committed.
+  # ---------------------------------------------------------------------------
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Sync the workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Install the locked dependency tree
+        run: npm ci
+        working-directory: frontend
+
+      - name: Regenerate the document and the types
+        run: just contract
+
+      - name: Fail on a diff
+        run: git diff --exit-code -- frontend/openapi.json frontend/src/api/schema.d.ts
+
+  # ---------------------------------------------------------------------------
   # The zero-ML rule at runtime: build the api image and require `import scipy` to
   # fail inside it. The lockfile-closure test in the solver suite is the same rule
   # checked statically; this one catches a Dockerfile that copies a member it must
