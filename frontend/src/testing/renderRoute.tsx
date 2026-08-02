@@ -13,7 +13,10 @@ import { SWRConfig } from "swr";
 
 import { routes } from "../routes";
 
-export function withFreshCache(children: ReactElement): ReactElement {
+/* ONE definition of the isolation. Written twice before, once for the element form and once for the
+ * component form, so a change to one would have silently given `renderAt` tests and `renderHook`
+ * tests different isolation: the same drift the channel script exists to prevent, one layer up. */
+export function FreshCache({ children }: { readonly children: ReactNode }): ReactElement {
   return (
     <SWRConfig
       value={{ provider: () => new Map(), dedupingInterval: 0, shouldRetryOnError: false }}
@@ -23,16 +26,8 @@ export function withFreshCache(children: ReactElement): ReactElement {
   );
 }
 
-/* The same isolation as a component wrapper, for `renderHook`, which wants a component rather than
- * an element. Asserting on a hook's own output is the only way to pin a field no rendering shows. */
-export function FreshCache({ children }: { readonly children: ReactNode }): ReactElement {
-  return (
-    <SWRConfig
-      value={{ provider: () => new Map(), dedupingInterval: 0, shouldRetryOnError: false }}
-    >
-      {children}
-    </SWRConfig>
-  );
+export function withFreshCache(children: ReactElement): ReactElement {
+  return <FreshCache>{children}</FreshCache>;
 }
 
 export function renderAt(initialPath: string): RenderResult {

@@ -184,7 +184,7 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: oxlint, stylelint, prettier, the token validator, the markup scan, the channels
+      - name: The seven frontend checks, by specifier and by resolved directory alike
         run: just lint-frontend
 
       - name: tsc
