@@ -1,0 +1,94 @@
+/* Layer 2: THE KIT'S GLYPH TABLE, AND THE ONLY PLACE A GLYPH IS WRITTEN.
+ *
+ * One glyph, one meaning. The design language states it as a rule and the testing strategy states it as
+ * a boundary test, because the marks that share a slot must not collide even where they appear at
+ * different tiers and can never co-render. A table beats per-component literals for exactly that
+ * reason: a collision is visible in one file, and `glyphs.test.ts` asserts every value is distinct.
+ *
+ * THE MARKS ARE DRAWN AS GENERATED CONTENT, which is what makes this a table rather than a convention.
+ * A glyph written as a string inside a component is a literal no other component can see; a glyph
+ * written here is `content: var(--glyph)` and the component only names the slot. Generated content also
+ * survives forced-colors mode, where a fill is dropped and text is not, which is why the check on a
+ * checkbox is a glyph rather than an image.
+ *
+ * A glyph is decorative to a screen reader: the state it marks is already carried by aria-checked,
+ * aria-expanded or aria-selected on the control, so every element carrying one is aria-hidden.
+ *
+ * EVERY MARK IS WRITTEN AS ITS CODEPOINT, the form `docs/design/components.html` uses for the select
+ * arrow. A codepoint cannot be confused with a lookalike a keyboard produces: the indeterminate mark and
+ * the disclosure minus are U+2212 MINUS SIGN and not a hyphen, and that distinction is invisible in a
+ * literal.
+ *
+ * The values come from the rendered sheet rather than from taste: the tick at U+2713, the minus at
+ * U+2212, the dismiss at U+2715, the select arrow at U+25BE, and the month arrows at U+2039 and U+203A. */
+
+:root {
+  --glyph-plus: "+";
+  --glyph-minus: "\2212"; /* MINUS SIGN, not a hyphen: it sets at the width of the plus */
+  --glyph-check: "\2713";
+  --glyph-dismiss: "\2715";
+  --glyph-select-arrow: "\25BE";
+  --glyph-month-previous: "\2039";
+  --glyph-month-next: "\203A";
+
+  /* The bracketed form, stated once. Key hints take exactly this shape, `[ j ]`, and so does the
+     accordion's disclosure, so there is one bracketed-glyph form in the system rather than two. A
+     bordered key cap is never used: a border plus brackets at 10px is redundant. */
+  --glyph-bracket-open: "[ ";
+  --glyph-bracket-close: " ]";
+}
+
+/* THE GLYPH SLOT. An empty inline box the table fills, so a component names a slot and never a mark.
+ *
+ * A SLOT IS NAMED AFTER ITS MARK, not after a meaning, and that is deliberate. The minus sign is the
+ * decrease button's mark and the indeterminate checkbox's mark, which are two meanings a reader can never
+ * see at once, and the meaning is already carried by the control's accessible name. Naming a second slot
+ * class per meaning would put the same declaration in the file twice and make a real collision harder to
+ * see. What must stay unique is the MARK TABLE above: one codepoint, one entry, which is what
+ * `glyphs.test.ts` asserts. */
+.glyph::before {
+  content: var(--glyph);
+}
+
+.glyph--bracketed::before {
+  content: var(--glyph-bracket-open) var(--glyph) var(--glyph-bracket-close);
+}
+
+.glyph--plus {
+  --glyph: var(--glyph-plus);
+}
+
+.glyph--minus {
+  --glyph: var(--glyph-minus);
+}
+
+.glyph--check {
+  --glyph: var(--glyph-check);
+}
+
+.glyph--dismiss {
+  --glyph: var(--glyph-dismiss);
+}
+
+.glyph--select-arrow {
+  --glyph: var(--glyph-select-arrow);
+}
+
+.glyph--month-previous {
+  --glyph: var(--glyph-month-previous);
+}
+
+.glyph--month-next {
+  --glyph: var(--glyph-month-next);
+}
+
+/* DISCLOSURE IS THE ONE GLYPH DRIVEN BY A STATE, so this is the kit's assignment of the glyph-slot
+ * channel to Radix's `data-state`. The closed mark is the default and the open one replaces it, keyed on
+ * the trigger's own attribute rather than on a class the JavaScript toggles. */
+.glyph--disclosure {
+  --glyph: var(--glyph-plus);
+}
+
+[data-state="open"] .glyph--disclosure {
+  --glyph: var(--glyph-minus);
+}

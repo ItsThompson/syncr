@@ -1,0 +1,44 @@
+/* Layer 2: THE ROW STATES, ASSIGNED ONCE FOR THE WHOLE KIT.
+ *
+ * Every state owns exactly one channel, so combinations add instead of overwrite. A channel may carry
+ * several states, but a given (state, channel) pair is assigned in exactly one file, and
+ * `scripts/check-channels` fails a second file that assigns one. That rule is why this file exists
+ * rather than each row-shaped component declaring its own hover fill: the sidebar row, a select item
+ * and a command-palette row are three surfaces with one behaviour, and two definitions of hover's fill
+ * drift apart with nothing on a rendered screen revealing it until the two states co-occur.
+ *
+ * Three pairs live here.
+ *
+ * HOVER TAKES THE FILL, at --state-hover. It is the one state that does not survive forced colors,
+ * which is acceptable: it is mouse-only and nothing depends on it to operate the product.
+ *
+ * A CURRENT ROW TAKES THE FILL PLUS A 3px --ink-deep LEFT RULE, which is the same channel a selected
+ * block uses. One idea, one form. The rule is drawn transparent at rest so becoming current changes a
+ * colour and not a width: a width change would shift every label in the row by three pixels.
+ *
+ * data-highlighted TAKES THE OUTLINE AND NOTHING ELSE. It is Radix's keyboard cursor in a listbox or a
+ * combobox, so it maps to focus: giving it the wash as well would make a hovered row and the cursor row
+ * indistinguishable, and a command palette's CURRENT row is data-current like any other current row.
+ * The ring sits at a negative offset because rows pitch at --h-row and an outset ring would be clipped
+ * by the row above. */
+
+.state-row {
+  border-left: var(--state-selected-border) solid transparent;
+}
+
+.state-row:hover {
+  background-color: var(--state-hover);
+}
+
+.state-row[data-current] {
+  background-color: var(--state-hover);
+  border-left-color: var(--state-selected-color);
+  color: var(--ink-deep);
+}
+
+.state-row[data-highlighted] {
+  position: relative;
+  z-index: 1;
+  outline: var(--state-focus-ring);
+  outline-offset: calc(-1 * var(--state-focus-offset));
+}
