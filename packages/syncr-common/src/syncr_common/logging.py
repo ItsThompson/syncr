@@ -25,15 +25,16 @@ from __future__ import annotations
 import logging
 import re
 import sys
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 import structlog
-from structlog.types import EventDict, Processor, WrappedLogger
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from typing import TextIO
+
+    from structlog.types import EventDict, Processor, WrappedLogger
 
 CORRELATION_ID_KEY = "correlation_id"
 TENANT_ID_KEY = "tenant_id"
@@ -106,9 +107,7 @@ def _redact_mapping(payload: Mapping[str, object], depth: int) -> dict[str, obje
     }
 
 
-def redact_sensitive(
-    _logger: WrappedLogger, _method_name: str, event_dict: EventDict
-) -> EventDict:
+def redact_sensitive(_logger: WrappedLogger, _method_name: str, event_dict: EventDict) -> EventDict:
     """structlog processor: replace every sensitive-keyed value with ``[redacted]``.
 
     Runs immediately before the renderer, so it also covers fields merged from
