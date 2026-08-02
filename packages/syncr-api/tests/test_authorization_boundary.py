@@ -41,6 +41,7 @@ from tests.boundaries import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -88,9 +89,9 @@ FORBIDDEN_SIBLINGS = frozenset({"models", "repository", "provisioning"})
 ROUTE_MODULE_NAME = "api.py"
 
 
-def authenticated_routes(app: FastAPI) -> list[tuple[str, str, object]]:
+def authenticated_routes(app: FastAPI) -> list[tuple[str, str, Callable[..., object]]]:
     """Every ``(method, path, endpoint)`` that is required to resolve a principal."""
-    found = []
+    found: list[tuple[str, str, Callable[..., object]]] = []
     for route in api_routes(app):
         for method, path in sorted(route_identity(route)):
             if (method, path) not in UNAUTHENTICATED_ROUTES:

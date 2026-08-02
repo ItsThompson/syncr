@@ -26,6 +26,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import MetaData, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from syncr_api.accounts import models as accounts_models
 from syncr_api.core.orm import Base
@@ -161,12 +162,14 @@ def compiled(statement: object) -> str:
 
 def test_a_scoped_repository_cannot_be_built_without_a_tenant() -> None:
     with pytest.raises(TypeError):
-        TenantScopedRepository(None)  # type: ignore[call-arg]  # the point of the test
+        TenantScopedRepository(AsyncSession())  # type: ignore[call-arg]  # the point of the test
 
 
 def test_every_statement_a_scoped_repository_builds_carries_a_tenant_predicate() -> None:
     tenant_id = uuid4()
-    repository = TenantScopedRepository(None, tenant_id)  # type: ignore[arg-type]  # no I/O here
+    # An unbound session: statements are built and read here, never executed, and the
+    # integration tier is where the executed form is asserted.
+    repository = TenantScopedRepository(AsyncSession(), tenant_id)
 
     sql = compiled(repository.scoped_select(ScopedThing))
 

@@ -28,7 +28,7 @@ from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.repository import TenantScopedRepository
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
-from tests.control_models import CONTROL_TABLES, ControlBase, ScopedThing, recording
+from tests.control_models import CONTROL_TABLES, ControlBase, ScopedThing, recording, table_of
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -59,11 +59,12 @@ async def scoped_table(engine: AsyncEngine) -> AsyncIterator[None]:
     table: a row with an invented tenant is rejected here exactly as it would be in
     production.
     """
+    table = table_of(ScopedThing)
     async with engine.begin() as connection:
-        await connection.run_sync(ScopedThing.__table__.create)
+        await connection.run_sync(table.create)
     yield
     async with engine.begin() as connection:
-        await connection.run_sync(ScopedThing.__table__.drop)
+        await connection.run_sync(table.drop)
 
 
 @pytest.fixture
