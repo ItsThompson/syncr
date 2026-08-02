@@ -12,8 +12,9 @@ its own scheduling. One iteration is:
     2. call each registered runner in declaration order, awaiting each. Runners are
        serial rather than concurrent because they share one bounded connection pool
        and Postgres runs without a pooler
-    3. a runner that raises is logged and counted, and the loop continues: one
-       failing duty must not stop the others
+    3. a runner that raises is logged and counted on
+       ``syncr_worker_runner_failures_total``, and the loop continues: one failing
+       duty must not stop the others
     4. sleep out the tick interval, or exit immediately if a stop signal arrived
 
 A runner owns its own cadence and decides per tick whether it has work. The tick is
@@ -28,6 +29,8 @@ import signal
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from prometheus_client import Counter
+
 from syncr_api.core.db import create_database
 from syncr_api.core.settings import WORKER_SERVICE, ServiceSettings, build_service_settings
 from syncr_common.logging import (
@@ -37,7 +40,7 @@ from syncr_common.logging import (
     get_logger,
     new_correlation_id,
 )
-from syncr_common.metrics import measured
+from syncr_common.metrics import REGISTRY, measured
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -47,6 +50,16 @@ if TYPE_CHECKING:
 # How often the loop wakes. Short enough that a debounced solve is picked up
 # promptly, long enough that an idle worker is idle.
 TICK_SECONDS = 5.0
+
+# `measured` counts an error only when the decorated call raises, and an iteration
+# deliberately never does, so a duty that fails every tick would otherwise leave every
+# worker counter at zero while the loop reported healthy.
+RUNNER_FAILURES = Counter(
+    "syncr_worker_runner_failures_total",
+    "Worker runners that exited by raising, by runner.",
+    labelnames=("runner",),
+    registry=REGISTRY,
+)
 
 
 @dataclass(frozen=True)
@@ -83,6 +96,7 @@ async def run_iteration(context: WorkerContext, runners: Sequence[Runner]) -> in
             await runner(context)
         except Exception:  # noqa: BLE001 - one failing duty must not stop the others
             failures += 1
+            RUNNER_FAILURES.labels(runner=runner.__name__).inc()
             _log.exception("worker.runner.failed", runner=runner.__name__)
     return failures
 
@@ -117,6 +131,9 @@ async def run_forever(
         if iterations == max_iterations:
             break
         await _wait_for_tick(stop, tick_seconds)
+    # Clear before the closing line so a lifecycle event is not attributed to the
+    # last tick's unit of work.
+    clear_context()
     _log.info("worker.loop.stopped", iterations=iterations)
     return iterations
 

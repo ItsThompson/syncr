@@ -10,6 +10,7 @@ from syncr_api.core.db import create_database
 from syncr_api.core.settings import WORKER_SERVICE, EnvSettings, build_service_settings
 from syncr_api.worker.main import RUNNERS, Runner, WorkerContext, run_forever, run_iteration
 from syncr_common.logging import current_correlation_id
+from syncr_common.metrics import REGISTRY
 
 
 @pytest.fixture
@@ -35,6 +36,11 @@ def raising_runner(name: str) -> Runner:
     return runner
 
 
+def _failure_count(runner: str) -> float:
+    sample = REGISTRY.get_sample_value("syncr_worker_runner_failures_total", {"runner": runner})
+    return sample or 0.0
+
+
 def test_every_registered_runner_is_callable() -> None:
     # The registry is append-only, so this holds for every runner a later slice adds.
     assert all(callable(runner) for runner in RUNNERS)
@@ -55,11 +61,15 @@ async def test_one_iteration_runs_every_runner_in_declaration_order(
 async def test_a_failing_runner_does_not_stop_the_others(context: WorkerContext) -> None:
     calls: list[str] = []
     runners = [raising_runner("calendar_sync"), counting_runner(calls, "projection")]
+    before = _failure_count("calendar_sync")
 
     failures = await run_iteration(context, runners)
 
     assert failures == 1
     assert calls == ["projection"]
+    # The loop swallows the exception so the other duties run, so `measured` records
+    # no error and the failure would otherwise be invisible to monitoring.
+    assert _failure_count("calendar_sync") == before + 1
 
 
 async def test_the_loop_runs_a_bounded_number_of_iterations(context: WorkerContext) -> None:
@@ -120,3 +130,11 @@ async def test_each_iteration_binds_a_fresh_correlation_id(context: WorkerContex
 
     assert all(seen), "every tick must bind a correlation id"
     assert seen[0] != seen[1], "a tick must not inherit the previous tick's id"
+
+
+async def test_the_closing_line_carries_no_tick_correlation_id(context: WorkerContext) -> None:
+    # A lifecycle event belongs to no unit of work, so attributing it to the last
+    # tick's id would send anyone tracing that id to the wrong place.
+    await run_forever(context, runners=(), tick_seconds=0.01, max_iterations=1)
+
+    assert current_correlation_id() is None
