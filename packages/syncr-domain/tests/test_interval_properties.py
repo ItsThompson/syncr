@@ -8,12 +8,15 @@ returning the set unchanged.
 
 Generated instants are whole minutes inside one ordinary week, so `total_minutes` is
 exact here and an arithmetic identity can be asserted as equality rather than as a
-tolerance.
+tolerance. Sub-minute bounds are deliberately not generated: per-set truncation would
+turn every such identity into an inequality, and the truncation rule itself is pinned by
+example in `test_intervals.py`.
 """
 
 from __future__ import annotations
 
 from datetime import timedelta
+from itertools import pairwise
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -27,7 +30,7 @@ _WEEK_MINUTES = 7 * 24 * 60
 @st.composite
 def intervals(draw: st.DrawFn) -> Interval:
     start = draw(st.integers(min_value=0, max_value=_WEEK_MINUTES))
-    length = draw(st.sampled_from([15, 30, 45, 60, 90, 240, 480, 1440]))
+    length = draw(st.integers(min_value=1, max_value=1440))
     return Interval(
         MONDAY + timedelta(minutes=start),
         MONDAY + timedelta(minutes=start + length),
@@ -54,7 +57,7 @@ def _shifted_clear_of(subject: IntervalSet, other: IntervalSet) -> IntervalSet:
 
 @given(interval_sets())
 def test_members_are_disjoint_sorted_and_merged(occupied: IntervalSet) -> None:
-    for earlier, later in zip(occupied.members, occupied.members[1:], strict=False):
+    for earlier, later in pairwise(occupied.members):
         assert earlier.end < later.start
 
 
