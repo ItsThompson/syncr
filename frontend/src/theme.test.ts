@@ -39,9 +39,7 @@ beforeAll(async () => {
   colorTokens = color.declarations
     .map((declaration) => declaration.name)
     .filter((name) => !NON_COLOR_TOKENS.has(name));
-  const primitives = scanCss(
-    await readFile(path.join(srcDir, "tokens", "primitives.css"), "utf8"),
-  );
+  const primitives = scanCss(await readFile(path.join(srcDir, "tokens", "primitives.css"), "utf8"));
   rampSteps = new Set(primitives.declarations.map((declaration) => declaration.name));
 });
 
@@ -54,9 +52,7 @@ function themeEntries(namespace: string): Map<string, string> {
 
 describe("the color namespace", () => {
   it("has one entry per layer 1 semantic name", () => {
-    const mapped = [...themeEntries("color").keys()].map((key) =>
-      key.replace(/^--color-/, "--"),
-    );
+    const mapped = [...themeEntries("color").keys()].map((key) => key.replace(/^--color-/, "--"));
     expect(mapped.toSorted()).toEqual([...colorTokens].toSorted());
   });
 
@@ -214,5 +210,35 @@ describe("the breakpoint namespace", () => {
   it("compiles no stock breakpoint, because none of them means anything to the width policy", async () => {
     const css = await compileUtilities(["sm:hidden", "lg:hidden", "2xl:hidden"]);
     expect(css).not.toContain("@media");
+  });
+
+  /* The two literals are the one place this file duplicates a token's value, because a media query
+   * cannot read a custom property. These assertions are what make the duplicate incapable of
+   * drifting: they read the token out of layout.css and require the theme's literal to equal it. */
+  it.each([
+    ["--breakpoint-wide", "--bp-wide"],
+    ["--breakpoint-narrow", "--bp-compact"],
+  ])("%s equals the %s token it mirrors", async (themeKey, tokenName) => {
+    const layout = await readFile(path.join(srcDir, "tokens", "layout.css"), "utf8");
+    const token = new RegExp(`${tokenName}:\\s*([^;]+);`).exec(layout);
+    if (token === null) throw new Error(`layout.css declares no ${tokenName}`);
+
+    expect(themeEntries("breakpoint").get(themeKey)).toBe(token[1].trim());
+  });
+
+  it("produces a real media query from each, evaluated rather than referencing a variable", async () => {
+    const css = await compileUtilities(["wide:hidden", "narrow:hidden"]);
+
+    expect(css).toContain("@media (width >= 1536px)");
+    expect(css).toContain("@media (width >= 1280px)");
+    expect(css).not.toMatch(/@media[^{]*var\(/);
+  });
+
+  it("does not name the lower threshold `compact`, which the state vocabulary owns", async () => {
+    const css = await compileUtilities(["compact:text-sm"]);
+
+    // `compact:` must still be the data-attribute variant, not a viewport query.
+    expect(css).toContain("[data-compact]");
+    expect(css).not.toMatch(/@media[^{]*\{\s*\.compact/);
   });
 });

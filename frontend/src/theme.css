@@ -149,16 +149,23 @@
   --container-detail: var(--w-detail);
   --container-detail-closed: var(--w-detail-closed);
 
-  /* Clearing the stock breakpoints removes sm: through 2xl:, whose thresholds mean
-     nothing to a width policy derived from a 17-character day column.
+  /* THE WIDTH POLICY'S TWO THRESHOLDS, as literals, because a media query cannot read a custom
+     property: `var(--bp-wide)` inside `@media` compiles to a query no browser evaluates.
 
-     Nothing replaces them here, and that is deliberate rather than an omission: a media
-     query cannot read a custom property, so `--breakpoint-wide: var(--bp-wide)` compiles
-     to `@media (width >= var(--bp-wide))`, which no browser evaluates. Declaring the
-     threshold as a literal would put a second copy of the value beside the token, which is
-     the drift this whole file exists to prevent. The surface that needs the policy states
-     the literal at the one place it applies and names --bp-wide beside it. */
+     A literal here IS a second copy of a token's value, which is what this file exists to prevent.
+     It is made safe the same way the colour namespace is: a test reads both files and asserts each
+     literal equals the token it mirrors, so the duplicate cannot drift. That is strictly better than
+     leaving no utility, because the alternative is not a deliberate decision later, it is a raw
+     `@media (width >= 1536px)` inside a component stylesheet, where stylelint bans no raw length and
+     nothing compares it to --bp-wide at all.
+
+     THE LOWER THRESHOLD IS `narrow`, NOT `compact`. `--breakpoint-compact` would mint a `compact:`
+     variant that collides with the closed vocabulary's `@custom-variant compact`, and one word may
+     not carry two meanings. It is named for what the layout does there: below it the grid scrolls
+     horizontally at --col-min per day rather than narrowing all seven columns at once. */
   --breakpoint-*: initial;
+  --breakpoint-narrow: 1280px;
+  --breakpoint-wide: 1536px;
 
   /* --- Motion is zero, without exception --------------------------------
      Clearing --animate-* deletes animate-spin, animate-pulse and animate-bounce,
