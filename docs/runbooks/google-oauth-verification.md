@@ -24,6 +24,8 @@ Read this when any of the following happens:
 
 A connect attempt therefore shows the "Google hasn't verified this app" screen. Clicking through it is the expected path: choose **Advanced**, then **Go to syncr (unsafe)**. Nothing is broken.
 
+**Google labels this state "strongly discouraged."** Its publishing-status matrix says of a published, external, unverified app: "Any Google user can access. Strongly discouraged." The label is recorded here rather than left out, because a runbook whose job is naming gates honestly should not quietly omit the vendor's own warning on the state it recommends. The judgment stands at one user: the alternative, `Testing`, expires the write target's token every seven days, which is a certain weekly failure against a warning about a risk that does not apply while the only user is the developer. Anyone weighing a second user should reopen this trade rather than inherit it.
+
 ## The launch gate, named
 
 There are two gates, and only one of them is a review. Confusing them wastes weeks.
@@ -37,9 +39,15 @@ There are two gates, and only one of them is a review. Confusing them wastes wee
 
 Neither applies to a single-user personal scheduler. So the gate to schedule is real but distant, and the thing that would have hurt weekly is already fixed.
 
-## The 100-user cap
+## Two different hundreds
 
-Requesting unapproved sensitive scopes caps the app at **100 new users over the project's entire lifetime**. The cap counts users, not authorizations, so reconnecting the same account does not consume the budget. It cannot be reset or raised without verification. At one user this is free, and it is the reason growing past personal use forces gate 2.
+Both limits are 100. They count different things, and only one of them is unaffected by reconnecting.
+
+**The OAuth user cap: 100 users, per project, over the project's lifetime.** It applies because the app requests unapproved sensitive scopes. It counts *users*, so reconnecting the same account does not consume it. It cannot be reset or raised without verification. At one user it costs nothing, and it is the reason growing past personal use forces gate 2. Google words this cap as "100 new users" on one page and "a hard cap of 100 total users" on another; the ceiling is 100 either way.
+
+**The refresh-token limit: 100 live refresh tokens, per Google account, per OAuth client id.** Reconnecting **does** consume this one, because each authorization mints a new refresh token. On reaching the limit, creating the next token **silently invalidates the oldest, with no error and no notice**. A separate, larger limit applies to one account across all clients.
+
+So reconnecting is free against the user cap and not free against the token limit. Exercising the reconnect path repeatedly, which is what developing and testing that path looks like, moves toward the token limit rather than away from it. At a hundred reconnects the symptom is not a refusal: it is an older grant dying quietly somewhere else.
 
 ## What changes when verification completes
 
@@ -108,6 +116,19 @@ Google matches redirect URIs as exact strings, so `localhost` and `127.0.0.1` ar
 
 To seed a fresh machine, copy `.env.example` to `.env`, fill the two values from the OAuth client, and set mode `0600`. Delete any downloaded client JSON afterwards. Never paste either value into a terminal, a chat, or an issue.
 
+## What ends a refresh token
+
+The client id and secret are long-lived. The per-user refresh token is not, and it dies for reasons that have nothing to do with the credentials above. Recorded here as the durable reference; `google-token-expired.md` owns diagnosing which one fired.
+
+| Cause | Bound |
+|---|---|
+| Publishing status is `Testing` | Seven days from consent. Cleared by gate 1 above |
+| The token goes unused | Six months |
+| The account exceeds 100 live refresh tokens for one client id | Not a refusal: the oldest is invalidated silently. See *Two different hundreds* above |
+| The user revokes access, or granted time-limited access at consent | Immediate, or at the end of the granted period |
+
+Two causes Google lists do **not** apply to syncr, and are worth knowing so they are not chased: a password change invalidates only refresh tokens carrying Gmail scopes, and syncr requests none; and `admin_policy_enforced` needs a Workspace administrator, while the owning account is personal.
+
 ## Calendars
 
 Two secondary calendars exist in the owning account. Both are owned rather than subscribed, which is what `calendar.events.owned` reaches.
@@ -121,7 +142,7 @@ Reconciliation removes every event in the horizon that syncr does not intend, in
 
 ## Two decisions recorded here rather than rediscovered
 
-**The callback path is `/api/v1/calendar-sources/google/callback`.** The route catalog did not define one. It sits under the existing calendar-sources resource so the connect flow needs no new top-level namespace. Changing it means re-registering redirect URIs in the console, so it is fixed here.
+**The callback path is `/api/v1/calendar-sources/google/callback`.** The route catalog did not define one. It sits under the existing calendar-sources resource so the connect flow needs no new top-level namespace. Changing it means re-registering redirect URIs in the console, so it is fixed here. Note for whoever adds the route: this puts a literal `google` where the sibling calendar-source routes put `{id}`. Nothing collides, because no sibling has the shape `/calendar-sources/{id}/callback`, but a router that greedily matches `{id}` two segments deep would capture it.
 
 **One Cloud project serves both development and production.** Google's OAuth policy suggests separate projects per tier. syncr deviates deliberately. The deployment is one host and one stack, and a second project would double the console surface, the client count, and the secret surface for a product with one user. What keeps destructive reconciliation away from real data is the development calendar, not a project boundary. Revisit this if a second person ever connects an account, because at that point the production project should not be the one used for experiments.
 
