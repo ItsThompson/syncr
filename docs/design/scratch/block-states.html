@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Block state decision: one ink, a sealed Area ramp, zero motion</title>
+
+<!-- Tokens are LINKED, not copied. This probe reads the same file the app reads, so a
+     value cannot drift between the record and the build. The chained @import inside
+     index.css resolves over file:// in Chrome, Safari and Firefox. -->
+<link rel="stylesheet" href="../../../frontend/src/tokens/index.css">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* MOTION IS ZERO, WITHOUT EXCEPTION. Nothing in this file eases, fades, slides or spins: no
+   timed property, no keyframe rule, no compositor hint, no geometric shift, and --duration is
+   0s. No CSS property here interpolates. The policy is stated without naming the properties it
+   forbids, so a grep for them over this file returns nothing at all and the gate has no known
+   false positive to train the reader to ignore. */
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--text);font-family:var(--font-mono);
+  font-size:var(--fs-chrome);line-height:var(--lh-chrome);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;font-weight:400}
+a{color:var(--ink-bright)}
+code{background:var(--ink-wash);padding:0 3px}
+:is(a,button,input,select,[tabindex]):focus-visible{outline:var(--state-focus-ring);
+  outline-offset:var(--state-focus-offset)}
+
+/* ---------- sheet chrome ---------- */
+.topbar{border-bottom:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  padding:12px 18px;display:flex;gap:24px;align-items:baseline;flex-wrap:wrap}
+/* The wordmark is lowercase serif at zero tracking: the one named exception to
+   uppercase-only tracking. See frontend/src/tokens/type.css. */
+.wordmark{font-family:var(--font-serif);font-size:24px;line-height:var(--lh-tight);
+  letter-spacing:var(--ls-wordmark);color:var(--ink-deep)}
+.kv{font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-muted)}
+.kv b{font-weight:500;color:var(--ink);letter-spacing:.04em;text-transform:none}
+.spec{position:sticky;top:0;z-index:30;display:flex;background:var(--paper);
+  border-bottom:var(--hairline) solid var(--rule-strong);overflow-x:auto}
+.spec .lbl{padding:8px 13px;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--on-ink);background:var(--ink-bright);white-space:nowrap}
+.spec div{padding:8px 12px;border-right:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);
+  letter-spacing:.06em;color:var(--text-muted);text-transform:uppercase;white-space:nowrap}
+.spec div b{font-weight:400;color:var(--ink);text-transform:none;letter-spacing:.02em}
+h2.sec{padding:7px 12px;border-top:var(--hairline) solid var(--rule-strong);
+  border-bottom:var(--hairline) solid var(--rule);background:var(--paper);font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep);
+  display:flex;justify-content:space-between;gap:14px;scroll-margin-top:34px}
+h2.sec em{font-style:normal;color:var(--text-muted);letter-spacing:.07em;text-transform:none;font-size:10px}
+h2.sec a{color:var(--ink-deep);text-decoration:none}
+h3.sub{padding:6px 12px;border-bottom:var(--hairline) solid var(--rule);font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink);background:var(--ink-wash);scroll-margin-top:34px}
+.note{padding:9px 12px;border-bottom:var(--hairline) solid var(--rule);color:var(--ink-soft);
+  font-size:11px;line-height:var(--lh-prose)}
+.note b{color:var(--ink-deep);font-weight:500}
+.pad{padding:13px 12px;border-bottom:var(--hairline) solid var(--rule)}
+.toc{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:var(--hairline) solid var(--rule-strong)}
+.toc a{display:block;padding:8px 12px;border-right:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule);text-decoration:none;color:var(--ink);font-size:10.5px}
+.toc a:hover{background:var(--ink-wash)}
+.toc a b{display:block;font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--text-muted);font-weight:400;margin-bottom:2px}
+
+/* ---------- ledger tables ---------- */
+table.led{border-collapse:collapse;width:100%;font-size:10.5px}
+table.led th{text-align:left;font-weight:400;font-size:9px;letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted);padding:5px 9px;
+  border-bottom:var(--hairline) solid var(--rule-strong)}
+table.led td{padding:3px 9px;border-bottom:var(--hairline) solid var(--rule);vertical-align:top}
+table.led td.r{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+table.led td.pass{color:var(--signal-verdigris);letter-spacing:.1em}
+table.led td.fail{color:var(--signal-oxide);letter-spacing:.1em}
+table.led code{font-size:9.5px}
+
+/* ---------- the Area ramp ---------- */
+.ramp{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr))}
+.ramp>div{display:flex;gap:9px;align-items:flex-start;padding:8px 11px;
+  border-right:var(--hairline) solid var(--rule);border-bottom:var(--hairline) solid var(--rule);min-width:0}
+.ramp .sw{width:38px;flex:0 0 auto}
+/* Carrier 1 of 3: the chip, on ledger surfaces. rounded-full is on the allowlist. */
+.ramp .chip{width:10px;height:10px;border-radius:50%;display:inline-block}
+/* Carrier 3 of 3: a wedge or bar fill, always hatched in a lighter step of its own ink. */
+.ramp .fill{height:22px;margin-top:4px;background-color:var(--ai);background-image:var(--hx);
+  background-size:var(--hxs,auto)}
+.ramp b{display:block;font-weight:400;color:var(--ink-deep)}
+.ramp .hex{color:var(--ink);font-variant-numeric:tabular-nums;font-size:9.5px}
+.ramp .use{display:block;color:var(--text-muted);font-size:9.5px;line-height:1.5;margin-top:2px}
+
+/* ============================================================================
+   THE WEEK GRID. Blocks are absolutely positioned from their real start minute and
+   duration, so nothing here is drawn by eye.
+   ============================================================================ */
+.gridwrap{display:flex;border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  overflow:hidden}
+.axis{width:var(--axis-w);flex:0 0 auto;border-right:var(--hairline) solid var(--rule);position:relative}
+/* The hour label sits just BELOW the line it names, never centered on it, AND it knocks out
+   its own background. Centring with a negative margin pulled the first label up into the
+   day header's rule, which struck it through; sitting below the line still let it meet the
+   top edge of the first block's rule at high zoom. The knockout is what makes the collision
+   impossible rather than unlikely: the axis fill is --paper-raised, so the label paints over
+   anything behind it. The now-label already worked this way, which is where the fix came from. */
+.axis .hh{position:absolute;right:4px;font-size:var(--fs-eyebrow);color:var(--text-muted);
+  line-height:1.35;margin-top:1px;padding:0 3px;background:var(--paper-raised);
+  font-variant-numeric:tabular-nums}
+.cols{display:flex;flex:1;min-width:0}
+.col{flex:1;min-width:0;position:relative;border-right:var(--hairline) solid var(--rule)}
+.col:last-child{border-right:0}
+.colhead{height:var(--day-header-h);border-bottom:var(--hairline) solid var(--rule-strong);
+  display:flex;align-items:center;gap:7px;padding:0 7px;background:var(--ink-wash);
+  font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep)}
+.colhead i{font-style:normal;margin-left:auto;color:var(--text-muted);letter-spacing:.04em}
+.canvas{position:relative}
+/* Grid lines. The quarter hour is drawn at rest, because the snap is 15 minutes and the grid
+   should show where a block can land. Only the hour carries cobalt weight; the quarters are
+   faint, and they step up to hour weight during a drag so the snap targets sharpen. That is a
+   discrete state change, not motion. A first draft drew --rule at every HALF hour plus
+   --rule-faint at every quarter, while each block drew four --rule-strong edges: two cobalt
+   lines an hour, and the blocks disappeared into the corduroy. Halving the cobalt fixed it;
+   deleting the subdivision was not necessary. */
+.canvas .maj,.canvas .min{position:absolute;left:0;right:0;height:0;pointer-events:none}
+/* The quarter hour is drawn at rest, because the snap is 15 minutes and the grid should show
+   where a block can land. The hour alone carries cobalt weight; the three quarters are faint.
+   During a drag the quarters step up to hour weight so the snap targets sharpen. */
+.canvas .maj{border-top:var(--hairline) solid var(--grid-line-hour)}
+.canvas .min{border-top:var(--hairline) solid var(--grid-line-quarter)}
+.dragging .canvas .min{border-top-color:var(--grid-line-quarter-drag)}
+
+/* ---------- THE BLOCK ---------- */
+/* fill = the block exists. A block at --paper-raised is lighter than the page; hover at
+   --ink-wash is darker; a proposal has no fill at all. Three values, correctly ordered.
+
+   A BLOCK DRAWS THREE EDGES, NOT FOUR. An earlier draft gave it a full --rule-strong
+   border. Rendered, two adjacent fifteen-minute blocks put four 1px rules inside one hour
+   once the grid lines were counted, and the blocks vanished into the corduroy. So: the top
+   rule carries the Area, the bottom rule closes the block at grid weight, the left rule is
+   reserved for state, and there is no right or left border at all. The 1px horizontal
+   inset keeps a block's own rules off the column divider. */
+.blk{position:absolute;left:var(--grid-inset);right:var(--grid-inset);
+  background:var(--paper-raised);
+  border:0;border-top:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule);
+  border-left:var(--state-selected-border) solid transparent;
+  padding:var(--block-pad-t) var(--block-pad-x) var(--block-pad-b);overflow:hidden;
+  font-size:var(--fs-block);line-height:var(--lh-block);color:var(--ink);
+  outline-offset:var(--state-focus-offset);cursor:default}
+/* Area identity, carrier 2 of 3: the 2px top rule, and nothing else on a proportional
+   surface. A real border-top, not an inset shadow, so it participates in the 19px floor's
+   arithmetic rather than sitting on top of the title. See layout.css. */
+.blk[data-area]{border-top:var(--rule-emphasis) solid var(--ai)}
+/* The title wraps to whatever fits. --lines is computed per block from its own height, so a
+   clip lands on a line boundary and a tall block keeps the tail that distinguishes it from
+   its sibling. Ported from week-density.html, where a measured ledger showed nowrap made
+   4 of 37 real titles ambiguous. The two sheets must not disagree on this. */
+.blk .t{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--lines,1);
+  overflow:hidden;overflow-wrap:anywhere}
+.blk .g{float:right;margin-left:5px;color:var(--ink-deep);font-size:10px;line-height:1.2}
+.blk .dur{color:var(--text-muted);font-variant-numeric:tabular-nums}
+
+/* The circadian frame takes --frame-wash and NO Area ink: it is structure, not a category
+   competing with Fitness. */
+.blk.frame{background:var(--frame-wash);color:var(--ink-soft)}
+/* An external anchor is opaque busy time the product does not own. Hatched in cobalt at
+   hairline weight so it reads as foreign without spending a signal. */
+.blk.anchor{background-color:var(--paper-raised);
+  background-image:repeating-linear-gradient(135deg,var(--rule) 0 1px,transparent 1px 7px);
+  border-top-color:var(--ink-deep)}
+
+/* THE FIVE STATE CHANNELS. One state per channel, so combinations add. Never reassign. */
+.blk.h,.blk:hover{background-color:var(--state-hover)}
+.blk.f,.blk:focus-visible{outline:var(--state-focus-ring);z-index:6}
+.blk[data-selected]{border-left-color:var(--state-selected-color)}
+.blk[data-conflict]{border-left-color:var(--state-conflict-color)}
+.blk[data-pinned] .pin{display:inline}
+.pin{display:none}
+/* proposal: the one state with NO fill. Outline only. */
+.blk[data-proposal]{background:transparent;background-image:none;
+  border:var(--hairline) dashed var(--ink-deep);
+  border-left:var(--state-selected-border) solid transparent;color:var(--ink-soft)}
+.blk[data-proposal]::after{content:'';position:absolute;inset:0;pointer-events:none}
+/* the source block a proposal wants to vacate */
+.blk[data-source] .g{color:var(--ink-deep)}
+
+/* Tier ladder. The compact tier keeps a title down to 12.5px by dropping to
+   --fs-block-compact at line-height 1 and giving up --block-pad-t. Below it the title goes
+   and the origin glyph survives. Ported from week-density.html; the two sheets must agree. */
+.blk[data-tier=compact]{font-size:var(--fs-block-compact);line-height:var(--lh-block-compact);
+  padding-top:0}
+.blk[data-tier=sliver] .t,.blk[data-tier=hair] .t{display:none}
+.blk[data-tier=hair]{padding:0;border-bottom-width:0}
+/* A split block needs a vertical divider, because the block itself no longer draws one. */
+.blk[data-split]{border-left:var(--hairline) solid var(--rule)}
+.blk[data-split][data-selected]{border-left:var(--state-selected-border) solid var(--state-selected-color)}
+.blk[data-split][data-conflict]{border-left:var(--state-conflict-border) solid var(--state-conflict-color)}
+
+/* A FORBIDDEN WINDOW: the recovery shadow an anchor casts. Not a block -- it is the absence
+   of a block that this exists to explain -- so it takes no fill, no Area rule and no state.
+   A hatched band plus a gutter label, sitting under every block in z-order. */
+.forbid{position:absolute;left:0;right:0;pointer-events:none;z-index:0;
+  --hatch-ink:var(--forbidden-hatch-ink);background-image:var(--hatch-back);
+  border-top:var(--hairline) dotted var(--rule);border-bottom:var(--hairline) dotted var(--rule)}
+.forbid span{position:absolute;left:4px;top:2px;font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--text-muted);
+  background:var(--paper-raised);padding:0 3px}
+
+/* the now rule */
+.now{position:absolute;left:0;right:0;height:0;border-top:var(--now-rule) solid var(--ink-bright);z-index:5}
+.nowlab{position:absolute;right:3px;font-size:9px;color:var(--ink-bright);
+  background:var(--paper-raised);padding:0 2px;margin-top:-6px;font-variant-numeric:tabular-nums}
+/* the discrete drag marker: a hairline that snaps to the quarter hour. NOT a moving block. */
+.dragmk{position:absolute;left:0;right:0;height:0;border-top:var(--rule-emphasis) dashed var(--ink-deep);z-index:7}
+.dragmk::after{content:attr(data-at);position:absolute;left:3px;top:2px;font-size:9px;
+  background:var(--ink-deep);color:var(--on-ink);padding:0 3px;letter-spacing:.06em}
+
+/* ---------- isolation and matrix strips ---------- */
+.strip{display:grid;grid-template-columns:132px minmax(0,1fr);border-bottom:var(--hairline) solid var(--rule)}
+.strip>.n{padding:7px 11px;border-right:var(--hairline) solid var(--rule);
+  font-size:var(--fs-eyebrow);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.strip>.n b{display:block;color:var(--ink-deep);letter-spacing:.04em;text-transform:none;font-size:10.5px}
+.strip>.s{padding:9px 13px;min-width:0;background:var(--paper)}
+/* A single block, laid out statically so a state can be read without the grid around it.
+   Height is one 30 minute block at the default zoom, which is what the matrix is judged at. */
+.solo{position:relative;height:34px;max-width:186px}
+.solo .blk{position:relative;height:100%;left:auto;right:auto}
+
+/* forced-colors simulation: the OS drops fills and shadows and overrides color. */
+.fc .blk{background:transparent!important;background-image:none!important;box-shadow:none!important}
+.fc .blk.frame,.fc .blk.anchor{background:transparent!important}
+
+/* ---------- controls ---------- */
+.bar{display:flex;border:var(--hairline) solid var(--rule-strong);margin:12px}
+.bar button{font:inherit;font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;
+  background:var(--paper-raised);color:var(--ink);border:0;border-right:var(--hairline) solid var(--rule);
+  height:var(--h-control);padding:0 11px;cursor:pointer}
+.bar button:last-child{border-right:0}
+.bar button[aria-pressed=true]{background:var(--ink);color:var(--on-ink)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;border-bottom:var(--hairline) solid var(--rule)}
+.grid2>*{min-width:0}
+.grid2>*:first-child{border-right:var(--hairline) solid var(--rule)}
+
+/* ---------- the verdict block ---------- */
+.verdict{border:var(--rule-emphasis) solid var(--ink-deep);margin:12px}
+.verdict>header{background:var(--ink-deep);color:var(--on-ink);padding:5px 10px;font-size:9.5px;
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase}
+.verdict .in{padding:11px}
+.verdict .in p{margin:0 0 var(--prose-gap);font-size:var(--fs-prose);line-height:var(--lh-prose)}
+.verdict .in p:last-child{margin-bottom:0}
+.q{border-left:var(--rule-emphasis) solid var(--signal-amber);padding-left:9px;margin-top:11px;
+  font-size:11px;line-height:1.55;color:var(--ink)}
+.q b{color:var(--ink-deep)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="wordmark">syncr</span>
+  <span class="kv">Probe <b>docs/design/scratch/block-states.html</b></span>
+  <span class="kv">Tokens <b>linked live from frontend/src/tokens/index.css</b></span>
+  <span class="kv">Decides <b>the block's state channels, the Area ramp, the proposal pair, overlap</b></span>
+  <span class="kv">Motion <b>zero, no exceptions</b></span>
+</div>
+
+<div class="spec">
+  <span class="lbl">Under test</span>
+  <div>channels <b>one state, one channel</b></div>
+  <div>area ink <b>12, sealed to three carriers</b></div>
+  <div>block fill <b>three values: raised, wash, none</b></div>
+  <div>proposal <b>no fill at all</b></div>
+  <div>conflict <b>3px oxide left rule</b></div>
+  <div>overlap <b>even to 3, then stagger</b></div>
+  <div>tier floor <b>19px label, 8px sliver</b></div>
+  <div>grid <b>hour only at rest</b></div>
+  <div>snap <b>15 min</b></div>
+  <div>zoom <b>6&ndash;24h, clamped per display</b></div>
+  <div>drag <b>discrete, marker only</b></div>
+</div>
+
+<nav class="toc">
+  <a href="#s1"><b>Section 1</b>The channel map, and what it must survive</a>
+  <a href="#s2"><b>Section 2</b>The Area ramp: 12 inks, computed, with hatches</a>
+  <a href="#s3"><b>Section 3</b>A real day, every state in situ</a>
+  <a href="#s4"><b>Section 4</b>States in isolation</a>
+  <a href="#s5"><b>Section 5</b>The combination matrix</a>
+  <a href="#s6"><b>Section 6</b>The proposal pair, and the discrete drag</a>
+  <a href="#s7"><b>Section 7</b>Overlap at depth 2, 3 and 5</a>
+  <a href="#s8"><b>Section 8</b>The tier ladder, and what this probe settled</a>
+  <a href="#s9"><b>Section 9</b>Forced colors</a>
+</nav>
+
+<!-- ==================== 1 ==================== -->
+<h2 class="sec" id="s1"><span><a href="#s1">1</a> &middot; The channel map</span><em>nine meanings arrive at one rectangle. four are resolved at rest, the rest are moved off it</em></h2>
+<div class="note"><b>A calendar block differs from a transcript row in one way that drives everything else: it must be a bounded object distinct from the grid's own lines, so it spends a fill just to exist.</b> The language syncr inherits gives hover the row fill, because a transcript row has no fill of its own. Here the fill channel takes three values instead, and they order correctly by accident of the palette: a block at <code>--paper-raised</code> is lighter than the page, hover at <code>--ink-wash</code> is darker, and a proposal has no fill at all. Absence of fill needs no new pigment and survives forced colors.
+<br><br><b>A block draws three edges, not four.</b> The top rule carries the Area, the bottom rule closes the block at grid weight, the left rule is reserved for state, and there is no right or left border at all. A 1px horizontal inset keeps a block's own rules off the column divider. A split block is the one exception: it takes a left rule at <code>--rule</code>, because nothing else would divide it from its neighbor.</div>
+<table class="led"><thead><tr><th>Meaning</th><th>Channel</th><th>Value</th><th>Where it is resolved</th></tr></thead><tbody>
+  <tr><td>Area identity</td><td>2px top rule</td><td><code>--area-NN</code></td><td>at rest</td></tr>
+  <tr><td>the block exists</td><td>fill</td><td><code>--paper-raised</code></td><td>at rest</td></tr>
+  <tr><td>pinned</td><td>glyph slot</td><td><code>&#9670;</code></td><td>at rest</td></tr>
+  <tr><td>authority: conflict</td><td>3px left rule</td><td><code>--signal-oxide</code></td><td>at rest, plus a banner</td></tr>
+  <tr><td>authority: proposal</td><td>fill</td><td>none. outline only</td><td>at rest, as a pair</td></tr>
+  <tr><td>hover</td><td>fill</td><td><code>--ink-wash</code></td><td>pointer</td></tr>
+  <tr><td>focus-visible</td><td>outline, 2px offset</td><td><code>--ink-bright</code></td><td>keyboard</td></tr>
+  <tr><td>selected</td><td>3px left rule</td><td><code>--ink-deep</code></td><td>keyboard or click</td></tr>
+  <tr><td>origin</td><td>glyph slot</td><td>one mark per kind</td><td>at rest below the label tier only</td></tr>
+  <tr><td>reality state</td><td>&mdash;</td><td>&mdash;</td><td><b>moved off the block.</b> Today's ledger owns it</td></tr>
+  <tr><td>time relation</td><td>&mdash;</td><td>&mdash;</td><td><b>moved off the block.</b> the now rule says where the boundary is</td></tr>
+  <tr><td>infeasibility implication</td><td>&mdash;</td><td>&mdash;</td><td><b>a mode</b>, entered from the verdict strip</td></tr>
+  <tr><td>the reason string</td><td>&mdash;</td><td>&mdash;</td><td>the detail panel, on selection. never hover-only</td></tr>
+</tbody></table>
+<div class="note"><b>Conflict and selected share the left rule deliberately.</b> They cannot co-occur meaningfully: a conflict is resolved by selecting it, at which point the detail panel states it in words. Conflict wins the pixel while it lasts. Section 5 renders that collision so it can be judged rather than argued about. <b>Loudness, most to least: conflict, proposal, selected, focus, hover.</b></div>
+
+<!-- ==================== 2 ==================== -->
+<h2 class="sec" id="s2"><span><a href="#s2">2</a> &middot; The Area ramp</span><em>the one break with one-ink. twelve pigments, three legal carriers, and a computed ledger</em></h2>
+<div class="note"><b>Every ratio below is computed in the browser from the linked tokens at load.</b> An Area ink is a non-text indicator wherever it appears, so the bar is <b>3:1</b>. <b>The ramp is deliberately equalized:</b> all twelve measure within 0.1 of 5.0:1 against page paper, because an uneven ramp makes some wedges read as heavier than others and biases the composition the pie review exists to show. The first draft ran 4.42:1 to 7.25:1 and the violet group looked like it held more time than the moss group at equal area. The 225&deg; slot is vacant because that is cobalt's hue. Three pigments sit on the sealed signal hues by construction: <code>01</code> near oxide, <code>03</code> near amber, <code>06</code> near verdigris. That collision is accepted, and <b>the carrier rule is what disambiguates it: a signal is never a fill, an Area is only ever a fill or a rule.</b> The failure mode is honest and worth watching for: a madder <code>Career</code> block beside an oxide conflict rule will look related for the first week.</div>
+<div class="ramp" id="ramp"></div>
+<div id="ratios"></div>
+<div class="note"><b>Hatch is not an accessibility toggle. It is always on, because color is never the only encoding.</b> Six patterns is the honest ceiling: past that they stop separating at wedge scale, so a pattern repeats only between hues that are far apart. Each hatch is drawn in a lighter step of the wedge's own ink, so it reads as texture rather than as a second color. On ledger surfaces the chip pairs with the Area's <b>name</b> instead, which is stronger than any pattern. <b>The tightest adjacent gaps are <code>02</code>/<code>03</code> at 19.4&deg;, <code>06</code>/<code>07</code> and <code>07</code>/<code>08</code> at 20.3&deg;, and <code>12</code>/<code>01</code> at 20.4&deg;</b>, which is uniform and about as tight as two dark colors can be and still separate. <code>--pigment-area-07</code> was retuned from 183&deg; to 176&deg; to reach that: at 183&deg; it sat 13.0&deg; from <code>08</code> and the two were genuinely indistinguishable. <b>The deal order does not defer these pairs</b>: 07 and 08 are dealt 6th and 3rd: so what separates an adjacent pair is its hatch, and every one of the four tightest pairs carries a different one.</div>
+
+<!-- ==================== 3 ==================== -->
+<h2 class="sec" id="s3"><span><a href="#s3">3</a> &middot; A real day, every state in situ</span><em>a state has to be judged inside the grid, not as a floating rectangle. hover and tab are live</em></h2>
+<div class="note">One realistic Tuesday, drawn from a real reference week: a gym rotation slot, an elastic queue-bound <code>Leetcode</code>, an external interview anchor with its declared prep and transit shadows, and the circadian frame as <b>spans</b> rather than markers. Blocks are positioned from their start minute and duration by script, so nothing here is placed by eye. Default zoom: <b>12 visible hours</b>. <b>Use the mouse and the Tab key.</b>
+<br><br><b>The quarter hour is drawn at rest, because the snap is fifteen minutes and the grid should show where a block can land.</b> Only the hour carries cobalt weight; the three quarters are <code>--rule-faint</code>. Press <i>drag in progress</i> and the quarters step up to hour weight, so the snap targets sharpen at the one moment the user is aiming at them. It is a discrete state change, not motion. A first draft drew <code>--rule</code> at every <i>half</i> hour plus <code>--rule-faint</code> at every quarter, while each block drew four <code>--rule-strong</code> edges: two cobalt lines an hour, and the blocks disappeared into the corduroy. <b>Halving the cobalt fixed it. Deleting the subdivision was not necessary, and it was briefly deleted before this was understood.</b></div>
+<div class="bar">
+  <button type="button" id="t-fc" aria-pressed="false">forced-colors sim</button>
+  <button type="button" id="t-zoom" aria-pressed="false">zoom: 12h</button>
+  <button type="button" id="t-drag" aria-pressed="false">drag in progress</button>
+</div>
+<div style="padding:0 12px 14px"><div class="gridwrap" id="day1"></div></div>
+<div class="note"><b>Read the interview at 16:00 and the two shadows it casts.</b> <code>Prep for Kontron Placement Interview</code> at 10:00 and <code>Leave for Uni</code> at 15:00 are generated from the anchor's declared type, not authored. <b>The window from 16:45 to 18:00 is the recovery shadow</b>, and it is now drawn: a hatched band in <code>--rule</code> with a gutter label, sitting under every block in z-order. It is deliberately <b>not a block</b>: it has no fill, no Area rule and no state, because it is the <i>absence</i> of a block that it exists to explain. The first render left it as nothing at all, which made a forbidden gap and an ordinary empty gap pixel-identical and the solver look like it was declining a gap for no reason.</div>
+
+<!-- ==================== 4 ==================== -->
+<h2 class="sec" id="s4"><span><a href="#s4">4</a> &middot; States in isolation</span><em>one 30 minute block at the default zoom, which is the size the system must work at</em></h2>
+<div id="isolated"></div>
+
+<!-- ==================== 5 ==================== -->
+<h2 class="sec" id="s5"><span><a href="#s5">5</a> &middot; The combination matrix</span><em>every combination of the five row-level channels. this is the view that rejects a system</em></h2>
+<div class="note"><b>Validate every state in combination, never in isolation.</b> In the language syncr inherits, four plausible state systems each looked correct on a single state and produced two pixel-identical rows here while meaning different things. Read down this list looking for any two rows you cannot tell apart. <b>Rows 14 and 15 are the deliberate collision</b>: conflict and selected sharing the left rule.</div>
+<div id="matrix"></div>
+
+<!-- ==================== 6 ==================== -->
+<h2 class="sec" id="s6"><span><a href="#s6">6</a> &middot; The proposal pair, and the discrete drag</span><em>a proposal moves an existing block, so the honest rendering shows both ends</em></h2>
+<div class="grid2">
+  <div style="padding:12px">
+    <div class="kv" style="margin-bottom:9px">Proposal &middot; <b>the solver wants to move Gym from 05:30 to 13:00</b></div>
+    <div class="gridwrap" id="prop" style="max-width:280px"></div>
+  </div>
+  <div class="pad" style="border-bottom:0">
+    <div class="kv" style="margin-bottom:9px">What each end carries</div>
+    <table class="led"><tbody>
+      <tr><td>source, 05:30</td><td>keeps its fill. takes <code>&#8594;</code> in the glyph slot</td></tr>
+      <tr><td>target, 13:00</td><td><b>no fill.</b> dashed <code>--ink-deep</code> outline, <code>--ink-soft</code> text</td></tr>
+      <tr><td>notification</td><td><b>none.</b> a proposal waits quietly and is visible when the user looks</td></tr>
+      <tr><td>resolution</td><td>one approve action. proposals supersede each other, so only the latest exists</td></tr>
+    </tbody></table>
+    <div class="note" style="border:0;padding:11px 0 0"><b>Dashed was the obvious carrier and it was rejected.</b> A dashed border already means <code>disabled</code> on a control, and one visual carrying two meanings is what this system forbids. Absence of fill is unclaimed, unambiguous, and survives forced colors: where a fill is dropped anyway, leaving the dashed outline as the only surviving difference. That is why the target keeps a dashed <i>outline</i> as well: in forced colors the missing fill stops being a signal.</div>
+  </div>
+</div>
+
+<!-- ==================== 7 ==================== -->
+<h2 class="sec" id="s7"><span><a href="#s7">7</a> &middot; Overlap</span><em>even split to depth 3, then stagger. a 186px column is the budget</em></h2>
+<div class="note">Overlap is expected: a user multitasks, and the product does not pretend otherwise. <b>Even split up to depth 3</b>, so the common case is exact. <b>Past 3, stagger</b> with the later start on top at a fixed <code>--overlap-indent</code>, plus a count marker in the frontmost block, because an even fifth of a column leaves nothing to write in. A split block takes a left rule at <code>--rule</code>, because with no right or left border of its own nothing else would divide it from its neighbor. Character budgets at a 143px day column, <code>--fs-block</code> 11.5px: depth 1 is <b>18</b> characters, depth 2 is <b>8</b>, depth 3 is <b>5</b>.</div>
+<div style="padding:0 12px 14px;display:flex;gap:18px;flex-wrap:wrap">
+  <div><div class="kv" style="margin-bottom:7px">Depth 2 &middot; even</div><div class="gridwrap" id="ov2" style="width:230px"></div></div>
+  <div><div class="kv" style="margin-bottom:7px">Depth 3 &middot; even, the floor</div><div class="gridwrap" id="ov3" style="width:230px"></div></div>
+  <div><div class="kv" style="margin-bottom:7px">Depth 5 &middot; stagger + count</div><div class="gridwrap" id="ov5" style="width:230px"></div></div>
+</div>
+<div class="note"><b>Depth 3 is where the title dies and the Area top rule takes over as the only identity.</b> That is the ramp earning its exception: at 6 characters the label is gone, and the pigment is the last thing standing. Watch whether three adjacent top rules read as three Areas or as one striped object.</div>
+
+<!-- ==================== 8 ==================== -->
+<h2 class="sec" id="s8"><span><a href="#s8">8</a> &middot; The tier ladder, and the record of what this probe settled</span><em>the same four blocks at four zoom levels</em></h2>
+<div class="note">A block's height is proportional to its duration, so at high zoom a 15 minute block falls below the height its own title needs. <b>The block degrades; the axis never lies.</b> Below <code>--block-h-label</code> the title goes and the origin glyph stays. Below <code>--block-h-sliver</code> only the bounded sliver and the Area rule survive. The title is always available on selection. <b>Each panel below prints its own pixels-per-minute and the tier a 15 minute block lands in</b>, computed from the linked tokens, so the ladder can be checked rather than believed.</div>
+<div style="padding:0 12px 14px;display:flex;gap:14px;flex-wrap:wrap" id="tiers"></div>
+
+<div class="verdict">
+  <header>&#9670; What this probe settles</header>
+  <div class="in">
+    <p><b>Settled by rendering:</b> the channel map in section 1, the three-value fill channel, the proposal pair as absence-of-fill, the 12-ink ramp with three sealed carriers, even-split-to-3-then-stagger, the tier ladder, and the block title at <code>--fs-chrome</code> with a 19px floor.</p>
+    <p><b>Settled in review, from the rendered output rather than from description:</b> the grid draws the hour only, in <code>--rule-faint</code>, and reveals the quarter-hour subdivision only during a drag. A block draws three edges, not four. The hour label knocks out its own background. The zoom range clamps per display so a thirty-minute block always keeps its label. The recovery shadow is a hatched band, not an absence. Three adjacent Area top rules at depth 3 read as three Areas.</p>
+    <div class="q"><b>Settled in review &middot; the block title is <code>--fs-chrome</code> 11.5px, and the floor is 19px.</b> The first draft used 9.5px to keep the floor at 15px, which let a fifteen-minute block hold a title at more zoom levels. Rendered, it was unreadable at the size the Week screen is used at, and it made the product's primary content the smallest type in the system. The second render then showed the title jammed against the Area rule, so <code>--block-pad-t</code> is 2px and the floor is the sum of what has to fit: <b>2 rule + 2 pad + 13.8 line + 1 rule = 18.8px inside 19px</b>. Padding is asymmetric: zero at the bottom, because a title is top-aligned and symmetry would cost another zoom step. The cost is paid by the fifteen-minute tier, which now slivers at the 12 hour default on anything smaller than a 27-inch. Accepted: those blocks are the circadian frame and are read from position. <b>The consequence that still needs your ruling</b> is the zoom cap. To keep a <i>thirty</i>-minute block labeled: the modal duration by a wide margin: the 6&ndash;24 range must clamp at <b>16h on a 13-inch, 22h on a 16-inch, 24h on a 27-inch</b>. Accept the clamp, or allow the full 24 everywhere and let the modal block sliver too?</div>
+    <div class="q"><b>Settled &middot; the zoom range clamps per display.</b> To keep a thirty-minute block labeled: the modal duration by a wide margin: the 6&ndash;24 range caps at <b>16h on a 13-inch, 22h on a 16-inch, 24h on a 27-inch</b>. The cap is derived from the grid height and <code>--block-h-label</code>, not stored. A zoom level at which the most common block in the system is unreadable is not offered.</div>
+    <div class="q"><b>Settled &middot; the rotation cursor is derived, not editable.</b> <code>Gym</code> is on <code>Legs</code> <i>because</i> <code>Chest &amp; Back</code> was confirmed completed, so the cursor is a projection of the append-only outcome log rather than a field. It is displayed read-only with that provenance. A wrong cursor means a wrong confirmation, corrected on Today, after which the cursor re-derives. Overriding a single occurrence is a rebind, which is a pin, which already exists. No new concept and no desync possible by construction.</div>
+    <div class="q"><b>Settled &middot; three adjacent top rules at depth 3 read as three Areas.</b> Section 7 renders it. The one-carrier-per-context rule therefore holds without an exception: the top rule stays the sole Area carrier on a proportional surface at every overlap depth.</div>
+  </div>
+</div>
+
+<!-- ==================== 9 ==================== -->
+<h2 class="sec" id="s9"><span><a href="#s9">9</a> &middot; Forced colors</span><em>the OS drops every fill. what survives is what the state actually is</em></h2>
+<div class="note">Toggle the simulation in section 3, then re-read sections 4, 5 and 7. <b>Every state except hover survives</b>, because each pairs its fill with an outline, a border or a glyph. Hover does not survive, and that is acceptable: it is mouse-only and nothing depends on it to operate the product. <b>The Area ramp does not survive either</b>, which is precisely why hatch and the Area name are structural rather than optional.</div>
+<table class="led"><thead><tr><th>State</th><th>Channel</th><th>Forced colors</th></tr></thead><tbody>
+  <tr><td>hover</td><td>fill</td><td class="fail">lost. accepted: mouse-only</td></tr>
+  <tr><td>focus-visible</td><td>outline</td><td class="pass">survives, recoloured to Highlight</td></tr>
+  <tr><td>selected</td><td>3px left border</td><td class="pass">survives</td></tr>
+  <tr><td>conflict</td><td>3px left border</td><td class="pass">survives as geometry, loses its oxide</td></tr>
+  <tr><td>proposal</td><td>no fill</td><td class="pass">survives via the dashed outline</td></tr>
+  <tr><td>pinned</td><td>glyph</td><td class="pass">survives, glyphs are text</td></tr>
+  <tr><td>Area identity</td><td>2px top rule</td><td class="fail">lost. hatch and the Area name carry it</td></tr>
+</tbody></table>
+
+<div class="note" style="border-top:var(--hairline) solid var(--rule-strong);border-bottom:0;color:var(--text-muted)">
+  <b>Provenance.</b> Color ratios are computed in the browser from <code>frontend/src/tokens/</code> at load, so section 2 cannot drift from the build. Block names, times and durations are taken from a real reference week and are realistic rather than authoritative: the circadian frame is drawn as <b>spans</b>, which is what the product specifies, not what the source calendar happened to export. The zoom arithmetic assumes 700px of grid, which is what a 1440&times;900 display yields after the page band, summary strip and day header.
+  <br><br>Companion records: <code>scratch/week-density.html</code> for the full zoom ladder, <code>scratch/area-ramp.html</code> for the pigment record, then <code>specimen.html</code>, <code>components.html</code>, <code>screens.html</code> and <code>decisions.html</code>. <code>docs/DESIGN-LANGUAGE.md</code> is written last, so it documents what was built rather than what was planned.
+</div>
+
+<script>
+/* ============================================================
+   Token reader. A custom property's computed value has its var() references
+   substituted, but a chain is resolved defensively so this record still reports true
+   hex values if a browser hands back an unsubstituted token stream.
+   ============================================================ */
+const raw = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function hex(name, depth = 0){
+  const v = raw(name);
+  const m = /^var\((--[\w-]+)\)$/.exec(v);
+  if(m && depth < 8) return hex(m[1], depth + 1);
+  return v;
+}
+const lum = h => {
+  const c = [1,3,5].map(i => parseInt(h.substr(i,2),16)/255)
+    .map(v => v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4));
+  return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+};
+const ratio = (a,b) => { const x = lum(a), y = lum(b);
+  return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); };
+
+/* ---------- 2, the Area ramp ----------
+   Assignment order, not numeric order: a user with four Areas gets four pigments roughly
+   ninety degrees apart. Hatch repeats only between hues that are far apart. */
+const HATCH = {
+  fwd:['--hatch-fwd',null], back:['--hatch-back',null], vert:['--hatch-vert',null],
+  horz:['--hatch-horz',null], cross:['--hatch-cross',null], dot:['--hatch-dot','--hatch-dot-size']
+};
+const AREAS = [
+  {tok:'--area-01', hue:355, name:'Career',   hatch:'fwd',   order:1},
+  {tok:'--area-05', hue:100, name:'Study',    hatch:'back',  order:2},
+  {tok:'--area-08', hue:202, name:'Fitness',  hatch:'vert',  order:3},
+  {tok:'--area-10', hue:288, name:'Research', hatch:'cross', order:4},
+  {tok:'--area-03', hue:48,  name:'Projects', hatch:'dot',   order:5},
+  {tok:'--area-07', hue:180, name:'Admin',    hatch:'horz',  order:6},
+  {tok:'--area-12', hue:335, name:'Transit',  hatch:'back',  order:7},
+  {tok:'--area-06', hue:145, name:'unassigned', hatch:'fwd',   order:8},
+  {tok:'--area-02', hue:25,  name:'unassigned', hatch:'vert',  order:9},
+  {tok:'--area-04', hue:72,  name:'unassigned', hatch:'cross', order:10},
+  {tok:'--area-09', hue:262, name:'unassigned', hatch:'dot',   order:11},
+  {tok:'--area-11', hue:312, name:'unassigned', hatch:'horz',  order:12}
+];
+const AREA_BY_NAME = {};
+for(const a of AREAS) AREA_BY_NAME[a.name] = a;
+
+document.getElementById('ramp').innerHTML = AREAS.map(a => {
+  const [hv, hs] = HATCH[a.hatch];
+  const style = `--ai:var(${a.tok});--hx:var(${hv})` + (hs ? `;--hxs:var(${hs})` : '');
+  return `<div style="${style}">
+    <span class="sw"><span class="chip" style="background:var(${a.tok})"></span>
+      <span class="fill" style="--hatch-ink:color-mix(in srgb, var(${a.tok}) var(--hatch-mix), var(--paper-raised))"></span></span>
+    <span><b>${a.tok} &middot; ${a.hue}&deg;</b><span class="hex">${hex(a.tok).toUpperCase()}</span>
+      <span class="use">assigned ${a.order}${a.order===1?'st':a.order===2?'nd':a.order===3?'rd':'th'}
+      &middot; hatch <code>${a.hatch}</code> &middot; ${a.name}</span></span></div>`;
+}).join('');
+
+/* contrast ledger: every carrier surface an Area ink can land on */
+const SURFACES = [['--paper','the page, behind a wedge or bar'],
+                  ['--paper-raised','a block fill, behind the top rule, and a ledger row']];
+let fails = 0;
+document.getElementById('ratios').innerHTML =
+  '<table class="led"><thead><tr><th>Area ink</th><th>Against</th><th>Where</th>'
+  + '<th class="r">Ratio</th><th class="r">Needs</th><th>Verdict</th></tr></thead><tbody>'
+  + AREAS.flatMap(a => SURFACES.map(([s, where]) => {
+      const r = ratio(hex(a.tok), hex(s));
+      const ok = r >= 3;
+      if(!ok) fails++;
+      return `<tr><td><code>${a.tok.slice(2)}</code></td><td><code>${s.slice(2)}</code></td>`
+        + `<td>${where}</td><td class="r">${r.toFixed(2)}:1</td><td class="r">3:1</td>`
+        + `<td class="${ok?'pass':'fail'}">${ok?'pass':'FAIL'} &middot; non-text indicator</td></tr>`;
+    })).join('')
+  + `<tr><td colspan="6" style="color:var(--ink-deep)"><b>${fails === 0
+      ? 'Every one of the 24 pairs clears 3:1. The count is computed, not typed.'
+      : fails + ' pair(s) FAIL and must be retuned in primitives.css before any sheet ships.'}</b></td></tr>`
+  + '</tbody></table>';
+
+/* ============================================================
+   The grid. Blocks are positioned from start minute and duration.
+   ============================================================ */
+const AXIS_START = 5 * 60;      /* the user's declared day start, expanded to contain the
+                                   earliest block in the visible week */
+const AXIS_END   = 24 * 60;
+
+/* One realistic Tuesday. The frame is drawn as SPANS, which is what the product
+   specifies. origin: frame | habit | task | anchor | shadow | transit */
+const DAY = [
+  {s:'00:00', e:'05:15', t:'Sleep',              o:'frame'},
+  {s:'05:15', e:'05:30', t:'Wake Up',            o:'frame'},
+  {s:'05:30', e:'06:30', t:'Gym &middot; Shoulder & Arms', o:'habit', area:'Fitness', pin:1},
+  {s:'06:30', e:'06:45', t:'Shower',             o:'frame'},
+  {s:'07:00', e:'09:30', t:'Leetcode &middot; Graphs', o:'habit', area:'Career'},
+  {s:'10:00', e:'10:30', t:'Prep for Kontron Interview', o:'shadow', area:'Career'},
+  {s:'10:30', e:'11:00', t:'Leetcode &middot; Graphs', o:'habit', area:'Career'},
+  {s:'11:30', e:'12:00', t:'Lunch',              o:'frame'},
+  {s:'12:00', e:'15:00', t:'Leetcode &middot; DP', o:'habit', area:'Career'},
+  {s:'15:00', e:'15:30', t:'Leave for Uni',      o:'shadow', area:'Transit'},
+  {s:'16:00', e:'16:45', t:'Kontron Placement Interview', o:'anchor', conflict:1},
+  {s:'18:00', e:'18:30', t:'Dinner',             o:'frame'},
+  {s:'18:30', e:'19:00', t:'F&amp;F Reading Group', o:'task', area:'Study'},
+  {s:'19:00', e:'19:30', t:'36 South Application', o:'task', area:'Career', sel:1},
+  {s:'19:30', e:'20:30', t:'Topic List Questions', o:'task', area:'Study'},
+  {s:'23:00', e:'24:00', t:'Sleep',              o:'frame'}
+];
+/* Origin marks, shown only below the label tier, where the glyph is the last thing that
+   fits. None of these may equal the pinned mark or the proposal-source mark, even though
+   those appear at a different tier: one glyph, one meaning. */
+const GLYPH = {frame:'&#9679;', habit:'&#8635;', task:'&#9656;', anchor:'&#9670;',
+               shadow:'&#9671;', transit:'&#8594;'};
+const MARK_PINNED = '&#9635;'; /* not the anchor's diamond */
+const MARK_SOURCE = '&#187;';  /* not the transit arrow */
+const min = hhmm => { const [h,m] = hhmm.split(':').map(Number); return h*60+m; };
+const fmt = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+
+/* The recovery shadow the 16:00 anchor casts backwards and forwards. Declared by the
+   anchor's type, not inferred: a pre-buffer, transit, and a forbidden window afterwards. */
+const FORBID = [{s:'16:45', e:'18:00', t:'no deep work &middot; recovery'}];
+
+function blockHTML(b, pxPerMin, opts = {}){
+  const s = min(b.s), e = min(b.e);
+  const top = (Math.max(s, AXIS_START) - AXIS_START) * pxPerMin;
+  const h = (e - Math.max(s, AXIS_START)) * pxPerMin;
+  const tier = h >= parseFloat(raw('--block-h-label')) ? 'label'
+             : h >= parseFloat(raw('--block-h-compact')) ? 'compact'
+             : h >= parseFloat(raw('--block-h-sliver')) ? 'sliver' : 'hair';
+  const area = b.area ? AREA_BY_NAME[b.area] : null;
+  const cls = ['blk', b.o === 'frame' ? 'frame' : '', b.o === 'anchor' ? 'anchor' : '',
+               opts.h ? 'h' : '', opts.f ? 'f' : ''].filter(Boolean).join(' ');
+  const lines = tier === 'compact' ? 1
+    : Math.max(1, Math.floor((h - 5) / parseFloat(raw('--lh-block-px'))));
+  const attrs = [
+    area ? `data-area style="--ai:var(${area.tok});top:${top}px;height:${h}px`
+           + `;--lines:${lines}${opts.style||''}"`
+         : `style="top:${top}px;height:${h}px;--lines:${lines}${opts.style||''}"`,
+    `data-tier="${tier}"`,
+    (opts.sel ?? b.sel) ? 'data-selected' : '',
+    (opts.conflict ?? b.conflict) ? 'data-conflict' : '',
+    (opts.pin ?? b.pin) ? 'data-pinned' : '',
+    opts.split ? 'data-split' : '',
+    opts.proposal ? 'data-proposal' : '',
+    opts.source ? 'data-source' : ''
+  ].filter(Boolean).join(' ');
+  const glyph = (tier === 'label' || tier === 'compact')
+    ? ((opts.pin ?? b.pin) ? `<span class="g pin">${MARK_PINNED}</span>` : '')
+      + (opts.source ? `<span class="g">${MARK_SOURCE}</span>` : '')
+      + (opts.count ? `<span class="g">&#10697;&nbsp;${opts.count}</span>` : '')
+    : `<span class="g">${GLYPH[b.o]}</span>`;
+  const plain = b.t.replace(/&middot;/g, '-').replace(/&amp;/g, '&');
+  return `<div class="${cls}" ${attrs} tabindex="0" title="${plain} &middot; ${b.s}&ndash;${b.e}">`
+    + glyph + `<span class="t">${b.t}</span></div>`;
+}
+
+function gridHTML(target, days, visibleHours, opts = {}){
+  const el = document.getElementById(target);
+  const gridH = parseFloat(raw('--grid-h'));
+  const pxPerMin = gridH / (visibleHours * 60);
+  const span = AXIS_END - AXIS_START;
+  const canvasH = span * pxPerMin;
+
+  let axis = '';
+  for(let m = AXIS_START; m <= AXIS_END; m += 60)
+    axis += `<span class="hh" style="top:${(m-AXIS_START)*pxPerMin}px">${fmt(m)}</span>`;
+
+  let lines = '';
+  for(let m = AXIS_START; m <= AXIS_END; m += parseInt(raw('--grid-minor')))
+    lines += `<div class="${m % parseInt(raw('--grid-major')) === 0 ? 'maj' : 'min'}" `
+           + `style="top:${(m-AXIS_START)*pxPerMin}px"></div>`;
+
+  const cols = days.map(d => {
+    const now = d.now ? `<div class="now" style="top:${(min(d.now)-AXIS_START)*pxPerMin}px"></div>`
+      + `<div class="nowlab" style="top:${(min(d.now)-AXIS_START)*pxPerMin}px">${d.now}</div>` : '';
+    const drag = (opts.drag && d.drag) ? `<div class="dragmk" data-at="${d.drag}" `
+      + `style="top:${(min(d.drag)-AXIS_START)*pxPerMin}px"></div>` : '';
+    const forbid = (d.forbid || []).map(f => {
+      const top = (min(f.s) - AXIS_START) * pxPerMin;
+      const h = (min(f.e) - min(f.s)) * pxPerMin;
+      return `<div class="forbid" style="top:${top}px;height:${h}px"><span>${f.t}</span></div>`;
+    }).join('');
+    return `<div class="col"><div class="colhead">${d.label}<i>${d.blocks.length}</i></div>`
+      + `<div class="canvas" style="height:${canvasH}px">${lines}${forbid}${now}${drag}`
+      + d.blocks.map(b => blockHTML(b, pxPerMin, b.opts || {})).join('') + '</div></div>';
+  }).join('');
+
+  el.innerHTML = `<div class="axis"><div style="height:var(--day-header-h);`
+    + `border-bottom:var(--hairline) solid var(--rule-strong);background:var(--ink-wash)"></div>`
+    + `<div style="position:relative;height:${canvasH}px">${axis}</div></div>`
+    + `<div class="cols" style="flex-direction:column"><div style="display:flex;flex:1">${cols}</div></div>`;
+  /* The quarter-hour subdivision is painted only while a drag is in progress. */
+  el.classList.toggle('dragging', !!opts.drag);
+}
+
+/* section 3, the real day. Rendered at 12 visible hours, scrolled to the day's content. */
+let zoomIdx = 0;
+const ZOOMS = [12, 6, 19, 24];
+function renderDay(){
+  const vh = ZOOMS[zoomIdx];
+  gridHTML('day1', [{label:'Tue 11', blocks:DAY, now:'14:20', drag:'13:00', forbid:FORBID}], vh,
+    {drag: document.getElementById('t-drag').getAttribute('aria-pressed') === 'true'});
+  const wrap = document.getElementById('day1');
+  wrap.style.height = (parseFloat(raw('--grid-h')) * 0.62 + parseFloat(raw('--day-header-h'))) + 'px';
+  wrap.style.overflowY = 'auto';
+  document.getElementById('t-zoom').textContent = 'zoom: ' + vh + 'h';
+}
+renderDay();
+document.getElementById('t-zoom').addEventListener('click', ev => {
+  zoomIdx = (zoomIdx + 1) % ZOOMS.length;
+  ev.currentTarget.setAttribute('aria-pressed', String(zoomIdx !== 0));
+  renderDay();
+});
+document.getElementById('t-drag').addEventListener('click', ev => {
+  const on = ev.currentTarget.getAttribute('aria-pressed') !== 'true';
+  ev.currentTarget.setAttribute('aria-pressed', String(on));
+  renderDay();
+});
+document.getElementById('t-fc').addEventListener('click', ev => {
+  const on = ev.currentTarget.getAttribute('aria-pressed') !== 'true';
+  ev.currentTarget.setAttribute('aria-pressed', String(on));
+  document.body.classList.toggle('fc', on);
+});
+
+/* ---------- 4 and 5, isolation and the matrix ----------
+   One 30 minute block at the default zoom: 29px, which is the size the system must work at. */
+const SOLO = {s:'19:00', e:'19:30', t:'36 South Application', o:'task', area:'Career'};
+function soloHTML(opts, label, sub){
+  const px = parseFloat(raw('--grid-h')) / (12 * 60);
+  const h = 30 * px;
+  const b = {...SOLO, sel:0, conflict:0, pin:0};
+  const inner = blockHTML(b, px, {...opts, style:`;position:relative;top:auto;height:${h}px`});
+  return `<div class="strip"><div class="n"><b>${label}</b>${sub||''}</div>`
+    + `<div class="s"><div class="solo" style="height:${h+2}px">${inner}</div></div></div>`;
+}
+const ISO = [
+  [{}, 'rest', 'fill --paper-raised, Area top rule'],
+  [{h:1}, 'hover', 'fill &rarr; --ink-wash'],
+  [{f:1}, 'focus-visible', '2px --ink-bright at 2px offset'],
+  [{sel:1}, 'selected', '3px --ink-deep left rule'],
+  [{conflict:1}, 'conflict', '3px --signal-oxide left rule'],
+  [{pin:1}, 'pinned', '&#9635; in the glyph slot'],
+  [{proposal:1}, 'proposal target', 'no fill. dashed --ink-deep'],
+  [{source:1}, 'proposal source', 'keeps fill, takes &rarr;']
+];
+document.getElementById('isolated').innerHTML =
+  ISO.map(([o,l,s]) => soloHTML(o, l, '<br>'+s)).join('');
+
+const COMBOS = [
+  [{}, 'rest'], [{h:1}, 'hover'], [{f:1}, 'focus'], [{sel:1}, 'selected'],
+  [{pin:1}, 'pinned'], [{conflict:1}, 'conflict'], [{proposal:1}, 'proposal'],
+  [{h:1,f:1}, 'hover + focus'], [{h:1,sel:1}, 'hover + selected'],
+  [{f:1,sel:1}, 'focus + selected'], [{sel:1,pin:1}, 'selected + pinned'],
+  [{h:1,f:1,sel:1}, 'hover + focus + selected'],
+  [{h:1,f:1,sel:1,pin:1}, 'hover + focus + selected + pinned'],
+  [{f:1,conflict:1}, 'focus + conflict'],
+  [{f:1,sel:1,conflict:1}, 'focus + selected + conflict &#9670; the collision'],
+  [{h:1,proposal:1}, 'hover + proposal'],
+  [{f:1,proposal:1}, 'focus + proposal'],
+  [{proposal:1,pin:1}, 'proposal + pinned &#9670; can this happen?']
+];
+document.getElementById('matrix').innerHTML = COMBOS.map(([o,l],i) =>
+  soloHTML(o, String(i+1).padStart(2,'0') + ' &middot; ' + l)).join('');
+
+/* ---------- 6, the proposal pair ---------- */
+gridHTML('prop', [{label:'Tue 11', blocks:[
+  {s:'05:30', e:'06:30', t:'Gym &middot; Shoulder & Arms', o:'habit', area:'Fitness',
+   opts:{source:1}},
+  {s:'13:00', e:'14:00', t:'Gym &middot; Shoulder & Arms', o:'habit', area:'Fitness',
+   opts:{proposal:1}},
+  {s:'11:30', e:'12:00', t:'Lunch', o:'frame'},
+  {s:'12:00', e:'12:45', t:'Leetcode &middot; DP', o:'habit', area:'Career'}
+]}], 12);
+(() => { const w = document.getElementById('prop');
+  w.style.height = '300px'; w.style.overflowY = 'auto'; })();
+
+/* ---------- 7, overlap ---------- */
+function overlapGrid(target, n){
+  const px = parseFloat(raw('--grid-h')) / (12 * 60);
+  const set = [
+    {s:'11:30', e:'12:00', t:'Lunch', o:'frame'},
+    {s:'11:30', e:'12:00', t:'Print Interview Notes', o:'task', area:'Career'},
+    {s:'11:30', e:'12:00', t:'Review F&amp;F Reading', o:'task', area:'Study'},
+    {s:'11:30', e:'12:00', t:'Call HSBC', o:'task', area:'Admin'},
+    {s:'11:45', e:'12:15', t:'Meal Prep', o:'habit', area:'Admin'}
+  ].slice(0, n);
+  const split = Math.min(n, parseInt(raw('--overlap-max-split')));
+  const indent = parseFloat(raw('--overlap-indent'));
+  const blocks = set.map((b, i) => {
+    let style;
+    if(n <= split) style = `;left:${(i*100/n).toFixed(3)}%;right:${((n-1-i)*100/n).toFixed(3)}%`;
+    else style = `;left:${i*indent}px;right:0;z-index:${i+1}`;
+    return {...b, opts:{style, split:i > 0, count:(n > split && i === n-1) ? n : 0}};
+  });
+  gridHTML(target, [{label:'Fri 14', blocks}], 12);
+  const w = document.getElementById(target);
+  w.style.height = '150px'; w.style.overflowY = 'auto';
+  requestAnimationFrame(() => { w.scrollTop = (11*60+15 - AXIS_START) * px; });
+}
+overlapGrid('ov2', 2); overlapGrid('ov3', 3); overlapGrid('ov5', 5);
+
+/* ---------- 8, the tier ladder ---------- */
+const LADDER = [
+  {s:'05:15', e:'05:30', t:'Wake Up', o:'frame'},
+  {s:'05:30', e:'06:30', t:'Gym &middot; Shoulder & Arms', o:'habit', area:'Fitness'},
+  {s:'06:30', e:'06:45', t:'Shower', o:'frame'},
+  {s:'07:00', e:'09:30', t:'Leetcode &middot; Graphs', o:'habit', area:'Career'}
+];
+document.getElementById('tiers').innerHTML = ZOOMS.map(vh => {
+  const px = parseFloat(raw('--grid-h')) / (vh * 60);
+  const h15 = (15 * px).toFixed(1);
+  const tier = 15*px >= 15 ? 'label' : 15*px >= 8 ? 'sliver' : 'hairline';
+  return `<div><div class="kv" style="margin-bottom:7px">${vh}h visible &middot; `
+    + `<b>${px.toFixed(2)} px/min &middot; a 15m block is ${h15}px &middot; ${tier}</b></div>`
+    + `<div class="gridwrap" id="tier${vh}" style="width:186px"></div></div>`;
+}).join('');
+ZOOMS.forEach(vh => {
+  gridHTML('tier'+vh, [{label:'Tue 11', blocks:LADDER}], vh);
+  const w = document.getElementById('tier'+vh);
+  w.style.height = '220px'; w.style.overflowY = 'auto';
+  requestAnimationFrame(() => {
+    w.scrollTop = (5*60 - AXIS_START) * (parseFloat(raw('--grid-h')) / (vh * 60));
+  });
+});
+
+/* vim-style movement, so the live states are reachable without a mouse */
+document.addEventListener('keydown', ev => {
+  const el = document.activeElement.closest?.('.blk');
+  if(!el) return;
+  const peers = [...el.parentElement.querySelectorAll(':scope > .blk')];
+  const i = peers.indexOf(el);
+  const go = n => { ev.preventDefault();
+    peers[Math.max(0, Math.min(peers.length-1, n))].focus(); };
+  if(ev.key === 'ArrowDown' || ev.key === 'j') go(i+1);
+  else if(ev.key === 'ArrowUp' || ev.key === 'k') go(i-1);
+  else if(ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault();
+    peers.forEach(p => p.removeAttribute('data-selected'));
+    el.setAttribute('data-selected',''); }
+  else if(ev.key === 'p'){ ev.preventDefault(); el.toggleAttribute('data-pinned'); }
+});
+</script>
+</body>
+</html>

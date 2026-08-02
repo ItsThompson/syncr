@@ -1,0 +1,312 @@
+/* Layer 1: semantic layout, density, the time grid, block state and motion.
+
+   Spacing is deliberately absent. Tailwind's default 4px scale already offers 2px
+   granularity through its half steps, so redefining it would surprise every reader for no
+   gain. The rhythm of this system is odd rather than even -- 3, 5, 7, 9, 11, 13, 15 --
+   and the recurring odd steps become named tokens as components claim them. Only the
+   values that genuinely differ from stock are named here. */
+
+:root {
+  /* Control and row heights. A keyboard tool on a desktop, not a touch target. */
+  --h-control-sm: 22px;
+  --h-control: 26px;
+  --h-control-lg: 30px;
+  --h-row: 28px;
+  --h-row-dense: 24px;
+
+  /* Geometry. Zero radius everywhere. `full` survives for genuinely circular things only:
+     radio dots, status dots, Area chips, avatars. Not spinners: nothing spins, and
+     nothing in this product ever could, because motion is zero without exception. */
+  --radius: 0;
+  --hairline: 1px;
+  --rule-emphasis: 2px; /* the emphasised rule weight: an Area top rule, an active tab's
+                           bottom rule, the now rule, a matched-range underline */
+
+  /* Shadow. Print has no blur. One hard offset, on overlays that must lift off the page:
+     dialog, command palette, popover. Never a block, never a card, never a button. */
+  --shadow-hard: 4px 4px 0 0 var(--rule-strong);
+
+  /* Icons. Standard lucide stroke weight at three sizes, caps and joins round. This is
+     the one rounded form the system tolerates. Components read these rather than
+     restating them: the two reference sheets of the inherited language diverged once
+     when the tokens were silent on caps. */
+  --icon-sm: 14px;
+  --icon: 16px;
+  --icon-lg: 20px;
+  --icon-stroke: 2;
+  --icon-cap: round;
+  --icon-join: round;
+
+  /* ------------------------------------------------------------------------
+     THE TIME GRID.
+
+     Pixels per minute is DERIVED, not fixed. The user chooses how many hours are visible
+     at once, from 6 to 24, defaulting to 12, and separately declares when their own day
+     starts and ends. The app measures the grid's height and recomputes --px-per-min from
+     the two. The default below is 12 hours in 700px of grid, which is what a 1440x900
+     display yields once the page band, summary strip and day header are subtracted.
+
+     THE AXIS ALWAYS EXPANDS TO CONTAIN EVERY BLOCK IN THE VISIBLE WEEK. Day bounds set
+     the default extent, never a crop. A block hidden by the axis is a scheduling error
+     the user cannot see.
+     ------------------------------------------------------------------------ */
+  --visible-hours: 12;
+  --grid-h: 626px;
+  --px-per-min: calc(var(--grid-h) / (var(--visible-hours) * 60));
+
+  /* The zoom range, and its clamp. The user picks anywhere from 6 to 24 visible hours, but
+     the upper end is clamped per display so that a thirty-minute block -- the modal duration
+     by a wide margin -- always keeps its label. The cap is derived, not stored:
+
+       cap = floor( (grid height * 30) / (--block-h-label * 60) ), clamped to 6..24
+
+     which yields 16h on a 13-inch, 22h on a 16-inch and the full 24h on a 27-inch. A zoom
+     level at which the most common block in the system is unreadable is not a useful zoom
+     level, so it is not offered. */
+  --zoom-min: 6;
+  --zoom-max: 24;
+
+  /* WHY 626px, AND WHAT IT EXPOSES.
+     626px is the grid a 13-inch 1440x900 display yields: a 790px CSS viewport less the
+     72px page band, the 64px summary strip and the 28px day header. Designing to the
+     tight case is correct, and it makes the tier arithmetic visible rather than theoretical.
+     At --block-h-label 19px:
+
+       display              grid    15m at 12h      30m at 12h    zoom cap
+       13" 1440x900         626px   13px sliver     26px label    16h
+       16" 1728x1117        836px   17px sliver     35px label    22h
+       27" 2560x1440       1136px   24px label      47px label    24h
+
+     The label tier a block lands in is a function of visible hours AND display height. A
+     fifteen-minute block therefore slivers at the 12-hour default on anything smaller than
+     a 27-inch, which is accepted: those blocks are the circadian frame and are read from
+     position. A thirty-minute block never does, which is what the zoom cap protects. */
+
+  --snap: 15;         /* minutes. every start and end lands on a quarter hour */
+  --axis-w: 56px;     /* the time axis column */
+  --day-header-h: 28px;
+  --strip-h: 64px;    /* the pinned summary and verdict strip above the grid */
+
+  /* THE VERDICT PANEL'S HEIGHT IS FIXED, AND IT MUST NOT TRACK ROW COUNT. A panel that grew
+     and shrank as pins accumulate would shift the grid under the cursor mid-drag. 226px is
+     the height that shows the lead sentence plus three tradeoff rows, so the fourth row's
+     clipped edge is what makes the scroll discoverable. Shared between the strip's verdict
+     cell and the standalone panel so the two cannot drift. */
+  --verdict-h: 226px;
+
+  /* The reason record's clause-label column. 76px, not a round number: the widest clause
+     kind is `instead of`, which measures 64.6px at --fs-eyebrow with .08em tracking, and
+     three sheets had independently chosen 60px, 64px and 76px before this was a token. That
+     is the drift the inherited language warned about, so the value lives here now. */
+  --clause-label-w: 76px;
+
+  /* Grid lines. THE QUARTER HOUR IS DRAWN AT REST, BECAUSE THE SNAP IS FIFTEEN MINUTES AND
+     THE GRID SHOULD SHOW WHERE A BLOCK CAN LAND.
+
+     The weight distribution is what makes that legible rather than busy, and it took two
+     rounds to find. A first draft drew --rule at every half hour and --rule-faint at every
+     quarter, while each block also drew four --rule-strong edges: four lines an hour, two of
+     them at cobalt weight, and the blocks vanished into the corduroy.
+
+     The remedy was not to delete the subdivision. It was to halve the cobalt: the hour alone
+     carries --rule, the three quarters carry --rule-faint, and a block draws three edges
+     instead of four. Same line count as the rejected version, half the cobalt weight.
+
+     During a drag the quarters step up to hour weight, so the snap targets sharpen at the one
+     moment the user is aiming at them. That is a discrete state change, not motion. */
+  --grid-major: 60;   /* minutes between hour lines */
+  --grid-minor: 15;   /* minutes between quarter lines. equals --snap, and must */
+  --grid-line-hour: var(--rule);           /* the hour, at rest and during a drag */
+  --grid-line-quarter: var(--rule-faint);  /* the quarter, at rest */
+  --grid-line-quarter-drag: var(--rule);   /* the quarter, while a drag is in progress */
+  --grid-inset: 1px;  /* horizontal inset of a block from its column edges, so a block's
+                         own rule never lands on top of the column divider */
+
+  /* THE LABEL TIER LADDER. A block's height is proportional to its duration, and at high
+     zoom levels a short block falls below the height its own title needs. The block
+     degrades rather than the axis lying:
+
+       >= --block-h-label    title at --fs-block, wrapping to as many lines as fit
+       >= --block-h-compact  title at --fs-block-compact, one line, no top padding
+       >= --block-h-sliver   no title. the origin glyph and the Area top rule survive
+       <  --block-h-sliver   a bounded hairline sliver. Area top rule only
+
+     The title is always available on selection, at every tier.
+
+     THE COMPACT TIER EXISTS BECAUSE THE THREE-TIER LADDER WAS REJECTED IN REVIEW. A first
+     draft went straight from title to glyph at 19px, on the reasoning that the blocks that
+     fall through are the circadian frame and are read from position. Rendered, an unlabeled
+     `Wake Up` reads as a rendering fault rather than as a deliberate tier. The compact tier
+     keeps a title down to 12.5px, which covers a fifteen-minute block at the agreed
+     twelve-hour default on the smallest supported display. Above twelve hours the user is
+     explicitly trading labels for range, which is a choice rather than a defect.
+
+     THE HAIRLINE TIER IS UNREACHABLE ON ANY SUPPORTED DISPLAY, given the zoom clamp below:
+     the smallest a fifteen-minute block gets is 9.8px on a 13-inch at its 16h cap. It is
+     kept as a defensive floor for a viewport shorter than anything supported, not as a state
+     a user will meet.
+
+     THE FLOOR IS THE SUM OF WHAT HAS TO FIT, NOT A ROUND NUMBER:
+
+       label tier                        compact tier
+       2   the Area top rule             2   the Area top rule
+       2   --block-pad-t                 0   no top padding: there is no room
+      13.8 --fs-block at --lh-block      9.5 --fs-block-compact at --lh-block-compact
+       1   the bottom rule               1   the bottom rule
+      ----                              ----
+      18.8 inside a 19px floor          12.5 inside a 13px floor
+
+     Padding is asymmetric even where it exists. The bottom is zero, because a title is
+     top-aligned in a calendar block and paying for symmetry would cost another zoom step.
+
+     THE ZOOM RANGE IS CLAMPED BY THE MODAL DURATION, NOT THE SHORTEST ONE. Thirty minutes
+     is the most common block length by a wide margin, so the 6-24 hour range is clamped so
+     that a thirty-minute block always keeps a title. See --zoom-min and --zoom-max above
+     for the derivation.
+
+     THE TITLE WRAPS TO WHATEVER FITS; IT DOES NOT TRUNCATE AT ONE LINE. A first draft set
+     white-space: nowrap, and a measured ledger over one real week showed 4 of 37 distinct
+     titles becoming AMBIGUOUS under end-ellipsis: `Amazon Interview Prep` and
+     `Amazon Interview Prep - Behavioral` both collapse to `Amazon Interview P...`, as do
+     `Visual Computing Lab` and `Visual Computing Lecture`. End-ellipsis discards precisely
+     the tail that distinguishes a title from its sibling, which is the one part that had to
+     survive.
+
+     Those blocks run 60 to 150 minutes, so they are 52 to 130px tall and have room for
+     several lines. The line count is therefore computed per block from its own height:
+
+       lines = floor( (height - 2 area rule - 2 pad-top - 1 bottom rule) / --lh-block-px )
+
+     and the title is clamped to that count, so a clip lands on a line boundary rather than
+     mid-glyph. The compact tier is always one line. The 17-character floor in the width
+     policy below therefore governs the single-line tiers only. */
+  --block-h-label: 19px;
+  --block-h-compact: 13px;
+  --block-h-sliver: 8px;
+  --block-pad-x: 5px;
+  --block-pad-t: 2px;
+  --block-pad-b: 0;
+
+  /* Overlap. Even split up to depth 3, then stagger with the later start on top and a
+     fixed indent, plus a count marker in the frontmost block. Even splitting past 3
+     leaves no column to write in. */
+  --overlap-max-split: 3;
+  --overlap-indent: 18px;
+
+  /* The now rule. A horizontal 2px --ink-bright line across the day column at the current
+     minute, with the time in the axis gutter. This is the only marker of what is past:
+     past blocks take no channel of their own, because the rule already says where the
+     boundary is and immutability is not a per-block property worth a pigment. */
+  --now-rule: var(--rule-emphasis);
+
+  /* A forbidden window: the recovery shadow an anchor casts, which the solver may not fill.
+     Drawn as a hatched band in --rule with a gutter label, never as a block, because it is
+     the absence of a block that it exists to explain. Without it a forbidden gap and an
+     ordinary empty gap are pixel-identical and the solver appears to decline a gap for no
+     reason. */
+  --forbidden-hatch-ink: var(--rule);
+
+  /* ------------------------------------------------------------------------
+     WIDTH POLICY.
+
+     THE WEEK GRID ABSORBS SURPLUS WIDTH. The sidebar and the detail panel are fixed.
+     Block titles in the 15 and 30 minute tiers cannot wrap, so the grid is the only
+     column that cannot absorb a squeeze, and giving surplus width to the side columns
+     would starve the one column that needs it.
+
+     THE FLOOR IS 17 CHARACTERS PER DAY COLUMN, and every breakpoint below is derived from
+     it rather than chosen. 17 characters is where a real block title stops keeping the tail
+     that distinguishes it from its siblings: `Amazon Interview Prep` and
+     `Amazon Prep Call` still separate, `DSA Review - Trees` and `DSA Review - Heap` do not.
+     Working backwards through --block-pad-x, --grid-inset and the 3px state rule, 17
+     characters needs a 132.3px day column, so a 926px grid, so:
+
+       viewport   panel    day column   characters
+       1536px     open        134px        17   the shipped pairing above --bp-wide
+       1536px     closed      174px        23
+       1440px     open        120px        15   BELOW POLICY, which is why 1440 is not the
+       1440px     closed      160px        21   breakpoint. It was, and the ledger caught it.
+       1280px     closed      137px        17   the shipped pairing above --bp-compact
+       1152px     closed      119px        15   below policy, so the grid scrolls instead
+
+     --bp-wide is therefore 1536px, not the 1440px a first draft assumed by analogy with the
+     inherited language. Below it the panel closes to a 26px rail rather than narrowing,
+     because a narrower panel cannot hold a reason and a narrower grid cannot hold a title.
+
+     BELOW --bp-compact THE GRID SCROLLS HORIZONTALLY at --col-min per day, with the time
+     axis sticky at the left edge. The squeeze becomes explicit and navigable instead of
+     degrading all seven columns below legibility at once.
+     ------------------------------------------------------------------------ */
+  --w-sidebar: 236px;
+  --w-detail: 306px;
+  --w-detail-closed: var(--h-control); /* closed, the panel stays a column: a 26px rail */
+  --col-min: 137px;    /* the narrowest day column that still holds 17 characters, rounded
+                          up from 132.3px to the width 1280px happens to yield */
+  --bp-compact: 1280px;
+  --bp-wide: 1536px;
+
+  /* ------------------------------------------------------------------------
+     BLOCK STATE. Each state owns exactly one channel, so combinations add instead of
+     overwriting. Never reassign a channel.
+
+       Area identity   2px top rule                    --area-NN
+       the block exists   fill                         --paper-raised
+       hover              fill                         --ink-wash
+       proposal target    NO fill, outline only        the one state without a fill
+       conflict           3px left rule                --signal-oxide
+       selected           3px left rule                --ink-deep
+       focus-visible      2px outline at 2px offset    --ink-bright
+       pinned             glyph slot                   a filled pin mark
+       origin             glyph slot, sub-label tier   one mark per origin kind
+
+     A calendar block differs from a transcript row in one way that drives all of this:
+     it must be a bounded object distinct from the grid's own lines, so IT SPENDS A FILL
+     JUST TO EXIST. The fill channel therefore has three values rather than two, and they
+     order correctly by accident of the palette: a block at --paper-raised is lighter than
+     the page, hover at --ink-wash is darker than the page, and a proposal has no fill at
+     all. Absence of fill is unambiguous, needs no new pigment, and survives forced
+     colors.
+
+     CONFLICT AND SELECTED SHARE THE LEFT RULE. They cannot co-occur meaningfully -- a
+     conflict is resolved by selecting it, at which point the panel says so in words -- and
+     conflict wins the pixel while it lasts.
+
+     Loudness, most to least: conflict, proposal, selected, focus, hover. Focus is loudest
+     at the instant it moves, which is why the ring is --ink-bright rather than --ink-deep.
+     ------------------------------------------------------------------------ */
+  --state-hover: var(--ink-wash);
+  --state-focus-ring: 2px solid var(--ink-bright);
+  --state-focus-ring-inverse: 2px solid var(--paper-raised); /* on an ink fill: --ink-bright
+                                        on --ink-deep measures 1.61:1 and is invisible.
+                                        this measures 14.83:1. Choose by the surface the
+                                        ring LANDS on, not by the element's own fill, and
+                                        scope it to the container.
+                                        syncr's only ink fills are panel and dialog headers,
+                                        because the sidebar is paper. A primary button is not
+                                        one either: its fill is ink but its parent is paper,
+                                        so it keeps the standard ring -- inverting it would
+                                        give --paper-raised on --paper at 1.08:1. */
+  --state-focus-offset: 2px;
+  --state-selected-border: 3px;
+  --state-selected-color: var(--ink-deep);
+  --state-conflict-border: 3px;
+  --state-conflict-color: var(--signal-oxide);
+  --state-proposal-border: var(--hairline);
+  --state-margin: 3px; /* live margin a focus ring needs to bleed into */
+
+  /* ------------------------------------------------------------------------
+     MOTION IS ZERO, WITHOUT EXCEPTION.
+
+     Nothing eases, fades, slides, shimmers or spins. There are no skeleton loaders and no
+     progress bars. The language syncr inherits kept one exception for a cold-start index
+     that took 4.6 seconds to report; syncr has no such wait. A solve over roughly thirty
+     blocks a day is instantaneous, and calendar sync reports as a count that changes when
+     a number changes, which is a discrete redraw rather than motion.
+
+     A DRAG IS DISCRETE. Dragging a block does not move the block. A hairline insertion
+     marker snaps to the quarter hour under the cursor and the block redraws once, on
+     drop. Reflow of the unpinned remainder is one redraw, never an animated settle.
+     Continuous input, discrete output.
+     ------------------------------------------------------------------------ */
+  --duration: 0s;
+}

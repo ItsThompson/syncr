@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>syncr &middot; open decisions</title>
+
+<!-- Tokens are LINKED, not copied. This sheet renders live from frontend/src/tokens, so a
+     choice made here can be read against the values that will actually ship. -->
+<link rel="stylesheet" href="../../frontend/src/tokens/index.css">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* MOTION IS ZERO, WITHOUT EXCEPTION. Nothing in this file interpolates. Every choice below
+   redraws the render pane once. */
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--paper);color:var(--text);
+  font-family:var(--font-mono);font-size:var(--fs-chrome);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;font-weight:400}
+button{font:inherit;border-radius:var(--radius);cursor:pointer}
+:focus-visible{outline:var(--state-focus-ring);outline-offset:var(--state-focus-offset)}
+code{background:var(--ink-wash);padding:0 3px;font-size:.92em}
+.n{font-variant-numeric:tabular-nums}
+.mut{color:var(--text-muted)}
+
+/* ---------- shell: the form decides, the render answers ---------- */
+.shell{display:grid;grid-template-columns:390px minmax(0,1fr);height:100%}
+.form{border-right:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  overflow-y:auto}
+.render{overflow-y:auto;background:var(--paper)}
+
+/* The form head is the one ink fill on this sheet, so it is the one place the inverse focus
+   ring applies. Scoped to the container, not the control. */
+.formhead{position:sticky;top:0;z-index:5;background:var(--ink-deep);color:var(--on-ink);
+  padding:12px 15px}
+.formhead :focus-visible{outline:var(--state-focus-ring-inverse);
+  outline-offset:var(--state-focus-offset)}
+.formhead b{display:block;font-family:var(--font-serif);font-size:23px;line-height:1.05;
+  font-weight:400;letter-spacing:var(--ls-wordmark)}
+.formhead span{display:block;margin-top:4px;font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--on-ink-muted)}
+
+.q{border-bottom:var(--hairline) solid var(--rule);padding:12px 15px}
+.q>h4{font-size:var(--fs-chrome);color:var(--ink-deep);margin-bottom:3px}
+.q>h4 i{font-style:normal;color:var(--text-muted)}
+.q>p{margin:0 0 8px;font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)}
+.q>p b{color:var(--ink-deep);font-weight:500}
+label.opt{display:flex;gap:8px;align-items:flex-start;padding:4px 6px;line-height:1.45;
+  border-left:var(--state-selected-border) solid transparent;font-size:var(--fs-eyebrow)}
+label.opt:hover{background:var(--state-hover)}
+label.opt:has(input:checked){background:var(--state-hover);
+  border-left-color:var(--state-selected-color)}
+label.opt input{margin:2px 0 0;accent-color:var(--ink-bright);flex:0 0 auto}
+label.opt em{font-style:normal;display:block;color:var(--text-muted)}
+label.opt b{font-weight:400;color:var(--ink-deep)}
+.tag{display:inline-block;font-size:8px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--text-muted);border:var(--hairline) solid var(--rule-strong);padding:0 4px;
+  margin-left:6px;vertical-align:1px}
+.copywrap{position:sticky;bottom:0;background:var(--paper-raised);
+  border-top:var(--hairline) solid var(--rule-strong);padding:11px 15px}
+.btn{font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;
+  height:var(--h-control);padding:0 13px;background:var(--ink);color:var(--on-ink);
+  border:var(--hairline) solid var(--ink)}
+.btn.sec{background:var(--paper-raised);color:var(--ink-deep);border-color:var(--rule-control)}
+#out{width:100%;margin-top:9px;height:132px;font:inherit;font-size:9.5px;line-height:1.55;
+  background:var(--paper);color:var(--ink);border:var(--hairline) solid var(--rule-control);
+  border-radius:var(--radius);padding:7px;resize:vertical;white-space:pre;overflow:auto}
+
+/* ---------- render pane ---------- */
+section{border-bottom:var(--hairline) solid var(--rule-strong);padding:13px 15px 17px}
+section>.eyebrow{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--ink-deep);margin-bottom:9px;display:flex;gap:11px;
+  align-items:baseline}
+section>.eyebrow em{font-style:normal;color:var(--text-muted);letter-spacing:.06em;
+  text-transform:none;font-size:10px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.panel{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised)}
+.panel>header{padding:4px 9px;border-bottom:var(--hairline) solid var(--rule);
+  background:var(--ink-wash);font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--ink-deep)}
+.panel>.in{padding:11px}
+.note{font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft);margin-top:9px}
+.note b{color:var(--ink-deep);font-weight:500}
+
+/* ---------- a miniature week, enough to judge a block decision ---------- */
+.gridwrap{display:flex;border:var(--hairline) solid var(--rule-strong);
+  background:var(--paper-raised);height:300px;overflow:auto}
+.axis{width:var(--axis-w);flex:0 0 auto;border-right:var(--hairline) solid var(--rule);
+  position:sticky;left:0;z-index:8;background:var(--paper-raised)}
+.axis .hd{height:var(--day-header-h);border-bottom:var(--hairline) solid var(--rule-strong);
+  background:var(--ink-wash);position:sticky;top:0;z-index:2}
+.axis .hh{position:absolute;right:4px;font-size:var(--fs-eyebrow);color:var(--text-muted);
+  line-height:1.35;margin-top:1px;padding:0 3px;background:var(--paper-raised);
+  font-variant-numeric:tabular-nums}
+.cols{display:flex;flex:1;min-width:0}
+.col{flex:1;min-width:0;position:relative;border-right:var(--hairline) solid var(--rule)}
+.col:last-child{border-right:0}
+.colhead{height:var(--day-header-h);border-bottom:var(--hairline) solid var(--rule-strong);
+  display:flex;align-items:center;gap:6px;padding:0 6px;background:var(--ink-wash);
+  font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--ink-deep);position:sticky;top:0;z-index:3;white-space:nowrap;overflow:hidden}
+.canvas{position:relative}
+.canvas .maj,.canvas .min{position:absolute;left:0;right:0;height:0;pointer-events:none}
+.blk{position:absolute;left:var(--grid-inset);right:var(--grid-inset);
+  background:var(--paper-raised);border:0;
+  border-top:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule);
+  border-left:var(--state-selected-border) solid transparent;
+  padding:var(--block-pad-t) var(--block-pad-x) var(--block-pad-b);overflow:hidden;
+  font-size:var(--fs-block);line-height:var(--lh-block);color:var(--ink)}
+.blk .t{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--lines,1);
+  overflow:hidden;overflow-wrap:anywhere}
+.blk .g{float:right;margin-left:4px;color:var(--ink-deep);font-size:10px;line-height:1.2}
+.blk[data-selected]{border-left-color:var(--state-selected-color)}
+.blk[data-conflict]{border-left-color:var(--state-conflict-color)}
+.blk[data-split]{border-left:var(--hairline) solid var(--rule)}
+.blk[data-tier=compact]{font-size:var(--fs-block-compact);line-height:var(--lh-block-compact);
+  padding-top:0}
+.blk[data-tier=sliver] .t{display:none}
+
+/* Live-switched channels. Each variant is a data attribute on the grid, so a decision is a
+   single attribute change and never a rebuilt stylesheet. */
+/* CHOSEN: quarter. The hour carries cobalt weight, the three quarters are faint, and the
+   quarters step up during a drag. The rejected variants are kept live so the reasoning can be
+   checked rather than taken on trust. */
+[data-gridlines=quarter] .maj{border-top:var(--hairline) solid var(--grid-line-hour)}
+[data-gridlines=quarter] .min{border-top:var(--hairline) solid var(--grid-line-quarter)}
+[data-gridlines=hour] .maj{border-top:var(--hairline) solid var(--grid-line-quarter)}
+[data-gridlines=hour] .min{border-top:0}
+[data-gridlines=half] .maj{border-top:var(--hairline) solid var(--grid-line-hour)}
+[data-gridlines=half] .min{border-top:0}
+[data-gridlines=half] .min:nth-child(2n){border-top:var(--hairline) solid var(--grid-line-hour)}
+
+[data-areacarrier=top] .blk[data-area]{border-top:var(--rule-emphasis) solid var(--ai)}
+[data-areacarrier=left] .blk[data-area]{border-left:var(--rule-emphasis) solid var(--ai)}
+[data-areacarrier=chip] .blk[data-area] .t::before{content:'';display:inline-block;
+  width:7px;height:7px;border-radius:50%;background:var(--ai);margin-right:5px}
+
+[data-framefill=wash] .blk.frame{background:var(--frame-wash);color:var(--ink-soft)}
+[data-framefill=hatch] .blk.frame{background:var(--paper-raised);color:var(--ink-soft);
+  --hatch-ink:var(--rule);background-image:var(--hatch-fwd)}
+[data-framefill=plain] .blk.frame{background:var(--paper-raised);color:var(--ink-soft)}
+
+[data-pinmark=glyph] .blk[data-pinned] .pin{display:inline}
+[data-pinmark=rule] .blk[data-pinned]{box-shadow:inset 0 0 0 var(--hairline) var(--ink-deep)}
+[data-pinmark=rule] .blk[data-pinned] .pin{display:none}
+.pin{display:none}
+
+/* ---------- deviation bar variants ---------- */
+.dev{display:grid;grid-template-columns:86px 1fr 58px;gap:9px;align-items:center;
+  padding:4px 0;border-bottom:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow)}
+.dev:last-child{border-bottom:0}
+.devtrack{position:relative;height:9px;background:var(--ink-wash)}
+.devfill{position:absolute;top:0;bottom:0;background:var(--ink)}
+.dev .v{text-align:right;font-variant-numeric:tabular-nums}
+[data-devzero=center] .devtrack::before{content:'';position:absolute;left:50%;top:-2px;
+  bottom:-2px;border-left:var(--hairline) solid var(--rule-strong)}
+[data-devzero=left] .devtrack::before{content:'';position:absolute;left:0;top:-2px;
+  bottom:-2px;border-left:var(--hairline) solid var(--rule-strong)}
+.chip{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ai);
+  vertical-align:0}
+[data-chipshape=square] .chip{border-radius:0}
+.areaname{display:inline-flex;align-items:center;gap:6px}
+
+/* ---------- the reason panel, with and without the counterfactual ---------- */
+.detail{border:var(--hairline) solid var(--rule-strong);background:var(--paper);padding:11px}
+.detail .ttl{font-size:var(--fs-data);color:var(--ink-deep)}
+.cl{display:grid;grid-template-columns:var(--clause-label-w) minmax(0,1fr);gap:7px;padding:3px 0;
+  border-bottom:var(--hairline) dotted var(--rule);font-size:var(--fs-eyebrow);line-height:1.5}
+.cl:last-child{border-bottom:0}
+.cl>b{font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.cl>span i{font-style:normal;color:var(--text-muted)}
+.wl{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--ink-deep);margin:11px 0 5px;border-top:var(--hairline) solid var(--rule-strong);
+  padding-top:9px}
+[data-counterfactual=off] .cf{display:none}
+
+/* ---------- strip variants ---------- */
+.strip{display:flex;border:var(--hairline) solid var(--rule-strong);background:var(--paper)}
+.strip>div{padding:7px 11px;border-right:var(--hairline) solid var(--rule);min-width:0}
+.strip>div:last-child{border-right:0;flex:1}
+.strip .lab{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted);white-space:nowrap}
+.strip data{display:block;margin-top:3px;font-size:19px;line-height:var(--lh-tight);
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.strip small{display:block;margin-top:2px;font-size:9px;color:var(--text-muted);white-space:nowrap}
+.verd{border-left:var(--state-conflict-border) solid var(--signal-amber)!important;
+  background:var(--amber-wash);display:flex;flex-direction:column;justify-content:center}
+.verd b{font-size:10.5px;color:var(--ink-deep)}
+.verd p{margin:2px 0 0;font-size:9.5px;line-height:1.45;color:var(--ink)}
+[data-strip=bars] .reading3{display:none}
+[data-strip=readings] .barcell{display:none}
+.barcell{padding:7px 11px!important}
+.minidev{display:grid;grid-template-columns:44px 1fr;gap:6px;align-items:center;
+  font-size:8px;line-height:1.5}
+.minidev .t2{position:relative;height:5px;background:var(--ink-wash)}
+.minidev .t2::before{content:'';position:absolute;left:50%;top:-1px;bottom:-1px;
+  border-left:var(--hairline) solid var(--rule-strong)}
+.minidev .f2{position:absolute;top:0;bottom:0;background:var(--ink)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ============================ the form ============================ -->
+<div class="form">
+  <div class="formhead">
+    <b>syncr</b>
+    <span>Open decisions &middot; render, then choose</span>
+  </div>
+
+  <div class="q">
+    <h4>1 &middot; Does a pinned block show what the solver would have chosen? <i>: settled, and it obliges the schema</i></h4>
+    <p>A pinned block's reason is just <b>you put it here</b>, which is true and unhelpful.
+      Showing the superseded placement lets you see the cost of your own pin. It has a real
+      storage cost: the rejected placement has to be kept alongside the pin, forever, in an
+      append-only store. <b>It is also exactly the pairwise comparison the learning layer
+      consumes</b>, so the data is worth keeping whether or not the panel shows it. <b>Chosen: show it.</b> The superseded placement and its objective delta are now persisted permanently alongside every pin, which is recorded in the design language and in the PRD’s entity table rather than only here.</p>
+    <label class="opt"><input type="radio" name="counterfactual" value="on" data-label="show the counterfactual clause" checked>
+      <span><b>Show it.</b><em>One extra clause: <code>instead of</code>. The pin becomes a
+      visible trade rather than an unexplained fact.</em></span></label>
+    <label class="opt"><input type="radio" name="counterfactual" value="off" data-label="store it, do not show it">
+      <span><b>Store it, do not show it.</b><em>The learning layer gets its comparison and
+      the panel stays short. You lose the ability to audit your own pins.</em></span></label>
+  </div>
+
+  <div class="q">
+    <h4>2 &middot; Grid line density at rest <i>: settled, recorded here</i></h4>
+    <p>A first render drew <code>--rule</code> every half hour and <code>--rule-faint</code>
+      every quarter, while each block also drew four <code>--rule-strong</code> edges. Four
+      lines an hour, two at cobalt weight, and the blocks disappeared into the corduroy.
+      <b>Chosen: every quarter hour, because the snap is fifteen minutes and the grid should
+      show where a block can land.</b> The remedy for the busy render was not to delete the
+      subdivision: it was to halve the cobalt. The hour alone carries <code>--rule</code>, the
+      three quarters carry <code>--rule-faint</code>, and a block draws three edges instead of
+      four. Same line count as the version that was rejected, half the cobalt weight. During a
+      drag the quarters step up to hour weight so the snap targets sharpen.</p>
+    <label class="opt"><input type="radio" name="gridlines" value="hour" data-label="hour only, --rule-faint">
+      <span>Hour only, <code>--rule-faint</code>.<em>Calmest, and it hides the grid the snap actually uses.</em></span></label>
+    <label class="opt"><input type="radio" name="gridlines" value="half" data-label="hour and half hour">
+      <span>Hour and half hour.<em>Twice the lines. Reads busier than the blocks.</em></span></label>
+    <label class="opt"><input type="radio" name="gridlines" value="quarter" data-label="every quarter hour: hour cobalt, quarters faint" checked>
+      <span><b>Every quarter hour.</b><em>Hour at cobalt weight, quarters faint. The snap grid is visible without the weight that caused the first complaint.</em></span></label>
+  </div>
+
+  <div class="q">
+    <h4>3 &middot; Which channel carries the Area on a block <i>: settled, recorded here</i></h4>
+    <p>The 12-ink Area ramp is the one sealed exception to one ink, so where it lands matters
+      more than usual. <b>Chosen: the 2px top rule</b>, because the left rule is already
+      spoken for by conflict and selected, and because at the sliver tier the top rule is the
+      only thing that survives.</p>
+    <label class="opt"><input type="radio" name="areacarrier" value="top" data-label="2px top rule" checked>
+      <span><b>2px top rule.</b><em>Survives every tier. Leaves the left rule for state.</em></span></label>
+    <label class="opt"><input type="radio" name="areacarrier" value="left" data-label="3px left rule">
+      <span>3px left rule.<em>Collides with conflict and selected. Two meanings, one channel.</em></span></label>
+    <label class="opt"><input type="radio" name="areacarrier" value="chip" data-label="inline chip before the title">
+      <span>An inline chip before the title.<em>Dies with the title at the sliver tier, which is
+      exactly where identity matters most.</em></span></label>
+  </div>
+
+  <div class="q">
+    <h4>4 &middot; How the circadian frame is drawn <i>: settled</i></h4>
+    <p>Routines are not budgeted as discretionary time, so the frame takes no Area ink. It
+      still has to read as structure rather than as content.</p>
+    <label class="opt"><input type="radio" name="framefill" value="wash" data-label="--frame-wash fill" checked>
+      <span><b><code>--frame-wash</code> fill.</b><em>Reads as a recessed band. Costs the one
+      wash step that hover also uses, on a surface hover never touches.</em></span></label>
+    <label class="opt"><input type="radio" name="framefill" value="hatch" data-label="hairline hatch in --rule">
+      <span>Hairline hatch in <code>--rule</code>.<em>Unmistakably structural, and it matches
+      how an external anchor is drawn. Busier at 15 minutes.</em></span></label>
+    <label class="opt"><input type="radio" name="framefill" value="plain" data-label="no fill, --ink-soft text only">
+      <span>No fill, <code>--ink-soft</code> text only.<em>Quietest. The frame stops being
+      legible as a layer.</em></span></label>
+  </div>
+
+  <div class="q">
+    <h4>5 &middot; The pinned mark <i>: settled, recorded here</i></h4>
+    <p>A pin is the user's own edit and the strongest reason in the system, so it has to be
+      visible at rest. <b>Chosen: a glyph in the glyph slot</b>, because it survives forced
+      colors as text and costs no geometry.</p>
+    <label class="opt"><input type="radio" name="pinmark" value="glyph" data-label="glyph in the glyph slot" checked>
+      <span><b>&#9635; in the glyph slot.</b><em>Survives forced colors. Competes with the
+      overlap count for one small space.</em></span></label>
+    <label class="opt"><input type="radio" name="pinmark" value="rule" data-label="full inset hairline">
+      <span>A full inset hairline.<em>Frees the glyph slot, and reads as a second border on a
+      block that deliberately draws only three edges.</em></span></label>
+  </div>
+
+  <div class="q">
+    <h4>6 &middot; The deviation bar's zero <i>: settled</i></h4>
+    <p>Actual against target per Area. Cobalt only: <b>Area ink encodes identity, cobalt
+      encodes magnitude and direction</b>, and direction is a sign rather than a hue.</p>
+    <label class="opt"><input type="radio" name="devzero" value="center" data-label="zero in the center, signed both ways" checked>
+      <span><b>Zero in the center, signed both ways.</b><em>Under target extends left, over
+      extends right. Reads the gap directly and halves the usable width.</em></span></label>
+    <label class="opt"><input type="radio" name="devzero" value="left" data-label="zero at the left, magnitude only">
+      <span>Zero at the left, magnitude only.<em>Full width for the bar, and the sign has to
+      be read from the number rather than from the shape.</em></span></label>
+  </div>
+
+  <div class="q">
+    <h4>7 &middot; The Area chip's shape <i>: settled</i></h4>
+    <p>Radius is zero everywhere except a short allowlist of genuinely circular things:
+      status dot, radio dot, avatar. <b>Is an Area chip one of them?</b></p>
+    <label class="opt"><input type="radio" name="chipshape" value="circle" data-label="a circle, joining the allowlist" checked>
+      <span><b>A circle, joining the allowlist.</b><em>Reads as a legend mark and cannot be
+      confused with a block, which is always square.</em></span></label>
+    <label class="opt"><input type="radio" name="chipshape" value="square" data-label="a square, allowlist stays at three">
+      <span>A square, keeping the allowlist at three.<em>Stricter, and it echoes the block's
+      own top rule. Risks reading as a tiny block.</em></span></label>
+  </div>
+
+  <div class="q">
+    <h4>8 &middot; What the pinned summary strip carries <i>: settled</i></h4>
+    <p>The strip is fixed at <code>--strip-h</code> and its rows scroll inside, because a
+      panel that grew as pins accumulate would shift the grid under the cursor. So its
+      content is a fixed budget, and the third reading competes with per-Area bars.</p>
+    <label class="opt"><input type="radio" name="strip" value="readings" data-label="three readings plus the verdict" checked>
+      <span><b>Three readings plus the verdict.</b><em>Scheduled, discretionary, unallocated.
+      The unallocated figure is the one nobody has ever looked at.</em></span></label>
+    <label class="opt"><input type="radio" name="strip" value="bars" data-label="two readings, per-Area bars, verdict">
+      <span>Two readings, per-Area bars, verdict.<em>Answers <i>which Area is starving</i> at a
+      glance, and drops the discretionary denominator that makes the percentages mean
+      anything.</em></span></label>
+  </div>
+
+  <div class="copywrap">
+    <button type="button" class="btn" id="copy">Copy the decisions</button>
+    <textarea id="out" readonly aria-label="Decision summary"></textarea>
+  </div>
+</div>
+
+<!-- ============================ the render ============================ -->
+<div class="render" id="render"></div>
+</div>
+
+<script>
+const raw = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const px  = n => parseFloat(raw(n));
+
+const AREA = {Career:'--area-01', Study:'--area-05', Fitness:'--area-08',
+              Research:'--area-10', Projects:'--area-03', Admin:'--area-07',
+              Transit:'--area-12'};
+const GLYPH = {frame:'&#9679;', habit:'&#8635;', task:'&#9656;', anchor:'&#9670;',
+               shadow:'&#9671;', transit:'&#8594;'};
+const min = s => { const [h,m] = s.split(':').map(Number); return h*60+m; };
+const fmt = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+
+/* Three real days, enough to carry every decision under test: a pinned habit, a queue-bound
+   block, an anchor conflict, a frame span, a 15-minute compact block and a depth-3 overlap. */
+const DAYS = [
+  {label:'Tue 11', rows:[
+    '00:00-05:15|Sleep|frame|', '05:15-05:30|Wake Up|frame|',
+    '05:30-06:30|Gym &middot; Shoulder &amp; Arms|habit|Fitness*',
+    '06:30-06:45|Shower|frame|', '07:00-09:30|Leetcode &middot; Graphs|habit|Career',
+    '10:00-10:30|Prep for Kontron Interview|shadow|Career',
+    '11:30-12:00|Lunch|frame|', '12:00-15:00|Leetcode &middot; Graphs|habit|Career!',
+    '15:00-15:30|Leave for Uni|shadow|Transit',
+    '16:00-16:45|Kontron Placement Interview|anchor|',
+    '18:00-18:30|Dinner|frame|', '19:30-20:30|Topic List Questions|task|Career']},
+  {label:'Fri 14', rows:[
+    '00:00-07:30|Sleep|frame|', '07:30-07:45|Wake Up|frame|',
+    '07:30-08:00|Leave for Uni|shadow|Transit',
+    '08:30-11:00|Amazon Interview Prep &middot; Behavioral|task|Career',
+    '11:30-12:00|Lunch|frame|',
+    '11:30-12:00|Print Amazon Interview Notes|task|Career',
+    '11:30-12:00|Review F&amp;F Reading|task|Study',
+    '14:00-15:00|Mock Interview|anchor|',
+    '16:30-18:30|Leetcode|habit|Career', '18:30-19:00|Dinner|frame|']},
+  {label:'Sun 16', rows:[
+    '00:00-09:00|Sleep|frame|', '09:00-09:15|Wake Up|frame|',
+    '10:00-10:30|Clean|habit|Admin', '10:30-11:00|Lunch|frame|',
+    '13:30-17:00|Leetcode|habit|Career', '17:30-18:00|Dinner|frame|',
+    '22:00-24:00|Sleep|frame|']}
+];
+const flag = a => ({area:(a||'').replace(/[*!]/g,'') || null,
+                    pin:/\*/.test(a||''), sel:/!/.test(a||'')});
+
+function layout(rows){
+  const bs = rows.map(r => {
+    const [t, title, origin, area] = r.split('|');
+    const [s, e] = t.split('-');
+    return {s:min(s), e:min(e), title, origin, ...flag(area)};
+  }).sort((a,b) => a.s - b.s || b.e - a.e);
+  const cl = []; let cur = [], ce = -1;
+  for(const b of bs){
+    if(cur.length && b.s < ce){ cur.push(b); ce = Math.max(ce, b.e); }
+    else { if(cur.length) cl.push(cur); cur = [b]; ce = b.e; }
+  }
+  if(cur.length) cl.push(cur);
+  for(const c of cl){
+    const ends = [];
+    for(const b of c){
+      let i = ends.findIndex(e => e <= b.s);
+      if(i === -1){ i = ends.length; ends.push(b.e); } else ends[i] = b.e;
+      b.i = i;
+    }
+    c.forEach(b => b.n = ends.length);
+  }
+  return bs;
+}
+
+function gridHTML(){
+  const vh = 12, ppm = px('--grid-h') / (vh * 60), H = 1440 * ppm;
+  let axis = '', lines = '';
+  for(let m = 0; m <= 1440; m += 60)
+    axis += `<span class="hh" style="top:${m*ppm}px">${fmt(m)}</span>`;
+  for(let m = 0; m <= 1440; m += 15)
+    lines += `<div class="${m % 60 === 0 ? 'maj' : 'min'}" style="top:${m*ppm}px"></div>`;
+  const cols = DAYS.map(d => {
+    const bs = layout(d.rows);
+    return `<div class="col"><div class="colhead">${d.label}</div>`
+      + `<div class="canvas" style="height:${H}px">${lines}`
+      + bs.map(b => {
+          const top = b.s * ppm, h = (b.e - b.s) * ppm;
+          const tier = h >= px('--block-h-label') ? 'label'
+                     : h >= px('--block-h-compact') ? 'compact' : 'sliver';
+          const a = b.area ? AREA[b.area] : null;
+          const pos = b.n === 1
+            ? 'left:var(--grid-inset);right:var(--grid-inset)'
+            : `left:${(b.i*100/b.n).toFixed(3)}%;right:${((b.n-1-b.i)*100/b.n).toFixed(3)}%`;
+          const lines2 = tier === 'compact' ? 1
+            : Math.max(1, Math.floor((h - 5) / px('--lh-block-px')));
+          const titled = tier !== 'sliver';
+          const g = titled
+            ? (b.pin ? '<span class="g pin">&#9635;</span>' : '')
+            : `<span class="g">${GLYPH[b.origin]}</span>`;
+          return `<div class="blk${b.origin==='frame'?' frame':''}"`
+            + ` style="${pos};top:${top}px;height:${h}px;--lines:${lines2}`
+            + `${a?`;--ai:var(${a})`:''}"${a?' data-area':''} data-tier="${tier}"`
+            + `${b.pin?' data-pinned':''}${b.sel?' data-selected':''}`
+            + `${b.i>0?' data-split':''}`
+            + `${/Kontron/.test(b.title)?' data-conflict':''}`
+            + `><span class="t">${b.title}</span>${g}</div>`;
+        }).join('') + '</div></div>';
+  }).join('');
+  return `<div class="gridwrap"><div class="axis"><div class="hd"></div>`
+    + `<div style="position:relative;height:${H}px">${axis}</div></div>`
+    + `<div class="cols">${cols}</div></div>`;
+}
+
+const BUDGET = [['Career','--area-01',27.3,30],['Study','--area-05',18.4,20],
+                ['Fitness','--area-08',8.6,12],['Research','--area-10',3.8,8],
+                ['Projects','--area-03',2.9,10],['Unallocated',null,35.3,15]];
+function devRows(center){
+  return BUDGET.map(([n, tok, actual, target]) => {
+    const d = actual - target, w = Math.min(center ? 50 : 100, Math.abs(d) / 24 * 100);
+    const side = center ? (d < 0 ? `right:50%;width:${w/2}%` : `left:50%;width:${w/2}%`)
+                        : `left:0;width:${w}%`;
+    /* No chip: a chart row is a chart context end to end, so it carries no Area ink. */
+    return `<div class="dev"><span>${n}</span>`
+      + `<span class="devtrack"><span class="devfill" style="${side}"></span></span>`
+      + `<span class="v">${d > 0 ? '+' : '\u2212'}${Math.abs(d).toFixed(1)}pp</span></div>`;
+  }).join('');
+}
+function miniDev(){
+  return BUDGET.slice(0,4).map(([n, tok, actual, target]) => {
+    const d = actual - target, w = Math.min(50, Math.abs(d) / 24 * 100);
+    const side = d < 0 ? `right:50%;width:${w}%` : `left:50%;width:${w}%`;
+    return `<div class="minidev"><span class="mut">${n.slice(0,7)}</span>`
+      + `<span class="t2"><span class="f2" style="${side}"></span></span></div>`;
+  }).join('');
+}
+
+const REASON = `<div class="detail">
+  <div class="ttl">Gym &middot; Shoulder &amp; Arms</div>
+  <div class="wl">Why here</div>
+  <div class="cl"><b>pinned</b><span><code>Tue 05:30</code> <i>&middot;</i> you moved it here on Sun 09 Feb</span></div>
+  <div class="cl cf"><b>instead of</b><span><code>13:15</code> <i>&middot;</i> what the solver proposed</span></div>
+  <div class="cl cf"><b>cost</b><span><code>timeOfDayMisfit</code> <i>&middot;</i> +0.18 against the proposal</span></div>
+  <div class="cl"><b>floor</b><span><code>Fitness 5h</code> <i>&middot;</i> 3 of 4 occurrences placed</span></div>
+</div>`;
+
+function render(){
+  const v = name => document.querySelector(`input[name=${name}]:checked`).value;
+  const attrs = ['counterfactual','gridlines','areacarrier','framefill','pinmark',
+                 'devzero','chipshape','strip']
+    .map(k => `data-${k}="${v(k)}"`).join(' ');
+
+  document.getElementById('render').innerHTML = `<div ${attrs}>
+    <section>
+      <div class="eyebrow">The week, with every choice applied
+        <em>three real days &middot; a pinned habit, a queue binding, an anchor conflict, a depth-3 overlap</em></div>
+      ${gridHTML()}
+      <div class="note"><b>Read the 15-minute blocks first.</b> <code>Wake Up</code> and
+        <code>Shower</code> are the compact tier: 9.5px at line-height 1, which is the one
+        degradation step before a title disappears. Then read the 11:30 cluster on Friday:
+        three blocks sharing one column at six characters each, where the Area rule is the
+        only identity left.</div>
+    </section>
+    <section>
+      <div class="eyebrow">The pinned summary strip <em>fixed height &middot; rows scroll inside it</em></div>
+      <div class="strip">
+        <div><span class="lab">Scheduled</span><data>80.8h</data><small>91 blocks</small></div>
+        <div><span class="lab">Discretionary</span><data>52.1h</data><small>after frame and anchors</small></div>
+        <div class="reading3"><span class="lab">Unallocated</span><data>18.4h</data><small>35.3% of discretionary</small></div>
+        <div class="barcell"><span class="lab">Off target</span><div style="margin-top:4px">${miniDev()}</div></div>
+        <div class="verd"><b>&#9670; This week cannot hold its commitments</b>
+          <p>1h20m short on <code>Career</code> before Fri 09:00, after honoring the
+             Fitness floor. Four tradeoffs &middot; nothing is chosen for you.</p></div>
+      </div>
+    </section>
+    <section>
+      <div class="pair">
+        <div>
+          <div class="eyebrow">Actual against target <em>cobalt only, by rule</em></div>
+          <div class="panel"><header>Per Area &middot; percentage points</header>
+            <div class="in">${devRows(v('devzero') === 'center')}</div></div>
+          <div class="note">Area ink encodes identity; cobalt encodes magnitude and
+            direction. That is why this chart is one ink on a screen otherwise full of
+            pigment, why direction is a sign rather than a hue, and why there is no chip in
+            the label column: a chart row is a chart context end to end.</div>
+        </div>
+        <div>
+          <div class="eyebrow">The reason record <em>rows, never generated prose</em></div>
+          ${REASON}
+          <div class="note">Every clause is a template plus a value the solver computed. No
+            language model sits in the placement loop, so a sentence that cannot be traced to
+            a figure is worse than no sentence. <b>The two <code>instead of</code> and
+            <code>cost</code> rows are decision 1.</b></div>
+        </div>
+      </div>
+    </section>
+    <section style="border-bottom:0">
+      <div class="eyebrow">What is settled, and what this sheet is still asking</div>
+      <div class="pair">
+        <div class="panel"><header>Settled by rendering, in the two scratch probes</header>
+          <div class="in" style="font-size:var(--fs-eyebrow);line-height:1.7">
+            The block's five state channels and their combination matrix &middot; the
+            proposal pair as absence of fill &middot; the 12-ink ramp, equalized, with three
+            sealed carriers &middot; sweep-and-columns overlap, even to depth 3 then stagger
+            &middot; the four-step tier ladder &middot; the 17-character floor and every
+            breakpoint derived from it &middot; <code>--bp-wide</code> corrected to 1536px
+            &middot; titles wrapping to a computed line count &middot; the paper sidebar
+            &middot; zero motion with no exceptions &middot; the discrete drag.</div></div>
+        <div class="panel"><header>All eight are settled. This sheet is now a record</header>
+          <div class="in" style="font-size:var(--fs-eyebrow);line-height:1.7">
+            Every rejected alternative above is still live, so the reasoning can be checked
+            rather than taken on trust. Two of the eight had consequences beyond the pixel:
+            <b>1</b> obliges the schema to persist a pin's superseded placement and its
+            objective delta permanently, and <b>7</b> grows the circular allowlist to four
+            entries: status dot, radio dot, Area chip, avatar. Both are recorded in
+            <code>docs/DESIGN-LANGUAGE.md</code> and the second in the PRD's entity table,
+            rather than only here.</div></div>
+      </div>
+    </section>
+  </div>`;
+  out();
+}
+
+const LABELS = {
+  counterfactual:['1','pinned block shows its counterfactual'],
+  gridlines:['2','grid line density at rest'],
+  areacarrier:['3','Area carrier on a block'],
+  framefill:['4','how the circadian frame is drawn'],
+  pinmark:['5','the pinned mark'],
+  devzero:['6','the deviation bar\u2019s zero'],
+  chipshape:['7','the Area chip\u2019s shape'],
+  strip:['8','what the summary strip carries']
+};
+function out(){
+  const lines = Object.entries(LABELS).map(([k, [no, label]]) => {
+    const el = document.querySelector(`input[name=${k}]:checked`);
+    /* The label is declared on the input, not scraped from the markup. Scraping the first
+       bold run silently produced a whole paragraph for any option that had no bold lead. */
+    const txt = el.dataset.label;
+    return `${no}. ${label}\n   -> ${txt}`;
+  });
+  document.getElementById('out').value =
+    'syncr design decisions\n'
+    + 'rendered from frontend/src/tokens at '
+    + new Date().toISOString().slice(0,16).replace('T',' ') + '\n\n'
+    + lines.join('\n');
+}
+
+for(const el of document.querySelectorAll('.form input'))
+  el.addEventListener('change', render);
+document.getElementById('copy').addEventListener('click', () => {
+  const t = document.getElementById('out');
+  t.select(); document.execCommand?.('copy');
+  navigator.clipboard?.writeText(t.value);
+});
+render();
+</script>
+</body>
+</html>

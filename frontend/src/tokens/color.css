@@ -1,0 +1,169 @@
+/* Layer 1: semantic color.
+   What each pigment means. A component writes bg-paper or text-ink and never touches
+   layer 0.
+
+   Two rules govern this file.
+
+   One: body text is not a separate color from the accent. --text resolves to --ink.
+   A near-black body against a cobalt accent turns every screen into a black document
+   with blue trim, which is not the design.
+
+   Two: the system is drawn in one ink, and the Area ramp is the single sealed exception.
+   The seal is written out below. It is the same shape as the one signal fill the
+   inherited language sanctions: a named exception with an explicit carrier list, not a
+   general licence to reach for color. */
+
+:root {
+  --paper: var(--cream-200);
+  --paper-raised: var(--cream-100);
+
+  --ink: var(--cobalt-600);        /* body: prose, block titles, table data */
+  --ink-deep: var(--cobalt-700);   /* labels, page titles, the selected-block rule */
+  --ink-bright: var(--cobalt-500); /* focus ring, status dots, links, the now rule */
+  --ink-soft: var(--cobalt-400);   /* secondary prose: reasons, explanations */
+
+  --text: var(--ink);
+  --text-muted: var(--cobalt-300); /* 4.89:1 on paper. the lighter #6C79A4 failed AA at 3.82:1 */
+
+  --rule: var(--cobalt-100);         /* 1px separators: rows, half-hour grid lines */
+  --rule-faint: var(--cream-400);    /* the quarter-hour grid subdivision. below --rule
+                                        deliberately: at 15 minute spacing a --rule line
+                                        renders the grid as corduroy. */
+  --rule-strong: var(--cobalt-200);  /* block borders, panel borders. decorative */
+  --rule-control: var(--cobalt-300); /* input, select and textarea borders. 5.28:1 on
+                                        paper-raised. a control border is the only thing
+                                        marking the control's boundary, so it is an
+                                        indicator and must clear 3:1. --rule-strong
+                                        measures 2.65:1 here and cannot be used. */
+
+  /* Washes. A wash has roughly 1.1:1 against paper, which is the entire dynamic range a
+     tint has on cream, so it never carries meaning alone: it always pairs with a rule,
+     a glyph or a border. */
+  --ink-wash: var(--cream-400);   /* hover fill, panel headers, inline code chips */
+  --frame-wash: var(--cream-300); /* the circadian frame: sleep spans, meals */
+  --amber-wash: var(--amber-100); /* the infeasibility panel's own surface */
+  --oxide-wash: var(--oxide-100);
+  --verdigris-wash: var(--verdigris-100);
+
+  /* On an ink fill. A cobalt surface inverts: paper becomes the ink. These exist because
+     their absence produced the worst defect the inherited language ever had -- --ink-bright
+     on --ink-deep measures 1.61:1, so a focus ring vanished on the primary navigation of a
+     keyboard-first tool.
+
+     syncr's sidebar is NOT an ink fill: it is paper, like every other surface, and its
+     current item takes a wash plus a 3px --ink-deep left rule, which is the same channel a
+     selected block uses. One idea, one form. Navigation is persistent state, and the
+     inherited language's own rule is that the loudest treatment is not spent on the most
+     persistent condition.
+
+     So the only remaining ink fills are panel and dialog headers, which is what these three
+     tokens are for. Ratios are against --ink-deep, the darkest fill in the system. */
+  --on-ink: var(--paper-raised);      /* 14.83:1. text on an ink-filled header */
+  --on-ink-muted: var(--cobalt-100);  /* 8.65:1. secondary text on an ink-filled header */
+  --rule-on-ink: var(--cobalt-500);   /* 1.61:1, deliberately matching --rule's 1.59:1 on
+                                         paper, so a divider inside an ink header is not five
+                                         times louder than its equivalent on the page. */
+
+  /* Signals. Sealed to status and severity indicators (dots, rules, glyphs and their
+     labels), and to the tradeoff panel's edge. Never a fill, never a heading, never in
+     navigation. The severity model pairs each with a position, not with a volume of
+     pigment: see DESIGN-LANGUAGE.md. */
+  --signal-oxide: var(--oxide-500);
+  --signal-verdigris: var(--verdigris-500);
+  --signal-amber: var(--amber-500);
+
+  /* Each signal names two roles. The MARKER step above carries dots, rules, glyphs and
+     washes, where 3:1 is the bar. The TEXT step below carries label ink, where 4.5:1 is
+     the bar and the marker step fails. Amber has no text step: its marker passes at
+     4.52:1 on --paper-raised and fails at 4.18:1 on --paper, which is why an amber
+     indicator pairs with --text-muted text rather than coloring its own label. */
+  --oxide-ink: var(--oxide-600);
+  --verdigris-ink: var(--verdigris-600);
+
+  /* SECONDARY TEXT ON A WASH STEPS TO --ink-soft, NEVER --text-muted. This is the one live
+     constraint the contrast ledger found rather than a defect a token already answers.
+     --text-muted is safe on paper at 4.89:1 and on raised paper at 5.28:1, but on a signal
+     wash it fails AA: 4.31:1 on --amber-wash, 4.41 on --oxide-wash, 4.47 on --verdigris-wash.
+     The tradeoff panel and the infeasibility verdict both sit on --amber-wash, so this is a
+     surface the product actually uses. --ink-soft measures 6.98:1 there. */
+  --text-on-wash: var(--ink-soft);
+
+  /* ------------------------------------------------------------------------
+     THE AREA RAMP. The one break with one-ink, and it is sealed.
+
+     Areas do triple duty in this product: the wedge of the allocation model, the type of
+     a template slot, and the category of a task. A user carries several at once and must
+     read "which Area" pre-attentively across a week of roughly ninety blocks. Label text
+     alone cannot do that at the fifteen-minute tier, and a tint ramp cannot either: the
+     whole wash channel is 1.1:1 wide.
+
+     LEGAL CARRIERS, exhaustively. One carrier per context, never two at once:
+       proportional surfaces  the block's 2px top rule, and nothing else
+       ledger surfaces        a filled chip up to 10px in the row gutter
+       charts                 a pie wedge fill or a stacked bar fill
+     ILLEGAL everywhere: as text, as a block or row fill, as a control border, in
+     navigation, on a heading, and as the only encoding of anything.
+
+     COLOUR IS NEVER THE ONLY ENCODING. Roughly one man in twelve cannot separate twelve
+     categorical hues, and three of these pigments sit on the sealed signal hues by
+     construction. So every wedge and bar pairs its ink with a hatch, and every chip pairs
+     with the Area's name. The hatch is drawn in a lighter step of the wedge's own ink so
+     it reads as texture rather than as a second color.
+
+     THE FRAME IS OUTSIDE THE RAMP. Routines are not budgeted as discretionary time, so
+     the circadian frame takes --frame-wash and no Area ink at all. It reads as structure,
+     not as a category competing with Fitness.
+
+     ASSIGNMENT ORDER, not numeric order. Areas are assigned in the order below so that a
+     user with four Areas gets four pigments at least 75 degrees apart, which is computed in
+     specimen.html rather than asserted here:
+       01, 05, 08, 10, 03, 07, 12, 06, 02, 04, 09, 11
+
+     The order does NOT defer the tightest pairs, and an earlier version of this comment
+     claimed it did. 07 and 08 are dealt 6th and 3rd; 12 and 01 are dealt 7th and 1st. What
+     protects an adjacent pair is that the two carry different hatches, which specimen.html
+     verifies for every one of the four tightest pairs. The pigments themselves were respaced
+     to make the tightest gap 19.4 degrees instead of 13.0, which is the real remedy.
+     ------------------------------------------------------------------------ */
+  --area-01: var(--pigment-area-01);
+  --area-02: var(--pigment-area-02);
+  --area-03: var(--pigment-area-03);
+  --area-04: var(--pigment-area-04);
+  --area-05: var(--pigment-area-05);
+  --area-06: var(--pigment-area-06);
+  --area-07: var(--pigment-area-07);
+  --area-08: var(--pigment-area-08);
+  --area-09: var(--pigment-area-09);
+  --area-10: var(--pigment-area-10);
+  --area-11: var(--pigment-area-11);
+  --area-12: var(--pigment-area-12);
+
+  /* Hatch is a texture primitive with three documented uses, and no others:
+       1. Area redundancy on a wedge or a stacked bar, drawn in a lighter step of the
+          wedge's own ink, so color is never the only encoding.
+       2. An external anchor's fill, in --rule, marking time the product does not own.
+       3. A forbidden window, in --rule, marking a span the solver may not fill -- the
+          recovery shadow an anchor casts. Without it a forbidden gap and an ordinary empty
+          gap render identically, and the solver appears to decline a gap for no reason.
+     Six patterns is the honest ceiling: past that they stop separating at wedge scale, so a
+     pattern repeats only between hues that are far apart. */
+  --hatch-fwd:  repeating-linear-gradient(45deg,  var(--hatch-ink) 0 1px, transparent 1px 5px);
+  --hatch-back: repeating-linear-gradient(135deg, var(--hatch-ink) 0 1px, transparent 1px 5px);
+  --hatch-vert: repeating-linear-gradient(90deg,  var(--hatch-ink) 0 1px, transparent 1px 5px);
+  --hatch-horz: repeating-linear-gradient(0deg,   var(--hatch-ink) 0 1px, transparent 1px 5px);
+  --hatch-cross:
+    repeating-linear-gradient(45deg,  var(--hatch-ink) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(135deg, var(--hatch-ink) 0 1px, transparent 1px 6px);
+  --hatch-dot: radial-gradient(var(--hatch-ink) 0.9px, transparent 1px);
+  --hatch-dot-size: 5px 5px;
+  /* How far a hatch is lightened from the fill it sits on. Stated once as a token because
+     every wedge and every stacked-bar segment re-derived it inline, in three sheets, which
+     is precisely how two references drift apart. A caller writes:
+       --hatch-ink: color-mix(in srgb, var(--ai) var(--hatch-mix), var(--paper-raised)) */
+  --hatch-mix: 45%;
+
+  /* Overlay scrim. Derived from the darkest ink rather than introduced as a new pigment,
+     and translucent rather than opaque, so the surface being explained stays legible
+     beneath the thing explaining it. No blur: print has none. */
+  --scrim: color-mix(in srgb, var(--ink-deep) 30%, transparent);
+}

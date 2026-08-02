@@ -1,0 +1,80 @@
+/* Layer 0: primitives.
+   Raw pigment ramps. No meaning, no usage guidance, no component may reference these.
+   Layer 1 is where a pigment acquires a role and a seal. See color.css.
+
+   The cobalt, cream and signal ramps are inherited unchanged from the pi-session-viewer
+   design language: one hue drawn at seven steps on cream paper, with three printer's inks
+   sealed to diffs, syntax, status and match. Do not retune them here.
+
+   The Area ramp is syncr's own addition and its only deliberate break with one-ink.
+   Its rationale, its seal and its assignment order live in color.css, because a pigment
+   without a rule is exactly the thing this layer is forbidden to hand a component. */
+
+:root {
+  /* Cobalt. One hue, seven steps. The system is drawn in this. */
+  --cobalt-700: #0D1F5C;
+  --cobalt-600: #16307F;
+  --cobalt-500: #1A3AA6;
+  --cobalt-400: #3A4877;
+  --cobalt-300: #5A6894;
+  --cobalt-200: #8E9BC6;
+  --cobalt-100: #B9C2DE;
+
+  /* Cream. Paper stock, lightest first. */
+  --cream-100: #FDFBF4;
+  --cream-200: #F6F2E7;
+  --cream-300: #F1EDE1;
+  --cream-400: #EFEADC;
+
+  /* Signal pigments. Printer's inks, not web primaries. Each carries a text-weight
+     step, a marker step and a wash. Sealed to status, severity, diffs and match. */
+  --oxide-600: #7C2E1D;
+  --oxide-500: #9C3B26;
+  --oxide-100: #F3E4DE;
+
+  --verdigris-600: #22513F;
+  --verdigris-500: #2C6A55;
+  --verdigris-100: #E1EBE2;
+
+  --amber-500: #9A6B14;
+  --amber-100: #F2E3C4;
+
+  /* Area ramp. Twelve pigments, ~30 degree hue steps, all tuned so that every one measures
+     within 0.1 of 5.0:1 against page paper. That equalisation matters more than it sounds:
+     an uneven ramp makes some pie wedges read as heavier than others, which biases the
+     composition the review exists to show. The first draft ran from 4.42:1 to 7.25:1 and
+     the violet group looked like it held more time than the moss group at equal area.
+
+     The 225 degree slot is deliberately vacant: that is cobalt's hue, and an Area that read
+     as the system ink would be unreadable as a category.
+
+     Three of these sit on the sealed signal hues -- 01 near oxide, 03 near amber, 06 near
+     verdigris. That collision is accepted rather than avoided, because squeezing twelve
+     pigments into the remaining 270 degrees would put the hue steps below the point where
+     dark colors separate. The carrier rule in color.css is what disambiguates them: a
+     signal is never a fill, an Area is only ever a fill or a rule.
+
+     The tightest adjacent gaps are 02/03 at 19.4 degrees, 06/07 and 07/08 at 20.3, and
+     12/01 at 20.4: uniform, and about as tight as two dark colors can be and still separate.
+     --pigment-area-07 was retuned from 183 to 176 degrees to get there. At 183 it sat 13.0
+     degrees from 08, which was the one genuinely indistinguishable pair in the ramp, and an
+     earlier version of this comment misreported the tightest pair as 02/03 at 23 degrees.
+     Every figure here is now computed in specimen.html section 6 rather than asserted, so
+     the comment cannot drift from the pigments again.
+
+     What protects an adjacent pair is that the two carry DIFFERENT HATCHES, which
+     specimen.html verifies for all four tightest pairs. It is not the deal order: 07 and 08
+     are dealt 6th and 3rd, so a user with six Areas meets them both. */
+  --pigment-area-01: #AB4757; /* 350  madder    4.98:1 */
+  --pigment-area-02: #A3511E; /*  23  sienna    5.00:1 */
+  --pigment-area-03: #856311; /*  42  ochre     4.95:1 */
+  --pigment-area-04: #676C16; /*  64  olive     5.03:1 */
+  --pigment-area-05: #437422; /*  96  moss      4.99:1 */
+  --pigment-area-06: #1D7652; /* 156  viridian  4.99:1 */
+  --pigment-area-07: #13746E; /* 176  teal      5.00:1  retuned from 183 to clear 08 */
+  --pigment-area-08: #157092; /* 196  cerulean  4.99:1 */
+  --pigment-area-09: #6A5DAA; /* 250  indigo    4.99:1 */
+  --pigment-area-10: #8551AA; /* 275  violet    5.00:1 */
+  --pigment-area-11: #9B4995; /* 304  magenta   4.97:1 */
+  --pigment-area-12: #A84476; /* 330  wine      5.00:1 */
+}

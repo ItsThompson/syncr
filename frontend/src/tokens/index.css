@@ -1,0 +1,11 @@
+/* Token entry point. Import order is the layer order: primitives resolve first, then the
+   semantic layers that reference them. Import this once, at the app root.
+
+   Reference sheets in docs/design/ LINK this file rather than copying values, so a value
+   cannot drift between the reference and the build. The chained @import resolves over
+   file:// in Chrome, Safari and Firefox. */
+
+@import './primitives.css';
+@import './color.css';
+@import './type.css';
+@import './layout.css';

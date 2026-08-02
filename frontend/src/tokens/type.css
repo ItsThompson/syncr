@@ -1,0 +1,83 @@
+/* Layer 1: semantic type.
+   One family carries the entire product. The serif appears in exactly two places: the
+   wordmark and the seven page titles. Nowhere else -- not headline numbers, and not the
+   weekly-session or pie-review mode headers, because a mode is not a destination.
+
+   THE WORDMARK IS LOWERCASE, AND THAT IS A NAMED EXCEPTION. Everywhere else in this
+   system only uppercase text is tracked out, and the wordmark of the language syncr
+   inherits is uppercase tracked serif. The product's name is lowercase by design and
+   setting it as SYNCR misreads it, so the wordmark is lowercase serif at zero tracking.
+   It is the one lowercase serif in the system. Nothing else may claim the exception. */
+
+:root {
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: 'Playfair Display', Georgia, serif;
+
+  /* Scale. Every step exists because a surface needed it, and adding a step requires
+     naming the surface that needs it. */
+  --fs-eyebrow: 9.5px; /* uppercase micro-labels above a panel or section */
+  --fs-label: 10px;    /* form labels, table headers, key hints */
+  --fs-chrome: 11.5px; /* controls, ledger rows, machine content, the time axis */
+  --fs-prose: 12px;    /* reasons, explanations, tradeoff statements */
+  --fs-data: 13px;     /* table cells carrying numbers you compare */
+  --fs-stat: 28px;     /* headline figures in a stat strip */
+  --fs-title: 38px;    /* the seven page titles. serif */
+
+  /* THE BLOCK TITLE. --fs-chrome, the same size as every other control and ledger row in
+     the system. An earlier draft set this to --fs-eyebrow 9.5px to keep the label floor at
+     15px, which let a fifteen-minute block hold a title at more zoom levels. Rendered, it
+     was simply too small to read at the size the Week screen is actually used at, and it
+     made the product's primary content the smallest type in the system.
+
+     The box that has to fit inside the label floor is the Area top rule at 2px, the 2px top
+     padding that keeps the title off that rule, one line of type, and the 1px bottom rule:
+
+       2 + 2 + (11.5 * 1.2) + 1 = 18.8px, inside a 19px floor
+
+     which is why --lh-block is 1.2 rather than the 1.55 the rest of the system uses. The
+     full arithmetic and the zoom caps it implies are in layout.css. The cost is paid by the
+     fifteen-minute tier, which slivers
+     at more zoom levels than before. That is what the tier ladder is for, and the blocks
+     it affects are overwhelmingly the circadian frame, which is read from position. */
+  --fs-block: var(--fs-chrome);
+  --lh-block: 1.2;
+  --lh-block-px: 13.8px; /* --fs-block * --lh-block, stated once so a component can compute
+                            how many lines fit in a block without re-deriving it, and so the
+                            two reference sheets cannot disagree about the answer. */
+
+  /* THE COMPACT TIER. A fifteen-minute block at the default twelve visible hours is 13px
+     tall on a 13-inch display, and --fs-block needs 19px. A first draft therefore dropped
+     the title entirely below 19px, on the reasoning that the blocks affected are the
+     circadian frame and are read from position. Rendered, that was rejected: an unlabeled
+     `Wake Up` reads as a rendering fault, not as a deliberate tier.
+
+     So there is one degradation step before the title goes. At --fs-eyebrow with a
+     line-height of exactly 1, the box is:
+
+       2 (Area top rule) + 9.5 (one line) + 1 (bottom rule) = 12.5px
+
+     which fits a fifteen-minute block at the agreed twelve-hour default with 0.5px to
+     spare. The compact tier pays for that by giving up --block-pad-t, so its title sits
+     against the Area rule. That is a real cost and it is the right trade: the alternative
+     is no title at all. */
+  --fs-block-compact: var(--fs-eyebrow);
+  --lh-block-compact: 1;
+
+  --lh-chrome: 1.55;
+  --lh-prose: 1.6;
+  --lh-tight: 1.05; /* headline figures and page titles */
+
+  /* Letterspacing. Only uppercase text gets tracked out. The wordmark is lowercase and
+     therefore takes none. */
+  --ls-eyebrow: 0.14em;
+  --ls-label: 0.12em;
+  --ls-nav: 0.1em;
+  --ls-wordmark: 0;
+
+  /* Prose rhythm. */
+  --prose-gap: 9px;
+  --prose-list-gap: 5px;
+
+  /* Prose has no maximum measure. It runs the full width of its pane, and the pane is
+     bounded by the width policy in layout.css instead. */
+}

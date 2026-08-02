@@ -1,0 +1,1797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>syncr: component inventory</title>
+
+<!-- Tokens are LINKED, not copied. This sheet sits in docs/design/, one level shallower
+     than the probes in docs/design/scratch/, so the path is ONE ../../ and not two.
+     The chained @import inside index.css resolves over file:// in Chrome, Safari and
+     Firefox. Nothing on this page hardcodes a value. -->
+<link rel="stylesheet" href="../../frontend/src/tokens/index.css">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* MOTION IS ZERO, WITHOUT EXCEPTION. There is no transition, no animation, no keyframe rule,
+   no will-change and no transform declaration in this file, and --duration is 0s. No property
+   here interpolates. There is no spinner and no skeleton loader: a pending surface is a
+   hairline placeholder plus a live count, and a count changing is a discrete redraw. The
+   policy is stated here so that the audit grep over this file returns nothing at all.
+
+   RADIUS IS 0 EVERYWHERE. border-radius:50% appears on exactly four elements, and the
+   allowlist is closed: the status dot, the radio dot, the Area chip and the avatar. */
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--text);font-family:var(--font-mono);
+  font-size:var(--fs-chrome);line-height:var(--lh-chrome);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;font-weight:400}
+a{color:var(--ink-bright)}
+code{background:var(--ink-wash);padding:0 3px}
+:is(a,button,input,select,textarea,[tabindex]):focus-visible{outline:var(--state-focus-ring);
+  outline-offset:var(--state-focus-offset)}
+/* THE INVERSE RING, scoped to the one ink-filled surface in the product: a dialog header.
+   The ring is chosen by the surface it LANDS on, not by the element's own fill: at a 2px
+   offset it sits on the parent. --ink-bright on --ink-deep measures 1.61:1 and vanishes;
+   --paper-raised on it measures 14.83:1. Scoping to the container means anything focusable
+   added to that header later inherits the correct ring.
+   syncr's sidebar is PAPER, so it needs no scope here. A primary button is not an ink
+   surface either: its fill is ink but its parent is paper, and inverting its ring would
+   give --paper-raised on --paper at 1.08:1. */
+.dialog>header :focus-visible{outline:var(--state-focus-ring-inverse);
+  outline-offset:var(--state-focus-offset)}
+
+/* ---------- sheet chrome. Copied from scratch/block-states.html so the two sheets
+             cannot drift in their own furniture. ---------- */
+.topbar{border-bottom:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  padding:12px 18px;display:flex;gap:24px;align-items:baseline;flex-wrap:wrap}
+/* The wordmark is lowercase serif at zero tracking: the one named exception to
+   uppercase-only tracking. See frontend/src/tokens/type.css. */
+.wordmark{font-family:var(--font-serif);font-size:24px;line-height:var(--lh-tight);
+  letter-spacing:var(--ls-wordmark);color:var(--ink-deep)}
+.kv{font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-muted)}
+.kv b{font-weight:500;color:var(--ink);letter-spacing:.04em;text-transform:none}
+.spec{position:sticky;top:0;z-index:30;display:flex;background:var(--paper);
+  border-bottom:var(--hairline) solid var(--rule-strong);overflow-x:auto}
+.spec .lbl{padding:8px 13px;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--on-ink);background:var(--ink-bright);white-space:nowrap}
+.spec div{padding:8px 12px;border-right:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);
+  letter-spacing:.06em;color:var(--text-muted);text-transform:uppercase;white-space:nowrap}
+.spec div b{font-weight:400;color:var(--ink);text-transform:none;letter-spacing:.02em}
+h2.sec{padding:7px 12px;border-top:var(--hairline) solid var(--rule-strong);
+  border-bottom:var(--hairline) solid var(--rule);background:var(--paper);font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep);
+  display:flex;justify-content:space-between;gap:14px;scroll-margin-top:34px}
+h2.sec em{font-style:normal;color:var(--text-muted);letter-spacing:.07em;text-transform:none;font-size:10px}
+h2.sec a{color:var(--ink-deep);text-decoration:none}
+h3.sub{padding:6px 12px;border-bottom:var(--hairline) solid var(--rule);font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink);background:var(--ink-wash);scroll-margin-top:34px}
+.note{padding:9px 12px;border-bottom:var(--hairline) solid var(--rule);color:var(--ink-soft);
+  font-size:11px;line-height:var(--lh-prose)}
+.note b{color:var(--ink-deep);font-weight:500}
+.pad{padding:13px 12px;border-bottom:var(--hairline) solid var(--rule)}
+.toc{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:var(--hairline) solid var(--rule-strong)}
+.toc a{display:block;padding:8px 12px;border-right:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule);text-decoration:none;color:var(--ink);font-size:10.5px}
+.toc a:hover{background:var(--ink-wash)}
+.toc a b{display:block;font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--text-muted);font-weight:400;margin-bottom:2px}
+.toc a.dom b{color:var(--ink-deep)}
+
+/* ---------- ledger tables ---------- */
+table.led{border-collapse:collapse;width:100%;font-size:10.5px}
+table.led th{text-align:left;font-weight:400;font-size:9px;letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted);padding:5px 9px;
+  border-bottom:var(--hairline) solid var(--rule-strong)}
+table.led td{padding:3px 9px;border-bottom:var(--hairline) solid var(--rule);vertical-align:top}
+table.led td.r{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+table.led td.pass{color:var(--signal-verdigris);letter-spacing:.1em}
+table.led td.fail{color:var(--signal-oxide);letter-spacing:.1em}
+table.led code{font-size:9.5px}
+
+/* ---------- component frame: demo left, build spec right ---------- */
+.cmp{display:grid;grid-template-columns:minmax(0,1fr) 342px;border-bottom:var(--hairline) solid var(--rule)}
+.cmp>.d{padding:14px 13px;border-right:var(--hairline) solid var(--rule);min-width:0}
+.cmp>.s{padding:11px 13px;background:var(--paper-raised);min-width:0}
+.cmp.wide{grid-template-columns:minmax(0,1fr)}
+.cmp.wide>.d{border-right:0;border-bottom:var(--hairline) solid var(--rule)}
+.lab{font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--text-muted);
+  margin-bottom:8px;display:block}
+.row-of{display:flex;gap:11px;align-items:flex-end;flex-wrap:wrap}
+.stack{display:flex;flex-direction:column;gap:11px}
+.sb{margin:0;font-size:var(--fs-eyebrow);line-height:1.55}
+.sb>div{display:grid;grid-template-columns:66px minmax(0,1fr);gap:9px;padding:4px 0;
+  border-bottom:var(--hairline) dotted var(--rule)}
+.sb>div:last-child{border-bottom:0}
+.sb dt{letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted)}
+.sb dd{margin:0;color:var(--ink);word-break:break-word}
+.sb code{font-size:var(--fs-eyebrow)}
+.sb .name{font-size:var(--fs-chrome);color:var(--ink-deep);letter-spacing:.04em}
+
+/* ---------- 01 buttons. No rank carries --shadow-hard: that token is for overlays. ---------- */
+.btn{font:inherit;font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;
+  border-radius:var(--radius);cursor:pointer;height:var(--h-control);padding:0 14px;
+  background:var(--ink);color:var(--on-ink);border:var(--hairline) solid var(--ink)}
+.btn.sec{background:var(--paper-raised);color:var(--ink-deep);border-color:var(--rule-control)}
+.btn.ter{background:transparent;border-color:transparent;color:var(--ink);
+  border-bottom:var(--hairline) dotted var(--rule-strong);padding:0 3px;height:auto;line-height:1.7}
+.btn.ter:hover{border-bottom-style:solid}
+.btn:disabled,.btn[aria-disabled=true]{background:transparent;color:var(--text-muted);
+  border-style:dashed;border-color:var(--text-muted);cursor:not-allowed}
+.btn.ico{display:inline-flex;align-items:center;gap:7px}
+.btn.sm{height:var(--h-control-sm);padding:0 9px}
+.btn.lg{height:var(--h-control-lg)}
+svg.ic{width:var(--icon);height:var(--icon);flex:0 0 auto;stroke:currentColor;fill:none;
+  stroke-width:var(--icon-stroke);stroke-linecap:var(--icon-cap);stroke-linejoin:var(--icon-join)}
+
+/* ---------- 02-04 fields ----------
+   --rule-control, not --rule-strong. A control border is the only thing marking where the
+   control begins, so it is an indicator under the 3:1 rule rather than decoration:
+   --rule-control measures 5.28:1 on --paper-raised and --rule-strong measures 2.65:1 there
+   and is banned on a control. Containers that merely enclose controls keep --rule-strong. */
+input[type=text],input[type=number],input[type=time],input[type=date],select,textarea{
+  font:inherit;font-size:var(--fs-chrome);background:var(--paper-raised);color:var(--ink);
+  border:var(--hairline) solid var(--rule-control);border-radius:var(--radius);padding:0 8px;
+  height:var(--h-control);min-width:186px;font-variant-numeric:tabular-nums}
+textarea{padding:5px 8px;height:auto;line-height:var(--lh-chrome);resize:vertical;width:100%}
+input[type=time],input[type=number]{min-width:82px}
+/* The native indicator is suppressed so the box stays square on every platform, exactly as
+   the select's arrow is replaced by a typographic mark below. */
+input[type=time]::-webkit-calendar-picker-indicator{display:none}
+input:disabled,select:disabled,textarea:disabled{background:transparent;color:var(--text-muted);
+  border-style:dashed}
+input[aria-invalid=true]{border-color:var(--signal-oxide);border-left-width:var(--state-conflict-border)}
+.selwrap{position:relative;display:inline-block}
+.selwrap::after{content:'\25BE';position:absolute;right:8px;top:0;line-height:var(--h-control);
+  pointer-events:none;color:var(--text-muted)}
+select{appearance:none;-webkit-appearance:none;padding-right:24px}
+.spin{display:inline-flex}
+.spin input{text-align:right;border-right:0}
+.spin button{font:inherit;font-size:11px;width:22px;padding:0;height:var(--h-control);cursor:pointer;
+  background:var(--paper-raised);color:var(--ink);border:var(--hairline) solid var(--rule-control);
+  border-right-width:0;border-radius:var(--radius)}
+.spin button:last-child{border-right-width:var(--hairline)}
+.unit{color:var(--text-muted);margin-left:6px;font-size:var(--fs-eyebrow)}
+.chk{display:flex;align-items:center;gap:8px;height:var(--h-control-sm);color:var(--ink)}
+.box{width:12px;height:12px;flex:0 0 auto;border:var(--hairline) solid var(--ink);display:grid;
+  place-items:center;font-size:var(--fs-label);line-height:1;color:var(--ink);background:var(--paper-raised)}
+/* allowlist 2 of 4: the radio dot */
+.box.rd{border-radius:50%}
+.box.rd s{width:6px;height:6px;border-radius:50%;background:var(--ink);display:block}
+.chk[data-disabled]{color:var(--text-muted)}
+.chk[data-disabled] .box{border-color:var(--text-muted);border-style:dashed;color:var(--text-muted)}
+/* The date picker is a popover, which is one of the three surfaces --shadow-hard exists for. */
+.cal{border:var(--hairline) solid var(--ink-deep);background:var(--paper-raised);
+  box-shadow:var(--shadow-hard);padding:8px;width:198px;font-size:var(--fs-label)}
+.cal header{display:flex;justify-content:space-between;font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep);margin-bottom:6px}
+.cal table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+.cal th{font-weight:400;font-size:9px;color:var(--text-muted);letter-spacing:.06em;padding-bottom:3px}
+.cal td{text-align:center;padding:1px 0;color:var(--ink)}
+.cal td.out{color:var(--text-muted)}
+.cal td[aria-selected=true]{background:var(--ink-deep);color:var(--on-ink)}
+/* Today is a calendar fact, not a system status, so it spends no signal pigment: an ink
+   rule, not an amber one. */
+.cal td[data-today]{box-shadow:inset 0 calc(-1 * var(--rule-emphasis)) 0 var(--ink-deep)}
+
+/* ---------- 05 table ---------- */
+table.dat{border-collapse:collapse;width:100%;font-size:var(--fs-chrome)}
+table.dat th{text-align:left;font-weight:400;font-size:9px;letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted);padding:0 9px;height:var(--h-row-dense);
+  border-bottom:var(--hairline) solid var(--rule-strong);white-space:nowrap}
+table.dat td{padding:0 9px;height:var(--h-row);border-bottom:var(--hairline) solid var(--rule);
+  color:var(--ink);white-space:nowrap;font-size:var(--fs-data)}
+table.dat td.n,table.dat th.n{text-align:right;font-variant-numeric:tabular-nums}
+table.dat tbody tr:hover td{background:var(--state-hover)}
+/* The current-row rule is an inset shadow on the first cell: a tr cannot carry a border-left
+   that survives border-collapse. Same channel and same 3px weight as a selected block. */
+table.dat tr[data-current] td:first-child{
+  box-shadow:inset var(--state-selected-border) 0 0 var(--state-selected-color)}
+table.dat th[aria-sort]{color:var(--ink-deep)}
+table.dat tfoot td{border-bottom:0;height:auto;padding:6px 9px;white-space:normal;
+  color:var(--text-muted);font-size:var(--fs-label);letter-spacing:.06em}
+.tscroll{overflow-x:auto}
+
+/* ---------- 06 card and panel ---------- */
+.card{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised)}
+.card>header{padding:4px 9px;border-bottom:var(--hairline) solid var(--rule);background:var(--ink-wash);
+  font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--ink-deep);display:flex;justify-content:space-between;gap:10px}
+.card>.body{padding:11px}
+.card>footer{padding:5px 9px;border-top:var(--hairline) solid var(--rule);
+  font-size:var(--fs-label);color:var(--text-muted)}
+.pnl{border:var(--hairline) solid var(--rule-strong);background:var(--paper)}
+.pnl>header{padding:5px 10px;border-bottom:var(--hairline) solid var(--rule-strong);
+  background:var(--ink-wash);font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--ink-deep)}
+.pnl section{border-bottom:var(--hairline) solid var(--rule);padding:8px 10px}
+.pnl section:last-child{border-bottom:0}
+.pnl h4{font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--text-muted);margin-bottom:5px}
+.dl{margin:0;font-size:var(--fs-chrome)}
+.dl div{display:flex;justify-content:space-between;gap:10px;line-height:1.7}
+.dl dt{color:var(--text-muted)}
+.dl dd{margin:0;color:var(--ink);font-variant-numeric:tabular-nums}
+.stat{font-size:var(--fs-stat);line-height:var(--lh-tight);color:var(--ink);
+  font-variant-numeric:tabular-nums}
+
+/* ---------- 07 severity: four volumes, four pigments ----------
+   A signal is sealed to status and severity indicators: dots, rules, glyphs and their
+   labels. Never a fill, never a heading, never in navigation, never a pill. The one
+   sanctioned signal surface in the system is --amber-wash on the infeasibility panel,
+   which color.css names for that purpose. */
+.sev{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  border-left-width:var(--state-conflict-border);padding:7px 10px;display:flex;gap:9px;align-items:baseline}
+.sev .g{flex:0 0 auto;font-size:11px}
+.sev p{margin:0;color:var(--ink);font-size:var(--fs-chrome);line-height:var(--lh-chrome)}
+.sev b{display:block;margin-bottom:2px;font-size:9px;letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;font-weight:400}
+.sev[data-level=info]{border-left-color:var(--ink-bright)}
+.sev[data-level=info] :is(.g,b){color:var(--ink-bright)}
+.sev[data-level=notice]{border-left-color:var(--signal-amber)}
+.sev[data-level=notice] .g{color:var(--signal-amber)}
+/* Amber has no text step. Its marker clears 4.52:1 on --paper-raised and fails at 4.18:1 on
+   --paper, so an amber indicator pairs with --text-muted text rather than coloring its own
+   label. Oxide and verdigris each have a text step and use it. */
+.sev[data-level=notice] b{color:var(--text-muted)}
+.sev[data-level=fail]{border-left-color:var(--signal-oxide)}
+.sev[data-level=fail] .g{color:var(--signal-oxide)}
+.sev[data-level=fail] b{color:var(--oxide-ink)}
+.sev[data-level=resolved]{border-left-color:var(--signal-verdigris)}
+.sev[data-level=resolved] .g{color:var(--signal-verdigris)}
+.sev[data-level=resolved] b{color:var(--verdigris-ink)}
+/* volume 1, inline: no box at all. A glyph and a label beside the thing they qualify. */
+.inl{display:flex;gap:6px;align-items:baseline;padding:3px 0;font-size:var(--fs-eyebrow);
+  letter-spacing:.06em;color:var(--text-muted)}
+.inl b{font-weight:400;color:var(--ink-deep);letter-spacing:.02em}
+.inl .g{font-size:9px}
+.inl[data-level=info] .g{color:var(--ink-bright)}
+.inl[data-level=notice] .g{color:var(--signal-amber)}
+.inl[data-level=fail] .g{color:var(--signal-oxide)}
+.inl[data-level=resolved] .g{color:var(--signal-verdigris)}
+/* volume 3, banner: the full width of the pane, above the content, carrying one action. */
+.banner{border-top:var(--hairline) solid var(--rule-strong);
+  border-bottom:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  border-left:var(--state-conflict-border) solid var(--signal-oxide);
+  padding:7px 11px;display:flex;gap:11px;align-items:center}
+.banner .g{color:var(--signal-oxide);font-size:11px}
+.banner p{margin:0;font-size:var(--fs-chrome);color:var(--ink)}
+.banner b{display:block;font-weight:400;font-size:9px;letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--oxide-ink)}
+.banner .sp{flex:1}
+/* volume 4, blocking: DELIBERATELY UNUSED. Drawn once, annotated, never shipped. */
+.unused{position:relative;border:var(--hairline) dashed var(--text-muted);padding:13px 11px 11px;
+  color:var(--text-muted)}
+.unused .tag{position:absolute;right:0;top:0;padding:2px 6px;background:var(--ink-wash);
+  color:var(--ink-deep);font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase}
+
+/* ---------- 08 sidebar navigation. PAPER, NOT INK. ----------
+   Ported from scratch/week-density.html. The inherited language fills its sidebar with
+   --ink-deep; rendered on a screen whose whole point is a calm grid it dominated, and it
+   made the one permanently visible surface the loudest thing in the product. So the sidebar
+   is paper with a --rule-strong right edge, and the current item takes a wash plus a 3px
+   --ink-deep left rule: the same channel a selected block uses. One idea, one form. It also
+   means the standard focus ring is correct throughout and no inverse scope is needed. */
+.side{background:var(--paper-raised);color:var(--ink);padding:11px 0;width:var(--w-sidebar);
+  border:var(--hairline) solid var(--rule-strong)}
+.side .brand{padding:0 13px 11px;border-bottom:var(--hairline) solid var(--rule)}
+.side .brand b{display:block;font-family:var(--font-serif);font-size:19px;line-height:1.1;
+  font-weight:400;letter-spacing:var(--ls-wordmark);color:var(--ink-deep)}
+.side .brand span{display:block;margin-top:3px;font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--text-muted)}
+.side a{display:flex;align-items:center;gap:8px;height:var(--h-control);padding:0 13px;
+  color:var(--ink);text-decoration:none;font-size:10.5px;letter-spacing:var(--ls-nav);
+  text-transform:uppercase;border-left:var(--state-selected-border) solid transparent}
+.side a:hover{background:var(--state-hover)}
+.side a[aria-current]{background:var(--state-hover);color:var(--ink-deep);
+  border-left-color:var(--state-selected-color)}
+.side a .c{margin-left:auto;color:var(--text-muted);letter-spacing:.04em;
+  font-variant-numeric:tabular-nums}
+.side .grp{padding:11px 13px 4px;font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted)}
+.side .who{display:flex;gap:8px;align-items:center;margin-top:9px;padding:9px 13px 0;
+  border-top:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);color:var(--text-muted)}
+/* allowlist 4 of 4: the avatar */
+.side .av{width:20px;height:20px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+  background:var(--ink-wash);color:var(--ink-deep);font-size:10px}
+
+/* ---------- 09 form layout ---------- */
+.form{max-width:530px}
+.frow{display:grid;grid-template-columns:126px minmax(0,1fr);gap:12px;align-items:center;
+  padding:5px 0;border-bottom:var(--hairline) dotted var(--rule)}
+.frow>label{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-label);text-transform:uppercase;
+  color:var(--text-muted)}
+.frow .hint{grid-column:2;font-size:var(--fs-eyebrow);color:var(--text-muted)}
+.frow .err{grid-column:2;font-size:var(--fs-eyebrow);color:var(--oxide-ink)}
+.frow .selwrap{display:block}
+.frow .selwrap select,.frow input[type=text]{width:100%;min-width:0}
+.factions{display:flex;gap:9px;padding-top:12px}
+
+/* ---------- 10 dialog: the only family carrying --shadow-hard ---------- */
+/* Print has no blur, so the lift is one hard offset. The scrim is derived from --ink-deep
+   with color-mix rather than hardcoded, because the token layer has no --scrim: see the
+   provenance note at the foot of this sheet. The dashed edge is this sheet's annotation of
+   where the scrim ends, not part of the component. */
+.scrim{background:var(--scrim);
+  border:var(--hairline) dashed var(--rule-strong);padding:22px;display:grid;place-items:center}
+.dialog{border:var(--hairline) solid var(--ink-deep);background:var(--paper-raised);
+  box-shadow:var(--shadow-hard);width:398px}
+.dialog>header{display:flex;justify-content:space-between;align-items:center;padding:7px 11px;
+  border-bottom:var(--hairline) solid var(--rule-strong);background:var(--ink-deep);
+  color:var(--on-ink);font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase}
+.dialog>header button{font:inherit;font-size:var(--fs-prose);background:transparent;border:0;
+  color:var(--on-ink);height:auto;padding:0 2px;cursor:pointer}
+.dialog>.body{padding:12px;font-size:var(--fs-chrome);line-height:var(--lh-chrome)}
+.dialog>.body p{margin:0 0 var(--prose-gap)}
+.dialog>.body p:last-child{margin-bottom:0}
+.dialog>footer{display:flex;gap:9px;justify-content:flex-end;padding:9px 11px;
+  border-top:var(--hairline) solid var(--rule)}
+
+/* ---------- 11 tabs and accordion ---------- */
+.tabs{display:flex;border-bottom:var(--hairline) solid var(--rule-strong)}
+.tabs button{font:inherit;font-size:var(--fs-label);letter-spacing:var(--ls-label);
+  text-transform:uppercase;background:transparent;border:0;color:var(--text-muted);
+  height:var(--h-control);border-bottom:var(--rule-emphasis) solid transparent;padding:0 12px;
+  cursor:pointer}
+.tabs button[data-state=active]{color:var(--ink-deep);border-bottom-color:var(--ink-deep)}
+.tabs button .n{color:var(--text-muted);margin-left:6px;font-variant-numeric:tabular-nums}
+.tabpanel{border:var(--hairline) solid var(--rule-strong);border-top:0;padding:11px;
+  background:var(--paper-raised);font-size:var(--fs-chrome);line-height:var(--lh-chrome)}
+.acc{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised)}
+.acc>div{border-bottom:var(--hairline) solid var(--rule)}
+.acc>div:last-child{border-bottom:0}
+.acc h4 button{font:inherit;font-size:var(--fs-label);letter-spacing:var(--ls-label);
+  text-transform:uppercase;width:100%;text-align:left;display:flex;gap:9px;align-items:center;
+  background:transparent;border:0;color:var(--ink-deep);height:var(--h-row);padding:0 10px;cursor:pointer}
+.acc h4 button .n{margin-left:auto;color:var(--text-muted);font-variant-numeric:tabular-nums}
+.acc .ap{padding:0 12px 10px 34px;font-size:var(--fs-chrome);line-height:var(--lh-chrome);color:var(--ink)}
+.disc{color:var(--ink-deep);letter-spacing:0}
+
+/* ============================================================================
+   12 THE BLOCK. The .blk rules below are copied VERBATIM from
+   scratch/week-density.html, which took them verbatim from scratch/block-states.html.
+   Three sheets, one block. The proposal, pin and source rules are the ones week-density
+   does not carry, ported from block-states.html unchanged.
+   ============================================================================ */
+.gridwrap{display:flex;border:var(--hairline) solid var(--rule-strong);
+  background:var(--paper-raised);overflow:auto}
+.axis{width:var(--axis-w);flex:0 0 auto;border-right:var(--hairline) solid var(--rule);
+  position:sticky;left:0;z-index:8;background:var(--paper-raised)}
+.axis .hd{height:var(--day-header-h);border-bottom:var(--hairline) solid var(--rule-strong);
+  background:var(--ink-wash);position:sticky;top:0;z-index:2}
+.axis .hh{position:absolute;right:4px;font-size:var(--fs-eyebrow);color:var(--text-muted);
+  line-height:1.35;margin-top:1px;padding:0 3px;background:var(--paper-raised);
+  font-variant-numeric:tabular-nums}
+.cols{display:flex;flex:1;min-width:0}
+.col{flex:1;min-width:0;position:relative;border-right:var(--hairline) solid var(--rule)}
+.col:last-child{border-right:0}
+.colhead{height:var(--day-header-h);border-bottom:var(--hairline) solid var(--rule-strong);
+  display:flex;align-items:center;gap:6px;padding:0 6px;background:var(--ink-wash);
+  font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--ink-deep);position:sticky;top:0;z-index:3;white-space:nowrap;overflow:hidden}
+.colhead i{font-style:normal;margin-left:auto;color:var(--text-muted);letter-spacing:.04em}
+.canvas{position:relative}
+.canvas .maj,.canvas .min{position:absolute;left:0;right:0;height:0;pointer-events:none}
+/* The quarter hour is drawn at rest, because the snap is 15 minutes and the grid should show
+   where a block can land. The hour alone carries cobalt weight; the three quarters are faint.
+   During a drag the quarters step up to hour weight so the snap targets sharpen. */
+.canvas .maj{border-top:var(--hairline) solid var(--grid-line-hour)}
+.canvas .min{border-top:var(--hairline) solid var(--grid-line-quarter)}
+.dragging .canvas .min{border-top-color:var(--grid-line-quarter-drag)}
+
+/* a block: three edges, not four. Ported verbatim from block-states.html. */
+.blk{position:absolute;left:var(--grid-inset);right:var(--grid-inset);
+  background:var(--paper-raised);
+  border:0;border-top:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule);
+  border-left:var(--state-selected-border) solid transparent;
+  padding:var(--block-pad-t) var(--block-pad-x) var(--block-pad-b);overflow:hidden;
+  font-size:var(--fs-block);line-height:var(--lh-block);color:var(--ink);
+  outline-offset:var(--state-focus-offset);cursor:default}
+/* Area identity, carrier 1 of 3: the 2px top rule on a proportional surface, and nothing
+   else. A real border-top, not an inset shadow, so it participates in the 19px floor's
+   arithmetic rather than sitting on top of the title. */
+.blk[data-area]{border-top:var(--rule-emphasis) solid var(--ai)}
+.blk .t{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--lines,1);
+  overflow:hidden;overflow-wrap:anywhere}
+.blk .g{float:right;margin-left:4px;color:var(--ink-deep);font-size:10px;line-height:1.2}
+.blk.frame{background:var(--frame-wash);color:var(--ink-soft)}
+.blk.anchor{background-color:var(--paper-raised);
+  background-image:repeating-linear-gradient(135deg,var(--rule) 0 1px,transparent 1px 7px);
+  border-top-color:var(--ink-deep)}
+.blk:hover{background-color:var(--state-hover)}
+.blk:focus-visible{outline:var(--state-focus-ring);z-index:6}
+.blk[data-selected]{border-left-color:var(--state-selected-color)}
+.blk[data-conflict]{border-left-color:var(--state-conflict-color)}
+.blk[data-split]{border-left:var(--hairline) solid var(--rule)}
+.blk[data-split][data-selected]{border-left:var(--state-selected-border) solid var(--state-selected-color)}
+.blk[data-tier=compact]{font-size:var(--fs-block-compact);line-height:var(--lh-block-compact);
+  padding-top:0}
+.blk[data-tier=sliver] .t,.blk[data-tier=hair] .t{display:none}
+.blk[data-tier=hair]{padding:0;border-bottom-width:0}
+/* ported from block-states.html: pinned, and the proposal pair */
+.blk[data-pinned] .pin{display:inline}
+.pin{display:none}
+.blk[data-proposal]{background:transparent;background-image:none;
+  border:var(--hairline) dashed var(--ink-deep);
+  border-left:var(--state-selected-border) solid transparent;color:var(--ink-soft)}
+.blk[data-source] .g{color:var(--ink-deep)}
+/* This sheet's own simulation of the two live states, so a matrix row can be read without a
+   pointer or a Tab key. The live pseudo-classes above still work. */
+.blk.h{background-color:var(--state-hover)}
+.blk.f{outline:var(--state-focus-ring);z-index:6}
+.now{position:absolute;left:0;right:0;height:0;border-top:var(--now-rule) solid var(--ink-bright);z-index:5}
+.forbid{position:absolute;left:0;right:0;pointer-events:none;z-index:0;
+  --hatch-ink:var(--forbidden-hatch-ink);background-image:var(--hatch-back);
+  border-top:var(--hairline) dotted var(--rule);border-bottom:var(--hairline) dotted var(--rule)}
+.forbid span{position:absolute;left:4px;top:1px;font-size:8px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--text-muted);background:var(--paper-raised);padding:0 2px}
+/* one block, laid out statically, so a state can be read without the grid around it */
+.iso{display:grid;grid-template-columns:146px minmax(0,1fr);
+  border-bottom:var(--hairline) solid var(--rule)}
+.iso>.n{padding:7px 11px;border-right:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);
+  letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.iso>.n b{display:block;color:var(--ink-deep);letter-spacing:.04em;text-transform:none;font-size:10.5px}
+.iso>.s2{padding:9px 13px;min-width:0;background:var(--paper)}
+.solo{position:relative;height:34px;max-width:196px}
+.solo .blk{position:relative;height:100%;left:auto;right:auto}
+
+/* ---------- 13 AreaChip and legend ----------
+   Area ink, carrier 2 of 3: a filled chip up to 10px in a ledger row's gutter, always
+   paired with the Area's name.
+   THE CHIP IS A CIRCLE, and it is allowlist entry 3 of 4 for border-radius:50%, with the
+   status dot, the radio dot and the avatar. The allowlist is closed at those four. A square
+   chip at 10px reads as a small block, which is the one thing it must not be mistaken for:
+   a block is the proportional surface, and its Area carrier is a 2px top rule. */
+.chip{width:10px;height:10px;border-radius:50%;display:inline-block;flex:0 0 auto;
+  background:var(--ai)}
+.chip.sm{width:7px;height:7px}
+.chipname{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-chrome);color:var(--ink)}
+.legend{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.legend>div{display:flex;gap:9px;align-items:baseline;padding:6px 10px;
+  border-right:var(--hairline) solid var(--rule);border-bottom:var(--hairline) solid var(--rule)}
+.legend b{font-weight:400;color:var(--ink-deep)}
+.legend .m{margin-left:auto;color:var(--text-muted);font-size:var(--fs-eyebrow);
+  font-variant-numeric:tabular-nums}
+.legend .sw{width:26px;height:11px;flex:0 0 auto;background-color:var(--ai);
+  background-image:var(--hx);background-size:var(--hxs,auto)}
+
+/* ---------- 14 DeviationBar. COBALT ONLY. ----------
+   Area ink encodes identity; cobalt encodes magnitude and direction. Giving the bar its
+   Area's pigment would make one channel carry both, and the ramp's seal allows an Area ink
+   on a chart only as a wedge or a stacked-bar fill, where composition is the reading.
+   Direction is position plus a + or a - sign, never a hue: there is no red-bad, green-good
+   pair in this system and a signal is not a fill. */
+.dev{font-size:var(--fs-eyebrow)}
+.dev>div{display:grid;grid-template-columns:118px minmax(0,1fr) 96px;gap:11px;align-items:center;
+  padding:3px 0;border-bottom:var(--hairline) dotted var(--rule)}
+.dev>div:last-child{border-bottom:0}
+.dev .nm{display:flex;gap:7px;align-items:center;font-size:var(--fs-chrome);color:var(--ink)}
+.dev .tr{position:relative;height:13px;background:var(--paper-raised);
+  border-top:var(--hairline) solid var(--rule);border-bottom:var(--hairline) solid var(--rule)}
+.dev .zero{position:absolute;top:0;bottom:0;left:50%;width:0;
+  border-left:var(--hairline) solid var(--ink-deep)}
+.dev .b{position:absolute;top:2px;bottom:2px;background:var(--ink)}
+.dev .fig{text-align:right;font-size:var(--fs-chrome);color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.dev .hd{border-bottom:var(--hairline) solid var(--rule-strong);color:var(--text-muted);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;font-size:9px;padding-bottom:4px}
+.dev .ax{display:grid;grid-template-columns:1fr 1fr;padding-top:3px;font-size:9px;
+  color:var(--text-muted)}
+.dev .ax span{font-variant-numeric:tabular-nums}
+.dev .ax span:last-child{text-align:right}
+
+/* ---------- 15 pie wedge and stacked bar ----------
+   These are the two chart carriers the Area ramp is sealed to. Every fill pairs its ink with
+   a hatch drawn in a lighter step of its OWN ink, so the texture reads as texture rather
+   than as a second color, and color is never the only encoding.
+   The circle is wedge geometry, not a border radius: the 50% allowlist stays closed. */
+.pie{position:relative;width:196px;height:196px;flex:0 0 auto}
+.pie .w{position:absolute;inset:0;background-color:var(--ai);background-image:var(--hx);
+  background-size:var(--hxs,auto);clip-path:polygon(var(--pts))}
+.sbar{display:flex;height:26px;border:var(--hairline) solid var(--rule-strong)}
+.sbar>span{background-color:var(--ai);background-image:var(--hx);background-size:var(--hxs,auto);
+  border-right:var(--hairline) solid var(--paper-raised)}
+.sbar>span:last-child{border-right:0}
+.sbarlab{display:flex;justify-content:space-between;font-size:var(--fs-eyebrow);
+  color:var(--text-muted);padding-top:3px}
+
+/* ---------- 16 VerdictPanel ----------
+   Amber, because the week is impossible rather than broken: a notice, not a failure. It is a
+   PANEL in the severity ladder, never a banner and never blocking.
+   FIXED HEIGHT, ROWS SCROLL INSIDE. A panel that grew and shrank as pins accumulate would
+   shift the grid under the cursor mid-edit, which is the one thing a pin-and-reflow loop
+   cannot afford. Same rule as the 64px summary strip in week-density.html.
+   THE HEIGHT IS DECLARED HERE, not inherited and not a fallback. It is the height that shows
+   the lead plus three tradeoff rows, which is what makes the fourth row's clipped edge visible
+   and therefore makes the scroll discoverable. It must not respond to the row count: a panel
+   that sized itself to its rows is exactly the panel this rule forbids. */
+.verdict{--verdict-h:226px;
+  width:404px;height:var(--verdict-h);display:flex;flex-direction:column;
+  overflow:hidden;background:var(--amber-wash);
+  border:var(--hairline) solid var(--rule-strong);
+  border-left:var(--state-conflict-border) solid var(--signal-amber)}
+.verdict>header{display:flex;justify-content:space-between;gap:9px;padding:6px 10px;
+  border-bottom:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep)}
+.verdict>p{margin:0;padding:8px 10px;border-bottom:var(--hairline) solid var(--rule);
+  font-size:var(--fs-prose);line-height:var(--lh-prose);color:var(--ink)}
+.verdict>.rows{flex:1;min-height:0;overflow-y:auto}
+.tro{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center;
+  padding:6px 10px;border-bottom:var(--hairline) dotted var(--rule);font-size:var(--fs-prose);
+  color:var(--ink)}
+.tro i{display:block;font-style:normal;color:var(--text-muted);font-size:var(--fs-eyebrow)}
+.verdict>footer{padding:5px 10px;border-top:var(--hairline) solid var(--rule);
+  font-size:var(--fs-eyebrow);color:var(--text-muted);display:flex;justify-content:space-between}
+
+/* ---------- 17 ReasonRows ----------
+   Ported from the detail panel in scratch/week-density.html. One row per clause: the clause
+   kind, its subject, and the figure that justifies it. Never a paragraph.
+   ONE VALUE DIVERGES FROM THE PROBE, deliberately. week-density.html sets the clause-label
+   column to 64px, which was correct for the five clause kinds it knew about. The catalogue now
+   carries six, and `instead of` needs 65px at --fs-eyebrow with the probe's own .08em tracking,
+   so the column is 76px here. The probe's 64px is stale rather than wrong, and the fix belongs
+   in the probe. */
+.why{border:var(--hairline) solid var(--rule-strong);background:var(--paper);
+  padding:9px 11px;width:306px}
+.why>.lab2{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--ink-deep)}
+.why>.lead{margin:5px 0 8px;font-size:var(--fs-prose);line-height:var(--lh-prose);color:var(--ink)}
+.cl{display:grid;grid-template-columns:var(--clause-label-w) minmax(0,1fr);gap:7px;padding:3px 0;
+  border-bottom:var(--hairline) dotted var(--rule);font-size:var(--fs-eyebrow);line-height:1.5}
+.cl:last-child{border-bottom:0}
+.cl>b{font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.cl>span{color:var(--ink);min-width:0}
+.cl>span i{font-style:normal;color:var(--text-muted)}
+.cl>span code{font-size:9px}
+
+/* ---------- 18 MaturityMeter ----------
+   Bounded 0 to 100%, which is exactly the case block characters are correct for: the scale
+   has a known end, so a segmented run reads as a fraction of something. An unbounded
+   magnitude would need a percentage-width fill instead. */
+.mat>div{display:grid;grid-template-columns:196px 78px 118px 1fr;gap:11px;align-items:center;
+  padding:5px 0;border-bottom:var(--hairline) dotted var(--rule);font-size:var(--fs-eyebrow)}
+.mat>div:last-child{border-bottom:0}
+.mat .p{font-size:var(--fs-chrome);color:var(--ink-deep)}
+.mat .p i{display:block;font-style:normal;font-size:var(--fs-eyebrow);color:var(--text-muted)}
+.mat .v{font-size:var(--fs-chrome);color:var(--ink);text-align:right;
+  font-variant-numeric:tabular-nums}
+.mat .s{color:var(--text-muted);font-variant-numeric:tabular-nums;display:flex;gap:8px}
+.bk{font-size:13px;line-height:1;letter-spacing:0;color:var(--ink);white-space:nowrap}
+.bk i{font-style:normal;color:var(--rule)}
+
+/* ---------- 19 LedgerRow ---------- */
+.ledger{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);max-width:660px}
+.lrow{display:grid;grid-template-columns:48px minmax(0,1fr) 52px 136px;gap:9px;align-items:center;
+  min-height:var(--h-row);padding:0 10px;border-bottom:var(--hairline) solid var(--rule);
+  border-left:var(--state-selected-border) solid transparent;font-size:var(--fs-chrome)}
+.lrow:last-child{border-bottom:0}
+.lrow:hover{background:var(--state-hover)}
+.lrow[data-current]{background:var(--state-hover);border-left-color:var(--state-selected-color)}
+.lrow .t{color:var(--ink);font-variant-numeric:tabular-nums}
+.lrow .ti{display:flex;gap:7px;align-items:center;min-width:0}
+.lrow .ti .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lrow .du{text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums}
+.lrow .oc{display:flex;gap:6px;align-items:center;justify-content:flex-end}
+.lrow[data-out=skipped] .ti .nm{color:var(--text-muted)}
+/* allowlist 1 of 4: the status dot. A dot is a status indicator, so a signal pigment is
+   legal on it, and 3:1 is the bar it has to clear. */
+.dot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;display:inline-block;
+  background:var(--dc,var(--ink-bright))}
+.dot.ring{background:transparent;border:var(--hairline) solid var(--ink-bright)}
+.ledger>footer{display:flex;justify-content:space-between;padding:6px 10px;
+  border-top:var(--hairline) solid var(--rule-strong);font-size:var(--fs-eyebrow);
+  color:var(--text-muted)}
+
+/* ---------- 20 key hints, help overlay, command palette ----------
+   Key hints take ONE form everywhere: bracketed bare mono text, [ j ]. No bordered key cap,
+   because a cap is a box that means nothing and the bracket already reads as a key in a mono
+   register. Same mark family as the accordion's [ + ] and [ - ]. */
+.k{color:var(--ink-deep);letter-spacing:0;white-space:nowrap}
+.overlay{border:var(--hairline) solid var(--ink-deep);background:var(--paper-raised);
+  box-shadow:var(--shadow-hard);max-width:592px}
+.overlay>header{display:flex;justify-content:space-between;padding:6px 11px;
+  border-bottom:var(--hairline) solid var(--rule-strong);background:var(--ink-wash);
+  font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--ink-deep)}
+.overlay .cols2{display:grid;grid-template-columns:repeat(2,1fr)}
+.overlay .cols2>div{padding:9px 11px;border-right:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule)}
+.overlay h4{font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--text-muted);margin-bottom:5px}
+.keys{font-size:var(--fs-eyebrow);line-height:1.9}
+.keys div{display:flex;gap:9px}
+.keys div span:first-child{min-width:104px}
+.keys div span:last-child{color:var(--ink)}
+.cmdk .in{padding:8px 11px;border-bottom:var(--hairline) solid var(--rule);
+  font-size:var(--fs-chrome);color:var(--text-muted)}
+.cmdk .in b{color:var(--ink);font-weight:400}
+.cmdk .grp{padding:5px 11px 3px;background:var(--paper);font-size:9px;
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--text-muted)}
+.cmdk .r{display:flex;gap:9px;align-items:center;height:var(--h-row);padding:0 11px;
+  border-left:var(--state-selected-border) solid transparent;font-size:var(--fs-chrome);color:var(--ink)}
+.cmdk .r:hover{background:var(--state-hover)}
+/* One attribute, one channel. data-highlighted is the keyboard cursor and owns the focus
+   channel alone; giving it the wash as well would make a hovered row and a highlighted row
+   indistinguishable. The ring sits at a negative offset because the rows pitch at 28px. */
+.cmdk .r[data-highlighted]{position:relative;z-index:1;outline:var(--state-focus-ring);
+  outline-offset:calc(-1 * var(--state-focus-offset))}
+.cmdk .r[data-current]{border-left-color:var(--state-selected-color)}
+.cmdk .r .hint{margin-left:auto;color:var(--text-muted);font-size:9px;
+  letter-spacing:var(--ls-label);text-transform:uppercase}
+
+/* ---------- 21 wizard step indicator. NO PROGRESS BAR: motion is zero. ---------- */
+.wiz{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);max-width:472px}
+.wiz>div{display:grid;grid-template-columns:14px 22px minmax(0,1fr) auto;gap:9px;align-items:baseline;
+  padding:6px 11px;border-bottom:var(--hairline) solid var(--rule);font-size:var(--fs-chrome);
+  color:var(--ink)}
+.wiz>div:last-child{border-bottom:0}
+.wiz .cr{color:var(--ink-deep)}
+.wiz .no{color:var(--text-muted);font-variant-numeric:tabular-nums}
+.wiz .st{font-size:var(--fs-eyebrow);letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)}
+.wiz>div[data-state=done] .st{color:var(--verdigris-ink)}
+.wiz>div[data-state=current]{background:var(--ink-wash)}
+.wiz>div[data-state=current] .lb{color:var(--ink-deep)}
+.wiz>div[data-state=todo]{color:var(--text-muted)}
+.wiz>footer{padding:6px 11px;border-top:var(--hairline) solid var(--rule-strong);
+  font-size:var(--fs-eyebrow);color:var(--text-muted);display:flex;justify-content:space-between}
+
+/* ---------- 22 empty, pending and error ---------- */
+.empty{border:var(--hairline) dashed var(--rule-strong);padding:20px;text-align:center}
+/* Mono, not the serif. The serif appears in exactly two places: the wordmark and the seven
+   page titles. An empty-state headline is neither. */
+.empty .t2{font-size:var(--fs-stat);line-height:var(--lh-tight);color:var(--ink-deep)}
+.errpanel{border:var(--hairline) solid var(--rule-strong);
+  border-left:var(--state-conflict-border) solid var(--signal-oxide);
+  background:var(--paper-raised);padding:12px}
+.errpanel h4{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--oxide-ink);margin-bottom:7px}
+.errrule{height:0;border-top:var(--rule-emphasis) solid var(--signal-oxide);margin:10px 0}
+/* NO SPINNER AND NO SKELETON LOADER. A pending surface is a hairline placeholder plus a live
+   count. The placeholder never pulses; the count changes, which is a discrete redraw. */
+.hold{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);max-width:420px}
+.hold>div{height:var(--h-row);display:flex;align-items:center;padding:0 10px;
+  border-bottom:var(--hairline) solid var(--rule-faint)}
+.hold>div::before{content:'';height:0;width:var(--w,44%);
+  border-top:var(--hairline) solid var(--rule)}
+.hold>footer{display:flex;justify-content:space-between;padding:6px 10px;
+  border-top:var(--hairline) solid var(--rule-strong);font-size:var(--fs-eyebrow);
+  color:var(--text-muted);font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="wordmark">syncr</span>
+  <span class="kv">Sheet <b>docs/design/components.html</b></span>
+  <span class="kv">Tokens <b>linked live from frontend/src/tokens/index.css</b></span>
+  <span class="kv">Content <b>one real reference week, Mon 10 &ndash; Sun 16 Feb</b></span>
+  <span class="kv">Companions <b>scratch/block-states.html &middot; scratch/week-density.html</b></span>
+  <span class="kv">Motion <b>zero, no exceptions</b></span>
+</div>
+
+<div class="spec">
+  <span class="lbl">How to read</span>
+  <div>left <b>the component at real size, with real syncr content</b></div>
+  <div>right <b>the build spec: the tokens it consumes, its state drivers, its notes</b></div>
+  <div>sections <b>01&ndash;11 generic &middot; 12&ndash;22 domain</b></div>
+  <div>motion <b>zero. no spinner, no skeleton</b></div>
+  <div>radius <b>0, except 50% on four elements</b></div>
+  <div>area ink <b>sealed to three carriers</b></div>
+  <div>signals <b>status and severity only</b></div>
+  <div>shadow <b>one hard offset, overlays only</b></div>
+</div>
+
+<nav class="toc" id="toc"></nav>
+
+<div class="note"><b>The spec block beside each component is the point of this sheet.</b> It names the component, the exact tokens it consumes, the attributes and pseudo-classes that drive its states, and the rule that would be broken by building it any other way. Every state driver is a CSS pseudo-class or a <code>data-*</code> attribute, so nothing here needs a class toggled by script to be styleable. <b>Read the token files first:</b> <code>frontend/src/tokens/</code> carries the reasoning, and this sheet carries the consequences. Where a component looks awkward, the awkwardness is usually a locked decision doing its job, and it is stated rather than designed around.</div>
+
+<!-- ============ 01 BUTTONS ============ -->
+<h2 class="sec" id="c01"><span><a href="#c01">01</a> &middot; Buttons</span><em>four ranks. no shadow: the one hard offset belongs to overlays only</em></h2>
+<div class="cmp"><div class="d">
+  <span class="lab">Rest &middot; 26px, --h-control</span>
+  <div class="row-of">
+    <button class="btn" type="button">Approve week</button>
+    <button class="btn sec" type="button">Generate proposal</button>
+    <button class="btn ter" type="button">Open the weekly session &rarr;</button>
+    <button class="btn" type="button" disabled>Approve all</button>
+  </div>
+  <span class="lab" style="margin-top:16px">With an icon, and at the two other heights</span>
+  <div class="row-of">
+    <button class="btn ico sm" type="button"><svg class="ic" style="--icon:var(--icon-sm)" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New task</button>
+    <button class="btn sec ico" type="button"><svg class="ic" viewBox="0 0 24 24"><path d="M6 3v12"/><path d="M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/><path d="M18 21V9"/><path d="M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>Pin at 13:00</button>
+    <button class="btn sec lg" type="button">Confirm Tuesday</button>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>Disabled is a dashed border plus <code>--text-muted</code>, and it is the rank that carries a real risk here.</b> <code>Approve all</code> is disabled above only because nothing is pending; it is never disabled because the week is infeasible. syncr raises, warns and allows, so a knowingly broken week is still approvable and the button that would block it does not exist. <b>No rank takes <code>--shadow-hard</code>.</b> That token lifts an overlay off the page: dialog, popover, command palette. A button sits on the page.</div>
+</div><div class="s" data-spec="button"></div></div>
+
+<!-- ============ 02 TEXT, NUMBER, TIME ============ -->
+<h2 class="sec" id="c02"><span><a href="#c02">02</a> &middot; Text input, number stepper and time input</span><em>every control border is --rule-control. numerals are tabular everywhere</em></h2>
+<div class="cmp"><div class="d">
+  <div class="row-of">
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Task title</span><input type="text" placeholder="what has to happen"></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Filled</span><input type="text" value="Topic List Questions"></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Invalid</span><input type="text" value="Prep for Kontron Interview" aria-invalid="true"></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Disabled</span><input type="text" value="Kontron Placement Interview" disabled></label>
+  </div>
+  <span class="lab" style="margin-top:16px">Number stepper &middot; two square buttons, never a rounded spinner. Estimate and minimum chunk step by --snap</span>
+  <div class="row-of">
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Estimate</span>
+      <span><span class="spin"><button type="button" aria-label="decrease 15 minutes">&minus;</button><input type="number" value="90" step="15" min="15"><button type="button" aria-label="increase 15 minutes">+</button></span><span class="unit">min</span></span></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Minimum chunk</span>
+      <span><span class="spin"><button type="button" aria-label="decrease 15 minutes">&minus;</button><input type="number" value="30" step="15" min="15"><button type="button" aria-label="increase 15 minutes">+</button></span><span class="unit">min</span></span></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Sleep floor</span>
+      <span><span class="spin"><button type="button" aria-label="decrease 15 minutes">&minus;</button><input type="number" value="450" step="15" min="0"><button type="button" aria-label="increase 15 minutes">+</button></span><span class="unit">min &middot; 7h30m</span></span></label>
+  </div>
+  <span class="lab" style="margin-top:16px">Time input &middot; the native indicator is suppressed so the box stays square, and the value snaps to the quarter hour</span>
+  <div class="row-of">
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Wake Up</span><input type="time" value="05:15" step="900"></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Gym &middot; target</span><input type="time" value="05:30" step="900"></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Sleep</span><input type="time" value="23:00" step="900"></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Disabled &middot; anchor time</span><input type="time" value="16:00" step="900" disabled></label>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>Every resting border above is <code>--rule-control</code>, which measures 5.28:1 against the field's own fill.</b> <code>--rule-strong</code> measures 2.65:1 there and is banned on a control: the border is the only thing marking where the control begins, which makes it an indicator under the 3:1 rule rather than decoration. The same applies to the stepper's two buttons and to the secondary button in section 01, whose border is also its only boundary. <b>An invalid field takes a 3px <code>--signal-oxide</code> left border</b> with its other three sides recolored to oxide at the hairline, plus a message under the field. It never turns its fill or its text oxide, because a fill is not a signal channel. <b>The steppers step by 15 minutes because <code>--snap</code> is 15:</b> a control that can express 07 minutes when every start and end lands on a quarter hour is a control that invites an invalid value. The partial-minutes stepper in section 19 is the one exception and steps by 5, because a recorded actual is a measurement rather than a plan.</div>
+</div><div class="s" data-spec="input"></div></div>
+
+<!-- ============ 03 SELECT AND DATE PICKER ============ -->
+<h2 class="sec" id="c03"><span><a href="#c03">03</a> &middot; Select and date picker</span><em>the native arrow is replaced by a typographic mark so the box stays square</em></h2>
+<div class="cmp"><div class="d">
+  <div class="row-of">
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Area</span>
+      <span class="selwrap"><select><option>Career</option><option>Study</option><option>Fitness</option><option>Research</option><option>Projects</option><option>Admin</option><option>Transit</option></select></span></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Binding source</span>
+      <span class="selwrap"><select><option>rotation &middot; Shoulder &amp; Arms, Legs, Chest &amp; Back, Cardio</option><option>fixed</option><option>queue &middot; from the backlog</option></select></span></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Day type</span>
+      <span class="selwrap"><select><option>Weekday</option><option>Weekend</option><option>Travel</option></select></span></label>
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Disabled</span>
+      <span class="selwrap"><select disabled><option>Miss policy &middot; escalate</option></select></span></label>
+  </div>
+  <span class="lab" style="margin-top:16px">Date picker, open &middot; picking the deadline for <code>Topic List Questions</code>. An ink rule marks today: a calendar fact is not a system status, so it spends no signal pigment</span>
+  <div class="row-of" style="align-items:flex-start">
+    <label class="stack" style="gap:4px"><span class="lab" style="margin:0">Deadline, closed</span><input type="text" value="2025-02-14" style="min-width:140px"></label>
+    <div id="cal"></div>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b><code>appearance</code> is stripped and the arrow is the typographic mark <code>&#9662;</code>.</b> A native select arrow arrives inside a platform-drawn well with its own corner radius, which would put the one rounded box in the product on the most common control in it. <b>The picker is a popover, so it is one of the three surfaces <code>--shadow-hard</code> exists for</b>, alongside the dialog and the command palette. The month grid is computed from real date arithmetic rather than typed, so a weekday cannot be wrong: the reference week runs Mon 10 to Sun 16 February 2025, today is the Tuesday the probes draw their now rule on, and the selected day is the Friday deadline the infeasibility verdict in section 16 is about.</div>
+</div><div class="s" data-spec="select"></div></div>
+
+<!-- ============ 04 CHECKBOX, RADIO, TEXTAREA ============ -->
+<h2 class="sec" id="c04"><span><a href="#c04">04</a> &middot; Checkbox, radio and textarea</span><em>the radio dot is one of the four legal circles</em></h2>
+<div class="cmp"><div class="d">
+  <div class="row-of" style="align-items:flex-start;gap:30px">
+    <div><span class="lab">Checkbox</span>
+      <div class="chk" role="checkbox" aria-checked="true" data-state="checked" tabindex="0"><span class="box">&#10003;</span> Splittable</div>
+      <div class="chk" role="checkbox" aria-checked="false" data-state="unchecked" tabindex="0"><span class="box"></span> Deadline is hard</div>
+      <div class="chk" role="checkbox" aria-checked="mixed" data-state="indeterminate" tabindex="0"><span class="box">&minus;</span> 4 of 7 Areas have a floor</div>
+      <div class="chk" role="checkbox" aria-checked="false" data-state="unchecked" data-disabled aria-disabled="true"><span class="box"></span> Infer shadows automatically</div></div>
+    <div><span class="lab">Radio &middot; miss policy</span>
+      <div class="chk" role="radio" aria-checked="true" data-state="checked" tabindex="0"><span class="box rd"><s></s></span> forgive</div>
+      <div class="chk" role="radio" aria-checked="false" data-state="unchecked" tabindex="0"><span class="box rd"></span> debt</div>
+      <div class="chk" role="radio" aria-checked="false" data-state="unchecked" tabindex="0"><span class="box rd"></span> escalate</div>
+      <div class="chk" role="radio" aria-checked="false" data-state="unchecked" data-disabled aria-disabled="true"><span class="box rd"></span> decay &middot; unfitted</div></div>
+    <div style="flex:1;min-width:250px"><span class="lab">Textarea &middot; a task's own note</span>
+      <textarea rows="4">Behavioural round: STAR stories for the two Kontron projects, plus the Amazon leadership principles list. Splittable into 45 minute chunks, not shorter.</textarea></div>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>The radio dot is one of the four elements on the 50% allowlist</b>, with the status dot, the Area chip and the avatar. A spinner is not on it, because nothing spins and nothing in this product ever could. <b>The checkbox mark is a glyph rather than a background image</b>, so the checked state survives forced colors: the fill is dropped and the tick is text. <code>Infer shadows automatically</code> is disabled because shadows are declared per anchor type in P0 and nothing infers them yet, which is a product state rather than a permission.</div>
+</div><div class="s" data-spec="toggle"></div></div>
+
+<!-- ============ 05 TABLE ============ -->
+<h2 class="sec" id="c05"><span><a href="#c05">05</a> &middot; Table</span><em>28px rows, --fs-data cells, tabular figures, a sortable header, a current row and a footer count</em></h2>
+<div class="cmp wide"><div class="d">
+  <div class="tscroll"><table class="dat" id="backlog"></table></div>
+  <div class="note" style="border:0;padding:11px 0 0"><b><code>aria-sort</code> sits on the column the rows are actually ordered by</b>, which is Deadline, ascending. Announcing it on Task while sorting by Deadline tells a screen reader something the table does not do. Cells are <code>--fs-data</code> 13px, the step that exists for numbers you compare, and every numeric column is right-aligned with tabular figures, which the mono gives for free. <b>The current row is a 3px <code>--ink-deep</code> inset rule on the first cell</b>, not a border: a <code>tr</code> cannot carry a <code>border-left</code> that survives <code>border-collapse</code>. It is the same channel and the same weight a selected block uses, because it is the same idea. <b>Rows take focus</b>, because <code>[ j ]</code> and <code>[ k ]</code> move between them on Backlog exactly as they do between blocks on Week; an unfocusable row would make the advertised keys a decoration. The footer count and the estimate total are summed from the rows at render, so the table cannot disagree with its own footer.</div>
+</div><div class="s" data-spec="table"></div></div>
+
+<!-- ============ 06 CARD AND PANEL ============ -->
+<h2 class="sec" id="c06"><span><a href="#c06">06</a> &middot; Card and panel</span><em>a card is one figure with a footer. a panel is a stack of labeled sections</em></h2>
+<div class="cmp"><div class="d">
+  <div class="row-of" style="align-items:stretch;gap:14px">
+    <div class="card" style="width:246px"><header><span>Discretionary</span><span>Mon 10 &ndash; Sun 16</span></header>
+      <div class="body"><div class="stat">52.1h</div>
+        <div style="margin-top:7px;color:var(--text-muted)">168h total, less 91.4h frame, less 24.5h anchors and shadows</div></div>
+      <footer>33.7h scheduled &middot; 18.4h the solver could not place</footer></div>
+    <div class="pnl" style="width:312px"><header>Block detail &middot; Leetcode &middot; Graphs</header>
+      <section><h4>Placement</h4><dl class="dl"><div><dt>when</dt><dd>Tue 11 &middot; 12:00&ndash;15:00</dd></div>
+        <div><dt>duration</dt><dd>180 min</dd></div><div><dt>area</dt><dd>Career</dd></div>
+        <div><dt>origin</dt><dd>habit &middot; queue</dd></div><div><dt>pinned</dt><dd>no</dd></div></dl></section>
+      <section><h4>Binding</h4><dl class="dl"><div><dt>source</dt><dd>backlog queue</dd></div>
+        <div><dt>cursor</dt><dd>Graphs, after Tries</dd></div><div><dt>elastic</dt><dd>25 to 180 min</dd></div></dl></section>
+      <section><h4>Outcome</h4><dl class="dl"><div><dt>state</dt><dd>presumed</dd></div>
+        <div><dt>day confirmed</dt><dd>no</dd></div></dl></section></div>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>Neither takes a shadow and neither takes a radius.</b> A card is a figure: state belongs to what is inside it, so the card itself has no hover, no selected and no focus. A panel is the surface the detail column is built from, and its header is a wash rather than an ink fill, because <b>the only ink-filled surface in the product is a dialog header</b>. The figures reconcile: 168 hours in a week, less the circadian frame, less anchors and their shadows, gives the 52.1h discretionary the summary strip reports, of which 33.7h is scheduled and 18.4h could not be placed. That 18.4h is why six of the seven Areas sit under target in section 14.</div>
+</div><div class="s" data-spec="card"></div></div>
+
+<!-- ============ 07 SEVERITY ============ -->
+<h2 class="sec" id="c07"><span><a href="#c07">07</a> &middot; Severity: four volumes and four pigments</span><em>volume is how loudly the product interrupts. pigment is what kind of thing happened</em></h2>
+<div class="note"><b>Severity is two independent axes, and the mistake every alert system makes is collapsing them into one.</b> The <b>pigment</b> says what kind of thing happened: <code>--ink-bright</code> informational, <code>--signal-amber</code> a notice, <code>--signal-oxide</code> a failure, <code>--signal-verdigris</code> resolved. The <b>volume</b> says how loudly the product interrupts: inline, panel, banner, blocking. A conflict is oxide and loud; a week that cannot hold its commitments is amber and quiet, because it is a notice about the future rather than a failure in the present. <b>The pigment never becomes a fill</b>: it lives in a 3px rule, a glyph and a label. The one sanctioned signal surface in the system is <code>--amber-wash</code> under the infeasibility panel, which <code>color.css</code> names for exactly that purpose.
+<br><br><b>Volume 4, blocking, is drawn once here and is deliberately unused.</b> syncr never blocks approval of a knowingly broken week: it raises, warns and allows. A product that refuses the approve action when the user has knowingly overcommitted has decided something that belongs to the user, and the user is the one who knows they are tired. The volume is documented so that the absence is a decision on the record rather than an omission.</div>
+<h3 class="sub">Volume 1 &middot; inline. No box. A glyph and a label beside the thing they qualify</h3>
+<div class="cmp"><div class="d">
+  <div class="stack" style="gap:0">
+    <div class="inl" data-level="fail"><span class="g">&#9670;</span><span><b>conflict</b> &middot; <code>Kontron Placement Interview</code> 16:00&ndash;16:45 overlaps <code>Leetcode &middot; DP</code></span></div>
+    <div class="inl" data-level="info"><span class="g">&#9675;</span><span><b>unconfirmed</b> &middot; Fri 14 has not been confirmed, so it is excluded from reviews and from learning</span></div>
+    <div class="inl" data-level="notice"><span class="g">&#9650;</span><span><b>debt</b> &middot; <code>Clean</code> missed twice, rescheduling with debt</span></div>
+    <div class="inl" data-level="resolved"><span class="g">&#10003;</span><span><b>recorded</b> &middot; Tue 11 confirmed, 14 of 16 blocks completed</span></div>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0">Inline is the volume for a fact that belongs to one row or one day header. The unconfirmed marker is the hollow ring the day header carries in <code>week-density.html</code>: informational, <b>never a warning</b>. An unconfirmed day is the normal state of every day until the evening pass runs, and warning about the normal state is how a user learns to ignore warnings.</div>
+</div><div class="s" data-spec="sevinline"></div></div>
+<h3 class="sub">Volume 2 &middot; panel. In place, bounded, with the detail and the actions inside it</h3>
+<div class="cmp"><div class="d"><div class="stack">
+  <div class="sev" data-level="notice" role="status"><span class="g">&#9670;</span><p><b>This week cannot hold its commitments</b>1h20m short on <code>Career</code> before Friday 09:00, after honoring the Fitness floor. Four tradeoffs, and nothing is chosen for you. The full panel is section 16.</p></div>
+  <div class="sev" data-level="info" role="status"><span class="g">&#9671;</span><p><b>Still collecting baseline</b><code>todFitness &middot; Fitness</code> has 9 of the 30 confirmed blocks it needs, so the time-of-day curve is not fitted yet and the solver is using the prior. This is <b>never a warning</b>: a parameter that has not converged is the expected state of a new install, not a fault.</p></div>
+  <div class="sev" data-level="fail" role="alert"><span class="g">&#10005;</span><p><b>Write target rejected the write</b>The Google refresh token for <code>syncr &middot; plan</code> expired on Sun 16 at 04:12. 91 blocks are unwritten and the plan in the app is correct: the calendar projection is stale, not the plan.</p></div>
+  <div class="sev" data-level="resolved" role="status"><span class="g">&#10003;</span><p><b>Reconnected</b>Write target authorised again. 91 blocks written to <code>syncr &middot; plan</code>, 0 rejected.</p></div>
+</div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>A panel is the default volume, and the informational row is the reason the ladder exists.</b> A parameter still collecting baseline is the single most common thing the product has to say in its first month, and saying it in amber would teach the user that amber means nothing. It is <code>--ink-bright</code>, which spends no sealed pigment at all.</div>
+</div><div class="s" data-spec="sevpanel"></div></div>
+<h3 class="sub">Volume 3 &middot; banner. The full width of the pane, above the content, carrying one action</h3>
+<div class="cmp wide"><div class="d" style="padding:0">
+  <div class="banner" role="alert"><span class="g">&#9670;</span><p><b>Conflict &middot; Tue 11</b><code>Kontron Placement Interview</code> 16:00&ndash;16:45 overlaps <code>Leetcode &middot; DP</code>, which is a pinned template entry. Nothing has been moved.</p><span class="sp"></span><button class="btn sec" type="button">Resolve</button></div>
+  <div class="banner" role="alert" style="border-top:0"><span class="g">&#10005;</span><p><b>Write target &middot; Google</b>The refresh token for <code>syncr &middot; plan</code> expired. 91 blocks are unwritten.</p><span class="sp"></span><button class="btn sec" type="button">Reconnect</button><button class="btn ter" type="button">Settings &rarr;</button></div>
+  <div class="note" style="border-bottom:0"><b>Only two conditions in the product earn a banner, and both are on this list for the same reason: the user cannot discover them by looking at the thing they are about.</b> A conflict is announced because an external anchor changed the world while the user was not watching, and the PRD's authority rule says only conflicts notify. An expired write target is announced because the failure is invisible on every screen: the plan is correct, the projection is stale, and a user reading their phone calendar sees a week that no longer exists. <b>Neither banner moves anything.</b> The conflict banner says <i>nothing has been moved</i> in words, because the rule is that syncr may add but never move or remove without permission.</div>
+</div><div class="s" data-spec="sevbanner"></div></div>
+<h3 class="sub">Volume 4 &middot; blocking. Drawn once, annotated, and never shipped</h3>
+<div class="cmp"><div class="d">
+  <div class="unused"><span class="tag">not used in syncr</span>
+    <div style="font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;margin-bottom:6px">Would read</div>
+    <div style="font-size:var(--fs-chrome);line-height:var(--lh-chrome)">This week is 1h20m short on <code>Career</code>. Resolve the shortfall before approving.
+      <div style="margin-top:9px;display:flex;gap:9px"><button class="btn sec" type="button" aria-disabled="true">Approve anyway</button><button class="btn sec" type="button" aria-disabled="true">Back to editing</button></div></div></div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>This is the component the product deliberately does not have.</b> The most valuable output of the system is sometimes a refusal, and the refusal is a sentence with numbers in it, not a locked door. syncr detects the shortfall, quantifies it, enumerates the tradeoffs, and lets the user approve a week it has just told them is impossible. The same rule holds when the user's own pins caused the shortfall: <b>raise, warn, allow.</b></div>
+</div><div class="s" data-spec="sevblock"></div></div>
+<div class="pad" style="padding:0">
+<table class="led"><thead><tr><th>Real case</th><th>Pigment</th><th>Volumes</th><th>Why that volume, and why not the louder one</th></tr></thead><tbody>
+  <tr><td>anchor overlaps a pinned block</td><td><code>--signal-oxide</code></td><td>inline <b>+</b> banner</td><td>the world changed while the user was not looking, so it is announced. The inline mark on the block is what they find when they arrive</td></tr>
+  <tr><td>week cannot hold its commitments</td><td><code>--signal-amber</code></td><td>panel</td><td>a notice about the future, not a failure in the present. <b>Never a banner:</b> it is true for most of the editing session and would nag continuously. Never blocking</td></tr>
+  <tr><td>Google write target token expired</td><td><code>--signal-oxide</code></td><td>banner <b>+</b> Settings panel</td><td>invisible on every screen: the plan is right and the projection is stale. The banner announces it, the Settings panel is where it is fixed</td></tr>
+  <tr><td>parameter still collecting baseline</td><td><code>--ink-bright</code></td><td>panel, on the Learned screen</td><td>the expected state of a new install. <b>Never a warning</b> and never amber: it spends no sealed pigment at all</td></tr>
+  <tr><td>day confirmed, outcomes recorded</td><td><code>--signal-verdigris</code></td><td>inline <b>+</b> panel</td><td>resolved states report and then get out of the way. No banner: nobody needs interrupting by success</td></tr>
+</tbody></table></div>
+
+<!-- ============ 08 SIDEBAR NAVIGATION ============ -->
+<h2 class="sec" id="c08"><span><a href="#c08">08</a> &middot; Sidebar navigation</span><em>paper, not ink. the current item takes the same channel a selected block does</em></h2>
+<div class="cmp"><div class="d">
+  <div class="row-of" style="align-items:flex-start;gap:18px">
+    <div id="side"></div>
+    <div style="min-width:250px;flex:1">
+      <span class="lab">What the current item spends, and what it does not</span>
+      <table class="led"><tbody>
+        <tr><td>fill</td><td><code>--ink-wash</code>, the hover wash</td></tr>
+        <tr><td>left rule</td><td>3px <code>--ink-deep</code>, <code>--state-selected-border</code> at <code>--state-selected-color</code></td></tr>
+        <tr><td>label ink</td><td><code>--ink-deep</code> against <code>--ink</code> at rest</td></tr>
+        <tr><td>focus ring</td><td>the standard <code>--state-focus-ring</code>. No inverse scope is needed anywhere in this component</td></tr>
+        <tr><td>signal pigment</td><td><b>none.</b> Signals are illegal in navigation</td></tr>
+        <tr><td>Area ink</td><td><b>none.</b> Area ink is illegal in navigation</td></tr>
+        <tr><td>icon</td><td><b>none.</b> Seven flat routes, each with a one-word label and a two-key hint</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>The sidebar is paper, and that is a deliberate break with the language syncr inherits</b>, which fills its sidebar with <code>--ink-deep</code>. Rendered on a screen whose whole point is a calm grid, an ink sidebar dominated it, and it made the one permanently visible surface the loudest thing in the product. The inherited language's own rule points the same way: the loudest treatment is not spent on the most persistent condition. So the sidebar is paper with a <code>--rule-strong</code> right edge, and the current item takes a wash plus a 3px <code>--ink-deep</code> left rule: <b>the same channel a selected block uses.</b> One idea, one form.
+  <br><br><b>Two consequences worth naming.</b> Because no surface here is an ink fill, the standard focus ring is correct throughout and this component needs no inverse-ring scope, which is the defect that cost the inherited language its keyboard ring on its primary navigation. And because the current item is a wash plus a rule rather than a fill, <b>the seven counts stay <code>--text-muted</code> on every row including the current one</b>: there is no second surface to re-measure them against. <b>Counts sit on Backlog, Proposals and Unconfirmed only.</b> A count on Week or Settings would be a number with no question behind it, and a badge that never changes is furniture.</div>
+</div><div class="s" data-spec="nav"></div></div>
+
+<!-- ============ 09 FORM LAYOUT ============ -->
+<h2 class="sec" id="c09"><span><a href="#c09">09</a> &middot; Form layout</span><em>label column, field column, hint or error under the field</em></h2>
+<div class="cmp"><div class="d"><div class="form">
+  <div class="frow"><label for="f1">Task</label><input id="f1" type="text" value="Amazon Interview Prep &middot; Behavioral"></div>
+  <div class="frow"><label for="f2">Area</label><span class="selwrap"><select id="f2"><option>Career</option><option>Study</option><option>Research</option></select></span></div>
+  <div class="frow"><label for="f3">Estimate</label><span><span class="spin"><button type="button" aria-label="decrease 15 minutes">&minus;</button><input id="f3" type="number" value="210" step="15"><button type="button" aria-label="increase 15 minutes">+</button></span><span class="unit">min &middot; 3h30m</span></span></div>
+  <div class="frow"><span></span><span class="hint">Your confirmed median for <code>Career</code> runs 1.37&times; your estimate, so the solver reserves 288 min.</span></div>
+  <div class="frow"><label for="f4">Deadline</label><input id="f4" type="text" value="2025-02-19"></div>
+  <div class="frow"><label for="f5">Minimum chunk</label><span><span class="spin"><button type="button" aria-label="decrease 15 minutes">&minus;</button><input id="f5" type="number" value="50" step="15" aria-invalid="true"><button type="button" aria-label="increase 15 minutes">+</button></span><span class="unit">min</span></span></div>
+  <div class="frow"><span></span><span class="err">&#10005; 50 is not a multiple of the 15 minute snap. Use 45 or 60.</span></div>
+  <div class="frow" style="border-bottom:0"><label>Splittable</label><div class="chk" role="checkbox" aria-checked="true" data-state="checked" tabindex="0"><span class="box">&#10003;</span> may be split across days</div></div>
+  <div class="factions"><button class="btn" type="button">Save to backlog</button><button class="btn sec" type="button">Cancel</button></div>
+</div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>A 126px label column and a field column, with hint and error rows sitting in the field column</b> so they align under the control they describe rather than under the label. <b>The error is the field's own message, and the field carries the state:</b> <code>aria-invalid</code> drives the 3px oxide left border on the input, and the error row is oxide <i>text</i> at <code>--oxide-ink</code>, which is the text step. The marker step would measure below 4.5:1 as label ink. The hint above it is the trust-building surface the learning layer feeds: it states the fitted multiplier and what the solver actually reserved, because a number the user cannot see is a number they cannot correct.</div>
+</div><div class="s" data-spec="form"></div></div>
+
+<!-- ============ 10 DIALOG ============ -->
+<h2 class="sec" id="c10"><span><a href="#c10">10</a> &middot; Dialog</span><em>the only component family carrying --shadow-hard, and the only ink-filled surface in the product</em></h2>
+<div class="cmp"><div class="d"><div class="scrim">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labeledby="dlgt">
+    <header><span id="dlgt">Approve week &middot; Mon 10 to Sun 16</span><button type="button" aria-label="Close">&#10005;</button></header>
+    <div class="body"><p>91 blocks, 80.8h scheduled. 4 pins are honored and the unpinned remainder was reflowed once around them.</p>
+      <p><b>This week is 1h20m short on <code>Career</code> before Friday 09:00.</b> Approving records it as it stands. The shortfall stays on the verdict panel and the tradeoffs stay available.</p>
+      <p style="color:var(--text-muted)">Approving writes 91 events to <code>syncr &middot; plan</code>, the calendar syncr owns. No other calendar is touched.</p></div>
+    <footer><button class="btn sec" type="button">Keep editing</button><button class="btn" type="button">Approve</button></footer>
+  </div>
+</div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>The header is the one ink-filled surface in the product</b>, so it takes <code>--on-ink</code> for its text and scopes <code>--state-focus-ring-inverse</code> to the container rather than to the close button. The ring is chosen by the surface it <i>lands</i> on, not by the element's own fill: at a 2px offset it sits on the parent, and <code>--ink-bright</code> on <code>--ink-deep</code> measures 1.61:1 and vanishes, while <code>--paper-raised</code> on it measures 14.83:1. Scoping to the container means anything focusable added to this header later inherits the correct ring without a per-control override. <b>The sidebar is not an ink fill and neither is a primary button</b>, so neither takes the inverse ring: a primary button's fill is ink but its parent is paper, and inverting there would give 1.08:1.
+  <br><br><b>The lift is one hard offset, because print has no blur.</b> <code>--shadow-hard</code> is 4px 4px 0 0 at <code>--rule-strong</code>, and its carriers are exactly three: this dialog, the date picker's popover in section 03, and the help overlay and command palette in section 20. Never a card, never a block, never a button. <b>There is no fade in:</b> the dialog is present or it is not. The dashed edge stands in for the scrim, which this sheet derives from <code>--ink-deep</code> at 30% with <code>color-mix</code>, because the token layer has no scrim token yet: see the provenance note.</div>
+</div><div class="s" data-spec="dialog"></div></div>
+
+<!-- ============ 11 TABS AND ACCORDION ============ -->
+<h2 class="sec" id="c11"><span><a href="#c11">11</a> &middot; Tabs and accordion</span><em>the active tab takes the --rule-emphasis bottom rule. disclosure is [ + ] and [ &minus; ]</em></h2>
+<div class="cmp"><div class="d">
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-state="active">Plan</button>
+    <button type="button" role="tab">Proposals<span class="n">2</span></button>
+    <button type="button" role="tab">Conflicts<span class="n">1</span></button>
+    <button type="button" role="tab">Unconfirmed<span class="n">3</span></button>
+    <button type="button" role="tab">Learned<span class="n">0</span></button></div>
+  <div class="tabpanel" role="tabpanel">Mon 10 &ndash; Sun 16 Feb &middot; 91 blocks &middot; 80.8h scheduled &middot; 52.1h discretionary &middot; 4 pins &middot; revision 12, proposed</div>
+  <span class="lab" style="margin-top:16px">Accordion &middot; the Weekday template, one section expanded</span>
+  <div class="acc">
+    <div data-state="closed"><h4><button type="button" aria-expanded="false"><span class="disc">[ + ]</span>Circadian frame<span class="n">6</span></button></h4></div>
+    <div data-state="open"><h4><button type="button" aria-expanded="true"><span class="disc">[ &minus; ]</span>Concrete entries<span class="n">3</span></button></h4>
+      <div class="ap">05:30 &middot; <code>Gym</code> &middot; 60 min &middot; flex &plusmn;45 &middot; rotation<br>07:00 &middot; <code>Leetcode</code> &middot; 150 min &middot; flex &plusmn;60 &middot; queue<br>19:30 &middot; <code>Topic List Questions</code> &middot; 60 min &middot; flex &plusmn;30 &middot; fixed</div></div>
+    <div data-state="closed"><h4><button type="button" aria-expanded="false"><span class="disc">[ + ]</span>Area slots<span class="n">2</span></button></h4></div>
+    <div data-state="closed"><h4><button type="button" aria-expanded="false"><span class="disc">[ + ]</span>Anchor types and shadows<span class="n">4</span></button></h4></div>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>The active tab takes a 2px <code>--rule-emphasis</code> bottom rule in <code>--ink-deep</code>.</b> That token is the emphasised weight, and its carriers are the Area top rule, this rule, the now rule and a matched-range underline. <b>Disclosure is <code>[ + ]</code> and <code>[ &minus; ]</code> with a typographic minus</b>, which is the same mark family as the key hints in section 20: one form for a bracketed control glyph, everywhere. <b>The Learned tab shows 0 rather than disappearing.</b> A tab that vanishes when its count is zero makes the reader wonder whether the feature exists, and on this screen a zero means <i>nothing new was learned this week</i>, which is information.</div>
+</div><div class="s" data-spec="tabs"></div></div>
+
+<!-- ============ 12 BLOCK ============ -->
+<h2 class="sec" id="c12"><span><a href="#c12">12</a> &middot; Block</span><em>the calendar block. four tiers, nine states, and the .blk rules are verbatim from the probes</em></h2>
+<div class="note"><b>The <code>.blk</code> CSS in this sheet is copied verbatim from <code>scratch/week-density.html</code></b>, which took it verbatim from <code>scratch/block-states.html</code>. Three sheets, one block. The pinned and proposal rules are the two <code>week-density.html</code> does not carry, ported from <code>block-states.html</code> unchanged. Where a component sheet and a probe disagree about the block, the probe is right, and the correct fix is to re-copy rather than to reconcile by hand.
+<br><br><b>A block spends a fill just to exist</b>, which is the one way it differs from every row in the system: it must be a bounded object distinct from the grid's own lines. So the fill channel has three values and they order correctly by accident of the palette: <code>--paper-raised</code> is lighter than the page, hover at <code>--ink-wash</code> is darker, and a proposal has no fill at all. <b>A block draws three edges, not four:</b> the top rule carries the Area, the bottom rule closes it at grid weight, the left rule is reserved for state, and there is no right border. A split block is the one exception and takes a left rule at <code>--rule</code>, because with no side borders nothing else would divide it from its neighbor.</div>
+<div class="cmp wide"><div class="d">
+  <span class="lab">The four tiers, drawn at each tier's own floor. Heights and line counts are computed from the tokens, not typed</span>
+  <div id="tiers" class="row-of" style="align-items:flex-start;gap:16px"></div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>The floor is the sum of what has to fit, not a round number.</b> Label tier: 2px Area rule + 2px <code>--block-pad-t</code> + 13.8px of line + 1px bottom rule = 18.8px inside a 19px floor. Compact tier: 2 + 0 + 9.5 + 1 = 12.5px inside 13px, paid for by giving up the top padding so the title sits against the Area rule. <b>The compact tier exists because the three-tier ladder was rejected in review:</b> an unlabeled <code>Wake Up</code> reads as a rendering fault rather than as a deliberate tier. <b>The hairline tier is unreachable on any supported display</b> given the zoom clamp, and is kept as a defensive floor. The title wraps to a line count computed from the block's own height, so a clip lands on a line boundary: a measured ledger over one real week showed <code>nowrap</code> made 4 of 37 titles ambiguous, because end-ellipsis discards exactly the tail that separates <code>Amazon Interview Prep</code> from <code>Amazon Interview Prep &middot; Behavioral</code>.</div>
+</div><div class="s" data-spec="blocktier"></div></div>
+<div class="cmp wide"><div class="d" style="padding:0">
+  <div id="isostates"></div>
+</div><div class="s" data-spec="blockstate" style="border-top:0"></div></div>
+<div class="cmp wide"><div class="d">
+  <span class="lab">In situ &middot; two real days at the 12 hour default. Overlap is resolved by the sweep-and-columns algorithm from week-density.html, unchanged. Hover and Tab are live</span>
+  <div id="daycols"></div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>Every state above is judged in the grid, not as a floating rectangle.</b> Tuesday carries the conflict on the 16:00 anchor, the recovery shadow it casts from 16:45 to 18:00 as a hatched band, the now rule at 14:20, the pin on <code>Gym &middot; Shoulder &amp; Arms</code> and the selection on <code>Leetcode &middot; Graphs</code>. Friday carries the real three-way overlap at 11:30, which is where <code>data-split</code> comes from: <b>the split state is produced by the layout algorithm, never authored.</b> Replaying that algorithm over the reference week shows the widest cluster uses three columns, so the stagger path past <code>--overlap-max-split</code> is never reached by real data. <b>The quarter hour is drawn at rest</b>, because the snap is fifteen minutes and the grid should show where a block can land. Only the hour carries cobalt weight; the three quarters are <code>--rule-faint</code>. During a drag the quarters step up to hour weight so the snap targets sharpen, which is a discrete state change rather than motion, and the drag itself moves a hairline marker rather than the block.</div>
+</div><div class="s" data-spec="blockgrid" style="border-top:0"></div></div>
+
+<!-- ============ 13 AREA CHIP AND LEGEND ============ -->
+<h2 class="sec" id="c13"><span><a href="#c13">13</a> &middot; AreaChip and the Area legend</span><em>the ledger-surface carrier. up to 10px, always paired with the Area's name</em></h2>
+<div class="cmp wide"><div class="d" style="padding:0">
+  <div id="legend" class="legend"></div>
+  <div style="padding:13px">
+    <span class="lab">The chip in its real context: a ledger row's gutter, at 10px and at 7px</span>
+    <div class="row-of" style="gap:20px">
+      <span class="chipname"><span class="chip" style="--ai:var(--area-08)"></span>Fitness</span>
+      <span class="chipname"><span class="chip" style="--ai:var(--area-01)"></span>Career</span>
+      <span class="chipname" style="font-size:var(--fs-eyebrow)"><span class="chip sm" style="--ai:var(--area-05)"></span>Study</span>
+      <span class="chipname" style="font-size:var(--fs-eyebrow)"><span class="chip sm" style="--ai:var(--area-12)"></span>Transit</span>
+    </div>
+  </div>
+  <table class="led"><thead><tr><th>Carrier</th><th>Context</th><th>Legal</th><th>Why</th></tr></thead><tbody>
+    <tr><td>2px top rule</td><td>a block, a proportional surface</td><td class="pass">yes</td><td>the only Area carrier on a block, at every overlap depth. Section 12</td></tr>
+    <tr><td>filled circular chip, up to 10px</td><td>a ledger row's gutter</td><td class="pass">yes</td><td>always paired with the Area's name, which is stronger than any pattern</td></tr>
+    <tr><td>wedge or bar fill</td><td>a chart</td><td class="pass">yes</td><td>always hatched in a lighter step of its own ink. Section 15</td></tr>
+    <tr><td>as text</td><td>anywhere</td><td class="fail">no</td><td>the ramp is tuned for 3:1 as a non-text indicator, not 4.5:1 as label ink</td></tr>
+    <tr><td>as a block or row fill</td><td>anywhere</td><td class="fail">no</td><td>the fill channel already means <i>this block exists</i>, and hover already owns its other value</td></tr>
+    <tr><td>as a control border</td><td>anywhere</td><td class="fail">no</td><td>a control border is an indicator of the control's boundary, and it is <code>--rule-control</code></td></tr>
+    <tr><td>in navigation</td><td>the sidebar</td><td class="fail">no</td><td>navigation is one ink. Section 08 spends no pigment at all</td></tr>
+    <tr><td>as the only encoding</td><td>anywhere</td><td class="fail">no</td><td>roughly one man in twelve cannot separate twelve categorical hues, and three of these sit on the sealed signal hues by construction</td></tr>
+  </tbody></table>
+  <div class="note" style="border-bottom:0"><b>The chip pairs with the name, and that pairing is structural rather than decorative.</b> On a ledger surface the name is available and it is a stronger encoding than any hatch, so the chip carries no texture: hatch is reserved for the two chart carriers, where a label cannot fit inside a 4% wedge. <b>The chip is a circle</b>, which makes it allowlist entry 3 of 4 for <code>border-radius:50%</code>, with the status dot, the radio dot and the avatar, and the allowlist is closed at those four. A square chip at 10px reads as a very small block, which is the one thing it must not be mistaken for: a block is the proportional surface and its Area carrier is a 2px top rule, so the two carriers have to stay visually distinct. <b>Assignment order, not numeric order.</b> This user's seven Areas are dealt <code>--area-01, 05, 08, 10, 03, 07, 12</code>, and the first four of those sit at least 75 degrees apart. <b>The order does not defer the tightest pairs, and it is worth being precise about that:</b> this set contains both 07/08 and 12/01, the two tightest adjacent pairs at 20.3 and 20.4 degrees, so this user meets them both. What separates them is that each carries a different hatch on a chart and a different name on a ledger, and that the pigments were respaced so the tightest gap is 19.4 degrees rather than the 13.0 an earlier ramp had. <b>The circadian frame is outside the ramp entirely:</b> routines are not budgeted as discretionary time, so <code>Sleep</code>, <code>Wake Up</code> and <code>Lunch</code> take <code>--frame-wash</code> and no Area ink at all. They read as structure, not as a category competing with Fitness. An anchor is outside it too, and takes a cobalt hatch.</div>
+</div><div class="s" data-spec="chip" style="border-top:0"></div></div>
+
+<!-- ============ 14 DEVIATION BAR ============ -->
+<h2 class="sec" id="c14"><span><a href="#c14">14</a> &middot; DeviationBar</span><em>actual against target per Area, signed off a zero line. cobalt only</em></h2>
+<div class="cmp"><div class="d">
+  <span class="lab">Mon 10 &ndash; Sun 16 &middot; scheduled against target, hours. Bars and the axis are computed from the same figures</span>
+  <div id="dev" class="dev"></div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>Cobalt only, and no Area ink anywhere on this component, including the label column.</b> Area ink encodes identity; cobalt encodes magnitude and direction. In a chart context the ramp's only legal carriers are a wedge fill and a stacked-bar fill, so a deviation bar in an Area's own pigment would be a fourth carrier, and a chip beside a cobalt bar would put two carriers in one context. The Area name does the identifying here, which is what it is for. <b>Direction is position plus a sign, never a hue.</b> A bar left of the zero line is under target and its figure carries a <code>&minus;</code>; a bar right of it is over and carries a <code>+</code>. There is no red-bad, green-good pair in this system: a signal is sealed to status and severity, and being 5.5h under on <code>Research</code> is neither.
+  <br><br><b>Read <code>Career</code> against section 16 before concluding the two contradict each other.</b> Career is 2.0h <i>over</i> its weekly target and the week is still 1h20m short on Career before Friday 09:00, because a budget is a weekly quantity and a deadline is a point in time. Six of the seven Areas sit under target because 18.4h of discretionary time could not be placed at all, which is the same 18.4h the card in section 06 reports.</div>
+</div><div class="s" data-spec="dev"></div></div>
+
+<!-- ============ 15 PIE WEDGE AND STACKED BAR ============ -->
+<h2 class="sec" id="c15"><span><a href="#c15">15</a> &middot; Pie wedge and stacked bar</span><em>the two chart carriers the Area ramp is sealed to. every fill is hatched in a lighter step of its own ink</em></h2>
+<div class="cmp wide"><div class="d">
+  <div class="row-of" style="align-items:flex-start;gap:22px">
+    <div><span class="lab">Pie review &middot; share of the 33.7h scheduled</span><div class="pie" id="pie"></div></div>
+    <div style="flex:1;min-width:280px">
+      <span class="lab">Wedge ledger &middot; hours, share, hatch and ink, computed from the same figures the bars use</span>
+      <div id="pieledger"></div>
+      <span class="lab" style="margin-top:14px">Stacked bar &middot; composition of two weeks, normalised to 100%</span>
+      <div id="sbars"></div>
+    </div>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>These are the two places an Area ink becomes a fill, and both pay for it with a hatch.</b> The hatch is drawn in a lighter step of the wedge's own ink: <code>color-mix(in srgb, var(--area-01) var(--hatch-mix), var(--paper-raised))</code> for Career, and the same formula against each Area's own token. So it reads as texture rather than as a second color. It is not an accessibility toggle and it does not switch on for a preference: it is always on, because color is never the only encoding and three of these twelve pigments sit on the sealed signal hues by construction. Six patterns is the honest ceiling, so a pattern repeats only between hues that are far apart.
+  <br><br><b>The circle is wedge geometry, not a border radius.</b> Each wedge is a clipped square, so the 50% allowlist stays closed at four elements: the status dot, the radio dot, the Area chip and the avatar. <b><code>Projects</code> gets a legend row and no wedge.</b> A zero-hour Area cannot be drawn, and dropping its row would be a lie: the whole point of the pie review is to show what the week did <i>not</i> hold. Every percentage on this component is computed from the hours at render, so the wedge angles, the ledger and the stacked bars cannot disagree.</div>
+</div><div class="s" data-spec="wedge"></div></div>
+
+<!-- ============ 16 VERDICT PANEL ============ -->
+<h2 class="sec" id="c16"><span><a href="#c16">16</a> &middot; VerdictPanel</span><em>amber, a panel in the severity ladder. fixed height, rows scroll inside it</em></h2>
+<div class="cmp"><div class="d">
+  <div class="verdict">
+    <header><span>&#9670; This week cannot hold its commitments</span><span>revision 12</span></header>
+    <p><b>1h20m short on <code>Career</code> before Friday 09:00</b>, after honoring the Fitness floor of 4.5h. Five tradeoffs. Nothing is chosen for you, and each one generates a proposal you can read before it applies.</p>
+    <div class="rows">
+      <div class="tro"><span>Drop <code>Topic List Questions</code> this week<i>removes 60 min of Career demand &middot; the task carries no deadline</i></span><button class="btn sec sm" type="button">Propose</button></div>
+      <div class="tro"><span>Reduce the Sleep floor by 1h<i>frees 60 min &middot; sleep is negotiable, and only you may spend it</i></span><button class="btn sec sm" type="button">Propose</button></div>
+      <div class="tro"><span>Breach the Fitness floor by 1h20m<i>frees 80 min &middot; clears the shortfall exactly</i></span><button class="btn sec sm" type="button">Propose</button></div>
+      <div class="tro"><span>Accept partial delivery on <code>Amazon Interview Prep &middot; Behavioral</code><i>210 min estimated, 130 min placeable before Friday</i></span><button class="btn sec sm" type="button">Propose</button></div>
+      <div class="tro"><span>Unpin <code>Gym &middot; Shoulder &amp; Arms</code> at 05:30 on Tue<i>your pin from Sun 09 Feb &middot; frees the 05:30 to 06:30 window</i></span><button class="btn sec sm" type="button">Propose</button></div>
+    </div>
+    <footer><span>4 pins honored</span><span>5 tradeoffs &middot; scroll inside the panel</span></footer>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>Fixed height, and the rows scroll inside it.</b> A panel that grew and shrank as pins accumulate would shift the grid under the cursor mid-edit, and the weekly session is precisely a burst of manual edits: the user drags, the readout updates live, they drag again. The same rule governs the 64px summary strip in <code>week-density.html</code>, and it is the reason the strip's rows scroll rather than the strip resizing. <b>Amber, and a panel.</b> Never a banner, because the verdict is true for most of the editing session and a banner would nag continuously; never blocking, because syncr does not block approval of a knowingly broken week. The amber wash is the one sanctioned signal surface in the system, and <code>color.css</code> names this panel as its carrier.
+  <br><br><b>Every tradeoff is a button that generates a proposal, never a direct mutation.</b> The authority rule is that syncr may add but may never move or remove without permission, and breaching a floor or dropping a task is a removal. So the button produces a <code>PlanRevision</code> with status <code>proposed</code>, which the user reads and approves; proposals supersede each other, so only the latest exists. The verb on the button is <code>Propose</code> for that reason, and a label like <code>Apply</code> would be a lie about what the system is allowed to do.</div>
+</div><div class="s" data-spec="verdict"></div></div>
+
+<!-- ============ 17 REASON ROWS ============ -->
+<h2 class="sec" id="c17"><span><a href="#c17">17</a> &middot; ReasonRows</span><em>the explainability surface. labeled rows, never a paragraph</em></h2>
+<div class="note"><b>An earlier draft of the detail panel carried a hand-written sentence, and that was a design lie.</b> It implied prose generation the product cannot do: the scheduler is deterministic and no language model sits in the placement loop, so a sentence that cannot be traced to a term the solver computed is worse than no sentence at all. <b>The solver emits a structured record and the frontend renders it through a template catalogue</b>, one template per clause kind with values substituted. Deterministic, unit-testable, translatable, and every clause traceable to a figure. Section 6 of <code>scratch/week-density.html</code> is the record of that decision.
+<br><br><b>There are six clause kinds:</b> <code>blocked</code>, <code>dominant</code>, <code>bound</code>, <code>floor</code>, <code>pinned</code> and <code>instead of</code>. The last one is new, and it settles the open question <code>week-density.html</code> handed forward: a pinned block now also states <b>the placement the pin overrode, with the objective delta the pin cost</b>. It is worth its storage, because the superseded placement is exactly the pairwise comparison the learning layer consumes: <i>the user chose 05:30 when the solver proposed 13:00, in this context</i>. The editing interaction and the training-data collection are the same interaction, so the panel is showing the user the record it is already keeping about them.
+<br><br><b>Two consequences the component has to respect.</b> The clause budget is <b>bounded</b>: the top two rejected windows, the dominant objective term, and on a pinned block the one superseded placement. Recording every candidate for ninety blocks a week would bloat a plan document that has to survive in an append-only store forever. And because the budget is bounded and the shape is fixed, <b>rows are the correct form rather than a paragraph</b>: they are denser, they align, and they suit the register. A paragraph would also invite an author to smooth over a missing clause with a conjunction.</div>
+<div class="cmp"><div class="d">
+  <div class="row-of" style="align-items:flex-start;gap:16px">
+    <div><span class="lab">Solver-placed &middot; <code>Leetcode &middot; Graphs</code>, Tue 12:00</span>
+      <div class="why">
+        <div class="lab2">Why here</div>
+        <p class="lead">Placed at 12:00 of 3 candidate windows.</p>
+        <div class="cl"><b>blocked</b><span><code>16:00</code> <i>&middot;</i> Kontron anchor, plus its recovery shadow to 18:00</span></div>
+        <div class="cl"><b>blocked</b><span><code>07:00</code> <i>&middot;</i> same habit already placed in that window</span></div>
+        <div class="cl"><b>dominant</b><span><code>budgetDeviation</code> <i>&middot;</i> Career &middot; 0.42 of total cost</span></div>
+        <div class="cl"><b>bound</b><span><code>backlog queue</code> <i>&middot;</i> Graphs &middot; next after Tries</span></div>
+      </div></div>
+    <div><span class="lab">Pinned &middot; <code>Gym &middot; Shoulder &amp; Arms</code>, Tue 05:30</span>
+      <div class="why">
+        <div class="lab2">Why here</div>
+        <p class="lead">You put it here.</p>
+        <div class="cl"><b>pinned</b><span><code>Sun 09 Feb</code> <i>&middot;</i> your own edit, third consecutive week at 05:30</span></div>
+        <div class="cl"><b>instead of</b><span><code>13:00</code> <i>&middot;</i> the solver's own choice <i>&middot;</i> objective <i>+</i>0.08 of total cost</span></div>
+        <div class="cl"><b>floor</b><span><code>Fitness</code> <i>&middot;</i> 4.5h weekly floor, met exactly</span></div>
+      </div>
+      <div class="note" style="border:0;padding:9px 0 0;max-width:306px"><b>The shortest reason in the system, and the strongest.</b> A pin needs no justification, so the panel does not manufacture one: it states who placed the block and when. <b><code>instead of</code> is the one clause that costs storage</b>, because it means keeping the superseded placement alongside the pin. It earns that cost twice over: the user can see what their own pin cost, at <code>+0.08</code> of total objective, and the same pair is the training signal the learning layer reads. Three consecutive weeks at 05:30 is also what triggers a proposed template change, which is why the <code>pinned</code> clause states the streak rather than only the date.</div></div>
+  </div>
+</div><div class="s" data-spec="reason"></div></div>
+<div class="pad" style="padding:0">
+<table class="led"><thead><tr><th>Clause</th><th>Renders as</th><th>Comes from</th></tr></thead><tbody>
+  <tr><td><code>blocked</code></td><td>a rejected candidate window and the constraint that rejected it</td><td>the hard-constraint checker, which already evaluates every candidate</td></tr>
+  <tr><td><code>dominant</code></td><td>the objective term with the largest share of total cost</td><td>the objective breakdown, already stored on the plan revision</td></tr>
+  <tr><td><code>bound</code></td><td>the binding source and its cursor position</td><td>the habit's binding source, already derived from the outcome log</td></tr>
+  <tr><td><code>floor</code></td><td>an Area floor that forced or forbade the placement</td><td>the floor constraint, already a hard input to the solver</td></tr>
+  <tr><td><code>pinned</code></td><td>the user's own edit, with the date it was made and the streak it is part of</td><td>the pin itself. the shortest reason in the system, and the strongest</td></tr>
+  <tr><td><code>instead of</code></td><td>the placement the pin overrode, with the objective delta the pin cost</td><td>the superseded placement, stored alongside the pin. the same pairwise comparison the learning layer consumes</td></tr>
+</tbody></table></div>
+
+<!-- ============ 18 MATURITY METER ============ -->
+<h2 class="sec" id="c18"><span><a href="#c18">18</a> &middot; MaturityMeter</span><em>the Learned screen. bounded 0 to 100%, so block characters are correct</em></h2>
+<div class="cmp wide"><div class="d">
+  <span class="lab">What syncr learned &middot; per parameter: current value, sample count, confidence, unlock progress</span>
+  <div class="mat" id="mat"></div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>Block characters are correct here because the scale is bounded.</b> Unlock progress runs 0 to 100% and has a known end, so a segmented run reads as a fraction of something. An unbounded magnitude would need a percentage-width fill instead, because block characters offer roughly fourteen steps at this size and a range above 20:1 would reduce every non-leading row to a one-cell stub. <b>This is not a progress bar and it does not advance while you watch it.</b> It moves when a confirmed day is added, which is a discrete redraw of a number.
+  <br><br><b>Maturity is per parameter, not one global flag</b>, because parameters converge at very different rates: a duration multiplier needs 10 to 15 confirmed blocks and lands around week 2, while the objective weights need 50 to 100 edit events and land around month 3. <b>Unlocks are counted on the volume of confirmed days, never on adherence.</b> A day where the user skipped everything and said so counts exactly as much as a perfect day: tying unlocks to adherence would reward marking things done, and the integrity of the whole dataset rests on honest confirmation. <b>A parameter still collecting baseline is informational and never a warning</b>, which is why the row's dot is <code>--ink-bright</code>: it is the expected state of a new install. The value column shows the prior in that case, and says so, rather than printing a fitted number nobody fitted.</div>
+</div><div class="s" data-spec="maturity"></div></div>
+
+<!-- ============ 19 LEDGER ROW ============ -->
+<h2 class="sec" id="c19"><span><a href="#c19">19</a> &middot; LedgerRow</span><em>Today. time, duration right-aligned and tabular, Area chip, outcome controls</em></h2>
+<div class="cmp"><div class="d">
+  <div class="ledger" id="today"></div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>This is the surface that owns reality state, and it is the reason a block does not.</b> A calendar block carries nine meanings already; adding <code>presumed</code>, <code>completed</code>, <code>partial</code> and <code>skipped</code> to it would need a tenth channel it does not have. So reality moves here, where a row has room for a dot, a word and a control. <b>Blocks are presumed completed unless the user says otherwise</b>, which keeps the daily interaction cost near zero, and the evening pass converts presumed to recorded for the whole day at once with <code>[ c ]</code>.
+  <br><br><b>Partial minutes use a 5-minute stepper pre-filled with the block's planned duration.</b> Pre-filled, because the overwhelmingly common correction is <i>slightly less than planned</i> and an empty field would make the honest answer more work than the flattering one. Five minutes rather than the 15-minute <code>--snap</code> the plan uses, because <b>a recorded actual is a measurement, not a plan</b>: the snap exists so that starts and ends land on the grid, and nothing about a measurement lands on a grid. <code>partial</code> with actual minutes is the sole source of the duration-estimate signal, so a stepper that discouraged its use would cost the learning layer its best input. <b>The Area chip is the ledger carrier at 10px, always beside the Area's name</b>, and the anchor row has neither, because an anchor belongs to no Area: it is time the product does not own.</div>
+</div><div class="s" data-spec="ledger"></div></div>
+
+<!-- ============ 20 KEY HINTS, HELP, PALETTE ============ -->
+<h2 class="sec" id="c20"><span><a href="#c20">20</a> &middot; Key hints, help overlay and command palette</span><em>one form everywhere: bracketed bare mono text. no bordered key caps</em></h2>
+<div class="cmp wide"><div class="d">
+  <span class="lab">Key hints, inline in prose</span>
+  <div style="line-height:2.1;font-size:var(--fs-chrome)">Press <span class="k">[ j ]</span> and <span class="k">[ k ]</span> to move between blocks, <span class="k">[ h ]</span> and <span class="k">[ l ]</span> between days, <span class="k">[ [ ]</span> and <span class="k">[ ] ]</span> between weeks, <span class="k">[ p ]</span> to pin, <span class="k">[ enter ]</span> for the detail panel, <span class="k">[ ? ]</span> for help and <span class="k">[ cmd + K ]</span> for the palette.</div>
+  <div class="row-of" style="align-items:flex-start;gap:18px;margin-top:16px">
+    <div><span class="lab">Help overlay, opened with <span class="k">[ ? ]</span></span>
+      <div class="overlay"><header><span>Keymap</span><span>Esc to close</span></header>
+        <div class="cols2" id="keymap"></div></div></div>
+    <div><span class="lab">Command palette, opened with <span class="k">[ cmd + K ]</span></span>
+      <div class="overlay cmdk" style="width:342px">
+        <div class="in">&gt; <b>confirm tue</b>|</div>
+        <div class="grp">Days</div>
+        <div class="r" data-highlighted data-current>Confirm Tue 11 February<span class="hint">16 blocks</span></div>
+        <div class="r">Confirm Fri 14 February<span class="hint">16 blocks</span></div>
+        <div class="grp">Blocks &middot; Tue 11</div>
+        <div class="r"><span class="chip sm" style="--ai:var(--area-01)"></span>Leetcode &middot; Graphs<span class="hint">12:00 &middot; 180m</span></div>
+        <div class="r"><span class="chip sm" style="--ai:var(--area-08)"></span>Gym &middot; Shoulder &amp; Arms<span class="hint">05:30 &middot; pinned</span></div>
+        <div class="grp">Actions</div>
+        <div class="r">Propose: breach the Fitness floor by 1h20m<span class="hint">verdict</span></div>
+        <div class="r">Go to Learned<span class="hint">[ g l ]</span></div>
+      </div></div>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>A key hint is bracketed bare mono text and nothing else.</b> No bordered cap, no shaded well, no radius: a cap is a box that means nothing, and in a mono register the brackets already read as a key. It is the same mark family as the accordion's <code>[ + ]</code> and <code>[ &minus; ]</code>, so the product has one bracketed-glyph form rather than two. <b>The bracket keys are shown in the bracket form, which is ugly and correct:</b> <span class="k">[ [ ]</span> and <span class="k">[ ] ]</span>. Inventing a second form for two keys would cost more than the ugliness does.
+  <br><br><b>The first palette row carries both <code>data-highlighted</code> and <code>data-current</code>, and the two treatments add rather than overwrite.</b> <code>data-highlighted</code> is the keyboard cursor, so it owns the focus channel alone; <code>data-current</code> owns the 3px left rule, exactly as it does on a block or a table row. Giving the cursor the hover wash as well would make a hovered row indistinguishable from the highlighted one. Hover the second row to see the channel that stays free. <b>The palette rows carry Area chips</b>, which is legal because a palette row is a ledger row and the chip pairs with the block's title. <b>The overlay carries <code>--shadow-hard</code></b>, being one of the three surfaces that lift off the page.</div>
+</div><div class="s" data-spec="kbd"></div></div>
+<div class="pad" style="padding:0">
+<table class="led"><thead><tr><th>Keys</th><th>Does</th><th>Scope</th><th>Note</th></tr></thead><tbody>
+  <tr><td><code>j</code> <code>k</code></td><td>previous and next block</td><td>Week, Today, Backlog</td><td>reaches every block at every tier, including a 9.8px sliver</td></tr>
+  <tr><td><code>h</code> <code>l</code></td><td>previous and next day</td><td>Week</td><td>column-wise, keeping the row position where it can</td></tr>
+  <tr><td><code>[</code> <code>]</code></td><td>previous and next week</td><td>Week</td><td>the axis always expands to contain every block in the week it lands on</td></tr>
+  <tr><td><code>T</code></td><td>jump to today</td><td>Week, Today</td><td>uppercase, because it moves the viewport rather than the cursor</td></tr>
+  <tr><td><code>z</code></td><td>cycle zoom</td><td>Week</td><td>6 to 24 visible hours, clamped per display so a 30 minute block keeps its label</td></tr>
+  <tr><td><code>p</code></td><td>pin the selected block</td><td>Week</td><td>every manual edit is a pin. The pin is also the training signal</td></tr>
+  <tr><td><code>Shift</code> + <code>&uarr;</code> <code>&darr;</code></td><td>move by one snap and pin</td><td>Week</td><td>one action, because moving without pinning would let the next solve undo it</td></tr>
+  <tr><td><code>Enter</code></td><td>open the detail panel</td><td>Week, Today, Backlog</td><td>the reason is never hover-only, and never a popover</td></tr>
+  <tr><td><code>c</code></td><td>confirm the day</td><td>Today</td><td>converts presumed to recorded for the whole day</td></tr>
+  <tr><td><code>x</code></td><td>mark skipped</td><td>Today</td><td>a skip with a timestamp drives the skip-probability parameter</td></tr>
+  <tr><td><code>Shift</code> + <code>X</code></td><td>mark partial, minutes</td><td>Today</td><td>opens the 5-minute stepper pre-filled with the planned duration</td></tr>
+  <tr><td><code>n</code></td><td>new task</td><td>everywhere</td><td>capture has to be cheaper than remembering</td></tr>
+  <tr><td><code>/</code></td><td>search</td><td>everywhere</td><td></td></tr>
+  <tr><td><code>?</code></td><td>help overlay</td><td>everywhere</td><td>the overlay above, which is the keymap's only home</td></tr>
+  <tr><td><code>Cmd</code> + <code>K</code></td><td>command palette</td><td>everywhere</td><td>days, blocks and actions in one list</td></tr>
+  <tr><td><code>g</code> then <code>w t b a m l s</code></td><td>the seven screens</td><td>everywhere</td><td>Week, Today, Backlog, Areas, teMplates, Learned, Settings. <code>m</code> takes Templates because <code>t</code> is Today</td></tr>
+  <tr><td><code>Shift</code> + <code>A</code></td><td>approve all</td><td>Week</td><td>one approval commits the week, infeasible or not</td></tr>
+</tbody></table></div>
+
+<!-- ============ 21 WIZARD STEP INDICATOR ============ -->
+<h2 class="sec" id="c21"><span><a href="#c21">21</a> &middot; Wizard step indicator</span><em>first run. numbered ledger rows with a caret on the current step. no progress bar</em></h2>
+<div class="cmp"><div class="d">
+  <div class="wiz">
+    <div data-state="done"><span class="cr">&nbsp;</span><span class="no">01</span><span class="lb">Connect a calendar source</span><span class="st">done &middot; 3 sources</span></div>
+    <div data-state="done"><span class="cr">&nbsp;</span><span class="no">02</span><span class="lb">Declare your day: wake, sleep, meals</span><span class="st">done &middot; 6 routines</span></div>
+    <div data-state="current"><span class="cr">&#9656;</span><span class="no">03</span><span class="lb">Cut the pie: Areas, floors, percentages</span><span class="st">7 areas, 1 floor set</span></div>
+    <div data-state="todo"><span class="cr">&nbsp;</span><span class="no">04</span><span class="lb">Draw a template and a week pattern</span><span class="st">not started</span></div>
+    <div data-state="todo"><span class="cr">&nbsp;</span><span class="no">05</span><span class="lb">Type your anchors and their shadows</span><span class="st">not started</span></div>
+    <div data-state="todo"><span class="cr">&nbsp;</span><span class="no">06</span><span class="lb">Fill the backlog</span><span class="st">not started</span></div>
+    <div data-state="todo"><span class="cr">&nbsp;</span><span class="no">07</span><span class="lb">Approve your first week</span><span class="st">not started</span></div>
+    <footer><span>Step 3 of 7</span><span>you can leave and come back &middot; nothing is lost</span></footer>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>No progress bar, because motion is zero and a bar of seven segments says less than seven labeled rows.</b> The rows are the same ledger form the rest of the product uses: a number, a caret on the current step, a label, and a state at the right edge. The caret is <code>&#9656;</code>, the same mark a current row carries elsewhere, and the current row also takes <code>--ink-wash</code>: one idea, one form. <b>A completed step reports what it produced</b>, not merely that it finished, because <code>done &middot; 3 sources</code> is checkable and <code>done</code> is not. <b>The done state is the one place verdigris appears outside a status dot</b>, as label ink at <code>--verdigris-ink</code>, which is the text step: a completed step is a resolved status and that is exactly what the pigment is sealed to. <b>Steps 4 to 7 are reachable out of order.</b> The wizard is a checklist rather than a gate, because a user who has not typed their anchors can still usefully approve a week.</div>
+</div><div class="s" data-spec="wizard"></div></div>
+
+<!-- ============ 22 EMPTY, PENDING AND ERROR ============ -->
+<h2 class="sec" id="c22"><span><a href="#c22">22</a> &middot; Empty state, pending state and error state</span><em>the three surfaces with nothing to show, and none of them spins</em></h2>
+<div class="cmp"><div class="d">
+  <span class="lab">Empty &middot; the backlog, with every filter cleared</span>
+  <div class="empty">
+    <div class="t2">Backlog empty</div>
+    <p style="margin:9px 0 0;color:var(--ink-soft);font-size:var(--fs-prose)">No task, no project, nothing at risk. The solver has 18.4h of discretionary time it cannot place and nothing to place in it.</p>
+    <div class="row-of" style="justify-content:center;margin-top:13px"><button class="btn" type="button">New task <span class="k" style="color:var(--on-ink)">[ n ]</span></button><button class="btn sec" type="button">Import from a calendar</button></div>
+  </div>
+  <span class="lab" style="margin-top:16px">Pending &middot; a calendar sync in progress. <b>No spinner and no skeleton loader:</b> a hairline placeholder plus a live count</span>
+  <div class="hold">
+    <div style="--w:62%"></div><div style="--w:38%"></div><div style="--w:71%"></div><div style="--w:44%"></div>
+    <footer><span>Reading <code>university timetable</code></span><span id="holdn">412 of 1,180 events</span></footer>
+  </div>
+  <span class="lab" style="margin-top:16px">Error &middot; the write target rejected the write</span>
+  <div class="errpanel">
+    <h4>&#10005; The calendar projection is stale</h4>
+    <p style="margin:0;font-size:var(--fs-chrome)">The Google refresh token for <code>syncr &middot; plan</code> expired on Sun 16 at 04:12. 91 blocks are unwritten.</p>
+    <div class="errrule"></div>
+    <p style="margin:0;color:var(--text-muted);font-size:var(--fs-chrome)"><b>The plan is correct.</b> syncr owns the plan and the calendar is a projection of it, so nothing has been lost: reconnecting rewrites all 91 blocks. Until then your phone is showing a week that no longer exists.</p>
+    <div class="row-of" style="margin-top:11px"><button class="btn sec" type="button">Reconnect Google</button><button class="btn ter" type="button">Open Settings &rarr;</button></div>
+  </div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>There is no spinner and no skeleton loader anywhere in this product, and the pending state above is what replaces them.</b> A hairline placeholder holds the row height so the layout does not jump when the rows arrive, and the count underneath is the actual reading: it changes when a number changes, which is a discrete redraw rather than motion. <code>--radius</code> is 0 and the 50% allowlist covers four elements, none of which is a spinner, so the usual spinner cannot even be drawn in this language. The language syncr inherits kept one motion exception for a cold-start index that took 4.6 seconds; syncr has no such wait, because a solve over roughly thirty blocks a day is instantaneous.
+  <br><br><b>The empty state's headline is mono, not the serif.</b> The serif appears in exactly two places: the wordmark and the seven page titles. An empty-state headline is neither. <b>The error state states what is still true before it states the fix</b>, because the alarming reading of a failed calendar write is that the plan is gone, and it is not: syncr owns the plan and the calendar is a projection. An error message that leaves the user unsure whether their data survived has failed even if it is accurate.</div>
+</div><div class="s" data-spec="states"></div></div>
+
+<div class="note" style="border-top:var(--hairline) solid var(--rule-strong);border-bottom:0;color:var(--text-muted)">
+  <b>Provenance.</b> Every color, size, height, weight and rule on this sheet resolves from <code>frontend/src/tokens/index.css</code> at load: the sheet links the same file the app imports, so a value here cannot drift from the build, and there is not one hardcoded color in it. Content comes from the same real reference week the two probes use, Mon 10 to Sun 16 February, 91 blocks and 80.8h scheduled. Figures that appear on more than one component are computed once and rendered from the same numbers, so the card in section 06, the deviation bars in section 14, the wedges in section 15 and the verdict in section 16 cannot disagree: 52.1h discretionary, 33.7h scheduled into Areas, 18.4h the solver could not place. Block tier heights, line counts and the overlap columns are computed from the tokens and by the same sweep-and-columns algorithm the probes use, so nothing on section 12 is placed by eye.
+  <br><br><b>Two values on this sheet were not tokens when it was written, and both now are.</b> The dialog scrim in section 10 is <code>--scrim</code>, a translucent veil derived from <code>--ink-deep</code> rather than a new pigment, so the page stays legible beneath it. The hatch inks on the wedges and stacked bars in section 15 read <code>--hatch-mix</code>, the single step by which a hatch is lightened from the fill it sits on, written as <code>color-mix(in srgb, var(--ai) var(--hatch-mix), var(--paper-raised))</code> against each wedge&rsquo;s own Area token. Both were promoted because more than one sheet had re-derived them inline, which is how two references drift apart.</div>
+
+<script>
+/* ============================================================
+   Token reader. A custom property's computed value has its var() references substituted,
+   but the chain is resolved defensively so this sheet reports true values even if a browser
+   hands back an unsubstituted token stream.
+   ============================================================ */
+const raw = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const px = n => parseFloat(raw(n));
+
+/* ---------- the seven Areas, in ASSIGNMENT order, not numeric order ----------
+   A user with four Areas gets four pigments at least 75 degrees apart. The order does NOT
+   defer the tightest pairs: this seven-Area set contains both 07/08 and 12/01, at 20.3 and
+   20.4 degrees. Different hatches and different names separate them, not the deal order. Hours are the reference week: target
+   is floors plus the proportional split of 52.1h discretionary, actual is what the solver
+   managed to place, and the 18.4h it could not place is why six of seven sit under. */
+const HATCH = {
+  fwd:['--hatch-fwd',null], back:['--hatch-back',null], vert:['--hatch-vert',null],
+  horz:['--hatch-horz',null], cross:['--hatch-cross',null], dot:['--hatch-dot','--hatch-dot-size']
+};
+const AREAS = [
+  {name:'Career',   tok:'--area-01', hatch:'fwd',   order:1, actual:20.0, target:18.0, last:16.0},
+  {name:'Study',    tok:'--area-05', hatch:'back',  order:2, actual:5.0,  target:12.0, last:8.5},
+  {name:'Fitness',  tok:'--area-08', hatch:'vert',  order:3, actual:4.5,  target:4.5,  last:4.5},
+  {name:'Research', tok:'--area-10', hatch:'cross', order:4, actual:0.5,  target:6.0,  last:3.0},
+  {name:'Projects', tok:'--area-03', hatch:'dot',   order:5, actual:0.0,  target:5.0,  last:2.0},
+  {name:'Admin',    tok:'--area-07', hatch:'horz',  order:6, actual:1.2,  target:2.6,  last:1.5},
+  {name:'Transit',  tok:'--area-12', hatch:'back',  order:7, actual:2.5,  target:4.0,  last:3.0}
+];
+const AREA_TOK = {};
+for(const a of AREAS) AREA_TOK[a.name] = a.tok;
+/* The hatch is a lighter step of the wedge's OWN ink, so it reads as texture rather than as
+   a second color. Always on: color is never the only encoding. */
+const fillStyle = a => {
+  const [hv, hs] = HATCH[a.hatch];
+  return `--ai:var(${a.tok});--hx:var(${hv})` + (hs ? `;--hxs:var(${hs})` : '')
+    + `;--hatch-ink:color-mix(in srgb, var(${a.tok}) var(--hatch-mix), var(--paper-raised))`;
+};
+const ord = n => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
+const h1 = n => n.toFixed(1) + 'h';
+
+/* ---------- table of contents ---------- */
+const TOC = [
+  ['01','Buttons'],['02','Text, number, time'],['03','Select and date picker'],
+  ['04','Checkbox, radio, textarea'],['05','Table'],['06','Card and panel'],
+  ['07','Severity: volumes and pigments'],['08','Sidebar navigation'],['09','Form layout'],
+  ['10','Dialog'],['11','Tabs and accordion'],['12','Block',1],['13','AreaChip and legend',1],
+  ['14','DeviationBar',1],['15','Pie wedge and stacked bar',1],['16','VerdictPanel',1],
+  ['17','ReasonRows',1],['18','MaturityMeter',1],['19','LedgerRow',1],
+  ['20','Key hints, help, palette',1],['21','Wizard steps',1],['22','Empty, pending, error',1]
+];
+document.getElementById('toc').innerHTML = TOC.map(([n,l,dom]) =>
+  `<a href="#c${n}"${dom ? ' class="dom"' : ''}><b>Section ${n}</b>${l}</a>`).join('');
+
+/* ============================================================
+   BUILD SPECS. The bridge from the sheet to the kit: for every component, the exact tokens
+   it consumes, the attributes and pseudo-classes that drive its states, and the rule that
+   would be broken by building it any other way.
+   ============================================================ */
+const SPECS = {
+button:{n:'Button',
+  tokens:'--h-control &middot; --h-control-sm &middot; --h-control-lg &middot; --fs-label &middot; --ls-label &middot; --radius &middot; --hairline &middot; --ink &middot; --on-ink &middot; --ink-deep &middot; --paper-raised &middot; --rule-control &middot; --rule-strong &middot; --text-muted &middot; --icon &middot; --icon-sm &middot; --icon-stroke &middot; --icon-cap &middot; --icon-join &middot; --state-focus-ring &middot; --state-focus-offset',
+  state:':hover &middot; :focus-visible &middot; :active &middot; :disabled &middot; [aria-disabled=true] for a focusable disabled control',
+  notes:'Four ranks: primary is an --ink fill with --on-ink text, secondary is --paper-raised with a --rule-control border, tertiary is bare ink with a dotted underline, disabled is a dashed --text-muted border. <b>No rank carries --shadow-hard:</b> that token lifts overlays off the page. A primary button takes the STANDARD focus ring, not the inverse one: its fill is ink but its parent is paper, and the ring is chosen by the surface it lands on. Icons are lucide at --icon-stroke with round caps and joins, the one rounded form the system tolerates.'},
+input:{n:'TextInput &middot; NumberStepper &middot; TimeInput',
+  tokens:'--fs-chrome &middot; --h-control &middot; --radius &middot; --hairline &middot; --rule-control &middot; --paper-raised &middot; --ink &middot; --text-muted &middot; --signal-oxide &middot; --state-conflict-border &middot; --oxide-ink &middot; --snap &middot; --state-focus-ring',
+  state:':focus-visible &middot; :disabled &middot; [aria-invalid=true] &middot; :placeholder-shown',
+  notes:'The resting border is --rule-control at 5.28:1, never --rule-strong at 2.65:1: a control border is the only thing marking where the control begins, which makes it an indicator under the 3:1 rule rather than decoration. Invalid takes a 3px --signal-oxide left border plus a message; the fill and the text never change color, because a fill is not a signal channel. The stepper steps by --snap 15 minutes for plan values; only the partial-minutes stepper in section 19 steps by 5, because a recorded actual is a measurement rather than a plan. The time input suppresses its native picker indicator so the box stays square at radius 0.'},
+select:{n:'Select &middot; DatePicker',
+  tokens:'--fs-chrome &middot; --fs-label &middot; --h-control &middot; --rule-control &middot; --radius &middot; --ink-deep &middot; --on-ink &middot; --paper-raised &middot; --text-muted &middot; --rule-emphasis &middot; --shadow-hard &middot; --state-focus-ring',
+  state:'[data-state=open] &middot; [data-highlighted] on an item, the keyboard cursor, which owns the focus channel alone &middot; [aria-selected] on a day &middot; [data-today] &middot; :disabled',
+  notes:'appearance is stripped and the arrow is the typographic mark &#9662;, so the box keeps radius 0 on every platform: a native arrow arrives in a platform-drawn well with its own corner radius. [data-today] is a 2px --ink-deep inset rule, NOT amber: today is a calendar fact, not a system status, and signals are sealed to status and severity. The picker is a popover, which is one of the three surfaces --shadow-hard exists for.'},
+toggle:{n:'Checkbox &middot; RadioGroup &middot; Textarea',
+  tokens:'--h-control-sm &middot; --fs-label &middot; --hairline &middot; --ink &middot; --paper-raised &middot; --text-muted &middot; --rule-control &middot; --lh-chrome &middot; --state-focus-ring',
+  state:'[data-state=checked|unchecked|indeterminate] &middot; [data-disabled] &middot; :focus-visible on the control, never on the label',
+  notes:'The radio dot is one of four elements on the border-radius:50% allowlist, with the status dot, the Area chip and the avatar. A spinner is not on it, because nothing spins. The check is a glyph rather than an image, so the state survives forced colors, where the fill is dropped and text is not. The textarea resizes vertically only: horizontal resize would let a user break the column the form lives in.'},
+table:{n:'DataTable',
+  tokens:'--h-row &middot; --h-row-dense &middot; --fs-data &middot; --fs-label &middot; --ls-eyebrow &middot; --rule &middot; --rule-strong &middot; --state-hover &middot; --state-selected-border &middot; --state-selected-color &middot; --ink &middot; --ink-deep &middot; --text-muted',
+  state:':hover on tr &middot; :focus-visible on tr &middot; [data-current] for the cursor rest or a deep-link target &middot; [aria-sort] on th',
+  notes:'Rows are --h-row 28px with cells at --fs-data 13px, the step that exists for numbers you compare, and numeric columns are right-aligned with tabular figures. The current-row rule is an INSET box-shadow on the first cell, because a tr cannot carry a border-left that survives border-collapse; it is the same 3px --ink-deep channel a selected block uses. [aria-sort] goes on the column the rows are actually ordered by. Rows take focus, because [ j ] and [ k ] move between them. The footer count is summed from the rendered rows.'},
+card:{n:'Card &middot; Panel',
+  tokens:'--hairline &middot; --rule &middot; --rule-strong &middot; --paper &middot; --paper-raised &middot; --ink-wash &middot; --ink-deep &middot; --fs-stat &middot; --lh-tight &middot; --fs-eyebrow &middot; --ls-eyebrow &middot; --fs-chrome &middot; --text-muted',
+  state:'static. A card is a figure: state belongs to what is inside it',
+  notes:'Neither takes a shadow and neither takes a radius. A panel header is an --ink-wash wash, NOT an ink fill: the only ink-filled surface in the product is a dialog header, because the sidebar is paper and a panel header at --ink-deep would put a second loud surface on a screen built around a calm grid. Headline figures are --fs-stat 28px mono and tabular; the serif does not set numbers.'},
+sevinline:{n:'InlineNotice',
+  tokens:'--fs-eyebrow &middot; --ink-bright &middot; --signal-amber &middot; --signal-oxide &middot; --signal-verdigris &middot; --ink-deep &middot; --text-muted',
+  state:'[data-level=info|notice|fail|resolved] drives the glyph pigment only',
+  notes:'Volume 1 of 4: no box at all. The pigment is in the glyph, and the label beside it is ink. Used on a day header, a ledger row and a field. The unconfirmed marker is a hollow ring at --ink-bright and is deliberately informational: an unconfirmed day is the normal state of every day until the evening pass runs, and warning about the normal state teaches a user to ignore warnings.'},
+sevpanel:{n:'SeverityPanel',
+  tokens:'--hairline &middot; --rule-strong &middot; --paper-raised &middot; --state-conflict-border &middot; --ink-bright &middot; --signal-amber &middot; --signal-oxide &middot; --signal-verdigris &middot; --oxide-ink &middot; --verdigris-ink &middot; --text-muted &middot; --fs-chrome &middot; --lh-chrome &middot; --ls-eyebrow',
+  state:'[data-level] drives the 3px left rule, the glyph and the label ink. role=status, or role=alert for a failure',
+  notes:'Volume 2 of 4 and the default. The level lives in a 3px rule, a glyph and an uppercase word, never in a fill. <b>Amber has no text step:</b> its marker clears 4.52:1 on --paper-raised and fails at 4.18:1 on --paper, so an amber label is --text-muted while oxide and verdigris use their text steps, --oxide-ink and --verdigris-ink. Informational spends no sealed pigment at all: it is --ink-bright.'},
+sevbanner:{n:'SeverityBanner',
+  tokens:'--hairline &middot; --rule-strong &middot; --paper-raised &middot; --state-conflict-border &middot; --signal-oxide &middot; --oxide-ink &middot; --fs-chrome &middot; --ls-eyebrow',
+  state:'[data-level] &middot; role=alert &middot; dismissal is an app decision, not a style state',
+  notes:'Volume 3 of 4, and only two conditions in the product earn it: an anchor conflict and an expired write target. Both are things the user cannot discover by looking at the thing they are about. The PRD authority rule is that only conflicts notify, because without that split a trivial improvement nags exactly like a real conflict and the user mutes everything within a week. A banner states that nothing has been moved, in words.'},
+sevblock:{n:'BlockingDialog &middot; DELIBERATELY UNUSED',
+  tokens:'none. The component is not built',
+  state:'none',
+  notes:'Volume 4 of 4, drawn once and never shipped. syncr raises, warns and allows: it does not block approval of a knowingly broken week, and the same holds when the user\'s own pins caused the shortfall. A product that refuses the approve action has decided something that belongs to the user. The volume is documented so the absence is a decision on the record rather than an omission.'},
+nav:{n:'SidebarNav',
+  tokens:'--w-sidebar &middot; --h-control &middot; --paper-raised &middot; --rule &middot; --rule-strong &middot; --state-hover &middot; --state-selected-border &middot; --state-selected-color &middot; --ink &middot; --ink-deep &middot; --text-muted &middot; --ls-nav &middot; --fs-eyebrow &middot; --ls-eyebrow &middot; --font-serif &middot; --ls-wordmark &middot; --state-focus-ring',
+  state:'[aria-current=page] &middot; :hover &middot; :focus-visible. The count is data, not state',
+  notes:'<b>PAPER, not ink.</b> The current item is an --ink-wash fill plus a 3px --ink-deep left rule: the same channel a selected block uses, so the product has one idea in one form. An ink-filled sidebar was rendered and rejected: it dominated a screen whose point is a calm grid, and it spent the loudest treatment on the most persistent condition. Two consequences: the standard focus ring is correct throughout, so no inverse-ring scope is needed here, and counts stay --text-muted on every row including the current one. No signal pigment and no Area ink: both are illegal in navigation. Counts on Backlog, Proposals and Unconfirmed only.'},
+form:{n:'FormRow &middot; FormActions',
+  tokens:'--fs-eyebrow &middot; --ls-label &middot; --rule &middot; --hairline &middot; --text-muted &middot; --oxide-ink &middot; --signal-oxide &middot; --state-conflict-border &middot; --h-control',
+  state:'[aria-invalid] on the control drives the error row &middot; :focus-visible on the control',
+  notes:'A 126px label column and a field column. Hint and error rows sit in the FIELD column so they align under the control they describe rather than under the label. The error text is --oxide-ink, the text step, because the marker step fails 4.5:1 as label ink; the control keeps the marker step on its 3px border, where 3:1 is the bar.'},
+dialog:{n:'Dialog',
+  tokens:'--shadow-hard &middot; --ink-deep &middot; --on-ink &middot; --paper-raised &middot; --rule &middot; --rule-strong &middot; --hairline &middot; --fs-eyebrow &middot; --ls-eyebrow &middot; --fs-chrome &middot; --lh-chrome &middot; --prose-gap &middot; --state-focus-ring-inverse &middot; --state-focus-offset &middot; --duration',
+  state:'[data-state=open|closed] &middot; aria-modal &middot; focus is trapped and returned on close',
+  notes:'The only component family carrying --shadow-hard, with the date picker\'s popover and the command palette. One hard offset, because print has no blur. <b>The header is the one ink-filled surface in the product</b>, so it takes --on-ink and scopes --state-focus-ring-inverse to the CONTAINER: the ring is chosen by the surface it lands on, and --ink-bright on --ink-deep measures 1.61:1 while --paper-raised on it measures 14.83:1. Scoping to the container means anything focusable added later inherits the right ring. No fade: the dialog is present or it is not. The scrim needs a token the color layer does not yet have.'},
+tabs:{n:'Tabs &middot; Accordion',
+  tokens:'--h-control &middot; --h-row &middot; --rule-emphasis &middot; --ink-deep &middot; --rule &middot; --rule-strong &middot; --paper-raised &middot; --text-muted &middot; --fs-label &middot; --ls-label &middot; --fs-chrome &middot; --lh-chrome',
+  state:'[data-state=active] on a tab &middot; [data-state=open] on an accordion item &middot; [aria-expanded] on the trigger',
+  notes:'The active tab takes a --rule-emphasis 2px --ink-deep bottom rule. That token is the emphasised weight and its carriers are the Area top rule, the active tab, the now rule and a matched-range underline. Disclosure is [ + ] and [ &minus; ] with a typographic minus, the same bracketed form the key hints use. A tab with a zero count shows the zero rather than disappearing: a tab that vanishes makes the reader wonder whether the feature exists.'},
+blocktier:{n:'Block &middot; the tier ladder',
+  tokens:'--block-h-label &middot; --block-h-compact &middot; --block-h-sliver &middot; --block-pad-t &middot; --block-pad-x &middot; --block-pad-b &middot; --fs-block &middot; --lh-block &middot; --lh-block-px &middot; --fs-block-compact &middot; --lh-block-compact &middot; --px-per-min &middot; --grid-h &middot; --visible-hours &middot; --rule-emphasis &middot; --area-NN',
+  state:'[data-tier=label|compact|sliver|hair], computed from the block\'s own height',
+  notes:'The block degrades; the axis never lies. Each floor is the sum of what has to fit: 2 + 2 + 13.8 + 1 = 18.8px inside a 19px label floor, and 2 + 0 + 9.5 + 1 = 12.5px inside a 13px compact floor, which gives up --block-pad-t to buy the title one more zoom step. Padding is asymmetric with zero at the bottom, because a title is top-aligned and symmetry would cost another step. The title wraps to a line count computed from the block\'s own height, so a clip lands on a line boundary: nowrap made 4 of 37 real titles ambiguous. The hairline tier is unreachable on any supported display and is a defensive floor.'},
+blockstate:{n:'Block &middot; the state channels',
+  tokens:'--paper-raised &middot; --state-hover &middot; --ink-wash &middot; --frame-wash &middot; --state-focus-ring &middot; --state-focus-offset &middot; --state-selected-border &middot; --state-selected-color &middot; --state-conflict-border &middot; --state-conflict-color &middot; --state-proposal-border &middot; --state-margin &middot; --rule &middot; --grid-line &middot; --hairline &middot; --area-NN',
+  state:':hover &middot; :focus-visible &middot; [data-selected] &middot; [data-conflict] &middot; [data-pinned] &middot; [data-proposal] &middot; [data-source] &middot; [data-split] &middot; [data-area] &middot; [data-tier]',
+  notes:'One state, one channel, so combinations add instead of overwriting. Area identity is the 2px top rule; existence, hover and proposal share the fill channel at three values; conflict and selected share the 3px left rule and cannot co-occur meaningfully, with conflict winning the pixel; focus is a 2px --ink-bright outline at 2px offset; pinned and origin are glyph slots. Loudness, most to least: conflict, proposal, selected, focus, hover. A proposal is the one state with NO fill, which needs no new pigment and survives forced colors, where a fill is dropped anyway.'},
+blockgrid:{n:'WeekGrid &middot; DayColumn &middot; ForbiddenWindow &middot; NowRule',
+  tokens:'--axis-w &middot; --day-header-h &middot; --grid-inset &middot; --grid-major &middot; --grid-minor &middot; --grid-line &middot; --grid-line-drag &middot; --snap &middot; --now-rule &middot; --ink-bright &middot; --overlap-max-split &middot; --overlap-indent &middot; --col-min &middot; --forbidden-hatch-ink &middot; --hatch-back &middot; --duration',
+  state:'.dragging on the grid reveals the quarter-hour subdivision &middot; [data-split] and the column index come from the layout algorithm, never from an author',
+  notes:'Blocks are positioned from their real start minute and duration, and overlap is resolved by sweep-and-columns: cluster by a running maximum end, then give each block the leftmost column whose last block has finished. Even split to --overlap-max-split 3, then stagger. An earlier draft special-cased the circadian frame as a full-width backdrop and it was wrong twice over, so the special case is gone rather than repaired. The grid draws the hour only at rest, in --rule-faint; the quarter hour appears only during a drag, which is a discrete state change. A drag moves a hairline marker, never the block. A forbidden window is a hatched band and NOT a block, because it is the absence of a block that it exists to explain.'},
+chip:{n:'AreaChip &middot; AreaLegend',
+  tokens:'--area-01 to --area-12 &middot; --hatch-fwd &middot; --hatch-back &middot; --hatch-vert &middot; --hatch-horz &middot; --hatch-cross &middot; --hatch-dot &middot; --hatch-dot-size &middot; --frame-wash &middot; --fs-chrome &middot; --fs-eyebrow &middot; --ink-deep &middot; --text-muted &middot; --rule',
+  state:'static. The chip is identity, and identity is data',
+  notes:'Carrier 2 of 3 for the Area ramp: a filled chip up to 10px in a ledger row\'s gutter, always paired with the Area\'s NAME, which is a stronger encoding than any pattern and is why the chip carries no hatch. border-radius:50% here is allowlist entry 3 of 4. Assignment order deals this user --area-01, 05, 08, 10, 03, 07, 12, so seven pigments spread across the ramp and the four tightest pairs each carry a different hatch, which specimen.html verifies, and the pigments were respaced so the tightest adjacent gap is 19.4 degrees rather than 13.0. The circadian frame is outside the ramp and takes --frame-wash: a routine is not a category competing with Fitness.'},
+dev:{n:'DeviationBar',
+  tokens:'--ink &middot; --ink-deep &middot; --paper-raised &middot; --rule &middot; --rule-strong &middot; --hairline &middot; --fs-chrome &middot; --fs-eyebrow &middot; --text-muted',
+  state:'static. Sign and magnitude are data, and the component reads them the same way every time',
+  notes:'<b>Cobalt only. No Area ink anywhere on this component, including the label column.</b> Area ink encodes identity and cobalt encodes magnitude, and in a chart context the ramp\'s only legal carriers are a wedge fill and a stacked-bar fill, so an Area-colored deviation bar would be a fourth carrier and a chip beside it would put two carriers in one context. The Area name identifies the row. Direction is position plus a + or &minus; sign, never a hue: there is no red-bad, green-good pair in this system, and a signal is sealed to status and severity, which being under budget is not. The zero line is a 1px --ink-deep rule and the scale is symmetric about it, computed from the largest absolute deviation.'},
+wedge:{n:'PieWedge &middot; StackedBar',
+  tokens:'--area-01 to --area-12 &middot; --hatch-fwd &middot; --hatch-back &middot; --hatch-vert &middot; --hatch-horz &middot; --hatch-cross &middot; --hatch-dot &middot; --hatch-dot-size &middot; --paper-raised &middot; --rule-strong &middot; --hairline &middot; --fs-eyebrow &middot; --text-muted',
+  state:'static. A wedge with a hover readout would put a value behind a pointer, which the language forbids',
+  notes:'Carrier 3 of 3 for the ramp, and the only place an Area ink becomes a fill. Every fill pairs its ink with a hatch drawn in a lighter step of its OWN ink, color-mix(in srgb, var(--area-01) var(--hatch-mix), var(--paper-raised)) against each wedge\'s own token, so the texture reads as texture and color is never the only encoding. Six patterns is the ceiling, so a pattern repeats only between distant hues. <b>The circle is wedge geometry, not a border radius:</b> each wedge is a clipped square, so the 50% allowlist stays closed at four elements: the status dot, the radio dot, the Area chip and the avatar. A zero-hour Area gets a legend row and no wedge, because the point of the pie review is to show what the week did not hold.'},
+verdict:{n:'VerdictPanel',
+  tokens:'--amber-wash &middot; --signal-amber &middot; --state-conflict-border &middot; --rule &middot; --rule-strong &middot; --hairline &middot; --ink &middot; --ink-deep &middot; --text-muted &middot; --fs-prose &middot; --lh-prose &middot; --fs-eyebrow &middot; --ls-eyebrow &middot; --strip-h',
+  state:'[data-feasible=false] renders it at all &middot; each row is a button that dispatches a solve, not a mutation',
+  notes:'<b>Fixed height, and the rows scroll inside it.</b> A panel that grew and shrank as pins accumulate would shift the grid under the cursor mid-edit, and the weekly session is exactly a burst of edits with a live readout. Same rule as the 64px summary strip. Amber and a PANEL: never a banner, because the verdict is true for most of the editing session and would nag continuously, and never blocking, because syncr does not block approval of a knowingly broken week. --amber-wash is the one sanctioned signal surface in the system and color.css names this panel as its carrier. <b>Every tradeoff GENERATES A PROPOSAL</b>, never a direct mutation: breaching a floor or dropping a task is a removal, and syncr may add but may never move or remove without permission. The button therefore reads Propose, and Apply would be a lie about what the system may do.'},
+reason:{n:'ReasonRows',
+  tokens:'--fs-eyebrow &middot; --fs-prose &middot; --lh-prose &middot; --rule &middot; --rule-strong &middot; --hairline &middot; --paper &middot; --ink &middot; --ink-deep &middot; --text-muted &middot; --w-detail',
+  state:'one row per clause, keyed by clause kind. <b>Six kinds:</b> blocked, dominant, bound, floor, pinned, instead of',
+  notes:'<b>Labelled rows, never a paragraph.</b> The solver emits a structured record and the frontend renders it through a template catalogue, one template per clause kind with values substituted: deterministic, unit-testable, translatable, and every clause traceable to a figure the solver already computes. A hand-written sentence implied prose generation the product cannot do, and no language model sits in the placement loop. The clause budget is bounded at the top two rejected windows, the dominant term, and on a pinned block the one superseded placement, because the reason has to survive in an append-only store forever. <b>instead of is the sixth kind and the only one that costs storage:</b> it keeps the placement the pin overrode plus the objective delta, which shows the user what their pin cost and is the same pairwise comparison learning-to-rank consumes. The clause-label column is 76px here, not the probe\'s 64px, because instead of does not fit 64. It renders on selection in the detail panel, never on hover and never in a popover: a popover covers the grid it is explaining and dies on the next click.'},
+maturity:{n:'MaturityMeter',
+  tokens:'--ink &middot; --rule &middot; --ink-bright &middot; --signal-verdigris &middot; --ink-deep &middot; --text-muted &middot; --fs-chrome &middot; --fs-eyebrow &middot; --hairline',
+  state:'[data-ready] once the sample count clears the gate. Below it the row is informational, never a warning',
+  notes:'Block characters are correct because the scale is BOUNDED 0 to 100%: a segmented run reads as a fraction of something with a known end. An unbounded magnitude would need a percentage-width fill, since block characters give roughly fourteen steps here. <b>This is not a progress bar:</b> it moves when a confirmed day is added, which is a discrete redraw. Maturity is per parameter because parameters converge at very different rates, and unlocks count confirmed days rather than adherence: a day where everything was skipped and reported counts as much as a perfect day, because the dataset\'s integrity rests on honest confirmation. A row still collecting baseline shows the prior and says so.'},
+ledger:{n:'LedgerRow &middot; OutcomeControls',
+  tokens:'--h-row &middot; --fs-chrome &middot; --rule &middot; --rule-strong &middot; --hairline &middot; --paper-raised &middot; --state-hover &middot; --state-selected-border &middot; --state-selected-color &middot; --signal-verdigris &middot; --signal-oxide &middot; --signal-amber &middot; --ink-bright &middot; --text-muted &middot; --area-NN &middot; --h-control',
+  state:'[data-out=presumed|completed|partial|skipped] &middot; [data-current] &middot; :hover &middot; :focus-visible',
+  notes:'Today owns reality state so the block does not have to: a block already carries nine meanings and has no tenth channel. Time and duration are tabular, duration right-aligned. The status dot is allowlist entry 1 of 4 and is the one place a signal pigment lands on this row, at 3:1. <b>Partial minutes use a 5-minute stepper PRE-FILLED with the planned duration:</b> the common correction is slightly less than planned, and an empty field would make the honest answer more work than the flattering one. Five rather than --snap 15, because a recorded actual is a measurement and nothing about a measurement lands on a grid. partial is the sole source of the duration-estimate signal. An anchor row carries no Area chip, because an anchor belongs to no Area.'},
+kbd:{n:'KeyHint &middot; HelpOverlay &middot; CommandPalette',
+  tokens:'--ink-deep &middot; --shadow-hard &middot; --paper-raised &middot; --ink-wash &middot; --rule &middot; --rule-strong &middot; --hairline &middot; --h-row &middot; --fs-chrome &middot; --fs-eyebrow &middot; --ls-eyebrow &middot; --state-focus-ring &middot; --state-focus-offset &middot; --state-selected-border &middot; --state-selected-color &middot; --state-hover',
+  state:'[data-state=open] &middot; [data-highlighted] on a palette row, the keyboard cursor &middot; [data-current] &middot; [aria-activedescendant]',
+  notes:'<b>One form everywhere: bracketed bare mono text, [ j ].</b> No bordered key cap, no shaded well, no radius. It is the same mark family as the accordion\'s [ + ] and [ &minus; ], so there is one bracketed-glyph form rather than two, and the bracket keys are shown in that form even though [ [ ] is ugly. One attribute, one channel: [data-highlighted] owns the focus channel alone and must not also take the hover wash, or a hovered row and the cursor row become indistinguishable. Its ring sits at a NEGATIVE offset because rows pitch at 28px. The overlay and the palette carry --shadow-hard.'},
+wizard:{n:'WizardSteps',
+  tokens:'--rule &middot; --rule-strong &middot; --hairline &middot; --paper-raised &middot; --ink-wash &middot; --ink &middot; --ink-deep &middot; --verdigris-ink &middot; --text-muted &middot; --fs-chrome &middot; --fs-eyebrow',
+  state:'[data-state=done|current|todo] &middot; steps are reachable out of order, so this is a checklist rather than a gate',
+  notes:'<b>No progress bar, because motion is zero</b> and seven labeled rows say more than seven segments. Numbered ledger rows with a &#9656; caret on the current step and --ink-wash on its row, which is the same current-row form the rest of the product uses. A done step reports what it produced rather than merely that it finished, because done &middot; 3 sources is checkable and done is not. The done label is --verdigris-ink, the text step: a completed step is a resolved status, which is exactly what the pigment is sealed to.'},
+states:{n:'EmptyState &middot; PendingPlaceholder &middot; ErrorState',
+  tokens:'--rule &middot; --rule-faint &middot; --rule-strong &middot; --hairline &middot; --paper-raised &middot; --fs-stat &middot; --lh-tight &middot; --ink-deep &middot; --ink-soft &middot; --text-muted &middot; --signal-oxide &middot; --oxide-ink &middot; --rule-emphasis &middot; --state-conflict-border &middot; --h-row &middot; --duration',
+  state:'[data-kind] on the error selects the fix text. The pending surface has no state: it has a count',
+  notes:'<b>No spinner and no skeleton loader.</b> A pending surface is a hairline placeholder that holds the row height plus a live count, and the count changing is a discrete redraw rather than motion. --radius is 0 and the 50% allowlist has no spinner in it, so the usual spinner cannot be drawn in this language at all. The empty-state headline is MONO: the serif appears only in the wordmark and the seven page titles. The error states what is still true before it states the fix, because the alarming reading of a failed calendar write is that the plan is gone, and syncr owns the plan while the calendar is only a projection.'}
+};
+document.querySelectorAll('[data-spec]').forEach(el => {
+  const s = SPECS[el.dataset.spec];
+  if(!s) return;
+  el.innerHTML = '<dl class="sb">'
+    + '<div><dt>Component</dt><dd class="name">' + s.n + '</dd></div>'
+    + '<div><dt>Tokens</dt><dd><code>' + s.tokens + '</code></dd></div>'
+    + '<div><dt>States</dt><dd>' + s.state + '</dd></div>'
+    + '<div><dt>Notes</dt><dd>' + s.notes + '</dd></div></dl>';
+});
+
+/* ---------- 03, the date picker ----------
+   The month grid is derived from real date arithmetic, so a weekday cannot be wrong. The
+   reference week runs Mon 10 to Sun 16 February 2025: today is the Tuesday the probes draw
+   their now rule on, and the selection is the Friday deadline section 16 is about. */
+(() => {
+  const TODAY = new Date(2025, 1, 11), SEL = new Date(2025, 1, 14);
+  const first = new Date(2025, 1, 1);
+  const start = new Date(first);
+  start.setDate(1 - ((first.getDay() + 6) % 7)); /* Monday-first */
+  let rows = '';
+  for(let w = 0; w < 5; w++){
+    rows += '<tr>';
+    for(let d = 0; d < 7; d++){
+      const day = new Date(start);
+      day.setDate(start.getDate() + w * 7 + d);
+      const out = day.getMonth() !== 1;
+      const same = a => a.getDate() === day.getDate() && a.getMonth() === day.getMonth();
+      rows += `<td${out ? ' class="out"' : ''}${same(SEL) ? ' aria-selected="true"' : ''}`
+        + `${same(TODAY) ? ' data-today' : ''}>${day.getDate()}</td>`;
+    }
+    rows += '</tr>';
+  }
+  document.getElementById('cal').innerHTML = '<div class="cal" role="dialog" aria-label="Deadline">'
+    + '<header><span>&lsaquo;</span><span>February 2025</span><span>&rsaquo;</span></header>'
+    + '<table><thead><tr><th>M</th><th>T</th><th>W</th><th>T</th><th>F</th><th>S</th><th>S</th></tr></thead>'
+    + `<tbody>${rows}</tbody></table></div>`;
+})();
+
+/* ---------- 05, the backlog table ----------
+   The footer count and the estimate total are summed from these rows, so the table cannot
+   disagree with its own footer. */
+(() => {
+  const ROWS = [
+    ['Prep for Kontron Interview','Career',30,'Tue 11 Feb',1,30,'no'],
+    ['F&amp;F Reading Group notes','Study',30,'Thu 13 Feb',3,15,'yes'],
+    ['Topic List Questions','Study',60,'Fri 14 Feb',2,30,'yes'],
+    ['36 South Application','Career',45,'Mon 17 Feb',3,45,'no'],
+    ['Amazon Interview Prep &middot; Behavioral','Career',210,'Wed 19 Feb',1,45,'yes'],
+    ['Leetcode &middot; Graphs','Career',90,'&mdash;',2,25,'yes'],
+    ['CRIISP Work','Research',120,'&mdash;',2,30,'yes'],
+    ['Clean','Admin',30,'&mdash;',4,30,'no']
+  ];
+  const CUR = 'Amazon Interview Prep &middot; Behavioral';
+  const total = ROWS.reduce((s, r) => s + r[2], 0);
+  const hm = m => Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0') + 'm';
+  document.getElementById('backlog').innerHTML =
+    '<thead><tr><th>Task</th><th>Area</th><th class="n">Estimate</th>'
+    + '<th aria-sort="ascending">Deadline &#9662;</th><th class="n">Priority</th>'
+    + '<th class="n">Min chunk</th><th>Splittable</th></tr></thead><tbody>'
+    + ROWS.map(([t,a,e,d,p,c,s]) =>
+        `<tr tabindex="0"${t === CUR ? ' data-current' : ''}><td>${t}</td>`
+        + `<td><span class="chipname" style="font-size:inherit">`
+        + `<span class="chip sm" style="--ai:var(${AREA_TOK[a]})"></span>${a}</span></td>`
+        + `<td class="n">${e} min</td><td>${d}</td><td class="n">${p}</td>`
+        + `<td class="n">${c} min</td><td>${s}</td></tr>`).join('')
+    + '</tbody><tfoot><tr><td colspan="7">Showing ' + ROWS.length + ' of 23 backlog tasks &middot; '
+    + hm(total) + ' estimated &middot; sorted by deadline, ascending &middot; '
+    + ROWS.filter(r => r[3] === '&mdash;').length + ' carry no deadline and are placed by priority'
+    + '</td></tr></tfoot>';
+})();
+
+/* ---------- 08, the sidebar ---------- */
+(() => {
+  const NAV = [['Week','','g w',1],['Today','','g t'],['Backlog','23','g b'],['Areas','','g a'],
+               ['Templates','','g m'],['Learned','','g l'],['Settings','','g s']];
+  const muted = 'color:var(--text-muted);letter-spacing:0;text-transform:none;font-size:9px';
+  document.getElementById('side').innerHTML = '<aside class="side">'
+    + '<div class="brand"><b>syncr</b><span>Life management and scheduling</span></div>'
+    + '<div class="grp">Plan</div>'
+    + NAV.map(([l,c,k,on]) => `<a href="#c08"${on ? ' aria-current="page"' : ''}>${l}`
+        + `<span style="${muted};margin-left:7px">[ ${k} ]</span>`
+        + (c ? `<b class="c">${c}</b>` : '') + '</a>').join('')
+    + '<div class="grp">This week</div>'
+    + '<a href="#c08">Proposals<b class="c">2</b></a>'
+    + '<a href="#c08">Unconfirmed<b class="c">3</b></a>'
+    + '<div class="who"><span class="av">Y</span><span>you &middot; Europe/London'
+    + '<br>no travel override</span></div></aside>';
+})();
+
+/* ============================================================
+   12, THE BLOCK. Tier arithmetic, the state matrix, and two real days.
+   The tier thresholds and the sweep-and-columns algorithm are the probes' own, unchanged.
+   ============================================================ */
+const AXIS_START = 0, AXIS_END = 24 * 60;
+const min = s => { const [h,m] = s.split(':').map(Number); return h*60 + m; };
+const fmt = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+const GLYPH = {frame:'&#9679;', habit:'&#8635;', task:'&#9656;', anchor:'&#9670;',
+               shadow:'&#9671;', transit:'&#8594;'};
+const MARK_PINNED = '&#9635;'; /* not the anchor's diamond: one glyph, one meaning */
+const MARK_SOURCE = '&#187;';  /* not the transit arrow */
+const tierOf = h => h >= px('--block-h-label') ? 'label'
+  : h >= px('--block-h-compact') ? 'compact'
+  : h >= px('--block-h-sliver') ? 'sliver' : 'hair';
+const linesIn = (h, tier) => tier === 'compact' ? 1
+  : Math.max(1, Math.floor((h - 5) / px('--lh-block-px')));
+
+/* One block, positioned statically, so a tier or a state can be read without the grid. */
+function soloBlock(b, h, o = {}){
+  const tier = o.tier || tierOf(h);
+  const tok = b.area ? AREA_TOK[b.area] : null;
+  const cls = ['blk', b.origin === 'frame' ? 'frame' : '', b.origin === 'anchor' ? 'anchor' : '',
+               o.h ? 'h' : '', o.f ? 'f' : ''].filter(Boolean).join(' ');
+  const attrs = [tok ? 'data-area' : '', `data-tier="${tier}"`, o.sel ? 'data-selected' : '',
+    o.conflict ? 'data-conflict' : '', o.pin ? 'data-pinned' : '', o.split ? 'data-split' : '',
+    o.proposal ? 'data-proposal' : '', o.source ? 'data-source' : ''].filter(Boolean).join(' ');
+  const g = (tier === 'label' || tier === 'compact')
+    ? (o.pin ? `<span class="g pin">${MARK_PINNED}</span>` : '')
+      + (o.source ? `<span class="g">${MARK_SOURCE}</span>` : '')
+    : `<span class="g">${GLYPH[b.origin]}</span>`;
+  const style = `height:${h}px;--lines:${linesIn(h, tier)}`
+    + (tok ? `;--ai:var(${tok})` : '');
+  return `<div class="solo" style="height:${h + 4}px"><div class="${cls}" ${attrs} `
+    + `style="${style}" tabindex="0">${g}<span class="t">${b.title}</span></div></div>`;
+}
+
+/* the tier ladder, at each tier's own floor, plus one block with room to wrap */
+(() => {
+  const GYM = {title:'Gym &middot; Shoulder &amp; Arms', origin:'habit', area:'Fitness'};
+  const LONG = {title:'Amazon Interview Prep &middot; Behavioral', origin:'task', area:'Career'};
+  const ppm = px('--grid-h') / (px('--visible-hours') * 60);
+  const panels = [
+    [px('--block-h-label'), 'label', GYM, '2 rule + 2 pad + 13.8 line + 1 rule = 18.8'],
+    [px('--block-h-compact'), 'compact', GYM, '2 rule + 0 pad + 9.5 line + 1 rule = 12.5'],
+    [px('--block-h-sliver'), 'sliver', GYM, 'no title. the origin glyph and the Area rule'],
+    [4, 'hair', GYM, 'bounded hairline. Area rule only'],
+    [60 * ppm, 'label, wrapping', LONG, `60 min at ${px('--visible-hours')}h`]
+  ];
+  document.getElementById('tiers').innerHTML = panels.map(([h, name, b, why]) => {
+    const tier = tierOf(h);
+    return `<div style="width:196px"><div class="lab" style="margin-bottom:6px">${name} &middot; `
+      + `<b style="color:var(--ink)">${h.toFixed(1)}px</b> &middot; ${linesIn(h, tier)} line`
+      + `${linesIn(h, tier) === 1 ? '' : 's'}<br>${why}</div>`
+      + soloBlock(b, h, {tier}) + '</div>';
+  }).join('');
+})();
+
+/* the state matrix: one 30 minute block at the 12 hour default, which is the size the system
+   must work at. Read down the list looking for any two rows you cannot tell apart. */
+(() => {
+  const B = {title:'36 South Application', origin:'task', area:'Career'};
+  const H = 30 * (px('--grid-h') / (px('--visible-hours') * 60));
+  const ROWS = [
+    [{}, 'rest', 'fill --paper-raised &middot; Area top rule'],
+    [{h:1}, 'hover', 'fill &rarr; --ink-wash'],
+    [{f:1}, 'focus-visible', '2px --ink-bright at 2px offset'],
+    [{sel:1}, 'selected', '3px --ink-deep left rule'],
+    [{conflict:1}, 'conflict', '3px --signal-oxide left rule'],
+    [{pin:1}, 'pinned', MARK_PINNED + ' in the glyph slot'],
+    [{proposal:1}, 'proposal target', 'no fill at all &middot; dashed --ink-deep'],
+    [{source:1}, 'proposal source', 'keeps its fill &middot; takes ' + MARK_SOURCE],
+    [{split:1}, 'split', 'left rule at --rule &middot; produced by the layout algorithm'],
+    [{f:1,sel:1,conflict:1}, 'focus + selected + conflict', 'the deliberate collision: conflict wins the left rule'],
+    [{h:1,proposal:1}, 'hover + proposal', 'a proposal has no fill, so hover has nothing to darken'],
+    [{sel:1,pin:1,split:1}, 'selected + pinned + split', 'three channels, three carriers, no overwrite']
+  ];
+  document.getElementById('isostates').innerHTML =
+    '<div class="iso"><div class="n" style="color:var(--ink-deep)">State</div>'
+    + '<div class="s2" style="background:var(--paper-raised);color:var(--text-muted);'
+    + 'font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase">'
+    + `one 30 minute block at the ${px('--visible-hours')}h default &middot; ${H.toFixed(1)}px</div></div>`
+    + ROWS.map(([o, name, why], i) =>
+        `<div class="iso"><div class="n"><b>${String(i+1).padStart(2,'0')} &middot; ${name}</b>${why}</div>`
+        + `<div class="s2">${soloBlock(B, H, o)}</div></div>`).join('');
+})();
+
+/* two real days. Overlap is resolved by the sweep-and-columns algorithm from
+   week-density.html: cluster by a running maximum end, then give each block the leftmost
+   column whose last block has already finished. Only the row parser differs, gaining a
+   fifth field for the state flags this sheet needs to demonstrate. */
+function layout(rows){
+  const bs = rows.map(r => {
+    const [t, title, origin, area, flags] = r.split('|');
+    const [s, e] = t.split('-');
+    return {s:min(s), e:min(e), title, origin, area:area || null,
+            flags:(flags || '').split(',').filter(Boolean)};
+  }).sort((a,b) => a.s - b.s || b.e - a.e);
+
+  const clusters = [];
+  let cur = [], curEnd = -1;
+  for(const b of bs){
+    if(cur.length && b.s < curEnd){ cur.push(b); curEnd = Math.max(curEnd, b.e); }
+    else { if(cur.length) clusters.push(cur); cur = [b]; curEnd = b.e; }
+  }
+  if(cur.length) clusters.push(cur);
+
+  const maxSplit = parseInt(raw('--overlap-max-split'));
+  for(const c of clusters){
+    const colEnds = [];
+    for(const b of c){
+      let col = colEnds.findIndex(end => end <= b.s);
+      if(col === -1){ col = colEnds.length; colEnds.push(b.e); }
+      else colEnds[col] = b.e;
+      b.i = col;
+    }
+    c.forEach(b => { b.n = colEnds.length; b.stagger = colEnds.length > maxSplit; });
+  }
+  return bs;
+}
+
+const DAYS = [
+  {label:'Tue 11', now:'14:20', forbid:[['16:45','18:00','no deep work &middot; recovery']], rows:[
+    '00:00-05:15|Sleep|frame|', '05:15-05:30|Wake Up|frame|',
+    '05:30-06:30|Gym &middot; Shoulder &amp; Arms|habit|Fitness|pin',
+    '06:30-06:45|Shower|frame|', '07:00-09:30|Leetcode &middot; Graphs|habit|Career',
+    '10:00-10:30|Prep for Kontron Interview|shadow|Career',
+    '10:30-11:00|Leetcode &middot; Graphs|habit|Career', '11:30-12:00|Lunch|frame|',
+    '12:00-15:00|Leetcode &middot; Graphs|habit|Career|sel',
+    '15:00-15:30|Leave for Uni|shadow|Transit',
+    '16:00-16:45|Kontron Placement Interview|anchor||conflict',
+    '18:00-18:30|Dinner|frame|', '18:30-19:00|F&amp;F Reading Group|task|Study',
+    '19:00-19:30|36 South Application|task|Career',
+    '19:30-20:30|Topic List Questions|task|Career', '22:00-24:00|Sleep|frame|'
+  ]},
+  {label:'Fri 14', unconf:1, rows:[
+    '00:00-07:30|Sleep|frame|', '07:30-07:45|Wake Up|frame|',
+    '07:30-08:00|Leave for Uni|shadow|Transit',
+    '08:30-11:00|Amazon Interview Prep &middot; Behavioral|task|Career',
+    '11:00-11:30|Leave for Uni|shadow|Transit', '11:30-12:00|Lunch|frame|',
+    '11:30-12:00|Print Amazon Interview Notes|task|Career',
+    '11:30-12:00|Review F&amp;F Reading|task|Study',
+    '13:00-13:30|Go Home|shadow|Transit', '13:30-14:00|Lunch|frame|',
+    '14:00-15:00|Mock Interview|anchor|',
+    '15:00-16:30|Amazon Interview Prep &middot; Behavioral|task|Career',
+    '16:30-18:30|Leetcode|habit|Career|pin', '18:30-19:00|Dinner|frame|',
+    '19:00-22:00|Leetcode|habit|Career', '23:00-24:00|Sleep|frame|'
+  ]}
+];
+
+function gridBlock(b, ppm){
+  const top = (b.s - AXIS_START) * ppm, h = (b.e - b.s) * ppm;
+  const tier = tierOf(h);
+  const tok = b.area ? AREA_TOK[b.area] : null;
+  const indent = px('--overlap-indent');
+  let pos;
+  if(b.n === 1) pos = 'left:var(--grid-inset);right:var(--grid-inset)';
+  else if(!b.stagger) pos = `left:${(b.i*100/b.n).toFixed(3)}%;right:${((b.n-1-b.i)*100/b.n).toFixed(3)}%`;
+  else pos = `left:${b.i*indent}px;right:var(--grid-inset);z-index:${b.i+1}`;
+  const style = `${pos};top:${top}px;height:${h}px;--lines:${linesIn(h, tier)}`
+    + (tok ? `;--ai:var(${tok})` : '');
+  const cls = ['blk', b.origin === 'frame' ? 'frame' : '', b.origin === 'anchor' ? 'anchor' : '']
+    .filter(Boolean).join(' ');
+  const pinned = b.flags.includes('pin');
+  const g = (tier === 'label' || tier === 'compact')
+    ? (pinned ? `<span class="g pin">${MARK_PINNED}</span>` : '')
+      + (b.stagger && b.i === b.n - 1 ? `<span class="g">&#10697;&nbsp;${b.n}</span>` : '')
+    : `<span class="g">${GLYPH[b.origin]}</span>`;
+  const attrs = [tok ? 'data-area' : '', `data-tier="${tier}"`,
+    b.i > 0 && !b.stagger ? 'data-split' : '',
+    b.flags.includes('sel') ? 'data-selected' : '',
+    b.flags.includes('conflict') ? 'data-conflict' : '',
+    pinned ? 'data-pinned' : ''].filter(Boolean).join(' ');
+  const plain = b.title.replace(/&middot;/g, '-').replace(/&amp;/g, '&');
+  return `<div class="${cls}" ${attrs} style="${style}" tabindex="0" `
+    + `title="${plain} ${fmt(b.s)}-${fmt(b.e)}">${g}<span class="t">${b.title}</span></div>`;
+}
+
+(() => {
+  const vh = px('--visible-hours');
+  const ppm = px('--grid-h') / (vh * 60);
+  const canvasH = (AXIS_END - AXIS_START) * ppm;
+  let axis = '';
+  for(let m = AXIS_START; m <= AXIS_END; m += 60)
+    axis += `<span class="hh" style="top:${(m-AXIS_START)*ppm}px">${fmt(m)}</span>`;
+  let lines = '';
+  for(let m = AXIS_START; m <= AXIS_END; m += parseInt(raw('--grid-minor')))
+    lines += `<div class="${m % parseInt(raw('--grid-major')) === 0 ? 'maj' : 'min'}" `
+           + `style="top:${(m-AXIS_START)*ppm}px"></div>`;
+  const cols = DAYS.map(d => {
+    const bs = layout(d.rows);
+    const forbid = (d.forbid || []).map(([s,e,t]) =>
+      `<div class="forbid" style="top:${(min(s)-AXIS_START)*ppm}px;`
+      + `height:${(min(e)-min(s))*ppm}px"><span>${t}</span></div>`).join('');
+    const now = d.now
+      ? `<div class="now" style="top:${(min(d.now)-AXIS_START)*ppm}px"></div>` : '';
+    return `<div class="col"><div class="colhead">${d.label}<i>${bs.length}</i></div>`
+      + `<div class="canvas" style="height:${canvasH}px">${lines}${forbid}${now}`
+      + bs.map(b => gridBlock(b, ppm)).join('') + '</div></div>';
+  }).join('');
+  const w = 2 * px('--col-min') + px('--axis-w') + 2;
+  document.getElementById('daycols').innerHTML =
+    `<div class="gridwrap" style="width:${w}px;height:352px">`
+    + `<div class="axis"><div class="hd"></div>`
+    + `<div style="position:relative;height:${canvasH}px">${axis}</div></div>`
+    + `<div class="cols">${cols}</div></div>`;
+  document.querySelector('#daycols .gridwrap').scrollTop = 5 * 60 * ppm;
+})();
+
+/* ---------- 13, the Area legend ---------- */
+document.getElementById('legend').innerHTML = AREAS.map(a =>
+  `<div style="${fillStyle(a)}"><span class="sw"></span>`
+  + `<span class="chip" style="--ai:var(${a.tok})"></span>`
+  + `<span><b>${a.name}</b><span style="display:block;color:var(--text-muted);font-size:9.5px">`
+  + `<code>${a.tok}</code> &middot; dealt ${ord(a.order)} &middot; hatch ${a.hatch}</span></span>`
+  + `<span class="m">${h1(a.actual)}</span></div>`).join('');
+
+/* ---------- 14, the deviation bars ----------
+   Cobalt only. The scale is symmetric about zero and computed from the largest absolute
+   deviation, so no bar is clipped and the two directions stay comparable. */
+(() => {
+  const devs = AREAS.map(a => ({...a, d:a.actual - a.target}));
+  const max = Math.max(...devs.map(a => Math.abs(a.d)));
+  const sign = d => (d > 0 ? '+' : d < 0 ? '\u2212' : '') + Math.abs(d).toFixed(1) + 'h';
+  document.getElementById('dev').innerHTML =
+    '<div class="hd"><span>Area</span><span style="text-align:center">under &middot; zero &middot; over</span>'
+    + '<span style="text-align:right">actual &middot; target</span></div>'
+    + devs.map(a => {
+        const w = Math.abs(a.d) / max * 50;
+        const bar = a.d === 0 ? ''
+          : a.d < 0 ? `<div class="b" style="right:50%;width:${w.toFixed(2)}%"></div>`
+                    : `<div class="b" style="left:50%;width:${w.toFixed(2)}%"></div>`;
+        return `<div><span class="nm">${a.name}</span>`
+          + `<span class="tr">${bar}<div class="zero"></div></span>`
+          + `<span class="fig">${sign(a.d)} <span style="color:var(--text-muted);font-size:9px">`
+          + `${h1(a.actual)}&thinsp;/&thinsp;${h1(a.target)}</span></span></div>`;
+      }).join('')
+    + `<div class="ax"><span>&minus;${max.toFixed(1)}h under target</span>`
+    + `<span>+${max.toFixed(1)}h over target</span></div>`;
+})();
+
+/* ---------- 15, the pie and the stacked bars ----------
+   The wedge is a clipped square, so the circle is geometry rather than a border radius and
+   the 50% allowlist stays closed. Angles start at 12 o'clock and run clockwise. */
+(() => {
+  const scheduled = AREAS.filter(a => a.actual > 0);
+  const total = AREAS.reduce((s,a) => s + a.actual, 0);
+  const arc = (a0, a1) => {
+    const pts = ['50% 50%'];
+    const steps = Math.max(2, Math.ceil((a1 - a0) / 2));
+    for(let i = 0; i <= steps; i++){
+      const t = (a0 + (a1 - a0) * i / steps) * Math.PI / 180;
+      pts.push((50 + Math.sin(t) * 50).toFixed(2) + '% ' + (50 - Math.cos(t) * 50).toFixed(2) + '%');
+    }
+    return pts.join(',');
+  };
+  let at = 0;
+  document.getElementById('pie').innerHTML = scheduled.map(a => {
+    const sweep = a.actual / total * 360;
+    const html = `<div class="w" style="${fillStyle(a)};--pts:${arc(at, at + sweep)}" `
+      + `title="${a.name} ${h1(a.actual)}"></div>`;
+    at += sweep;
+    return html;
+  }).join('');
+
+  document.getElementById('pieledger').innerHTML =
+    '<table class="led"><thead><tr><th>Area</th><th class="r">Hours</th><th class="r">Share</th>'
+    + '<th>Hatch</th><th>Ink</th></tr></thead><tbody>'
+    + AREAS.map(a => `<tr><td>${a.name}</td><td class="r">${h1(a.actual)}</td>`
+        + `<td class="r">${(a.actual / total * 100).toFixed(1)}%</td>`
+        + `<td>${a.actual > 0 ? a.hatch : '<span style="color:var(--text-muted)">no wedge</span>'}</td>`
+        + `<td><code>${a.tok}</code></td></tr>`).join('')
+    + `<tr><td colspan="5" style="color:var(--ink-deep)"><b>${h1(total)} scheduled into `
+    + `${scheduled.length} Areas of ${AREAS.length}. Projects holds a legend row and no wedge: `
+    + 'a zero-hour Area cannot be drawn, and dropping its row would hide what the week did '
+    + 'not hold.</b></td></tr></tbody></table>';
+
+  const bars = [['This week', 'actual'], ['Last week', 'last']];
+  document.getElementById('sbars').innerHTML = bars.map(([label, key]) => {
+    const sum = AREAS.reduce((s,a) => s + a[key], 0);
+    return `<div style="margin-bottom:9px"><div class="sbar">`
+      + AREAS.filter(a => a[key] > 0).map(a =>
+          `<span style="${fillStyle(a)};width:${(a[key]/sum*100).toFixed(2)}%" `
+          + `title="${a.name} ${h1(a[key])}"></span>`).join('')
+      + `</div><div class="sbarlab"><span>${label}</span><span>${h1(sum)} &middot; `
+      + `Career ${(AREAS[0][key]/sum*100).toFixed(0)}%</span></div></div>`;
+  }).join('');
+})();
+
+/* ---------- 18, the maturity meters ----------
+   Bounded 0 to 100%, so block characters are the correct form. Fourteen cells is what fits
+   the column at 13px, and every figure below is the PRD's own gate. */
+(() => {
+  const CELLS = 14;
+  const MAT = [
+    {p:'durationMultiplier', q:'Career', v:'1.37&times;', n:14, need:15, c:'shrunk toward prior'},
+    {p:'durationMultiplier', q:'Fitness', v:'1.02&times;', n:16, need:15, c:'fitted'},
+    {p:'churnTolerance', q:'user', v:'0.42', n:12, need:20, c:'shrunk toward prior'},
+    {p:'todFitness', q:'Fitness', v:'prior', n:9, need:30, c:'collecting baseline'},
+    {p:'skipProbability', q:'evening', v:'0.18', n:22, need:30, c:'shrunk toward prior'},
+    {p:'objectiveWeights', q:'30 to 50 floats', v:'prior', n:31, need:100, c:'collecting baseline'}
+  ];
+  document.getElementById('mat').innerHTML = MAT.map(m => {
+    const pct = Math.min(100, m.n / m.need * 100);
+    const on = Math.round(pct / 100 * CELLS);
+    const ready = m.n >= m.need;
+    const dot = ready ? '--signal-verdigris' : '--ink-bright';
+    return `<div${ready ? ' data-ready' : ''}>`
+      + `<span class="p">${m.p}<i>${m.q}</i></span>`
+      + `<span class="v">${m.v}</span>`
+      + `<span class="bk">${'&#9608;'.repeat(on)}<i>${'&#9608;'.repeat(CELLS - on)}</i></span>`
+      + `<span class="s"><span class="dot" style="--dc:var(${dot})"></span>`
+      + `<span>${m.n} of ${m.need} samples &middot; ${pct.toFixed(0)}% &middot; ${m.c}</span></span></div>`;
+  }).join('');
+})();
+
+/* ---------- 19, Today's ledger rows ---------- */
+(() => {
+  const DOT = {completed:'--signal-verdigris', skipped:'--signal-oxide',
+               partial:'--signal-amber', presumed:'--ink-bright'};
+  const ROWS = [
+    {t:'05:30', n:'Gym &middot; Shoulder &amp; Arms', d:60, a:'Fitness', out:'completed'},
+    {t:'07:00', n:'Leetcode &middot; Graphs', d:150, a:'Career', out:'partial', actual:105, cur:1},
+    {t:'10:00', n:'Prep for Kontron Interview', d:30, a:'Career', out:'presumed'},
+    {t:'15:00', n:'Leave for Uni', d:30, a:'Transit', out:'completed'},
+    {t:'16:00', n:'Kontron Placement Interview', d:45, a:null, out:'presumed', anchor:1},
+    {t:'19:30', n:'Topic List Questions', d:60, a:'Study', out:'skipped'}
+  ];
+  const hm = m => (m >= 60 ? Math.floor(m/60) + 'h' + (m % 60 ? String(m%60).padStart(2,'0') : '') : m + 'm');
+  const controls = r => {
+    if(r.out === 'partial')
+      return '<span class="spin"><button type="button" aria-label="5 minutes less">&minus;</button>'
+        + `<input type="number" value="${r.actual}" step="5" style="min-width:52px">`
+        + '<button type="button" aria-label="5 minutes more">+</button></span>'
+        + '<span style="color:var(--text-muted);font-size:9px">min</span>';
+    if(r.out === 'presumed')
+      return '<button class="btn ter" type="button">[ c ] done</button>'
+        + '<button class="btn ter" type="button">[ x ] skip</button>';
+    return `<span style="color:var(--text-muted);font-size:var(--fs-eyebrow);`
+      + `letter-spacing:.06em;text-transform:uppercase">${r.out}</span>`;
+  };
+  const planned = ROWS.reduce((s,r) => s + r.d, 0);
+  const recorded = ROWS.reduce((s,r) =>
+    s + (r.out === 'completed' ? r.d : r.out === 'partial' ? r.actual : 0), 0);
+  document.getElementById('today').innerHTML = ROWS.map(r =>
+    `<div class="lrow" data-out="${r.out}"${r.cur ? ' data-current' : ''} tabindex="0">`
+    + `<span class="t">${r.t}</span>`
+    + `<span class="ti"><span class="dot${r.out === 'presumed' ? ' ring' : ''}" `
+    + `style="--dc:var(${DOT[r.out]})"></span>`
+    + (r.a ? `<span class="chip" style="--ai:var(${AREA_TOK[r.a]})"></span>` : '')
+    + `<span class="nm">${r.n}</span>`
+    + (r.a ? `<span style="color:var(--text-muted);font-size:var(--fs-eyebrow)">${r.a}</span>`
+           : '<span style="color:var(--text-muted);font-size:var(--fs-eyebrow)">anchor</span>')
+    + '</span>'
+    + `<span class="du">${r.d}m</span><span class="oc">${controls(r)}</span></div>`).join('')
+    + `<footer><span>Tue 11 &middot; ${ROWS.length} blocks &middot; ${hm(planned)} planned</span>`
+    + `<span>${hm(recorded)} recorded &middot; day not confirmed &middot; [ c ] confirms all</span></footer>`;
+})();
+
+/* ---------- 20, the help overlay keymap ---------- */
+(() => {
+  const GROUPS = [
+    ['Moving', [['[ j ]  [ k ]','previous and next block'],['[ h ]  [ l ]','previous and next day'],
+      ['[ [ ]  [ ] ]','previous and next week'],['[ T ]','jump to today'],['[ z ]','cycle zoom'],
+      ['[ enter ]','open the detail panel']]],
+    ['Editing', [['[ p ]','pin the selected block'],['[ shift + &uarr; ]','move up one snap, and pin'],
+      ['[ shift + &darr; ]','move down one snap, and pin'],['[ n ]','new task'],
+      ['[ shift + A ]','approve all']]],
+    ['Recording', [['[ c ]','confirm the day'],['[ x ]','mark skipped'],
+      ['[ shift + X ]','mark partial, with minutes']]],
+    ['Finding', [['[ / ]','search'],['[ ? ]','this overlay'],['[ cmd + K ]','command palette']]],
+    ['Screens', [['[ g w ]','Week'],['[ g t ]','Today'],['[ g b ]','Backlog'],['[ g a ]','Areas'],
+      ['[ g m ]','Templates'],['[ g l ]','Learned'],['[ g s ]','Settings']]]
+  ];
+  document.getElementById('keymap').innerHTML = GROUPS.map(([name, rows]) =>
+    `<div><h4>${name}</h4><div class="keys">`
+    + rows.map(([k, d]) => `<div><span class="k">${k}</span><span>${d}</span></div>`).join('')
+    + '</div></div>').join('');
+})();
+</script>
+</body>
+</html>

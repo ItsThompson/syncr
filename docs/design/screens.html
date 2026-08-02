@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>syncr &middot; assembled screens</title>
+
+<!-- Tokens are LINKED, not copied, so this sheet cannot drift from frontend/src/tokens.
+     index.css @imports primitives, color, type and layout in layer order. -->
+<link rel="stylesheet" href="../../frontend/src/tokens/index.css">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================================
+   syncr: all seven routes, their modes, first run and the overlays, assembled.
+   Every value resolves to a token from frontend/src/tokens, or is a layer-2
+   component token defined here from layer-1 values.
+
+   MOTION IS ZERO, WITHOUT EXCEPTION. There is no transition, animation, keyframe
+   or transform in this file. Every state change is a discrete redraw.
+
+   The grid engine, the block CSS and the columns algorithm are ported from
+   docs/design/scratch/week-density.html and must not diverge from it.
+   ============================================================================ */
+:root{
+  /* Layer 2, this document only. Each references layer 1. */
+  --docbar: 33px;
+  --band-h: 72px;   /* the page band that carries a serif title */
+  --rbar-h: 9px;    /* a ranked or deviation bar: a rectangle, not a chart */
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--paper);color:var(--text);
+  font-family:var(--font-mono);font-size:var(--fs-chrome);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;font-weight:400}
+a{color:var(--ink-bright);text-decoration:none}
+button{font:inherit;border-radius:var(--radius);cursor:pointer}
+:focus-visible{outline:var(--state-focus-ring);outline-offset:var(--state-focus-offset)}
+/* The dialog header is the one ink-filled surface in the product, so it is the one place
+   the inverse ring applies. The ring is chosen by the surface it LANDS on, not by the
+   element's own fill, and it is scoped to the container so anything focusable added here
+   later inherits the correct ring. The sidebar is paper and needs no such scope. */
+.dlg>header :focus-visible{outline:var(--state-focus-ring-inverse);
+  outline-offset:var(--state-focus-offset)}
+
+/* ---------- micro-typography, shared ---------- */
+.eyebrow{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--text-muted)}
+.eyebrow.on{color:var(--ink-deep)}
+.lab{font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-muted)}
+.n{font-variant-numeric:tabular-nums}
+.mut{color:var(--text-muted)}
+.key{color:var(--ink-deep);white-space:nowrap;letter-spacing:.04em}
+code{background:var(--ink-wash);padding:0 3px;font-size:.92em}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ink-bright);vertical-align:1px}
+.dot.v{background:var(--signal-verdigris)}
+.dot.a{background:var(--signal-amber)}
+.dot.o{background:var(--signal-oxide)}
+.dot.hollow{background:transparent;border:var(--hairline) solid var(--ink-bright)}
+
+/* ---------- document frame: the view switcher, NOT app chrome ---------- */
+.doc{position:sticky;top:0;z-index:60;display:flex;align-items:stretch;height:var(--docbar);
+  background:var(--paper);border-bottom:var(--hairline) solid var(--rule-strong);overflow-x:auto}
+.doc>.id{display:flex;align-items:center;padding:0 12px;background:var(--ink-bright);
+  color:var(--on-ink);font-size:var(--fs-eyebrow);letter-spacing:.16em;
+  text-transform:uppercase;white-space:nowrap}
+.doc button{display:flex;align-items:center;gap:6px;padding:0 11px;background:transparent;
+  border:0;border-right:var(--hairline) solid var(--rule);font-size:var(--fs-label);
+  letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--ink);white-space:nowrap}
+.doc button:hover{background:var(--state-hover)}
+.doc button[aria-current]{background:var(--ink);color:var(--on-ink)}
+.doc button i{font-style:normal;color:var(--text-muted)}
+.doc button[aria-current] i{color:var(--rule)}
+.doc>.meta{display:flex;align-items:center;gap:14px;padding:0 13px;margin-left:auto;white-space:nowrap}
+
+/* ---------- app shell ---------- */
+.app{display:grid;grid-template-columns:var(--w-sidebar) minmax(0,1fr);
+  height:calc(100vh - var(--docbar));overflow:hidden}
+.main{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.view{display:none;flex:1;min-height:0;flex-direction:column}
+.view.on{display:flex}
+.scroll{flex:1;min-height:0;overflow-y:auto}
+.pad{padding:13px 15px 20px}
+.gap{display:flex;flex-direction:column;gap:13px}
+
+/* ---------- the sidebar: PAPER, not ink ----------
+   The inherited language fills its sidebar with --ink-deep. Rendered on a screen whose
+   whole point is a calm grid it dominated, and it spent the loudest treatment in the
+   system on the most permanent surface. So the sidebar is paper, and the current item
+   takes --ink-wash plus a 3px --ink-deep left rule: the same channel a selected block
+   uses. One idea, one form. */
+.side{background:var(--paper-raised);border-right:var(--hairline) solid var(--rule-strong);
+  display:flex;flex-direction:column;overflow:hidden}
+.side .brand{padding:13px 13px 11px;border-bottom:var(--hairline) solid var(--rule)}
+.side .brand b{display:block;font-family:var(--font-serif);font-size:23px;line-height:1.05;
+  font-weight:400;letter-spacing:var(--ls-wordmark);color:var(--ink-deep)}
+.side .brand span{display:block;margin-top:4px;font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--text-muted)}
+.side .grp{padding:11px 13px 4px;font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted)}
+.side nav a{display:flex;align-items:center;gap:8px;height:var(--h-control);padding:0 13px;
+  color:var(--ink);font-size:10.5px;letter-spacing:var(--ls-nav);text-transform:uppercase;
+  border-left:var(--state-selected-border) solid transparent}
+.side nav a:hover{background:var(--state-hover)}
+.side nav a[aria-current]{background:var(--state-hover);color:var(--ink-deep);
+  border-left-color:var(--state-selected-color)}
+.side nav a .c{margin-left:auto;color:var(--text-muted);letter-spacing:.04em}
+.side .foot{margin-top:auto;border-top:var(--hairline) solid var(--rule);padding:9px 13px 11px;
+  font-size:var(--fs-eyebrow);line-height:1.7;color:var(--text-muted)}
+.side .foot b{display:block;color:var(--ink-deep);font-weight:400;letter-spacing:.04em}
+svg.ic{width:var(--icon-sm);height:var(--icon-sm);flex:0 0 auto;stroke:currentColor;fill:none;
+  stroke-width:var(--icon-stroke);stroke-linecap:var(--icon-cap);stroke-linejoin:var(--icon-join)}
+
+/* ---------- the page band: the only place a serif title appears ---------- */
+.band{border-bottom:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  padding:11px 15px;min-height:var(--band-h);display:flex;align-items:flex-end;
+  gap:16px;flex-wrap:wrap}
+.band h1{font-family:var(--font-serif);font-size:var(--fs-title);line-height:var(--lh-tight);
+  letter-spacing:.01em;color:var(--ink-deep)}
+.band .sub{font-size:var(--fs-eyebrow);line-height:1.6;color:var(--text-muted)}
+.band .right{margin-left:auto;display:flex;gap:8px;align-items:flex-end}
+/* A MODE GETS NO SERIF. The weekly session and the pie review are modes of a screen, not
+   destinations, so the serif stays sealed to the wordmark and the seven page titles. */
+.modehead{border-bottom:var(--hairline) solid var(--rule-strong);background:var(--ink-wash);
+  padding:8px 15px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.modehead b{font-size:var(--fs-data);color:var(--ink-deep);font-weight:400}
+
+/* ---------- a banner: severity volume 3. Only a conflict earns one ---------- */
+.banner{display:flex;align-items:center;gap:11px;padding:7px 15px;
+  border-bottom:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  border-left:var(--state-conflict-border) solid var(--signal-oxide)}
+.banner b{color:var(--oxide-ink);font-weight:400;font-size:10.5px}
+.banner p{margin:0;font-size:var(--fs-eyebrow);color:var(--ink)}
+.banner .acts{margin-left:auto;display:flex;gap:7px}
+
+/* ---------- controls ---------- */
+.btn{font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;
+  height:var(--h-control);padding:0 13px;background:var(--ink);color:var(--on-ink);
+  border:var(--hairline) solid var(--ink)}
+.btn.sec{background:var(--paper-raised);color:var(--ink-deep);border-color:var(--rule-control)}
+.btn.ter{background:transparent;border-color:transparent;color:var(--ink);height:auto;
+  padding:0 2px;border-bottom:var(--hairline) dotted var(--rule-control)}
+.btn:disabled{background:transparent;color:var(--text-muted);border-style:dashed;
+  border-color:var(--text-muted);cursor:not-allowed}
+.btn.sm{height:var(--h-control-sm);padding:0 9px}
+input[type=text],input[type=number],input[type=time],select,textarea{font:inherit;
+  font-size:var(--fs-chrome);background:var(--paper-raised);color:var(--ink);
+  border:var(--hairline) solid var(--rule-control);border-radius:var(--radius);
+  padding:0 7px;height:var(--h-control);font-variant-numeric:tabular-nums}
+textarea{padding:5px 7px;height:auto;line-height:var(--lh-chrome);resize:vertical;width:100%}
+.selw{position:relative;display:inline-block}
+.selw::after{content:'\25BE';position:absolute;right:7px;top:0;line-height:var(--h-control);
+  pointer-events:none;color:var(--text-muted)}
+select{appearance:none;-webkit-appearance:none;padding-right:22px}
+.seg{display:flex;border:var(--hairline) solid var(--rule-control)}
+.seg button{background:var(--paper-raised);color:var(--ink);border:0;
+  border-right:var(--hairline) solid var(--rule);height:var(--h-control);padding:0 10px;
+  font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--on-ink)}
+.stepper{display:inline-flex;align-items:stretch}
+.stepper input{width:62px;text-align:right;border-right:0}
+.stepper button{width:var(--h-control);background:var(--paper-raised);color:var(--ink-deep);
+  border:var(--hairline) solid var(--rule-control);border-left:0}
+
+/* ---------- panel and table ---------- */
+.panel{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised)}
+.panel>header{padding:4px 9px;border-bottom:var(--hairline) solid var(--rule);
+  background:var(--ink-wash);font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--ink-deep);display:flex;gap:9px;align-items:baseline}
+.panel>header .r{margin-left:auto;color:var(--text-muted);letter-spacing:.06em;text-transform:none}
+.panel>.in{padding:11px}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.cols21{display:grid;grid-template-columns:2fr 1fr;gap:13px}
+table{border-collapse:collapse;width:100%;font-size:var(--fs-chrome)}
+th{text-align:left;font-weight:400;font-size:9px;letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted);padding:0 9px;height:24px;
+  border-bottom:var(--hairline) solid var(--rule-strong);white-space:nowrap}
+td{padding:0 9px;height:var(--h-row);border-bottom:var(--hairline) solid var(--rule);
+  color:var(--ink);white-space:nowrap}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.idx{color:var(--text-muted);width:26px}
+tbody tr:hover td{background:var(--state-hover)}
+tr[data-current] td{background:var(--state-hover)}
+tr[data-current] td:first-child{box-shadow:inset var(--state-selected-border) 0 0 0 var(--state-selected-color)}
+table.data td{font-size:var(--fs-data)}
+table.dense td{height:var(--h-row-dense)}
+
+/* ---------- Area chip: the ledger-surface carrier, always beside the name ---------- */
+.chip{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:0;
+  background:var(--ai)}
+.areaname{display:inline-flex;align-items:center;gap:6px}
+
+/* Deviation bars are COBALT ONLY, and that includes the label column. Actual against target
+   per Area, signed off a zero rule. Area ink encodes identity; cobalt encodes magnitude and
+   direction. A chart row is a chart context end to end: putting a chip beside a cobalt bar
+   would teach the reader that the bar might be Area-colored, which muddies the one rule
+   this component exists to demonstrate. The Area name does the identifying, which is what a
+   name is for. */
+.dev{display:grid;grid-template-columns:96px 1fr 62px;gap:9px;align-items:center;
+  padding:4px 0;border-bottom:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow)}
+.dev:last-child{border-bottom:0}
+.devtrack{position:relative;height:var(--rbar-h);background:var(--ink-wash)}
+.devtrack::before{content:'';position:absolute;left:50%;top:-2px;bottom:-2px;
+  border-left:var(--hairline) solid var(--rule-strong)}
+.devfill{position:absolute;top:0;bottom:0;background:var(--ink)}
+.dev .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+
+/* ---------- maturity meter: bounded, so block characters ---------- */
+.meter{font-size:13px;letter-spacing:-.5px;line-height:1;color:var(--ink)}
+.meter i{font-style:normal;color:var(--rule)}
+
+/* ---------- ledger row: the Today register ---------- */
+.led{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised)}
+.ledrow{display:grid;grid-template-columns:74px 46px 1fr auto;gap:9px;align-items:center;
+  padding:0 9px;height:var(--h-row);border-bottom:var(--hairline) solid var(--rule);
+  border-left:var(--state-selected-border) solid transparent}
+.ledrow:last-child{border-bottom:0}
+.ledrow:hover{background:var(--state-hover)}
+.ledrow[data-selected]{border-left-color:var(--state-selected-color)}
+.ledrow[data-frame]{background:var(--frame-wash);color:var(--ink-soft)}
+.ledrow .t{font-variant-numeric:tabular-nums;color:var(--text-muted);font-size:var(--fs-eyebrow)}
+.ledrow .d{font-variant-numeric:tabular-nums;text-align:right;color:var(--text-muted);font-size:var(--fs-eyebrow)}
+.ledrow .ttl{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ledrow .out{display:flex;gap:5px;align-items:center}
+.ledrow .out .st{font-size:var(--fs-eyebrow);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-muted)}
+.ledsec{padding:4px 9px;background:var(--ink-wash);font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep);
+  border-bottom:var(--hairline) solid var(--rule)}
+
+/* ============================================================================
+   THE WEEK GRID. Ported from docs/design/scratch/week-density.html. Do not edit
+   here without editing there: the two must not diverge.
+   ============================================================================ */
+.strip{height:var(--strip-h);flex:0 0 auto;display:flex;align-items:stretch;
+  border-bottom:var(--hairline) solid var(--rule-strong);background:var(--paper)}
+.strip>div{padding:7px 11px;border-right:var(--hairline) solid var(--rule);min-width:0}
+.strip>div:last-child{border-right:0;flex:1}
+.strip .lab{white-space:nowrap}
+.strip data{display:block;margin-top:3px;font-size:19px;line-height:var(--lh-tight);
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.strip small{display:block;margin-top:2px;font-size:9px;color:var(--text-muted);white-space:nowrap}
+/* The verdict is amber: the week is impossible, not broken. A notice, not a failure. It is
+   a PANEL in the severity ladder, never a banner and never blocking, because syncr does not
+   block approval of a knowingly-broken week. Its height is FIXED and its rows scroll inside
+   it, so it cannot shift the grid under the cursor as pins accumulate. */
+.verd{border-left:var(--state-conflict-border) solid var(--signal-amber)!important;
+  background:var(--amber-wash);display:flex;flex-direction:column;justify-content:center}
+.verd b{font-size:10.5px;color:var(--ink-deep)}
+.verd p{margin:2px 0 0;font-size:9.5px;line-height:1.45;color:var(--ink)}
+.gridwrap{display:flex;flex:1;min-height:0;overflow:auto;background:var(--paper-raised)}
+.axis{width:var(--axis-w);flex:0 0 auto;border-right:var(--hairline) solid var(--rule);
+  position:sticky;left:0;z-index:8;background:var(--paper-raised)}
+.axis .hd{height:var(--day-header-h);border-bottom:var(--hairline) solid var(--rule-strong);
+  background:var(--ink-wash);position:sticky;top:0;z-index:2}
+.axis .hh{position:absolute;right:4px;font-size:var(--fs-eyebrow);color:var(--text-muted);
+  line-height:1.35;margin-top:1px;padding:0 3px;background:var(--paper-raised);
+  font-variant-numeric:tabular-nums}
+.cols{display:flex;flex:1;min-width:0}
+.col{flex:1;min-width:var(--col-min);position:relative;border-right:var(--hairline) solid var(--rule)}
+.col:last-child{border-right:0}
+.colhead{height:var(--day-header-h);border-bottom:var(--hairline) solid var(--rule-strong);
+  display:flex;align-items:center;gap:6px;padding:0 6px;background:var(--ink-wash);
+  font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--ink-deep);position:sticky;top:0;z-index:3;white-space:nowrap;overflow:hidden}
+.colhead i{font-style:normal;margin-left:auto;color:var(--text-muted);letter-spacing:.04em}
+.colhead.unconf::after{content:'\25CB';color:var(--ink-bright);font-size:8px}
+.canvas{position:relative}
+.canvas .maj,.canvas .min{position:absolute;left:0;right:0;height:0;pointer-events:none}
+/* The quarter hour is drawn at rest, because the snap is 15 minutes and the grid should show
+   where a block can land. The hour alone carries cobalt weight; the three quarters are faint.
+   During a drag the quarters step up to hour weight so the snap targets sharpen. */
+.canvas .maj{border-top:var(--hairline) solid var(--grid-line-hour)}
+.canvas .min{border-top:var(--hairline) solid var(--grid-line-quarter)}
+.dragging .canvas .min{border-top-color:var(--grid-line-quarter-drag)}
+.blk{position:absolute;left:var(--grid-inset);right:var(--grid-inset);
+  background:var(--paper-raised);
+  border:0;border-top:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule);
+  border-left:var(--state-selected-border) solid transparent;
+  padding:var(--block-pad-t) var(--block-pad-x) var(--block-pad-b);overflow:hidden;
+  font-size:var(--fs-block);line-height:var(--lh-block);color:var(--ink);
+  outline-offset:var(--state-focus-offset);cursor:default}
+.blk[data-area]{border-top:var(--rule-emphasis) solid var(--ai)}
+.blk .t{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--lines,1);
+  overflow:hidden;overflow-wrap:anywhere}
+.blk .g{float:right;margin-left:4px;color:var(--ink-deep);font-size:10px;line-height:1.2}
+.blk.frame{background:var(--frame-wash);color:var(--ink-soft)}
+.blk.anchor{background-color:var(--paper-raised);
+  background-image:repeating-linear-gradient(135deg,var(--rule) 0 1px,transparent 1px 7px);
+  border-top-color:var(--ink-deep)}
+.blk:hover{background-color:var(--state-hover)}
+.blk:focus-visible{outline:var(--state-focus-ring);z-index:6}
+.blk[data-selected]{border-left-color:var(--state-selected-color)}
+.blk[data-conflict]{border-left-color:var(--state-conflict-color)}
+.blk[data-pinned] .pin{display:inline}
+.pin{display:none}
+/* proposal: the one state with NO fill. Absence of fill is unclaimed by any other state,
+   needs no new pigment, and survives forced colors, where a fill is dropped anyway. */
+.blk[data-proposal]{background:transparent;background-image:none;
+  border:var(--hairline) dashed var(--ink-deep);
+  border-left:var(--state-selected-border) solid transparent;color:var(--ink-soft)}
+.blk[data-split]{border-left:var(--hairline) solid var(--rule)}
+.blk[data-split][data-selected]{border-left:var(--state-selected-border) solid var(--state-selected-color)}
+.blk[data-tier=compact]{font-size:var(--fs-block-compact);line-height:var(--lh-block-compact);
+  padding-top:0}
+.blk[data-tier=sliver] .t,.blk[data-tier=hair] .t{display:none}
+.blk[data-tier=hair]{padding:0;border-bottom-width:0}
+.forbid{position:absolute;left:0;right:0;pointer-events:none;z-index:0;
+  --hatch-ink:var(--forbidden-hatch-ink);background-image:var(--hatch-back);
+  border-top:var(--hairline) dotted var(--rule);border-bottom:var(--hairline) dotted var(--rule)}
+.forbid span{position:absolute;left:4px;top:1px;font-size:8px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--text-muted);background:var(--paper-raised);padding:0 2px}
+.now{position:absolute;left:0;right:0;height:0;border-top:var(--now-rule) solid var(--ink-bright);z-index:5}
+.nowlab{position:absolute;right:3px;font-size:9px;color:var(--ink-bright);
+  background:var(--paper-raised);padding:0 2px;margin-top:-6px;font-variant-numeric:tabular-nums}
+/* the discrete drag marker. The block does not move: a hairline snaps to the quarter hour
+   and the block redraws once, on drop. Continuous input, discrete output. */
+.dragmk{position:absolute;left:0;right:0;height:0;
+  border-top:var(--rule-emphasis) dashed var(--ink-deep);z-index:7}
+.dragmk::after{content:attr(data-at);position:absolute;left:3px;top:2px;font-size:9px;
+  background:var(--ink-deep);color:var(--on-ink);padding:0 3px;letter-spacing:.06em}
+
+/* ---------- detail panel ---------- */
+.detail{border-left:var(--hairline) solid var(--rule-strong);background:var(--paper);
+  width:var(--w-detail);flex:0 0 auto;padding:11px;overflow-y:auto}
+.detail .ttl{font-size:var(--fs-data);color:var(--ink-deep);line-height:1.3}
+.detail dl{margin:9px 0 0;font-size:var(--fs-eyebrow);line-height:1.75}
+.detail dl div{display:flex;justify-content:space-between;gap:8px;
+  border-bottom:var(--hairline) dotted var(--rule)}
+.detail dt{letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted)}
+.detail dd{margin:0;color:var(--ink)}
+.why{margin-top:11px;border-top:var(--hairline) solid var(--rule-strong);padding-top:9px}
+.why>.wl{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--ink-deep)}
+.why>p{margin:5px 0 8px;font-size:var(--fs-prose);line-height:var(--lh-prose);color:var(--ink)}
+/* One row per reason clause: a template plus values the solver computed. Never generated
+   prose, because no language model sits in the placement loop and an untraceable sentence
+   is worse than none. See scratch/week-density.html section 6. */
+.cl{display:grid;grid-template-columns:var(--clause-label-w) minmax(0,1fr);gap:7px;padding:3px 0;
+  border-bottom:var(--hairline) dotted var(--rule);font-size:var(--fs-eyebrow);line-height:1.5}
+.cl:last-child{border-bottom:0}
+.cl>b{font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.cl>span{color:var(--ink);min-width:0}
+.cl>span i{font-style:normal;color:var(--text-muted)}
+
+/* ---------- session mode panels ---------- */
+.sesslist{font-size:var(--fs-eyebrow);line-height:1.9}
+.sesslist div{display:flex;gap:9px;align-items:baseline;
+  border-bottom:var(--hairline) dotted var(--rule)}
+.sesslist div:last-child{border-bottom:0}
+.sesslist .s{margin-left:auto;color:var(--text-muted);font-variant-numeric:tabular-nums}
+/* a tradeoff is a BUTTON THAT GENERATES A PROPOSAL, never a direct mutation. That keeps the
+   rule that syncr may never move or remove without assent, with no exception carved for a
+   warning panel. */
+.trade{display:flex;gap:9px;align-items:center;padding:5px 0;
+  border-bottom:var(--hairline) dotted var(--rule);font-size:var(--fs-eyebrow)}
+.trade:last-child{border-bottom:0}
+.trade span{min-width:0}
+.trade .btn{margin-left:auto;flex:0 0 auto}
+
+/* ---------- pie and stacked bars: Area ink plus hatch ---------- */
+.legend{display:flex;flex-wrap:wrap;gap:11px;font-size:var(--fs-eyebrow);color:var(--ink)}
+.stack{display:flex;height:22px;border:var(--hairline) solid var(--rule-strong)}
+.stack>span{display:block;background-color:var(--ai);background-image:var(--hx);
+  background-size:var(--hxs,auto)}
+.trend{display:grid;grid-template-columns:44px 1fr;gap:9px;align-items:center;
+  font-size:var(--fs-eyebrow);padding:3px 0}
+
+/* ---------- wizard ---------- */
+.wiz{max-width:620px;margin:0 auto;padding:20px 15px}
+.wizsteps{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  margin-bottom:15px}
+.wizstep{display:grid;grid-template-columns:26px 1fr auto;gap:9px;align-items:center;
+  padding:0 11px;height:var(--h-row);border-bottom:var(--hairline) solid var(--rule);
+  border-left:var(--state-selected-border) solid transparent;font-size:var(--fs-chrome)}
+.wizstep:last-child{border-bottom:0}
+.wizstep .no{color:var(--text-muted);font-variant-numeric:tabular-nums;font-size:var(--fs-eyebrow)}
+.wizstep[data-current]{border-left-color:var(--state-selected-color);background:var(--state-hover)}
+.wizstep[data-current] .no::after{content:'\00a0\25B8';color:var(--ink-deep)}
+.wizstep[data-done] .no{color:var(--signal-verdigris)}
+.wizstep .st{font-size:var(--fs-eyebrow);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-muted)}
+.wizstep[data-blocked] .st{color:var(--oxide-ink)}
+
+/* ---------- overlays ---------- */
+.scrim{position:absolute;inset:0;z-index:40;
+  background:var(--scrim);
+  display:flex;align-items:flex-start;justify-content:center;padding-top:64px}
+.dlg{width:560px;max-width:92%;border:var(--hairline) solid var(--ink-deep);
+  background:var(--paper-raised);box-shadow:var(--shadow-hard)}
+.dlg>header{background:var(--ink-deep);color:var(--on-ink);padding:6px 11px;
+  font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  display:flex;gap:9px;align-items:baseline}
+.dlg>header .r{margin-left:auto;color:var(--on-ink-muted)}
+.dlg .q{border-bottom:var(--hairline) solid var(--rule-strong);padding:9px 11px;
+  font-size:var(--fs-data);color:var(--text-muted)}
+.dlg .r0{display:flex;gap:9px;align-items:center;padding:4px 11px;
+  border-bottom:var(--hairline) solid var(--rule);font-size:var(--fs-chrome)}
+.dlg .r0[data-current]{background:var(--state-hover);
+  box-shadow:inset var(--state-selected-border) 0 0 0 var(--state-selected-color)}
+.dlg .r0 .k{margin-left:auto;color:var(--text-muted);font-size:var(--fs-eyebrow)}
+.keys{columns:2;column-gap:20px;padding:11px;font-size:var(--fs-eyebrow);line-height:2}
+.keys div{display:flex;gap:8px;align-items:baseline;break-inside:avoid}
+.keys div span{flex:1;border-bottom:var(--hairline) dotted var(--rule);margin:0 3px}
+
+/* ---------- plate placeholder ----------
+   No plate assets exist yet. These convey POSITION, PROPORTION and CROP only: a coarse
+   cobalt halftone, a plate number and a caption naming the intended subject. Illustration
+   is generated from public-domain sources into dithered plates, and its subjects are
+   horological and astronomical instruments. It NEVER sits behind the week grid or a chart. */
+.plate{position:relative;border:var(--hairline) solid var(--rule-strong);
+  background-color:var(--paper-raised);
+  background-image:
+    radial-gradient(circle at center, var(--ink) 32%, transparent 34%),
+    radial-gradient(circle at center, var(--ink-bright) 22%, transparent 24%);
+  background-size:7px 7px, 5px 5px}
+.plate .no{position:absolute;left:5px;top:4px;font-size:8px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-deep);background:var(--paper-raised);padding:0 3px}
+.plate .cap{position:absolute;left:5px;bottom:4px;right:5px;font-size:8px;line-height:1.4;
+  color:var(--text-muted);background:var(--paper-raised);padding:1px 3px}
+</style>
+</head>
+<body>
+
+<!-- ============================ view switcher ============================ -->
+<div class="doc">
+  <span class="id">&#9670; syncr &middot; screens</span>
+  <button type="button" data-v="v-first">First run <i>wizard</i></button>
+  <button type="button" data-v="v-week" aria-current="page">Week <i>at rest</i></button>
+  <button type="button" data-v="v-session">Week <i>session mode</i></button>
+  <button type="button" data-v="v-conflict">Week <i>conflict</i></button>
+  <button type="button" data-v="v-today">Today</button>
+  <button type="button" data-v="v-confirm">Today <i>confirm</i></button>
+  <button type="button" data-v="v-backlog">Backlog</button>
+  <button type="button" data-v="v-areas">Areas</button>
+  <button type="button" data-v="v-pie">Areas <i>pie review</i></button>
+  <button type="button" data-v="v-templates">Templates</button>
+  <button type="button" data-v="v-learned">Learned</button>
+  <button type="button" data-v="v-settings">Settings</button>
+  <button type="button" data-v="v-overlays">Overlays</button>
+  <span class="meta"><span class="eyebrow">Tokens <b class="key">linked live</b></span>
+    <span class="eyebrow">Motion <b class="key">zero</b></span></span>
+</div>
+
+<div class="app">
+
+<!-- ============================ sidebar ============================ -->
+<aside class="side">
+  <div class="brand"><b>syncr</b><span>Life management and scheduling</span></div>
+  <div class="grp">Plan</div>
+  <nav id="nav"></nav>
+  <div class="grp">This week</div>
+  <nav>
+    <a href="#" tabindex="-1">Proposals<b class="c n">2</b></a>
+    <a href="#" tabindex="-1">Unconfirmed<b class="c n">3</b></a>
+  </nav>
+  <div class="foot"><b>Sun 16 Feb &middot; 20:41</b>Europe/London<br>
+    Calendar written 3 min ago</div>
+</aside>
+
+<main class="main" id="main"></main>
+</div>
+
+<script>
+/* ============================================================================
+   Token reader. A chain is resolved defensively so this sheet still reports true
+   values if a browser returns an unsubstituted token stream.
+   ============================================================================ */
+const raw = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const px  = n => parseFloat(raw(n));
+
+/* Areas, in assignment order. Seven for this user; the ramp holds twelve, and the order is
+   chosen so that four Areas land roughly ninety degrees apart. */
+const AREA = {Career:'--area-01', Study:'--area-05', Fitness:'--area-08',
+              Research:'--area-10', Projects:'--area-03', Admin:'--area-07',
+              Transit:'--area-12'};
+const HATCH = {Career:['--hatch-fwd',null], Study:['--hatch-back',null],
+               Fitness:['--hatch-vert',null], Research:['--hatch-cross',null],
+               Projects:['--hatch-dot','--hatch-dot-size'], Admin:['--hatch-horz',null],
+               Transit:['--hatch-back',null]};
+const GLYPH = {frame:'&#9679;', habit:'&#8635;', task:'&#9656;', anchor:'&#9670;',
+               shadow:'&#9671;', transit:'&#8594;'};
+const MARK_PINNED = '&#9635;', MARK_SOURCE = '&#187;';
+
+const ICON = {
+  week:'<rect x="3" y="4" width="18" height="17"/><path d="M3 9h18M8 4V2M16 4V2"/>',
+  today:'<rect x="3" y="4" width="18" height="17"/><path d="M3 9h18"/><rect x="7" y="12" width="5" height="5"/>',
+  backlog:'<path d="M4 6h16M4 12h16M4 18h10"/>',
+  areas:'<circle cx="12" cy="12" r="8"/><path d="M12 4v8l7 4"/>',
+  templates:'<rect x="3" y="3" width="7" height="18"/><rect x="14" y="3" width="7" height="8"/><rect x="14" y="15" width="7" height="6"/>',
+  learned:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/>'
+};
+const ic = k => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
+const NAV = [['week','Week',''],['today','Today',''],['backlog','Backlog','23'],
+             ['areas','Areas',''],['templates','Templates',''],['learned','Learned',''],
+             ['settings','Settings','']];
+
+/* ============================================================================
+   The week grid engine. Ported from scratch/week-density.html.
+   ============================================================================ */
+const AXIS_START = 0, AXIS_END = 24 * 60;
+const min = s => { const [h,m] = s.split(':').map(Number); return h*60+m; };
+const fmt = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+
+const WEEK = [
+  {label:'Mon 10', rows:[
+    '00:00-09:00|Sleep|frame|', '09:00-09:15|Wake Up|frame|',
+    '09:30-10:00|Gym &middot; Chest &amp; Back|habit|Fitness', '10:00-10:15|Shower|frame|',
+    '10:30-11:00|Leave for Uni|shadow|Transit', '13:30-14:00|Lunch|frame|',
+    '14:00-14:30|Amazon Interview Prep|task|Career',
+    '14:30-15:00|Lecture Review|task|Study', '17:30-18:00|Go Home|shadow|Transit',
+    '18:00-18:30|Dinner|frame|', '19:15-19:45|Lecture Review|task|Study',
+    '23:15-24:00|Sleep|frame|']},
+  {label:'Tue 11', forbid:[['16:45','18:00','recovery']], rows:[
+    '00:00-05:15|Sleep|frame|', '05:15-05:30|Wake Up|frame|',
+    '05:30-06:30|Gym &middot; Shoulder &amp; Arms|habit|Fitness*', '06:30-06:45|Shower|frame|',
+    '07:00-09:30|Leetcode &middot; Graphs|habit|Career',
+    '10:00-10:30|Prep for Kontron Interview|shadow|Career',
+    '10:30-11:00|Leetcode &middot; Graphs|habit|Career', '11:30-12:00|Lunch|frame|',
+    '12:00-15:00|Leetcode &middot; Graphs|habit|Career!',
+    '15:00-15:30|Leave for Uni|shadow|Transit',
+    '16:00-16:45|Kontron Placement Interview|anchor|',
+    '18:00-18:30|Dinner|frame|', '18:30-19:00|F&amp;F Reading Group|task|Study',
+    '19:00-19:30|36 South Application|task|Career',
+    '19:30-20:30|Topic List Questions|task|Career', '22:00-24:00|Sleep|frame|']},
+  {label:'Wed 12', rows:[
+    '00:00-05:30|Sleep|frame|', '05:30-06:30|Gym &middot; Legs|habit|Fitness',
+    '06:30-06:45|Shower|frame|', '07:30-08:00|Leave for Uni|shadow|Transit',
+    '08:00-08:30|Watch A&amp;C Lecture|task|Study',
+    '08:30-09:00|F&amp;F Lab Notebook|task|Study',
+    '09:00-11:15|Frontier and Foundation Lab|anchor|', '12:00-12:30|Lunch|frame|',
+    '12:30-13:00|Go Home|shadow|Transit', '13:00-13:30|CRIISP Work|task|Research',
+    '13:30-14:00|Autograd Notes|task|Study',
+    '14:00-17:30|Amazon Interview Prep &middot; Behavioral|task|Career',
+    '18:00-18:30|Dinner|frame|', '19:00-21:30|Leetcode|habit|Career',
+    '21:45-24:00|Sleep|frame|']},
+  {label:'Thu 13', rows:[
+    '00:00-06:45|Sleep|frame|', '06:45-07:00|Wake Up|frame|',
+    '07:00-08:00|Watch SWE Lec|task|Study',
+    '10:30-11:00|Amazon Interview Prep|task|Career',
+    '11:00-11:30|Watch SWE Lec|task|Study', '11:00-11:45|Lunch|frame|',
+    '11:45-13:00|Leetcode|habit|Career', '13:00-13:30|Amazon Prep Call|anchor|',
+    '13:00-14:00|Visual Computing Lab|anchor|',
+    '13:30-14:15|Amazon Interview Prep|task|Career',
+    '14:15-17:00|Leetcode|habit|Career', '17:15-17:45|Dinner|frame|',
+    '18:00-18:30|Go Home|shadow|Transit', '18:00-22:00|Leetcode|habit|Career',
+    '22:30-24:00|Sleep|frame|']},
+  {label:'Fri 14', unconf:1, rows:[
+    '00:00-07:30|Sleep|frame|', '07:30-07:45|Wake Up|frame|',
+    '07:30-08:00|Leave for Uni|shadow|Transit',
+    '08:30-11:00|Amazon Interview Prep &middot; Behavioral|task|Career',
+    '11:00-11:30|Leave for Uni|shadow|Transit', '11:30-12:00|Lunch|frame|',
+    '11:30-12:00|Print Amazon Interview Notes|task|Career',
+    '11:30-12:00|Review F&amp;F Reading|task|Study',
+    '13:00-13:30|Go Home|shadow|Transit', '13:30-14:00|Lunch|frame|',
+    '14:00-15:00|Mock Interview|anchor|',
+    '15:00-16:30|Amazon Interview Prep &middot; Behavioral|task|Career',
+    '16:30-18:30|Leetcode|habit|Career', '18:30-19:00|Dinner|frame|',
+    '19:00-22:00|Leetcode|habit|Career', '23:00-24:00|Sleep|frame|']},
+  {label:'Sat 15', unconf:1, rows:[
+    '00:00-09:00|Sleep|frame|', '09:00-09:15|Wake Up|frame|',
+    '11:30-12:00|Lunch|frame|', '11:30-12:00|Watch SWE Lec|task|Study',
+    '12:00-12:15|Visual Computing Lecture|task|Study',
+    '12:15-12:45|Algorithms and Complexity Lecture|task|Study',
+    '12:45-13:00|Watch ML Lec|task|Study', '13:00-15:00|Leetcode|habit|Career',
+    '15:00-16:00|DSA Review &middot; Trees|task|Career', '17:00-17:30|Dinner|frame|',
+    '17:30-18:00|DSA Review &middot; Heap|task|Career',
+    '18:00-21:00|Leetcode|habit|Career', '21:30-22:30|Leetcode|habit|Career',
+    '23:00-24:00|Sleep|frame|']},
+  {label:'Sun 16', unconf:1, rows:[
+    '00:00-09:00|Sleep|frame|', '09:00-09:15|Wake Up|frame|',
+    '10:00-10:30|Clean|habit|Admin', '10:30-11:00|Lunch|frame|',
+    '11:00-12:00|Topic List Questions|task|Career',
+    '12:00-12:30|Leetcode|habit|Career', '13:30-17:00|Leetcode|habit|Career',
+    '17:30-18:00|Dinner|frame|', '18:00-20:00|Leetcode|habit|Career',
+    '22:00-24:00|Sleep|frame|']}
+];
+/* A trailing marker on the Area field carries a state, so the fixture stays one line per
+   block: * is pinned, ! is the selected block, ? is a proposal target. */
+const flag = a => ({area:(a||'').replace(/[*!?]/g,'') || null,
+                    pin:/\*/.test(a||''), sel:/!/.test(a||''), prop:/\?/.test(a||'')});
+
+/* Sweep and columns: cluster by a running maximum end, then give each block the leftmost
+   column whose last block has already finished. No special case for any origin, so nothing
+   can paint over anything, and no magic threshold decides who wins. */
+function layout(rows){
+  const bs = rows.map(r => {
+    const [t, title, origin, area] = r.split('|');
+    const [s, e] = t.split('-');
+    return {s:min(s), e:min(e), title, origin, ...flag(area)};
+  }).sort((a,b) => a.s - b.s || b.e - a.e);
+  const clusters = []; let cur = [], curEnd = -1;
+  for(const b of bs){
+    if(cur.length && b.s < curEnd){ cur.push(b); curEnd = Math.max(curEnd, b.e); }
+    else { if(cur.length) clusters.push(cur); cur = [b]; curEnd = b.e; }
+  }
+  if(cur.length) clusters.push(cur);
+  const maxSplit = parseInt(raw('--overlap-max-split'));
+  for(const c of clusters){
+    const ends = [];
+    for(const b of c){
+      let col = ends.findIndex(end => end <= b.s);
+      if(col === -1){ col = ends.length; ends.push(b.e); } else ends[col] = b.e;
+      b.i = col;
+    }
+    c.forEach(b => { b.n = ends.length; b.stagger = ends.length > maxSplit; });
+  }
+  return bs;
+}
+
+function blockHTML(b, ppm){
+  const top = (b.s - AXIS_START) * ppm, h = (b.e - b.s) * ppm;
+  const tier = h >= px('--block-h-label') ? 'label'
+             : h >= px('--block-h-compact') ? 'compact'
+             : h >= px('--block-h-sliver') ? 'sliver' : 'hair';
+  const a = b.area ? AREA[b.area] : null;
+  const ind = px('--overlap-indent');
+  let pos;
+  if(b.n === 1) pos = 'left:var(--grid-inset);right:var(--grid-inset)';
+  else if(!b.stagger) pos = `left:${(b.i*100/b.n).toFixed(3)}%;right:${((b.n-1-b.i)*100/b.n).toFixed(3)}%`;
+  else pos = `left:${b.i*ind}px;right:var(--grid-inset);z-index:${b.i+1}`;
+  const lines = tier === 'compact' ? 1 : Math.max(1, Math.floor((h - 5) / px('--lh-block-px')));
+  const titled = tier === 'label' || tier === 'compact';
+  const g = titled
+    ? (b.pin ? `<span class="g pin">${MARK_PINNED}</span>` : '')
+      + (b.stagger && b.i === b.n-1 ? `<span class="g">&#10697;&nbsp;${b.n}</span>` : '')
+    : `<span class="g">${GLYPH[b.origin]}</span>`;
+  const plain = b.title.replace(/&middot;/g,'-').replace(/&amp;/g,'&');
+  return `<div class="blk${b.origin==='frame'?' frame':''}${b.origin==='anchor'?' anchor':''}"`
+    + ` style="${pos};top:${top}px;height:${h}px;--lines:${lines}${a?`;--ai:var(${a})`:''}"`
+    + `${a?' data-area':''} data-tier="${tier}"${b.pin?' data-pinned':''}`
+    + `${b.sel?' data-selected':''}${b.prop?' data-proposal':''}`
+    + `${b.i>0 && !b.stagger?' data-split':''}`
+    + `${b.origin==='anchor' && /Kontron/.test(b.title)?' data-conflict':''}`
+    + ` tabindex="0" title="${plain} ${fmt(b.s)}-${fmt(b.e)}"><span class="t">${b.title}</span>${g}</div>`;
+}
+
+function gridHTML(visibleHours, opts = {}){
+  const ppm = px('--grid-h') / (visibleHours * 60);
+  const canvasH = (AXIS_END - AXIS_START) * ppm;
+  let axis = '';
+  for(let m = AXIS_START; m <= AXIS_END; m += 60)
+    axis += `<span class="hh" style="top:${(m-AXIS_START)*ppm}px">${fmt(m)}</span>`;
+  let lines = '';
+  for(let m = AXIS_START; m <= AXIS_END; m += parseInt(raw('--grid-minor')))
+    lines += `<div class="${m % parseInt(raw('--grid-major')) === 0 ? 'maj' : 'min'}"`
+           + ` style="top:${(m-AXIS_START)*ppm}px"></div>`;
+  const cols = WEEK.map(d => {
+    const bs = layout(d.rows);
+    const fb = (d.forbid || []).map(([s,e,t]) =>
+      `<div class="forbid" style="top:${(min(s)-AXIS_START)*ppm}px;`
+      + `height:${(min(e)-min(s))*ppm}px"><span>${t}</span></div>`).join('');
+    const now = (opts.now && d.label === opts.now)
+      ? `<div class="now" style="top:${(min(opts.nowAt)-AXIS_START)*ppm}px"></div>`
+        + `<div class="nowlab" style="top:${(min(opts.nowAt)-AXIS_START)*ppm}px">${opts.nowAt}</div>` : '';
+    const drag = (opts.drag && d.label === opts.drag)
+      ? `<div class="dragmk" data-at="${opts.dragAt}"`
+        + ` style="top:${(min(opts.dragAt)-AXIS_START)*ppm}px"></div>` : '';
+    return `<div class="col"><div class="colhead${d.unconf?' unconf':''}">${d.label}`
+      + `<i class="n">${bs.length}</i></div><div class="canvas" style="height:${canvasH}px">`
+      + lines + fb + now + drag + bs.map(b => blockHTML(b, ppm)).join('') + '</div></div>';
+  }).join('');
+  return `<div class="gridwrap${opts.drag ? ' dragging' : ''}"><div class="axis"><div class="hd"></div>`
+    + `<div style="position:relative;height:${canvasH}px">${axis}</div></div>`
+    + `<div class="cols">${cols}</div></div>`;
+}
+
+/* ---------- shared fragments ---------- */
+const STRIP = `<div class="strip">
+  <div><span class="lab">Scheduled</span><data>80.8h</data><small>91 blocks</small></div>
+  <div><span class="lab">Discretionary</span><data>52.1h</data><small>after frame and anchors</small></div>
+  <div><span class="lab">Unallocated</span><data>18.4h</data><small>35.3% of discretionary</small></div>
+  <div class="verd"><b>&#9670; This week cannot hold its commitments</b>
+    <p>1h20m short on <code>Career</code> before Fri 09:00, after honoring the Fitness floor.
+       Four tradeoffs &middot; nothing is chosen for you.</p></div></div>`;
+
+const DETAIL = `<div class="detail">
+  <div class="ttl">Leetcode &middot; Graphs</div>
+  <dl><div><dt>when</dt><dd class="n">Tue 11 &middot; 12:00&ndash;15:00</dd></div>
+    <div><dt>area</dt><dd><span class="areaname"><span class="chip" style="--ai:var(--area-01)"></span>Career</span></dd></div>
+    <div><dt>origin</dt><dd>habit &middot; queue</dd></div>
+    <div><dt>outcome</dt><dd>presumed</dd></div>
+    <div><dt>pinned</dt><dd>no</dd></div></dl>
+  <div class="why"><div class="wl">Why here</div>
+    <p>Placed at 12:00 of 3 candidate windows.</p>
+    <div class="cl"><b>blocked</b><span><code>16:00</code> <i>&middot;</i> Kontron anchor, plus its recovery shadow to 18:00</span></div>
+    <div class="cl"><b>blocked</b><span><code>07:00</code> <i>&middot;</i> same habit already placed in that window</span></div>
+    <div class="cl"><b>dominant</b><span><code>budgetDeviation</code> <i>&middot;</i> Career &middot; 0.42 of total cost</span></div>
+    <div class="cl"><b>bound</b><span><code>backlog queue</code> <i>&middot;</i> Graphs &middot; next after Tries</span></div>
+  </div>
+  <div style="margin-top:11px;display:flex;gap:7px">
+    <button type="button" class="btn sm">Pin here</button>
+    <button type="button" class="btn sec sm">Rebind</button></div></div>`;
+
+/* Deviation bars are COBALT ONLY. Actual against target per Area, signed off a zero rule.
+   Area ink encodes identity; cobalt encodes magnitude and direction. */
+const BUDGET = [
+  ['Career','--area-01', 27.3, 30, 14.2],
+  ['Study','--area-05', 18.4, 20, 9.6],
+  ['Fitness','--area-08', 8.6, 12, 4.5],
+  ['Admin','--area-07', 3.6, 5, 1.9],
+  ['Research','--area-10', 3.8, 8, 2.0],
+  ['Projects','--area-03', 2.9, 10, 1.5],
+  ['Unallocated', null, 35.3, 15, 18.4]
+];
+function devRows(){
+  const span = 12; /* percentage points either side of the zero rule */
+  return BUDGET.map(([name, tok, actual, target, hours]) => {
+    const d = actual - target;
+    const w = Math.min(50, Math.abs(d) / span * 50);
+    const side = d < 0 ? `right:50%;width:${w}%` : `left:50%;width:${w}%`;
+    /* No chip. See the .dev comment: a chart row carries no Area ink at all. */
+    return `<div class="dev"><span>${name}</span>`
+      + `<span class="devtrack"><span class="devfill" style="${side}"></span></span>`
+      + `<span class="v">${d > 0 ? '+' : '\u2212'}${Math.abs(d).toFixed(1)}pp</span></div>`;
+  }).join('');
+}
+
+/* A pie for composition, drawn in SVG so each wedge can carry its own hatch pattern.
+   Labels sit OUTSIDE the wedges: a wedge fill only has to clear 3:1 as an indicator, and
+   text on it would need 4.5:1. */
+function pieHTML(size = 168){
+  const r = size/2 - 1, cx = size/2, cy = size/2;
+  let acc = -90, defs = '', paths = '';
+  BUDGET.forEach(([name, tok, actual]) => {
+    const ang = actual / 100 * 360;
+    const a0 = acc * Math.PI/180, a1 = (acc+ang) * Math.PI/180;
+    const large = ang > 180 ? 1 : 0;
+    const id = 'h-' + name.toLowerCase();
+    const ink = tok ? `var(${tok})` : 'var(--rule-strong)';
+    const light = tok ? `color-mix(in srgb, var(${tok}) var(--hatch-mix), var(--paper-raised))` : 'var(--rule)';
+    defs += `<pattern id="${id}" patternUnits="userSpaceOnUse" width="5" height="5">`
+      + `<rect width="5" height="5" fill="${ink}"/>`
+      + `<path d="M0 5 L5 0 M-1 1 L1 -1 M4 6 L6 4" stroke="${light}" stroke-width="1"/></pattern>`;
+    paths += `<path d="M${cx} ${cy} L${cx + r*Math.cos(a0)} ${cy + r*Math.sin(a0)}`
+      + ` A${r} ${r} 0 ${large} 1 ${cx + r*Math.cos(a1)} ${cy + r*Math.sin(a1)} Z"`
+      + ` fill="url(#${id})" stroke="var(--paper-raised)" stroke-width="1"/>`;
+    acc += ang;
+  });
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img"`
+    + ` aria-label="Composition of discretionary time by Area"><defs>${defs}</defs>${paths}</svg>`;
+}
+const LEGEND = BUDGET.map(([name, tok, actual]) =>
+  `<span class="areaname">`
+  + `<span class="chip" style="--ai:var(${tok || '--rule-strong'})"></span>`
+  + `${name} <span class="mut n">${actual.toFixed(1)}%</span></span>`).join('');
+
+/* ============================================================================
+   The thirteen views.
+   ============================================================================ */
+const V = {};
+
+/* ---------- 1. first run: a wizard, resumable, not skippable past the two steps
+     that block a first solve ---------- */
+V['v-first'] = () => `
+<div class="scroll"><div class="wiz">
+  <div class="plate" style="height:96px;margin-bottom:15px">
+    <span class="no">Plate 01</span>
+    <span class="cap">Orrery, brass, oblique &middot; bleeds left and top &middot; horological and astronomical instruments, public domain</span></div>
+  <div class="eyebrow on">&#9670; Setting up</div>
+  <div style="font-size:var(--fs-data);line-height:1.5;color:var(--ink);margin:7px 0 15px">
+    Four things have to exist before syncr can solve a week. Two of them block the first
+    solve and cannot be skipped. You can leave and come back: this is a route, not a modal.</div>
+  <div class="wizsteps">
+    <div class="wizstep" data-done><span class="no">01</span>
+      <span>Connect a calendar to read anchors from</span>
+      <span class="st"><span class="dot v"></span> 2 sources</span></div>
+    <div class="wizstep" data-current><span class="no">02</span>
+      <span>Declare your Areas and their budgets</span>
+      <span class="st">required</span></div>
+    <div class="wizstep" data-blocked><span class="no">03</span>
+      <span>Build one day shape</span>
+      <span class="st">required to solve</span></div>
+    <div class="wizstep"><span class="no">04</span>
+      <span>Set day bounds, sleep span and write target</span>
+      <span class="st">optional</span></div>
+  </div>
+  <div class="panel"><header>Step 02 &middot; Areas <span class="r">7 of 12 pigments used</span></header>
+    <div class="in">
+      <table class="dense"><thead><tr><th>Area</th><th class="num">Floor / wk</th>
+        <th class="num">Share of remainder</th><th>Pigment</th></tr></thead><tbody>
+        ${BUDGET.filter(b => b[1]).map(([n, tok, , target]) => `<tr>
+          <td><span class="areaname"><span class="chip" style="--ai:var(${tok})"></span>${n}</span></td>
+          <td class="num">${n === 'Fitness' ? '5h 00m' : '\u2014'}</td>
+          <td class="num">${target}%</td>
+          <td class="mut">${tok}</td></tr>`).join('')}
+      </tbody></table>
+      <div style="display:flex;gap:8px;margin-top:11px">
+        <button type="button" class="btn">Add an Area</button>
+        <button type="button" class="btn sec">Continue to step 03</button></div>
+      <div style="margin-top:11px;font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+        A pigment is assigned, not picked. The ramp holds twelve and they are dealt in an
+        order that keeps the first four roughly ninety degrees apart. You may re-pick from
+        the ramp; there is no color picker, because one would end the design language on
+        the first day.</div>
+    </div></div>
+</div></div>`;
+
+/* ---------- 2. Week, at rest ---------- */
+V['v-week'] = () => `
+<div class="band">
+  <div><div class="eyebrow on">&#9670; Mon 10 &ndash; Sun 16 February</div><h1>Week</h1></div>
+  <div class="sub">91 blocks &middot; 80.8h scheduled<br>2 proposals pending &middot; 3 days unconfirmed</div>
+  <div class="right">
+    <span class="seg"><button type="button">6h</button>
+      <button type="button" aria-pressed="true">12h</button>
+      <button type="button">16h</button>
+      <button type="button" disabled title="Beyond the cap for this display">24h</button></span>
+    <button type="button" class="btn sec">Re-solve</button>
+    <button type="button" class="btn">Approve all</button></div>
+</div>
+${STRIP}
+<div style="display:flex;flex:1;min-height:0">
+  ${gridHTML(12, {now:'Sun 16', nowAt:'20:41'})}
+  ${DETAIL}
+</div>`;
+
+/* ---------- 3. Week, weekly-session mode. A MODE, so no serif ---------- */
+V['v-session'] = () => `
+<div class="modehead">
+  <b>Weekly session</b>
+  <span class="eyebrow">Planning and retrospective, in one pass</span>
+  <span class="right" style="margin-left:auto;display:flex;gap:8px">
+    <button type="button" class="btn sec">Skip retro</button>
+    <button type="button" class="btn">Approve the week</button></span>
+</div>
+<div class="scroll"><div class="pad gap">
+  <div class="cols21">
+    <div class="panel"><header>Last week, actual against target
+      <span class="r">per Area &middot; percentage points</span></header>
+      <div class="in">${devRows()}</div></div>
+    <div class="panel"><header>Raised for you</header><div class="in">
+      <div class="sesslist">
+        <div><span class="dot a"></span>Chronic skip: <code>Read</code><span class="s">6 weeks</span></div>
+        <div><span class="dot a"></span>Floor at risk: Fitness<span class="s">3h of 5h</span></div>
+        <div><span class="dot o"></span>Overdue: <code>Kim&rsquo;s Game Project</code><span class="s">2d</span></div>
+        <div><span class="dot"></span>New anchor: <code>Mock Interview</code><span class="s">Fri 14:00</span></div>
+        <div><span class="dot"></span>Cadence due: Groceries, Laundry<span class="s">2</span></div>
+        <div><span class="dot"></span>Repeated pin: Gym at 13:00<span class="s">3 weeks</span></div>
+      </div></div></div>
+  </div>
+  <div class="panel" style="border-left:var(--state-conflict-border) solid var(--signal-amber)">
+    <header style="background:var(--amber-wash)">&#9670; This week cannot hold its commitments
+      <span class="r">a notice, not a failure &middot; approval is not blocked</span></header>
+    <div class="in">
+      <p style="margin:0 0 9px;font-size:var(--fs-prose);line-height:var(--lh-prose)">
+        You are <b>1h20m short</b> on <code>Career</code> before Fri 09:00, after honoring
+        the Fitness floor of 5h. Four tradeoffs. syncr does not choose.</p>
+      <div class="trade"><span>Drop <code>Kim&rsquo;s Game Project</code> this week</span>
+        <button type="button" class="btn sec sm">Propose</button></div>
+      <div class="trade"><span>Reduce the sleep floor by 1h across three nights</span>
+        <button type="button" class="btn sec sm">Propose</button></div>
+      <div class="trade"><span>Breach the Fitness floor by 1h20m</span>
+        <button type="button" class="btn sec sm">Propose</button></div>
+      <div class="trade"><span>Accept partial delivery on <code>F&amp;F Past Papers</code></span>
+        <button type="button" class="btn sec sm">Propose</button></div>
+      <div style="margin-top:9px;font-size:var(--fs-eyebrow);color:var(--ink-soft);line-height:1.6">
+        Every tradeoff generates a <b>proposal</b> you then approve. None of them mutates the
+        plan directly, so the rule that syncr may never move or remove without assent holds
+        with no exception carved out for a warning panel.</div>
+    </div></div>
+  <div class="panel"><header>Promote a repeated pin to the template?
+    <span class="r">observed, not applied</span></header>
+    <div class="in" style="display:flex;gap:11px;align-items:center;font-size:var(--fs-prose)">
+      <span>You have pinned <code>Gym</code> to 13:00 for three consecutive weeks.
+        Move it in your Weekday template?</span>
+      <button type="button" class="btn sm" style="margin-left:auto">Move it</button>
+      <button type="button" class="btn sec sm">Not yet</button></div></div>
+</div></div>`;
+
+/* ---------- 4. Week, conflict. The only case that notifies ---------- */
+V['v-conflict'] = () => `
+<div class="banner">
+  <b>&#9670; Conflict &middot; an external anchor overlaps a planned block</b>
+  <p><code>Kontron Placement Interview</code> moved to Tue 12:30&ndash;13:15 and now overlaps
+     <code>Leetcode &middot; Graphs</code>. Nothing has been moved for you.</p>
+  <span class="acts"><button type="button" class="btn sm">Resolve</button>
+    <button type="button" class="btn sec sm">Show me</button></span>
+</div>
+<div class="band" style="min-height:auto">
+  <div><div class="eyebrow on">&#9670; Mon 10 &ndash; Sun 16 February</div><h1>Week</h1></div>
+  <div class="sub">1 conflict &middot; must be resolved<br>2 proposals waiting quietly</div>
+</div>
+${STRIP}
+<div style="display:flex;flex:1;min-height:0">
+  ${gridHTML(12, {drag:'Tue 11', dragAt:'13:00'})}
+  <div class="detail">
+    <div class="ttl">Kontron Placement Interview</div>
+    <dl><div><dt>when</dt><dd class="n">Tue 11 &middot; 16:00&ndash;16:45</dd></div>
+      <div><dt>source</dt><dd>Google &middot; read only</dd></div>
+      <div><dt>type</dt><dd>Interview</dd></div>
+      <div><dt>shadow</dt><dd>pre 6h &middot; transit 30m &middot; post 75m</dd></div>
+      <div><dt>authority</dt><dd style="color:var(--oxide-ink)">conflict</dd></div></dl>
+    <div class="why"><div class="wl">Why this is a conflict</div>
+      <p>An anchor is read-only, and the block it overlaps is not.</p>
+      <div class="cl"><b>overlap</b><span><code>12:30&ndash;13:15</code> <i>&middot;</i> Leetcode &middot; Graphs</span></div>
+      <div class="cl"><b>pinned</b><span><code>no</code> <i>&middot;</i> the block may be moved once you say so</span></div>
+      <div class="cl"><b>forbidden</b><span><code>post 75m</code> <i>&middot;</i> no deep work until 18:00</span></div>
+    </div>
+    <div style="margin-top:11px;display:flex;gap:7px;flex-wrap:wrap">
+      <button type="button" class="btn sm">Move the block</button>
+      <button type="button" class="btn sec sm">Keep both</button>
+      <button type="button" class="btn sec sm">Retype anchor</button></div>
+    <div style="margin-top:11px;font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+      A drag is discrete. The block does not follow the cursor: the dashed marker snaps to
+      the quarter hour and the block redraws once, on drop.</div>
+  </div>
+</div>`;
+
+/* ---------- 5. Today: a LEDGER, not a one-column grid ----------
+   The Week screen is proportional because you drag in it. Today answers a different
+   question, "did this happen", so it is a checklist in time order and it earns the density
+   a table gives. */
+V['v-today'] = () => {
+  const rows = layout(WEEK[6].rows);
+  return `
+<div class="band">
+  <div><div class="eyebrow on">&#9670; Sunday 16 February &middot; 20:41</div><h1>Today</h1></div>
+  <div class="sub">10 blocks &middot; 7 presumed complete<br>3 days unconfirmed, including two before today</div>
+  <div class="right">
+    <button type="button" class="btn sec">Backfill 3 days</button>
+    <button type="button" class="btn">Confirm the day <span class="key">[ c ]</span></button></div>
+</div>
+<div class="scroll"><div class="pad gap">
+  <div class="led">
+    <div class="ledsec">Recorded &middot; before now</div>
+    ${rows.filter(b => b.s < min('20:41')).map(b => `
+      <div class="ledrow${b.origin==='frame'?' data-frame':''}"${b.origin==='frame'?' data-frame':''}>
+        <span class="t">${fmt(b.s)}&ndash;${fmt(b.e)}</span>
+        <span class="d">${b.e-b.s}m</span>
+        <span class="ttl">${b.area ? `<span class="chip" style="--ai:var(${AREA[b.area]})"></span> ` : ''}${b.title}</span>
+        <span class="out"><span class="st">${b.title==='Clean'?'skipped':'presumed'}</span>
+          <span class="dot${b.title==='Clean'?' a':' v'}"></span></span></div>`).join('')}
+    <div class="ledsec">Ahead &middot; presumed until you say otherwise</div>
+    ${rows.filter(b => b.s >= min('20:41')).map(b => `
+      <div class="ledrow"${b.origin==='frame'?' data-frame':''}>
+        <span class="t">${fmt(b.s)}&ndash;${fmt(b.e)}</span>
+        <span class="d">${b.e-b.s}m</span>
+        <span class="ttl">${b.area ? `<span class="chip" style="--ai:var(${AREA[b.area]})"></span> ` : ''}${b.title}</span>
+        <span class="out"><span class="st">planned</span></span></div>`).join('')}
+  </div>
+  <div class="panel"><header>Per-block check-off is optional
+    <span class="r">the evening pass is what records the day</span></header>
+    <div class="in" style="font-size:var(--fs-prose);line-height:var(--lh-prose)">
+      Blocks are <b>presumed</b> complete unless you say otherwise, which keeps the daily
+      cost of using syncr near zero. Confirming converts presumed to <b>recorded</b>.
+      A day you never confirm is excluded from both reviews and learning, which is what
+      stops a week you disengaged from being recorded as perfect.</div></div>
+</div></div>`;
+};
+
+/* ---------- 6. Today, evening confirmation ---------- */
+V['v-confirm'] = () => `
+<div class="modehead">
+  <b>Confirm Sunday 16 February</b>
+  <span class="eyebrow">Convert presumed to recorded &middot; no planning happens here</span>
+  <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <span class="eyebrow">3 days unconfirmed</span>
+    <button type="button" class="btn sec">Backfill Fri and Sat</button>
+    <button type="button" class="btn">Record the day</button></span>
+</div>
+<div class="scroll"><div class="pad gap">
+  <div class="led">
+    <div class="ledsec">Mark only the exceptions</div>
+    <div class="ledrow"><span class="t">10:00&ndash;10:30</span><span class="d">30m</span>
+      <span class="ttl"><span class="chip" style="--ai:var(--area-07)"></span> Clean</span>
+      <span class="out"><span class="seg"><button type="button">done</button>
+        <button type="button">partial</button><button type="button" aria-pressed="true">skipped</button>
+        <button type="button">moved</button></span></span></div>
+    <div class="ledrow" data-selected><span class="t">13:30&ndash;17:00</span><span class="d">210m</span>
+      <span class="ttl"><span class="chip" style="--ai:var(--area-01)"></span> Leetcode</span>
+      <span class="out"><span class="seg"><button type="button">done</button>
+        <button type="button" aria-pressed="true">partial</button><button type="button">skipped</button>
+        <button type="button">moved</button></span>
+        <span class="stepper"><input type="number" value="145" step="5" aria-label="Actual minutes">
+          <button type="button">&minus;</button><button type="button">+</button></span>
+        <span class="st n">planned 210</span></span></div>
+    <div class="ledrow"><span class="t">18:00&ndash;20:00</span><span class="d">120m</span>
+      <span class="ttl"><span class="chip" style="--ai:var(--area-01)"></span> Leetcode</span>
+      <span class="out"><span class="st">presumed complete</span><span class="dot v"></span></span></div>
+  </div>
+  <div class="cols2">
+    <div class="panel"><header>Why partial minutes are required, not optional</header>
+      <div class="in" style="font-size:var(--fs-prose);line-height:var(--lh-prose)">
+        <code>partial</code> with actual minutes is the only source of the duration-estimate
+        signal. Without it the estimate-accuracy metric does not exist and the duration
+        multiplier never converges. The stepper is pre-filled with the planned duration and
+        moves in 5-minute steps, so the common case is two keystrokes.</div></div>
+    <div class="panel"><header>What confirming does not do</header>
+      <div class="in" style="font-size:var(--fs-prose);line-height:var(--lh-prose)">
+        It does not re-plan. A slip at 14:00 on Tuesday is recorded, and the next solve
+        absorbs it as a <b>proposal</b> that waits quietly for you. Unlocks depend on the
+        volume of confirmed days, never on your adherence rate, so a day you skipped
+        everything and said so counts exactly as much as a perfect one.</div></div>
+  </div>
+</div></div>`;
+
+/* ---------- 7. Backlog ---------- */
+V['v-backlog'] = () => `
+<div class="band">
+  <div><div class="eyebrow on">&#9670; 23 open &middot; 4 at risk</div><h1>Backlog</h1></div>
+  <div class="sub">syncr owns tasks. It replaces sticky notes<br>rather than integrating with a task manager.</div>
+  <div class="right">
+    <span class="selw"><select aria-label="Area filter"><option>All Areas</option><option>Career</option></select></span>
+    <input type="text" value="" placeholder="Search" aria-label="Search the backlog">
+    <button type="button" class="btn">Capture <span class="key">[ n ]</span></button></div>
+</div>
+<div class="scroll"><div class="pad gap">
+  <div class="panel"><header>Open tasks <span class="r">sorted by deadline risk</span></header>
+    <table class="data"><thead><tr><th class="idx"></th><th>Task</th><th>Area</th><th>Project</th>
+      <th class="num">Estimate</th><th class="num">Min chunk</th><th>Split</th>
+      <th class="num">Deadline</th><th>Risk</th></tr></thead><tbody>
+      <tr data-current><td class="idx n">01</td><td>F&amp;F Past Papers</td>
+        <td><span class="areaname"><span class="chip" style="--ai:var(--area-05)"></span>Study</span></td>
+        <td class="mut">&mdash;</td><td class="num">6h 00m</td><td class="num">45m</td><td>yes</td>
+        <td class="num">Fri 09:00</td><td><span class="dot o"></span> short 1h20m</td></tr>
+      <tr><td class="idx n">02</td><td>Kim&rsquo;s Game Project</td>
+        <td><span class="areaname"><span class="chip" style="--ai:var(--area-03)"></span>Projects</span></td>
+        <td>Kim&rsquo;s Game</td><td class="num">12h 00m</td><td class="num">90m</td><td>yes</td>
+        <td class="num">Thu 18:00</td><td><span class="dot o"></span> overdue 2d</td></tr>
+      <tr><td class="idx n">03</td><td>Make F&amp;F Checklist</td>
+        <td><span class="areaname"><span class="chip" style="--ai:var(--area-05)"></span>Study</span></td>
+        <td class="mut">&mdash;</td><td class="num">45m</td><td class="num">45m</td><td>no</td>
+        <td class="num">Wed 12:00</td><td><span class="dot a"></span> at risk</td></tr>
+      <tr><td class="idx n">04</td><td>Topic List Questions</td>
+        <td><span class="areaname"><span class="chip" style="--ai:var(--area-01)"></span>Career</span></td>
+        <td class="mut">&mdash;</td><td class="num">3h 00m</td><td class="num">30m</td><td>yes</td>
+        <td class="mut">none</td><td><span class="dot v"></span> fits</td></tr>
+      <tr><td class="idx n">05</td><td>Visual Computing CW &middot; Requirements 1</td>
+        <td><span class="areaname"><span class="chip" style="--ai:var(--area-05)"></span>Study</span></td>
+        <td>Vis Comp CW</td><td class="num">4h 00m</td><td class="num">60m</td><td>yes</td>
+        <td class="num">Mon 09:00</td><td><span class="dot v"></span> fits</td></tr>
+      <tr><td class="idx n">06</td><td>Autodesk OA</td>
+        <td><span class="areaname"><span class="chip" style="--ai:var(--area-01)"></span>Career</span></td>
+        <td class="mut">&mdash;</td><td class="num">1h 30m</td><td class="num">90m</td><td>no</td>
+        <td class="num">Tue 23:59</td><td><span class="dot a"></span> atomic</td></tr>
+    </tbody></table></div>
+  <div class="cols2">
+    <div class="panel"><header>Queue &middot; what a queue-bound habit will draw next</header>
+      <div class="in"><div class="sesslist">
+        <div><span class="n mut">1</span> Leetcode &middot; Graphs<span class="s">in progress</span></div>
+        <div><span class="n mut">2</span> Leetcode &middot; Dynamic Programming<span class="s">next</span></div>
+        <div><span class="n mut">3</span> Leetcode &middot; Review Starred<span class="s">then</span></div>
+      </div>
+      <div style="margin-top:9px;font-size:var(--fs-eyebrow);color:var(--ink-soft);line-height:1.6">
+        The habit answers <i>when and how often</i>. The queue answers <i>what exactly</i>,
+        and it is bound at plan time rather than at 07:00 with no information.</div></div></div>
+    <div class="panel"><header>Capture</header><div class="in">
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <input type="text" value="Wash sheets" aria-label="Task title">
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <span class="selw"><select aria-label="Area"><option>Admin</option></select></span>
+          <span class="stepper"><input type="number" value="30" step="5" aria-label="Estimate minutes">
+            <button type="button">&minus;</button><button type="button">+</button></span>
+          <input type="text" value="" placeholder="deadline" aria-label="Deadline" style="width:110px">
+          <button type="button" class="btn">Add</button></div></div></div></div>
+  </div>
+</div></div>`;
+
+/* ---------- 8. Areas and budget ---------- */
+V['v-areas'] = () => `
+<div class="band">
+  <div><div class="eyebrow on">&#9670; 7 Areas &middot; 1 floor declared</div><h1>Areas</h1></div>
+  <div class="sub">Budgets are floors plus a proportional remainder,<br>measured against discretionary time.</div>
+  <div class="right"><button type="button" class="btn sec">Run the pie review</button></div>
+</div>
+<div class="scroll"><div class="pad gap">
+  <div class="cols21">
+    <div class="panel"><header>Actual against target
+      <span class="r">this week &middot; percentage points off target</span></header>
+      <div class="in">${devRows()}
+        <div style="margin-top:11px;font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+          One ink here, deliberately, on a screen that is otherwise full of Area pigment.
+          <b>Area ink encodes identity; cobalt encodes magnitude and direction.</b> Under
+          target extends left of the zero rule, over target extends right, and the direction
+          is a sign rather than a hue. <b>There is no chip in the label column either:</b> a
+          chart row is a chart context end to end, and a chip beside a cobalt bar would imply
+          the bar could have been Area-colored. The name identifies the row.</div></div></div>
+    <div class="panel"><header>Composition now <span class="r">of 52.1h discretionary</span></header>
+      <div class="in" style="text-align:center">${pieHTML(168)}
+        <div class="legend" style="margin-top:11px;text-align:left">${LEGEND}</div></div></div>
+  </div>
+  <div class="panel" style="border-left:var(--state-conflict-border) solid var(--signal-amber)">
+    <header style="background:var(--amber-wash)">&#9670; Unallocated is the largest wedge, and that is the point
+      <span class="r">a notice, not a failure</span></header>
+    <div class="in" style="font-size:var(--fs-prose);line-height:var(--lh-prose)">
+      <b>18.4h of 52.1h discretionary hours, 35.3%, sit in no block at all.</b> Percentages
+      are measured against discretionary time rather than against scheduled time, and the
+      residual is shown rather than hidden. Measuring against scheduled time would inflate
+      every Area's share by excluding exactly the hours you never planned, and the report
+      would read as healthy while the gap grew.</div></div>
+  <div class="panel"><header>Budgets <span class="r">floors are non-negotiable inputs to the solver</span></header>
+    <table><thead><tr><th>Area</th><th>Parent</th><th class="num">Floor / wk</th>
+      <th class="num">Share of remainder</th><th class="num">This week</th>
+      <th class="num">Deviation</th><th>Preference</th></tr></thead><tbody>
+      ${BUDGET.filter(b => b[1]).map(([n, tok, actual, target, hours]) => `<tr>
+        <td><span class="areaname"><span class="chip" style="--ai:var(${tok})"></span>${n}</span></td>
+        <td class="mut">&mdash;</td>
+        <td class="num">${n === 'Fitness' ? '5h 00m' : '\u2014'}</td>
+        <td class="num">${target}%</td><td class="num">${hours.toFixed(1)}h</td>
+        <td class="num">${actual - target > 0 ? '+' : '\u2212'}${Math.abs(actual-target).toFixed(1)}pp</td>
+        <td class="mut">${n==='Fitness'?'05:30 or 13:15 &middot; strong':n==='Career'?'morning &middot; soft':'&mdash;'}</td></tr>`).join('')}
+    </tbody></table></div>
+</div></div>`;
+
+/* ---------- 9. Areas, pie-review mode ---------- */
+V['v-pie'] = () => `
+<div class="modehead"><b>Pie review</b>
+  <span class="eyebrow">Quarterly, or whenever you ask &middot; syncr proposes, you decide</span>
+  <span style="margin-left:auto;display:flex;gap:8px">
+    <button type="button" class="btn sec">Reject</button>
+    <button type="button" class="btn sec">Adjust</button>
+    <button type="button" class="btn">Approve the revision</button></span>
+</div>
+<div class="scroll"><div class="pad gap">
+  <div class="cols2">
+    <div class="panel"><header>Composition now <span class="r">13 confirmed weeks</span></header>
+      <div class="in" style="text-align:center">${pieHTML(184)}
+        <div class="legend" style="margin-top:11px;text-align:left">${LEGEND}</div>
+        <div style="margin-top:9px;font-size:var(--fs-eyebrow);text-align:left;color:var(--ink-soft);line-height:1.6">
+          A pie answers <i>what is the shape of my time</i>, which is the model you already
+          hold. It cannot answer <i>how far off target am I</i>, because it shows one series.
+          That is the bars' job.</div></div></div>
+    <div class="panel"><header>Trend over time <span class="r">by week &middot; stacked, Area ink plus hatch</span></header>
+      <div class="in">
+        ${['W06','W07','W08','W09','W10','W11','W12','W13'].map((w, wi) => {
+          const jitter = [0,2,-3,1,4,-2,3,-1][wi];
+          return `<div class="trend"><span class="mut n">${w}</span><span class="stack">`
+            + BUDGET.map(([n, tok, actual]) => {
+                const share = Math.max(2, actual + (n === 'Unallocated' ? -jitter : jitter/6));
+                const [hv, hs] = HATCH[n] || ['--hatch-back', null];
+                const style = tok
+                  ? `--ai:var(${tok});--hatch-ink:color-mix(in srgb, var(${tok}) var(--hatch-mix), var(--paper-raised));`
+                    + `--hx:var(${hv})` + (hs ? `;--hxs:var(${hs})` : '')
+                  : `--ai:var(--ink-wash);--hx:none`;
+                return `<span style="${style};width:${share}%" title="${n} ${share.toFixed(1)}%"></span>`;
+              }).join('')
+            + `</span></div>`;
+        }).join('')}
+        <div style="margin-top:9px;font-size:var(--fs-eyebrow);color:var(--ink-soft);line-height:1.6">
+          Stacked bars, not a line chart. Twelve cobalt lines separated only by dash pattern
+          would be unreadable, and an Area ink is not legal on a line: the seal permits it on
+          a wedge or a bar fill, and nowhere else on a chart.</div></div></div>
+  </div>
+  <div class="panel"><header>Proposed revision <span class="r">derived from 13 weeks of confirmed behavior</span></header>
+    <table><thead><tr><th>Area</th><th class="num">Target now</th><th class="num">Observed</th>
+      <th class="num">Proposed</th><th>Basis</th></tr></thead><tbody>
+      <tr><td><span class="areaname"><span class="chip" style="--ai:var(--area-01)"></span>Career</span></td>
+        <td class="num">30%</td><td class="num">27.3%</td><td class="num">28%</td>
+        <td class="mut">sustained under target, small correction</td></tr>
+      <tr><td><span class="areaname"><span class="chip" style="--ai:var(--area-03)"></span>Projects</span></td>
+        <td class="num">10%</td><td class="num">2.9%</td><td class="num">5%</td>
+        <td class="mut">target has never been met in 13 weeks</td></tr>
+      <tr><td><span class="areaname"><span class="chip" style="--ai:var(--area-08)"></span>Fitness</span></td>
+        <td class="num">12%</td><td class="num">8.6%</td><td class="num">12%</td>
+        <td class="mut">unchanged: the 5h floor is doing the work</td></tr>
+      <tr><td><span class="areaname"><span class="chip" style="--ai:var(--rule-strong)"></span>Unallocated</span></td>
+        <td class="num">15%</td><td class="num">35.3%</td><td class="num">25%</td>
+        <td class="mut">the gap the review exists to surface</td></tr>
+    </tbody></table>
+    <div class="in" style="border-top:var(--hairline) solid var(--rule);font-size:var(--fs-prose);line-height:var(--lh-prose)">
+      syncr never re-cuts the pie on its own. The proposal half of this review needs a
+      quarter of confirmed data before it can say anything; until then the review shows the
+      actual-against-target gap only.</div></div>
+</div></div>`;
+
+/* ---------- 10. Templates: a list plus a tabbed editor ---------- */
+V['v-templates'] = () => `
+<div class="band">
+  <div><div class="eyebrow on">&#9670; 3 day shapes &middot; 9 habits &middot; 4 anchor types</div><h1>Templates</h1></div>
+  <div class="sub">Define a day shape once. syncr materializes it every week.<br>Cadence lives on habits, not on templates.</div>
+</div>
+<div class="scroll"><div class="pad gap">
+  <div class="seg" style="width:max-content">
+    <button type="button" aria-pressed="true">Day shapes</button>
+    <button type="button">Week pattern</button>
+    <button type="button">Habits</button>
+    <button type="button">Anchor types</button></div>
+  <div style="display:grid;grid-template-columns:196px minmax(0,1fr);gap:13px">
+    <div class="panel"><header>Day shapes</header>
+      <div class="led" style="border:0">
+        <div class="ledrow" data-selected style="grid-template-columns:1fr auto">
+          <span class="ttl">Weekday</span><span class="st n">14</span></div>
+        <div class="ledrow" style="grid-template-columns:1fr auto">
+          <span class="ttl">Uni day</span><span class="st n">17</span></div>
+        <div class="ledrow" style="grid-template-columns:1fr auto">
+          <span class="ttl">Weekend</span><span class="st n">9</span></div>
+      </div>
+      <div class="in" style="padding:9px"><button type="button" class="btn sec sm">New shape</button></div></div>
+    <div class="panel"><header>Weekday <span class="r">14 entries &middot; every entry is pinned</span></header>
+      <table class="dense"><thead><tr><th class="num">Target</th><th>Kind</th><th>Entry</th>
+        <th>Area</th><th class="num">Duration</th><th class="num">Flex</th></tr></thead><tbody>
+        <tr><td class="num">05:00</td><td>concrete</td><td>Wake Up</td><td class="mut">frame</td><td class="num">15m</td><td class="num">&plusmn;30m</td></tr>
+        <tr><td class="num">05:30</td><td>concrete</td><td>Gym</td>
+          <td><span class="areaname"><span class="chip" style="--ai:var(--area-08)"></span>Fitness</span></td>
+          <td class="num">60m</td><td class="num">&plusmn;15m</td></tr>
+        <tr><td class="num">06:45</td><td>concrete</td><td>Shower</td><td class="mut">frame</td><td class="num">15m</td><td class="num">&plusmn;15m</td></tr>
+        <tr data-current><td class="num">07:00</td><td>slot</td><td class="mut">bound at plan time</td>
+          <td><span class="areaname"><span class="chip" style="--ai:var(--area-01)"></span>Career</span></td>
+          <td class="num">150m</td><td class="num">&plusmn;30m</td></tr>
+        <tr><td class="num">11:30</td><td>concrete</td><td>Lunch</td><td class="mut">frame</td><td class="num">30m</td><td class="num">&plusmn;60m</td></tr>
+        <tr><td class="num">13:00</td><td>slot</td><td class="mut">bound at plan time</td>
+          <td><span class="areaname"><span class="chip" style="--ai:var(--area-05)"></span>Study</span></td>
+          <td class="num">120m</td><td class="num">&plusmn;60m</td></tr>
+        <tr><td class="num">23:00</td><td>concrete</td><td>Sleep</td><td class="mut">frame</td><td class="num">8h 00m</td><td class="num">&plusmn;45m</td></tr>
+      </tbody></table>
+      <div class="in" style="border-top:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+        A <b>slot</b> declares an Area and a duration and lets syncr choose the content, which
+        is what makes the calendar know which topic matters this week instead of just saying
+        <code>Leetcode</code>. <b>Sleep is a span, not a marker</b>: routines define how much
+        time exists, so the frame has to have a duration for discretionary time to be
+        computable at all. <b>Pinned means never moved silently, not never moved.</b> When an
+        anchor collides with a pinned entry, syncr raises a conflict rather than displacing it.</div></div>
+  </div>
+  <div class="cols2">
+    <div class="panel"><header>Habits <span class="r">cadence, duration, miss policy, binding</span></header>
+      <table class="dense"><thead><tr><th>Habit</th><th>Cadence</th><th class="num">Dur</th>
+        <th>Binding</th><th>On miss</th><th>Cursor</th></tr></thead><tbody>
+        <tr><td>Gym</td><td>4 / wk</td><td class="num">60m</td><td>rotation</td><td>debt</td>
+          <td class="mut">Legs &middot; derived</td></tr>
+        <tr><td>Leetcode</td><td>5 / wk</td><td class="num">elastic</td><td>queue</td><td>forgive</td>
+          <td class="mut">Graphs &middot; derived</td></tr>
+        <tr><td>Anki &middot; F&amp;F</td><td>daily</td><td class="num">20m</td><td>fixed</td><td>debt</td>
+          <td class="mut">&mdash;</td></tr>
+        <tr><td>Groceries</td><td>~7d</td><td class="num">60m</td><td>fixed</td><td>forgive</td>
+          <td class="mut">&mdash;</td></tr>
+        <tr><td>Read</td><td>3 / wk</td><td class="num">30m</td><td>fixed</td><td>escalate</td>
+          <td class="mut">&mdash;</td></tr>
+      </tbody></table>
+      <div class="in" style="border-top:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+        <b>The rotation cursor is derived and read-only.</b> Gym is on <code>Legs</code>
+        because <code>Chest &amp; Back</code> was confirmed complete, so the cursor is a
+        projection of the outcome log rather than a field. A wrong cursor means a wrong
+        confirmation: fix the day on Today and the cursor re-derives. To skip a variant just
+        this once, rebind that one occurrence, which is a pin.</div></div>
+    <div class="panel"><header>Anchor types <span class="r">rules evaluate in order, first match wins</span></header>
+      <table class="dense"><thead><tr><th>Type</th><th>Match</th><th class="num">Pre</th>
+        <th class="num">Transit</th><th class="num">Post</th><th>Forbids after</th></tr></thead><tbody>
+        <tr><td>Interview</td><td class="mut">title has &ldquo;Interview&rdquo;</td><td class="num">6h</td>
+          <td class="num">30m</td><td class="num">75m</td><td>Career, Study</td></tr>
+        <tr><td>Exam</td><td class="mut">source = Assessments</td><td class="num">14h</td>
+          <td class="num">45m</td><td class="num">2h</td><td>Study</td></tr>
+        <tr><td>Lecture</td><td class="mut">source = Timetable</td><td class="num">0m</td>
+          <td class="num">30m</td><td class="num">0m</td><td class="mut">&mdash;</td></tr>
+        <tr><td>Standup</td><td class="mut">title = &ldquo;Standup&rdquo;</td><td class="num">0m</td>
+          <td class="num">0m</td><td class="num">0m</td><td class="mut">&mdash;</td></tr>
+      </tbody></table>
+      <div class="in" style="border-top:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+        Shadows are <b>declared, never inferred</b>. An untyped anchor is opaque busy time
+        with no shadow, and syncr makes no assumption about it. A per-event override persists
+        on the recurring series, so a daily standup is typed once rather than 250 times.</div></div>
+  </div>
+</div></div>`;
+
+/* ---------- 11. What syncr learned ---------- */
+V['v-learned'] = () => {
+  const P = [
+    ['Duration multiplier &middot; Career', '1.37&times;', 14, 15, 'ready', 'you estimate 60m for Leetcode; your median is 82m'],
+    ['Duration multiplier &middot; Study', '1.12&times;', 11, 15, 'ready', 'closer than you think, on Study only'],
+    ['Duration multiplier &middot; Fitness', '1.00&times;', 6, 15, 'collecting', 'a gym hour is an hour'],
+    ['Churn tolerance', '&mdash;', 8, 20, 'collecting', 'needs 20 proposals; 8 seen'],
+    ['Time-of-day fitness &middot; Career', '&mdash;', 12, 30, 'collecting', 'needs spread across hours, not just volume'],
+    ['Skip probability by bucket', '&mdash;', 3, 30, 'collecting', 'sparse: bucketed to morning, afternoon, evening'],
+    ['Objective term weights', 'hand-tuned', 6, 50, 'collecting', 'fitted weights replace hand-tuned ones at ~50 edits']
+  ];
+  const meter = (a, b) => {
+    const cells = 18, on = Math.min(cells, Math.round(a/b*cells));
+    return `<span class="meter">${'\u2588'.repeat(on)}<i>${'\u2588'.repeat(cells-on)}</i></span>`;
+  };
+  return `
+<div class="band">
+  <div><div class="eyebrow on">&#9670; 13 confirmed weeks &middot; 41 of 50 numbers still collecting</div><h1>Learned</h1></div>
+  <div class="sub">Not the schedule: the parameters of a fixed objective.<br>Roughly 30 to 50 numbers, inspectable in a table.</div>
+</div>
+<div class="scroll"><div class="pad gap">
+  <div class="panel"><header>Per-parameter maturity
+    <span class="r">a state per parameter, not one global flag</span></header>
+    <table><thead><tr><th>Parameter</th><th class="num">Value</th><th class="num">Samples</th>
+      <th>Unlock progress</th><th>State</th><th>What it means</th></tr></thead><tbody>
+      ${P.map(([n, v, a, b, st, note]) => `<tr>
+        <td>${n}</td><td class="num">${v}</td><td class="num">${a} / ${b}</td>
+        <td>${meter(a,b)}</td>
+        <td><span class="dot${st==='ready'?' v':''}"></span> ${st}</td>
+        <td class="mut">${note}</td></tr>`).join('')}
+    </tbody></table></div>
+  <div class="cols2">
+    <div class="panel"><header>Collecting baseline is a normal state</header>
+      <div class="in" style="font-size:var(--fs-prose);line-height:var(--lh-prose)">
+        It is <b>informational, never a warning</b>. Nothing is broken while a parameter is
+        still collecting, and marking it in oxide would teach you to distrust a working
+        system. Estimates blend with priors through shrinkage rather than jumping to the
+        empirical mean at low sample counts, so maturing feels like gradual sharpening
+        instead of erratic swings.</div></div>
+    <div class="panel"><header>Unlocks depend on confirmed volume, never on adherence</header>
+      <div class="in" style="font-size:var(--fs-prose);line-height:var(--lh-prose)">
+        A day where you skipped everything and said so counts exactly as much as a perfect
+        day. Tying unlocks to adherence would reward marking things done, and the integrity
+        of the whole dataset rests on honest confirmation. This screen is also the trust
+        surface: it is where you can check syncr against your own experience.</div></div>
+  </div>
+  <div class="panel"><header>Where the signal comes from</header>
+    <table class="dense"><thead><tr><th>Source</th><th>Yields</th><th>Drives</th></tr></thead><tbody>
+      <tr><td>every pin</td><td>a pairwise preference in a known context</td><td>objective term weights, by learning to rank</td></tr>
+      <tr><td><code>partial</code> with actual minutes</td><td>an estimate error</td><td>duration multiplier per Area</td></tr>
+      <tr><td><code>skipped</code> with a timestamp</td><td>a refusal at a time of day</td><td>skip probability by bucket</td></tr>
+      <tr><td>a rejected proposal</td><td>one bit, with no credit assignment</td><td class="mut">almost nothing: this is why partial rejection exists</td></tr>
+    </tbody></table></div>
+</div></div>`;
+};
+
+/* ---------- 12. Settings ---------- */
+V['v-settings'] = () => `
+<div class="band">
+  <div><div class="eyebrow on">&#9670; 2 sources &middot; 1 write target</div><h1>Settings</h1></div>
+  <div class="sub">syncr writes to one calendar it exclusively owns.<br>That calendar is a projection, not an input.</div>
+</div>
+<div class="scroll"><div class="pad gap">
+  <div class="banner" style="border-bottom:0;border:var(--hairline) solid var(--rule-strong);border-left:var(--state-conflict-border) solid var(--signal-oxide)">
+    <b>&#9670; Failure &middot; the write target has stopped accepting writes</b>
+    <p>Google refresh token expired 41 minutes ago. <b>The plan is no longer reaching your
+       phone.</b> Reading anchors still works; writing does not.</p>
+    <span class="acts"><button type="button" class="btn sm">Reconnect Google</button></span>
+  </div>
+  <div class="cols2">
+    <div class="panel"><header>Anchor sources <span class="r">read only</span></header>
+      <table class="dense"><thead><tr><th>Source</th><th>Provider</th><th class="num">Anchors</th>
+        <th>Last sync</th><th>State</th></tr></thead><tbody>
+        <tr><td>University timetable</td><td>ICS</td><td class="num">31</td><td class="num">3m ago</td>
+          <td><span class="dot v"></span> ok</td></tr>
+        <tr><td>Assessments</td><td>ICS</td><td class="num">4</td><td class="num">3m ago</td>
+          <td><span class="dot v"></span> ok</td></tr>
+        <tr><td>Personal</td><td>Google</td><td class="num">12</td><td class="num">3m ago</td>
+          <td><span class="dot v"></span> ok, read</td></tr>
+        <tr><td>Birthdays</td><td>ICS</td><td class="num">0</td><td class="mut">&mdash;</td>
+          <td><span class="dot hollow"></span> excluded</td></tr>
+      </tbody></table>
+      <div class="in" style="border-top:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+        ICS ingest is the strategic path, not the fallback: it needs no OAuth verification
+        from any provider and covers every publisher. Google is required regardless, because
+        it is the write target.</div></div>
+    <div class="panel"><header>Write target <span class="r">exclusively owned by syncr</span></header>
+      <div class="in">
+        <div style="display:flex;flex-direction:column;gap:9px;font-size:var(--fs-eyebrow)">
+          <label style="display:flex;gap:9px;align-items:center"><span style="width:108px" class="lab">Calendar</span>
+            <span class="selw"><select><option>syncr (plan)</option></select></span></label>
+          <label style="display:flex;gap:9px;align-items:center"><span style="width:108px" class="lab">Horizon</span>
+            <span class="stepper"><input type="number" value="14" aria-label="Projection days">
+              <button type="button">&minus;</button><button type="button">+</button></span>
+            <span class="mut">days projected</span></label>
+          <label style="display:flex;gap:9px;align-items:center"><span style="width:108px" class="lab">Reconcile</span>
+            <span class="mut">destructively &middot; edits made in Calendar.app are overwritten</span></label>
+        </div>
+        <div style="margin-top:11px;font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+          A published feed cannot do this job. Google refreshes a subscribed calendar every
+          8 to 24 hours with no manual refresh, so a plan revised at 10:14 would reach your
+          phone hours later, which deletes adaptation entirely. Writing through the API
+          propagates in seconds and push works.</div></div></div>
+  </div>
+  <div class="cols2">
+    <div class="panel"><header>Day and frame</header><div class="in">
+      <div style="display:flex;flex-direction:column;gap:9px;font-size:var(--fs-eyebrow)">
+        <label style="display:flex;gap:9px;align-items:center"><span style="width:126px" class="lab">Day starts</span>
+          <input type="time" value="05:00"></label>
+        <label style="display:flex;gap:9px;align-items:center"><span style="width:126px" class="lab">Day ends</span>
+          <input type="time" value="23:59"></label>
+        <label style="display:flex;gap:9px;align-items:center"><span style="width:126px" class="lab">Sleep floor</span>
+          <span class="stepper"><input type="number" value="7" step="1" aria-label="Sleep floor hours">
+            <button type="button">&minus;</button><button type="button">+</button></span>
+          <span class="mut">hours &middot; negotiable, never spent silently</span></label>
+        <label style="display:flex;gap:9px;align-items:center"><span style="width:126px" class="lab">Visible hours</span>
+          <span class="selw"><select><option>12 (default)</option><option>6</option><option>8</option><option>16</option></select></span>
+          <span class="mut">capped at 16h on this display</span></label>
+      </div>
+      <div style="margin-top:11px;font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+        The axis always expands to contain every block in the visible week. Day bounds set
+        the default extent, never a crop: a block hidden by the axis would be a scheduling
+        error you cannot see. The zoom cap keeps a thirty-minute block labeled, which is the
+        most common block length by a wide margin.</div></div></div>
+    <div class="panel"><header>Time zone</header><div class="in">
+      <div style="display:flex;flex-direction:column;gap:9px;font-size:var(--fs-eyebrow)">
+        <label style="display:flex;gap:9px;align-items:center"><span style="width:126px" class="lab">Home zone</span>
+          <span class="selw"><select><option>Europe/London</option></select></span></label>
+        <label style="display:flex;gap:9px;align-items:center"><span style="width:126px" class="lab">Travel override</span>
+          <span class="mut">none active</span>
+          <button type="button" class="btn sec sm">Add a range</button></label>
+      </div>
+      <div style="margin-top:11px;font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+        Anchors are absolute: a meeting at 14:00 UTC stays at 14:00 UTC. The frame is local:
+        <code>Wake 05:00</code> means 05:00 wherever you are. Everything renders in the
+        active zone, in one zone at a time. Changing zone re-derives the frame and reflows
+        the unpinned fill.</div></div></div>
+  </div>
+</div></div>`;
+
+/* ---------- 13. Overlays ---------- */
+V['v-overlays'] = () => `
+<div class="band">
+  <div><div class="eyebrow on">&#9670; Command palette and help</div><h1>Week</h1></div>
+  <div class="sub">Both overlays carry the one hard shadow.<br>Nothing else in the product does.</div>
+</div>
+${STRIP}
+<div style="display:flex;flex:1;min-height:0;position:relative">
+  ${gridHTML(12, {})}
+  <div class="scrim">
+    <div style="display:flex;flex-direction:column;gap:20px;width:560px;max-width:92%">
+      <div class="dlg">
+        <header>Command palette <span class="r">[ &#8984; K ]</span></header>
+        <div class="q">pin gym<span style="color:var(--ink)">|</span></div>
+        <div class="r0" data-current><span>Pin <code>Gym &middot; Shoulder &amp; Arms</code> at its current time</span>
+          <span class="k">Tue 05:30</span></div>
+        <div class="r0"><span>Pin every <code>Gym</code> this week</span><span class="k">4 blocks</span></div>
+        <div class="r0"><span>Promote <code>Gym</code> at 13:00 to the Weekday template</span>
+          <span class="k">3 repeated pins</span></div>
+        <div class="r0"><span>Show the <code>Gym</code> rotation cursor</span><span class="k">Legs</span></div>
+        <div class="r0" style="border-bottom:0"><span class="mut">Solve the week again</span>
+          <span class="k">debounced</span></div>
+      </div>
+      <div class="dlg">
+        <header>Keyboard <span class="r">[ ? ]</span></header>
+        <div class="keys">
+          <div><span class="key">[ j ] [ k ]</span><span></span>block, previous and next</div>
+          <div><span class="key">[ h ] [ l ]</span><span></span>day column</div>
+          <div><span class="key">[ [ ] [ ] ]</span><span></span>week</div>
+          <div><span class="key">[ T ]</span><span></span>jump to today</div>
+          <div><span class="key">[ z ]</span><span></span>cycle visible hours</div>
+          <div><span class="key">[ p ]</span><span></span>pin or unpin</div>
+          <div><span class="key">[ &#8679;&#8593; ] [ &#8679;&#8595; ]</span><span></span>move 15m and pin</div>
+          <div><span class="key">[ enter ]</span><span></span>detail panel</div>
+          <div><span class="key">[ c ]</span><span></span>confirm the day</div>
+          <div><span class="key">[ x ]</span><span></span>mark skipped</div>
+          <div><span class="key">[ &#8679;X ]</span><span></span>partial, with minutes</div>
+          <div><span class="key">[ n ]</span><span></span>capture a task</div>
+          <div><span class="key">[ / ]</span><span></span>search</div>
+          <div><span class="key">[ &#8679;A ]</span><span></span>approve all proposals</div>
+          <div><span class="key">[ g w ]</span><span></span>Week</div>
+          <div><span class="key">[ g t ]</span><span></span>Today</div>
+          <div><span class="key">[ g b ]</span><span></span>Backlog</div>
+          <div><span class="key">[ g a ]</span><span></span>Areas</div>
+          <div><span class="key">[ g m ]</span><span></span>Templates</div>
+          <div><span class="key">[ g l ]</span><span></span>Learned</div>
+          <div><span class="key">[ g s ]</span><span></span>Settings</div>
+          <div><span class="key">[ ? ]</span><span></span>this overlay</div>
+        </div>
+        <div class="in" style="border-top:var(--hairline) solid var(--rule-strong);padding:9px 11px;
+          font-size:var(--fs-eyebrow);line-height:1.6;color:var(--ink-soft)">
+          A key hint takes one form everywhere: bracketed bare mono text, matching the
+          <code>[ + ]</code> and <code>[ &minus; ]</code> disclosure marks. No bordered key
+          caps: a border plus brackets at 10px is redundant, and two forms for one idea is
+          one too many.</div>
+      </div>
+    </div>
+  </div>
+</div>`;
+
+/* ============================================================================
+   Router. The doc bar is a view switcher, not app chrome.
+   ============================================================================ */
+const NAV_FOR = {'v-first':null, 'v-week':'week', 'v-session':'week', 'v-conflict':'week',
+  'v-today':'today', 'v-confirm':'today', 'v-backlog':'backlog', 'v-areas':'areas',
+  'v-pie':'areas', 'v-templates':'templates', 'v-learned':'learned',
+  'v-settings':'settings', 'v-overlays':'week'};
+
+function show(id){
+  document.getElementById('nav').innerHTML = NAV.map(([k, l, c]) =>
+    `<a href="#"${NAV_FOR[id] === k ? ' aria-current="page"' : ''}>${ic(k)}${l}`
+    + (c ? `<b class="c n">${c}</b>` : '') + '</a>').join('');
+  document.getElementById('main').innerHTML = `<section class="view on">${V[id]()}</section>`;
+  for(const b of document.querySelectorAll('.doc button'))
+    b.toggleAttribute('aria-current', b.dataset.v === id);
+  const g = document.querySelector('.gridwrap');
+  if(g) g.scrollTop = 7 * 60 * (px('--grid-h') / (12 * 60));
+}
+for(const b of document.querySelectorAll('.doc button'))
+  b.addEventListener('click', () => show(b.dataset.v));
+show('v-week');
+
+/* vim-style movement, so every screen is reachable without a mouse */
+document.addEventListener('keydown', ev => {
+  const el = document.activeElement.closest?.('.blk, .ledrow');
+  if(!el) return;
+  const sel = el.classList.contains('blk') ? ':scope > .blk' : ':scope > .ledrow';
+  const peers = [...el.parentElement.querySelectorAll(sel)];
+  const i = peers.indexOf(el);
+  const go = n => { ev.preventDefault(); peers[Math.max(0, Math.min(peers.length-1, n))].focus(); };
+  if(ev.key === 'ArrowDown' || ev.key === 'j') go(i+1);
+  else if(ev.key === 'ArrowUp' || ev.key === 'k') go(i-1);
+  else if(ev.key === 'Enter' || ev.key === ' '){
+    ev.preventDefault();
+    el.closest('.gridwrap, .led')?.querySelectorAll('[data-selected]')
+      .forEach(p => p.removeAttribute('data-selected'));
+    el.setAttribute('data-selected','');
+  }
+  else if(ev.key === 'p'){ ev.preventDefault(); el.toggleAttribute('data-pinned'); }
+});
+</script>
+</body>
+</html>

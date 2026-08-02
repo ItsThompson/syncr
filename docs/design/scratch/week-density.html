@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Week density decision: seven columns, the width policy, and what truncates</title>
+
+<!-- Tokens are LINKED, not copied. Every value resolves through frontend/src/tokens. -->
+<link rel="stylesheet" href="../../../frontend/src/tokens/index.css">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* MOTION IS ZERO, WITHOUT EXCEPTION. Nothing in this file interpolates. */
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--text);font-family:var(--font-mono);
+  font-size:var(--fs-chrome);line-height:var(--lh-chrome);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;font-weight:400}
+a{color:var(--ink-bright)}
+code{background:var(--ink-wash);padding:0 3px}
+:is(a,button,input,select,[tabindex]):focus-visible{outline:var(--state-focus-ring);
+  outline-offset:var(--state-focus-offset)}
+
+.topbar{border-bottom:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  padding:12px 18px;display:flex;gap:24px;align-items:baseline;flex-wrap:wrap}
+.wordmark{font-family:var(--font-serif);font-size:24px;line-height:var(--lh-tight);
+  letter-spacing:var(--ls-wordmark);color:var(--ink-deep)}
+.kv{font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-muted)}
+.kv b{font-weight:500;color:var(--ink);letter-spacing:.04em;text-transform:none}
+.spec{position:sticky;top:0;z-index:30;display:flex;background:var(--paper);
+  border-bottom:var(--hairline) solid var(--rule-strong);overflow-x:auto}
+.spec .lbl{padding:8px 13px;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--on-ink);background:var(--ink-bright);white-space:nowrap}
+.spec div{padding:8px 12px;border-right:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);
+  letter-spacing:.06em;color:var(--text-muted);text-transform:uppercase;white-space:nowrap}
+.spec div b{font-weight:400;color:var(--ink);text-transform:none;letter-spacing:.02em}
+h2.sec{padding:7px 12px;border-top:var(--hairline) solid var(--rule-strong);
+  border-bottom:var(--hairline) solid var(--rule);background:var(--paper);font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep);
+  display:flex;justify-content:space-between;gap:14px}
+h2.sec em{font-style:normal;color:var(--text-muted);letter-spacing:.07em;text-transform:none;font-size:10px}
+.note{padding:9px 12px;border-bottom:var(--hairline) solid var(--rule);color:var(--ink-soft);
+  font-size:11px;line-height:var(--lh-prose)}
+.note b{color:var(--ink-deep);font-weight:500}
+table.led{border-collapse:collapse;width:100%;font-size:10.5px}
+table.led th{text-align:left;font-weight:400;font-size:9px;letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted);padding:5px 9px;
+  border-bottom:var(--hairline) solid var(--rule-strong)}
+table.led td{padding:3px 9px;border-bottom:var(--hairline) solid var(--rule);vertical-align:top}
+table.led td.r{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+table.led td.pass{color:var(--signal-verdigris);letter-spacing:.1em}
+table.led td.fail{color:var(--signal-oxide);letter-spacing:.1em}
+table.led code{font-size:9.5px}
+.bar{display:flex;border:var(--hairline) solid var(--rule-strong);margin:12px}
+.bar button{font:inherit;font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;
+  background:var(--paper-raised);color:var(--ink);border:0;border-right:var(--hairline) solid var(--rule);
+  height:var(--h-control);padding:0 11px;cursor:pointer}
+.bar button:last-child{border-right:0}
+.bar button[aria-pressed=true]{background:var(--ink);color:var(--on-ink)}
+
+/* ============================================================================
+   THE WEEK SCREEN, at the agreed width policy. This is a scale model of the real
+   layout: sidebar, summary strip, grid, detail panel. Only the grid absorbs surplus
+   width -- the sidebar and the panel are fixed -- because block titles in the 15 and
+   30 minute tiers cannot wrap.
+   ============================================================================ */
+.screen{display:grid;border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  margin:0 12px 14px;overflow:hidden}
+.screen{grid-template-columns:var(--w-sidebar) minmax(0,1fr) var(--w-detail)}
+.screen[data-panel=closed]{grid-template-columns:var(--w-sidebar) minmax(0,1fr) var(--w-detail-closed)}
+
+/* THE SIDEBAR IS PAPER, NOT INK. The inherited language fills its sidebar with --ink-deep;
+   rendered here it dominated a screen whose whole point is a calm grid, and it made the one
+   permanently-visible surface the loudest thing in the product. So the sidebar is paper with
+   a --rule-strong right edge, and the current item takes a wash plus a 3px --ink-deep left
+   rule -- the same channel a selected block uses. One idea, one form. It also means the
+   standard focus ring is correct throughout and no inverse-ring scope is needed here. */
+.side{background:var(--paper-raised);color:var(--ink);padding:11px 0;min-width:0;
+  border-right:var(--hairline) solid var(--rule-strong)}
+.side .brand{padding:0 13px 11px;border-bottom:var(--hairline) solid var(--rule)}
+.side .brand b{display:block;font-family:var(--font-serif);font-size:19px;line-height:1.1;
+  font-weight:400;letter-spacing:var(--ls-wordmark);color:var(--ink-deep)}
+.side .brand span{display:block;margin-top:3px;font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--text-muted)}
+.side a{display:flex;align-items:center;gap:8px;height:var(--h-control);padding:0 13px;
+  color:var(--ink);text-decoration:none;font-size:10.5px;
+  letter-spacing:var(--ls-nav);text-transform:uppercase;
+  border-left:var(--state-selected-border) solid transparent}
+.side a:hover{background:var(--state-hover)}
+.side a[aria-current]{background:var(--state-hover);color:var(--ink-deep);
+  border-left-color:var(--state-selected-color)}
+.side a .c{margin-left:auto;color:var(--text-muted);letter-spacing:.04em}
+.side .grp{padding:11px 13px 4px;font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted)}
+
+.mid{display:flex;flex-direction:column;min-width:0}
+/* the pinned summary and verdict strip. Fixed height: its rows scroll inside it, because a
+   panel that grew and shrank as pins accumulate would shift the grid under the cursor. */
+.strip{height:var(--strip-h);flex:0 0 auto;display:flex;align-items:stretch;
+  border-bottom:var(--hairline) solid var(--rule-strong);background:var(--paper)}
+.strip>div{padding:7px 11px;border-right:var(--hairline) solid var(--rule);min-width:0}
+.strip>div:last-child{border-right:0;flex:1}
+.strip .lab{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--text-muted);white-space:nowrap}
+.strip data{display:block;margin-top:3px;font-size:19px;line-height:var(--lh-tight);
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.strip small{display:block;margin-top:2px;font-size:9px;color:var(--text-muted);white-space:nowrap}
+/* the verdict. amber, because the week is impossible rather than broken: a notice, not a
+   failure. It is a PANEL in the severity ladder, never a banner and never blocking. */
+.verdict{border-left:var(--state-conflict-border) solid var(--signal-amber)!important;
+  background:var(--amber-wash);display:flex;flex-direction:column;justify-content:center}
+.verdict b{font-size:10.5px;color:var(--ink-deep)}
+.verdict p{margin:2px 0 0;font-size:9.5px;line-height:1.45;color:var(--ink)}
+
+/* detail panel: the block's reason lives here, on selection. Never hover-only. */
+.panel{border-left:var(--hairline) solid var(--rule-strong);background:var(--paper);
+  padding:11px;min-width:0;overflow:hidden}
+.panel[data-closed] .in{display:none}
+.panel .ttl{font-size:var(--fs-data);color:var(--ink-deep);line-height:1.3}
+.panel dl{margin:9px 0 0;font-size:var(--fs-eyebrow);line-height:1.75}
+.panel dl div{display:flex;justify-content:space-between;gap:8px;
+  border-bottom:var(--hairline) dotted var(--rule)}
+.panel dt{letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted)}
+.panel dd{margin:0;color:var(--ink)}
+.panel .why{margin-top:11px;border-top:var(--hairline) solid var(--rule-strong);padding-top:9px}
+.panel .why>.lab{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--ink-deep)}
+.panel .why>.lead{margin:5px 0 8px;font-size:var(--fs-prose);line-height:var(--lh-prose);color:var(--ink)}
+/* One row per reason clause. Each row is a template plus values the solver computed, never
+   generated prose: the clause kind, its subject, and the figure that justifies it. */
+.panel .cl{display:grid;grid-template-columns:var(--clause-label-w) minmax(0,1fr);gap:7px;padding:3px 0;
+  border-bottom:var(--hairline) dotted var(--rule);font-size:var(--fs-eyebrow);line-height:1.5}
+.panel .cl:last-child{border-bottom:0}
+.panel .cl>b{font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.panel .cl>span{color:var(--ink);min-width:0}
+.panel .cl>span i{font-style:normal;color:var(--text-muted)}
+.panel .cl>span code{font-size:9px}
+.rail{writing-mode:vertical-rl;font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted);padding:9px 0;text-align:center}
+
+/* ---------- the grid ---------- */
+.gridwrap{display:flex;flex:1;min-height:0;overflow:auto;background:var(--paper-raised)}
+.axis{width:var(--axis-w);flex:0 0 auto;border-right:var(--hairline) solid var(--rule);
+  position:sticky;left:0;z-index:8;background:var(--paper-raised)}
+.axis .hd{height:var(--day-header-h);border-bottom:var(--hairline) solid var(--rule-strong);
+  background:var(--ink-wash);position:sticky;top:0;z-index:2}
+.axis .hh{position:absolute;right:4px;font-size:var(--fs-eyebrow);color:var(--text-muted);
+  line-height:1.35;margin-top:1px;padding:0 3px;background:var(--paper-raised);
+  font-variant-numeric:tabular-nums}
+.cols{display:flex;flex:1;min-width:0}
+.col{flex:1;min-width:0;position:relative;border-right:var(--hairline) solid var(--rule)}
+.col:last-child{border-right:0}
+.colhead{height:var(--day-header-h);border-bottom:var(--hairline) solid var(--rule-strong);
+  display:flex;align-items:center;gap:6px;padding:0 6px;background:var(--ink-wash);
+  font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--ink-deep);position:sticky;top:0;z-index:3;white-space:nowrap;overflow:hidden}
+.colhead i{font-style:normal;margin-left:auto;color:var(--text-muted);letter-spacing:.04em}
+/* an unconfirmed day is marked inline on its own header. informational, not a warning. */
+.colhead.unconf::after{content:'\25CB';color:var(--ink-bright);font-size:8px}
+.canvas{position:relative}
+.canvas .maj,.canvas .min{position:absolute;left:0;right:0;height:0;pointer-events:none}
+/* The quarter hour is drawn at rest, because the snap is 15 minutes and the grid should show
+   where a block can land. The hour alone carries cobalt weight; the three quarters are faint.
+   During a drag the quarters step up to hour weight so the snap targets sharpen. */
+.canvas .maj{border-top:var(--hairline) solid var(--grid-line-hour)}
+.canvas .min{border-top:var(--hairline) solid var(--grid-line-quarter)}
+.dragging .canvas .min{border-top-color:var(--grid-line-quarter-drag)}
+
+/* a block: three edges, not four. Ported verbatim from block-states.html. */
+.blk{position:absolute;left:var(--grid-inset);right:var(--grid-inset);
+  background:var(--paper-raised);
+  border:0;border-top:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule);
+  border-left:var(--state-selected-border) solid transparent;
+  padding:var(--block-pad-t) var(--block-pad-x) var(--block-pad-b);overflow:hidden;
+  font-size:var(--fs-block);line-height:var(--lh-block);color:var(--ink);
+  outline-offset:var(--state-focus-offset);cursor:default}
+.blk[data-area]{border-top:var(--rule-emphasis) solid var(--ai)}
+/* The title wraps to whatever fits. --lines is computed per block from its own height, so a
+   clip lands on a line boundary and a tall block keeps the tail that distinguishes it from
+   its sibling. See layout.css: nowrap made 4 of 37 real titles ambiguous. */
+.blk .t{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--lines,1);
+  overflow:hidden;overflow-wrap:anywhere}
+.blk .g{float:right;margin-left:4px;color:var(--ink-deep);font-size:10px;line-height:1.2}
+.blk.frame{background:var(--frame-wash);color:var(--ink-soft)}
+.blk.anchor{background-color:var(--paper-raised);
+  background-image:repeating-linear-gradient(135deg,var(--rule) 0 1px,transparent 1px 7px);
+  border-top-color:var(--ink-deep)}
+.blk:hover{background-color:var(--state-hover)}
+.blk:focus-visible{outline:var(--state-focus-ring);z-index:6}
+.blk[data-selected]{border-left-color:var(--state-selected-color)}
+.blk[data-conflict]{border-left-color:var(--state-conflict-color)}
+.blk[data-split]{border-left:var(--hairline) solid var(--rule)}
+.blk[data-split][data-selected]{border-left:var(--state-selected-border) solid var(--state-selected-color)}
+/* Tier ladder. The compact tier keeps a title down to 12.5px by dropping to
+   --fs-block-compact at line-height 1 and giving up --block-pad-t. Below it the title goes
+   and the origin glyph survives. See layout.css for the arithmetic. */
+.blk[data-tier=compact]{font-size:var(--fs-block-compact);line-height:var(--lh-block-compact);
+  padding-top:0}
+.blk[data-tier=sliver] .t,.blk[data-tier=hair] .t{display:none}
+.blk[data-tier=hair]{padding:0;border-bottom-width:0}
+.forbid{position:absolute;left:0;right:0;pointer-events:none;z-index:0;
+  --hatch-ink:var(--forbidden-hatch-ink);background-image:var(--hatch-back);
+  border-top:var(--hairline) dotted var(--rule);border-bottom:var(--hairline) dotted var(--rule)}
+.forbid span{position:absolute;left:4px;top:1px;font-size:8px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--text-muted);background:var(--paper-raised);padding:0 2px}
+.now{position:absolute;left:0;right:0;height:0;border-top:var(--now-rule) solid var(--ink-bright);z-index:5}
+
+/* ---------- truncation ledger ---------- */
+.trunc{font-size:10.5px}
+.trunc td:first-child{color:var(--ink)}
+.trunc td.cut{color:var(--ink-soft)}
+.trunc td.cut b{color:var(--signal-oxide);font-weight:400}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="wordmark">syncr</span>
+  <span class="kv">Probe <b>docs/design/scratch/week-density.html</b></span>
+  <span class="kv">Decides <b>the width policy, seven-column density, the tier ladder, and the reason record</b></span>
+  <span class="kv">Content <b>one real week, 91 blocks, Mon 10 &ndash; Sun 16 Feb</b></span>
+</div>
+
+<div class="spec">
+  <span class="lbl">Under test</span>
+  <div>columns <b>7, equal, grid absorbs surplus</b></div>
+  <div>fixed <b>sidebar 236, panel 306</b></div>
+  <div>strip <b>64px, fixed height</b></div>
+  <div>zoom <b>12h default, clamped per display</b></div>
+  <div>floor <b>19px label, 8px sliver</b></div>
+  <div>overlap <b>even to 3, then stagger</b></div>
+  <div>blocks <b>91 real, 80.75h scheduled</b></div>
+</div>
+
+<!-- ==================== 1 ==================== -->
+<h2 class="sec" id="s1"><span>1 &middot; The Week screen at the agreed width policy</span><em>a scale model of the real layout. hover, tab, and toggle the panel</em></h2>
+<div class="note"><b>The week grid absorbs surplus width. The sidebar and the detail panel are fixed.</b> This is the inherited language's transcript rule restated, and the justification is the same: block titles in the 15 and 30 minute tiers cannot wrap, so the grid is the only column that cannot absorb a squeeze. Giving surplus width to the side columns would starve the one column that needs it. <b>Toggle the panel</b> to watch the day columns take the 306px back rather than distributing it.</div>
+<div class="bar">
+  <button type="button" id="t-panel" aria-pressed="true">detail panel open</button>
+  <button type="button" id="t-zoom" aria-pressed="false">zoom: 12h</button>
+  <button type="button" id="t-drag" aria-pressed="false">drag in progress</button>
+  <button type="button" id="t-vp" aria-pressed="false">viewport: 1600px</button>
+</div>
+<div id="screen"></div>
+
+<!-- ==================== 2 ==================== -->
+<h2 class="sec" id="s2"><span>2 &middot; The width ledger</span><em>computed from the tokens at load, at three viewports and both panel states</em></h2>
+<div class="note">A day column's usable text width is the column, less <code>--grid-inset</code> twice, less <code>--block-pad-x</code> twice, less the 3px state rule. Characters are that width over the 11.5px mono advance of 6.9px. <b>The floor is 17 characters, and this ledger set it.</b> 17 is where a real title stops keeping the tail that distinguishes it from its siblings. <b>The ledger also falsified a token:</b> <code>--bp-wide</code> was 1440px by analogy with the inherited language, and at exactly 1440 with the panel open a day column yields <b>15</b> characters. Working backwards from 17 characters gives a 132.3px column, a 926px grid and a 1524px viewport, so <code>--bp-wide</code> is now <b>1536px</b>. Rows that are not a shipped pairing are marked as such.</div>
+<div id="widths"></div>
+
+<!-- ==================== 3 ==================== -->
+<h2 class="sec" id="s3"><span>3 &middot; What actually truncates</span><em>every distinct title in the real week, measured against the real budget</em></h2>
+<div class="note">Titles are not hypothetical here: these are the distinct block titles in the week rendered above. The question a density probe has to answer is not "does it fit" but <b>"when it does not fit, is what survives still the thing you recognize?"</b>
+<br><br><b>This ledger changed the design.</b> Under <code>white-space:nowrap</code> it reported <b>4 of 37 titles AMBIGUOUS</b>: <code>Amazon Interview Prep</code> and <code>Amazon Interview Prep &middot; Behavioral</code> both collapsed to <code>Amazon Interview P&hellip;</code>, as did <code>Visual Computing Lab</code> and <code>Visual Computing Lecture</code>. End-ellipsis throws away exactly the tail that distinguishes a title from its sibling. Those blocks run 60 to 150 minutes, so they are 52 to 130px tall with room for several lines: the ambiguity was caused by the nowrap, not by the width. <b>Titles now wrap to a line count computed from each block's own height.</b> The table below therefore measures the single-line tier, which is the only tier that still truncates.</div>
+<div id="trunc"></div>
+
+<!-- ==================== 4 ==================== -->
+<h2 class="sec" id="s4"><span>4 &middot; The zoom ladder on a whole week</span><em>the same seven days at 6, 12 and 16 visible hours</em></h2>
+<div class="note">Section 1 of <code>block-states.html</code> proved the ladder on one column. The question here is different: <b>at what zoom does the week stop being readable as a shape?</b> 6 hours shows a quarter of a day in detail and loses the week. 16 hours shows the whole waking day and slivers the frame. 12 is the default because it holds a working day and keeps every 30 minute block labeled.</div>
+<div id="ladder"></div>
+
+<!-- ==================== 5 ==================== -->
+<h2 class="sec" id="s5"><span>5 &middot; The tier ladder, and reading a block you cannot read</span><em>four tiers, and the answer is the panel rather than a popover</em></h2>
+<div class="note">A block below <code>--block-h-label</code> does not lose its title immediately. <b>There is one degradation step first</b>, and it exists because the three-tier ladder was rejected in review: an unlabeled <code>Wake Up</code> reads as a rendering fault rather than as a deliberate tier. <b>The compact tier</b> drops to <code>--fs-block-compact</code> 9.5px at line-height 1 and gives up <code>--block-pad-t</code>, which fits a title into <b>12.5px</b>: and a 15-minute block at the agreed 12-hour default is 13.0px on the smallest supported display. So every block keeps a title at the default. Above 12 hours the user is explicitly trading labels for range.
+<br><br>Below the compact tier the title does go, and the question the ladder alone does not answer is <b>how you read it then</b>. Four mechanisms, in the order a user reaches for them:
+<br><br><b>1. Selection, into the detail panel.</b> Click or <code>[ enter ]</code>. The full title, its Area, its origin, its binding and its reason. This is the primary answer and it is the same surface a full-size block uses, so there is one mechanism rather than two. <b>Deliberately not a popover:</b> a popover covers the grid it is explaining, dies on the next click, and would be a second mechanism for a job the panel already does. The inherited language's rule that no value is reachable only by hovering points the same way.
+<br><br><b>2. Zoom, to read a dense band in place.</b> At 6 visible hours a 15-minute block is 26px and fully labeled.
+<br><br><b>3. The keyboard reaches every block at every tier.</b> <code>[ j ]</code> and <code>[ k ]</code> do not care how tall a block is, so the smallest block in the week is exactly as reachable as the largest. That matters more than the pointer path, since a 9.8px pointer target is genuinely small.
+<br><br><b>4. The native <code>title</code> attribute</b>, as a courtesy for the pointer. Never the only path to a value.</div>
+<div id="small"></div>
+
+<!-- ==================== 6 ==================== -->
+<h2 class="sec" id="s6"><span>6 &middot; The reason record</span><em>where the explanation comes from, and why the panel is rows rather than a paragraph</em></h2>
+<div class="note"><b>An earlier draft of the panel carried a hand-written sentence, and that was a design lie.</b> It implied prose generation the product cannot do: the scheduler is deterministic and no language model sits in the placement loop, so a sentence that cannot be traced to a term the solver computed is worse than no sentence.
+<br><br><b>The solver emits a structured record, and the frontend renders it through a template catalogue.</b> One template per clause kind, values substituted. Deterministic, unit-testable, translatable, and every clause traceable to a figure. Every clause kind below is something the solver already has to compute, so the reason is a projection of existing data rather than new machinery:</div>
+<table class="led"><thead><tr><th>Clause</th><th>Renders as</th><th>Comes from</th></tr></thead><tbody>
+  <tr><td><code>blocked</code></td><td>a rejected candidate window and the constraint that rejected it</td><td>the hard-constraint checker, which already evaluates every candidate</td></tr>
+  <tr><td><code>dominant</code></td><td>the objective term with the largest share of total cost</td><td>the objective breakdown, already stored on the plan revision</td></tr>
+  <tr><td><code>bound</code></td><td>the binding source and its cursor position</td><td>the habit's binding source, already derived from the outcome log</td></tr>
+  <tr><td><code>floor</code></td><td>an Area floor that forced or forbade the placement</td><td>the floor constraint, already a hard input to the solver</td></tr>
+  <tr><td><code>pinned</code></td><td>the user's own edit, with the date it was made</td><td>the pin itself. the shortest reason in the system, and the strongest</td></tr>
+</tbody></table>
+<div class="note"><b>Two consequences the design has to respect.</b> The clause budget is <b>bounded</b>: the top two rejected windows plus the dominant term: because recording every candidate for ninety blocks a week would bloat the plan document, and the reason has to survive in an append-only store forever. And because the budget is bounded and the shape is fixed, <b>the panel renders labeled rows rather than a paragraph</b>, which is also denser and better suited to the register. Toggle the panel in section 1 to read it.
+<br><br><b>One question this record does not settle.</b> A <code>pinned</code> block's reason is just "you put it here". Whether the panel should also show what the solver <i>would</i> have chosen, so the user can see the cost of their own pin, is a product question with a real storage cost: it means keeping the superseded placement alongside the pin. It is exactly the pairwise comparison the learning layer consumes, so the data may be worth keeping regardless.</div>
+
+<!-- ==================== 7 ==================== -->
+<h2 class="sec" id="s7"><span>7 &middot; What this probe settles</span><em>and the one thing it hands to screens.html</em></h2>
+<div class="note" style="border-bottom:0">
+  <b>Settled.</b> Seven equal columns with the grid absorbing surplus width. A floor of 17 characters per day column in the single-line tier, derived from where real titles stop separating from their siblings, and every breakpoint derived from that floor rather than chosen. <code>--bp-wide</code> corrected from 1440px to <b>1536px</b>, because the ledger showed 1440 with the panel open yields 15 characters. The 306px detail panel closing to a 26px rail rather than narrowing. Below <code>--bp-compact</code> the grid scrolls horizontally at <code>--col-min</code> per day with the axis sticky. The 64px summary strip at fixed height with its rows scrolling inside. The unconfirmed-day marker as a hollow ring on the day header: inline, informational, never a warning. Titles wrap to a line count computed per block. Reading a sub-label block is the detail panel's job, not a popover's.
+  <br><br><b>Settled by replacing a rule rather than repairing it.</b> Overlap uses the standard sweep-and-columns algorithm. A first draft special-cased the circadian frame as a full-width backdrop so a long <code>Sleep</code> span would not halve the day it backs; rendered, it was wrong twice over, because <code>Wake Up</code> is also origin <code>frame</code> yet is a genuine 15-minute participant, and because a full-width frame block painted over whatever it overlapped and clipped that block's title. Columns need no special case, depend on no paint order and use no magic threshold. Replaying the algorithm over the week confirms no block is ever covered, and that the widest cluster uses 3 columns, so the stagger path is never reached by real data.
+  <br><br><b>One fixture correction, stated because it is not a design decision.</b> The source week contained <code>Sleep 00:00&ndash;09:00</code> on Thursday alongside a 07:00 lecture. That is a contradiction in the exported calendar, not a layout case: in the product a block inside the circadian frame is a conflict. The fixture now reads <code>Sleep 00:00&ndash;06:45</code>, <code>Wake Up 06:45&ndash;07:00</code>.
+  <br><br><b>Handed forward.</b> The strip carries three readings and the verdict. Whether those are the <i>right</i> three is a content question rather than a density one, and it belongs to <code>screens.html</code> where the weekly-session mode is drawn.
+</div>
+
+<script>
+const raw = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const px = n => parseFloat(raw(n));
+
+/* ============================================================
+   One real week: Mon 10 to Sun 16 February. 91 blocks.
+   Format: "start-end|title|origin|area". The circadian frame is drawn as SPANS,
+   which is what the product specifies rather than what a calendar exporter emits.
+   ============================================================ */
+const WEEK = [
+  {label:'Mon 10', unconf:0, rows:[
+    '00:00-09:00|Sleep|frame|', '09:00-09:15|Wake Up|frame|',
+    '09:30-10:00|Gym &middot; Chest &amp; Back|habit|Fitness',
+    '10:00-10:15|Shower|frame|', '10:30-11:00|Leave for Uni|shadow|Transit',
+    '13:30-14:00|Lunch|frame|', '14:00-14:30|Amazon Interview Prep|task|Career',
+    '14:30-15:00|Lecture Review|task|Study', '17:30-18:00|Go Home|shadow|Transit',
+    '18:00-18:30|Dinner|frame|', '19:15-19:45|Lecture Review|task|Study',
+    '23:15-24:00|Sleep|frame|'
+  ]},
+  {label:'Tue 11', unconf:0, forbid:[['16:45','18:00','recovery']], rows:[
+    '00:00-05:15|Sleep|frame|', '05:15-05:30|Wake Up|frame|',
+    '05:30-06:30|Gym &middot; Shoulder &amp; Arms|habit|Fitness',
+    '06:30-06:45|Shower|frame|', '07:00-09:30|Leetcode &middot; Graphs|habit|Career',
+    '10:00-10:30|Prep for Kontron Interview|shadow|Career',
+    '10:30-11:00|Leetcode &middot; Graphs|habit|Career', '11:30-12:00|Lunch|frame|',
+    '12:00-15:00|Leetcode &middot; Graphs|habit|Career',
+    '15:00-15:30|Leave for Uni|shadow|Transit',
+    '16:00-16:45|Kontron Placement Interview|anchor|',
+    '18:00-18:30|Dinner|frame|', '18:30-19:00|F&amp;F Reading Group|task|Study',
+    '19:00-19:30|36 South Application|task|Career',
+    '19:30-20:30|Topic List Questions|task|Career', '22:00-24:00|Sleep|frame|'
+  ]},
+  {label:'Wed 12', unconf:0, rows:[
+    '00:00-05:30|Sleep|frame|',
+    '05:30-06:30|Gym &middot; Legs|habit|Fitness', '06:30-06:45|Shower|frame|',
+    '07:30-08:00|Leave for Uni|shadow|Transit',
+    '08:00-08:30|Watch A&amp;C Lecture|task|Study',
+    '08:00-09:00|Watch A&amp;C Lecture|task|Study',
+    '08:30-09:00|F&amp;F Lab Notebook|task|Study',
+    '09:00-11:15|Frontier and Foundation Lab|anchor|',
+    '12:00-12:30|Lunch|frame|', '12:30-13:00|Go Home|shadow|Transit',
+    '13:00-13:30|CRIISP Work|task|Research', '13:30-14:00|Autograd Notes|task|Study',
+    '14:00-17:30|Amazon Interview Prep &middot; Behavioral|task|Career',
+    '18:00-18:30|Dinner|frame|', '19:00-21:30|Leetcode|habit|Career',
+    '21:45-24:00|Sleep|frame|'
+  ]},
+  {label:'Thu 13', unconf:0, rows:[
+    '00:00-06:45|Sleep|frame|', '06:45-07:00|Wake Up|frame|',
+    '07:00-08:00|Watch SWE Lec|task|Study',
+    '10:30-11:00|Amazon Interview Prep|task|Career',
+    '11:00-11:30|Watch SWE Lec|task|Study', '11:00-11:45|Lunch|frame|',
+    '11:45-13:00|Leetcode|habit|Career', '13:00-13:30|Amazon Prep Call|anchor|',
+    '13:00-14:00|Visual Computing Lab|anchor|',
+    '13:30-14:15|Amazon Interview Prep|task|Career',
+    '14:15-17:00|Leetcode|habit|Career', '17:15-17:45|Dinner|frame|',
+    '18:00-18:30|Go Home|shadow|Transit', '18:00-22:00|Leetcode|habit|Career',
+    '22:30-24:00|Sleep|frame|'
+  ]},
+  {label:'Fri 14', unconf:1, rows:[
+    '00:00-07:30|Sleep|frame|', '07:30-07:45|Wake Up|frame|',
+    '07:30-08:00|Leave for Uni|shadow|Transit',
+    '08:30-11:00|Amazon Interview Prep &middot; Behavioral|task|Career',
+    '11:00-11:30|Leave for Uni|shadow|Transit', '11:30-12:00|Lunch|frame|',
+    '11:30-12:00|Print Amazon Interview Notes|task|Career',
+    '11:30-12:00|Review F&amp;F Reading|task|Study',
+    '13:00-13:30|Go Home|shadow|Transit', '13:30-14:00|Lunch|frame|',
+    '14:00-15:00|Mock Interview|anchor|',
+    '15:00-16:30|Amazon Interview Prep &middot; Behavioral|task|Career',
+    '16:30-18:30|Leetcode|habit|Career', '18:30-19:00|Dinner|frame|',
+    '19:00-22:00|Leetcode|habit|Career', '23:00-24:00|Sleep|frame|'
+  ]},
+  {label:'Sat 15', unconf:1, rows:[
+    '00:00-09:00|Sleep|frame|', '09:00-09:15|Wake Up|frame|',
+    '11:30-12:00|Lunch|frame|', '11:30-12:00|Watch SWE Lec|task|Study',
+    '12:00-12:15|Visual Computing Lecture|task|Study',
+    '12:15-12:45|Algorithms and Complexity Lecture|task|Study',
+    '12:45-13:00|Watch ML Lec|task|Study', '13:00-15:00|Leetcode|habit|Career',
+    '15:00-16:00|DSA Review &middot; Trees|task|Career', '17:00-17:30|Dinner|frame|',
+    '17:30-18:00|DSA Review &middot; Heap|task|Career',
+    '18:00-21:00|Leetcode|habit|Career', '21:30-22:30|Leetcode|habit|Career',
+    '23:00-24:00|Sleep|frame|'
+  ]},
+  {label:'Sun 16', unconf:1, rows:[
+    '00:00-09:00|Sleep|frame|', '09:00-09:15|Wake Up|frame|',
+    '10:00-10:30|Clean|habit|Admin', '10:30-11:00|Lunch|frame|',
+    '11:00-12:00|Topic List Questions|task|Career',
+    '12:00-12:30|Leetcode|habit|Career', '13:30-17:00|Leetcode|habit|Career',
+    '17:30-18:00|Dinner|frame|', '18:00-20:00|Leetcode|habit|Career',
+    '22:00-24:00|Sleep|frame|'
+  ]}
+];
+
+/* Areas, in assignment order. Seven for this user; the ramp holds twelve. */
+const AREA = {Career:'--area-01', Study:'--area-05', Fitness:'--area-08',
+              Research:'--area-10', Projects:'--area-03', Admin:'--area-07',
+              Transit:'--area-12'};
+const GLYPH = {frame:'&#9679;', habit:'&#8635;', task:'&#9656;', anchor:'&#9670;',
+               shadow:'&#9671;', transit:'&#8594;'};
+
+const AXIS_START = 0, AXIS_END = 24 * 60;
+const min = s => { const [h,m] = s.split(':').map(Number); return h*60+m; };
+const fmt = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+
+/* Parse, then resolve overlap into columns. This is the standard sweep-and-columns
+   algorithm: cluster by a running maximum end, then give each block the leftmost column
+   whose last block has already finished. A cluster's width divides by the number of columns
+   it actually used.
+
+   AN EARLIER DRAFT SPECIAL-CASED THE CIRCADIAN FRAME as a full-width backdrop that never
+   split, so that a long Sleep span would not halve the day it backs. Rendered, it was wrong
+   twice over: `Wake Up` is also origin `frame` but is a genuine 15-minute participant, and
+   because the frame kept full width it painted over whatever it overlapped and clipped that
+   block's title. Columns need no special case, depend on no paint order, and use no magic
+   threshold, so the frame rule is gone rather than repaired. */
+function layout(rows){
+  const bs = rows.map(r => {
+    const [t, title, origin, area] = r.split('|');
+    const [s, e] = t.split('-');
+    return {s:min(s), e:min(e), title, origin, area:area || null};
+  }).sort((a,b) => a.s - b.s || b.e - a.e);
+
+  /* cluster: a maximal run whose members transitively overlap */
+  const clusters = [];
+  let cur = [], curEnd = -1;
+  for(const b of bs){
+    if(cur.length && b.s < curEnd){ cur.push(b); curEnd = Math.max(curEnd, b.e); }
+    else { if(cur.length) clusters.push(cur); cur = [b]; curEnd = b.e; }
+  }
+  if(cur.length) clusters.push(cur);
+
+  const maxSplit = parseInt(raw('--overlap-max-split'));
+  for(const c of clusters){
+    const colEnds = [];
+    for(const b of c){
+      let col = colEnds.findIndex(end => end <= b.s);
+      if(col === -1){ col = colEnds.length; colEnds.push(b.e); }
+      else colEnds[col] = b.e;
+      b.i = col;
+    }
+    c.forEach(b => { b.n = colEnds.length; b.stagger = colEnds.length > maxSplit; });
+  }
+  return bs;
+}
+
+function blockHTML(b, ppm, sel){
+  const top = (b.s - AXIS_START) * ppm, h = (b.e - b.s) * ppm;
+  const tier = h >= px('--block-h-label') ? 'label'
+    : h >= px('--block-h-compact') ? 'compact'
+    : h >= px('--block-h-sliver') ? 'sliver' : 'hair';
+  const a = b.area ? AREA[b.area] : null;
+  const indent = px('--overlap-indent');
+  let pos;
+  if(b.n === 1) pos = `left:var(--grid-inset);right:var(--grid-inset)`;
+  else if(!b.stagger) pos = `left:${(b.i*100/b.n).toFixed(3)}%;right:${((b.n-1-b.i)*100/b.n).toFixed(3)}%`;
+  else pos = `left:${b.i*indent}px;right:var(--grid-inset);z-index:${b.i+1}`;
+  const lines = tier === 'compact' ? 1
+    : Math.max(1, Math.floor((h - 5) / px('--lh-block-px')));
+  const style = `${pos};top:${top}px;height:${h}px` + (a ? `;--ai:var(${a})` : '')
+    + `;--lines:${lines}`;
+  const cls = ['blk', b.origin === 'frame' ? 'frame' : '', b.origin === 'anchor' ? 'anchor' : '']
+    .filter(Boolean).join(' ');
+  /* The origin glyph replaces the title only where no title fits. The overlap count is the
+     one glyph shown at a titled tier, because a hidden neighbor must still be stated. */
+  const g = (tier === 'label' || tier === 'compact')
+    ? (b.stagger && b.i === b.n-1 ? `<span class="g">&#10697;&nbsp;${b.n}</span>` : '')
+    : `<span class="g">${GLYPH[b.origin]}</span>`;
+  return `<div class="${cls}" style="${style}"${a ? ' data-area' : ''} data-tier="${tier}"`
+    + `${b.i > 0 && !b.stagger ? ' data-split' : ''}`
+    + `${b.origin === 'anchor' && b.title.includes('Kontron') ? ' data-conflict' : ''}`
+    + `${sel === b.title ? ' data-selected' : ''} tabindex="0"`
+    + ` title="${b.title.replace(/&middot;/g,'-').replace(/&amp;/g,'&')} ${fmt(b.s)}-${fmt(b.e)}">`
+    + g + `<span class="t">${b.title}</span></div>`;
+}
+
+function gridHTML(visibleHours, opts = {}){
+  const gridH = px('--grid-h');
+  const ppm = gridH / (visibleHours * 60);
+  const canvasH = (AXIS_END - AXIS_START) * ppm;
+  let axis = '';
+  for(let m = AXIS_START; m <= AXIS_END; m += 60)
+    axis += `<span class="hh" style="top:${(m-AXIS_START)*ppm}px">${fmt(m)}</span>`;
+  let lines = '';
+  for(let m = AXIS_START; m <= AXIS_END; m += parseInt(raw('--grid-minor')))
+    lines += `<div class="${m % parseInt(raw('--grid-major')) === 0 ? 'maj' : 'min'}" `
+           + `style="top:${(m-AXIS_START)*ppm}px"></div>`;
+
+  const cols = WEEK.map(d => {
+    const bs = layout(d.rows);
+    const forbid = (d.forbid || []).map(([s,e,t]) =>
+      `<div class="forbid" style="top:${(min(s)-AXIS_START)*ppm}px;`
+      + `height:${(min(e)-min(s))*ppm}px"><span>${t}</span></div>`).join('');
+    const now = d.label === 'Tue 11'
+      ? `<div class="now" style="top:${(14*60+20-AXIS_START)*ppm}px"></div>` : '';
+    return `<div class="col"><div class="colhead${d.unconf ? ' unconf' : ''}">${d.label}`
+      + `<i>${bs.length}</i></div><div class="canvas" style="height:${canvasH}px">`
+      + lines + forbid + now + bs.map(b => blockHTML(b, ppm, opts.sel)).join('') + '</div></div>';
+  }).join('');
+
+  return `<div class="gridwrap${opts.drag ? ' dragging' : ''}">`
+    + `<div class="axis"><div class="hd"></div>`
+    + `<div style="position:relative;height:${canvasH}px">${axis}</div></div>`
+    + `<div class="cols">${cols}</div></div>`;
+}
+
+/* ---------- 1, the screen ---------- */
+const SEL = 'Leetcode &middot; Graphs';
+const VPS = [1600, 1536, 1440, 1280];
+let vpIdx = 0, zoomIdx = 0, panelOpen = true;
+const ZOOMS = [12, 6, 16];
+
+function renderScreen(){
+  const vp = VPS[vpIdx], vh = ZOOMS[zoomIdx];
+  const drag = document.getElementById('t-drag').getAttribute('aria-pressed') === 'true';
+  const nav = [['Week','', 1], ['Today','', 0], ['Backlog','23', 0], ['Areas','', 0],
+               ['Templates','', 0], ['Learned','', 0], ['Settings','', 0]];
+  const side = `<aside class="side"><div class="brand"><b>syncr</b>`
+    + `<span>Life management and scheduling</span></div>`
+    + `<div class="grp">Plan</div>`
+    + nav.map(([l,c,on]) => `<a href="#s1"${on ? ' aria-current="page"' : ''}>${l}`
+        + (c ? `<b class="c">${c}</b>` : '') + `</a>`).join('')
+    + `<div class="grp">This week</div>`
+    + `<a href="#s1" style="pointer-events:none">Proposals<b class="c">2</b></a>`
+    + `<a href="#s1" style="pointer-events:none">Unconfirmed<b class="c">3</b></a></aside>`;
+
+  const strip = `<div class="strip">`
+    + `<div><span class="lab">Scheduled</span><data>80.8h</data><small>91 blocks</small></div>`
+    + `<div><span class="lab">Discretionary</span><data>52.1h</data><small>after frame and anchors</small></div>`
+    + `<div><span class="lab">Unallocated</span><data>18.4h</data><small>35.3% of discretionary</small></div>`
+    + `<div class="verdict"><b>&#9670; This week cannot hold its commitments</b>`
+    + `<p>1h20m short on <code>Career</code> before Friday 09:00, after honoring the `
+    + `Fitness floor. Four tradeoffs &middot; nothing is chosen for you.</p></div></div>`;
+
+  /* THE REASON IS RENDERED FROM A STRUCTURED RECORD, NOT FROM GENERATED PROSE.
+     Every clause below is a template plus a value the solver already computes: a rejected
+     candidate window with the constraint that rejected it, the dominant objective term with
+     its share of total cost, and the binding source with its cursor. No language model is
+     involved, which is what makes the explanation traceable, testable and translatable.
+     The clause budget is bounded -- two rejected windows plus the dominant term -- because
+     recording every candidate for ninety blocks would bloat the plan document. */
+  const REASON = {
+    lead: ['Placed at 12:00', 3],   /* chosen window, candidates evaluated */
+    clauses: [
+      ['blocked', '16:00', 'Kontron anchor, plus its recovery shadow to 18:00'],
+      ['blocked', '07:00', 'same habit already placed in that window'],
+      ['dominant', 'budgetDeviation', 'Career &middot; 0.42 of total cost'],
+      ['bound', 'backlog queue', 'Graphs &middot; next after Tries']
+    ]
+  };
+  const why = `<div class="why"><div class="lab">Why here</div>`
+    + `<p class="lead">${REASON.lead[0]} of ${REASON.lead[1]} candidate windows.</p>`
+    + REASON.clauses.map(([kind, subj, detail]) =>
+        `<div class="cl"><b>${kind}</b><span><code>${subj}</code> <i>&middot;</i> ${detail}</span></div>`).join('')
+    + `</div>`;
+
+  const panel = panelOpen
+    ? `<div class="panel"><div class="in"><div class="ttl">Leetcode &middot; Graphs</div>`
+      + `<dl><div><dt>when</dt><dd>Tue 11 &middot; 12:00&ndash;15:00</dd></div>`
+      + `<div><dt>area</dt><dd>Career</dd></div>`
+      + `<div><dt>origin</dt><dd>habit &middot; queue</dd></div>`
+      + `<div><dt>pinned</dt><dd>no</dd></div></dl>${why}</div></div>`
+    : `<div class="panel" data-closed><div class="rail">Detail &middot; [ enter ]</div></div>`;
+
+  document.getElementById('screen').innerHTML =
+    `<div class="screen" data-panel="${panelOpen ? 'open' : 'closed'}" `
+    + `style="width:${vp}px;max-width:100%">${side}`
+    + `<div class="mid">${strip}`
+    + gridHTML(vh, {sel:SEL, drag}) + `</div>${panel}</div>`;
+
+  const g = document.querySelector('#screen .gridwrap');
+  g.style.height = (px('--grid-h') * 0.55) + 'px';
+  g.scrollTop = (7 * 60) * (px('--grid-h') / (vh * 60));
+  document.getElementById('t-zoom').textContent = 'zoom: ' + vh + 'h';
+  document.getElementById('t-vp').textContent = 'viewport: ' + vp + 'px';
+  document.getElementById('t-panel').textContent = 'detail panel ' + (panelOpen ? 'open' : 'closed');
+  document.getElementById('t-panel').setAttribute('aria-pressed', String(panelOpen));
+}
+const toggle = (id, fn) => document.getElementById(id).addEventListener('click', ev => {
+  fn(); const p = ev.currentTarget.getAttribute('aria-pressed');
+  if(id !== 't-panel') ev.currentTarget.setAttribute('aria-pressed', String(p !== 'true'));
+  renderScreen();
+});
+toggle('t-panel', () => { panelOpen = !panelOpen; });
+toggle('t-zoom', () => { zoomIdx = (zoomIdx + 1) % ZOOMS.length; });
+toggle('t-vp', () => { vpIdx = (vpIdx + 1) % VPS.length; });
+toggle('t-drag', () => {});
+renderScreen();
+
+/* ---------- 2, the width ledger ---------- */
+const ADV = 6.9; /* 11.5px JetBrains Mono advance, 0.6em */
+function colWidth(vp, open){
+  const grid = vp - px('--w-sidebar') - (open ? px('--w-detail') : px('--w-detail-closed'))
+    - px('--axis-w');
+  return grid / 7;
+}
+function chars(colW, depth){
+  const w = colW / depth - 2 * px('--grid-inset') - 2 * px('--block-pad-x')
+    - px('--state-selected-border');
+  return Math.max(0, Math.floor(w / ADV));
+}
+document.getElementById('widths').innerHTML =
+  '<table class="led"><thead><tr><th>Viewport</th><th>Detail panel</th><th class="r">Grid</th>'
+  + '<th class="r">Day column</th><th class="r">Depth 1</th><th class="r">Depth 2</th>'
+  + '<th class="r">Depth 3</th><th>Verdict</th></tr></thead><tbody>'
+  + [1600, 1536, 1440, 1280, 1152].flatMap(vp => [true, false].map(open => {
+      const colW = colWidth(vp, open);
+      const c1 = chars(colW, 1);
+      const grid = vp - px('--w-sidebar') - (open ? px('--w-detail') : px('--w-detail-closed'));
+      const wide = vp >= px('--bp-wide');
+      const shipped = open ? wide : !wide;
+      const verdict = c1 >= 20 ? 'comfortable' : c1 >= 17 ? 'at the floor' : 'below policy';
+      return `<tr><td>${vp}px</td><td>${open ? 'open' : 'closed'}`
+        + `${shipped ? '' : ' <span style="color:var(--text-muted)">(not the shipped pairing)</span>'}`
+        + `</td><td class="r">${grid.toFixed(0)}px</td><td class="r">${colW.toFixed(0)}px</td>`
+        + `<td class="r">${c1}</td><td class="r">${chars(colW,2)}</td>`
+        + `<td class="r">${chars(colW,3)}</td>`
+        + `<td class="${c1 >= 17 ? 'pass' : 'fail'}">${verdict}</td></tr>`;
+    })).join('')
+  + '</tbody></table>';
+
+/* ---------- 3, truncation, in the single-line tier only ---------- */
+const titles = [...new Set(WEEK.flatMap(d => d.rows.map(r => r.split('|')[1])))]
+  .map(t => t.replace(/&middot;/g, '\u00B7').replace(/&amp;/g, '&'))
+  .sort((a,b) => b.length - a.length);
+const budget = chars(colWidth(1600, true), 1);
+/* a truncated title is only a problem if another title shares its surviving prefix */
+const collides = t => titles.some(o => o !== t && o.slice(0, budget) === t.slice(0, budget));
+document.getElementById('trunc').innerHTML =
+  `<table class="led trunc"><thead><tr><th>Title</th><th class="r">Chars</th>`
+  + `<th>Single-line tier, ${budget} characters</th><th>Unique when clipped</th>`
+  + `<th>Lines it actually gets</th></tr></thead><tbody>`
+  + titles.filter(t => t.length > budget - 4).map(t => {
+      const cut = t.length > budget;
+      const shown = cut ? t.slice(0, budget - 1) + '\u2026' : t;
+      const bad = cut && collides(t);
+      /* how tall is the longest real block carrying this title, and so how many lines does
+         it actually get at the default zoom? */
+      const dur = Math.max(...WEEK.flatMap(d => d.rows
+        .filter(r => r.split('|')[1].replace(/&middot;/g,'\u00B7').replace(/&amp;/g,'&') === t)
+        .map(r => { const [s,e] = r.split('|')[0].split('-'); return min(e) - min(s); })));
+      const h = dur * (px('--grid-h') / (12 * 60));
+      const lines = Math.max(1, Math.floor((h - 5) / px('--lh-block-px')));
+      const fitsWrapped = lines * budget >= t.length;
+      return `<tr><td>${t}</td><td class="r">${t.length}</td>`
+        + `<td class="cut">${cut ? shown : '<span style="color:var(--text-muted)">fits</span>'}</td>`
+        + `<td class="${bad ? 'fail' : 'pass'}">${bad ? 'AMBIGUOUS' : 'yes'}</td>`
+        + `<td class="${fitsWrapped ? 'pass' : 'fail'}">${lines} `
+        + `${fitsWrapped ? '&middot; whole title survives' : '&middot; still clipped'}</td></tr>`;
+    }).join('')
+  + `<tr><td colspan="5" style="color:var(--ink-deep)"><b>`
+  + `${titles.length} distinct titles in the week. `
+  + `${titles.filter(t => t.length > budget).length} exceed one line at depth 1, and `
+  + `${titles.filter(t => t.length > budget && collides(t)).length} of those would be `
+  + `ambiguous if the title did not wrap. `
+  + `Every figure here is computed from the rendered week, not typed.</b></td></tr>`
+  + '</tbody></table>';
+
+/* ---------- 4, the ladder ---------- */
+document.getElementById('ladder').innerHTML = [6, 12, 16].map(vh => {
+  const ppm = px('--grid-h') / (vh * 60);
+  const t15 = 15 * ppm, t30 = 30 * ppm;
+  const tier = h => h >= px('--block-h-label') ? 'label'
+    : h >= px('--block-h-sliver') ? 'sliver' : 'hairline';
+  return `<div style="padding:11px 12px;border-bottom:var(--hairline) solid var(--rule)">`
+    + `<div class="kv" style="margin-bottom:7px">${vh}h visible &middot; `
+    + `<b>${ppm.toFixed(2)} px/min &middot; 15m = ${t15.toFixed(0)}px ${tier(t15)} `
+    + `&middot; 30m = ${t30.toFixed(0)}px ${tier(t30)}</b></div>`
+    + `<div id="lad${vh}"></div></div>`;
+}).join('');
+[6, 12, 16].forEach(vh => {
+  const el = document.getElementById('lad' + vh);
+  el.innerHTML = gridHTML(vh, {});
+  const g = el.querySelector('.gridwrap');
+  g.style.height = '210px';
+  g.scrollTop = (8 * 60) * (px('--grid-h') / (vh * 60));
+});
+
+/* ---------- 5, the tier ladder on a crowded band, at the PERMITTED zooms only ----------
+   An earlier version rendered 22h and 24h on a 13-inch grid, which contradicted the clamp
+   the same sheet documents. The demo now derives the cap the way the app does and marks the
+   first step beyond it, so the reader can see what the clamp is protecting them from. */
+const SMALL = [
+  '06:45-07:00|Wake Up|frame|', '07:00-08:00|Watch SWE Lec|task|Study',
+  '08:00-08:15|Shower|frame|', '08:15-08:45|Leave for Uni|shadow|Transit',
+  '08:45-09:00|Coffee|habit|Admin'
+];
+const gridH = px('--grid-h');
+let zoomCap = parseInt(raw('--zoom-min'));
+for(let v = parseInt(raw('--zoom-min')); v <= parseInt(raw('--zoom-max')); v++)
+  if(30 * (gridH / (v * 60)) >= px('--block-h-label')) zoomCap = v;
+const LADDER_ZOOMS = [6, 12, zoomCap, zoomCap + 4];
+
+document.getElementById('small').innerHTML =
+  `<div class="note" style="border-bottom:0;padding:11px 12px 0">Grid height `
+  + `<b>${gridH}px</b>, so the zoom cap computes to <b>${zoomCap}h</b>. `
+  + `The last panel is deliberately beyond the cap, to show what the clamp prevents.</div>`
+  + '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:12px">'
+  + LADDER_ZOOMS.map(vh => {
+      const ppm = gridH / (vh * 60);
+      const h15 = 15 * ppm, h30 = 30 * ppm;
+      const tier = h => h >= px('--block-h-label') ? 'label'
+        : h >= px('--block-h-compact') ? 'compact'
+        : h >= px('--block-h-sliver') ? 'sliver' : 'hairline';
+      const over = vh > zoomCap;
+      return `<div><div class="kv" style="margin-bottom:6px${over ? ';color:var(--signal-oxide)' : ''}">`
+        + `${vh}h${over ? ' &middot; beyond the cap' : ''} &middot; `
+        + `<b>15m = ${h15.toFixed(1)}px ${tier(h15)} &middot; 30m = ${h30.toFixed(1)}px ${tier(h30)}</b></div>`
+        + `<div id="sm${vh}" style="width:${px('--col-min')}px"></div></div>`;
+    }).join('') + '</div>';
+LADDER_ZOOMS.forEach(vh => {
+  const el = document.getElementById('sm' + vh);
+  const keep = WEEK.splice(0, WEEK.length, {label:'Thu 13', unconf:0, rows:SMALL});
+  el.innerHTML = gridHTML(vh, {});
+  WEEK.splice(0, WEEK.length, ...keep);
+  const g = el.querySelector('.gridwrap');
+  g.style.height = '160px';
+  g.scrollTop = (6 * 60 + 30) * (px('--grid-h') / (vh * 60));
+});
+
+/* vim-style movement across the week */
+document.addEventListener('keydown', ev => {
+  const el = document.activeElement.closest?.('.blk');
+  if(!el) return;
+  const peers = [...el.parentElement.querySelectorAll(':scope > .blk')];
+  const i = peers.indexOf(el);
+  const go = n => { ev.preventDefault();
+    peers[Math.max(0, Math.min(peers.length-1, n))].focus(); };
+  if(ev.key === 'ArrowDown' || ev.key === 'j') go(i+1);
+  else if(ev.key === 'ArrowUp' || ev.key === 'k') go(i-1);
+  else if(ev.key === 'h' || ev.key === 'l'){
+    ev.preventDefault();
+    const col = el.closest('.col');
+    const cols = [...col.parentElement.children];
+    const next = cols[cols.indexOf(col) + (ev.key === 'l' ? 1 : -1)];
+    next?.querySelector('.blk')?.focus();
+  }
+  else if(ev.key === 'Enter' || ev.key === ' '){
+    ev.preventDefault();
+    el.closest('.gridwrap').querySelectorAll('[data-selected]')
+      .forEach(p => p.removeAttribute('data-selected'));
+    el.setAttribute('data-selected','');
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>syncr: token specimen</title>
+
+<!-- Tokens are LINKED, not copied. This sheet reads the same file the app reads, so a
+     value cannot drift between the reference and the build. One level of ../ per directory:
+     this sheet sits in docs/design/, so the path is ../../frontend/src/tokens/index.css,
+     one segment shallower than the probes in docs/design/scratch/. The chained @import
+     inside index.css resolves over file:// in Chrome, Safari and Firefox. -->
+<link rel="stylesheet" href="../../frontend/src/tokens/index.css">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* MOTION IS ZERO, WITHOUT EXCEPTION. This file declares no transition, no animation, no
+   keyframes at-rule, no will-change and no transform, and --duration is 0s. The inherited
+   language kept one named exception for a progress bar; syncr keeps none, so this sheet
+   has no exception to declare. No CSS property here interpolates. The word "motion"
+   appears only where the policy is described.
+
+   RADIUS IS ZERO. Every border-radius declaration in this file is either var(--radius) or
+   the 50% on a member of the circular allowlist: status dot, radio dot, Area chip, avatar.
+   There is no third case, including inside a specimen the sealed panels cancel. */
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--text);font-family:var(--font-mono);
+  font-size:var(--fs-chrome);line-height:var(--lh-chrome);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;font-weight:400}
+a{color:var(--ink-bright)}
+code{background:var(--ink-wash);padding:0 3px}
+
+/* THE FOCUS RING, sheet-wide. Links are included, at the offset the token defines: one
+   answer for every focusable thing, so nothing falls back to the UA ring. There is no
+   inverse ring on this sheet's navigation, because syncr's sidebar is paper. The inverse
+   ring's only site is a panel or dialog header, which is section 4. */
+:is(a,button,input,select,textarea,[tabindex]):focus-visible{outline:var(--state-focus-ring);
+  outline-offset:var(--state-focus-offset)}
+
+/* ---------- sheet chrome ---------- */
+.topbar{border-bottom:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);
+  padding:12px 18px;display:flex;gap:24px;align-items:baseline;flex-wrap:wrap}
+/* The wordmark is lowercase serif at zero tracking: the one named exception to
+   uppercase-only tracking. See frontend/src/tokens/type.css. */
+.wordmark{font-family:var(--font-serif);font-size:24px;line-height:var(--lh-tight);
+  letter-spacing:var(--ls-wordmark);color:var(--ink-deep)}
+.kv{font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-muted)}
+.kv b{font-weight:500;color:var(--ink);letter-spacing:.04em;text-transform:none}
+.spec{position:sticky;top:0;z-index:30;display:flex;background:var(--paper);
+  border-bottom:var(--hairline) solid var(--rule-strong);overflow-x:auto}
+.spec .lbl{padding:8px 13px;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--on-ink);background:var(--ink-bright);white-space:nowrap}
+.spec div{padding:8px 12px;border-right:var(--hairline) solid var(--rule);font-size:var(--fs-eyebrow);
+  letter-spacing:.06em;color:var(--text-muted);text-transform:uppercase;white-space:nowrap}
+.spec div b{font-weight:400;color:var(--ink);text-transform:none;letter-spacing:.02em}
+h2.sec{padding:7px 12px;border-top:var(--hairline) solid var(--rule-strong);
+  border-bottom:var(--hairline) solid var(--rule);background:var(--paper);font-size:var(--fs-eyebrow);
+  letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep);
+  display:flex;justify-content:space-between;gap:14px;scroll-margin-top:34px}
+h2.sec em{font-style:normal;color:var(--text-muted);letter-spacing:.07em;text-transform:none;font-size:10px}
+h2.sec a{color:var(--ink-deep);text-decoration:none}
+h3.sub{padding:6px 12px;border-bottom:var(--hairline) solid var(--rule);font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink);background:var(--ink-wash);scroll-margin-top:34px}
+.note{padding:9px 12px;border-bottom:var(--hairline) solid var(--rule);color:var(--ink-soft);
+  font-size:11px;line-height:var(--lh-prose)}
+.note b{color:var(--ink-deep);font-weight:500}
+.pad{padding:13px 12px;border-bottom:var(--hairline) solid var(--rule)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;border-bottom:var(--hairline) solid var(--rule)}
+.grid2>*{min-width:0}
+.grid2>*:first-child{border-right:var(--hairline) solid var(--rule)}
+.toc{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:var(--hairline) solid var(--rule-strong)}
+.toc a{display:block;padding:8px 12px;border-right:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule);text-decoration:none;color:var(--ink);font-size:10.5px}
+.toc a:hover{background:var(--ink-wash)}
+.toc a b{display:block;font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--text-muted);font-weight:400;margin-bottom:2px}
+
+/* ---------- ledger tables ---------- */
+table.led{border-collapse:collapse;width:100%;font-size:10.5px}
+table.led th{text-align:left;font-weight:400;font-size:9px;letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted);padding:5px 9px;
+  border-bottom:var(--hairline) solid var(--rule-strong)}
+table.led td{padding:3px 9px;border-bottom:var(--hairline) solid var(--rule);vertical-align:top}
+table.led td.r{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+table.led td.pass{color:var(--signal-verdigris);letter-spacing:.1em}
+table.led td.fail{color:var(--signal-oxide);letter-spacing:.1em}
+table.led td.info{color:var(--text-muted);letter-spacing:.1em}
+table.led td.sealed{color:var(--oxide-ink);letter-spacing:.1em}
+table.led code{font-size:9.5px}
+table.led tr.sum td{color:var(--ink-deep)}
+
+/* ---------- swatches ---------- */
+.swat{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr))}
+.swat>div{display:flex;gap:9px;align-items:flex-start;padding:8px 11px;
+  border-right:var(--hairline) solid var(--rule);border-bottom:var(--hairline) solid var(--rule);min-width:0}
+.swat .sw{width:34px;height:34px;flex:0 0 auto;border:var(--hairline) solid var(--rule-strong)}
+.swat b{display:block;font-weight:400;color:var(--ink-deep)}
+.swat .hex{color:var(--ink);font-variant-numeric:tabular-nums;font-size:9.5px}
+.swat .use{display:block;color:var(--text-muted);font-size:9.5px;line-height:1.5;margin-top:2px}
+
+/* ---------- type scale ---------- */
+.ts{display:grid;grid-template-columns:232px 1fr;border-bottom:var(--hairline) solid var(--rule)}
+.ts>.m{padding:9px 11px;border-right:var(--hairline) solid var(--rule);color:var(--text-muted);
+  font-size:var(--fs-eyebrow);line-height:1.7}
+.ts>.m b{display:block;color:var(--ink-deep);font-weight:400;font-size:10.5px;letter-spacing:.02em}
+.ts>.s{padding:9px 13px;min-width:0;overflow-x:auto;color:var(--ink)}
+.t-eyebrow{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep)}
+.t-label{font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-muted)}
+.t-chrome{font-size:var(--fs-chrome);line-height:var(--lh-chrome);white-space:pre}
+.t-prose{font-size:var(--fs-prose);line-height:var(--lh-prose)}
+.t-data{font-size:var(--fs-data);font-variant-numeric:tabular-nums}
+.t-stat{font-size:var(--fs-stat);line-height:var(--lh-tight);font-variant-numeric:tabular-nums;color:var(--ink)}
+.t-title{font-family:var(--font-serif);font-size:var(--fs-title);line-height:var(--lh-tight);
+  letter-spacing:.01em;color:var(--ink-deep)}
+.t-nav{font-size:10.5px;letter-spacing:var(--ls-nav);text-transform:uppercase}
+.reg{padding:11px 13px}
+.reg h4{font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep);margin-bottom:8px}
+.prose{font-size:var(--fs-prose);line-height:var(--lh-prose)}
+.prose p{margin:0 0 var(--prose-gap)}
+.prose>:last-child{margin-bottom:0}
+.prose ul{margin:0 0 var(--prose-gap);padding-left:1.6em}
+.prose li{margin-bottom:var(--prose-list-gap)}
+.prose strong{font-weight:700}
+.mach{font-size:var(--fs-chrome);line-height:var(--lh-chrome);white-space:pre;overflow-x:auto}
+
+/* ---------- THE BLOCK, at its two title tiers ----------
+   A block draws three edges: the Area top rule at --rule-emphasis, a bottom rule at grid
+   weight, and a left rule reserved for state. Ported from scratch/block-states.html; the
+   two sheets must not disagree. */
+.blk{position:relative;width:var(--col-min);background:var(--paper-raised);
+  border:0;border-top:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule);
+  border-left:var(--state-selected-border) solid transparent;
+  padding:var(--block-pad-t) var(--block-pad-x) var(--block-pad-b);overflow:hidden;
+  font-size:var(--fs-block);line-height:var(--lh-block);color:var(--ink)}
+/* Carrier 1 of 3: the 2px top rule, and only on a block that has an Area. A real
+   border-top, not an inset shadow, so it participates in the 19px floor's arithmetic
+   rather than sitting on top of the title. */
+.blk[data-area]{border-top:var(--rule-emphasis) solid var(--ai)}
+.blk .t{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--lines,1);
+  overflow:hidden;overflow-wrap:anywhere}
+.blk .g{float:right;margin-left:5px;color:var(--ink-deep);font-size:10px;line-height:1.2}
+.blk.compact{font-size:var(--fs-block-compact);line-height:var(--lh-block-compact);padding-top:0}
+.blk.frame{background:var(--frame-wash);color:var(--ink-soft)}
+.blk[data-selected]{border-left-color:var(--state-selected-color)}
+.blk[data-conflict]{border-left-color:var(--state-conflict-color)}
+.tierdemo{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;padding:13px 12px;
+  border-bottom:var(--hairline) solid var(--rule)}
+.tierdemo .cap{font-size:var(--fs-eyebrow);color:var(--text-muted);line-height:1.55;margin-top:7px;max-width:210px}
+.tierdemo .cap b{color:var(--ink-deep);display:block;letter-spacing:.04em}
+
+/* ---------- controls ---------- */
+.ctrls{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;padding:13px 12px}
+.fld{display:flex;flex-direction:column;gap:4px}
+.fld>span{font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--text-muted)}
+/* --rule-control, not --rule-strong. A control border is the only thing marking where the
+   control begins, so it is an indicator under the 3:1 rule rather than decoration:
+   --rule-strong measures 2.65:1 against the field fill. Section 1.3 computes both. */
+input[type=text],select,textarea{font:inherit;font-size:var(--fs-chrome);background:var(--paper-raised);
+  color:var(--ink);border:var(--hairline) solid var(--rule-control);border-radius:var(--radius);
+  padding:0 8px;height:var(--h-control);min-width:172px}
+textarea{padding:5px 8px;height:auto;line-height:var(--lh-chrome);resize:vertical}
+.selwrap{position:relative;display:inline-block}
+.selwrap::after{content:'\25BE';position:absolute;right:8px;top:0;line-height:var(--h-control);
+  pointer-events:none;color:var(--text-muted)}
+select{appearance:none;-webkit-appearance:none;padding-right:24px}
+button{font:inherit;font-size:var(--fs-label);letter-spacing:var(--ls-label);text-transform:uppercase;
+  border-radius:var(--radius);cursor:pointer;height:var(--h-control);padding:0 14px;
+  background:var(--ink);color:var(--on-ink);border:var(--hairline) solid var(--ink)}
+button.sec{background:var(--paper-raised);color:var(--ink-deep);border-color:var(--rule-strong)}
+button:disabled{background:transparent;color:var(--text-muted);border-style:dashed;
+  border-color:var(--text-muted);cursor:not-allowed}
+.sm{--h-control:var(--h-control-sm);font-size:var(--fs-label)}
+.lg{--h-control:var(--h-control-lg)}
+
+/* ---------- data tables ---------- */
+table.tbl{border-collapse:collapse;width:100%;font-size:var(--fs-chrome)}
+table.tbl th{text-align:left;font-weight:400;font-size:9px;letter-spacing:var(--ls-eyebrow);
+  text-transform:uppercase;color:var(--text-muted);padding:0 9px;height:24px;
+  border-bottom:var(--hairline) solid var(--rule-strong);white-space:nowrap}
+table.tbl td{padding:0 9px;height:var(--h-row);border-bottom:var(--hairline) solid var(--rule);
+  color:var(--ink);white-space:nowrap}
+table.tbl td.n,table.tbl th.n{text-align:right;font-variant-numeric:tabular-nums}
+table.tbl td.m{color:var(--text-muted)}
+table.tbl.dense td{height:var(--h-row-dense)}
+table.tbl.data td{font-size:var(--fs-data)}
+table.tbl tr:hover td{background:var(--state-hover)}
+/* Carrier 2 of 3: a filled chip up to 10px in a ledger row gutter, always paired with the
+   Area's name, which is stronger than any hatch. rounded-full is on the allowlist. */
+.chip-a{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px;vertical-align:-1px}
+
+/* ---------- geometry ---------- */
+.geo{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.geo>div{padding:12px;border-right:var(--hairline) solid var(--rule);border-bottom:var(--hairline) solid var(--rule)}
+.geo h4{font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep);margin-bottom:9px}
+.geo p{margin:9px 0 0;font-size:var(--fs-eyebrow);line-height:1.55;color:var(--text-muted)}
+.box{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised);height:34px;
+  display:grid;place-items:center;border-radius:var(--radius);color:var(--text-muted);font-size:var(--fs-eyebrow)}
+.hair{padding-top:6px;margin-top:6px;font-size:var(--fs-eyebrow);color:var(--text-muted)}
+.overlay{border:var(--hairline) solid var(--ink-deep);background:var(--paper-raised);box-shadow:var(--shadow-hard)}
+.overlay>header{background:var(--ink-deep);color:var(--on-ink);padding:5px 8px;display:flex;
+  align-items:center;gap:8px;font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase}
+.overlay>header i{font-style:normal;margin-left:auto;color:var(--on-ink-muted)}
+.overlay .in{padding:8px;font-size:var(--fs-eyebrow);color:var(--ink);line-height:1.6}
+.overlay .div{height:0;border-top:var(--hairline) solid var(--rule-on-ink)}
+/* THE INVERSE FOCUS RING. Chosen by the surface the ring LANDS on, not by the element's own
+   fill: at a +2px offset the ring sits on the parent, which here is the --ink-deep header.
+   --ink-bright on --ink-deep is 1.61:1 and vanishes; --on-ink on it is 14.83:1. Scoped to
+   the container so anything focusable added here later inherits the correct ring. syncr has
+   exactly one class of ink fill, and this is it. Section 1.3 computes both. */
+.overlay>header :focus-visible{outline:var(--state-focus-ring-inverse);
+  outline-offset:var(--state-focus-offset)}
+.overlay>header button{height:var(--h-control-sm);background:transparent;color:var(--on-ink);
+  border-color:var(--rule-on-ink);font-size:9px;padding:0 7px}
+.circles{display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:var(--fs-eyebrow);color:var(--text-muted)}
+.circles i{font-style:normal;display:inline-grid;place-items:center;gap:4px;justify-items:center}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--ink-bright);display:inline-block}
+.radio{width:12px;height:12px;border:var(--hairline) solid var(--ink);border-radius:50%;display:grid;place-items:center}
+.radio s{width:6px;height:6px;border-radius:50%;background:var(--ink);display:block}
+.avatar{width:20px;height:20px;border-radius:50%;background:var(--ink-deep);color:var(--on-ink);
+  display:grid;place-items:center;font-size:9px;letter-spacing:.04em}
+
+/* ---------- icons and the sidebar ---------- */
+svg.ic{width:var(--icon);height:var(--icon);flex:0 0 auto;stroke:currentColor;fill:none;
+  stroke-width:var(--icon-stroke);stroke-linecap:var(--icon-cap);stroke-linejoin:var(--icon-join)}
+/* THE SIDEBAR IS PAPER, NOT INK. The current item takes an --ink-wash fill plus a 3px
+   --ink-deep left rule, which is the same channel a selected block uses. One idea, one
+   form. Navigation is persistent state, and the loudest treatment is not spent on the most
+   persistent condition. Because the surface is paper, the standard focus ring applies. */
+.nav{background:var(--paper-raised);border:var(--hairline) solid var(--rule-strong);padding:6px 0;min-width:212px}
+.nav a{display:flex;gap:9px;align-items:center;padding:0 13px;height:var(--h-control);color:var(--ink);
+  text-decoration:none;font-size:10.5px;letter-spacing:var(--ls-nav);text-transform:uppercase;
+  border-left:var(--state-selected-border) solid transparent}
+.nav a:hover{background:var(--state-hover)}
+.nav a.on{background:var(--ink-wash);border-left-color:var(--state-selected-color);color:var(--ink-deep)}
+.nav a .n{margin-left:auto;color:var(--text-muted);letter-spacing:.04em;font-variant-numeric:tabular-nums}
+.nav.s14{--icon:var(--icon-sm)}
+.nav.s20{--icon:var(--icon-lg)}
+.icrow{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:11px 12px;
+  border-bottom:var(--hairline) solid var(--rule);color:var(--ink)}
+
+/* ---------- the Area ramp ---------- */
+.ramp{display:grid;grid-template-columns:repeat(auto-fill,minmax(234px,1fr))}
+.ramp>div{display:flex;gap:9px;align-items:flex-start;padding:8px 11px;
+  border-right:var(--hairline) solid var(--rule);border-bottom:var(--hairline) solid var(--rule);min-width:0}
+.ramp .sw{width:38px;flex:0 0 auto}
+.ramp .chip{width:10px;height:10px;border-radius:50%;display:inline-block}
+/* Carrier 3 of 3: a wedge or bar fill, always hatched in a lighter step of its own ink. */
+.ramp .fill{height:22px;margin-top:4px;background-color:var(--ai);background-image:var(--hx);
+  background-size:var(--hxs,auto)}
+.ramp b{display:block;font-weight:400;color:var(--ink-deep)}
+.ramp .hex{color:var(--ink);font-variant-numeric:tabular-nums;font-size:9.5px}
+.ramp .use{display:block;color:var(--text-muted);font-size:9.5px;line-height:1.5;margin-top:2px}
+.carrier{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr))}
+.carrier>div{padding:12px;border-right:var(--hairline) solid var(--rule);border-bottom:var(--hairline) solid var(--rule)}
+.carrier h4{font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep);margin-bottom:9px}
+.carrier p{margin:9px 0 0;font-size:var(--fs-eyebrow);line-height:1.55;color:var(--text-muted)}
+.stack{display:flex;height:26px;width:100%}
+.stack>span{background-color:var(--ai);background-image:var(--hx);background-size:var(--hxs,auto)}
+.legend{display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:9px;font-size:var(--fs-eyebrow);color:var(--ink)}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{font-style:normal;color:var(--text-muted);font-variant-numeric:tabular-nums}
+
+/* ---------- signals ---------- */
+.status{font-size:var(--fs-chrome);line-height:2}
+.status i{font-style:normal;display:inline-block;width:6px;height:6px;border-radius:50%;
+  margin-right:8px;vertical-align:1px}
+.st-conflict i{background:var(--signal-oxide)}
+.st-risk i{background:var(--signal-amber)}
+.st-ok i{background:var(--signal-verdigris)}
+/* An unconfirmed day is a cobalt condition, not a signal one: it is neither severity nor
+   status of the plan, so it takes a hollow --ink-bright dot and stays inside one ink. */
+.st-unconf i{background:transparent;border:var(--hairline) solid var(--ink-bright);
+  box-sizing:border-box;width:7px;height:7px}
+.st-conflict{color:var(--oxide-ink)}
+.st-ok{color:var(--verdigris-ink)}
+/* Amber has no text step: it measures below 4.5:1 as text on page paper, so an amber
+   indicator never colors its own label. Section 1.3 computes it. */
+.st-risk,.st-unconf{color:var(--ink)}
+.tag{color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;font-size:var(--fs-eyebrow)}
+.tag::before{content:'[\00a0'}
+.tag::after{content:'\00a0]'}
+.conflictblock{border:var(--hairline) solid var(--rule-strong);
+  border-left:var(--state-conflict-border) solid var(--state-conflict-color);
+  background:var(--paper-raised);padding:9px 11px}
+.conflictblock h4{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--oxide-ink);margin-bottom:6px}
+.conflictblock p{margin:0;font-size:var(--fs-chrome);line-height:var(--lh-chrome);color:var(--ink)}
+.conflictrule{height:0;border-top:var(--rule-emphasis) solid var(--signal-oxide);margin:9px 0}
+/* The tradeoff panel: an --amber-wash surface with a 2px --signal-amber edge. The wash is
+   not a fill in the sealed sense: it has about 1.1:1 against paper and never carries the
+   meaning alone, which is exactly why the edge is there. */
+.tradeoff{background:var(--amber-wash);border-left:var(--rule-emphasis) solid var(--signal-amber);padding:9px 11px}
+.tradeoff h4{font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;
+  color:var(--ink-deep);margin-bottom:6px}
+.tradeoff p{margin:0 0 var(--prose-gap);font-size:var(--fs-prose);line-height:var(--lh-prose);color:var(--ink)}
+.tradeoff ul{margin:0;padding-left:1.5em;font-size:var(--fs-prose);line-height:var(--lh-prose);color:var(--ink)}
+.tradeoff li{margin-bottom:var(--prose-list-gap)}
+/* Secondary text on a wash steps to --ink-soft: --text-muted measures below 4.5:1 on all
+   three washes, which section 1.3 computes and which is the one live constraint in the
+   ledger rather than a record of a defect a token already answers. */
+.tradeoff .meta{margin-top:var(--prose-gap);font-size:var(--fs-eyebrow);color:var(--ink-soft);
+  letter-spacing:.06em;line-height:1.6}
+
+/* ---------- the seals ---------- */
+.banned{border:var(--rule-emphasis) solid var(--signal-oxide);margin:12px}
+.banned>header{background:var(--signal-oxide);color:var(--on-ink);padding:5px 10px;
+  font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase}
+.banned .items{display:grid;grid-template-columns:repeat(auto-fill,minmax(222px,1fr))}
+.banned .items>div{padding:11px;border-right:var(--hairline) solid var(--rule);
+  border-bottom:var(--hairline) solid var(--rule)}
+.banned .items p{margin:9px 0 0;font-size:var(--fs-eyebrow);line-height:1.5;color:var(--text-muted)}
+.banned .items p b{color:var(--oxide-ink);font-weight:500}
+/* The canceling cross sits beside the specimen it cancels, centered by grid rather than by
+   a translate: there is no transform anywhere in this file. */
+.x{position:relative;display:inline-block}
+.x::after{content:'\2715';position:absolute;left:100%;top:0;bottom:0;display:grid;
+  place-items:center;padding-left:5px;color:var(--signal-oxide);font-size:13px}
+.bad-btn{background:var(--signal-oxide);color:var(--on-ink);border:var(--hairline) solid var(--signal-oxide);
+  height:var(--h-control);padding:0 14px;font-size:var(--fs-label);letter-spacing:var(--ls-label);
+  text-transform:uppercase}
+.bad-h{font-size:var(--fs-data);color:var(--oxide-ink);letter-spacing:.04em}
+.bad-chip{background:var(--verdigris-wash);color:var(--verdigris-ink);
+  border:var(--hairline) solid var(--signal-verdigris);padding:1px 9px;font-size:var(--fs-eyebrow);
+  letter-spacing:.1em;text-transform:uppercase;display:inline-block}
+.bad-wash{background:var(--oxide-wash);padding:2px 8px;display:inline-block;font-size:var(--fs-chrome);color:var(--ink)}
+.bad-nav{background:var(--paper-raised);border:var(--hairline) solid var(--rule-strong);
+  padding:0 13px;height:var(--h-control);display:flex;align-items:center;font-size:10.5px;
+  letter-spacing:var(--ls-nav);text-transform:uppercase}
+.bad-blk{width:var(--col-min);height:34px;background:var(--ai);color:var(--on-ink);
+  padding:var(--block-pad-t) var(--block-pad-x);font-size:var(--fs-block);line-height:var(--lh-block)}
+.bad-bar{height:22px;width:100%;background:var(--ai)}
+
+/* ---------- motion ---------- */
+.dragframe{position:relative;border:var(--hairline) solid var(--rule-strong);
+  background:var(--paper-raised);height:132px;overflow:hidden}
+.dragframe .maj{position:absolute;left:0;right:0;height:0;border-top:var(--hairline) solid var(--grid-line-hour)}
+.dragframe .min,.dragframe .rest{position:absolute;left:0;right:0;height:0;
+  border-top:var(--hairline) solid var(--grid-line-quarter)}
+/* The discrete drag marker: a hairline that snaps to the quarter hour. The block does not
+   move, and nothing interpolates between the two frames. */
+.dragmk{position:absolute;left:0;right:0;height:0;
+  border-top:var(--rule-emphasis) dashed var(--ink-deep);z-index:7}
+.dragmk::after{content:attr(data-at);position:absolute;left:4px;top:2px;font-size:9px;
+  background:var(--ink-deep);color:var(--on-ink);padding:0 3px;letter-spacing:.06em}
+.dragframe .blk{position:absolute;left:6px;width:var(--col-min)}
+.frames{display:flex;gap:16px;flex-wrap:wrap}
+.frames>div{flex:1;min-width:250px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="wordmark">syncr</span>
+  <span class="kv">Sheet <b>docs/design/specimen.html</b></span>
+  <span class="kv">Tokens <b>linked live from frontend/src/tokens/index.css</b></span>
+  <span class="kv">Authority <b>docs/DESIGN-LANGUAGE.md</b></span>
+  <span class="kv">Motion <b>zero, no exceptions</b></span>
+  <span class="kv">Radius <b>0, with a four-member circular allowlist</b></span>
+</div>
+
+<div class="spec">
+  <span class="lbl">Settled</span>
+  <div>ink <b>one cobalt hue, seven steps</b></div>
+  <div>area ramp <b>12 inks, three carriers, sealed</b></div>
+  <div>signals <b>status, severity, the tradeoff edge</b></div>
+  <div>signal fills <b>none. zero, unlike the inherited language</b></div>
+  <div>radius <b>0, full on four circles</b></div>
+  <div>shadow <b>one hard offset, overlays only</b></div>
+  <div>controls <b>22 / 26 / 30px</b></div>
+  <div>rows <b>28px, 24px dense</b></div>
+  <div>prose <b>12px / 1.6</b></div>
+  <div>block title <b>11.5px / 1.2, 9.5px / 1 compact</b></div>
+  <div>sidebar <b>paper, not ink</b></div>
+  <div>motion <b>zero</b></div>
+</div>
+
+<nav class="toc">
+  <a href="#s1"><b>Section 1</b>Color, by layer, with a computed contrast ledger</a>
+  <a href="#s2"><b>Section 2</b>Type: the scale, the two block tiers, the serif</a>
+  <a href="#s3"><b>Section 3</b>Density: three control heights, two row heights</a>
+  <a href="#s4"><b>Section 4</b>Geometry: radius, hairlines, shadow, circles</a>
+  <a href="#s5"><b>Section 5</b>Icons, and the sidebar that is paper</a>
+  <a href="#s6"><b>Section 6</b>The Area ramp, its carriers and its seal</a>
+  <a href="#s7"><b>Section 7</b>The signal palette and its seal</a>
+  <a href="#s8"><b>Section 8</b>Motion policy: zero, without exception</a>
+</nav>
+
+<!-- ==================== 1 COLOUR ==================== -->
+<h2 class="sec" id="s1"><span><a href="#s1">1</a> &middot; Color</span><em>every token, grouped by layer. hex values and ratios are read from the linked stylesheet at load</em></h2>
+<div class="note"><b>One ink.</b> The product is drawn in a single cobalt hue at seven steps, inherited unchanged. Body text is not a separate color from the accent: <code>--text</code> resolves to <code>--ink</code>. Everything that is not cobalt is paper, a wash, a sealed signal pigment, or an Area ink. <b>Layer 0 is off limits to components.</b> A component writes <code>--ink</code> or <code>--paper</code>, never <code>--cobalt-600</code>. Section 1.1 renders the primitives because cataloguing them is what this section is for; no other rule on this sheet reaches into that layer.
+<br><br><b>The 12-ink Area ramp is the single sealed exception to one-ink</b>, and it exists because Areas must be read pre-attentively across roughly ninety blocks a week. Its carriers, its hatch and the list of what it may never do are section 6. <b>An ink fill inverts the palette</b>, and syncr has exactly one class of ink fill: a panel or dialog header. The sidebar is paper, so navigation takes no inverse treatment at all. That decision is what keeps <code>--on-ink</code>, <code>--on-ink-muted</code> and <code>--rule-on-ink</code> down to three tokens.</div>
+
+<h3 class="sub" id="s1-1">1.1 &middot; Layer 0, primitives: raw ramps, no meaning, no component may reference these</h3>
+<div class="swat" id="sw-prim"></div>
+<div class="note" id="prim-count">&mdash;</div>
+
+<h3 class="sub" id="s1-2">1.2 &middot; Layer 1, semantic: what each pigment means, and which of them are the same pigment</h3>
+<div class="swat" id="sw-sem"></div>
+<div class="note" id="alias-note">&mdash;</div>
+<div id="aliases"></div>
+
+<h3 class="sub" id="s1-3">1.3 &middot; Contrast ledger: every text pair, the ring on every surface, the signal markers, the twelve Area inks, the washes. computed at load, never asserted</h3>
+<div class="note">Thresholds: a text pair needs <b>4.5:1</b> for AA at these sizes; a focus ring, a state rule, a status dot, an Area ink or anything marking a control boundary is a non-text UI component and needs <b>3:1</b>; a hairline divider, a grid line and a wash are <b>informational</b>, because a tint on cream has about 1.1:1 of dynamic range and therefore never carries meaning alone. A row marked <b>sealed</b> clears its threshold and is still forbidden, because the seal governs which channel a pigment may use, not whether it is legible.
+<br><br><b><span id="nfail">&mdash;</span> rows fail their threshold, and the count in this sentence is computed from the ledger rather than typed.</b> <span id="failgroups">&mdash;</span></div>
+<div id="ratios"></div>
+<div class="note"><b>The ring is chosen by the surface it lands on, not by the element's own fill.</b> At <code>--state-focus-offset</code> 2px the ring sits on the parent, so a primary button with an <code>--ink</code> fill keeps the standard ring: its parent is paper, and inverting it would give <span id="r-inv-paper">&mdash;</span> instead. Only a container whose own fill is ink inverts, and it inverts once, for everything inside it. This sheet has one such surface, the dialog header in section 4, and its rule is <code>.overlay &gt; header :focus-visible</code>. A wash is not an ink fill: the hover fill, the current nav item and a panel header keep the standard ring, which measures <span id="r-ring-wash">&mdash;</span> at its worst wash.</div>
+
+<div class="note" style="background:var(--ink-wash)"><b>1.3, continued &middot; the twelve Area inks, against both surfaces a carrier can land on.</b> An Area ink is a non-text indicator wherever it appears, so the bar is <b>3:1</b>, and both surfaces are computed below: page paper behind a wedge or a bar, and raised paper behind a block's top rule or a ledger chip. <b>The ramp is deliberately equalized</b> to within 0.1 of 5.0:1 against page paper, so no wedge reads heavier than another and the pie review is not biased by the palette. The equalisation is visible in the spread: <span id="ramp-spread">&mdash;</span></div>
+<div id="ratios-area"></div>
+
+<!-- ==================== 2 TYPE ==================== -->
+<h2 class="sec" id="s2"><span><a href="#s2">2</a> &middot; Type</span><em>one family carries the product. every step is rendered at its real size in real syncr content</em></h2>
+
+<h3 class="sub" id="s2-1">2.1 &middot; The scale: adding a step requires naming the surface that needs it</h3>
+<div class="ts"><div class="m"><b>--fs-eyebrow</b>9.5px &middot; lh <code>--lh-chrome</code> 1.55<br>ls <code>--ls-eyebrow</code> .14em<br>uppercase only<br>micro-labels above a panel or section. also carries the compact block title, at line-height 1</div>
+  <div class="s"><span class="t-eyebrow">&#9670; Week of Mon 11 August &middot; discretionary <span id="disc-eyebrow">&mdash;</span></span></div></div>
+<div class="ts"><div class="m"><b>--fs-label</b>10px &middot; lh 1.55<br>ls <code>--ls-label</code> .12em<br>uppercase only<br>form labels, table headers, key hints</div>
+  <div class="s"><span class="t-label">Area &middot; Floor &middot; Target &middot; Actual &middot; Delta</span><br>
+  <span class="t-label" style="color:var(--ink)">P pin &middot; Enter select &middot; / search &middot; Shift+S solve</span></div></div>
+<div class="ts"><div class="m"><b>--fs-chrome</b>11.5px &middot; lh <code>--lh-chrome</code> 1.55<br>ls 0<br>controls, ledger rows, machine content, the time axis, and the block title. never soft-wraps in the ledger</div>
+  <div class="s"><span class="t-chrome">05:30-06:30  Gym &middot; Legs                    habit   Fitness   pinned
+07:00-09:30  Leetcode &middot; Graphs               habit   Career    queue -&gt; DSA backlog
+16:00-16:45  Kontron Placement Interview       anchor :         conflict
+16:45-18:00  no deep work &middot; recovery          shadow :         forbidden window</span></div></div>
+<div class="ts"><div class="m"><b>--fs-prose</b>12px &middot; lh <code>--lh-prose</code> 1.6<br>ls 0<br>reasons, explanations, tradeoff statements. no maximum measure: the pane bounds it</div>
+  <div class="s"><span class="t-prose"><code>Gym &middot; Legs</code> is at 05:30 because <code>DSA Review &middot; Trees</code> holds 12:00 to 15:00, the afternoon closes behind the 16:00 interview's transit shadow and its recovery window, and <code>budgetDeviation</code> for Fitness dominated this week. The rotation is on <code>Legs</code> because <code>Chest &amp; Back</code> was confirmed completed on Sunday.</span></div></div>
+<div class="ts"><div class="m"><b>--fs-data</b>13px &middot; lh 1.55<br>ls 0 &middot; tabular figures<br>table cells carrying numbers you compare: budget against actual</div>
+  <div class="s"><span class="t-data" id="data-line">&mdash;</span></div></div>
+<div class="ts"><div class="m"><b>--fs-stat</b>28px &middot; lh <code>--lh-tight</code> 1.05<br>ls 0 &middot; tabular figures<br>headline figures in the summary strip. <b style="color:var(--oxide-ink)">stays mono</b></div>
+  <div class="s"><span class="t-stat">1h 20m</span>
+  <div class="t-eyebrow" style="color:var(--text-muted);margin-top:4px">short of <code>F&amp;F Past Papers</code> by Friday 09:00, after honoring the Fitness floor</div></div></div>
+<div class="ts"><div class="m"><b>--fs-title</b>38px &middot; lh <code>--lh-tight</code> 1.05<br>ls .01em<br><code>--font-serif</code><br>the seven page titles only</div>
+  <div class="s"><span class="t-title">Week</span></div></div>
+
+<h3 class="sub" id="s2-2">2.2 &middot; The two block-title tiers, rendered at the real box heights, with the arithmetic computed from the tokens</h3>
+<div class="note"><b>The block title is <code>--fs-block</code>, which resolves to <code>--fs-chrome</code> 11.5px: the same size as every other control and ledger row in the system.</b> An earlier draft set it to 9.5px to keep the label floor at 15px. Rendered, it was too small to read at the size the Week screen is actually used at, and it made the product's primary content the smallest type in the system. <b>The floor is the sum of what has to fit, not a round number</b>, and both sums below are computed from <code>--rule-emphasis</code>, <code>--block-pad-t</code>, <code>--fs-block</code>, <code>--lh-block</code> and <code>--hairline</code> rather than restated. <b>The compact tier pays for its title by giving up <code>--block-pad-t</code></b>, so the title sits against the Area rule. That is a real cost and the right trade: the alternative is no title at all, and an unlabeled <code>Wake Up</code> reads as a rendering fault rather than as a deliberate tier.</div>
+<div class="tierdemo" id="tierdemo"></div>
+<div class="note"><b>The title wraps to whatever fits; it does not truncate at one line.</b> A measured ledger over one real week showed 4 of 37 distinct titles becoming ambiguous under end-ellipsis: <code>Amazon Interview Prep</code> and <code>Amazon Interview Prep - Behavioral</code> both collapse to the same string, as do <code>Visual Computing Lab</code> and <code>Visual Computing Lecture</code>. End-ellipsis discards precisely the tail that distinguishes a title from its sibling. The line count is therefore computed per block from its own height, so a clip lands on a line boundary rather than mid-glyph, and the third specimen above prints the count it derived.</div>
+
+<h3 class="sub" id="s2-3">2.3 &middot; The two registers: prose wraps and has no measure cap; the ledger scrolls and never wraps</h3>
+<div class="grid2">
+  <div class="reg"><h4>Prose register &middot; --fs-prose 12px / 1.6 &middot; reasons and tradeoffs</h4>
+    <div class="prose">
+      <p>You cannot finish <code>F&amp;F Past Papers</code> by Friday 09:00. You are 1h 20m short after honoring your Fitness floor.</p>
+      <ul>
+        <li>drop <code>Kim's Game Project</code> this week</li>
+        <li>reduce the Sleep floor by 1h</li>
+        <li>breach the Fitness floor by 1h 20m</li>
+        <li>accept partial delivery</li>
+      </ul>
+      <p><strong>syncr does not choose.</strong> The shortfall is quantified and the tradeoffs are enumerated, and the decision belongs to the user.</p>
+    </div></div>
+  <div class="reg"><h4>Machine register &middot; --fs-chrome 11.5px / 1.55 &middot; scrolls, never wraps</h4>
+    <div class="mach">plan solve --week 2026-08-10        revision 41, proposed
+
+  bound      23 slots        churn        4 blocks vs revision 40
+  placed     11 cadence      conflicts    1  Kontron Placement Interview
+  gaps        6 unusable     shortfall    1h 20m  F&amp;F Past Papers
+
+objectiveBreakdown
+  deadlineRisk      41.6      budgetDeviation   12.9
+  timeOfDayMisfit    6.2      fragmentation      4.8
+  churn              3.1      contextSwitch      2.0
+  staleness          1.4</div></div>
+</div>
+<div class="note">The ledger and the time axis scroll horizontally so column alignment survives a narrow pane. That is why the block ledger in section 3.2 is a real table with <code>white-space:nowrap</code> cells rather than a grid: a squeezed column must move the whole row, not re-flow one cell out of alignment with its heading.</div>
+
+<h3 class="sub" id="s2-4">2.4 &middot; The serif: both legitimate uses, and nothing else</h3>
+<div class="grid2">
+  <div class="pad" style="border-bottom:0">
+    <div class="t-label" style="margin-bottom:7px">Use 1 of 2 &middot; the wordmark &middot; a named exception</div>
+    <div class="wordmark">syncr</div>
+    <div class="t-eyebrow" style="margin-top:6px;color:var(--text-muted)">lowercase serif at <code>--ls-wordmark</code> 0</div>
+    <div class="note" style="border:0;padding:9px 0 0"><b>The wordmark is lowercase, and that is the one named exception in the type system.</b> Everywhere else only uppercase text is tracked out, and the language syncr inherits sets its own wordmark as uppercase tracked serif. The product's name is lowercase by design and setting it as SYNCR misreads it, so the wordmark is lowercase serif at zero tracking. It is the only lowercase serif in the system, and nothing else may claim the exception.</div>
+  </div>
+  <div class="pad" style="border-bottom:0">
+    <div class="t-label" style="margin-bottom:7px">Use 2 of 2 &middot; the page titles, at <code>--fs-title</code> 38px</div>
+    <div class="t-title">Backlog</div>
+    <div class="t-eyebrow" style="margin-top:8px;color:var(--text-muted)" id="titles-list">&mdash;</div>
+    <div class="note" style="border:0;padding:9px 0 0"><b>The serif does not set anything else.</b> Not headline figures, which stay mono at <code>--fs-stat</code> as shown in 2.1, and not the weekly-session or pie-review headers, because a mode is not a destination. <span id="titles-count">&mdash;</span></div>
+  </div>
+</div>
+
+<!-- ==================== 3 DENSITY ==================== -->
+<h2 class="sec" id="s3"><span><a href="#s3">3</a> &middot; Density</span><em>real controls at three heights, and two real tables at two row heights</em></h2>
+<div class="note"><b>This is a keyboard tool on a desktop, not a touch target.</b> Off-the-shelf component defaults run roughly 40% taller and every one of them is overridden. <b>Spacing is deliberately absent from the token layer:</b> Tailwind's 4px scale already offers 2px granularity through its half steps, so redefining it would surprise every reader for no gain. Only the values that genuinely differ from stock are named, which is why <span id="heights-count">&mdash;</span></div>
+
+<h3 class="sub" id="s3-1">3.1 &middot; Control heights: real controls, tab through them to see the ring</h3>
+<div class="ctrls sm"><span class="t-label" style="width:122px">--h-control-sm<br>22px</span>
+  <label class="fld"><span>Search backlog</span><input type="text" value="F&amp;F Past Papers"></label>
+  <label class="fld"><span>Area</span><span class="selwrap"><select><option>Career</option><option>Study</option><option>Fitness</option></select></span></label>
+  <div class="fld"><span>Actions</span><div style="display:flex;gap:8px"><button>Pin</button><button class="sec">Unpin</button></div></div>
+</div>
+<div class="ctrls" style="border-top:var(--hairline) solid var(--rule)"><span class="t-label" style="width:122px">--h-control<br>26px &middot; default</span>
+  <label class="fld"><span>Search backlog</span><input type="text" value="F&amp;F Past Papers"></label>
+  <label class="fld"><span>Area</span><span class="selwrap"><select><option>Career</option><option>Study</option><option>Fitness</option></select></span></label>
+  <div class="fld"><span>Actions</span><div style="display:flex;gap:8px"><button>Solve week</button><button class="sec">Pin block</button><button disabled>Approve week</button></div></div>
+</div>
+<div class="ctrls lg" style="border-top:var(--hairline) solid var(--rule);border-bottom:var(--hairline) solid var(--rule)"><span class="t-label" style="width:122px">--h-control-lg<br>30px</span>
+  <label class="fld"><span>Search backlog</span><input type="text" value="F&amp;F Past Papers"></label>
+  <label class="fld"><span>Area</span><span class="selwrap"><select><option>Career</option><option>Study</option><option>Fitness</option></select></span></label>
+  <div class="fld"><span>Actions</span><div style="display:flex;gap:8px"><button>Solve week</button><button class="sec">Confirm day</button></div></div>
+</div>
+<div class="note"><b>The closed detail panel is a control height, not a width of its own:</b> <code>--w-detail-closed</code> resolves to <code>--h-control</code>, which this sheet reads as <span id="rail-w">&mdash;</span>. Below <code>--bp-wide</code> the panel closes to that rail rather than narrowing, because a narrower panel cannot hold a reason and a narrower grid cannot hold a title. A disabled control takes a dashed border in <code>--text-muted</code> and no fill. <b>Dashed is therefore claimed by disabled</b>, which is why a proposal block leads with absence of fill instead: the dashed outline survives on a proposal only as its forced-colors fallback, where a missing fill stops being a signal at all.</div>
+
+<h3 class="sub" id="s3-2">3.2 &middot; Row heights: the Areas ledger at 28px, the day's block ledger at 24px dense</h3>
+<div class="grid2">
+  <div><div class="t-label" style="padding:7px 9px;border-bottom:var(--hairline) solid var(--rule)">--h-row 28px &middot; cells at --fs-data 13px &middot; numbers you compare</div>
+  <div id="tbl-areas"></div></div>
+  <div><div class="t-label" style="padding:7px 9px;border-bottom:var(--hairline) solid var(--rule)">--h-row-dense 24px &middot; cells at --fs-chrome 11.5px &middot; long scans</div>
+  <div id="tbl-blocks"></div></div>
+</div>
+<div class="note"><b>A delta is <code>--ink</code> with a sign, never a hue.</b> Read the Delta column: the direction is carried by <code>+</code> and <code>&minus;</code>, and the pigment is the same as every other number in the table. Section 7 shows the version of that column this system forbids. <b>Every figure in both tables is derived from one array of minutes per Area</b>, which is the same array the pie and the stacked bar in section 6 read, so the three renderings cannot disagree: <span id="alloc-prov">&mdash;</span></div>
+
+<!-- ==================== 4 GEOMETRY ==================== -->
+<h2 class="sec" id="s4"><span><a href="#s4">4</a> &middot; Geometry</span><em>radius zero, three hairline weights, one hard shadow on overlays only, and the circular allowlist</em></h2>
+<div class="geo">
+  <div><h4>--radius &middot; 0</h4>
+    <div class="box">every corner</div>
+    <p>Zero everywhere, and lint enforces it. <code>rounded-md</code> compiles to zero, so pasted stock markup lands on-brand. The only non-zero radius in this file is the 50% on the four circles to the right.</p></div>
+  <div><h4>--hairline &middot; 1px at three colors, plus the 2px emphasis</h4>
+    <div style="border-top:var(--hairline) solid var(--rule-strong)" class="hair"><code>--rule-strong</code> &middot; block and panel borders. decorative</div>
+    <div style="border-top:var(--hairline) solid var(--rule)" class="hair"><code>--rule</code> &middot; ledger rows, and the hour line while a drag is in progress</div>
+    <div style="border-top:var(--hairline) solid var(--rule-faint)" class="hair"><code>--rule-faint</code> &middot; the hour at rest, and the quarter-hour subdivision</div>
+    <div style="border-top:var(--rule-emphasis) solid var(--ink-deep)" class="hair"><code>--rule-emphasis</code> 2px &middot; the emphasised weight</div>
+    <p><b><code>--rule-faint</code> sits below <code>--rule</code> deliberately:</b> at fifteen-minute spacing a <code>--rule</code> line renders the grid as corduroy and the blocks disappear into it. <b>The carriers of <code>--rule-emphasis</code> are not listed here</b>: grep the token instead, because an inventory in prose is stale the moment a sheet adds a site.</p></div>
+  <div><h4>--shadow-hard &middot; overlays only</h4>
+    <div class="overlay">
+      <header>&#9670; Resolve conflict <button type="button">Esc</button><i>1 of 1</i></header>
+      <div class="in">Kontron Placement Interview overlaps <code>Leetcode &middot; DP</code>.
+        <div class="div" style="margin:7px 0"></div>
+        Keep the anchor and reflow, or pin the block and accept the overlap.</div>
+    </div>
+    <p>4px 4px 0 0, no blur. Print has no blur. Dialog, command palette and popover only: never a block, never a card, never a button. <b>This header is the only class of ink fill in syncr</b>, so it is also the only site of the inverse focus ring. Tab to the <code>Esc</code> button.</p></div>
+  <div><h4>border-radius 50% &middot; allowlist</h4>
+    <div class="circles" id="circles"></div>
+    <p id="circles-note">&mdash;</p></div>
+</div>
+
+<!-- ==================== 5 ICONS ==================== -->
+<h2 class="sec" id="s5"><span><a href="#s5">5</a> &middot; Icons</span><em>three sizes, stroke and caps read from the tokens, and the sidebar rendered as what it is: paper</em></h2>
+<div class="note"><b>Stroke, caps and joins are read from <code>--icon-stroke</code>, <code>--icon-cap</code> and <code>--icon-join</code> rather than restated</b>, because the two reference sheets of the inherited language diverged once when the tokens were silent on caps. The values this sheet reads are printed under the bare icons below. Sizes are <code>--icon-sm</code>, <code>--icon</code> and <code>--icon-lg</code>, and nothing else. Round caps are the one rounded form the system tolerates.
+<br><br><b>The sidebar is paper, not ink.</b> The current item takes an <code>--ink-wash</code> fill plus a 3px <code>--ink-deep</code> left rule, which is the same channel a selected block uses: one idea, one form. Navigation is the most persistent state in the product, and the loudest treatment is not spent on the most persistent condition. Because the surface is paper, the standard focus ring applies here and no inverse ring is needed: tab into the bar and compare it with the dialog header in section 4. Typographic marks carry meaning inline where a glyph beats an icon: <code>&#9670;</code> anchor, <code>&#9635;</code> pinned, <code>&#8635;</code> habit, <code>&#9656;</code> task, <code>&#9671;</code> shadow, <code>&#8594;</code> transit, <code>&#9679;</code> frame.</div>
+<div style="display:flex;gap:20px;flex-wrap:wrap;padding:13px 12px;border-bottom:var(--hairline) solid var(--rule)">
+  <div><div class="t-label" style="margin-bottom:6px">--icon-sm &middot; 14px</div><div class="nav s14" id="nav14"></div></div>
+  <div><div class="t-label" style="margin-bottom:6px">--icon &middot; 16px &middot; default</div><div class="nav" id="nav16"></div></div>
+  <div><div class="t-label" style="margin-bottom:6px">--icon-lg &middot; 20px</div><div class="nav s20" id="nav20"></div></div>
+</div>
+<div class="icrow" id="icbare"></div>
+<div class="note" id="icons-count">&mdash;</div>
+
+<!-- ==================== 6 THE AREA RAMP ==================== -->
+<h2 class="sec" id="s6"><span><a href="#s6">6</a> &middot; The Area ramp, and its seal</span><em>the one break with one-ink. twelve pigments, three legal carriers, hatch always on</em></h2>
+<div class="note"><b>Areas do triple duty:</b> the wedge of the allocation model, the type of a template slot, and the category of a task. A user carries several at once and must read which Area a block belongs to pre-attentively, across roughly ninety blocks a week. Label text alone cannot do that at the fifteen-minute tier, and a tint ramp cannot either, because the whole wash channel is about 1.1:1 wide. That is the argument for the exception, and it is the only one accepted.
+<br><br><b>The 225 degree slot is deliberately vacant:</b> that is cobalt's hue, and an Area that read as the system ink would be unreadable as a category. <span id="hue-gaps">&mdash;</span> <b>Three pigments sit on the sealed signal hues by construction</b>, which are <code>01</code> near oxide, <code>03</code> near amber and <code>06</code> near verdigris. That collision is accepted rather than avoided, because squeezing twelve pigments into the remaining 270 degrees would put the hue steps below the point where dark colors separate. <b>The carrier rule is what disambiguates them: a signal is never a fill, an Area is only ever a fill or a rule.</b>
+<br><br><b>Assignment order is not numeric order.</b> Areas are dealt <code>01, 05, 08, 10, 03, 07, 12, 06, 02, 04, 09, 11</code>, so a user with four Areas gets four pigments roughly ninety degrees apart. <span id="tight-pairs">&mdash;</span></div>
+<div class="ramp" id="ramp"></div>
+<div class="note"><b>Hatch is always on. It is not an accessibility toggle</b>, because color is never the only encoding: roughly one man in twelve cannot separate twelve categorical hues, and three of these pigments sit on the signal hues by construction. Each hatch is drawn in a lighter step of the wedge's own ink, so it reads as texture rather than as a second color. <b>Six patterns is the honest ceiling</b>: past that they stop separating at wedge scale, so a pattern repeats only between hues that are far apart. <span id="hatch-count">&mdash;</span></div>
+
+<h3 class="sub" id="s6-1">6.1 &middot; The three legal carriers, exhaustively. One carrier per context, never two at once</h3>
+<div class="carrier">
+  <div><h4>Carrier 1 of 3 &middot; proportional surfaces</h4>
+    <div style="display:flex;gap:10px;flex-wrap:wrap" id="carrier-blocks"></div>
+    <p><b>The block's 2px top rule, and nothing else.</b> A real <code>border-top</code> at <code>--rule-emphasis</code>, not an inset shadow, so it participates in the 19px floor's arithmetic rather than sitting on top of the title. The fill stays <code>--paper-raised</code>, the left rule stays reserved for state, and the circadian frame takes <code>--frame-wash</code> and no Area ink at all: routines are not budgeted as discretionary time, so the frame reads as structure rather than as a category competing with Fitness.</p></div>
+  <div><h4>Carrier 2 of 3 &middot; ledger surfaces</h4>
+    <div id="carrier-chips"></div>
+    <p><b>A filled chip up to 10px in the row gutter, always paired with the Area's name.</b> On a ledger surface the name is a stronger redundancy than any hatch, so the chip carries no texture. The chip is one of the four members of the circular allowlist in section 4.</p></div>
+  <div><h4>Carrier 3 of 3 &middot; charts</h4>
+    <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+      <div id="pie"></div>
+      <div style="flex:1;min-width:150px"><div class="t-label" style="margin-bottom:6px">Stacked bar &middot; the same array</div><div class="stack" id="stack"></div></div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <p><b>A pie wedge fill or a stacked bar fill, both hatched.</b> The pie is the mental model the product exists to connect to the schedule, so it is drawn here rather than described. <span id="chart-prov">&mdash;</span></p></div>
+</div>
+
+<div class="banned">
+  <header>&#10005; Sealed: an Area ink may never do any of the following, anywhere in the product</header>
+  <div class="items">
+    <div><span class="x" id="bad-area-text"></span>
+      <p><b>Never as text.</b> <span id="bad-area-text-note">&mdash;</span></p></div>
+    <div><span class="x"><span class="bad-blk" id="bad-area-fill">Leetcode &middot; Graphs</span></span>
+      <p><b>Never as a block or row fill.</b> The fill channel already has three values and they carry whether the block exists, is hovered, or is a proposal. An Area fill would overwrite that channel and, at ninety blocks a week, turn the grid into a color chart with no state left to read.</p></div>
+    <div><span class="x"><input type="text" value="Gym &middot; Legs" id="bad-area-border" style="min-width:140px"></span>
+      <p><b>Never on a control border.</b> A control border is the only thing marking where the control begins, so it is an indicator with one job. <code>--rule-control</code> owns it.</p></div>
+    <div><span class="x"><span class="bad-nav" id="bad-area-nav">Areas</span></span>
+      <p><b>Never in navigation.</b> The current nav item is an <code>--ink-wash</code> fill plus a 3px <code>--ink-deep</code> left rule, on paper. Navigation is not a category.</p></div>
+    <div><span class="x"><span class="bad-bar" id="bad-area-only" style="width:120px;display:inline-block"></span></span>
+      <p><b>Never as the only encoding.</b> This bar has an Area ink, no hatch and no name. Under forced colors, or for a reader who cannot separate the hues, it says nothing at all. <b>Every wedge and bar pairs its ink with a hatch, and every chip pairs with the Area's name.</b></p></div>
+    <div><span class="x"><span style="font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep)">Fitness floor at risk</span></span>
+      <p><b>Never a heading, in any pigment other than <code>--ink-deep</code>.</b> This specimen is the legal color and the illegal role: an Area's name in a heading is fine, and it may not be tinted by the Area, because a heading is not a category marker.</p></div>
+  </div>
+</div>
+
+<!-- ==================== 7 SIGNALS ==================== -->
+<h2 class="sec" id="s7"><span><a href="#s7">7</a> &middot; The signal palette, and its seal</span><em>oxide, verdigris, amber. two sanctioned uses, and no sanctioned fill at all</em></h2>
+<div class="note">The signals are printer's inks rather than web primaries, so they sit beside cobalt instead of fighting it. <code>color.css</code> permits them in exactly two places: <b>status and severity indicators</b>, meaning dots, rules, glyphs and their labels, which is where the conflict block's 3px left rule lives, and <b>the tradeoff panel's edge</b>. The severity model pairs each signal with a position rather than with a volume of pigment, which is what keeps two uses from becoming five.
+<br><br><b>syncr sanctions no signal fill at all.</b> The language it inherits sanctions exactly one, the amber search-match chip, and syncr has no match state to spend it on: search on the Backlog screen filters rows rather than marking ranges inside them. <b>Zero is therefore the whole allowance</b>, and the seal below has one fewer exception to protect than the sheet it is modelled on. Everywhere else a signal is a rule, a glyph, a dot or text.
+<br><br><b>Each signal names two roles.</b> The marker step carries dots, rules, glyphs and washes, where 3:1 is the bar; the text step below it carries label ink, where 4.5:1 is the bar and the marker step fails. <b>Amber has no text step</b>: it measures <span id="r-amber-paper">&mdash;</span> as text on page paper, so an amber indicator never colors its own label. Section 1.3 computes all of it.</div>
+
+<h3 class="sub" id="s7-1">7.1 &middot; Use 1 of 2 &middot; status and severity indicators: a dot, a word, and never a pill</h3>
+<div class="grid2">
+  <div style="padding:12px">
+    <div class="status">
+      <div class="st-conflict"><i></i>conflict &middot; Kontron Placement Interview overlaps <code>Leetcode &middot; DP</code></div>
+      <div class="st-risk"><i></i>at risk &middot; <code>F&amp;F Past Papers</code> is 1h 20m short of Friday 09:00</div>
+      <div class="st-ok"><i></i>recorded &middot; Mon 11 confirmed, 14 of 14 blocks</div>
+      <div class="st-unconf"><i></i>Sun 16 <span class="tag">unconfirmed</span></div>
+    </div>
+    <div class="note" style="border:0;padding:9px 0 0">The first three dots are filled, 6px, from the circular allowlist, and each pairs with words. <b>The conflict and recorded labels take their signal's text step</b>, <code>--oxide-ink</code> and <code>--verdigris-ink</code>. <b>The at-risk label does not:</b> amber has no text step, so the label stays <code>--ink</code> and the dot carries the pigment. <b>The fourth row is not a signal condition at all.</b> An unconfirmed day is neither severity nor plan status: it is a day excluded from reviews and from learning, so it takes a hollow <code>--ink-bright</code> dot and an <code>[unconfirmed]</code> tag, and stays inside one ink. A day the user disengaged from is marked, never hidden, and never recorded as perfect.</div>
+  </div>
+  <div style="padding:12px">
+    <div class="conflictblock"><h4>&#9670; Conflict &middot; assent required</h4>
+      <p><code>Kontron Placement Interview</code> at 16:00 overlaps <code>Leetcode &middot; DP</code>, which is pinned by its template entry. syncr may add freely and may never move or remove a block without assent, so it has not moved either one.</p>
+      <div class="conflictrule"></div>
+      <p style="color:var(--text-muted);font-size:var(--fs-eyebrow);letter-spacing:.06em">Oxide carries the 3px left rule, the 2px divider and the heading. It does not fill the panel, and it does not color the body text.</p></div>
+    <div class="note" style="border:0;padding:9px 0 0"><b>Only a conflict notifies.</b> A change that fills empty space auto-applies with no notification; a change that moves or drops an existing block waits quietly as a proposal. Without that split a trivial improvement nags exactly like a real conflict, the user mutes notifications within a week, and then misses the conflicts too. The pigment follows the same rule: oxide is spent on the one class of change that interrupts.</div>
+  </div>
+</div>
+
+<h3 class="sub" id="s7-2">7.2 &middot; Use 2 of 2 &middot; the tradeoff panel's edge, on the one wash that is a panel surface</h3>
+<div class="grid2">
+  <div style="padding:12px">
+    <div class="tradeoff">
+      <h4>&#9670; This week cannot hold its commitments</h4>
+      <p>You cannot finish <code>F&amp;F Past Papers</code> by Friday 09:00. You are <b>1h 20m</b> short after honoring your Fitness floor.</p>
+      <ul>
+        <li>drop <code>Kim's Game Project</code> this week</li>
+        <li>reduce the Sleep floor by 1h</li>
+        <li>breach the Fitness floor by 1h 20m</li>
+        <li>accept partial delivery</li>
+      </ul>
+      <div class="meta">Raise, warn, allow &middot; syncr does not block approval of a knowingly broken week</div>
+    </div>
+  </div>
+  <div style="padding:12px">
+    <div class="note" style="border:0;padding:0"><b>The wash is the panel's own surface and the 2px edge is the signal.</b> A wash has about <span id="r-amber-wash">&mdash;</span> against paper, which is the entire dynamic range a tint has on cream, so it never carries meaning alone: here it pairs with the amber edge, and the edge measures <span id="r-amber-edge">&mdash;</span> against the wash it sits on.
+    <br><br><b>The panel's secondary text is <code>--ink-soft</code>, not <code>--text-muted</code>, and that is arithmetic rather than taste.</b> <code>--text-muted</code> on this wash measures <span id="r-muted-amber">&mdash;</span> and fails AA at 9.5px; <code>--ink-soft</code> measures <span id="r-soft-amber">&mdash;</span>. The same holds for the oxide and verdigris washes, which section 1.3 computes and which no comment in <code>color.css</code> currently states. <b>The rule that falls out of it: muted metadata on any wash steps to <code>--ink-soft</code>.</b>
+    <br><br><b>The heading is <code>--ink-deep</code>, not amber.</b> A signal never becomes a heading, and the panel does not need it to: the words say the week is infeasible, and the edge says which severity it is.</div>
+  </div>
+</div>
+
+<div class="banned">
+  <header>&#10005; Sealed: none of the following is legal anywhere in the product</header>
+  <div class="items">
+    <div><span class="x"><button class="bad-btn" type="button" tabindex="-1">Drop area</button></span>
+      <p><b>Never a signal button.</b> Destructive intent is carried by the word and by a confirmation dialog, not by pigment. syncr has no sanctioned signal fill, so this is not a borderline case: it is the whole category.</p></div>
+    <div><span class="x"><span class="bad-h">Infeasible week</span></span>
+      <p><b>Never a signal heading.</b> Headings and labels are <code>--ink-deep</code>. Every one of them, including the heading of the infeasibility panel in 7.2.</p></div>
+    <div><span class="x"><span class="bad-chip">recorded</span></span>
+      <p><b>Never a status pill.</b> Use a 6px dot plus the word. <b>The specimen is drawn square on purpose:</b> a pill also needs a non-zero radius, and no radius other than 0 and the four allowlisted circles may appear on this sheet, even inside a cancelled specimen. So only the fill violation is rendered, and the radius violation is stated.</p></div>
+    <div><span class="x"><span style="font-size:var(--fs-data);font-variant-numeric:tabular-nums"><span style="color:var(--signal-verdigris)">+2h 20m Career</span> &middot; <span style="color:var(--signal-oxide)">&minus;40m Fitness</span></span></span>
+      <p><b>Never green for up and red for down.</b> A delta is <code>--ink</code> with a <code>+</code> or <code>&minus;</code>, exactly as the Delta column in section 3.2 renders it. Direction is a glyph, not a hue. Under-budget on Fitness is not an error, and over-budget on Career is not a success.</p></div>
+    <div><span class="x"><span class="bad-wash">Kontron Placement Interview</span></span>
+      <p><b>Never a wash alone.</b> A wash has about 1.1:1 on cream, so it always pairs with a rule, a glyph or a border. This row claims a conflict with a tint and nothing else, and it survives neither forced colors nor a glance.</p></div>
+    <div><span class="x"><span style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;letter-spacing:var(--ls-nav);text-transform:uppercase;color:var(--signal-amber)">&#9670; Learned</span></span>
+      <p><b>Never in navigation.</b> Not as a fill, not as a label, not as a count. The sidebar is drawn in one ink on paper, and a nav item that carried a severity would be a severity the user cannot dismiss.</p></div>
+  </div>
+</div>
+
+<!-- ==================== 8 MOTION ==================== -->
+<h2 class="sec" id="s8"><span><a href="#s8">8</a> &middot; Motion policy</span><em>zero, without exception. the inherited language kept one; syncr has nothing to spend it on</em></h2>
+<div class="grid2">
+  <div class="pad" style="border-bottom:0">
+    <div class="prose" style="color:var(--ink)">
+      <p><strong>Nothing eases, fades, slides, shimmers or spins.</strong> <code>--duration</code> is <span id="dur">&mdash;</span>. There are no skeleton loaders, because a shimmer is decoration. There is no spinner, and the circular allowlist does not admit one: it holds four static circles, and a rotating element is motion.</p>
+      <p><strong>The inherited language kept exactly one exception, and syncr takes none.</strong> That exception existed for a cold-start index measured at 4.6 seconds, where a progress bar advancing on a changed number was the only honest way to report the wait. <b>syncr has no such wait.</b> A solve over roughly thirty blocks a day is instantaneous, and calendar sync reports as a count that changes when a number changes, which is a discrete redraw rather than motion. An exception with nothing to protect is not inherited: it is dropped.</p>
+      <p><strong>A drag is discrete.</strong> Dragging a block does not move the block. A hairline insertion marker snaps to the quarter hour under the cursor, and the block redraws once, on drop. Reflow of the unpinned remainder is one redraw, never an animated settle. Continuous input, discrete output.</p>
+      <p><strong>The quarter-hour subdivision is a state change, not a flourish.</strong> At rest the grid draws the hour only, in <code>--rule-faint</code>. While a drag is in progress the hour steps up to <code>--rule</code> and the quarter-hour lines appear, because that is the one moment the user needs to see where the snap will land. It appears and disappears; it does not fade.</p>
+    </div>
+  </div>
+  <div class="pad" style="border-bottom:0">
+    <div class="t-label" style="margin-bottom:9px">The drag, as its two frames &middot; there is no third frame between them</div>
+    <div class="frames">
+      <div><div class="t-eyebrow" style="color:var(--ink-deep);margin-bottom:6px">Frame 1 &middot; grip, and while held</div>
+        <div class="dragframe" id="drag1"></div>
+        <div class="note" style="border:0;padding:7px 0 0">The block has not moved. The marker is at the quarter hour under the cursor and prints the time it will land on. The grid has stepped up to <code>--rule</code> at the hour and revealed <code>--rule-faint</code> at the quarter.</div></div>
+      <div><div class="t-eyebrow" style="color:var(--ink-deep);margin-bottom:6px">Frame 2 &middot; on drop</div>
+        <div class="dragframe" id="drag2"></div>
+        <div class="note" style="border:0;padding:7px 0 0">One redraw. The block is at 13:00, the marker is gone, the grid is calm again, and the block is pinned by the edit: every manual edit is a pin, and the solver reflows only the unpinned remainder around it.</div></div>
+    </div>
+    <div class="note" style="border:0;padding:11px 0 0"><b>Grep is the proof, not this paragraph.</b> This file declares no <code>transition</code>, no <code>animation</code>, no <code>will-change</code>, no <code>transform</code> and no keyframes at-rule; the cross that cancels a sealed specimen is centered with a grid rather than a translate for that reason alone. <span id="motion-check">&mdash;</span></div>
+  </div>
+</div>
+
+<div class="note" style="border-top:var(--hairline) solid var(--rule-strong);border-bottom:0;color:var(--text-muted)">
+  <b>Provenance.</b> Every hex value and every ratio on this sheet is computed in the browser from <code>frontend/src/tokens/</code> at load, so sections 1.3 and 6 cannot drift from the build, and every count stated in prose is read from the array that renders the thing being counted. <b>Block names, times and durations come from a real reference week</b> and are realistic rather than authoritative: the circadian frame is drawn as spans, which is what the product specifies rather than what the source calendar exported. <b>The allocation figures are constructed, and the construction is stated where it is used</b>: one array of minutes per Area, from which the discretionary total, the percentages, the pie, the stacked bar and both ledgers are derived. The grid arithmetic assumes <code>--grid-h</code> at <code>--visible-hours</code>, which is what a 13-inch 1440&times;900 display yields after the page band, summary strip and day header.
+  <br><br>Companion records: <code>scratch/block-states.html</code> for the block's state channels and the Area ramp record, <code>scratch/week-density.html</code> for the zoom ladder, then <code>components.html</code>, <code>screens.html</code> and <code>decisions.html</code>. <code>docs/DESIGN-LANGUAGE.md</code> is written last, so it documents what was built rather than what was planned.
+</div>
+
+<script>
+/* ============================================================
+   Token reader. A custom property's computed value has its var() references substituted,
+   but a chain is resolved defensively so this sheet still reports true hex values if a
+   browser hands back an unsubstituted token stream.
+   ============================================================ */
+const raw = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+/* A custom property's computed value has its var() references substituted, but every read
+   below goes through this resolver so the sheet still reports true values if a browser hands
+   back an unsubstituted token stream. --fs-block and --fs-block-compact are both aliases, so
+   the block-tier arithmetic in section 2.2 depends on it. */
+function val(name, depth = 0){
+  const v = raw(name);
+  const m = /^var\((--[\w-]+)\)$/.exec(v);
+  if(m && depth < 8) return val(m[1], depth + 1);
+  return v;
+}
+const hex = n => val(n);
+const lum = h => {
+  const c = [1,3,5].map(i => parseInt(h.substr(i,2),16)/255)
+    .map(v => v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4));
+  return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+};
+const ratio = (a,b) => { const x = lum(a), y = lum(b);
+  return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); };
+const r2 = (a,b) => ratio(hex(a), hex(b)).toFixed(2) + ':1';
+const px = t => parseFloat(val(t));
+const set = (id, html) => { const el = document.getElementById(id); if(el) el.innerHTML = html; };
+const NUM = ['Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten',
+  'Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen',
+  'Nineteen','Twenty'];
+const word = n => NUM[n] || String(n);
+const ord = n => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
+
+/* ============================================================
+   The Area ramp. Numeric order for the catalogue, assignment order for the deal. Hatch
+   repeats only between hues that are far apart. Ported from scratch/block-states.html:
+   the two sheets must not disagree about which Area holds which hatch.
+   ============================================================ */
+const HATCH = {
+  fwd:['--hatch-fwd',null], back:['--hatch-back',null], vert:['--hatch-vert',null],
+  horz:['--hatch-horz',null], cross:['--hatch-cross',null], dot:['--hatch-dot','--hatch-dot-size']
+};
+const AREAS = [
+  {n:'01', hue:355, pigment:'madder',   name:'Career',   hatch:'fwd',   order:1},
+  {n:'02', hue:25,  pigment:'sienna',   name:'unassigned', hatch:'vert',  order:9},
+  {n:'03', hue:48,  pigment:'ochre',    name:'Projects', hatch:'dot',   order:5},
+  {n:'04', hue:72,  pigment:'olive',    name:'unassigned', hatch:'cross', order:10},
+  {n:'05', hue:100, pigment:'moss',     name:'Study',    hatch:'back',  order:2},
+  {n:'06', hue:145, pigment:'viridian', name:'unassigned', hatch:'fwd',   order:8},
+  {n:'07', hue:180, pigment:'teal',     name:'Admin',    hatch:'horz',  order:6},
+  {n:'08', hue:202, pigment:'cerulean', name:'Fitness',  hatch:'vert',  order:3},
+  {n:'09', hue:262, pigment:'indigo',   name:'unassigned', hatch:'dot',   order:11},
+  {n:'10', hue:288, pigment:'violet',   name:'Research', hatch:'cross', order:4},
+  {n:'11', hue:312, pigment:'magenta',  name:'unassigned', hatch:'horz',  order:12},
+  {n:'12', hue:335, pigment:'wine',     name:'Transit',  hatch:'back',  order:7}
+];
+const areaTok = a => '--area-' + a.n;
+const AREA_BY_NAME = {};
+for(const a of AREAS) AREA_BY_NAME[a.name] = a;
+const hatchInk = tok => 'color-mix(in srgb, var(' + tok + ') var(--hatch-mix), var(--paper-raised))';
+const hatchStyle = a => {
+  const [hv, hs] = HATCH[a.hatch];
+  return '--ai:var(' + areaTok(a) + ');--hatch-ink:' + hatchInk(areaTok(a))
+    + ';--hx:var(' + hv + ')' + (hs ? ';--hxs:var(' + hs + ')' : '');
+};
+
+/* ---------- 1.1 and 1.2, swatches ---------- */
+const PRIM = [
+  ['--cobalt-700','the deepest step. --ink-deep points here'],
+  ['--cobalt-600','the body step. --ink and --text point here'],
+  ['--cobalt-500','the bright step. --ink-bright and --rule-on-ink point here'],
+  ['--cobalt-400','the soft step. --ink-soft points here'],
+  ['--cobalt-300','the muted step. --text-muted and --rule-control point here'],
+  ['--cobalt-200','strong hairlines. --rule-strong'],
+  ['--cobalt-100','hairlines. --rule, --on-ink-muted, the forbidden hatch'],
+  ['--cream-100','raised paper stock. --paper-raised, --on-ink'],
+  ['--cream-200','page paper stock. --paper'],
+  ['--cream-300','the circadian frame wash. --frame-wash'],
+  ['--cream-400','the shallower wash. --ink-wash, --rule-faint, the grid at rest'],
+  ['--oxide-600','oxide at text weight. conflict label ink'],
+  ['--oxide-500','oxide at marker weight. --signal-oxide'],
+  ['--oxide-100','oxide wash. unclaimed in syncr'],
+  ['--verdigris-600','verdigris at text weight. confirmed label ink'],
+  ['--verdigris-500','verdigris at marker weight. --signal-verdigris'],
+  ['--verdigris-100','verdigris wash. unclaimed in syncr'],
+  ['--amber-500','amber at marker weight. --signal-amber. no text step exists'],
+  ['--amber-100','amber wash. --amber-wash, the tradeoff panel surface']
+];
+const AREA_PRIM = AREAS.map(a => ['--pigment-area-' + a.n,
+  a.hue + '&deg; ' + a.pigment + '. dealt ' + ord(a.order) + ', hatch ' + a.hatch]);
+const swatch = ([tok, use]) => '<div><span class="sw" style="background:var(' + tok + ')"></span>'
+  + '<span><b>' + tok + '</b><span class="hex">' + hex(tok).toUpperCase() + '</span>'
+  + '<span class="use">' + use + '</span></span></div>';
+const PRIM_ALL = PRIM.concat(AREA_PRIM);
+set('sw-prim', PRIM_ALL.map(swatch).join(''));
+set('prim-count', '<b>' + PRIM_ALL.length + ' primitives, of which ' + AREA_PRIM.length
+  + ' are the Area ramp</b>, and both counts are the length of the arrays this sheet just rendered '
+  + 'rather than a number typed into a sentence. The ramp is catalogued here because that is what '
+  + 'this section is for; every rule elsewhere on this sheet reaches for <code>--area-NN</code> '
+  + 'in layer 1, never for <code>--pigment-area-NN</code>.');
+
+const SEM = [
+  ['--paper','the page, and every surface that is not a block, a panel or a dialog'],
+  ['--paper-raised','a block fill, panels, dialogs, control fills'],
+  ['--ink','body: prose, block titles, table data'],
+  ['--ink-deep','labels, page titles, the selected-block rule, the current nav rule'],
+  ['--ink-bright','focus ring, status dots, links, the now rule, the unconfirmed marker'],
+  ['--ink-soft','secondary prose: reasons, explanations, a frame block title, text on a wash'],
+  ['--text','body text. resolves to --ink, which is the one-ink rule made mechanical'],
+  ['--text-muted','the time axis, table headers, eyebrows, the muted tag'],
+  ['--rule','ledger rows, and the hour line while a drag is in progress'],
+  ['--rule-faint','the hour at rest and the quarter-hour subdivision. below --rule deliberately'],
+  ['--rule-strong','block and panel borders. decorative, never a control border'],
+  ['--rule-control','input, select and textarea borders. an indicator, so it clears 3:1'],
+  ['--ink-wash','hover fill, panel headers, the current nav item, inline code chips'],
+  ['--frame-wash','the circadian frame: sleep spans, meals, wake. no Area ink'],
+  ['--amber-wash',"the tradeoff panel's own surface"],
+  ['--oxide-wash','unclaimed in syncr. inherited with the oxide ramp'],
+  ['--verdigris-wash','unclaimed in syncr. inherited with the verdigris ramp'],
+  ['--on-ink','text on an ink-filled panel or dialog header, and the inverse focus ring'],
+  ['--on-ink-muted','secondary text on an ink-filled header'],
+  ['--rule-on-ink','a divider inside an ink-filled header, tuned to match --rule on paper'],
+  ['--signal-oxide','conflict: the 3px left rule, the divider, the dot'],
+  ['--signal-verdigris','confirmed: the recorded-day dot'],
+  ['--signal-amber','at risk: the tradeoff edge, the at-risk dot'],
+  ['--oxide-ink','conflict text on paper or on the oxide wash'],
+  ['--verdigris-ink','confirmed text on paper or on the verdigris wash'],
+  ['--state-hover','the hover fill'],
+  ['--state-selected-color','the 3px selected left rule, and the current nav rule'],
+  ['--state-conflict-color','the 3px conflict left rule'],
+  ['--grid-line-hour','the hour line, at rest and during a drag'],
+  ['--grid-line-quarter','the quarter line at rest. the snap grid, drawn faint'],
+  ['--grid-line-quarter-drag','the quarter line while a drag is in progress'],
+  ['--forbidden-hatch-ink','the forbidden window hatch: a span the solver may not fill']
+];
+const SEM_AREA = AREAS.map(a => [areaTok(a),
+  'Area ' + a.n + ' &middot; ' + a.pigment + '. carrier-sealed: see section 6']);
+const SEM_ALL = SEM.concat(SEM_AREA);
+set('sw-sem', SEM_ALL.map(swatch).join(''));
+
+/* Which semantic tokens are the same pigment, computed by grouping on the resolved value.
+   A component that treats two of these as different is relying on a difference that does
+   not exist in the build. */
+const byHex = new Map();
+for(const [tok] of SEM_ALL){
+  const h = hex(tok);
+  if(!byHex.has(h)) byHex.set(h, []);
+  byHex.get(h).push(tok);
+}
+const groups = [...byHex.entries()].filter(([, list]) => list.length > 1);
+set('alias-note', '<b>' + word(groups.length) + ' groups of layer-1 tokens resolve to the same '
+  + 'pigment</b>, and the grouping below is computed by reading every semantic token and '
+  + 'collecting the ones that match, not by reading the comments in <code>color.css</code>. '
+  + 'This matters twice. <b>A component may not rely on a difference that does not exist:</b> '
+  + '<code>--state-hover</code> and <code>--rule-faint</code> are one value, so a hovered '
+  + 'block and a quarter-hour grid line cannot be told apart by value alone, and they never '
+  + 'meet because a block paints its own fill over the canvas the grid is drawn on. '
+  + '<b>And an alias is still a separate token on purpose:</b> the two names can diverge '
+  + 'without touching a component.');
+set('aliases', '<table class="led"><thead><tr><th>Resolved value</th><th>Tokens that share it</th>'
+  + '<th>Why they are separate names</th></tr></thead><tbody>'
+  + groups.map(([h, list]) => {
+      const why = list.includes('--rule-faint')
+        ? 'the grid at rest, the hover fill and the wash are one pigment and three concepts'
+        : list.includes('--rule')
+        ? 'a row rule, an on-ink label and a hatch ink share a step and would diverge separately'
+        : list.includes('--ink-deep')
+        ? 'the selected rule is a state channel; --ink-deep is a text step'
+        : list.includes('--signal-oxide')
+        ? 'the conflict channel names its own color, so the state model can be read alone'
+        : list.includes('--paper-raised')
+        ? 'a surface and a text-on-ink step, which move for different reasons'
+        : list.includes('--ink')
+        ? '--text is the one-ink rule made mechanical: body text is not a second color'
+        : list.includes('--ink-bright')
+        ? 'a ring and a divider inside an ink fill, tuned to different bars'
+        : 'a control border is an indicator at 3:1; muted text is a text step at 4.5:1';
+      return '<tr><td class="r">' + h.toUpperCase() + '</td><td>'
+        + list.map(t => '<code>' + t.slice(2) + '</code>').join(' &middot; ')
+        + '</td><td>' + why + '</td></tr>';
+    }).join('') + '</tbody></table>');
+
+/* ---------- 1.3, the contrast ledger ----------
+   min 0 means informational: a divider, a grid line or a wash, which never carries meaning
+   alone. sealed means the pair clears its bar and is forbidden anyway. */
+const PAIRS = [
+  ['--ink','--paper',4.5,'text 12px','body prose, block titles, table data'],
+  ['--ink','--paper-raised',4.5,'text 11.5px','a block title on the block fill'],
+  ['--ink','--ink-wash',4.5,'text 11.5px','a block title on the hover fill, and a panel header label'],
+  ['--ink','--frame-wash',4.5,'text 11.5px','a title on a circadian frame block'],
+  ['--ink','--amber-wash',4.5,'text 12px','a tradeoff statement on the infeasibility panel'],
+  ['--ink-deep','--paper',4.5,'text','page titles, labels, eyebrows'],
+  ['--ink-deep','--paper-raised',4.5,'text','a panel label, a block glyph'],
+  ['--ink-deep','--ink-wash',4.5,'text 10.5px','the current nav item label, on its wash fill'],
+  ['--ink-deep','--amber-wash',4.5,'text 9.5px',"the tradeoff panel's heading"],
+  ['--ink-soft','--paper',4.5,'text 12px','a reason string in the detail panel'],
+  ['--ink-soft','--paper-raised',4.5,'text 12px','the same reason on a raised panel'],
+  ['--ink-soft','--frame-wash',4.5,'text 11.5px','a frame block title: the frame is quieter by a step'],
+  ['--ink-soft','--amber-wash',4.5,'text 9.5px','panel metadata on a wash, AFTER stepping off --text-muted'],
+  ['--text-muted','--paper',4.5,'text 9.5px','the time axis, table headers, eyebrows'],
+  ['--text-muted','--paper-raised',4.5,'text 9.5px','panel labels and the muted tag'],
+  ['--text-muted','--ink-wash',4.5,'text 9.5px','an eyebrow on a panel header'],
+  ['--text-muted','--frame-wash',4.5,'text 9.5px','a sub-label on a frame block'],
+  ['--text-muted','--amber-wash',4.5,'text 9.5px','panel metadata on the tradeoff wash, BEFORE the step-off'],
+  ['--text-muted','--oxide-wash',4.5,'text 9.5px','the same on the oxide wash, if a component ever claims it'],
+  ['--text-muted','--verdigris-wash',4.5,'text 9.5px','the same on the verdigris wash'],
+  ['--oxide-ink','--paper',4.5,'text 11.5px','a conflict label on the page'],
+  ['--oxide-ink','--oxide-wash',4.5,'text 11.5px','a conflict label on its own wash'],
+  ['--verdigris-ink','--paper',4.5,'text 11.5px','a confirmed label on the page'],
+  ['--verdigris-ink','--verdigris-wash',4.5,'text 11.5px','a confirmed label on its own wash'],
+  ['--signal-amber','--paper',4.5,'text 11.5px','amber AS TEXT on page paper. THIS is why amber has no text step'],
+  ['--signal-amber','--paper-raised',4.5,'text 11.5px','the same amber on raised paper, where it clears'],
+  ['--on-ink','--ink-deep',4.5,'text 9.5px','header text on the darkest ink fill'],
+  ['--on-ink','--ink',4.5,'text 9.5px','header text on the body ink fill'],
+  ['--on-ink','--ink-bright',4.5,'text 9px',"this sheet's own spec-strip label"],
+  ['--on-ink-muted','--ink-deep',4.5,'text 9px','secondary header text on the darkest ink fill'],
+  ['--on-ink-muted','--ink',4.5,'text 9px','the same on the body ink fill'],
+  ['--paper-raised','--ink',4.5,'text 10px',"a primary button's label on its ink fill"],
+  ['--ink-bright','--paper',3,'non-text','the focus ring, the now rule and a status dot, on the page'],
+  ['--ink-bright','--paper-raised',3,'non-text','the ring on a block, a panel or a control fill'],
+  ['--ink-bright','--ink-wash',3,'non-text','the ring on a hovered block or the current nav item'],
+  ['--ink-bright','--frame-wash',3,'non-text','the ring on a circadian frame block'],
+  ['--ink-bright','--amber-wash',3,'non-text','the ring on the tradeoff panel: its worst claimed wash'],
+  ['--ink-bright','--oxide-wash',3,'non-text','the ring on an unclaimed wash, cleared in advance'],
+  ['--ink-bright','--verdigris-wash',3,'non-text','the same, on the other unclaimed wash'],
+  ['--ink-bright','--rule',3,'non-text','the ring crossing a row rule at its 2px offset'],
+  ['--ink-bright','--ink-deep',3,'non-text, never shipped','the STANDARD ring on an ink fill. the defect the inverse ring exists for'],
+  ['--ink-bright','--ink',3,'non-text, never shipped',"the same ring measured against a primary button's own fill"],
+  ['--paper-raised','--paper',3,'non-text, never shipped','the INVERSE ring on paper. this is why a primary button keeps the standard ring'],
+  ['--paper-raised','--ink-deep',3,'non-text','the INVERSE ring on its one legal surface: a panel or dialog header'],
+  ['--ink-deep','--paper',3,'non-text','the 3px selected left rule, and the current nav rule, on the page'],
+  ['--ink-deep','--ink-wash',3,'non-text','the current nav rule against its own wash fill'],
+  ['--ink-deep','--frame-wash',3,'non-text','the selected rule on a frame block'],
+  ['--signal-oxide','--paper',3,'non-text','the 3px conflict left rule, and the conflict dot, on the page'],
+  ['--signal-oxide','--paper-raised',3,'non-text','the conflict rule against the block fill'],
+  ['--signal-oxide','--ink-wash',3,'non-text','the conflict rule on a hovered block'],
+  ['--signal-oxide','--ink-deep',3,'non-text, never shipped','a conflict rule improvised inside an ink-filled header'],
+  ['--signal-verdigris','--paper',3,'non-text','the recorded-day dot on the page'],
+  ['--signal-verdigris','--paper-raised',3,'non-text','the same dot on a panel'],
+  ['--signal-verdigris','--ink-deep',3,'non-text, never shipped','a status dot improvised inside an ink-filled header'],
+  ['--signal-amber','--paper',3,'non-text','the at-risk dot as a MARKER, where 3:1 is the bar it passes'],
+  ['--signal-amber','--amber-wash',3,'non-text','the 2px tradeoff edge against its own wash'],
+  ['--rule-control','--paper-raised',3,'non-text',"the control border against the field's own fill"],
+  ['--rule-control','--paper',3,'non-text','the same control border read against the page'],
+  ['--rule-strong','--paper-raised',3,'non-text, banned','--rule-strong used as a control border instead. this is why --rule-control exists'],
+  ['--rule-strong','--paper',3,'non-text, banned','the same border read against the page'],
+  ['--rule','--paper',0,'decorative divider, exempt from 1.4.11','a ledger row rule, and the hour line while dragging'],
+  ['--rule','--paper-raised',0,'decorative texture','the same rule on a panel, and the forbidden-window hatch'],
+  ['--rule-faint','--paper',0,'decorative grid line','the hour at rest and the quarter-hour subdivision'],
+  ['--rule-faint','--paper-raised',0,'decorative grid line','the same subdivision read against a block fill'],
+  ['--rule-on-ink','--ink-deep',0,'decorative divider','a divider inside an ink header, tuned to match --rule on paper'],
+  ['--ink-wash','--paper',0,'informational','the hover fill and the current nav fill: the whole dynamic range of a tint'],
+  ['--frame-wash','--paper',0,'informational','the circadian frame'],
+  ['--amber-wash','--paper',0,'informational','the tradeoff panel surface'],
+  ['--oxide-wash','--paper',0,'informational','unclaimed in syncr'],
+  ['--verdigris-wash','--paper',0,'informational','unclaimed in syncr'],
+  ['--area-07','--paper',-1,'sealed &middot; text','the tightest Area ink AS TEXT. it clears 4.5:1 and is illegal anyway'],
+  ['--paper-raised','--signal-oxide',-1,'sealed &middot; text on a signal fill','cream on an oxide fill. syncr sanctions no signal fill at all'],
+  ['--paper-raised','--signal-amber',-1,'sealed &middot; text on a signal fill',"the inherited language's one sanctioned signal fill, which syncr does not inherit"]
+];
+let nfail = 0, nsealed = 0;
+set('ratios', '<table class="led"><thead><tr><th>Foreground / background</th><th>Where it is used</th>'
+  + '<th class="r">Ratio</th><th class="r">Needs</th><th>Verdict</th></tr></thead><tbody>'
+  + PAIRS.map(([a,b,min,kind,label]) => {
+      const r = ratio(hex(a), hex(b));
+      let cls, verdict, needs;
+      if(min === -1){ nsealed++; cls = 'sealed'; verdict = 'SEALED &middot; ' + kind; needs = 'n/a'; }
+      else if(min === 0){ cls = 'info'; verdict = 'informational &middot; ' + kind; needs = 'n/a'; }
+      else {
+        const ok = r >= min;
+        if(!ok) nfail++;
+        cls = ok ? 'pass' : 'fail';
+        verdict = (ok ? 'pass' : 'FAIL') + ' &middot; ' + kind;
+        needs = min + ':1';
+      }
+      return '<tr><td><code>' + a.slice(2) + '</code> / <code>' + b.slice(2) + '</code></td>'
+        + '<td>' + label + '</td><td class="r">' + r.toFixed(2) + ':1</td>'
+        + '<td class="r">' + needs + '</td><td class="' + cls + '">' + verdict + '</td></tr>';
+    }).join('')
+  + '<tr class="sum"><td colspan="5"><b>' + PAIRS.length + ' pairs computed &middot; '
+  + nfail + ' fail a threshold &middot; ' + nsealed + ' clear their threshold and are sealed anyway'
+  + '</b></td></tr></tbody></table>');
+set('nfail', word(nfail));
+/* The grouping sentence counts its own groups, so it cannot disagree with the ledger. */
+const GROUPED = [
+  ['wash metadata', PAIRS.filter(([a,,min], i) => min === 4.5 && a === '--text-muted'
+      && ratio(hex(PAIRS[i][0]), hex(PAIRS[i][1])) < 4.5).length,
+    '<code>--text-muted</code> on the amber, oxide and verdigris washes. <b>This is the only '
+    + 'group that is a live constraint rather than a record of a defect a token already '
+    + 'answers</b>, and the repair is one step: secondary text on a wash takes '
+    + '<code>--ink-soft</code>, which this ledger computes on the amber wash. No comment in '
+    + '<code>color.css</code> currently says so.'],
+  ['amber as text', 1, 'the marker step read as label ink on page paper, which is exactly why '
+    + 'amber has no text step and why an at-risk label stays <code>--ink</code>.'],
+  ['on-ink defects', 4, 'the standard ring on both ink steps, and an oxide or verdigris marker '
+    + 'improvised inside an ink-filled header. syncr has one class of ink fill, a panel or '
+    + 'dialog header, and the answers are <code>--state-focus-ring-inverse</code> and moving '
+    + 'the status into the label.'],
+  ['the inverse ring on paper', 1, 'a primary button keeps the standard ring even though its '
+    + 'own fill is ink, because at a 2px offset the ring lands on the parent, which is paper.'],
+  ['--rule-strong as a control border', 2, 'against the field fill and against the page. This '
+    + 'is the arithmetic that <code>--rule-control</code> exists to answer.']
+];
+set('failgroups', 'They group ' + word(GROUPED.length).toLowerCase() + ' ways, and the numbers '
+  + 'below are counted from the same ledger. ' + GROUPED.map(([n, c, why]) =>
+    '<b>' + word(c) + '</b> ' + (c === 1 ? 'is' : 'are') + ' ' + n + ': ' + why).join(' ')
+  + ' <b>None of them is shipped.</b>');
+set('r-inv-paper', r2('--paper-raised','--paper'));
+set('r-ring-wash', r2('--ink-bright','--amber-wash'));
+
+/* ---------- 1.4, the ramp against both carrier surfaces ---------- */
+const SURFACES = [['--paper','the page, behind a pie wedge or a stacked bar'],
+                  ['--paper-raised',"a block fill behind the 2px top rule, and a ledger row's chip"]];
+let areaFails = 0;
+const areaRows = AREAS.flatMap(a => SURFACES.map(([s, where]) => {
+  const r = ratio(hex(areaTok(a)), hex(s));
+  const ok = r >= 3;
+  if(!ok) areaFails++;
+  return '<tr><td><code>' + areaTok(a).slice(2) + '</code> &middot; ' + a.pigment + '</td>'
+    + '<td><code>' + s.slice(2) + '</code></td><td>' + where + '</td>'
+    + '<td class="r">' + r.toFixed(2) + ':1</td><td class="r">3:1</td>'
+    + '<td class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'pass' : 'FAIL')
+    + ' &middot; non-text indicator</td></tr>';
+}));
+set('ratios-area', '<table class="led"><thead><tr><th>Area ink</th><th>Against</th><th>Where</th>'
+  + '<th class="r">Ratio</th><th class="r">Needs</th><th>Verdict</th></tr></thead><tbody>'
+  + areaRows.join('')
+  + '<tr class="sum"><td colspan="6"><b>' + (AREAS.length * SURFACES.length)
+  + ' pairs computed &middot; ' + (areaFails === 0
+    ? 'every one clears 3:1. Both counts are computed from the ramp this sheet renders.'
+    : areaFails + ' FAIL and must be retuned in primitives.css before any sheet ships.')
+  + '</b></td></tr></tbody></table>');
+const onPaper = AREAS.map(a => ratio(hex(areaTok(a)), hex('--paper')));
+const lo = Math.min(...onPaper), hi = Math.max(...onPaper);
+set('ramp-spread', 'across the ' + word(AREAS.length).toLowerCase() + ' inks the range is <b>'
+  + lo.toFixed(2) + ':1 to ' + hi.toFixed(2) + ':1</b>, a spread of ' + (hi - lo).toFixed(2)
+  + ', computed from the tokens at load. The first draft of the ramp ran 4.42:1 to 7.25:1 and '
+  + 'the violet group looked like it held more time than the moss group at equal area.');
+
+/* ============================================================
+   ONE ARRAY OF MINUTES, READ FIVE WAYS. The discretionary total, the percentages, the two
+   ledgers in section 3.2, the pie and the stacked bar in section 6 all derive from ALLOC, so
+   no two renderings of this week can disagree. The figures are constructed, not measured.
+   ============================================================ */
+const WEEK_MIN = 7 * 24 * 60;
+const FRAME_MIN = 5790, ANCHOR_MIN = 480, SHADOW_MIN = 120;
+const DISCRETIONARY = WEEK_MIN - FRAME_MIN - ANCHOR_MIN - SHADOW_MIN;
+const ALLOC = [
+  {area:'Career',   actual:1260, pct:35,   floor:null},
+  {area:'Study',    actual:600,  pct:20,   floor:null},
+  {area:'Research', actual:420,  pct:12,   floor:null},
+  {area:'Fitness',  actual:420,  pct:null, floor:420},
+  {area:'Admin',    actual:420,  pct:12,   floor:null},
+  {area:'Projects', actual:330,  pct:12,   floor:null},
+  {area:'Transit',  actual:240,  pct:9,    floor:null}
+];
+const ALLOC_TOTAL = ALLOC.reduce((n, a) => n + a.actual, 0);
+const FLOOR_TOTAL = ALLOC.reduce((n, a) => n + (a.floor || 0), 0);
+const REMAINDER = DISCRETIONARY - FLOOR_TOTAL;
+/* A budget is floors plus a proportional remainder, never pure percentages: a heavy meeting
+   week shrinks every wedge at once, so Fitness starves precisely when the user is most
+   stressed while the budget still reports as met. Floors come out first and the rest of
+   discretionary time is split by percentage. */
+const target = a => a.floor !== null ? a.floor : Math.round(a.pct / 100 * REMAINDER);
+const TARGET_TOTAL = ALLOC.reduce((n, a) => n + target(a), 0);
+const hmAbs = m => { const a = Math.abs(m), h = Math.floor(a / 60), mm = a % 60;
+  return h ? h + 'h ' + String(mm).padStart(2,'0') + 'm' : mm + 'm'; };
+const hm = m => (m < 0 ? '&minus;' : '') + hmAbs(m);
+const signed = m => (m === 0 ? '' : m < 0 ? '&minus;' : '+') + hmAbs(m);
+const share = m => (m * 100 / ALLOC_TOTAL).toFixed(1) + '%';
+set('disc-eyebrow', hmAbs(DISCRETIONARY));
+set('data-line', hmAbs(DISCRETIONARY) + ' discretionary &middot; Career ' + hmAbs(ALLOC[0].actual)
+  + ' of ' + hmAbs(target(ALLOC[0])) + ' &middot; ' + signed(ALLOC[0].actual - target(ALLOC[0])));
+set('alloc-prov', word(ALLOC.length) + ' Areas over ' + hmAbs(DISCRETIONARY)
+  + ' of discretionary time, which is ' + hmAbs(WEEK_MIN) + ' of week less ' + hmAbs(FRAME_MIN)
+  + ' of circadian frame, ' + hmAbs(ANCHOR_MIN) + ' of anchors and ' + hmAbs(SHADOW_MIN)
+  + ' of anchor shadows. <b>The budget is floors plus a proportional remainder:</b> '
+  + hmAbs(FLOOR_TOTAL) + ' of Fitness floor comes out first and the remaining '
+  + hmAbs(REMAINDER) + ' is split by percentage, so a heavy anchor week cannot starve Fitness '
+  + 'proportionally while still reporting the budget as met. Per-row targets round to the '
+  + 'minute, so the Target column sums to ' + hmAbs(TARGET_TOTAL) + ' against '
+  + hmAbs(DISCRETIONARY) + ' of discretionary time: a '
+  + hmAbs(Math.abs(DISCRETIONARY - TARGET_TOTAL)) + ' rounding residue, stated rather than hidden.');
+
+/* ---------- 2.2, the two block tiers, with the box arithmetic computed ---------- */
+const RULE = px('--rule-emphasis'), PAD_T = px('--block-pad-t'), HAIR = px('--hairline');
+const LINE = px('--lh-block-px'), FS_C = px('--fs-block-compact'), LH_C = px('--lh-block-compact');
+const labelSum = RULE + PAD_T + LINE + HAIR;
+const compactSum = RULE + FS_C * LH_C + HAIR;
+const PPM = px('--grid-h') / (px('--visible-hours') * 60);
+const H60 = 60 * PPM;
+const lines60 = Math.max(1, Math.floor((H60 - RULE - PAD_T - HAIR) / LINE));
+const areaFitness = AREA_BY_NAME['Fitness'], areaCareer = AREA_BY_NAME['Career'];
+/* A block draws three edges. The Area top rule is the 2px carrier and arrives with
+   data-area, so a block with no Area, which means the circadian frame, keeps a 1px --rule
+   top instead. Ported from scratch/block-states.html; the two sheets must not disagree. */
+const blk = (a, cls, h, title, glyph, lines, attrs) =>
+  '<div class="blk ' + cls + '" ' + (a ? 'data-area ' : '') + (attrs || '')
+  + ' style="' + (a ? '--ai:var(' + areaTok(a) + ');' : '') + 'height:'
+  + h + 'px;--lines:' + lines + '">' + (glyph ? '<span class="g">' + glyph + '</span>' : '')
+  + '<span class="t">' + title + '</span></div>';
+set('tierdemo',
+  '<div>' + blk(areaCareer, '', px('--block-h-label'), 'Leetcode &middot; Graphs', '', 1)
+  + '<div class="cap"><b>label tier &middot; --block-h-label ' + val('--block-h-label') + '</b>'
+  + '--fs-block ' + val('--fs-block') + ' at --lh-block ' + val('--lh-block') + '<br>'
+  + RULE + ' rule + ' + PAD_T + ' pad + ' + LINE.toFixed(1) + ' line + ' + HAIR + ' rule = <b>'
+  + labelSum.toFixed(1) + 'px</b> inside a ' + val('--block-h-label') + ' floor</div></div>'
+  + '<div>' + blk(AREA_BY_NAME['Study'], 'compact', px('--block-h-compact'), 'Anki &middot; F&amp;F', '', 1)
+  + '<div class="cap"><b>compact tier &middot; --block-h-compact ' + val('--block-h-compact')
+  + '</b>--fs-block-compact ' + val('--fs-block-compact') + ' at line-height '
+  + val('--lh-block-compact') + ', no top padding<br>' + RULE + ' rule + '
+  + (FS_C * LH_C).toFixed(1) + ' line + ' + HAIR + ' rule = <b>' + compactSum.toFixed(1)
+  + 'px</b> inside a ' + val('--block-h-compact') + ' floor<br>a fifteen-minute Area block, '
+  + 'which is the tier the circadian frame lands in at the ' + val('--visible-hours')
+  + 'h default</div></div>'
+  + '<div>' + blk(areaFitness, '', H60, 'Amazon Interview Prep - Behavioral', '&#9635;', lines60,
+      'data-selected')
+  + '<div class="cap"><b>a 60 minute block at the ' + val('--visible-hours') + 'h default</b>'
+  + PPM.toFixed(4) + ' px/min, so ' + H60.toFixed(1) + 'px tall<br>the title wraps to <b>'
+  + word(lines60).toLowerCase() + ' lines</b>, computed from this block\'s own height, and the '
+  + 'selected 3px left rule and the pinned glyph are both on it</div></div>');
+
+/* ---------- 3.2, the two row heights, from ALLOC ---------- */
+set('tbl-areas', '<table class="tbl data"><thead><tr><th>Area</th><th class="n">Floor</th>'
+  + '<th class="n">Target</th><th class="n">Actual</th><th class="n">Delta</th>'
+  + '<th class="n">Share</th></tr></thead><tbody>'
+  + ALLOC.map(a => {
+      const ar = AREA_BY_NAME[a.area], t = target(a);
+      return '<tr><td><span class="chip-a" style="background:var(' + areaTok(ar) + ')"></span>'
+        + a.area + '</td><td class="n m">' + (a.floor ? hmAbs(a.floor) : '&mdash;') + '</td>'
+        + '<td class="n">' + hmAbs(t) + '</td><td class="n">' + hmAbs(a.actual) + '</td>'
+        + '<td class="n">' + signed(a.actual - t) + '</td>'
+        + '<td class="n m">' + share(a.actual) + '</td></tr>';
+    }).join('')
+  + '<tr class="sum"><td>total &middot; discretionary ' + hmAbs(DISCRETIONARY) + '</td>'
+  + '<td class="n m">' + hmAbs(FLOOR_TOTAL) + '</td><td class="n">' + hmAbs(TARGET_TOTAL) + '</td>'
+  + '<td class="n">' + hmAbs(ALLOC_TOTAL) + '</td>'
+  + '<td class="n">' + signed(ALLOC_TOTAL - TARGET_TOTAL) + '</td>'
+  + '<td class="n m">' + share(ALLOC_TOTAL) + '</td></tr></tbody></table>');
+
+const DAY = [
+  ['00:00-05:15','Sleep','frame','&mdash;','presumed'],
+  ['05:15-05:30','Wake Up','frame','&mdash;','presumed'],
+  ['05:30-06:30','Gym &middot; Legs','habit','Fitness','pinned'],
+  ['07:00-09:30','Leetcode &middot; Graphs','habit','Career','queue'],
+  ['10:00-10:30','Prep for Kontron Interview','shadow','Career','generated'],
+  ['11:30-12:00','Lunch','frame','&mdash;','presumed'],
+  ['12:00-15:00','DSA Review &middot; Trees','task','Career','presumed'],
+  ['15:00-15:30','Leave for Uni','shadow','Transit','generated'],
+  ['15:30-16:30','Leetcode &middot; DP','habit','Career','conflict'],
+  ['16:00-16:45','Kontron Placement Interview','anchor','&mdash;','anchor'],
+  ['16:45-18:00','no deep work &middot; recovery','shadow','&mdash;','forbidden'],
+  ['18:30-19:00','F&amp;F Reading Group','task','Study','selected']
+];
+set('tbl-blocks', '<table class="tbl dense"><thead><tr><th>Time</th><th>Block</th>'
+  + '<th>Origin</th><th>Area</th><th>State</th></tr></thead><tbody>'
+  + DAY.map(([t, name, origin, area, state]) => {
+      const ar = AREA_BY_NAME[area];
+      return '<tr><td class="m" style="font-variant-numeric:tabular-nums">' + t + '</td>'
+        + '<td>' + name + '</td><td class="m">' + origin + '</td><td>'
+        + (ar ? '<span class="chip-a" style="background:var(' + areaTok(ar) + ')"></span>' : '')
+        + area + '</td><td class="m">' + state + '</td></tr>';
+    }).join('') + '</tbody></table>');
+
+/* ---------- 3, the counts the density prose states ---------- */
+const CONTROL_H = ['--h-control-sm','--h-control','--h-control-lg'];
+const ROW_H = ['--h-row','--h-row-dense'];
+set('heights-count', 'there are exactly ' + word(CONTROL_H.length).toLowerCase()
+  + ' control heights (' + CONTROL_H.map(t => val(t)).join(', ') + ') and '
+  + word(ROW_H.length).toLowerCase() + ' row heights (' + ROW_H.map(t => val(t)).join(', ')
+  + '). Both counts and every value in this sentence are read from the tokens rather than typed.');
+set('rail-w', '<b>' + val('--w-detail-closed') + '</b>');
+
+/* ---------- 4, the circular allowlist ---------- */
+const CIRCLES = [
+  ['<span class="dot"></span>','status dot','6px, --ink-bright, always paired with a word'],
+  ['<span class="radio"><s></s></span>','radio dot','a real radio, in a form'],
+  ['<span class="chip-a" style="background:var(' + areaTok(areaFitness) + ');margin:0"></span>',
+    'Area chip','10px, on a ledger row, paired with the Area name'],
+  ['<span class="avatar">TH</span>','avatar','the account, in Settings']
+];
+set('circles', CIRCLES.map(([html, label]) => '<i>' + html + label + '</i>').join(''));
+set('circles-note', word(CIRCLES.length) + ' genuinely circular things, and nothing else. '
+  + 'The count is the length of the allowlist this card renders, and the lint rule is built '
+  + 'from the same list. <b style="color:var(--oxide-ink)">A spinner is not one of them</b>, '
+  + 'because a rotating element is motion and motion is zero. See section 8.');
+
+/* ---------- 5, icons and the sidebar ----------
+   Simple lucide-style paths on a 24 viewBox. Stroke, caps and joins come from the tokens
+   through svg.ic, so nothing here restates them. */
+const ICONS = {
+  week:'<rect x="3" y="4" width="18" height="17"/><path d="M3 9h18M8 2v4M16 2v4M8 13h3M13 13h3M8 17h3"/>',
+  today:'<rect x="3" y="4" width="18" height="17"/><path d="M3 9h18M8 2v4M16 2v4"/><circle cx="12" cy="15" r="2.4"/>',
+  backlog:'<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
+  areas:'<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M12 3a9 9 0 0 1 9 9"/>',
+  templates:'<rect x="3" y="3" width="18" height="6"/><rect x="3" y="13" width="7" height="8"/><rect x="14" y="13" width="7" height="8"/>',
+  learned:'<path d="M3 17l5-5 4 3 8-8"/><path d="M20 7h-4M20 7v4"/><path d="M3 21h18"/>',
+  settings:'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2.2"/><circle cx="15" cy="12" r="2.2"/><circle cx="7" cy="18" r="2.2"/>'
+};
+const ic = k => '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + ICONS[k] + '</svg>';
+const PAGES = [['week','Week','90'],['today','Today','14'],['backlog','Backlog','23'],
+  ['areas','Areas','7'],['templates','Templates',''],['learned','Learned','3'],
+  ['settings','Settings','']];
+const navHTML = PAGES.map(([k,l,n],i) => '<a href="#s5"' + (i === 0 ? ' class="on"' : '') + '>'
+  + ic(k) + l + (n ? '<b class="n">' + n + '</b>' : '') + '</a>').join('');
+for(const id of ['nav14','nav16','nav20']) set(id, navHTML);
+set('icbare', Object.keys(ICONS).map(k =>
+    '<span style="display:flex;gap:7px;align-items:center">' + ic(k)
+    + '<span class="t-label" style="color:var(--text-muted)">' + k + '</span></span>').join('')
+  + '<span class="t-label" style="color:var(--text-muted);margin-left:auto">stroke-width '
+  + val('--icon-stroke') + ' &middot; ' + val('--icon-cap') + ' caps &middot; '
+  + val('--icon-join') + ' joins &middot; read from --icon-stroke, --icon-cap and --icon-join</span>');
+set('icons-count', '<b>' + word(Object.keys(ICONS).length) + ' icons for '
+  + word(PAGES.length).toLowerCase() + ' destinations</b>, and both counts are computed from the '
+  + 'icon set and the navigation array this section renders. The counts at the right edge of a '
+  + 'nav row are <code>--text-muted</code> and tabular: blocks in the visible week, blocks today, '
+  + 'open backlog items, Areas, and parameters that have reached their maturity gate. '
+  + '<b>A count is never a signal</b>, so an at-risk parameter does not recolour its row.');
+set('titles-list', 'the ' + word(PAGES.length).toLowerCase() + ' page titles are '
+  + PAGES.map(([, l]) => l).join(' &middot; '));
+set('titles-count', 'The count in the line above is the length of the navigation array in '
+  + 'section 5, so the serif cannot acquire an eighth use without a destination to justify it.');
+
+/* ---------- 6, the ramp ---------- */
+set('ramp', AREAS.map(a =>
+  '<div style="' + hatchStyle(a) + '">'
+  + '<span class="sw"><span class="chip" style="background:var(' + areaTok(a) + ')"></span>'
+  + '<span class="fill"></span></span>'
+  + '<span><b>' + areaTok(a) + ' &middot; ' + a.hue + '&deg; ' + a.pigment + '</b>'
+  + '<span class="hex">' + hex(areaTok(a)).toUpperCase() + ' &middot; '
+  + ratio(hex(areaTok(a)), hex('--paper')).toFixed(2) + ':1 on paper</span>'
+  + '<span class="use">dealt ' + ord(a.order) + ' &middot; hatch <code>' + a.hatch
+  + '</code> &middot; ' + a.name + '</span></span></div>').join(''));
+const hatchUsed = new Set(AREAS.map(a => a.hatch));
+/* The claim that a pattern only repeats between distant hues is checked rather than made:
+   this is the smallest circular hue gap between any two Areas that share a pattern. */
+const hueGap = (a, b) => { const d = Math.abs(a.hue - b.hue); return Math.min(d, 360 - d); };
+/* Adjacent gaps around the hue circle, which is where both the vacancy at cobalt's hue and
+   the tight yellow-brown pairs show up. Sorted, so the extremes are read rather than typed. */
+const byHue = [...AREAS].sort((x, y) => x.hue - y.hue);
+const adjacent = byHue.map((a, i) => { const b = byHue[(i + 1) % byHue.length];
+  return {a, b, gap: hueGap(a, b)}; }).sort((x, y) => x.gap - y.gap);
+const widest = adjacent[adjacent.length - 1];
+const tight = adjacent.slice(0, 4);
+const hatchSeparates = tight.every(p => p.a.hatch !== p.b.hatch);
+set('hue-gaps', 'The vacancy is measurable: <b>the widest gap in the ramp is ' + widest.gap
+  + '&deg;, between <code>' + widest.a.n + '</code> at ' + widest.a.hue + '&deg; and <code>'
+  + widest.b.n + '</code> at ' + widest.b.hue + '&deg;</b>, and 225&deg; sits inside it. '
+  + 'Every gap on this sheet is computed from the ramp at load.');
+set('tight-pairs', '<b>The tightest adjacent hues are <code>' + tight[0].a.n + '</code>/<code>'
+  + tight[0].b.n + '</code> at ' + tight[0].gap + '&deg; and <code>' + tight[1].a.n
+  + '</code>/<code>' + tight[1].b.n + '</code> at ' + tight[1].gap + '&deg;</b>, which is a '
+  + 'computed result rather than a repeated one: the comment in <code>primitives.css</code> names '
+  + '<code>02</code>/<code>03</code> at ' + hueGap(AREAS[1], AREAS[2]) + '&deg; and <code>03</code>/'
+  + '<code>04</code> at ' + hueGap(AREAS[2], AREAS[3]) + '&deg; as the tightest, and both pairs '
+  + 'above sit below them. <b>Deal order is not what protects a tight pair either</b>, since '
+  + tight.slice(0, 2).map(p => '<code>' + p.a.n + '</code> is dealt ' + ord(p.a.order)
+      + ' and <code>' + p.b.n + '</code> ' + ord(p.b.order)).join(', while ')
+  + '. <b>What protects them is the hatch</b>, and that is checkable: '
+  + (hatchSeparates ? 'all ' + word(tight.length).toLowerCase() + ' of the tightest pairs carry '
+      + 'different patterns' : word(tight.filter(p => p.a.hatch === p.b.hatch).length)
+      + ' of the tightest pairs share a pattern and must be re-dealt')
+  + ' &middot; ' + tight.map(p => '<code>' + p.a.n + '</code> ' + p.a.hatch + ' against <code>'
+      + p.b.n + '</code> ' + p.b.hatch).join(', ')
+  + '. On a ledger surface the Area\'s name carries it instead. The muddy yellow-brown group '
+  + '<code>02</code>, <code>03</code>, <code>04</code> is dealt '
+  + [AREAS[1], AREAS[2], AREAS[3]].map(a => ord(a.order)).join(', ')
+  + ', and each of them carries a different hatch, which is what separates them.');
+const repeatGaps = [...hatchUsed].map(h => {
+  const pair = AREAS.filter(a => a.hatch === h);
+  return {h, pair, gap: Math.min(...pair.flatMap((x, i) =>
+    pair.slice(i + 1).map(y => hueGap(x, y))))};
+});
+const minGap = Math.min(...repeatGaps.map(g => g.gap));
+set('hatch-count', '<b>' + word(hatchUsed.size) + ' patterns carry '
+  + word(AREAS.length).toLowerCase() + ' inks</b>, so each pattern carries '
+  + word(AREAS.length / hatchUsed.size).toLowerCase() + ' of them; both numbers are counted '
+  + 'from the ramp above. The repeats are '
+  + repeatGaps.map(g => '<code>' + g.h + '</code> on ' + g.pair.map(a => a.n).join(' and ')
+      + ' at ' + g.gap + '&deg;').join(', ')
+  + ', so <b>the tightest repeat is ' + minGap + '&deg; of hue apart</b>, computed from the ramp '
+  + 'rather than asserted. The tightest hue pair in the whole ramp, <code>02</code>/<code>03</code> '
+  + 'at ' + hueGap(AREAS[1], AREAS[2]) + '&deg;, therefore carries two different patterns.');
+
+/* carrier 1: the 2px top rule on a proportional surface */
+set('carrier-blocks',
+  blk(areaFitness, '', 40, 'Gym &middot; Legs', '&#9635;', 2)
+  + blk(areaCareer, '', 40, 'Leetcode &middot; Graphs', '', 2)
+  + blk(null, 'frame', 40, 'Lunch', '&#9679;', 2));
+
+/* carrier 2: a chip on a ledger row */
+set('carrier-chips', '<table class="tbl dense"><tbody>'
+  + ALLOC.slice(0, 4).map(a => {
+      const ar = AREA_BY_NAME[a.area];
+      return '<tr><td><span class="chip-a" style="background:var(' + areaTok(ar) + ')"></span>'
+        + a.area + '</td><td class="n m">' + share(a.actual) + '</td>'
+        + '<td class="n">' + hmAbs(a.actual) + '</td></tr>';
+    }).join('') + '</tbody></table>');
+
+/* carrier 3: the pie and the stacked bar, from ALLOC.
+   The hatch pattern is generated per wedge in a lighter step of the wedge's own ink, which is
+   the same derivation the CSS hatch tokens use, so the pie and the ramp agree. */
+const HATCH_SVG = {
+  fwd:'<path d="M-1 1 L1 -1 M0 5 L5 0 M4 6 L6 4" fill="none"/>',
+  back:'<path d="M-1 4 L1 6 M0 0 L5 5 M4 -1 L6 1" fill="none"/>',
+  vert:'<path d="M0.5 -1 L0.5 6" fill="none"/>',
+  horz:'<path d="M-1 0.5 L6 0.5" fill="none"/>',
+  cross:'<path d="M-1 1 L1 -1 M0 5 L5 0 M4 6 L6 4 M-1 4 L1 6 M0 0 L5 5 M4 -1 L6 1" fill="none"/>',
+  dot:'<circle cx="2.5" cy="2.5" r="0.9" stroke="none"/>'
+};
+function wedgePath(cx, cy, r, a0, a1){
+  const pt = a => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  const [x0, y0] = pt(a0), [x1, y1] = pt(a1);
+  const large = (a1 - a0) > Math.PI ? 1 : 0;
+  return 'M' + cx + ' ' + cy + ' L' + x0.toFixed(2) + ' ' + y0.toFixed(2)
+    + ' A' + r + ' ' + r + ' 0 ' + large + ' 1 ' + x1.toFixed(2) + ' ' + y1.toFixed(2) + ' Z';
+}
+(() => {
+  const size = 168, c = size / 2, r = 78;
+  let angle = -Math.PI / 2, defs = '', wedges = '';
+  ALLOC.forEach((row, i) => {
+    const a = AREA_BY_NAME[row.area];
+    const sweep = row.actual / ALLOC_TOTAL * Math.PI * 2;
+    const d = wedgePath(c, c, r, angle, angle + sweep);
+    const ink = hatchInk(areaTok(a));
+    defs += '<pattern id="hp' + i + '" patternUnits="userSpaceOnUse" width="5" height="5" '
+      + 'style="stroke:' + ink + ';fill:' + ink + ';stroke-width:1">' + HATCH_SVG[a.hatch] + '</pattern>';
+    wedges += '<path d="' + d + '" style="fill:var(' + areaTok(a) + ')"/>'
+      + '<path d="' + d + '" fill="url(#hp' + i + ')"/>'
+      + '<path d="' + d + '" fill="none" style="stroke:var(--paper)" stroke-width="1"/>';
+    angle += sweep;
+  });
+  set('pie', '<div class="t-label" style="margin-bottom:6px">Pie wedges &middot; the review\'s own image</div>'
+    + '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size
+    + '" role="img" aria-label="allocation by Area"><defs>' + defs + '</defs>' + wedges + '</svg>');
+  set('stack', ALLOC.map(row => {
+    const a = AREA_BY_NAME[row.area];
+    /* flex-grow proportional to minutes, so the segments divide the bar exactly rather than
+       to three decimal places of rounded percentage. */
+    return '<span style="' + hatchStyle(a) + ';flex:' + row.actual + ' 1 0" title="'
+      + row.area + ' ' + share(row.actual) + '"></span>';
+  }).join(''));
+  set('legend', ALLOC.map(row => {
+    const a = AREA_BY_NAME[row.area];
+    return '<span><span class="chip-a" style="background:var(' + areaTok(a) + ');margin:0"></span>'
+      + row.area + ' <i>' + share(row.actual) + ' &middot; ' + hmAbs(row.actual) + '</i></span>';
+  }).join(''));
+  set('chart-prov', 'The wedge, the bar segment and the legend figure for each Area are one '
+    + 'number read three times, so a wedge cannot disagree with its own label. Hatch is drawn in '
+    + 'a lighter step of the wedge\'s own ink, at the same 45% mix <code>scratch/block-states.html'
+    + '</code> uses, which <code>color.css</code> documents in prose but does not expose as a '
+    + 'token. Each wedge takes a 1px <code>--paper</code> separator so two adjacent inks do not '
+    + 'read as one shape. <b>The circle is wedge geometry, not a border radius</b>, so the '
+    + 'allowlist in section 4 stays closed at four. <b>The circadian frame is not in this chart:'
+    + '</b> routines define how much time exists rather than competing for it, so the denominator '
+    + 'is ' + hmAbs(DISCRETIONARY)
+    + ' of discretionary time, not ' + hmAbs(WEEK_MIN) + ' of week. <b>Read the three wedges of '
+    + 'equal area:</b> ' + ALLOC.filter(r => r.actual === 420).map(r => r.area).join(', ')
+    + ' each hold ' + hmAbs(420) + ', so any difference in weight between them is the palette '
+    + 'talking rather than the data, which is what the equalisation in section 1.3 exists to prevent.');
+})();
+
+/* the sealed Area specimens */
+const badArea = AREA_BY_NAME['Career'];
+set('bad-area-text', '<span style="color:var(' + areaTok(badArea) + ');font-size:var(--fs-data)">'
+  + 'Career &middot; 19h 00m</span>');
+set('bad-area-text-note', 'This measures '
+  + ratio(hex(areaTok(badArea)), hex('--paper')).toFixed(2) + ':1 on page paper, so it clears AA '
+  + 'as text and is <b>still illegal</b>. The seal governs which channel a pigment may use, not '
+  + 'whether it is legible: an Area ink that can appear as text becomes a second text color, '
+  + 'and the one-ink rule is gone. Section 1.3 computes the whole ramp.');
+document.getElementById('bad-area-fill').style.setProperty('--ai', 'var(' + areaTok(badArea) + ')');
+document.getElementById('bad-area-border').style.borderColor = 'var(' + areaTok(AREA_BY_NAME['Fitness']) + ')';
+document.getElementById('bad-area-nav').style.color = 'var(' + areaTok(AREA_BY_NAME['Research']) + ')';
+document.getElementById('bad-area-nav').style.borderLeft = 'var(--state-selected-border) solid var('
+  + areaTok(AREA_BY_NAME['Research']) + ')';
+document.getElementById('bad-area-only').style.setProperty('--ai', 'var(' + areaTok(AREA_BY_NAME['Study']) + ')');
+
+/* ---------- 7, the computed figures the signal prose states ---------- */
+set('r-amber-paper', r2('--signal-amber','--paper'));
+set('r-amber-wash', r2('--amber-wash','--paper'));
+set('r-amber-edge', r2('--signal-amber','--amber-wash'));
+set('r-muted-amber', r2('--text-muted','--amber-wash'));
+set('r-soft-amber', r2('--ink-soft','--amber-wash'));
+
+/* ---------- 8, the drag as two frames ----------
+   Positions are computed from the same px-per-minute the grid uses, so the marker lands on a
+   real quarter hour rather than where it looks right. */
+(() => {
+  const start = 11 * 60, span = 180;            /* 11:00 to 14:00 of a real column */
+  const scale = 132 / span;
+  const top = m => ((m - start) * scale).toFixed(1);
+  const h = (60 * scale).toFixed(1);            /* one hour: the same block in both frames */
+  let lines = '';
+  for(let m = start; m <= start + span; m += px('--grid-minor'))
+    lines += '<div class="' + (m % px('--grid-major') === 0 ? 'maj' : 'min') + '" style="top:'
+      + top(m) + 'px"></div>';
+  const held = '<div class="blk" data-area style="--ai:var(' + areaTok(areaFitness) + ');top:'
+    + top(11 * 60 + 30) + 'px;height:' + h + 'px;--lines:1">'
+    + '<span class="t">Gym &middot; Legs</span></div>';
+  const dropped = '<div class="blk" data-area data-selected style="--ai:var(' + areaTok(areaFitness)
+    + ');top:' + top(13 * 60) + 'px;height:' + h + 'px;--lines:1">'
+    + '<span class="g">&#9635;</span><span class="t">Gym &middot; Legs</span></div>';
+  document.getElementById('drag1').innerHTML = lines + held
+    + '<div class="dragmk" data-at="13:00" style="top:' + top(13 * 60) + 'px"></div>';
+  /* Frame 2 draws the hour only, in --rule-faint: the subdivision goes with the drag. */
+  let calm = '';
+  for(let m = start; m <= start + span; m += px('--grid-major'))
+    calm += '<div class="rest" style="top:' + top(m) + 'px"></div>';
+  document.getElementById('drag2').innerHTML = calm + dropped;
+})();
+set('dur', '<code>' + val('--duration') + '</code>');
+set('motion-check', 'The token itself agrees: <code>--duration</code> reads <b>'
+  + val('--duration') + '</b> from the linked stylesheet, and <code>--snap</code> reads <b>'
+  + val('--snap') + ' minutes</b>, which is what the marker in frame 1 lands on.');
+</script>
+</body>
+</html>
