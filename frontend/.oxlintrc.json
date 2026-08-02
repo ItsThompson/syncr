@@ -84,8 +84,14 @@
       }
     },
     {
-      // `domain` may read the api's TYPES, because a component that renders a Problem needs to
-      // name one. It may not reach a hook, which is the fetching.
+      // `domain` may read the api's TYPES, because a component that renders a Problem has to name
+      // one. It may not reach the CLIENT, the KEY REGISTRY, or a hook.
+      //
+      // Naming all three matters, and getting it wrong here is what the previous pass missed. The
+      // rule is not "may not reach a hook": the hook is not the fetching, `client.ts` is, and it
+      // exports the one `createClient` instance. `keys.ts` is the invalidation surface. A zone that
+      // bans the hook and permits either of those has banned a mechanism rather than a capability,
+      // which is the same mistake the globs above made about a barrel import.
       "files": ["src/ui/domain/**"],
       "rules": {
         "no-restricted-imports": [
@@ -96,12 +102,15 @@
                 "group": [
                   "**/routes",
                   "**/routes/**",
+                  "**/api",
+                  "**/api/client",
+                  "**/api/keys",
                   "**/api/hooks",
                   "**/api/hooks/**",
                   "**/app",
                   "**/app/**"
                 ],
-                "message": "a kit component accepts dependencies as props: it never fetches, reads config, or knows a route."
+                "message": "a kit component accepts dependencies as props: it may read the api's types, and may not reach the client, the key registry, a hook, a route, or the app."
               }
             ]
           }
