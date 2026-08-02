@@ -189,6 +189,22 @@ def test_line_carries_level_timestamp_and_service(emit: Emit) -> None:
     assert line["timestamp"]
 
 
+def test_a_logger_obtained_before_configuration_still_renders_json() -> None:
+    # A module-level `get_logger(...)` runs at import, before configure_logging. If
+    # the service field were bound eagerly, structlog's default console renderer
+    # would be frozen into every line that logger ever emits.
+    logger = get_logger("syncr-early")
+    stream = io.StringIO()
+    configure_logging(environment="production", log_level="info", stream=stream)
+
+    logger.info("worker.loop.started", runners=0)
+
+    line = json.loads(stream.getvalue())
+    assert line["service"] == "syncr-early"
+    assert line["event"] == "worker.loop.started"
+    assert line["runners"] == 0
+
+
 def test_free_text_event_name_raises_in_development() -> None:
     configure_logging(environment="development", log_level="debug", stream=io.StringIO())
 

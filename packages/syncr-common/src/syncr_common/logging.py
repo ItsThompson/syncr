@@ -166,8 +166,16 @@ def configure_logging(*, environment: str, log_level: str, stream: TextIO | None
 
 
 def get_logger(service: str) -> structlog.stdlib.BoundLogger:
-    """Return a logger with the ``service`` field bound onto every line."""
-    return cast("structlog.stdlib.BoundLogger", structlog.get_logger().bind(service=service))
+    """Return a logger with the ``service`` field bound onto every line.
+
+    The initial value is passed to ``get_logger`` rather than applied with a
+    following ``.bind()``, because ``.bind()`` materializes the logger against
+    whatever configuration exists at that moment. A module-level logger is created
+    at import, before :func:`configure_logging` runs, so binding eagerly would
+    freeze structlog's default console renderer into every line that logger ever
+    emits. Passing initial values keeps the proxy lazy until the first call.
+    """
+    return cast("structlog.stdlib.BoundLogger", structlog.get_logger(service=service))
 
 
 def new_correlation_id() -> str:
