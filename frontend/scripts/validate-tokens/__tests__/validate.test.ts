@@ -10,7 +10,7 @@ const fixture = (name: string): string => path.join(fixtures, name);
 const cleanEntry = fixture("clean.css");
 
 async function validate(tokenFiles: string[], sheetFiles: string[] = []) {
-  return validateTokenLayer({ tokenFiles, tokenEntry: cleanEntry, sheetFiles });
+  return validateTokenLayer({ tokenFiles, consumerFiles: [], tokenEntry: cleanEntry, sheetFiles });
 }
 
 const checksOf = (findings: readonly { check: string }[]): string[] =>
@@ -86,9 +86,7 @@ describe("a dangling var() reference", () => {
 
   it("resolves across files, because the layer is one cascade", async () => {
     const outcome = await validate([cleanEntry, fixture("dangling-var.css")]);
-    const dangling = outcome.findings.filter(
-      (finding) => finding.check === "dangling-reference",
-    );
+    const dangling = outcome.findings.filter((finding) => finding.check === "dangling-reference");
     expect(dangling).toHaveLength(1);
   });
 });
@@ -103,12 +101,11 @@ describe("a reference sheet", () => {
 
   it("fails when its link to the token entry point does not resolve", async () => {
     const outcome = await validate([cleanEntry], [fixture("sheet-drifted.html")]);
-    const links = outcome.findings.filter(
-      (finding) => finding.check === "stylesheet-reference",
-    );
+    const links = outcome.findings.filter((finding) => finding.check === "stylesheet-reference");
     expect(links.map((finding) => finding.message)).toEqual([
       'href="./moved-tokens.css" does not resolve.',
-      `links no stylesheet resolving to ${cleanEntry}, so it can drift from the build.`,
+      "links no stylesheet resolving to frontend/scripts/validate-tokens/__fixtures__/clean.css, " +
+        "so it can drift from the build.",
     ]);
   });
 });

@@ -24,10 +24,17 @@ import path from "node:path";
 import { isCustomPropertyDeclaration, scanCss, type CssScan } from "../lib/css-scan.ts";
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
 import { scanHtml, type HtmlScan } from "../lib/html-scan.ts";
+import { relativeToRepo } from "../lib/paths.ts";
 
 export interface ValidateInput {
   /** Absolute paths of every file in the token layer. */
   readonly tokenFiles: readonly string[];
+  /**
+   * Absolute paths of stylesheets that CONSUME the layer: the theme, the base rules, and any
+   * co-located component sheet. Their `var()` references must resolve, but they declare no tokens,
+   * so a duplicate or a non-declaration statement in them is not this check's business.
+   */
+  readonly consumerFiles: readonly string[];
   /** Absolute path of the entry point every reference sheet must link. */
   readonly tokenEntry: string;
   /** Absolute paths of the rendered reference sheets. */
@@ -56,6 +63,23 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
   const callerProvided = collectCallerProvided(scanned);
   findings.push(...checkTokenReferences(scanned, declared, callerProvided));
 
+  /* The theme is the bridge that turns a token into a utility, so a dangling reference there
+   * compiles to an invalid declaration and produces exactly the plausible-looking page this whole
+   * check exists to prevent. A consumer resolves against the layer PLUS its own declarations,
+   * because a component sheet legitimately declares its own layer-2 properties. */
+  let consumerReferences = 0;
+  for (const file of input.consumerFiles) {
+    const scan = scanCss(await readFile(file, "utf8"));
+    consumerReferences += scan.varReferences.length;
+    findings.push(...checkComments(file, scan));
+    findings.push(...(await checkImports(file, scan)));
+    const visible = new Set([
+      ...declared,
+      ...scan.declarations.map((declaration) => declaration.name),
+    ]);
+    findings.push(...checkTokenReferences([{ file, scan }], visible, callerProvided));
+  }
+
   let dynamicInSheets = 0;
   let resolvedInSheets = 0;
   for (const file of input.sheetFiles) {
@@ -68,6 +92,7 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
 
   const notes = [
     `${input.tokenFiles.length} token file(s), ${declared.size} declared propert(ies)`,
+    `${input.consumerFiles.length} consuming stylesheet(s), ${consumerReferences} var() reference(s) resolved`,
     `${input.sheetFiles.length} reference sheet(s), ${resolvedInSheets} literal var() reference(s) resolved`,
     `${dynamicInSheets} var() reference(s) in the sheets are assembled at runtime and are not statically resolvable`,
   ];
@@ -146,6 +171,9 @@ function checkDuplicates(file: string, scan: CssScan): Finding[] {
 async function checkImports(file: string, scan: CssScan): Promise<Finding[]> {
   const findings: Finding[] = [];
   for (const atImport of scan.imports) {
+    // A bare specifier like `tailwindcss` is resolved from node_modules by the bundler, not from
+    // this directory. Only a path this file claims to own is checkable here.
+    if (!atImport.specifier.startsWith(".") && !atImport.specifier.startsWith("/")) continue;
     const target = path.resolve(path.dirname(file), atImport.specifier);
     if (await isReadable(target)) continue;
     findings.push({
@@ -242,7 +270,7 @@ async function checkSheetLink(
     findings.push({
       file,
       check: "stylesheet-reference",
-      message: `links no stylesheet resolving to ${tokenEntry}, so it can drift from the build.`,
+      message: `links no stylesheet resolving to ${relativeToRepo(tokenEntry)}, so it can drift from the build.`,
     });
   }
   return findings;
