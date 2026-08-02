@@ -1,14 +1,12 @@
 """The tenancy boundary: the schema rules and the SQL rule, asserted mechanically.
 
-Four rules live here, and all four are about tables and queries that do not exist yet as
-much as about the three that do. The first scoped table arrives with plan storage, and
-these tests are what it will meet.
+Four rules live here, and each applies to every table that arrives later as much as to the
+ones present today.
 
-That makes the positive controls essential rather than thorough. Three of these rules
-currently have nothing to catch, so each is also run against a deliberately broken model
-built in a metadata of its own. Without that, "every domain table carries a tenant id"
-would pass on a schema with no domain tables and go on passing after someone adds one
-without a tenant id.
+The positive controls are what keep that true. Each rule is also run against a deliberately
+broken model built in a metadata of its own, because "every domain table carries a tenant id"
+passes on a schema whose tables all happen to, and goes on passing after someone adds one that
+does not.
 
 The rules:
 
@@ -16,7 +14,7 @@ The rules:
 2. Every such table has an index whose FIRST column is ``tenant_id``, and no multi-column
    index leads with anything else.
 3. No table except ``sessions`` carries a ``user_id``.
-4. Every statement a scoped repository builds carries a tenant predicate.
+4. Every statement any module of a scoped package builds carries a tenant predicate.
 """
 
 from __future__ import annotations
@@ -42,10 +40,12 @@ from syncr_api.core.tenancy import (
     USER_ID_COLUMN,
     TenantScoped,
 )
+from syncr_api.plans import models as plans_models
 from tests.boundaries import (
     REPOSITORY_MODULE_NAME,
     bare_statement_calls,
     mapped_classes,
+    package_modules,
     packages_with_scoped_tables,
 )
 from tests.control_models import ControlBase, ScopedThing, table_of
@@ -145,10 +145,13 @@ def test_no_table_carries_a_user_id_except_sessions() -> None:
     )
 
 
-def test_the_identity_exemption_covers_exactly_the_three_tables_it_names() -> None:
-    # The exemption set is what lets a table skip every rule above, so it is asserted
-    # rather than trusted. A fourth entry has to be argued for in a diff.
-    assert {"tenants", "users", "sessions"} == IDENTITY_TABLES
+def test_the_identity_exemption_covers_exactly_the_tables_it_names() -> None:
+    # The exemption set is what lets a table skip every rule above, so it is asserted rather
+    # than trusted. Each entry has to be argued for in a diff, and each one here is: three
+    # establish a tenant, a person, and a browser, and the fourth establishes a CLIENT. All
+    # four are read by something other than a tenant, because all four run before one is
+    # known, and `core/tenancy.py` states each reason next to its name.
+    assert {"tenants", "users", "sessions", "oauth_clients"} == IDENTITY_TABLES
     assert set(Base.metadata.tables) >= IDENTITY_TABLES
 
 
@@ -213,17 +216,20 @@ def test_no_repository_over_a_scoped_table_builds_a_statement_without_the_scope(
 ) -> None:
     # The half the compiled assertions above cannot reach: nothing forces a repository to
     # USE the base's helpers. A module that subclasses `TenantScopedRepository` and then
-    # writes `select(PlanBlock).where(PlanBlock.id == ...)` would satisfy every other
+    # writes `select(PlanRevision).where(PlanRevision.id == ...)` would satisfy every other
     # test in this file.
     #
-    # Vacuous today, and armed: no package owns a scoped table yet, which the test below
-    # asserts rather than leaves implied. Plan storage is the first package it examines.
+    # EVERY module of the package is read, not only `repository.py`. Plan storage splits its
+    # repositories by concern, one per module, so a rule that read one file would cover one
+    # of them and leave the rest outside it.
     violations = {}
     for package in sorted(packages_with_scoped_tables(mapped_classes(source_root))):
-        module = source_root / package / REPOSITORY_MODULE_NAME
-        assert module.exists(), f"{package} owns a scoped table and has no repository module"
-        if bare := bare_statement_calls(module.read_text(encoding="utf-8")):
-            violations[package] = bare
+        assert (source_root / package / REPOSITORY_MODULE_NAME).exists(), (
+            f"{package} owns a scoped table and has no repository module"
+        )
+        for module in package_modules(source_root, package):
+            if bare := bare_statement_calls(module.read_text(encoding="utf-8")):
+                violations[f"{package}/{module.name}"] = bare
 
     assert violations == {}, (
         f"{violations}. Build these from `self.scoped_select`, `self.scoped_update`, or "
@@ -232,49 +238,37 @@ def test_no_repository_over_a_scoped_table_builds_a_statement_without_the_scope(
     )
 
 
-def test_only_identity_tables_exist_yet_so_the_repository_walk_examines_nothing(
+def test_the_repository_walk_examines_the_packages_that_own_a_scoped_table(
     source_root: Path,
 ) -> None:
-    # A tripwire, and its failure is the message. The repository rule above iterates over
-    # scoped packages, and there are none yet, so it currently proves nothing on its own.
-    # The first ticket to add a table that holds a plan will fail HERE and nowhere else,
-    # which is the notice that the rule has engaged: delete this test at that point, and
-    # keep the one above.
-    models = mapped_classes(source_root)
-    scoped = packages_with_scoped_tables(models)
+    # What used to stand here was a tripwire asserting NO package owned a scoped table, so
+    # the rule above was armed and vacuous. The settings tables are the first, so the rule
+    # is live: this asserts the walk finds a subject, which is what the tripwire's failure
+    # was the notice of.
+    scoped = packages_with_scoped_tables(mapped_classes(source_root))
 
-    assert scoped == set(), (
-        f"{sorted(scoped)} now own a table that holds a plan, so the repository rule above "
-        "is live rather than vacuous. That is the intended state: delete this test."
+    assert scoped, (
+        "the repository rule above iterates over scoped packages and found none, so it "
+        "proves nothing. Either the models walk stopped seeing them or the tables went away."
     )
-    # Read with a default, the same way the walk reads it: `type` carries no
-    # `__tablename__`, and narrowing it here would be a cast in a test.
-    assert {getattr(model, "__tablename__", None) for model in models} == IDENTITY_TABLES
-
-
-class _PlanModelStandingInForTicketSeven:
-    """What a scoped model in a feature package looks like to the walk."""
-
-    __tablename__ = "plan_blocks"
-    __module__ = "syncr_api.plans.models"
 
 
 def test_the_repository_walk_names_the_package_of_a_scoped_table() -> None:
     # The discovery half's control. Without it, "no package owns a scoped table" and "the
     # walk cannot see one" are indistinguishable.
-    assert packages_with_scoped_tables([_PlanModelStandingInForTicketSeven]) == {"plans"}
+    assert packages_with_scoped_tables([plans_models.PlanRevision]) == {"plans"}
     assert packages_with_scoped_tables([accounts_models.BrowserSession]) == set()
 
 
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
-        ("rows = select(PlanBlock).where(PlanBlock.id == block_id)", ["select"]),
-        ("await self._session.execute(update(PlanBlock).values(pinned=True))", ["update"]),
-        ("await self._session.execute(delete(PlanBlock))", ["delete"]),
-        ("rows = self.scoped_select(PlanBlock).where(PlanBlock.id == block_id)", []),
-        ("stmt = self.scoped_update(PlanBlock).values(pinned=True)", []),
-        ("self._session.add(PlanBlock(id=block_id))", []),
+        ("rows = select(PlanRevision).where(PlanRevision.id == revision_id)", ["select"]),
+        ("await self._session.execute(update(Pin).values(pinned=True))", ["update"]),
+        ("await self._session.execute(delete(Pin))", ["delete"]),
+        ("rows = self.scoped_select(PlanRevision).where(PlanRevision.id == revision_id)", []),
+        ("stmt = self.scoped_update(Pin).values(pinned=True)", []),
+        ("self._session.add(PlanRevision(id=revision_id))", []),
     ],
 )
 def test_the_bare_statement_check_reports_what_it_should(source: str, expected: list[str]) -> None:

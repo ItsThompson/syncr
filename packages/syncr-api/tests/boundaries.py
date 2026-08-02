@@ -240,6 +240,10 @@ def bare_statement_calls(source: str) -> list[str]:
     scoped base, or the tenant predicate is something each method remembers rather than
     something the base applies. A call on an attribute (``self.scoped_select(Model)``) is
     not a bare call and is not reported.
+
+    Applied to EVERY module of a scoped package rather than only to ``repository.py``: a
+    package whose repositories are split by concern would otherwise have all but one of them
+    outside the rule.
     """
     return sorted(
         node.func.id
@@ -267,6 +271,17 @@ def packages_with_scoped_tables(models: Iterable[type]) -> set[str]:
         if len(parts) >= MODELS_MODULE_DEPTH:
             packages.add(parts[-2])
     return packages
+
+
+def package_modules(source_root: Path, package: str) -> list[Path]:
+    """Every module of one feature package, in a stable order.
+
+    The bare-statement rule is stated over all of them rather than over ``repository.py``
+    alone. A package that splits its repositories by concern (the plan of record, the pending
+    slot, the version counter) keeps them in modules of their own, and a rule that read one
+    file would cover one of them.
+    """
+    return sorted((source_root / package).glob("*.py"))
 
 
 def mapped_classes(source_root: Path) -> list[type]:
