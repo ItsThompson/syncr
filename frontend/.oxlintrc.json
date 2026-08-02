@@ -25,6 +25,11 @@
       // THE IMPORT ZONES. `primitives` may import nothing above it, `layout` may import
       // `primitives`, and `domain` may import both. Enforcing it preserves the option of
       // extracting a generic kit later without paying for it now.
+      //
+      // EVERY PATTERN NAMES BOTH THE DIRECTORY AND ITS CONTENTS. `**/domain/**` alone requires a
+      // segment after `domain`, so it misses a bare barrel import, and a pattern containing `ui`
+      // cannot match a relative specifier at all, because a relative specifier has no `ui`
+      // segment. Both shapes are this codebase's house style, so both were escaping.
       "files": ["src/ui/primitives/**"],
       "rules": {
         "no-restricted-imports": [
@@ -32,11 +37,18 @@
           {
             "patterns": [
               {
-                "group": ["**/ui/layout/**", "**/ui/domain/**", "../layout/*", "../domain/*"],
+                "group": ["**/layout", "**/layout/**", "**/domain", "**/domain/**"],
                 "message": "primitives may import nothing above it."
               },
               {
-                "group": ["**/routes/**", "**/api/**", "**/app/**"],
+                "group": [
+                  "**/routes",
+                  "**/routes/**",
+                  "**/api",
+                  "**/api/**",
+                  "**/app",
+                  "**/app/**"
+                ],
                 "message": "a kit component accepts dependencies as props: it never fetches, reads config, or knows a route."
               }
             ]
@@ -52,11 +64,18 @@
           {
             "patterns": [
               {
-                "group": ["**/ui/domain/**", "../domain/*"],
+                "group": ["**/domain", "**/domain/**"],
                 "message": "layout may import primitives only. A container that knows a Block is a domain component."
               },
               {
-                "group": ["**/routes/**", "**/api/**", "**/app/**"],
+                "group": [
+                  "**/routes",
+                  "**/routes/**",
+                  "**/api",
+                  "**/api/**",
+                  "**/app",
+                  "**/app/**"
+                ],
                 "message": "a kit component accepts dependencies as props: it never fetches, reads config, or knows a route."
               }
             ]
@@ -65,6 +84,8 @@
       }
     },
     {
+      // `domain` may read the api's TYPES, because a component that renders a Problem needs to
+      // name one. It may not reach a hook, which is the fetching.
       "files": ["src/ui/domain/**"],
       "rules": {
         "no-restricted-imports": [
@@ -72,7 +93,14 @@
           {
             "patterns": [
               {
-                "group": ["**/routes/**", "**/api/hooks/**", "**/app/**"],
+                "group": [
+                  "**/routes",
+                  "**/routes/**",
+                  "**/api/hooks",
+                  "**/api/hooks/**",
+                  "**/app",
+                  "**/app/**"
+                ],
                 "message": "a kit component accepts dependencies as props: it never fetches, reads config, or knows a route."
               }
             ]
