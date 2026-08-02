@@ -7,6 +7,10 @@ rejected, so adding one here would reintroduce the problem that decision avoided
 
 Connecting is lazy, so building an app does not require a reachable database.
 ``GET /readyz`` is what surfaces connectivity, via :func:`db_readiness_check`.
+
+There is ONE session dependency, :func:`get_transaction`, and it commits. A second
+dependency that handed out an uncommitted session would make "did my write land"
+depend on which one a route happened to ask for.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-# `get_session` is a FastAPI dependency, not a decorated route handler, so the
+# `get_transaction` is a FastAPI dependency, not a decorated route handler, so the
 # runtime-evaluated-decorators config does not cover it. FastAPI resolves each
 # parameter annotation at runtime to build the dependency, so `Request` must stay
 # importable at runtime or FastAPI treats `request` as a validated query field.
@@ -93,14 +97,20 @@ def create_database(database_url: str) -> Database:
     return Database(engine=engine, sessionmaker=create_sessionmaker(engine))
 
 
-async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency yielding a request-scoped :class:`AsyncSession`.
+async def get_transaction(request: Request) -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency yielding a request-scoped :class:`AsyncSession` in a transaction.
+
+    One request is one unit of work: the session commits when the request handler
+    returns and rolls back if anything raised, so a service that writes three rows
+    cannot leave one of them behind. FastAPI caches a dependency per request, so a
+    dependency resolving the principal and the handler doing the work share this
+    session and therefore this transaction.
 
     The session factory is read from ``app.state.db``, attached at wiring time, so
     this dependency holds no module-global state and is substitutable in tests.
     """
     database: Database = request.app.state.db
-    async with database.sessionmaker() as session:
+    async with database.sessionmaker() as session, session.begin():
         yield session
 
 

@@ -45,6 +45,12 @@ services:
       # so this overrides any host-oriented value in .env.
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-syncr}:${POSTGRES_PASSWORD:-syncr}@postgres:5432/${POSTGRES_DB:-syncr}
       HOST: 0.0.0.0
+      # SESSION_SIGNING_SECRET and ALLOWED_ORIGINS are deliberately NOT named here, and
+      # arrive through `env_file` instead. Compose interpolation of an unset host variable
+      # produces an EMPTY value that overrides the file, which for these two would not
+      # fail loudly: an empty origin list rejects every mutation with a 403, and an empty
+      # signing secret is a session key of nothing. The api refuses to start outside
+      # development if the signing secret is still the development default.
       # Named here rather than left implicit in `env_file`, so the credentials a
       # service needs are readable from the topology. These interpolate from the
       # host secret file, which is Compose's env file. Empty is a valid result:

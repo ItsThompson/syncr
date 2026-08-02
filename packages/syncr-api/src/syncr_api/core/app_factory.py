@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, FastAPI
 
+from syncr_api.accounts.wiring import build_accounts_router
 from syncr_api.core.correlation import CorrelationMiddleware
 from syncr_api.core.error_handlers import PROBLEM_RESPONSES, build_exception_handlers
 from syncr_api.core.observability import create_metrics_router
@@ -48,9 +49,7 @@ type RouterFactory = Callable[[], APIRouter]
 # the first appending ticket adds a line rather than reformatting the one every later
 # ticket then edits.
 # ---------------------------------------------------------------------------
-FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
-    # build_accounts_router,
-)
+FEATURE_ROUTERS: tuple[RouterFactory, ...] = (build_accounts_router,)
 
 # The one place the api's version is stated: the package metadata uv installs from
 # pyproject.toml.

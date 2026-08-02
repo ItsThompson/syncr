@@ -120,6 +120,20 @@ class Forbidden(SyncrError):
     title = "Insufficient scope"
 
 
+class OriginRejected(SyncrError):
+    """403: an unsafe request from an origin this deployment does not serve.
+
+    Its own type rather than :class:`Forbidden`, because the caller's credential and
+    scope are not what was wrong: the request was rejected before either was
+    considered, and a title of "insufficient scope" would send someone looking for a
+    permission problem that does not exist.
+    """
+
+    type = "syncr:origin-rejected"
+    status = 403
+    title = "Cross-origin request rejected"
+
+
 class NotFound(SyncrError):
     type = "syncr:not-found"
     status = 404
