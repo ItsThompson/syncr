@@ -28,7 +28,7 @@ from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_db_engine, create_db_lifespan, db_readiness_check
 from syncr_api.core.migrations import expected_head, migration_readiness_check
 from syncr_common.health import READYZ_ENDPOINT, RETRY_AFTER_SECONDS
-from tests.conftest import database_url
+from tests.conftest import UNREACHABLE_DATABASE_URL, database_url
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -40,7 +40,6 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.integration
 
 MIGRATE_HINT = "run `just migrate` first"
-UNREACHABLE_URL = "postgresql+asyncpg://syncr:syncr@127.0.0.1:1/syncr"
 
 
 @pytest.fixture(scope="session")
@@ -115,7 +114,7 @@ def test_readyz_answers_503_when_the_database_is_gone(
     # Requiring a live Postgres first means this asserts connectivity failure rather
     # than passing trivially on a host with no database at all.
     assert live_database_url
-    unreachable = create_db_engine(UNREACHABLE_URL)
+    unreachable = create_db_engine(UNREACHABLE_DATABASE_URL)
     app = create_app(
         settings,
         readiness_checks=(db_readiness_check(unreachable),),

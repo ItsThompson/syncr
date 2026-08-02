@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class FeatureSettings(SyncrSettings):
     """A member's settings, extending the shared base."""
 
-    database_url: str = "postgresql+asyncpg://syncr:syncr@localhost:5432/syncr"
+    database_url: str = "stub://value"
 
 
 def test_defaults_boot_without_any_environment() -> None:

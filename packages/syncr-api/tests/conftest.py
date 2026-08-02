@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 import pytest
@@ -19,6 +18,9 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 TEST_SERVICE = "syncr-api-test"
+
+# A closed port, so a connection attempt fails fast and for one obvious reason.
+UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://syncr:syncr@127.0.0.1:1/syncr"
 
 
 @pytest.fixture(autouse=True)
@@ -67,5 +69,10 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 
 
 def database_url() -> str:
-    """The Postgres URL the integration tests use."""
-    return os.environ.get("DATABASE_URL", "postgresql+asyncpg://syncr:syncr@localhost:5432/syncr")
+    """The Postgres URL the integration tests use.
+
+    Read through settings rather than from the environment directly, so the default
+    has exactly one definition and ``DATABASE_URL`` overrides it the same way it does
+    for the running process.
+    """
+    return EnvSettings().database_url

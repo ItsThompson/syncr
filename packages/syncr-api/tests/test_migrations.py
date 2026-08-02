@@ -14,12 +14,12 @@ from syncr_api.core.migrations import (
     migration_readiness_check,
     script_heads,
 )
+from tests.conftest import UNREACHABLE_DATABASE_URL
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 BASELINE_REVISION = "0001_baseline"
-UNREACHABLE_URL = "postgresql+asyncpg://syncr:syncr@127.0.0.1:1/syncr"
 
 
 def test_the_chain_has_exactly_one_head() -> None:
@@ -57,7 +57,7 @@ def test_expected_head_rejects_a_branched_chain(tmp_path: Path) -> None:
 
 
 async def test_readiness_reports_not_ready_when_the_database_is_unreachable() -> None:
-    engine = create_db_engine(UNREACHABLE_URL)
+    engine = create_db_engine(UNREACHABLE_DATABASE_URL)
     try:
         result = await migration_readiness_check(engine)()
     finally:
