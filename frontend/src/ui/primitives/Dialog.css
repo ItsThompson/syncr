@@ -1,0 +1,55 @@
+/* Layer 2: the dialog.
+ *
+ * THE HEADER IS THE ONE INK-FILLED SURFACE IN THE PRODUCT. The sidebar is paper, a panel header is a wash,
+ * and a primary button's fill is ink but its parent is paper. That leaves a dialog header, which is why
+ * `on-ink-surface` is scoped to it in the markup: `base.css` gives any focusable descendant of that class
+ * the inverse ring, so a control added to the header later inherits the right one instead of improvising.
+ * --ink-bright on --ink-deep measures 1.61:1 and vanishes; --paper-raised on it measures 14.83:1.
+ *
+ * The lift is `.overlay`, which is the only file naming --shadow-hard. No fade and no scale: the dialog is
+ * present or it is not, because motion is zero without exception. */
+
+.dialog {
+  width: 398px;
+  max-width: calc(100vw - 44px);
+}
+
+.dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 11px;
+  border-bottom: var(--hairline) solid var(--rule-strong);
+  background: var(--ink-deep);
+  color: var(--on-ink);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}
+
+.dialog__dismiss {
+  height: auto;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--on-ink);
+  font: inherit;
+  font-size: var(--fs-prose);
+  cursor: pointer;
+}
+
+.dialog__body {
+  padding: 12px;
+  color: var(--ink);
+  font-size: var(--fs-chrome);
+  line-height: var(--lh-chrome);
+}
+
+.dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding: 9px 11px;
+  border-top: var(--hairline) solid var(--rule);
+}

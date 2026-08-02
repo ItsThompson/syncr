@@ -1,0 +1,31 @@
+/* Layer 2: THE ONE HARD OFFSET, ASSIGNED IN ONE FILE.
+ *
+ * Print has no blur, so the lift is a 4px hard offset and there is exactly one of it. Section 14 names
+ * the Dialog family as its carrier and `docs/design/components.html` renders the same shadow on three
+ * surfaces: the dialog, the date picker's popover and the command palette. All three are the same idea,
+ * an overlay that has to lift off the page, so the shadow has one definition here and the three
+ * components name it. A block, a card, a panel and a button carry no shadow at all.
+ *
+ * THE SCRIM IS TRANSLUCENT AND DERIVED, at --scrim, which is --ink-deep at 30%. The surface being
+ * explained stays legible beneath the thing explaining it, and no new pigment is introduced. There is no
+ * fade: the overlay is present or it is not, because motion is zero without exception.
+ *
+ * The scrim is also the centring container, and that is not a stylistic choice. Centring an overlay the
+ * usual way needs `translate: -50% -50%`, and `translate` is on the banned property list: motion is zero,
+ * so the property is refused whether or not its value animates. A grid that places its one child in the
+ * centre needs no transform at all. */
+
+.overlay {
+  border: var(--hairline) solid var(--ink-deep);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-hard);
+}
+
+.overlay__scrim {
+  display: grid;
+  place-items: center;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--scrim);
+}

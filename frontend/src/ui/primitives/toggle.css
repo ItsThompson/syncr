@@ -1,0 +1,66 @@
+/* Layer 2: the checkbox and the radio, which are one row shape with two marks.
+ *
+ * THE MARK IS A GLYPH RATHER THAN AN IMAGE, so the state survives forced-colors mode: a fill is dropped
+ * there and text is not. That is the same reasoning that puts the tick in the glyph table instead of a
+ * background-image, and it is why a checked box reads as checked in a high-contrast theme.
+ *
+ * THE RADIO DOT IS ONE OF THE FOUR LEGAL CIRCLES, with the status dot, the Area chip and the avatar. The
+ * allowlist is closed at four, and a spinner is not on it because nothing spins.
+ *
+ * The row is --h-control-sm 22px, not a touch target: this is a keyboard tool on a desktop. The focus ring
+ * lands on the control and never on the label, which is why the box is the button and the text beside it
+ * is a real `label` element pointing at it. */
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--h-control-sm);
+  color: var(--ink);
+}
+
+.toggle__box {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: var(--hairline) solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-label);
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Circle 2 of 4 on the closed allowlist. */
+.toggle__box--circle {
+  border-radius: 50%;
+}
+
+.toggle__dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.toggle__label {
+  cursor: pointer;
+}
+
+.toggle__box:disabled {
+  border-style: dashed;
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.toggle__box:disabled + .toggle__label {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}

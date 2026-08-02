@@ -1,0 +1,56 @@
+/* Layer 2: the select's trigger, its list, and the item rows.
+ *
+ * The trigger is a field, so it takes `.control` and the same --rule-control border every other control
+ * takes. It is a button rather than a native select, which is what keeps the box square: a native arrow
+ * arrives in a platform-drawn well with its own corner radius, so the arrow here is the typographic mark
+ * from the glyph table and the box is drawn by this system on every platform.
+ *
+ * The list is a popover, one of the three surfaces `--shadow-hard` exists for, so it takes `.overlay`.
+ * Its rows take `.state-row`, which is where hover's fill and the keyboard cursor's ring are decided for
+ * the whole kit. A row is --h-row 28px, the same pitch a table row and a ledger row use. */
+
+.select__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select__arrow {
+  color: var(--text-muted);
+}
+
+.select__content {
+  min-width: 186px;
+  max-height: 264px;
+  overflow-y: auto;
+  z-index: 40;
+}
+
+.select__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--h-row);
+  padding: 0 10px;
+  color: var(--ink);
+  font-size: var(--fs-chrome);
+  cursor: default;
+  user-select: none;
+}
+
+.select__item[data-disabled] {
+  /* Muted text plus a dashed rule, which is the form disabled takes everywhere in this kit. The dash is what
+     survives forced-colors mode: a colour is forced there and a border STYLE is not, so muted text alone
+     would render an unavailable option as an available one. */
+  border-bottom: var(--hairline) dashed var(--text-muted);
+  color: var(--text-muted);
+}
+
+/* The mark sits in a fixed slot so a checked and an unchecked row set their text at the same offset. */
+.select__indicator {
+  width: 12px;
+  color: var(--ink-deep);
+}

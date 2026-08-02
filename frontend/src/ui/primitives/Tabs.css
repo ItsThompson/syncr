@@ -1,0 +1,51 @@
+/* Layer 2: tabs.
+ *
+ * THE ACTIVE TAB TAKES THE --rule-emphasis BOTTOM RULE, in --ink-deep. That token is the emphasised
+ * weight, and its carriers are the Area top rule, the active tab, the now rule and a matched-range
+ * underline: four places, one weight.
+ *
+ * The rule is 2px and transparent at rest, so activating a tab changes a colour and not a width. A width
+ * change would move the whole strip by two pixels on every switch, which is the same reasoning the current
+ * navigation row is drawn with. */
+
+.tabs {
+  display: flex;
+  border-bottom: var(--hairline) solid var(--rule-strong);
+}
+
+.tabs__trigger {
+  height: var(--h-control);
+  padding: 0 12px;
+  border: 0;
+  border-bottom: var(--rule-emphasis) solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tabs__trigger[data-state="active"] {
+  border-bottom-color: var(--ink-deep);
+  color: var(--ink-deep);
+}
+
+/* A count of zero is shown rather than hidden: a tab that vanishes makes a reader wonder whether the
+ * feature exists. */
+.tabs__count {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tabs__panel {
+  padding: 11px;
+  border: var(--hairline) solid var(--rule-strong);
+  border-top: 0;
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-size: var(--fs-chrome);
+  line-height: var(--lh-chrome);
+}
