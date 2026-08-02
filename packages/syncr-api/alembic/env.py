@@ -17,14 +17,14 @@ from typing import TYPE_CHECKING
 
 from alembic import context
 
+import syncr_api.accounts.models as _accounts  # noqa: F401 - registers its tables
 from syncr_api.core.db import create_db_engine
 from syncr_api.core.orm import Base
 from syncr_api.core.settings import EnvSettings
 
 # Import every feature module's models here as slices land, so their tables attach
 # to Base.metadata. Each such import exists for its registration side effect only,
-# so it carries a lint suppression for the unused-import rule:
-#   import syncr_api.accounts.models as _accounts
+# so it carries a lint suppression for the unused-import rule.
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Connection
