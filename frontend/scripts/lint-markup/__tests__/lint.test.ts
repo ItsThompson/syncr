@@ -198,6 +198,25 @@ describe("the radius rules", () => {
     expect(outcome.findings).toEqual([]);
   });
 
+  /* The allowlist is four ELEMENTS, not four directories. Matching a path substring allowed every
+   * file under `Avatar/`, `AreaChip/` or `Radio/` a circle, and nothing tested it. */
+  it("refuses a circle in a file merely sitting inside an allowlisted directory", async () => {
+    const outcome = await lintMarkup({
+      sourceFiles: [fixture(path.join("Avatar", "Banner.tsx"))],
+      themeFile,
+      kitDir: path.join(here, "..", "__fixtures__"),
+    });
+
+    expect(checksOf(outcome.findings)).toEqual(["circle-allowlist"]);
+  });
+
+  it("holds four names, for the four elements the design language names", async () => {
+    const rules = await readFile(path.join(here, "..", "rules.ts"), "utf8");
+    const allowlist = /CIRCLE_ALLOWLIST = new Set\(\[([^\]]*)\]\)/.exec(rules);
+
+    expect(allowlist?.[1].split(",").filter((name) => name.trim() !== "")).toHaveLength(4);
+  });
+
   it("refuses rounded-full anywhere else, even inside the kit", async () => {
     const outcome = await lintMarkup({
       sourceFiles: [fixture("Panel.tsx")],
