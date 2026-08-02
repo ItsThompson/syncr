@@ -1,0 +1,6 @@
+/* Fixture: the sidebar's own assignment of the current item's channels. */
+
+.nav__item[data-current] {
+  background-color: var(--state-hover);
+  border-left-color: var(--state-selected-color);
+}

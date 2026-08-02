@@ -1,0 +1,100 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "import", "jsx-a11y", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
+  "rules": {
+    "no-console": "error",
+    "eqeqeq": ["error", "always"],
+    "import/no-cycle": "error",
+    // React 19's automatic JSX runtime: nothing needs `React` in scope.
+    "react/react-in-jsx-scope": "off",
+    // A stylesheet and the DOM matchers are imported for their effect. That is what they are.
+    "import/no-unassigned-import": "off",
+    "unicorn/filename-case": "off"
+  },
+  "overrides": [
+    {
+      // THE IMPORT ZONES. `primitives` may import nothing above it, `layout` may import
+      // `primitives`, and `domain` may import both. Enforcing it preserves the option of
+      // extracting a generic kit later without paying for it now.
+      "files": ["src/ui/primitives/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/ui/layout/**", "**/ui/domain/**", "../layout/*", "../domain/*"],
+                "message": "primitives may import nothing above it."
+              },
+              {
+                "group": ["**/routes/**", "**/api/**", "**/app/**"],
+                "message": "a kit component accepts dependencies as props: it never fetches, reads config, or knows a route."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/ui/layout/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/ui/domain/**", "../domain/*"],
+                "message": "layout may import primitives only. A container that knows a Block is a domain component."
+              },
+              {
+                "group": ["**/routes/**", "**/api/**", "**/app/**"],
+                "message": "a kit component accepts dependencies as props: it never fetches, reads config, or knows a route."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/ui/domain/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/routes/**", "**/api/hooks/**", "**/app/**"],
+                "message": "a kit component accepts dependencies as props: it never fetches, reads config, or knows a route."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // The committed checks read files one at a time on purpose: findings come out in a stable
+      // order and memory stays bounded whatever the tree's size.
+      "files": ["scripts/**"],
+      "env": { "browser": false, "node": true },
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "src/testing/**"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["dist", "coverage", "src/api/schema.d.ts", "scripts/**/__fixtures__/**"]
+}

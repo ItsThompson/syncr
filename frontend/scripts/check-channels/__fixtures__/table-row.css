@@ -1,0 +1,6 @@
+/* Fixture: a second file taking the same state's fill, which is the drift the check exists for. */
+
+.row[data-current] {
+  /* background-color: var(--frame-wash) would be a third opinion; a comment must not count */
+  background: var(--frame-wash);
+}
