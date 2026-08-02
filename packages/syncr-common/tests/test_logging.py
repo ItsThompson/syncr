@@ -239,7 +239,25 @@ def test_free_text_event_name_is_quarantined_and_redacted_in_production() -> Non
     assert BLOCK_TITLE not in json.dumps(line)
 
 
-def test_a_dotted_event_name_is_untouched_in_production() -> None:
+def test_a_quarantined_event_names_its_call_site() -> None:
+    # The relocated name is redacted, so without the callsite parameters the line says a
+    # bad call site exists but not where it is.
+    stream = io.StringIO()
+    configure_logging(environment="production", log_level="debug", stream=stream)
+
+    get_logger("syncr-test").info("not a dotted name")
+
+    line = json.loads(stream.getvalue())
+    assert line["module"] == "test_logging"
+    assert isinstance(line["lineno"], int)
+    # The function name is deliberately not emitted: the adder's key for it is
+    # `func_name`, which this module's own redaction rule eats as a `_name` suffix.
+    assert "func_name" not in line
+
+
+def test_a_dotted_event_name_carries_no_callsite_noise() -> None:
+    # The callsite parameters are applied only on the quarantine path, so a healthy
+    # line stays as narrow as it was.
     stream = io.StringIO()
     configure_logging(environment="production", log_level="debug", stream=stream)
 
@@ -248,6 +266,8 @@ def test_a_dotted_event_name_is_untouched_in_production() -> None:
     line = json.loads(stream.getvalue())
     assert line["event"] == "solve.completed"
     assert MALFORMED_EVENT_KEY not in line
+    assert "module" not in line
+    assert "lineno" not in line
 
 
 @pytest.mark.parametrize(

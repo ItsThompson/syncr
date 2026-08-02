@@ -57,6 +57,22 @@ EVENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 MALFORMED_EVENT = "log.malformed_event_name"
 MALFORMED_EVENT_KEY = "malformed_event_title"
 
+# Stamps module and line onto a line. Applied ONLY to a quarantined event, because the
+# relocated name is redacted and would otherwise identify no call site, and because the
+# stack walk should not be paid on every healthy line. `additional_ignores` is what makes
+# calling it from inside a processor resolve the caller's frame rather than this module's.
+#
+# Module and line locate the call uniquely, so the function name is left out: the adder's
+# key for it is `func_name`, which the redactor correctly eats as a `_name` suffix. That
+# is the accepted cost of treating `name` as content, applied to a field of our own.
+_CALLSITE = structlog.processors.CallsiteParameterAdder(
+    parameters=(
+        structlog.processors.CallsiteParameter.MODULE,
+        structlog.processors.CallsiteParameter.LINENO,
+    ),
+    additional_ignores=[__name__],
+)
+
 # Keys whose value is user CONTENT rather than an identifier. Matched exactly or as
 # a `_`-suffix, so `block_title` and `anchor_location` are covered too.
 #
@@ -159,11 +175,15 @@ def quarantine_event_name(
     call site interpolated straight to disk. Relocating a malformed name under a
     redacted key keeps the line, makes every offending call site findable by querying
     one event, and closes the leak without raising inside the logging path.
+
+    The module and line number of the offending call are added too, because the
+    relocated name is redacted and so says nothing about where it came from.
     """
     event = event_dict.get("event")
     if isinstance(event, str) and not EVENT_NAME_PATTERN.fullmatch(event):
         event_dict["event"] = MALFORMED_EVENT
         event_dict[MALFORMED_EVENT_KEY] = event
+        _CALLSITE(_logger, _method_name, event_dict)
     return event_dict
 
 
@@ -171,7 +191,10 @@ def build_processors(*, strict_event_names: bool) -> list[Processor]:
     """The ordered processor chain. Redaction is always the step before rendering.
 
     The event-name step sits before redaction on purpose, so a quarantined name is
-    redacted by the same pass that redacts every other content key.
+    redacted by the same pass that redacts every other content key. The callsite
+    parameters come after it, so a quarantined line names the module and line that
+    produced it: without them, "one query finds every offending call site" would find
+    the lines but not the sites.
     """
     return [
         structlog.contextvars.merge_contextvars,
