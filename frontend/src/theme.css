@@ -1,0 +1,193 @@
+/* Tailwind v4, CSS-first, mapped ONTO the token layer rather than restating it, so there
+   is one source of truth for every semantic value. A v3 JavaScript config would hold a
+   second copy of every token, free to drift.
+
+   Two jobs, in order.
+
+   FENCING. Each `--namespace-*: initial` clears a stock Tailwind namespace whose values
+   this system cannot reach: there is no `bg-red-500`, no `animate-spin`, no `blur-sm`, no
+   `text-lg` at 18px. Clearing is what makes a pasted utility FAIL to compile rather than
+   compile off-brand, and it is stronger than a linter because nothing is emitted to lint.
+
+   MAPPING. The stock names that survive are remapped onto layer 1, so a contributor who
+   pastes stock markup lands on-brand without knowing the rules: `rounded-md` compiles to
+   zero, `shadow-sm` to the one hard offset, `text-sm` to 11.5px mono. That is the point of
+   mapping the stock names rather than banning them. */
+
+@import "tailwindcss";
+@import "./tokens/index.css";
+@import "./base.css";
+
+@theme inline {
+  /* --- Color ---------------------------------------------------------------
+     Exhaustively layer 1, and NOTHING from layer 0. Every color token in
+     tokens/color.css has exactly one entry here and no ramp step has any, so a
+     component writes bg-paper or text-ink and cannot reach a raw pigment. */
+  --color-*: initial;
+
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+
+  --color-ink: var(--ink);
+  --color-ink-deep: var(--ink-deep);
+  --color-ink-bright: var(--ink-bright);
+  --color-ink-soft: var(--ink-soft);
+
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-on-wash: var(--text-on-wash);
+
+  --color-rule: var(--rule);
+  --color-rule-faint: var(--rule-faint);
+  --color-rule-strong: var(--rule-strong);
+  --color-rule-control: var(--rule-control);
+  --color-rule-on-ink: var(--rule-on-ink);
+
+  --color-ink-wash: var(--ink-wash);
+  --color-frame-wash: var(--frame-wash);
+  --color-amber-wash: var(--amber-wash);
+  --color-oxide-wash: var(--oxide-wash);
+  --color-verdigris-wash: var(--verdigris-wash);
+
+  --color-on-ink: var(--on-ink);
+  --color-on-ink-muted: var(--on-ink-muted);
+
+  --color-signal-oxide: var(--signal-oxide);
+  --color-signal-verdigris: var(--signal-verdigris);
+  --color-signal-amber: var(--signal-amber);
+  --color-oxide-ink: var(--oxide-ink);
+  --color-verdigris-ink: var(--verdigris-ink);
+
+  --color-area-01: var(--area-01);
+  --color-area-02: var(--area-02);
+  --color-area-03: var(--area-03);
+  --color-area-04: var(--area-04);
+  --color-area-05: var(--area-05);
+  --color-area-06: var(--area-06);
+  --color-area-07: var(--area-07);
+  --color-area-08: var(--area-08);
+  --color-area-09: var(--area-09);
+  --color-area-10: var(--area-10);
+  --color-area-11: var(--area-11);
+  --color-area-12: var(--area-12);
+
+  --color-scrim: var(--scrim);
+
+  /* --- Type ---------------------------------------------------------------
+     text-sm is machine content, not a shrunk default. Each size carries the
+     line-height its surface reads at, so a size and its leading cannot be
+     paired wrongly by omission. */
+  --text-*: initial;
+
+  --text-eyebrow: var(--fs-eyebrow);
+  --text-eyebrow--line-height: var(--lh-chrome);
+  --text-label: var(--fs-label);
+  --text-label--line-height: var(--lh-chrome);
+  --text-sm: var(--fs-chrome);
+  --text-sm--line-height: var(--lh-chrome);
+  --text-base: var(--fs-prose);
+  --text-base--line-height: var(--lh-prose);
+  --text-data: var(--fs-data);
+  --text-data--line-height: var(--lh-chrome);
+  --text-stat: var(--fs-stat);
+  --text-stat--line-height: var(--lh-tight);
+  --text-title: var(--fs-title);
+  --text-title--line-height: var(--lh-tight);
+
+  --font-*: initial;
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+
+  /* leading-tight is the stock name carrying this system's 1.05, not Tailwind's 1.25. */
+  --leading-*: initial;
+  --leading-chrome: var(--lh-chrome);
+  --leading-prose: var(--lh-prose);
+  --leading-tight: var(--lh-tight);
+  --leading-block: var(--lh-block);
+  --leading-block-compact: var(--lh-block-compact);
+
+  /* Only uppercase text is tracked out, so the ramp is the four uppercase contexts
+     plus the wordmark's named zero. */
+  --tracking-*: initial;
+  --tracking-eyebrow: var(--ls-eyebrow);
+  --tracking-label: var(--ls-label);
+  --tracking-nav: var(--ls-nav);
+  --tracking-wordmark: var(--ls-wordmark);
+
+  /* --- Geometry -----------------------------------------------------------
+     Every stock radius name compiles to zero, so no pasted markup rounds a
+     corner. `rounded-full` is a static Tailwind value rather than a theme key,
+     so it survives for the four legal circles. */
+  --radius-*: initial;
+  --radius-xs: var(--radius);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
+
+  /* Print has no blur: one hard offset, and every stock blurred shadow is gone. */
+  --shadow-*: initial;
+  --shadow-sm: var(--shadow-hard);
+  --shadow-md: var(--shadow-hard);
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --blur-*: initial;
+
+  /* --- Heights and widths ------------------------------------------------
+     A keyboard tool on a desktop, not a touch target. */
+  --height-control: var(--h-control);
+  --height-control-sm: var(--h-control-sm);
+  --height-control-lg: var(--h-control-lg);
+  --height-row: var(--h-row);
+  --height-row-dense: var(--h-row-dense);
+
+  --container-*: initial;
+  --container-sidebar: var(--w-sidebar);
+  --container-detail: var(--w-detail);
+  --container-detail-closed: var(--w-detail-closed);
+
+  /* Clearing the stock breakpoints removes sm: through 2xl:, whose thresholds mean
+     nothing to a width policy derived from a 17-character day column.
+
+     Nothing replaces them here, and that is deliberate rather than an omission: a media
+     query cannot read a custom property, so `--breakpoint-wide: var(--bp-wide)` compiles
+     to `@media (width >= var(--bp-wide))`, which no browser evaluates. Declaring the
+     threshold as a literal would put a second copy of the value beside the token, which is
+     the drift this whole file exists to prevent. The surface that needs the policy states
+     the literal at the one place it applies and names --bp-wide beside it. */
+  --breakpoint-*: initial;
+
+  /* --- Motion is zero, without exception --------------------------------
+     Clearing --animate-* deletes animate-spin, animate-pulse and animate-bounce,
+     and clearing --ease-* deletes every timing function, so the policy is
+     structural rather than a rule a linter has to catch. */
+  --animate-*: initial;
+  --animate-none: none;
+  --ease-*: initial;
+  --perspective-*: initial;
+}
+
+/* The closed state vocabulary. Each state owns exactly one channel, so combinations add
+   instead of overwrite, and making each state a variant turns a documented rule into a
+   lintable one: a component that invents its own attribute has no variant to write.
+
+   The set lands in full even where a variant has no consumer yet. Defining a variant
+   later means the first component to need the state invents an attribute instead. */
+@custom-variant pinned      (&[data-pinned]);
+@custom-variant conflict    (&[data-conflict]);
+@custom-variant selected    (&[data-selected]);
+@custom-variant proposal    (&[data-proposal]);
+@custom-variant split       (&[data-split]);
+@custom-variant frame       (&[data-origin="frame"]);
+@custom-variant anchor      (&[data-origin="anchor"]);
+@custom-variant current     (&[data-current]);
+@custom-variant dragging    ([data-dragging] &);
+@custom-variant at-risk     (&[data-at-risk]);
+@custom-variant overdue     (&[data-overdue]);
+@custom-variant unconfirmed (&[data-unconfirmed]);
+@custom-variant collecting  (&[data-collecting]);
+@custom-variant compact     ([data-compact] &);
+@custom-variant panel-open  ([data-panel="open"] &);

@@ -1,0 +1,30 @@
+/* Base rules scoped to a SURFACE rather than to a control.
+
+   The focus ring is drawn at a 2px offset, so it lands on the parent's fill and not on the
+   element's own. --ink-bright on --ink-deep measures 1.61:1 and disappears, which is how
+   the inherited language lost the focus ring on the primary navigation of a keyboard-first
+   tool. Scoping the inverse ring to the container is what makes a control added to an
+   ink-filled surface later inherit the correct ring instead of improvising one.
+
+   syncr has exactly one such surface: an ink-filled panel or dialog header. The sidebar is
+   paper, and a primary button's parent is paper too, so both keep the standard ring. */
+
+@layer base {
+  :focus-visible {
+    outline: var(--state-focus-ring);
+    outline-offset: var(--state-focus-offset);
+  }
+
+  .on-ink-surface :focus-visible {
+    outline: var(--state-focus-ring-inverse);
+    outline-offset: var(--state-focus-offset);
+  }
+
+  body {
+    background-color: var(--paper);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--fs-prose);
+    line-height: var(--lh-prose);
+  }
+}
