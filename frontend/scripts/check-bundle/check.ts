@@ -56,6 +56,8 @@ function contextOf(declaration: Declaration): string {
 export function checkBundle(input: CheckBundleInput): CheckOutcome {
   const findings: Finding[] = [];
   let declarations = 0;
+  // Vite reports a kB as 1000 bytes, and this check's figure is read beside vite's constantly. One
+  // convention, so two numbers for one artifact cannot disagree.
   let bytes = 0;
 
   for (const stylesheet of input.stylesheets) {
@@ -83,7 +85,7 @@ export function checkBundle(input: CheckBundleInput): CheckOutcome {
   return {
     findings,
     notes: [
-      `${input.stylesheets.length} built stylesheet(s), ${(bytes / 1024).toFixed(2)} kB`,
+      `${input.stylesheets.length} built stylesheet(s), ${(bytes / 1000).toFixed(2)} kB`,
       `${declarations} declaration(s) read by postcss, not by a pattern`,
       ...input.stylesheets.map((stylesheet) => `  ${stylesheet.name}`),
     ],
