@@ -11,7 +11,11 @@
  *
  * VOLUME IS POSITION AND PIGMENT IS KIND. They are two fields because they answer two questions: how loudly a
  * reader should care, and what sort of thing happened. There is no `blocking` volume: level 4 is deliberately
- * unused, and `NoticeCard`, `NoticePanel` and `NoticeStrip` are the whole set. */
+ * unused, and `NoticeCard`, `NoticePanel` and `NoticeStrip` are the whole set.
+ *
+ * THE WIRE'S OWN SHAPE IS NARROWED HERE, at the boundary, by `noticeFrom`. The api types the field as a plain
+ * array, so without a guard in this file the first screen to render a response would meet a type error with `as
+ * Notice` sitting next to it, and the cast would reopen the hole the tuple closes. */
 
 export type NoticeVolume = "inline" | "panel" | "banner";
 
@@ -66,3 +70,41 @@ export type Notice = NoticeFields &
         readonly isWholeProductDown: true;
       }
   );
+
+/**
+ * The notice as it arrives over the wire, where `stillWorks` is a plain array.
+ *
+ * `13-http-api.md` types the field `string[]`, and the api enforces the non-empty rule with a Pydantic schema. A
+ * `string[]` is not assignable to a non-empty tuple, which is the point: the boundary is where the two models meet.
+ */
+export interface WireNotice extends NoticeFields {
+  readonly stillWorks: readonly string[];
+}
+
+/**
+ * A wire notice narrowed to the kit's own type, or null when it names no surviving capability.
+ *
+ * THIS FUNCTION IS THE WHOLE REASON THE TYPE RULE SURVIVES CONTACT WITH A RESPONSE. Without it the first screen to
+ * render a notice from the api hits `TS2322`, and the cheapest way out is `as Notice`, which is exactly the escape
+ * the non-empty tuple exists to close: a cast would let a notice that says only what broke reach a reader.
+ *
+ * Returning null rather than throwing is deliberate. A malformed notice is a degradation of the notice system
+ * itself, and a thrown error inside a render would take the screen down over a banner. The caller drops it and,
+ * where it matters, counts it.
+ */
+export function noticeFrom(wire: WireNotice): Notice | null {
+  const [first, ...rest] = wire.stillWorks;
+  if (first !== undefined) return { ...wire, stillWorks: [first, ...rest] };
+  return null;
+}
+
+/**
+ * The same narrowing for a notice that declares a total outage, which is the one shape that may name nothing.
+ *
+ * Separate from `noticeFrom` because the two answer different questions: this one is a caller ASSERTING that the
+ * whole product is down, and that assertion belongs at a call site a reader can find rather than inside a guard
+ * that would otherwise have to infer it from an empty array.
+ */
+export function outageFrom(wire: WireNotice): Notice {
+  return { ...wire, stillWorks: [], isWholeProductDown: true };
+}

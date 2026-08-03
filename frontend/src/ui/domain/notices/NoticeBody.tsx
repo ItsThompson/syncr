@@ -16,16 +16,20 @@ import { NoticeMark } from "./NoticeMark";
 
 const NOTHING_SURVIVES = "nothing is available while the whole product is down";
 
+/* Both readers below branch on `isWholeProductDown`, which is the field the type introduced and the one a reader
+ * searching for the total-outage case will find. The array's length says the same thing under the type, and says it
+ * in a way nothing points at. */
+
 /** One row per capability, which is the panel volume's form. */
 function capabilityRows(notice: Notice): string[] {
   const unavailable = notice.unavailable.map((capability) => `unavailable · ${capability}`);
-  if (notice.stillWorks.length === 0) return [...unavailable, NOTHING_SURVIVES];
+  if (notice.isWholeProductDown === true) return [...unavailable, NOTHING_SURVIVES];
   return [...unavailable, ...notice.stillWorks.map((works) => `still works · ${works}`)];
 }
 
 /** The same fact in one line, which is what the two one-line volumes have room for. */
 function capabilityLine(notice: Notice): string {
-  if (notice.stillWorks.length === 0) return NOTHING_SURVIVES;
+  if (notice.isWholeProductDown === true) return NOTHING_SURVIVES;
   return `still works · ${notice.stillWorks.join(", ")}`;
 }
 

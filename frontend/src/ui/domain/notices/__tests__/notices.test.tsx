@@ -13,7 +13,8 @@ import { componentNamesIn } from "../../../../testing/kitExports";
 import { NoticeCard } from "../NoticeCard";
 import { NoticePanel } from "../NoticePanel";
 import { NoticeStrip } from "../NoticeStrip";
-import type { Notice, NoticeAction, NoticePigment, NoticeVolume } from "../notice";
+import { noticeFrom, outageFrom } from "../notice";
+import type { Notice, NoticeAction, NoticePigment, NoticeVolume, WireNotice } from "../notice";
 
 /* The base is a real `Notice` rather than a cast, and the overrides are the fields these cases vary. A factory
  * typed `Partial<Notice>` would need a cast to spread over a union, and a cast is exactly what would hide the
@@ -90,20 +91,54 @@ describe("what still works", () => {
   });
 
   it("says so in words when the whole product is down, rather than leaving the line blank", () => {
-    render(
-      <NoticePanel
-        notice={{
-          ...BASE_NOTICE,
-          volume: "panel",
-          stillWorks: [],
-          isWholeProductDown: true,
-        }}
-      />,
-    );
+    render(<NoticePanel notice={outageFrom({ ...BASE_NOTICE, volume: "panel" })} />);
 
     expect(
       screen.getByText("nothing is available while the whole product is down"),
     ).toBeInTheDocument();
+  });
+});
+
+/* THE BOUNDARY, WHICH IS WHAT KEEPS THE TYPE RULE FROM BEING CAST AWAY. The api types `stillWorks` as a plain
+ * array, so a response is not assignable to `Notice` and the cheapest way out would be `as Notice`: precisely the
+ * escape the non-empty tuple exists to close. `noticeFrom` is the narrowing, and it lives in the file that owns the
+ * invariant. */
+describe("a notice arriving over the wire", () => {
+  const wire: WireNotice = { ...BASE_NOTICE, stillWorks: ["reading the plan"] };
+
+  it("narrows to the kit's type when it names a surviving capability", () => {
+    const narrowed = noticeFrom(wire);
+
+    expect(narrowed?.stillWorks).toEqual(["reading the plan"]);
+  });
+
+  it("is refused when it names none, rather than being cast into the kit", () => {
+    expect(noticeFrom({ ...wire, stillWorks: [] })).toBeNull();
+  });
+
+  it("renders through the narrowing without a cast at the call site", () => {
+    const narrowed = noticeFrom({ ...wire, volume: "panel" });
+    if (narrowed === null) throw new Error("the fixture names a surviving capability");
+
+    render(<NoticePanel notice={narrowed} />);
+
+    expect(screen.getByText("still works \u00b7 reading the plan")).toBeInTheDocument();
+  });
+
+  it("declares a total outage at a call site rather than inferring one from an empty array", () => {
+    const outage = outageFrom({ ...wire, stillWorks: [] });
+
+    expect(outage.isWholeProductDown).toBe(true);
+    expect(outage.stillWorks).toHaveLength(0);
+  });
+
+  /* The wire type is what the response actually is, so this pins that the narrowing is the only way in: a plain
+   * array assigned straight to `Notice` is the error the guard exists to answer. */
+  it("does not assign straight to the kit's type", () => {
+    // @ts-expect-error a plain array is not a non-empty tuple: narrow it with noticeFrom
+    const direct: Notice = wire;
+
+    expect(direct).toBeDefined();
   });
 });
 
