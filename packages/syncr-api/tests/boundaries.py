@@ -49,7 +49,10 @@ PRINCIPAL_ANNOTATION = Principal.__name__
 SERVICE_MODULE_SUFFIX = ".service"
 SERVICE_MODULE_NAME = "service.py"
 REPOSITORY_MODULE_NAME = "repository.py"
-MODELS_MODULE_NAME = "models.py"
+# What a mapped class assigns to name its table. Read from a module's SOURCE to decide whether
+# importing it can contribute a table, so the models walk finds a table wherever a package
+# declares one without importing the package's routes, wiring, or entrypoints on the way.
+TABLENAME_ATTRIBUTE = "__tablename__"
 PACKAGE_NAME = "syncr_api"
 
 # The statement constructors a scoped repository must not call directly. `insert` is
@@ -289,21 +292,44 @@ def package_modules(source_root: Path, package: str) -> list[Path]:
     return sorted((source_root / package).glob("*.py"))
 
 
+def declares_a_table(source: str) -> bool:
+    """Whether this module's source names a table inside a class body."""
+    for statement in ast.walk(ast.parse(source)):
+        if not isinstance(statement, ast.ClassDef):
+            continue
+        for assignment in statement.body:
+            targets: list[ast.expr] = []
+            if isinstance(assignment, ast.Assign):
+                targets = list(assignment.targets)
+            elif isinstance(assignment, ast.AnnAssign):
+                targets = [assignment.target]
+            if any(getattr(target, "id", None) == TABLENAME_ATTRIBUTE for target in targets):
+                return True
+    return False
+
+
 def mapped_classes(source_root: Path) -> list[type]:
-    """Every model class the package declares, importing each models module first.
+    """Every model class the package declares, importing the modules that declare one first.
 
     Filesystem-driven rather than read from the mapper registry. A registry only knows
     the modules something has already imported, so a feature module whose models nothing
     in the suite happens to import would fall outside every schema rule silently. This
     also populates ``Base.metadata``, which the metadata rules read.
+
+    Not restricted to ``models.py``: a package may split its tables by concern, and one that
+    kept them all outside a ``models.py`` would otherwise fall outside every rule stated over
+    this walk. Which modules to import is decided by reading each one for a class that names a
+    table, so a package's routes and wiring are never imported and no module is skipped by name.
     """
     discovered: list[type] = []
-    for path in sorted(source_root.glob(f"*/{MODELS_MODULE_NAME}")):
-        module = import_module(f"{PACKAGE_NAME}.{path.parent.name}.models")
+    for path in sorted(source_root.glob("*/*.py")):
+        if path.name.startswith("_") or not declares_a_table(path.read_text(encoding="utf-8")):
+            continue
+        module = import_module(f"{PACKAGE_NAME}.{path.parent.name}.{path.stem}")
         discovered.extend(
             member
             for _name, member in inspect.getmembers(module, inspect.isclass)
-            if member.__module__ == module.__name__ and hasattr(member, "__tablename__")
+            if member.__module__ == module.__name__ and hasattr(member, TABLENAME_ATTRIBUTE)
         )
     return discovered
 

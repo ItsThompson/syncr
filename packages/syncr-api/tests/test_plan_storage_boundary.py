@@ -58,12 +58,7 @@ from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.solving.config import NON_TERMINAL_STATUSES, OPERATIONS_TABLE, SOLVE
 from syncr_api.solving.models import Operation  # noqa: F401 - registers its table
-from tests.boundaries import (
-    mapped_classes,
-    package_mapped_classes,
-    public_methods,
-    table_names,
-)
+from tests.boundaries import package_mapped_classes, public_methods, table_names
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -335,18 +330,26 @@ def test_every_plan_side_table_states_what_reads_it(source_root: Path) -> None:
     }
 
 
-def test_the_table_walk_reads_the_whole_package_rather_than_its_models_module(
+def test_the_table_walk_reads_the_whole_package_rather_than_one_module_of_it(
     source_root: Path,
 ) -> None:
-    # The control for the subject set. Half of these tables are declared in `plans/facts.py`,
-    # so a walk over `models.py` alone would leave them outside the rule above, and the rule
-    # would go on passing once someone shortened the list to match what the walk could see.
-    owned = plan_side_tables(source_root)
-    from_models_modules = table_names(mapped_classes(source_root))
+    # The control for the subject set. `plans` declares three of its tables in `models.py` and
+    # six in `facts.py`, so a walk that read one module per package would leave two thirds of
+    # them outside the rule above, and the rule would go on passing once someone shortened the
+    # list to match what the walk could see. Asserted as "more than one module contributes",
+    # which is the property, rather than against a narrower walk that no longer exists.
+    by_module: dict[str, set[str]] = {}
+    for model in package_mapped_classes(source_root, "plans"):
+        by_module.setdefault(model.__module__, set()).update(table_names([model]))
 
-    assert {BLOCK_OUTCOMES_TABLE, EDIT_EVENTS_TABLE, VERDICT_EVENTS_TABLE} <= owned
-    assert BLOCK_OUTCOMES_TABLE not in from_models_modules
-    assert PLAN_REVISIONS_TABLE in from_models_modules
+    assert set(by_module) == {"syncr_api.plans.models", "syncr_api.plans.facts"}
+    assert PLAN_REVISIONS_TABLE in by_module["syncr_api.plans.models"]
+    assert {BLOCK_OUTCOMES_TABLE, EDIT_EVENTS_TABLE, VERDICT_EVENTS_TABLE} <= by_module[
+        "syncr_api.plans.facts"
+    ]
+    assert {BLOCK_OUTCOMES_TABLE, EDIT_EVENTS_TABLE, VERDICT_EVENTS_TABLE} <= plan_side_tables(
+        source_root
+    )
 
 
 @pytest.mark.parametrize("table_name", sorted(DOMINANT_READS))

@@ -44,6 +44,7 @@ from syncr_api.plans import models as plans_models
 from tests.boundaries import (
     REPOSITORY_MODULE_NAME,
     bare_statement_calls,
+    declares_a_table,
     mapped_classes,
     package_modules,
     packages_with_scoped_tables,
@@ -256,6 +257,31 @@ def test_the_repository_walk_names_the_package_of_a_scoped_table() -> None:
     # walk cannot see one" are indistinguishable.
     assert packages_with_scoped_tables([plans_models.PlanRevision]) == {"plans"}
     assert packages_with_scoped_tables([accounts_models.BrowserSession]) == set()
+
+
+def test_the_models_walk_finds_a_table_declared_outside_a_models_module(
+    source_root: Path,
+) -> None:
+    # What the walk reads is decided by reading each module for a class that names a table,
+    # not by the module being called `models.py`. Six of plan storage's tables are declared in
+    # `plans/facts.py`, so a walk over `models.py` alone would leave a package that kept every
+    # table in such a module outside all four rules above. The negative half is the point of
+    # the source reading: a package's routes and wiring must not be imported to find a table.
+    found = {model.__module__ for model in mapped_classes(source_root)}
+
+    assert "syncr_api.plans.facts" in found
+    assert "syncr_api.plans.models" in found
+    assert not any(module.endswith((".api", ".wiring", ".main")) for module in found), sorted(found)
+
+
+def test_the_models_walk_reads_a_class_that_names_a_table_and_no_other(source_root: Path) -> None:
+    # The reading's own control, so "every module declaring a table is imported" cannot pass on
+    # a check that answers yes or no to everything.
+    assert declares_a_table('class Thing(Base):\n    __tablename__ = "things"\n')
+    assert declares_a_table('class Thing(Base):\n    __tablename__: str = "things"\n')
+    assert not declares_a_table('__tablename__ = "not_in_a_class"\n')
+    assert not declares_a_table("class Service:\n    def act(self) -> None: ...\n")
+    assert not declares_a_table((source_root / "core" / "errors.py").read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize(
