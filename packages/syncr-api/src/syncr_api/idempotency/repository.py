@@ -14,6 +14,7 @@ so it is scoped exactly as the row is.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import text
@@ -150,7 +151,7 @@ def _as_record(key: IdempotencyKey) -> IdempotencyKeyRecord:
         key=key.idempotency_key,
         request_hash=key.request_hash,
         state=cast("KeyState", key.state),
-        response_body=key.response_body,
+        response_body=deepcopy(key.response_body),
         created_at=key.created_at,
         expires_at=key.expires_at,
     )

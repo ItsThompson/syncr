@@ -12,6 +12,7 @@ table, appended and never replaced.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING
 
 from sqlalchemy.dialects.postgresql import insert
@@ -107,12 +108,12 @@ def _as_record(proposal: PendingProposal) -> PendingProposalRecord:
     return PendingProposalRecord(
         tenant_id=proposal.tenant_id,
         iso_week=IsoWeek.parse(proposal.iso_week),
-        document=proposal.document,
-        proposal_diff=proposal.proposal_diff,
-        objective_breakdown=proposal.objective_breakdown,
-        verdict=proposal.verdict,
+        document=deepcopy(proposal.document),
+        proposal_diff=deepcopy(proposal.proposal_diff),
+        objective_breakdown=deepcopy(proposal.objective_breakdown),
+        verdict=deepcopy(proposal.verdict),
         input_version=proposal.input_version,
         operation_id=proposal.operation_id,
-        candidate_adjustment=proposal.candidate_adjustment,
+        candidate_adjustment=deepcopy(proposal.candidate_adjustment),
         created_at=proposal.created_at,
     )

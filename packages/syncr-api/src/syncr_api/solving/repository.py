@@ -10,6 +10,7 @@ method that inserts.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
@@ -99,7 +100,7 @@ def _as_record(operation: Operation) -> OperationRecord:
         iso_week=None if operation.iso_week is None else IsoWeek.parse(operation.iso_week),
         source_id=operation.source_id,
         input_version=operation.input_version,
-        candidate_adjustment=operation.candidate_adjustment,
+        candidate_adjustment=deepcopy(operation.candidate_adjustment),
         scheduled_for=operation.scheduled_for,
         started_at=operation.started_at,
         finished_at=operation.finished_at,

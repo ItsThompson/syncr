@@ -14,6 +14,7 @@ Requesting a tradeoff writes nothing here. Only approval does.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
@@ -96,7 +97,7 @@ def _as_record(adjustment: WeekAdjustment) -> WeekAdjustmentRecord:
         # states what the database already guarantees rather than re-checking it.
         kind=cast("AdjustmentKind", adjustment.kind),
         target_id=adjustment.target_id,
-        reductions=adjustment.reductions,
+        reductions=deepcopy(adjustment.reductions),
         delta_minutes=adjustment.delta_minutes,
         created_at=adjustment.created_at,
         created_by_operation_id=adjustment.created_by_operation_id,

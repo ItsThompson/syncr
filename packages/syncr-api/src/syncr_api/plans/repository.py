@@ -17,6 +17,7 @@ learning layer trains on the pair of what was proposed and what was kept.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
@@ -143,8 +144,8 @@ def _as_record(revision: PlanRevision) -> PlanRevisionRecord:
         # states what the database already guarantees rather than re-checking it.
         status=cast("RevisionStatus", revision.status),
         reason=cast("RevisionReason", revision.reason),
-        document=revision.document,
-        objective_breakdown=revision.objective_breakdown,
+        document=deepcopy(revision.document),
+        objective_breakdown=deepcopy(revision.objective_breakdown),
         weight_set_version=revision.weight_set_version,
         input_version=revision.input_version,
         supersedes_id=revision.supersedes_id,

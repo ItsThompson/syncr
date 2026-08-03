@@ -5,6 +5,13 @@ repository in this application does: a mapped row carries a session, a load stat
 setters, so returning one would let a caller change a stored value outside the method that
 owns the write. These carry values only.
 
+That is why the JSONB payloads are copied out of the row rather than aliased, and why the
+copy is DEEP: a plan document holds a list of blocks, so a top-level copy would still hand
+back the row's own list, and ``record.document["blocks"].append(...)`` would change the
+value the row holds. Nothing is persisted either way, because a plain JSONB column emits no
+``UPDATE`` for a mutated value, so what the copy buys is that the record cannot be used to
+reach the row it was read from.
+
 ``iso_week`` is an :class:`~syncr_domain.weeks.IsoWeek` here and a string in the column.
 The conversion happens at this boundary, so no caller parses a week identifier and no
 caller formats one.

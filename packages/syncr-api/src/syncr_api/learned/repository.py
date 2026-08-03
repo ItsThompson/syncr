@@ -13,6 +13,7 @@ re-solve behind it, and it belongs with the screen that offers it.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, cast
 
 from syncr_api.core.repository import TenantScopedRepository
@@ -81,12 +82,12 @@ def _as_record(weights: WeightSet) -> WeightSetRecord:
         churn=weights.churn,
         context_switch=weights.context_switch,
         staleness=weights.staleness,
-        duration_multiplier=weights.duration_multiplier,
-        time_of_day_fitness=weights.time_of_day_fitness,
-        skip_probability=weights.skip_probability,
+        duration_multiplier=deepcopy(weights.duration_multiplier),
+        time_of_day_fitness=deepcopy(weights.time_of_day_fitness),
+        skip_probability=deepcopy(weights.skip_probability),
         context_switch_cost=weights.context_switch_cost,
         churn_tolerance=weights.churn_tolerance,
         fitted_at=weights.fitted_at,
-        maturity=weights.maturity,
+        maturity=deepcopy(weights.maturity),
         created_at=weights.created_at,
     )

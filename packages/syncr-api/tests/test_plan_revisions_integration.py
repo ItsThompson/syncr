@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from syncr_api.core.db import create_db_engine, create_sessionmaker
@@ -145,6 +146,33 @@ async def test_an_appended_revision_reads_back_with_its_document_intact(
     assert found.weight_set_version == WEIGHT_SET_VERSION
     assert found.status == APPLIED
     assert found.approved_at is None
+
+
+async def test_a_record_holds_a_copy_a_caller_cannot_reach_the_row_through(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # The record is frozen, so its fields cannot be reassigned. Its JSONB payloads are copied
+    # too, and DEEPLY: a document holds a list of blocks, so a top-level copy would hand back
+    # the row's own list and a caller appending to it would change the value the row holds.
+    #
+    # The mapped row is held here on purpose. The session's identity map is weak and a record
+    # keeps no reference to the row it was read from, so a row nothing else holds is usually
+    # collected and the next read decodes the column again. That makes the aliasing
+    # unobservable by luck rather than by design, and this is the case where the luck runs
+    # out: anything in the same session that holds the row sees what a caller did to its value.
+    blocks = [{"id": "abc", "pinned": True}]
+    appended = await append_revision(sessions, owner.tenant_id, document=document(blocks=blocks))
+
+    async with sessions() as session:
+        row = await session.scalar(select(PlanRevision).where(PlanRevision.id == appended.id))
+        assert row is not None
+        record = await PlanRepository(session, owner.tenant_id).find(appended.id)
+        assert record is not None
+        record.document["blocks"].append({"id": "smuggled"})
+        record.document["discretionary_minutes"] = 0
+
+        assert row.document["blocks"] == blocks
+        assert row.document["discretionary_minutes"] == 4_320
 
 
 async def test_the_stored_week_is_the_document_s_week(
