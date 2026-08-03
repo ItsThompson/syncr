@@ -31,10 +31,10 @@ describe("Textarea", () => {
     expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
   });
 
-  it("takes the prose variant, which is what widens it to its column", () => {
+  it("takes the multiline modifier, which is what widens it to its column and lets it grow", () => {
     render(<Textarea value="" onValueChange={() => {}} rows={2} label="Note" />);
 
-    expect([...screen.getByRole("textbox").classList]).toContain("control--prose");
+    expect([...screen.getByRole("textbox").classList]).toContain("control--multiline");
   });
 
   it("resizes vertically only", async () => {

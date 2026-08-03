@@ -2,7 +2,10 @@
  *
  * Horizontal resize is off, because a reader dragging it wider breaks the column the form lives in. The
  * height is the caller's `rows`, so the field's resting size is a decision at the call site rather than a
- * default nobody chose. */
+ * default nobody chose.
+ *
+ * The geometry comes from `control--multiline` rather than from the field family's `prose` measure: that word
+ * names a WIDTH, and a prose field and a figure field are both one line high. */
 
 import type { Ref } from "react";
 
@@ -42,7 +45,7 @@ export function Textarea({
   return (
     <textarea
       ref={ref}
-      className="control control--prose"
+      className="control control--multiline"
       id={id}
       name={name}
       rows={rows}

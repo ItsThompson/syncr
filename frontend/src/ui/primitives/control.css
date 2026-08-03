@@ -35,7 +35,10 @@
   text-align: right;
 }
 
-.control--prose {
+/* The one control that grows, and only downwards. Named for its geometry rather than for prose, because
+ * `--fs-prose` and the field family's `measure` already use that word for a WIDTH: a prose field and a
+ * figure field are both one line high, and this is the modifier that makes a control multi-line. */
+.control--multiline {
   width: 100%;
   min-width: 0;
   height: auto;
