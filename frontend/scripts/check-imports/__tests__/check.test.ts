@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { filesUnder } from "../../lib/files.ts";
-import { areaOf, checkImports, isUnderSourceRoot } from "../check.ts";
+import { checkImports } from "../check.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sourceRoot = path.join(here, "..", "__fixtures__", "src");
@@ -174,50 +174,6 @@ describe("a re-export in a directory every zone may read", () => {
   it("leaves a conduit that reaches nothing denied alone", async () => {
     const outcome = await check(["ui/domain/shell/Legal.ts"]);
     expect(outcome.findings).toEqual([]);
-  });
-});
-
-describe("areaOf", () => {
-  it.each([
-    ["ui/domain/shell/TopBar.tsx", "ui/domain"],
-    ["ui/primitives/Button.tsx", "ui/primitives"],
-    ["api/client.ts", "api"],
-    ["contract/problem.ts", "contract"],
-    ["tokens/index.css", "tokens"],
-  ])("maps %s to %s", (relative, area) => {
-    expect(areaOf(sourceRoot, path.join(sourceRoot, relative))).toBe(area);
-  });
-
-  it("returns null for a file outside every named area", () => {
-    expect(areaOf(sourceRoot, path.join(sourceRoot, "main.tsx"))).toBeNull();
-  });
-
-  it("does not read a sibling directory as an area by prefix", () => {
-    expect(areaOf(sourceRoot, path.join(sourceRoot, "apiary", "thing.ts"))).toBeNull();
-  });
-});
-
-/* NULL FROM `areaOf` MEANT TWO THINGS AND WAS TREATED AS ONE. A package is always reachable; a
- * directory under `src/` that nobody modelled is not, and treating the second as permitted let a kit
- * component fetch through `src/shared/` with every check green. These are the tests for the
- * distinction. */
-describe("isUnderSourceRoot", () => {
-  it.each(["shared/plumbing.ts", "main.tsx", "ui/primitives/Button.tsx"])(
-    "reads %s as source the model is responsible for",
-    (relative) => {
-      expect(isUnderSourceRoot(sourceRoot, path.join(sourceRoot, relative))).toBe(true);
-    },
-  );
-
-  it.each(["../package.json", "../../node_modules/react/index.js"])(
-    "reads %s as outside src, which is a package and always reachable",
-    (relative) => {
-      expect(isUnderSourceRoot(sourceRoot, path.join(sourceRoot, relative))).toBe(false);
-    },
-  );
-
-  it("does not read src itself as a file under src", () => {
-    expect(isUnderSourceRoot(sourceRoot, sourceRoot)).toBe(false);
   });
 });
 

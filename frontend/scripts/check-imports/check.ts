@@ -26,17 +26,8 @@
  * It also reports an import that resolves to nothing, which is a broken module the bundler would
  * fail on later and which no other check here would name.
  *
- * ONE MORE FAIL-OPEN BRANCH CLOSED IN ITERATION 5. `areaOf` returned null both for a package, which is
- * always reachable, and for a file under `src/` in a directory nobody had added to `AREAS`, which was
- * treated as permitted and also stopped the transitive walk. So `src/shared/plumbing.ts` re-exporting
- * the fetch client let a `ui/domain` component fetch in dev, in test and in production, with all seven
- * checks, oxlint, tsc, prettier and `vite build` green. `AREAS` was a list of the directories that
- * existed the day it was written, which is the same sentence this repository has now written eight
- * times: the rule was stated against the shapes someone enumerated rather than against the capability.
- *
- * An unmodelled directory under `src/` is now a finding of its own, so adding a directory is a
- * deliberate act that updates the model. This is the choice `scripts/import-zones/policy.ts` already
- * made when it throws on a specifier that names no capability. */
+ * The zone model itself is in `zones.ts`: which directories exist under `src/`, what each kit zone may reach,
+ * and why an area is denied. This file is the walk. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -45,53 +36,15 @@ import { blankJsComments } from "../lib/comments.ts";
 import { createPositionResolver } from "../lib/css-scan.ts";
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
 import { relativeToRepo } from "../lib/paths.ts";
-
-/** Areas under `src/`, as the zone policy names them. Longest first, so `ui/domain` wins over `ui`. */
-const AREAS = [
-  "ui/primitives",
-  "ui/layout",
-  "ui/domain",
-  "api",
-  "app",
-  "routes",
-  "contract",
-  "lib",
-  "testing",
-  "tokens",
-] as const;
-
-export type Area = (typeof AREAS)[number];
-/** What each kit zone may reach, by resolved area. A package is always reachable. */
-const REACHABLE: Readonly<Record<string, readonly Area[]>> = {
-  "ui/primitives": ["ui/primitives", "lib", "tokens"],
-  "ui/layout": ["ui/primitives", "ui/layout", "lib", "tokens"],
-  "ui/domain": ["ui/primitives", "ui/layout", "ui/domain", "contract", "lib", "tokens"],
-};
-
-/* Why each area is unreachable from the kit, phrased as the capability rather than the path. */
-const DENIAL_REASON: Readonly<Record<string, string>> = {
-  api: "it fetches, or holds the key registry or the generated schema. Read the types from contract/",
-  app: "it is the application shell and its session",
-  routes: "it is a route, and a component does not know one",
-  contract: "a Problem is a domain concept: a control or a container that names one is misfiled",
-  testing: "it is test-only",
-};
-
-/** What the model says about a directory it does not name. Denied, and it says so as a finding. */
-function unmodelledMessage(resolved: string): string {
-  return (
-    `it resolves to ${relativeToRepo(resolved)}, which sits under src/ in a directory the zone ` +
-    "model does not name, so no rule here can say what it may reach. Add the directory to AREAS and " +
-    "to REACHABLE in scripts/check-imports/check.ts, and to the glob groups in .oxlintrc.json. A " +
-    "directory nobody modelled is how a primitive came to reach the fetch client through " +
-    "src/shared/ with every check green."
-  );
-}
-
-/* Areas a kit zone may read that are NOT themselves kit zones, so nothing else checks what they
- * import. A chain is followed through these, and only these: a kit file reached in a chain is checked
- * directly on its own turn, so following it would report the same violation twice. */
-const CONDUITS: readonly Area[] = ["lib", "contract", "tokens"];
+import {
+  areaOf,
+  CONDUITS,
+  denialReasonFor,
+  isUnderSourceRoot,
+  REACHABLE,
+  unmodelledMessage,
+  type Area,
+} from "./zones.ts";
 
 const QUOTED_SPECIFIER =
   /(?:\bfrom\s*|\bimport\s*|\brequire\s*\(\s*|\bimport\s*\(\s*)["']([^"']+)["']/g;
@@ -148,23 +101,6 @@ export interface CheckImportsInput {
   readonly sourceRoot: string;
   /** Resolves a candidate path to true when a file exists there. */
   readonly exists: (candidate: string) => Promise<boolean>;
-}
-
-/** The area a resolved file belongs to, or null when it is outside every named area. */
-export function areaOf(sourceRoot: string, resolved: string): Area | null {
-  const relative = path.relative(sourceRoot, resolved).split(path.sep).join("/");
-  return AREAS.find((area) => relative === area || relative.startsWith(`${area}/`)) ?? null;
-}
-
-/**
- * True when a resolved file sits inside `src/`, which is what makes an unnamed area a finding.
- *
- * A file outside `src/` is a package, and a package is always reachable. Telling the two apart is the
- * whole of the fix: `areaOf` returning null meant both, and both were treated as permitted.
- */
-export function isUnderSourceRoot(sourceRoot: string, resolved: string): boolean {
-  const relative = path.relative(sourceRoot, resolved);
-  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
 /** A denied destination the walk reached, with the chain of files that got there. */
@@ -298,7 +234,7 @@ export async function checkImports(input: CheckImportsInput): Promise<CheckOutco
           check: "import-zone",
           message:
             `"${site.specifier}" resolves into ${area}/, which ${zone}/ may not reach: ` +
-            `${DENIAL_REASON[area] ?? "it is above this zone"}. ` +
+            `${denialReasonFor(area)}. ` +
             `Resolved to ${relativeToRepo(resolved)}.`,
         });
         continue;
@@ -321,7 +257,7 @@ export async function checkImports(input: CheckImportsInput): Promise<CheckOutco
               `${unmodelledMessage(laundered.resolved)} Chain: ` +
               `${laundered.chain.map((step) => relativeToRepo(step)).join(" -> ")}.`
             : `"${site.specifier}" is permitted, but it reaches ${laundered.area}/, which ${zone}/ ` +
-              `may not: ${DENIAL_REASON[laundered.area] ?? "it is above this zone"}. Chain: ` +
+              `may not: ${denialReasonFor(laundered.area)}. Chain: ` +
               `${laundered.chain.map((step) => relativeToRepo(step)).join(" -> ")}.`,
       });
     }

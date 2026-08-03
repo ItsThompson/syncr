@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { appSourceDir } from "../../lib/paths.ts";
 import { emittedDeclarationsFor } from "../../lib/tailwind.ts";
+import { CIRCLE_ALLOWLIST, isCircleAllowed } from "../circles.ts";
 import { refusedByEmittedCss } from "../emitted.ts";
 import { lintMarkup } from "../lint.ts";
 
@@ -292,11 +293,15 @@ describe("the radius rules", () => {
     expect(checksOf(outcome.findings)).toEqual(["circle-allowlist"]);
   });
 
-  it("holds four names, for the four elements the design language names", async () => {
-    const rules = await readFile(path.join(here, "..", "rules.ts"), "utf8");
-    const allowlist = /CIRCLE_ALLOWLIST = new Set\(\[([^\]]*)\]\)/.exec(rules);
+  it("holds four names, for the four elements the design language names", () => {
+    expect([...CIRCLE_ALLOWLIST]).toHaveLength(4);
+  });
 
-    expect(allowlist?.[1].split(",").filter((name) => name.trim() !== "")).toHaveLength(4);
+  /* The allowlist is read by two rules now, the class-list one and the inline-style one, so the filename
+   * match is asserted where it is written rather than through each of them. */
+  it("reads an element's own file name, not a directory it happens to sit in", () => {
+    expect(isCircleAllowed("/src/ui/domain/areas/AreaChip.tsx")).toBe(true);
+    expect(isCircleAllowed("/src/ui/domain/areas/AreaChip/Banner.tsx")).toBe(false);
   });
 
   it("refuses rounded-full anywhere else, even inside the kit", async () => {
