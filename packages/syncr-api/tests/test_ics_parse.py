@@ -1091,8 +1091,8 @@ def test_a_feed_cannot_spend_more_than_its_reading_budget() -> None:
     # Nothing bounds a feed's COMPONENT COUNT. The per-feed bound counts placed events, and these
     # place none; the per-series bound counts expansion steps, and these take one each. So the cost
     # multiplies by however many components the byte limit allows: measured at 2.5 seconds each and
-    # linear, which is 36 hours of one worker tick with its transaction open for a feed at
-    # MAX_FEED_BYTES, reporting no events and no rejections.
+    # linear, which is upwards of 36 hours of one worker tick with its transaction open for a feed
+    # at MAX_FEED_BYTES, reporting no events and no rejections.
     #
     # A budget of zero states a spent budget rather than waiting for one, which is why it is a
     # parameter.
@@ -1129,8 +1129,8 @@ def test_a_feed_that_spends_its_budget_still_accounts_for_every_component() -> N
 
 def test_a_budget_leaves_a_feed_the_product_exists_to_read_alone() -> None:
     # The bound has to clear the slowest LEGITIMATE feed with room, or it refuses what syncr is for.
-    # Measured: 7.1 seconds for 9,800 events from 700 daily series running since 2010, against a
-    # default budget four times that.
+    # Measured: 6.9 to 7.9 seconds for 9,800 events from 700 daily series running since 2010, across
+    # runs and machines, against a budget of a minute.
     body = "".join(
         f"BEGIN:VEVENT\r\nUID:real-{index}@example.org\r\nSUMMARY:Lecture {index}\r\n"
         "DTSTART;TZID=Europe/London:20100901T090000\r\n"
