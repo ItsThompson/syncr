@@ -36,22 +36,30 @@ USER_ID_COLUMN = "user_id"
 TENANTS_TABLE = "tenants"
 USERS_TABLE = "users"
 SESSIONS_TABLE = "sessions"
+OAUTH_CLIENTS_TABLE = "oauth_clients"
 
 # The tables that establish identity rather than hold a plan. They are exempt from
 # the scoped-table rules above, and each exemption is answerable:
 #
-#   tenants   is the scope. Its own `id` is what every other table's tenant_id
-#             references, so a tenant_id column would reference itself.
-#   users     is read by email at sign-in, before any tenant is known. It carries a
-#             UNIQUE tenant_id, which is what makes the tenant-to-user relation 1:1
-#             and permanent rather than conventional.
-#   sessions  is read by the presented credential's digest, before any tenant is
-#             known. It is the one place a principal and a scope both appear.
+#   tenants        is the scope. Its own `id` is what every other table's tenant_id
+#                  references, so a tenant_id column would reference itself.
+#   users          is read by email at sign-in, before any tenant is known. It carries a
+#                  UNIQUE tenant_id, which is what makes the tenant-to-user relation 1:1
+#                  and permanent rather than conventional.
+#   sessions       is read by the presented credential's digest, before any tenant is
+#                  known. It is the one place a principal and a scope both appear.
+#   oauth_clients  is read by the presented client_id, before any tenant is known: the
+#                  token endpoint carries no session at all. It establishes the identity of
+#                  a CLIENT the way `users` establishes a person's, and one registry serves
+#                  the whole deployment, so there is no scope for it to prove. Its rows are
+#                  configuration seeded by a migration, and a per-tenant copy of them would
+#                  be a cache of deployment config that something would have to keep
+#                  provisioning for every new tenant.
 #
 # Nothing else belongs here. A later table added to this set would be a table whose
 # queries no longer have to prove they are scoped, so the set is asserted to be
-# exactly these three.
-IDENTITY_TABLES = frozenset({TENANTS_TABLE, USERS_TABLE, SESSIONS_TABLE})
+# exactly these four.
+IDENTITY_TABLES = frozenset({TENANTS_TABLE, USERS_TABLE, SESSIONS_TABLE, OAUTH_CLIENTS_TABLE})
 
 
 class TenantScoped:
