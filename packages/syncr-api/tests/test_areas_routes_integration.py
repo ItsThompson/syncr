@@ -19,7 +19,7 @@ The cookie is replayed by setting the header rather than through a cookie jar: t
 from __future__ import annotations
 
 from http import HTTPStatus
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
@@ -108,10 +108,15 @@ def project_rows(database_url: str, tenant_id: TenantId) -> list[ProjectRow]:
     return run(read())
 
 
-def declare_area(http: TestClient, headers: dict[str, str], **body: object) -> dict[str, object]:
+def declare_area(http: TestClient, headers: dict[str, str], **body: object) -> dict[str, Any]:
+    """The `{area, ramp}` body a successful declaration answers with.
+
+    Typed loosely on purpose: every assertion below reads the JSON a real client receives,
+    rather than a shape reconstructed from the schema it was serialized by.
+    """
     response = http.post(AREAS, json=body, headers=headers)
     assert response.status_code == HTTPStatus.CREATED, response.text
-    payload: dict[str, object] = response.json()
+    payload: dict[str, Any] = response.json()
     return payload
 
 
@@ -169,7 +174,7 @@ def test_the_first_four_areas_take_four_distinct_pigments(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
     dealt = [
-        declare_area(http, signed_in, name=f"Area {index}")["area"]["pigmentIndex"]  # type: ignore[index]
+        declare_area(http, signed_in, name=f"Area {index}")["area"]["pigmentIndex"]
         for index in range(4)
     ]
 
@@ -194,7 +199,7 @@ def test_the_thirteenth_area_reuses_a_pigment_and_states_why(
 
     ramp = thirteenth["ramp"]
     assert isinstance(ramp, dict)
-    assert thirteenth["area"]["pigmentIndex"] == PIGMENT_DEAL_ORDER[0]  # type: ignore[index]
+    assert thirteenth["area"]["pigmentIndex"] == PIGMENT_DEAL_ORDER[0]
     assert ramp["pigmentsInUse"] == PIGMENT_COUNT
     assert ramp["areasSharingAPigment"] == 2
     assert "hatch" in str(ramp["statement"])
@@ -254,7 +259,7 @@ def test_an_area_nests_under_one_that_exists(http: TestClient, signed_in: dict[s
 
     child = declare_area(http, signed_in, name="Learning", parentId=parent["id"])["area"]
 
-    assert child["parentId"] == parent["id"]  # type: ignore[index]
+    assert child["parentId"] == parent["id"]
 
 
 @pytest.mark.parametrize(
@@ -308,7 +313,7 @@ def test_a_patch_changes_only_what_it_names(
     http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
 ) -> None:
     created = declare_area(http, signed_in, name="Fitness", floorHours=4, budgetPercent=25)
-    area_id = created["area"]["id"]  # type: ignore[index]
+    area_id = created["area"]["id"]
 
     patched = http.patch(f"{AREAS}/{area_id}", json={"budgetPercent": 30}, headers=signed_in)
 
@@ -322,7 +327,7 @@ def test_a_patch_changes_only_what_it_names(
 
 def test_an_explicit_null_clears_a_floor(http: TestClient, signed_in: dict[str, str]) -> None:
     created = declare_area(http, signed_in, name="Fitness", floorHours=4, budgetPercent=25)
-    area_id = created["area"]["id"]  # type: ignore[index]
+    area_id = created["area"]["id"]
 
     patched = http.patch(f"{AREAS}/{area_id}", json={"floorHours": None}, headers=signed_in)
 
@@ -336,7 +341,7 @@ def test_a_null_name_is_refused_rather_than_read_as_no_change(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
     created = declare_area(http, signed_in, name="Fitness")
-    area_id = created["area"]["id"]  # type: ignore[index]
+    area_id = created["area"]["id"]
 
     response = http.patch(f"{AREAS}/{area_id}", json={"name": None}, headers=signed_in)
 
@@ -348,7 +353,7 @@ def test_a_patch_cannot_move_an_area_between_parents(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
     created = declare_area(http, signed_in, name="Fitness")
-    area_id = created["area"]["id"]  # type: ignore[index]
+    area_id = created["area"]["id"]
 
     response = http.patch(f"{AREAS}/{area_id}", json={"parentId": str(uuid4())}, headers=signed_in)
 
@@ -359,7 +364,7 @@ def test_a_pigment_can_be_re_picked_from_the_ramp(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
     created = declare_area(http, signed_in, name="Fitness")
-    area_id = created["area"]["id"]  # type: ignore[index]
+    area_id = created["area"]["id"]
 
     patched = http.patch(f"{AREAS}/{area_id}", json={"pigmentIndex": 11}, headers=signed_in)
 
@@ -371,7 +376,7 @@ def test_a_pigment_step_off_the_ramp_is_refused(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
     created = declare_area(http, signed_in, name="Fitness")
-    area_id = created["area"]["id"]  # type: ignore[index]
+    area_id = created["area"]["id"]
 
     for step in (-1, PIGMENT_COUNT):
         response = http.patch(f"{AREAS}/{area_id}", json={"pigmentIndex": step}, headers=signed_in)
@@ -394,7 +399,7 @@ def test_another_tenants_area_is_a_404_rather_than_an_edit(
     try:
         stranger_headers = _sign_in(http, stranger.email)
         foreign = declare_area(http, stranger_headers, name="Their fitness")
-        foreign_id = foreign["area"]["id"]  # type: ignore[index]
+        foreign_id = foreign["area"]["id"]
 
         read = http.get(f"{AREAS}/{foreign_id}", headers=signed_in)
         patched = http.patch(f"{AREAS}/{foreign_id}", json={"name": "Mine"}, headers=signed_in)
@@ -431,7 +436,7 @@ def test_an_unsafe_request_from_an_unserved_origin_is_refused(
 def test_declaring_listing_and_completing_a_project(
     http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
 ) -> None:
-    area_id = declare_area(http, signed_in, name="Career")["area"]["id"]  # type: ignore[index]
+    area_id = declare_area(http, signed_in, name="Career")["area"]["id"]
 
     declared = http.post(
         PROJECTS,
@@ -462,8 +467,8 @@ def test_declaring_listing_and_completing_a_project(
 
 
 def test_projects_can_be_filtered_by_area(http: TestClient, signed_in: dict[str, str]) -> None:
-    career = declare_area(http, signed_in, name="Career")["area"]["id"]  # type: ignore[index]
-    fitness = declare_area(http, signed_in, name="Fitness")["area"]["id"]  # type: ignore[index]
+    career = declare_area(http, signed_in, name="Career")["area"]["id"]
+    fitness = declare_area(http, signed_in, name="Fitness")["area"]["id"]
     for area_id, name in ((career, "Interview prep"), (fitness, "Marathon")):
         http.post(PROJECTS, json={"areaId": area_id, "name": name}, headers=signed_in)
 
@@ -493,7 +498,7 @@ def test_a_project_in_another_tenants_area_answers_422_and_stores_nothing(
     try:
         stranger_headers = _sign_in(http, stranger.email)
         foreign_area = declare_area(http, stranger_headers, name="Their career")
-        foreign_id = foreign_area["area"]["id"]  # type: ignore[index]
+        foreign_id = foreign_area["area"]["id"]
 
         response = http.post(
             PROJECTS, json={"areaId": foreign_id, "name": "Interview prep"}, headers=signed_in
@@ -506,7 +511,7 @@ def test_a_project_in_another_tenants_area_answers_422_and_stores_nothing(
 
 
 def test_a_project_body_cannot_carry_a_budget(http: TestClient, signed_in: dict[str, str]) -> None:
-    area_id = declare_area(http, signed_in, name="Career")["area"]["id"]  # type: ignore[index]
+    area_id = declare_area(http, signed_in, name="Career")["area"]["id"]
 
     for field in ("budgetPercent", "floorHours"):
         response = http.post(
@@ -520,7 +525,7 @@ def test_a_project_body_cannot_carry_a_budget(http: TestClient, signed_in: dict[
 def test_a_patch_cannot_move_a_project_between_areas(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
-    area_id = declare_area(http, signed_in, name="Career")["area"]["id"]  # type: ignore[index]
+    area_id = declare_area(http, signed_in, name="Career")["area"]["id"]
     declared = http.post(PROJECTS, json={"areaId": area_id, "name": "Prep"}, headers=signed_in)
 
     response = http.patch(
@@ -533,7 +538,7 @@ def test_a_patch_cannot_move_a_project_between_areas(
 
 
 def test_a_project_deadline_can_be_cleared(http: TestClient, signed_in: dict[str, str]) -> None:
-    area_id = declare_area(http, signed_in, name="Career")["area"]["id"]  # type: ignore[index]
+    area_id = declare_area(http, signed_in, name="Career")["area"]["id"]
     declared = http.post(
         PROJECTS,
         json={"areaId": area_id, "name": "Prep", "deadline": "2026-09-01T12:00:00+00:00"},
