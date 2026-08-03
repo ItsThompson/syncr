@@ -92,9 +92,10 @@ class IcsTime:
 def parse_time(value: str, *, params: tuple[tuple[str, str], ...]) -> IcsTime:
     """One DTSTART, DTEND, RECURRENCE-ID, or EXDATE value as a wall time and a zone kind.
 
-    ``VALUE=DATE`` wins over the value's own shape, because a publisher that declares a
-    date and emits a datetime has told us which it means. A bare date with no ``VALUE``
-    parameter is still a date: iCloud omits the parameter.
+    Either the ``VALUE=DATE`` parameter or a date-shaped value makes this an all-day time, so a
+    publisher that omits the parameter is still understood: iCloud omits it. A publisher that
+    declares ``VALUE=DATE`` and then emits a date-TIME is rejected rather than reinterpreted,
+    because the two halves of the property disagree and neither is more authoritative.
     """
     declared = _param(params, VALUE_PARAM)
     tzid = _param(params, TZID_PARAM)

@@ -1,4 +1,4 @@
-"""The seven calendar-source routes.
+"""The eight calendar-source routes.
 
 Thin, on purpose. Each handler validates a body, resolves who is asking, calls exactly one
 service method, and maps the result onto a response shape. No authorization decision and no

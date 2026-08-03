@@ -1,7 +1,7 @@
 """The sync state one attempt produces, from the state before it and what the attempt did.
 
-Every rule section 06 states about sync state is here, and each one exists because the
-alternative loses something the user needs:
+Every rule about sync state is here, and each one exists because the alternative loses
+something the user needs:
 
 **Every attempt is recorded, successful or not.** ``last_attempt_at`` moves on every call and
 ``last_success_at`` only on a success, so staleness is the difference between them. Writing
@@ -9,8 +9,8 @@ only on success would make a feed that has failed for a week indistinguishable f
 nobody has polled.
 
 **A failure retains the anchor count and the cursor.** The anchors read on the last success
-are still the best occupancy syncr has, and section 06 requires they be retained and marked
-possibly stale rather than cleared. Dropping the cursor would also make the next poll
+are still the best occupancy syncr has, so they are retained and marked possibly stale rather
+than cleared. Dropping the cursor would also make the next poll
 unconditional, so one outage would cost a full reparse.
 
 **A parse that rejected events is still a success.** A feed that half-works must read as

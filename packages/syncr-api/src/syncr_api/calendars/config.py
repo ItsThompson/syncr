@@ -55,25 +55,22 @@ ERROR: Final[SourceState] = "error"
 OK: Final[SourceState] = "ok"
 SOURCE_STATES: Final = (NEVER_SYNCED, EXCLUDED, ERROR, OK)
 
-# Why one component of a feed produced no event. Each member is a row of section 06's ICS
-# ingest table, and the panel states a message per member.
+# Why one component of a feed produced no event. Each member is a row of the ICS ingest table,
+# and the panel states a message per member.
+#
+# A duplicate UID is deliberately absent, and there is no tuple of these: a duplicate is RESOLVED
+# rather than rejected, so it is counted on the outcome instead, and the column that holds a
+# rejection is JSONB with no check constraint for a tuple to generate. A member nothing can emit
+# would be a state the panel has copy for and never renders.
 type RejectionKind = Literal[
-    "missing-duration", "unknown-zone", "malformed-value", "unparseable-recurrence", "duplicate-uid"
+    "missing-duration", "unknown-zone", "malformed-value", "unparseable-recurrence"
 ]
 MISSING_DURATION: Final[RejectionKind] = "missing-duration"
 UNKNOWN_ZONE: Final[RejectionKind] = "unknown-zone"
 MALFORMED_VALUE: Final[RejectionKind] = "malformed-value"
 UNPARSEABLE_RECURRENCE: Final[RejectionKind] = "unparseable-recurrence"
-DUPLICATE_UID: Final[RejectionKind] = "duplicate-uid"
-REJECTION_KINDS: Final = (
-    MISSING_DURATION,
-    UNKNOWN_ZONE,
-    MALFORMED_VALUE,
-    UNPARSEABLE_RECURRENCE,
-    DUPLICATE_UID,
-)
 
-# The projection horizon, in days. Fourteen is section 06's default. The floor is one day
+# The projection horizon, in days. Fourteen is the stated default. The floor is one day
 # because a zero-day horizon would project nothing while reading as configured, and the
 # ceiling is a quarter, past which a destructive reconciliation writes hundreds of events
 # a solve will revise before they arrive.
@@ -94,7 +91,7 @@ LAST_ERROR_MAX_LENGTH: Final = 500
 FETCH_TIMEOUT_SECONDS: Final = 15.0
 MAX_FEED_BYTES: Final = 8 * 1024 * 1024
 
-# How often the worker polls a feed. Section 06 polls on a schedule rather than on demand,
+# How often the worker polls a feed. Feeds are polled on a schedule rather than on demand,
 # and an ICS publisher's own refresh is measured in hours, so a quarter hour is already
 # finer than the data changes.
 SYNC_INTERVAL: Final = timedelta(minutes=15)

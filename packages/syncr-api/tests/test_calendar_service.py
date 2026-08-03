@@ -6,7 +6,7 @@ What is proven here is the service's own reasoning, which is where three things 
 **Which scope each method requires.** ``require_scope`` is the first act of every method, so a
 credential too narrow for it is refused before anything is read. A reading method needs
 ``plan:read``; anything that changes a source needs ``admin``, because the write target and the
-calendar catalogue are exactly what section 12 puts behind that scope.
+calendar catalogue are exactly what the admin scope is described as granting.
 
 **When the input version is bumped.** Changing the projection horizon changes what reaches the
 phone, so the weeks the new range covers are invalidated. Nothing else here is a solve input:

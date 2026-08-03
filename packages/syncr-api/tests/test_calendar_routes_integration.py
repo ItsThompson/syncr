@@ -3,8 +3,8 @@
 The unit suites prove the parser and the sync-state arithmetic. This proves what only a real
 request and a real database can:
 
-- that the two role rules reach the wire as the statuses section 13 states, 409 for a second
-  write target and 422 for a horizon on an anchor source;
+- that the two role rules reach the wire as the right statuses, 409 for a second write target
+  and 422 for a horizon on an anchor source;
 - that designating an active anchor source as the write target is refused with a reason, which
   is the rule that keeps syncr from reading back its own projection;
 - that a `webcal` address is normalized on the way in and read back as what syncr fetches;
@@ -307,10 +307,11 @@ def test_the_read_model_reports_provider_count_time_and_state_and_no_progress(
     reported = listed[0]
     assert {"provider", "anchorCount", "state", "syncState"} <= set(reported)
     assert "lastSuccessAt" in reported["syncState"]
-    # No spinner and no progress bar anywhere: a count that changes is how progress is
-    # reported, so there is no field here for one to render from.
-    assert "progress" not in reported
+    # No spinner and no progress bar anywhere: a count that changes is how progress is reported, so
+    # there is no field for one to render from. Asserted over the nested shape too, which is where
+    # a percentage would most naturally be added.
     assert not any("progress" in key.lower() for key in reported)
+    assert not any("progress" in key.lower() for key in reported["syncState"])
 
 
 def test_another_tenants_source_is_a_404(

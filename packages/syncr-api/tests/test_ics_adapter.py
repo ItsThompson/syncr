@@ -1,7 +1,7 @@
 """The adapter's own contract: three answers, three sync states, and no raised exception.
 
 The transport is faked and the parser is real. What is asserted here is the sync-state
-arithmetic section 06 states, which is the part that decides whether a stale feed is visible:
+arithmetic, which is the part that decides whether a stale feed is visible:
 which fields move on a success, which are retained on a failure, and that an unchanged feed is
 a success that reparses nothing.
 
@@ -107,7 +107,7 @@ async def test_a_read_feed_returns_events_and_a_successful_attempt() -> None:
 
 
 async def test_a_parse_that_rejected_events_is_still_a_successful_fetch() -> None:
-    # The row section 06 is most specific about: a feed that half-works must read as neither
+    # The rule this is most specific about: a feed that half-works must read as neither
     # fully working nor fully broken.
     ics, _ = adapter(FeedBody(body=ASSESSMENTS_FEED, cursor=ETAG))
 
