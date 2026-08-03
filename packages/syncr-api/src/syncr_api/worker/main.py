@@ -31,8 +31,10 @@ from typing import TYPE_CHECKING
 
 from prometheus_client import Counter
 
+from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_database
 from syncr_api.core.settings import WORKER_SERVICE, ServiceSettings, build_service_settings
+from syncr_api.oauth.cleanup import SWEEP_INTERVAL, OAuthSweepRunner
 from syncr_common.logging import (
     bind_correlation_id,
     clear_context,
@@ -84,6 +86,7 @@ type Runner = Callable[[WorkerContext], Awaitable[None]]
 # ---------------------------------------------------------------------------
 RUNNERS: tuple[Runner, ...] = (
     # run_solve_runner,
+    OAuthSweepRunner(interval=SWEEP_INTERVAL, clock=utc_now),
 )
 
 _log = get_logger(WORKER_SERVICE)
