@@ -502,7 +502,7 @@ async def test_concessions_of_different_kinds_and_targets_coexist(
 async def test_a_concession_does_not_carry_into_the_next_week(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
-    # WA1: a hard week must not silently become the new normal.
+    # A hard week must not silently become the new normal.
     async with sessions() as session, session.begin():
         await WeekAdjustmentRepository(session, owner.tenant_id).upsert(
             iso_week=WEEK,

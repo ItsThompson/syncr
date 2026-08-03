@@ -1,10 +1,9 @@
 """The closed vocabularies and bounds the plan-side tables are defined against.
 
-Every set here is enumerated in `07-plan-storage.md` or `04-domain-model.md`. Each is
-stated once and read twice: the type annotation a repository takes, and the check
-constraint the database enforces. The value semantics arrive with the milestone that
-computes them; what this module fixes is that a column cannot hold a value no reader
-knows.
+Every set here is closed: each is stated once and read twice, as the type annotation a
+repository takes and as the check constraint the database enforces. What computes the values
+and what they mean to a solve arrive with the code that reads them; what this module fixes is
+that a column cannot hold a value no reader knows.
 
 The document shapes (``PlanDocument``, ``Block``, ``ReasonRecord``, ``BindingRef``,
 ``Verdict``, ``ProposalDiff``) are deliberately absent. They live in ``syncr_domain`` and

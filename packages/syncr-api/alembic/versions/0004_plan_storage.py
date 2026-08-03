@@ -21,8 +21,8 @@ to the caller that broke it, and the constraint holds for every other writer the
 be, including a ``psql`` session.
 
 The JSONB columns are created WITHOUT validating their interior. A document's shape is
-enforced by the Pydantic model that writes it, and the value types those documents hold are
-defined in the domain package by a later slice. This migration is what those slices append to.
+enforced by the Pydantic model that writes it, and the value types those documents hold live
+in the domain package. This migration is what later revisions append to.
 
 ``weight_sets`` is seeded with version 1 for every tenant that already exists. On a fresh
 database that is none, because migrations run before any account exists, so account
@@ -50,8 +50,8 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 # What version 1 holds, as this revision saw it. A migration is a historical artifact and
-# names columns that exist at its own point in the chain, so reading the application's live
-# definition would let a later milestone's new objective term change the statement below.
+# names columns that exist at its own point in the chain, so reading the workspace's live
+# definition would let a new objective term added later change the statement below.
 # Postgres resolves an INSERT's column list when it parses the statement, before it reads a
 # row, so a name that has not been added yet fails the upgrade on every fresh database
 # whether or not any tenant exists to seed. `test_migrations.py` compares these against

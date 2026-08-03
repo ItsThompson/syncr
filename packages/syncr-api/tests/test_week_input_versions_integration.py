@@ -185,9 +185,9 @@ async def test_the_guard_reports_a_mismatch_after_a_mutation_landed(
 async def test_a_missing_row_is_a_mismatch_and_is_created_at_one(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
-    # V6 and V7 together. The maintainer solves weeks nobody has touched, so the guard has to
-    # create the row it will compare against next time, and it must not report a match against
-    # a row that did not exist.
+    # Both halves of the first reference, together. The maintainer solves weeks nobody has
+    # touched, so the guard has to create the row it will compare against next time, and it
+    # must not report a match against a row that did not exist.
     async with sessions() as session, session.begin():
         versions = WeekInputVersionRepository(session, owner.tenant_id)
         held = await versions.holds_version(WEEK, FIRST_INPUT_VERSION, at=NOW)

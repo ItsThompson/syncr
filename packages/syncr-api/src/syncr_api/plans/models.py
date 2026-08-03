@@ -90,7 +90,7 @@ class PlanRevision(Base, TenantScoped):
     __table_args__ = (
         CheckConstraint(values_in("status", REVISION_STATUSES), name="status_is_known"),
         CheckConstraint(values_in("reason", REVISION_REASONS), name="reason_is_known"),
-        # PR2. An approved revision without the instant of assent would make "the plan of
+        # An approved revision without the instant of assent would make "the plan of
         # record as of last Sunday" unanswerable, and the retro reads exactly that.
         CheckConstraint(
             f"status <> '{APPROVED}' OR approved_at IS NOT NULL", name="approved_states_when"

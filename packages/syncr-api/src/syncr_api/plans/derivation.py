@@ -5,9 +5,8 @@ queried without opening it. That only holds while the two agree, and they only a
 nothing sets a scalar independently. So every writer of a document-describing column goes
 through this module, and no repository method takes one as an argument.
 
-Today that is one column, ``iso_week``. When a later milestone adds a queryable scalar,
-it is derived here as well rather than accepted from the caller, and both writers get it
-at once.
+Today that is one column, ``iso_week``. A queryable scalar added later is derived here as
+well rather than accepted from the caller, and both writers get it at once.
 
 The rest of the document's interior is not read, not validated, and not typed here. JSONB
 is schemaless at the database level and a Pydantic model enforces the document's shape on

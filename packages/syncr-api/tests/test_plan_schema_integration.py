@@ -222,7 +222,7 @@ async def test_the_same_block_in_a_later_plan_of_record_is_a_second_outcome(
 async def test_an_outcome_whose_binding_no_longer_exists_is_still_readable(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, revision_id: PlanRevisionId
 ) -> None:
-    # O8, and the reason `binding` is denormalized onto the row: the outcome is a fact about a
+    # Why `binding` is denormalized onto the row: the outcome is a fact about a
     # week that happened, and the habit it belonged to may since have been deleted. There is no
     # foreign key to break, which is the point.
     await accepts(sessions, outcome(owner.tenant_id, revision_id, state="completed"))
@@ -244,7 +244,7 @@ async def test_an_outcome_whose_binding_no_longer_exists_is_still_readable(
 async def test_a_pin_that_records_half_a_superseded_placement_is_refused(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
-    # B1: a pin persists what the solver had chosen AND what the pin cost. Half of an interval
+    # A pin persists what the solver had chosen AND what the pin cost. Half of an interval
     # would render a reason panel that cannot say where the block would have been.
     await refuses(
         sessions,
@@ -285,7 +285,7 @@ async def test_a_pin_whose_interval_is_not_half_open_is_refused(
 async def test_a_resolved_conflict_states_both_when_and_how(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
-    # C5: a resolved conflict is retained, and the weekly session reads repeated collisions out
+    # A resolved conflict is retained, and the weekly session reads repeated collisions out
     # of these rows. A resolution instant with no resolution would be a row nobody can report.
     def conflict(**overrides: Any) -> PlanConflict:
         values: dict[str, Any] = {

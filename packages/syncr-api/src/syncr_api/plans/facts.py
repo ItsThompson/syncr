@@ -120,13 +120,13 @@ class BlockOutcome(Base, TenantScoped):
 
     __table_args__ = (
         CheckConstraint(values_in("state", OUTCOME_STATES), name="state_is_known"),
-        # O2. The sole source of the duration-estimate signal, so a `partial` without the
+        # The sole source of the duration-estimate signal, so a `partial` without the
         # minutes is a row that teaches nothing and claims to.
         CheckConstraint(
             f"state <> '{PARTIAL_OUTCOME}' OR actual_minutes IS NOT NULL",
             name="partial_states_its_minutes",
         ),
-        # O7. `moved` is a record of when it actually happened, which is the signal the
+        # `moved` is a record of when it actually happened, which is the signal the
         # time-of-day fitness curve is fitted from.
         CheckConstraint(
             f"state <> '{MOVED_OUTCOME}' OR "
@@ -205,7 +205,7 @@ class PlanConflict(Base, TenantScoped):
 
     __table_args__ = (
         CheckConstraint(values_in("resolution", CONFLICT_RESOLUTIONS), name="resolution_is_known"),
-        # C5. A resolved conflict is retained, and the two columns say one thing: either it
+        # A resolved conflict is retained, and the two columns say one thing: either it
         # is open, or it names both when it was resolved and how.
         CheckConstraint(
             "(resolved_at IS NULL) = (resolution IS NULL)", name="resolution_states_when"

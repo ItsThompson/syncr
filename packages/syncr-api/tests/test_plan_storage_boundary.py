@@ -322,7 +322,7 @@ def plan_side_tables(source_root: Path) -> set[str]:
     )
 
 
-def test_every_table_this_slice_creates_states_what_reads_it(source_root: Path) -> None:
+def test_every_plan_side_table_states_what_reads_it(source_root: Path) -> None:
     # An equality, not a containment: the subject is what the packages declare, so a table
     # added by a later ticket has to state what reads it, and an entry for a table that went
     # away has to go with it.

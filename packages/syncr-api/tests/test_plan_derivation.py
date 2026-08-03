@@ -58,7 +58,7 @@ def test_a_week_at_the_year_boundary_is_accepted() -> None:
 
 
 async def test_an_approved_revision_without_its_instant_is_refused_before_any_write() -> None:
-    # PR2, in the repository. The database enforces the same pair, and the guard is what
+    # The guard in the repository. The database enforces the same pair, and the guard is what
     # names the invariant to the caller that broke it. The session here is unbound: the
     # guard has to raise before anything is added to it.
     repository = PlanRepository(AsyncSession(), uuid4())
