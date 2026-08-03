@@ -799,6 +799,36 @@ def test_a_revoked_grant_is_kept_for_the_whole_retention_window_and_then_removed
     assert rows_of(live_database_url, OAuthRefreshToken, owner.tenant_id) == []
 
 
+def test_the_sweep_line_reports_its_counts_rather_than_a_redaction(
+    http: TestClient, owner: UserRecord, live_database_url: str
+) -> None:
+    """The one line the sweep emits, as rendered.
+
+    Nothing else asserts a rendered log line, which is how a count spent this long being bound
+    under a key the redactor eats: the tally was right, the line said ``[redacted]``, and no
+    test looked. Asserted through the real logger, so the redactor is the one that ran.
+    """
+    session = signed_in(http, owner.email)
+    exchange(http, consent(http, session)["code"])
+    stream = StringIO()
+    configure_logging(environment="test", log_level="info", stream=stream)
+    try:
+        swept = swept_at(live_database_url, datetime.now(UTC) + timedelta(days=1))
+    finally:
+        configure_logging(environment="test", log_level="info")
+
+    assert swept.codes >= 1, "the sweep removed nothing, so it logged nothing"
+    (line,) = [
+        rendered
+        for rendered in (json.loads(each) for each in stream.getvalue().splitlines())
+        if rendered["event"] == "oauth.sweep.completed"
+    ]
+    assert line["code_count"] == swept.codes
+    assert line["refresh_count"] == swept.refresh_tokens
+    assert line["grant_count"] == swept.grants
+    assert all(isinstance(line[key], int) for key in ("code_count", "refresh_count", "grant_count"))
+
+
 # --- Logging ---------------------------------------------------------------------------
 
 

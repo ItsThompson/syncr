@@ -58,6 +58,20 @@ class SweptRows:
     def total(self) -> int:
         return self.codes + self.refresh_tokens + self.grants
 
+    def as_log_fields(self) -> dict[str, int]:
+        """This tally as log fields, under names the redactor does not eat.
+
+        Redaction is by key name and cannot tell a credential from a number, so a count bound
+        under a key containing ``token`` renders as ``[redacted]``: the field the sweep exists
+        to report would say nothing. Naming them here rather than at the call site is what
+        stops the next caller of this tally reintroducing that.
+        """
+        return {
+            "code_count": self.codes,
+            "refresh_count": self.refresh_tokens,
+            "grant_count": self.grants,
+        }
+
     def plus(self, other: SweptRows) -> SweptRows:
         """This tally and ``other`` combined."""
         return SweptRows(
@@ -87,12 +101,7 @@ class ExpirySweep:
         for tenant_id in await TenantRepository(self._session).list_ids():
             swept = swept.plus(await self._sweep_tenant(tenant_id, now))
         if swept.total:
-            _log.info(
-                "oauth.sweep.completed",
-                codes=swept.codes,
-                refresh_tokens=swept.refresh_tokens,
-                grants=swept.grants,
-            )
+            _log.info("oauth.sweep.completed", **swept.as_log_fields())
         return swept
 
     async def _sweep_tenant(self, tenant_id: TenantId, now: datetime) -> SweptRows:

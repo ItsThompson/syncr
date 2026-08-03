@@ -17,6 +17,7 @@ import pytest
 
 from syncr_api.oauth.cleanup import SWEEP_INTERVAL, OAuthSweepRunner, SweptRows
 from syncr_api.worker.main import RUNNERS, WorkerContext, run_iteration
+from syncr_common.logging import is_sensitive_key
 
 START = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 
@@ -154,3 +155,15 @@ def test_a_tally_reports_what_each_pass_removed() -> None:
     assert combined == SweptRows(codes=1, refresh_tokens=2, grants=3)
     assert combined.total == 6
     assert SweptRows().total == 0
+
+
+def test_no_swept_count_is_bound_under_a_name_the_redactor_eats() -> None:
+    # A count under a key containing `token` renders as `[redacted]`, so the one line the sweep
+    # emits would report nothing. Asserted against the redactor's own rule rather than against a
+    # list of names copied from it, so a later rename is caught here rather than in a log nobody
+    # is reading at the time.
+    fields = SweptRows(codes=1, refresh_tokens=2, grants=3).as_log_fields()
+
+    assert list(fields.values()) == [1, 2, 3]
+    for key in fields:
+        assert not is_sensitive_key(key), f"{key} renders as [redacted] instead of its count"
