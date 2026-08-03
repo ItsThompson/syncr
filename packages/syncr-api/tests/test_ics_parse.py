@@ -22,6 +22,7 @@ from syncr_api.calendars.config import (
     MAX_EVENT_DAYS,
     MAX_EVENTS_PER_FEED,
     MISSING_DURATION,
+    READ_BUDGET_SPENT,
     UNKNOWN_ZONE,
     UNPARSEABLE_RECURRENCE,
 )
@@ -1099,6 +1100,10 @@ def test_a_feed_cannot_spend_more_than_its_reading_budget() -> None:
 
     assert outcome.events == ()
     assert len(outcome.rejected) == 6
+    # Its own class, because nothing is wrong with these components: they were not read. The panel
+    # groups by class and states a reason per class, so a feed of ordinary meetings cut short must
+    # not read as a recurrence problem it does not have.
+    assert {item.kind for item in outcome.rejected} == {READ_BUDGET_SPENT}
     assert "seconds of reading" in outcome.rejected[0].detail
     # The bound in force, not the constant: a message that names the default while honoring the
     # parameter is a bound describing a figure it did not apply. Anchored on "its", because "0
@@ -1428,3 +1433,22 @@ def test_one_replacement_cannot_be_placed_on_both_occurrences_of_a_shared_instan
         "Hourly across the gap",
         "Moved from the gap hour",
     ]
+
+
+def test_a_feed_cut_short_does_not_blame_a_recurrence_it_does_not_have() -> None:
+    # Two ordinary meetings, no RRULE anywhere. Reported under the recurrence class, this reads to a
+    # user as a rule problem in events that carry no rule, and the action is different: every other
+    # class is the publisher's to fix, and this one is syncr declining to spend more time.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:plain-1@example.org\r\nSUMMARY:Standup\r\n"
+        "DTSTART:20260210T090000Z\r\nDTEND:20260210T093000Z\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:plain-2@example.org\r\nSUMMARY:Review\r\n"
+        "DTSTART:20260211T090000Z\r\nDTEND:20260211T100000Z\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME, budget=0.0)
+
+    assert [item.kind for item in outcome.rejected] == [READ_BUDGET_SPENT, READ_BUDGET_SPENT]
+    assert all("recurrence" not in item.detail for item in outcome.rejected)

@@ -1248,7 +1248,8 @@
           "missing-duration",
           "unknown-zone",
           "malformed-value",
-          "unparseable-recurrence"
+          "unparseable-recurrence",
+          "read-budget-spent"
         ],
         "type": "string"
       },

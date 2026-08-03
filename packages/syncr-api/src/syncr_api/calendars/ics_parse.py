@@ -38,6 +38,7 @@ from syncr_api.calendars.ics_components import read_component
 from syncr_api.calendars.ics_errors import (
     UNREPRESENTABLE,
     IcsRejection,
+    ReadBudgetSpent,
     UnparseableRecurrence,
     as_rejection,
 )
@@ -188,7 +189,7 @@ def _require_time_left(*, deadline: float, budget: float) -> None:
         f"this feed spent its {budget:g} seconds of reading before reaching this component, "
         "so none of it was read"
     )
-    raise UnparseableRecurrence(message)
+    raise ReadBudgetSpent(message)
 
 
 def _require_room_for(produced: tuple[RawEvent, ...], *, remaining: int) -> None:

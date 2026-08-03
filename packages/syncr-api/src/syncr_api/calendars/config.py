@@ -63,12 +63,21 @@ SOURCE_STATES: Final = (NEVER_SYNCED, EXCLUDED, ERROR, OK)
 # rejection is JSONB with no check constraint for a tuple to generate. A member nothing can emit
 # would be a state the panel has copy for and never renders.
 type RejectionKind = Literal[
-    "missing-duration", "unknown-zone", "malformed-value", "unparseable-recurrence"
+    "missing-duration",
+    "unknown-zone",
+    "malformed-value",
+    "unparseable-recurrence",
+    "read-budget-spent",
 ]
 MISSING_DURATION: Final[RejectionKind] = "missing-duration"
 UNKNOWN_ZONE: Final[RejectionKind] = "unknown-zone"
 MALFORMED_VALUE: Final[RejectionKind] = "malformed-value"
 UNPARSEABLE_RECURRENCE: Final[RejectionKind] = "unparseable-recurrence"
+# Not a fault in the component at all: the feed ran out of the time syncr will spend reading it
+# before reaching this one. It needs its own class because the panel groups by class and states a
+# reason per class, and a feed of ordinary meetings cut short read as a recurrence problem it did
+# not have. What the user does about it also differs: every other class is the publisher's to fix.
+READ_BUDGET_SPENT: Final[RejectionKind] = "read-budget-spent"
 
 # The projection horizon, in days. Fourteen is the stated default. The floor is one day
 # because a zero-day horizon would project nothing while reading as configured, and the

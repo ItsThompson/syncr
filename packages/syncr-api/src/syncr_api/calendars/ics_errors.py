@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, ClassVar, Final
 from syncr_api.calendars.config import (
     MALFORMED_VALUE,
     MISSING_DURATION,
+    READ_BUDGET_SPENT,
     UNKNOWN_ZONE,
     UNPARSEABLE_RECURRENCE,
 )
@@ -62,6 +63,17 @@ class UnparseableRecurrence(IcsRejection):
     """An ``RRULE`` that will not expand, or that expands further than syncr will read."""
 
     kind = UNPARSEABLE_RECURRENCE
+
+
+class ReadBudgetSpent(IcsRejection):
+    """The feed used up the time syncr will spend reading it before reaching this component.
+
+    Its own class because nothing is wrong with the component. Every other rejection names something
+    the publisher can fix in this component; this one says the feed as a whole costs more than syncr
+    will spend, and the components after the cut are unread rather than unreadable.
+    """
+
+    kind = READ_BUDGET_SPENT
 
 
 class UnmappedZone(IcsRejection, UnknownZoneError):

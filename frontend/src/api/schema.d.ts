@@ -1160,7 +1160,7 @@ export interface components {
             uid?: string | null;
         };
         /** @enum {string} */
-        RejectionKind: "missing-duration" | "unknown-zone" | "malformed-value" | "unparseable-recurrence";
+        RejectionKind: "missing-duration" | "unknown-zone" | "malformed-value" | "unparseable-recurrence" | "read-budget-spent";
         /**
          * ReviewCadence
          * @description Whether the pie review waits to be asked, or is offered on a schedule.
