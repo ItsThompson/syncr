@@ -25,7 +25,13 @@ from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 from syncr_api.calendars.sync_state import RETAINED_NOTICE
 from syncr_domain.intervals import Interval
 from syncr_domain.zones import ZoneProfile
-from tests.hostile_ics import ASSESSMENTS_FEED, EMPTY_FEED, UNIVERSITY_TIMETABLE
+from tests.hostile_ics import (
+    ALL_FEEDS,
+    ASSESSMENTS_FEED,
+    EMPTY_FEED,
+    HOSTILE_MAGNITUDES,
+    UNIVERSITY_TIMETABLE,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -202,3 +208,61 @@ async def test_a_first_attempt_sends_no_conditional_validator() -> None:
     await ics.fetch(source())
 
     assert fetcher.sent == [None]
+
+
+# --------------------------------------------------------------------------------
+# The no-raise contract, at the boundary that states it
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("label", sorted(ALL_FEEDS))
+async def test_no_body_in_the_corpus_raises_at_the_adapter(label: str) -> None:
+    """The contract, asserted where it is stated rather than one layer below it.
+
+    ``test_no_feed_in_the_corpus_raises`` asserts this of the parser. This asserts it of
+    ``IcsAdapter.fetch``, which is the boundary the promise is written on and whose failure was
+    measured: a raise here aborts the whole tenant's sync pass, rolls back the sync state already
+    written for every feed read before it in the same transaction, and answers 500 on the request
+    path with no ``last_error`` recorded, so the panel shows the source exactly as it was.
+
+    Both halves matter. Not raising is not enough: a caller cannot record an attempt it was not
+    handed a state for, so the state is asserted too.
+    """
+    ics, _ = adapter(FeedBody(body=ALL_FEEDS[label], cursor=ETAG))
+
+    outcome, state = await ics.fetch(source(sync_state=synced()))
+
+    assert outcome.reparsed is True
+    assert state.last_attempt_at == NOW
+    # A body that parsed is a successful attempt whatever it rejected, so there is always a state to
+    # write and staleness stays computable.
+    assert state.last_success_at == NOW
+    assert state.last_error is None
+
+
+@pytest.mark.parametrize("label", sorted(HOSTILE_MAGNITUDES))
+async def test_an_extreme_magnitude_is_a_rejection_rather_than_a_fault(label: str) -> None:
+    """A number a feed states is the feed's doing, so it belongs on the panel.
+
+    A magnitude is not a syntax error: ``DTEND;VALUE=DATE:99991231`` parses perfectly and then
+    overflows the arithmetic that would place it. ``OverflowError`` is not an ``IcsRejection``, so
+    before this was bounded it escaped the adapter. The matrix covers each place a
+    publisher-controlled magnitude reaches date, time, or timedelta construction, rather than the
+    two instances that happened to be found first.
+
+    Some of these bodies are legitimate and produce events, which is the point of a matrix: what is
+    asserted is that every one of them is ANSWERED, not that every one is refused.
+    """
+    ics, _ = adapter(FeedBody(body=HOSTILE_MAGNITUDES[label], cursor=ETAG))
+
+    outcome, state = await ics.fetch(source())
+
+    assert state.last_error is None
+    # Whatever it did with the component, it accounted for it: kept, rejected, or read and unplaced.
+    accounted = len(outcome.events) + outcome.rejected_count + outcome.unplaced
+    assert accounted >= outcome.events_read
+    # And every rejection names a component and a line, which is what the panel renders.
+    for rejection in outcome.rejected:
+        assert rejection.component
+        assert rejection.line > 0
+        assert rejection.detail

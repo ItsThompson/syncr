@@ -96,6 +96,16 @@ MAX_FEED_BYTES: Final = 8 * 1024 * 1024
 # finer than the data changes.
 SYNC_INTERVAL: Final = timedelta(minutes=15)
 
+# How many days one event may span. A multi-year all-day event is legitimate, so this is not the
+# projection horizon; a century is past anything a calendar publishes and well inside what date
+# arithmetic can represent from any year a feed can name.
+#
+# The bound exists because a magnitude is not a syntax error: `DTEND;VALUE=DATE:99991231` parses
+# perfectly and then overflows the arithmetic that would place it. Rejecting it where the magnitude
+# is READ is what lets the rejection name the property, rather than surfacing as a fault with no
+# component and no line.
+MAX_EVENT_DAYS: Final = 36_600
+
 # How many events one feed may contribute. A recurrence with no UNTIL and no COUNT expands
 # for as long as the horizon allows, and a hostile or mistaken feed can hold thousands of
 # such rules, so expansion is bounded rather than trusted.

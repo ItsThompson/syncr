@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_api.calendars.config import MAX_EVENT_DAYS
 from syncr_api.calendars.ics_errors import MalformedValue, MissingDuration
 from syncr_api.calendars.ics_lines import unescape
 from syncr_api.calendars.ics_recurrence import Recurrence
@@ -153,7 +154,24 @@ def _extent(
 
 
 def _whole_days(start: IcsTime, end: IcsTime | None, duration: timedelta | None) -> int:
-    """How many local days an all-day event covers, counting at least one."""
+    """How many local days an all-day event covers, counting at least one.
+
+    Bounded above as well as below. A far-future ``DTEND`` is how some publishers express an
+    open-ended all-day event, and the day count it yields overflows the arithmetic that places the
+    occurrence: rejecting it here names the property, where letting it through surfaces as a fault
+    with no component and no line.
+    """
+    days = _declared_days(start, end, duration)
+    if days > MAX_EVENT_DAYS:
+        message = (
+            f"the event covers {days} whole days, more than the {MAX_EVENT_DAYS} syncr will place "
+            "for one event"
+        )
+        raise MalformedValue(message)
+    return days
+
+
+def _declared_days(start: IcsTime, end: IcsTime | None, duration: timedelta | None) -> int:
     if end is not None:
         return max((end.on - start.on) // ONE_DAY, ONE_WHOLE_DAY)
     if duration is not None:

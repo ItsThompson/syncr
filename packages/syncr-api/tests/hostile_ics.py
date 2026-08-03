@@ -8,7 +8,9 @@ Mixing them into one file would test a feed nobody publishes.
 
 Three further bodies are not any one publisher's: an empty feed, a rule that expands without
 end, and one that nests without end. Each is a shape a reader has to survive rather than a
-shape a reader has to understand.
+shape a reader has to understand. :data:`HOSTILE_MAGNITUDES` is a fourth kind again: a matrix of
+extreme NUMBERS, because a value that parses perfectly can still overflow the arithmetic that would
+place it, and no amount of grammar catches that.
 
 **These bodies carry no expected figures.** A test that read its assertions from the fixture
 would assert the fixture rather than the adapter. Every expected instant and count is written
@@ -237,6 +239,82 @@ def nested_feed(depth: int) -> str:
 # asserted over it like every other body.
 DEEPLY_NESTED: Final = nested_feed(1_000)
 
+
+def _one_event(*lines: str) -> str:
+    """A well-formed calendar holding one event with the given property lines."""
+    body = "".join(f"{line}\r\n" for line in lines)
+    return (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+        f"BEGIN:VEVENT\r\nUID:magnitude@example.org\r\nSUMMARY:Extreme\r\n{body}"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+
+TIMED_START: Final = "DTSTART:20260209T090000Z"
+ZONED_START: Final = "DTSTART;TZID=Pacific/Kiritimati:20260209T090000"
+DAY_START: Final = "DTSTART;VALUE=DATE:20260209"
+
+# Magnitudes, as a matrix rather than a list.
+#
+# A feed states NUMBERS as well as syntax, and a number that parses perfectly can still overflow the
+# date arithmetic that would place it: `DTEND;VALUE=DATE:99991231` is how some publishers express an
+# open-ended all-day event, and an over-long `DURATION` is a routine broken-export value. Neither
+# needs malice, and neither is a syntax error, so neither is caught by any amount of grammar.
+#
+# One entry per place a publisher-controlled magnitude reaches date, time, or timedelta
+# construction, so the boundary test that reads this covers the CLASS rather than the two instances
+# that happened to be found. Some of these are legitimate and produce events; that is the point of a
+# matrix over a list of known-bad values.
+HOSTILE_MAGNITUDES: Final[dict[str, str]] = {
+    "duration over a billion days": _one_event(TIMED_START, "DURATION:P9999999999D"),
+    "duration in weeks": _one_event(TIMED_START, "DURATION:P999999999W"),
+    "duration in seconds": _one_event(TIMED_START, "DURATION:PT99999999999999S"),
+    "duration at the constructor's own edge": _one_event(TIMED_START, "DURATION:P999999999D"),
+    "duration of a century": _one_event(TIMED_START, "DURATION:P36600D"),
+    "duration of a decade": _one_event(TIMED_START, "DURATION:P3650D"),
+    "whole days to the end of time": _one_event(DAY_START, "DTEND;VALUE=DATE:99991231"),
+    "whole days from the start of time": _one_event(
+        "DTSTART;VALUE=DATE:00010101", "DTEND;VALUE=DATE:99991231"
+    ),
+    "whole days by duration": _one_event(DAY_START, "DURATION:P999999999D"),
+    "a start at the first representable date": _one_event(
+        "DTSTART;VALUE=DATE:00010101", "DTEND;VALUE=DATE:00010102"
+    ),
+    "a start at the last representable date": _one_event(
+        "DTSTART;VALUE=DATE:99991230", "DTEND;VALUE=DATE:99991231"
+    ),
+    "a zoned start at the last representable date": _one_event(
+        "DTSTART;TZID=Pacific/Kiritimati:99991231T235959", "DURATION:PT1H"
+    ),
+    "a zoned start at the first representable date": _one_event(
+        "DTSTART;TZID=Pacific/Midway:00010101T000000", "DURATION:PT1H"
+    ),
+    "an until past the end of time": _one_event(
+        ZONED_START, "DURATION:PT1H", "RRULE:FREQ=DAILY;UNTIL=99991231T235959Z"
+    ),
+    "an interval nothing can walk": _one_event(
+        TIMED_START, "DURATION:PT1H", "RRULE:FREQ=DAILY;INTERVAL=999999999"
+    ),
+    "a count nothing can walk": _one_event(
+        TIMED_START, "DURATION:PT1H", "RRULE:FREQ=DAILY;COUNT=999999999"
+    ),
+    "a yearly rule from the first representable year": _one_event(
+        "DTSTART:00010101T000000Z", "DURATION:PT1H", "RRULE:FREQ=YEARLY"
+    ),
+    "an exclusion past the end of time": _one_event(
+        TIMED_START, "DURATION:PT1H", "RRULE:FREQ=DAILY", "EXDATE:99991231T235959Z"
+    ),
+    "an extra date past the end of time": _one_event(
+        TIMED_START, "DURATION:PT1H", "RDATE:99991231T235959Z"
+    ),
+    "a sequence of four hundred digits": _one_event(
+        TIMED_START, "DURATION:PT1H", f"SEQUENCE:{'9' * 400}"
+    ),
+    "a recurrence id past the end of time": _one_event(
+        TIMED_START, "DURATION:PT1H", "RECURRENCE-ID:99991231T235959Z"
+    ),
+}
+
 # Every body above, so a test can assert a property over the whole corpus.
 ALL_FEEDS: Final = {
     "university_timetable": UNIVERSITY_TIMETABLE,
@@ -247,4 +325,5 @@ ALL_FEEDS: Final = {
     "runaway": RUNAWAY_RECURRENCE,
     "overrunning": OVERRUNNING_RECURRENCE,
     "deeply_nested": DEEPLY_NESTED,
+    **HOSTILE_MAGNITUDES,
 }

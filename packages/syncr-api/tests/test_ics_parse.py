@@ -18,6 +18,7 @@ import pytest
 
 from syncr_api.calendars.config import (
     MALFORMED_VALUE,
+    MAX_EVENT_DAYS,
     MAX_EVENTS_PER_FEED,
     MISSING_DURATION,
     UNKNOWN_ZONE,
@@ -315,19 +316,124 @@ def test_a_valid_feed_with_no_events_is_a_success_rather_than_a_failure() -> Non
     assert outcome.events_read == 0
 
 
+def test_a_whole_day_range_longer_than_syncr_will_place_is_rejected_by_name() -> None:
+    # `DTEND;VALUE=DATE:99991231` is how some publishers express an open-ended all-day event. It
+    # parses, and then the day count it yields overflows the arithmetic that would place the
+    # occurrence. Bounded where the count is READ, so the rejection names the property.
+    body = (
+        "BEGIN:VEVENT\r\nUID:forever@example.org\r\nSUMMARY:Forever\r\n"
+        "DTSTART;VALUE=DATE:20260209\r\nDTEND;VALUE=DATE:99991231\r\nEND:VEVENT\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [MALFORMED_VALUE]
+    assert str(MAX_EVENT_DAYS) in outcome.rejected[0].detail
+    # The component and the line, which is what AC 8's reporting depends on and what a generic
+    # catch at the boundary would have lost.
+    assert outcome.rejected[0].component == VEVENT
+    assert outcome.rejected[0].line == 1
+
+
+def test_an_orphaned_override_is_placed_rather_than_dropped() -> None:
+    # An export window beginning after a series did emits the moved occurrence and not the master.
+    # The feed asserts the commitment, so dropping it loses an hour the user is actually busy.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:normal@example.org\r\nSUMMARY:A normal meeting\r\n"
+        "DTSTART:20260210T090000Z\r\nDTEND:20260210T100000Z\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:orphan@example.org\r\nSUMMARY:A moved occurrence\r\n"
+        "RECURRENCE-ID:20260211T090000Z\r\n"
+        "DTSTART:20260211T140000Z\r\nDTEND:20260211T150000Z\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    moved = titled(outcome.events, "moved occurrence")
+    assert len(moved) == 1
+    # Placed where the override says, not where the RECURRENCE-ID says.
+    assert moved[0].interval.start == utc(2026, 2, 11, 14, 0)
+    # And it keeps the occurrence identity the series would have given it, so a later sync that
+    # does carry the master reconciles to the same anchor rather than creating a second one.
+    assert moved[0].uid == "orphan@example.org#20260211T090000"
+    assert moved[0].series_uid == "orphan@example.org"
+    # It is not an applied override: there was no master for it to apply to.
+    assert outcome.overrides_applied == 0
+
+
+def test_an_orphaned_cancellation_places_nothing_and_is_counted() -> None:
+    # A cancellation of an occurrence of a series nobody sent has nothing to suppress. Counted, so
+    # the component does not vanish from the arithmetic.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:orphan@example.org\r\nSUMMARY:A cancelled occurrence\r\n"
+        "RECURRENCE-ID:20260211T090000Z\r\nSTATUS:CANCELLED\r\n"
+        "DTSTART:20260211T090000Z\r\nDTEND:20260211T100000Z\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert outcome.rejected == ()
+    assert outcome.cancelled_discarded == 1
+    assert outcome.overrides_applied == 0
+
+
+def test_an_applied_override_is_counted_as_applied() -> None:
+    # The term the accounting depends on. An override is neither kept as an event of its own nor
+    # discarded, so without its own count it reads as a component that vanished.
+    outcome = parse_feed(UNIVERSITY_TIMETABLE, horizon=HORIZON, profile=HOME)
+
+    assert outcome.overrides_applied == 1
+
+
+def test_a_component_placing_nothing_inside_the_horizon_is_counted() -> None:
+    # Not a loss and not an error: the event is real, it is simply elsewhere in time. Counted
+    # anyway, because otherwise it is indistinguishable from occupancy that vanished.
+    body = (
+        "BEGIN:VEVENT\r\nUID:distant@example.org\r\nSUMMARY:Long ago\r\n"
+        "DTSTART;VALUE=DATE:00010101\r\nDTEND;VALUE=DATE:00010102\r\nEND:VEVENT\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert outcome.rejected == ()
+    assert outcome.events_read == 1
+    assert outcome.unplaced == 1
+
+
 def test_every_component_of_every_feed_is_accounted_for() -> None:
     # The counts are what the panel reports, so they have to close: a component that appeared in
     # none of the buckets would be occupancy that vanished with no explanation.
+    #
+    # Every term is read off the OUTCOME rather than off the body's text. A term counted from the
+    # text excuses a component whatever the parser did with it, so the arithmetic would close on a
+    # component the parser dropped on the floor exactly as it does on one the parser applied.
     for label, body in ALL_FEEDS.items():
         outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
-        masters = {event.series_uid or event.uid for event in outcome.events}
         accounted = (
-            len(masters)
+            len(_placed_components(outcome))
             + len(_component_rejections(outcome))
             + outcome.duplicates_discarded
             + outcome.cancelled_discarded
+            + outcome.overrides_applied
+            + outcome.unplaced
         )
-        assert accounted == outcome.events_read - _replacements_in(body), label
+        assert accounted == outcome.events_read, label
+
+
+def _placed_components(outcome: FetchOutcome) -> set[str]:
+    """The components that produced at least one event, by their own identity.
+
+    A series expands into many events sharing one ``series_uid``, and an orphaned override produces
+    one event carrying a ``series_uid`` it does not own, so both collapse to the component that
+    placed them.
+    """
+    return {event.series_uid or event.uid for event in outcome.events}
 
 
 def _component_rejections(outcome: FetchOutcome) -> list[RejectedComponent]:
@@ -338,16 +444,6 @@ def _component_rejections(outcome: FetchOutcome) -> list[RejectedComponent]:
     stays a real check on every body including that one, whose ``events_read`` is zero.
     """
     return [rejected for rejected in outcome.rejected if rejected.component == VEVENT]
-
-
-def _replacements_in(body: str) -> int:
-    """How many components of ``body`` replace an occurrence rather than declaring a series.
-
-    An override is read and applied, and a cancelled one becomes a tombstone; either way it is
-    neither kept as an event of its own nor rejected, nor counted as a discard. Counting it here is
-    what keeps the arithmetic above a real check rather than one loosened until it passed.
-    """
-    return body.count("RECURRENCE-ID")
 
 
 @pytest.mark.parametrize("label", sorted(ALL_FEEDS))

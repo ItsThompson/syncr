@@ -33,24 +33,36 @@ nor fully broken, so every rejection is collected and everything that parsed is 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING
 
 from syncr_api.calendars.config import MAX_EVENTS_PER_FEED
 from syncr_api.calendars.events import FetchOutcome, RawEvent, RejectedComponent
 from syncr_api.calendars.ics_components import EventComponent, read_component
-from syncr_api.calendars.ics_errors import IcsRejection, UnparseableRecurrence
+from syncr_api.calendars.ics_errors import (
+    UNREPRESENTABLE,
+    IcsRejection,
+    MalformedValue,
+    UnparseableRecurrence,
+    as_rejection,
+)
 from syncr_api.calendars.ics_lines import VEVENT, events_in, parse_components
 from syncr_api.calendars.ics_recurrence import occurrences
 from syncr_api.calendars.ics_times import ONE_DAY, resolve_day_span, resolve_span
 from syncr_domain.intervals import Interval
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Iterator, Mapping
     from datetime import datetime
 
     from syncr_api.calendars.config import RejectionKind
     from syncr_api.calendars.ics_lines import Component
     from syncr_domain.zones import ZoneProfile
+
+# Everything a component's own values can produce that belongs on the panel rather than in a
+# traceback. One tuple, used at all three boundaries below, so "the adapter never raises" is a
+# property of this module rather than a promise each `except` clause remembers.
+_REPORTABLE = (IcsRejection, *UNREPRESENTABLE)
 
 # The line a feed-level rejection reports when the lexer gave up before naming one.
 _UNKNOWN_LINE = 0
@@ -66,13 +78,19 @@ class _Series:
     ``tombstones`` is why this is a struct rather than a tuple of four things. A cancelled
     component is one of two entirely different statements depending on whether it carries a
     ``RECURRENCE-ID``, and conflating them is how a cancelled occurrence ends up in the plan.
+
+    ``orphans`` are overrides whose series is not in this body. That happens for a real reason: an
+    export window beginning after a series did emits the moved occurrence and not the master. They
+    are kept apart from ``masters`` because their identity is derived differently.
     """
 
     masters: tuple[EventComponent, ...] = ()
     overrides: Mapping[_OccurrenceKey, EventComponent] = field(default_factory=dict)
     tombstones: frozenset[_OccurrenceKey] = frozenset()
+    orphans: tuple[EventComponent, ...] = ()
     duplicates: int = 0
     cancelled_masters: int = 0
+    overrides_applied: int = 0
 
 
 def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOutcome:
@@ -84,29 +102,32 @@ def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOu
     """
     try:
         components = tuple(events_in(parse_components(body)))
-    except IcsRejection as error:
+    except _REPORTABLE as error:
         # The lexer refused the body itself, so there is no component to attribute this to and no
         # events to keep. One rejection for the whole feed, at the line it gave up on.
-        return FetchOutcome(reparsed=True, rejected=(_feed_rejection(error),))
+        return FetchOutcome(reparsed=True, rejected=(_feed_rejection(as_rejection(error)),))
 
     rejected: list[RejectedComponent] = []
     readable: list[EventComponent] = []
     for component in components:
         try:
             readable.append(read_component(component, profile))
-        except IcsRejection as error:
-            rejected.append(_rejection(component, error))
+        except _REPORTABLE as error:
+            rejected.append(_rejection(component, as_rejection(error)))
 
     series = _partition(readable)
     events: list[RawEvent] = []
     remaining = MAX_EVENTS_PER_FEED
-    for master in series.masters:
+    unplaced = 0
+    for source, produce in _placements(series, horizon=horizon, profile=profile):
         try:
-            produced = _expand(master, series, horizon=horizon, profile=profile)
+            produced = produce()
             _require_room_for(produced, remaining=remaining)
-        except IcsRejection as error:
-            rejected.append(_rejection(master.component, error, uid=master.uid))
+        except _REPORTABLE as error:
+            rejected.append(_rejection(source.component, as_rejection(error), uid=source.uid))
             continue
+        if not produced:
+            unplaced += 1
         events.extend(produced)
         remaining -= len(produced)
 
@@ -117,7 +138,24 @@ def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOu
         events_read=len(components),
         duplicates_discarded=series.duplicates,
         cancelled_discarded=series.cancelled_masters,
+        overrides_applied=series.overrides_applied,
+        unplaced=unplaced,
     )
+
+
+def _placements(
+    series: _Series, *, horizon: Interval, profile: ZoneProfile
+) -> Iterator[tuple[EventComponent, Callable[[], list[RawEvent]]]]:
+    """Each component that can place events, paired with the call that places them.
+
+    Masters and orphans differ only in how their events are built, so pairing each with its own
+    builder lets one loop own the parts that are the same for both: the per-feed bound, the
+    rejection, and the count of components that placed nothing.
+    """
+    for master in series.masters:
+        yield master, partial(_expand, master, series, horizon=horizon, profile=profile)
+    for orphan in series.orphans:
+        yield orphan, partial(_orphan_events, orphan, horizon=horizon, profile=profile)
 
 
 def _require_room_for(produced: list[RawEvent], *, remaining: int) -> None:
@@ -138,7 +176,7 @@ def _require_room_for(produced: list[RawEvent], *, remaining: int) -> None:
 
 
 def _partition(readable: list[EventComponent]) -> _Series:
-    """Sort a feed's components into masters, overrides, tombstones, and discards.
+    """Sort a feed's components into masters, overrides, tombstones, orphans, and discards.
 
     **Cancellation is read after the role, not before it**, and the difference is the whole point.
     A cancelled MASTER cancels the event: it produces nothing and is counted. A cancelled
@@ -148,25 +186,28 @@ def _partition(readable: list[EventComponent]) -> _Series:
     override, so the master's own occurrence is emitted and the feed's cancelled hour stays in the
     plan as hard occupancy.
 
-    **A tombstone is not counted as cancelled.** It is an override, and the feed's arithmetic
-    already accounts for an override by its role: counting it twice would leave the totals short.
+    **An override whose series is absent is an orphan, not a no-op.** An export window beginning
+    after a series did emits the moved occurrence and not the master, so this is a real publisher's
+    behavior rather than a broken feed. A live orphan is placed on its own: the feed asserts the
+    commitment, and dropping it would lose an hour the user is actually busy. An orphaned tombstone
+    cancels an occurrence of a series nobody sent, so there is nothing to suppress and it is counted
+    as a cancellation.
+
+    **An applied override is counted, and not counted twice.** ``overrides_applied`` covers the
+    live ones and the tombstones that found their master. Neither is kept as an event of its own
+    nor discarded, so without its own term every override would read as a component that vanished.
 
     Two components with one UID and no ``RECURRENCE-ID`` are the duplicate case. The higher
     ``SEQUENCE`` wins, and a tie keeps the one declared first, so the answer does not depend on
     the order a dictionary happens to hold.
     """
     masters: dict[str, EventComponent] = {}
-    overrides: dict[_OccurrenceKey, EventComponent] = {}
-    tombstones: set[_OccurrenceKey] = set()
+    replacements: list[EventComponent] = []
     duplicates = 0
     cancelled_masters = 0
     for candidate in readable:
         if candidate.replaces is not None:
-            key = (candidate.uid, candidate.replaces.wall)
-            if candidate.cancelled:
-                tombstones.add(key)
-            else:
-                overrides[key] = candidate
+            replacements.append(candidate)
             continue
         if candidate.cancelled:
             cancelled_masters += 1
@@ -178,13 +219,68 @@ def _partition(readable: list[EventComponent]) -> _Series:
         duplicates += 1
         if candidate.sequence > held.sequence:
             masters[candidate.uid] = candidate
+
+    overrides: dict[_OccurrenceKey, EventComponent] = {}
+    tombstones: set[_OccurrenceKey] = set()
+    orphans: list[EventComponent] = []
+    applied = 0
+    for replacement in replacements:
+        if replacement.uid not in masters:
+            if replacement.cancelled:
+                cancelled_masters += 1
+            else:
+                orphans.append(replacement)
+            continue
+        applied += 1
+        key = _replaced_key(replacement)
+        if replacement.cancelled:
+            tombstones.add(key)
+        else:
+            overrides[key] = replacement
+
     return _Series(
         masters=tuple(masters.values()),
         overrides=overrides,
         tombstones=frozenset(tombstones),
+        orphans=tuple(orphans),
         duplicates=duplicates,
         cancelled_masters=cancelled_masters,
+        overrides_applied=applied,
     )
+
+
+def _replaced_key(replacement: EventComponent) -> _OccurrenceKey:
+    if replacement.replaces is None:  # pragma: no cover - only replacements reach here
+        message = "a component with no RECURRENCE-ID was sorted as a replacement"
+        raise MalformedValue(message)
+    return (replacement.uid, replacement.replaces.wall)
+
+
+def _orphan_events(
+    orphan: EventComponent, *, horizon: Interval, profile: ZoneProfile
+) -> list[RawEvent]:
+    """The one event an override with no series in this body stands for, if it lands in the horizon.
+
+    Placed rather than dropped, because the feed asserts the commitment and an hour the user is
+    busy is the wrong thing to lose. Its identity is the occurrence identity the series would have
+    given it, so a later sync that does carry the master reconciles to the same anchor rather than
+    creating a second one.
+    """
+    interval = _interval(orphan, at=orphan.start.wall, profile=profile)
+    if not interval.overlaps(horizon):
+        return []
+    return [
+        RawEvent(
+            uid=_occurrence_uid(orphan.uid, _replaced_key(orphan)[1]),
+            series_uid=orphan.uid,
+            title=orphan.title,
+            interval=interval,
+            location=orphan.location,
+            sequence=orphan.sequence,
+            all_day=orphan.all_day,
+            transparent=orphan.transparent,
+        )
+    ]
 
 
 def _expand(

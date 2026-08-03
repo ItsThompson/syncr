@@ -81,10 +81,11 @@ class FetchOutcome:
     a recurrence expanded. Both are reported, because "12 events read, 48 anchors" and "12
     events read, 9 anchors, 3 rejected" are different stories about the same feed.
 
-    The four discard counts account for every component the feed offered: each one was kept,
-    rejected, discarded as a duplicate, discarded as cancelled, or applied as an override. A
-    component that appeared in none of those would be the user's occupancy vanishing with no
-    explanation anywhere.
+    The counts account for every component the feed offered, and each is its own term because
+    each is a different thing to have happened: one was kept, rejected, discarded as a duplicate,
+    discarded as a cancelled master, applied as an override, or read and found to place nothing
+    inside the horizon. A component in none of those would be the user's occupancy vanishing with
+    no explanation anywhere, which is what the arithmetic exists to make impossible.
     """
 
     events: tuple[RawEvent, ...] = ()
@@ -92,6 +93,14 @@ class FetchOutcome:
     events_read: int = 0
     duplicates_discarded: int = 0
     cancelled_discarded: int = 0
+    # Override components applied against a master present in the same body, whether they replaced
+    # an occurrence or suppressed one. Neither kept as an event of their own nor discarded, so the
+    # accounting needs its own term for them or every override looks like a loss.
+    overrides_applied: int = 0
+    # Components read that produced no event inside the horizon: every occurrence falls outside it,
+    # or every one was excluded or cancelled. Not a loss and not an error, but it has to be counted,
+    # because otherwise it is indistinguishable from occupancy that vanished.
+    unplaced: int = 0
     # Whether this outcome came from reading a feed body. False for an unchanged feed and for
     # an unreachable one, and it is the ONLY thing that distinguishes those from a feed that
     # genuinely holds no events: all three carry an empty event list, and only one of them
@@ -116,4 +125,6 @@ class FetchOutcome:
             "rejected_count": self.rejected_count,
             "duplicate_count": self.duplicates_discarded,
             "cancelled_count": self.cancelled_discarded,
+            "override_count": self.overrides_applied,
+            "unplaced_count": self.unplaced,
         }

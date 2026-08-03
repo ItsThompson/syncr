@@ -27,12 +27,18 @@ from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Final
 
+from syncr_api.calendars.config import MAX_EVENT_DAYS
 from syncr_api.calendars.ics_errors import MalformedValue
 from syncr_api.calendars.ics_zones import resolve_tzid
 
 # `20260209T090000` with an optional trailing Z, and the date-only form.
 _DATE_TIME: Final = re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$")
 _DATE_ONLY: Final = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
+
+_SECONDS_PER_MINUTE: Final = 60
+_SECONDS_PER_HOUR: Final = 60 * _SECONDS_PER_MINUTE
+_SECONDS_PER_DAY: Final = 24 * _SECONDS_PER_HOUR
+_SECONDS_PER_WEEK: Final = 7 * _SECONDS_PER_DAY
 
 # RFC 5545 duration: `P` then weeks, or days with an optional time part. A leading `-`
 # makes it negative, which a DURATION on an event must not be.
@@ -121,28 +127,40 @@ def parse_time(value: str, *, params: tuple[tuple[str, str], ...]) -> IcsTime:
 
 
 def parse_duration(value: str) -> timedelta:
-    """One DURATION value as a positive timedelta.
+    """One DURATION value as a positive timedelta inside the bound syncr can place.
 
     A negative or zero duration is rejected. An interval needs a positive length, and an
     event that claims to end before it starts tells syncr nothing about occupancy, which
     is the same failure a missing DTEND is.
+
+    The magnitude is bounded, and the total is summed as INTEGER SECONDS before a ``timedelta``
+    exists. The constructor refuses a day count over 999,999,999 with an ``OverflowError``, which is
+    not a rejection and would escape the adapter; and even a span it accepts can overflow the
+    arithmetic that places it. Summing first means one bound covers every unit and no intermediate
+    value can overflow, because Python integers do not.
     """
     matched = _DURATION.fullmatch(value.strip())
     if matched is None:
         message = f"{value!r} is not an ICS duration"
         raise MalformedValue(message)
     parts = matched.groupdict()
-    span = timedelta(
-        weeks=_number(parts["weeks"]),
-        days=_number(parts["days"]),
-        hours=_number(parts["hours"]),
-        minutes=_number(parts["minutes"]),
-        seconds=_number(parts["seconds"]),
+    seconds = (
+        _number(parts["weeks"]) * _SECONDS_PER_WEEK
+        + _number(parts["days"]) * _SECONDS_PER_DAY
+        + _number(parts["hours"]) * _SECONDS_PER_HOUR
+        + _number(parts["minutes"]) * _SECONDS_PER_MINUTE
+        + _number(parts["seconds"])
     )
-    if parts["sign"] == "-" or span <= timedelta():
-        message = f"{value!r} is a duration of {span}, and an event needs a positive one"
+    if parts["sign"] == "-" or seconds <= 0:
+        message = f"{value!r} is a duration of {seconds} seconds, and an event needs a positive one"
         raise MalformedValue(message)
-    return span
+    if seconds > MAX_EVENT_DAYS * _SECONDS_PER_DAY:
+        message = (
+            f"{value!r} is a duration of about {seconds // _SECONDS_PER_DAY} days, longer than the "
+            f"{MAX_EVENT_DAYS} days syncr will place for one event"
+        )
+        raise MalformedValue(message)
+    return timedelta(seconds=seconds)
 
 
 def parse_sequence(value: str) -> int:

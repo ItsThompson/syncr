@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from syncr_api.calendars.config import MAX_EVENT_DAYS
 from syncr_api.calendars.ics_errors import MalformedValue, UnmappedZone
 from syncr_api.calendars.ics_times import resolve, resolve_day_span, resolve_span, zone_for
 from syncr_api.calendars.ics_values import (
@@ -184,6 +185,36 @@ def test_a_duration_that_is_not_positive_is_rejected(value: str) -> None:
     # failure a missing DTEND is.
     with pytest.raises(MalformedValue):
         parse_duration(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["P9999999999D", "P999999999W", "PT99999999999999S", f"P{MAX_EVENT_DAYS + 1}D"],
+    ids=["days past the constructor", "weeks", "seconds", "one day past the bound"],
+)
+def test_a_duration_longer_than_syncr_will_place_is_rejected_by_name(value: str) -> None:
+    # A magnitude is not a syntax error: each of these parses perfectly and then overflows the
+    # arithmetic that would place it. Bounding it HERE rather than catching the overflow later is
+    # what lets the rejection name the property and the bound, which is what the panel renders.
+    with pytest.raises(MalformedValue) as raised:
+        parse_duration(value)
+
+    assert str(MAX_EVENT_DAYS) in str(raised.value)
+    assert "days syncr will place" in str(raised.value)
+
+
+def test_a_duration_at_the_bound_is_accepted() -> None:
+    # The accepting side, so the comparison is shown not to be off by one. A multi-year all-day
+    # event is legitimate, which is why this bound is not the projection horizon.
+    assert parse_duration(f"P{MAX_EVENT_DAYS}D").days == MAX_EVENT_DAYS
+
+
+def test_the_duration_bound_covers_every_unit_through_one_sum() -> None:
+    # The units are summed as integer seconds before a timedelta exists, so one bound covers all
+    # five and no intermediate value can overflow. Stated as a test because the alternative,
+    # bounding each unit separately, passes the obvious cases and lets a mixed value through.
+    with pytest.raises(MalformedValue):
+        parse_duration(f"P{MAX_EVENT_DAYS}DT24H")
 
 
 def test_an_unreadable_sequence_is_rejected_rather_than_read_as_zero() -> None:
