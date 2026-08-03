@@ -7,43 +7,13 @@
  *
  * The pigment is a variant per ramp step rather than a computed class, so the twelve are written where the
  * markup scan can read them. A component that assembled `bg-area-${n}` would be invisible to the layer 0 rule,
- * the arbitrary-value rule and the circle allowlist alike. */
+ * the arbitrary-value rule and the circle allowlist alike. Which step an assigned index lands on is
+ * `pigment.ts`'s question, because a chart and a legend need the same answer without importing a chip. */
 
 import { cva } from "class-variance-authority";
 
+import type { AreaPigment } from "./pigment";
 import "./marks.css";
-
-/** The sealed ramp, in the order the tokens name its steps. */
-export const AREA_PIGMENTS = [
-  "01",
-  "02",
-  "03",
-  "04",
-  "05",
-  "06",
-  "07",
-  "08",
-  "09",
-  "10",
-  "11",
-  "12",
-] as const;
-
-export type AreaPigment = (typeof AREA_PIGMENTS)[number];
-
-/**
- * The ramp step an Area's assigned index lands on.
- *
- * The domain stores `pigment_index`, 0 to 11, and assigns it rather than letting a user pick. The ramp is
- * sealed at twelve, so an index past the end wraps: a thirteenth Area repeats a pigment, which is legible,
- * where a colourless chip would read as a rendering fault.
- */
-export function areaPigment(pigmentIndex: number): AreaPigment {
-  const step =
-    ((Math.trunc(pigmentIndex) % AREA_PIGMENTS.length) + AREA_PIGMENTS.length) %
-    AREA_PIGMENTS.length;
-  return AREA_PIGMENTS[step];
-}
 
 const chip = cva("area-chip", {
   variants: {

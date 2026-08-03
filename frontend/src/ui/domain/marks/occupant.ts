@@ -27,7 +27,12 @@ export interface GlyphSlotClaim {
   readonly isPinned?: boolean | undefined;
   /** This block comes from the pending proposal rather than from the live plan. */
   readonly isProposalSource?: boolean | undefined;
-  /** How many blocks are staggered behind this one, where the grid has decided to say so. */
+  /**
+   * How many blocks are staggered behind this one, where the grid has decided to say so.
+   *
+   * The marker appears at depth 4 and above, so a count of one or none is not a claim on the slot: passing one
+   * would put the digit `1` where an origin mark belongs, and the grid's own threshold is the caller's.
+   */
   readonly overlapCount?: number | undefined;
   /** The origin mark, passed only at a tier with no room for a title. */
   readonly origin?: BlockOrigin | undefined;
@@ -35,7 +40,7 @@ export interface GlyphSlotClaim {
 
 export function glyphSlotOccupant(claim: GlyphSlotClaim): GlyphSlotOccupant | null {
   if (claim.isPinned === true) return "pinned";
-  if (claim.overlapCount !== undefined) return "overlap";
+  if (claim.overlapCount !== undefined && claim.overlapCount > 1) return "overlap";
   if (claim.isProposalSource === true) return "proposal-source";
   return claim.origin ?? null;
 }

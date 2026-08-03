@@ -8,10 +8,11 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { domainDir, kitStylesheet } from "../../../../testing/kitStylesheets";
-import { AREA_PIGMENTS, AreaChip, areaPigment } from "../AreaChip";
+import { AreaChip } from "../AreaChip";
 import { GlyphSlot } from "../GlyphSlot";
 import { KeyHint } from "../KeyHint";
 import { glyphSlotOccupant } from "../occupant";
+import { AREA_PIGMENTS, areaPigment } from "../pigment";
 
 const marksStylesheet = () => kitStylesheet("marks/marks.css", domainDir);
 
@@ -50,6 +51,17 @@ describe("an Area chip", () => {
     expect(areaPigment(11)).toBe("12");
     expect(areaPigment(12)).toBe("01");
     expect(areaPigment(-1)).toBe("12");
+  });
+
+  /* THE TWO GEOMETRY FACTS THE CRITERION NAMES, read from the stylesheet because jsdom applies none. Nothing else
+   * fails if either changes: a chip at 14px still renders, and a square one still renders. */
+  it("is at most 10px and circular, which is one of the four legal circles", async () => {
+    const css = await marksStylesheet();
+    const chip = /\.area-chip\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+
+    expect(chip).toContain("width: 10px");
+    expect(chip).toContain("height: 10px");
+    expect(chip).toContain("border-radius: 50%");
   });
 });
 
@@ -116,6 +128,10 @@ describe("the glyph slot", () => {
     [{ isProposalSource: true, origin: "task" as const }, "proposal-source"],
     [{ origin: "task" as const }, "task"],
     [{}, null],
+    /* A count of one or none is not a claim on the slot: the marker appears at depth 4 and above, so a caller
+     * passing a count that low would otherwise put the digit where the origin mark belongs. */
+    [{ overlapCount: 0, origin: "task" as const }, "task"],
+    [{ overlapCount: 1, isProposalSource: true }, "proposal-source"],
   ])("settles the precedence: %o wins as %s", (claim, occupant) => {
     expect(glyphSlotOccupant(claim)).toBe(occupant);
   });
