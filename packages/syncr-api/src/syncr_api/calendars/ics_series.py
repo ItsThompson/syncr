@@ -43,7 +43,7 @@ from syncr_api.calendars.ics_times import ONE_DAY, resolve_day_span, resolve_spa
 from syncr_domain.intervals import Interval
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
     from datetime import datetime
 
     from syncr_api.calendars.ics_components import EventComponent
@@ -107,7 +107,6 @@ def sort_components(readable: list[EventComponent]) -> Series:
     the second is still counted rather than absorbed.
     """
     masters: dict[str, EventComponent] = {}
-    cancelled_uids: set[str] = set()
     replacements: list[EventComponent] = []
     duplicates = 0
     cancelled = 0
@@ -115,38 +114,87 @@ def sort_components(readable: list[EventComponent]) -> Series:
         if candidate.replaces is not None:
             replacements.append(candidate)
             continue
-        if candidate.cancelled:
-            cancelled += 1
-            cancelled_uids.add(candidate.uid)
-            continue
         held = masters.get(candidate.uid)
         if held is None:
             masters[candidate.uid] = candidate
             continue
+        # Two revisions of one series. The higher SEQUENCE wins WHETHER OR NOT either is cancelled:
+        # reading the cancellation first would let an older live revision beat the cancellation that
+        # superseded it, and place a whole series the feed's latest word says does not happen.
         duplicates += 1
         if candidate.sequence > held.sequence:
             masters[candidate.uid] = candidate
 
+    live = {uid: master for uid, master in masters.items() if not master.cancelled}
+    cancelled_uids = masters.keys() - live.keys()
+    cancelled += len(cancelled_uids)
+
+    attached: list[EventComponent] = []
+    stray: list[EventComponent] = []
+    for replacement in replacements:
+        if replacement.uid in live:
+            attached.append(replacement)
+        elif replacement.uid in cancelled_uids:
+            # The series this replaces is cancelled, so there is nothing live to attach it to and
+            # nothing it could be an occurrence OF. Placing it would turn a cancellation into
+            # occupancy.
+            cancelled += 1
+        else:
+            stray.append(replacement)
+
+    # The same precedence applies whether or not the master is present, so it is resolved once. What
+    # differs is what happens to the survivors: a replacement of a live series is read against that
+    # series' occurrences, while one of an absent series is placed on its own.
+    held_by_a_series = _resolve(attached)
+    orphaned = _resolve(stray)
+    duplicates += held_by_a_series.duplicates + orphaned.duplicates
+    cancelled += held_by_a_series.cancelled + orphaned.cancelled
+    # An orphaned tombstone cancels an occurrence nobody sent, so it has nothing to suppress and a
+    # count is the only way the arithmetic sees it. One that DID suppress an orphan is already
+    # counted by `_resolve`.
+    cancelled += len(orphaned.tombstones)
+
+    return Series(
+        masters=tuple(live.values()),
+        overrides=held_by_a_series.overrides,
+        tombstones=frozenset(held_by_a_series.tombstones),
+        orphans=tuple(orphaned.overrides.values()),
+        duplicates=duplicates,
+        cancelled=cancelled,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _Resolved:
+    """Replacements of one group, resolved to at most one per occurrence."""
+
+    overrides: dict[OccurrenceKey, EventComponent]
+    tombstones: set[OccurrenceKey]
+    duplicates: int
+    cancelled: int
+
+
+def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
+    """One replacement per occurrence, and a count of everything that lost.
+
+    Three rules, and they hold whether or not the series these replace is present, which is why this
+    is one function rather than two branches that drifted apart:
+
+    - Two live replacements of one occurrence resolve by ``SEQUENCE``, tie to the first declared,
+      and the loser is counted. An overlapping export repeats an override as readily as a master.
+    - A repeated cancellation has no ``SEQUENCE`` question, both say the same thing, but the second
+      is still counted or a set absorbs it and the arithmetic loses a component.
+    - A cancellation beats a replacement of the same occurrence, because the feed's cancellation is
+      what it means, and the override it displaces is counted rather than dropped silently.
+    """
     overrides: dict[OccurrenceKey, EventComponent] = {}
     tombstones: set[OccurrenceKey] = set()
-    orphans: list[EventComponent] = []
+    duplicates = 0
+    cancelled = 0
     for replacement in replacements:
-        if replacement.uid not in masters:
-            # No live master, so there is no occurrence this could be. A replacement of a series the
-            # feed cancelled is counted rather than placed: placing it would turn a cancellation
-            # into occupancy. A replacement of a series that is simply absent is an orphan, which
-            # the caller places on its own because the feed asserts the commitment.
-            if replacement.cancelled or replacement.uid in cancelled_uids:
-                cancelled += 1
-            else:
-                orphans.append(replacement)
-            continue
         key = replaced_key(replacement)
         if replacement.cancelled:
             if key in tombstones:
-                # A repeated cancellation of one occurrence. There is no SEQUENCE question to settle
-                # (both say the same thing), but the second component still has to be counted or it
-                # vanishes from the arithmetic exactly as a repeated override would.
                 duplicates += 1
                 continue
             tombstones.add(key)
@@ -159,20 +207,11 @@ def sort_components(readable: list[EventComponent]) -> Series:
         if replacement.sequence > held.sequence:
             overrides[key] = replacement
 
-    # A feed that both moves an occurrence and cancels it has said it does not happen. The
-    # cancellation is read before the replacement, as everywhere else here, and the override it
-    # displaces is counted so the component is not lost silently.
     for key in tombstones & overrides.keys():
         del overrides[key]
         cancelled += 1
-
-    return Series(
-        masters=tuple(masters.values()),
-        overrides=overrides,
-        tombstones=frozenset(tombstones),
-        orphans=tuple(orphans),
-        duplicates=duplicates,
-        cancelled=cancelled,
+    return _Resolved(
+        overrides=overrides, tombstones=tombstones, duplicates=duplicates, cancelled=cancelled
     )
 
 

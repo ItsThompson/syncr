@@ -94,21 +94,24 @@ class FetchOutcome:
     rejected: tuple[RejectedComponent, ...] = ()
     events_read: int = 0
     # Components another component superseded: a duplicate master or override the higher SEQUENCE
-    # beat, and an override whose occurrence the surviving series no longer produces.
+    # beat, and a repeated cancellation, which has no SEQUENCE question but still loses to the
+    # first.
     duplicates_discarded: int = 0
     # Components a cancellation discarded, in any of its five forms. See `Series.cancelled`.
     cancelled_discarded: int = 0
     # Components that produced at least one event. Reported rather than derived from the events,
-    # because two components can contribute events carrying ONE ``series_uid``: a replacement no
-    # occurrence claimed is placed on its own and still names the series it belongs to. Counting the
-    # events' series would read those two as one and leave the arithmetic short.
+    # because two components can contribute events carrying ONE ``series_uid``: two orphaned
+    # replacements of different occurrences are each placed on their own and both name the series
+    # they belong to. Counting the events' series would read those two as one and leave the
+    # arithmetic short.
     placed: int = 0
     # Override components applied against a master present in the same body, whether they replaced
     # an occurrence or suppressed one. Neither kept as an event of their own nor discarded, so the
     # accounting needs its own term for them or every override looks like a loss.
     overrides_applied: int = 0
     # Components read that produced no event inside the horizon: every occurrence falls outside it,
-    # or every one was excluded or cancelled. Not a loss and not an error, but it has to be counted,
+    # every one was excluded or cancelled, or the component is a replacement whose occurrence the
+    # series it belongs to no longer produces. Not a loss and not an error, but it is counted,
     # because otherwise it is indistinguishable from occupancy that vanished.
     unplaced: int = 0
     # Whether this outcome came from reading a feed body. False for an unchanged feed and for

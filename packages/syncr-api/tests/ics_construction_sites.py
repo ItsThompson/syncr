@@ -146,6 +146,13 @@ SITES: Final[tuple[Site, ...]] = (
     ),
     Site(
         module="ics_recurrence",
+        function="_require_positive_interval",
+        constructor="int",
+        reads="an INTERVAL a feed stated",
+        guard=GUARDED_HERE,
+    ),
+    Site(
+        module="ics_recurrence",
         function="_as_series_wall",
         constructor="strptime",
         reads="a UTC UNTIL inside an RRULE",

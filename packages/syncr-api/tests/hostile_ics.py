@@ -334,6 +334,13 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         "DURATION:PT1H",
         f"RRULE:FREQ=DAILY;INTERVAL={PAST_INT_CONVERSION}",
     ),
+    # The DEGENERATE end of the same axis, which is the end an exporter's sign slip reaches. A zero
+    # interval never advances, so a bound on how many occurrences a rule YIELDS cannot fire on it.
+    "an interval of zero": ("DURATION:PT1H", "RRULE:FREQ=DAILY;INTERVAL=0"),
+    "a padded interval of zero": ("DURATION:PT1H", "RRULE:FREQ=DAILY;INTERVAL=00"),
+    "a negative interval": ("DURATION:PT1H", "RRULE:FREQ=DAILY;INTERVAL=-1"),
+    "a negative monthly interval": ("DURATION:PT1H", "RRULE:FREQ=MONTHLY;INTERVAL=-1"),
+    "a count of zero": ("DURATION:PT1H", "RRULE:FREQ=DAILY;COUNT=0"),
     "a count past the conversion limit": (
         "DURATION:PT1H",
         f"RRULE:FREQ=DAILY;COUNT={PAST_INT_CONVERSION}",
@@ -372,6 +379,66 @@ def _crossed() -> dict[str, str]:
         for start in _STARTS
     }
 
+
+def _orphan(*lines: str) -> str:
+    """A replacement of a series this feed does not carry."""
+    body = "\r\n".join(lines)
+    return (
+        "BEGIN:VEVENT\r\nUID:absent@example.org\r\n"
+        "RECURRENCE-ID:20260217T100000Z\r\n" + body + "\r\nEND:VEVENT\r\n"
+    )
+
+
+# Two orphaned replacements of ONE occurrence. The same SEQUENCE rule settles these as settles the
+# ones whose master is present: both surviving gives one commitment two events under one uid.
+DUPLICATE_ORPHANS: Final = (
+    "BEGIN:VCALENDAR\r\n"
+    + _orphan(
+        "SEQUENCE:1",
+        "SUMMARY:Orphan moved to 14:00",
+        "DTSTART:20260217T140000Z",
+        "DTEND:20260217T150000Z",
+    )
+    + _orphan(
+        "SEQUENCE:3",
+        "SUMMARY:Orphan moved to 16:00",
+        "DTSTART:20260217T160000Z",
+        "DTEND:20260217T170000Z",
+    )
+    + "END:VCALENDAR\r\n"
+)
+
+# An orphaned cancellation and an orphaned live override of the same occurrence. Cancellation wins
+# here as it does when the master is present, or a cancelled hour becomes hard occupancy.
+CANCELLED_ORPHAN: Final = (
+    "BEGIN:VCALENDAR\r\n"
+    + _orphan(
+        "STATUS:CANCELLED",
+        "SUMMARY:Cancelled",
+        "DTSTART:20260217T100000Z",
+        "DTEND:20260217T110000Z",
+    )
+    + _orphan(
+        "SUMMARY:...and here it is, moved",
+        "DTSTART:20260217T140000Z",
+        "DTEND:20260217T150000Z",
+    )
+    + "END:VCALENDAR\r\n"
+)
+
+# Two revisions of one series, the newer of which is a cancellation. The higher SEQUENCE has to win
+# whether or not it is the cancelled one, or a superseded revision places a whole series.
+CANCELLED_NEWER_REVISION: Final = (
+    "BEGIN:VCALENDAR\r\n"
+    "BEGIN:VEVENT\r\nUID:rev@example.org\r\nSEQUENCE:1\r\nSUMMARY:Live older revision\r\n"
+    "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+    "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:rev@example.org\r\nSEQUENCE:7\r\nSTATUS:CANCELLED\r\n"
+    "SUMMARY:Cancelled newer revision\r\n"
+    "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+    "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+    "END:VCALENDAR\r\n"
+)
 
 HOSTILE_MAGNITUDES: Final[dict[str, str]] = _crossed()
 
@@ -501,5 +568,8 @@ ALL_FEEDS: Final = {
     "cancelled_duplicate_master": CANCELLED_DUPLICATE_MASTER,
     "duplicate_tombstones": DUPLICATE_TOMBSTONES,
     "shifted_by_a_duplicate_master": SHIFTED_BY_A_DUPLICATE_MASTER,
+    "duplicate_orphans": DUPLICATE_ORPHANS,
+    "cancelled_orphan": CANCELLED_ORPHAN,
+    "cancelled_newer_revision": CANCELLED_NEWER_REVISION,
     **HOSTILE_MAGNITUDES,
 }

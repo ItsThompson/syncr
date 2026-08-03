@@ -32,6 +32,8 @@ from tests.hostile_ics import (
     ALL_FEEDS,
     ASSESSMENTS_FEED,
     CANCELLED_DUPLICATE_MASTER,
+    CANCELLED_ORPHAN,
+    DUPLICATE_ORPHANS,
     DUPLICATE_REPLACEMENTS,
     DUPLICATE_REPLACEMENTS_REVERSED,
     DUPLICATE_TOMBSTONES,
@@ -295,6 +297,51 @@ def test_a_runaway_recurrence_is_rejected_rather_than_expanded() -> None:
     assert "will not read" in outcome.rejected[0].detail
 
 
+@pytest.mark.parametrize(
+    "interval",
+    ["0", "00", "-1", "-999999999", "1.5", ""],
+    ids=["zero", "padded zero", "negative", "a large negative", "fractional", "empty"],
+)
+def test_an_interval_that_is_not_a_positive_number_is_refused_by_name(interval: str) -> None:
+    # An exporter's sign slip, not a hostile body. Two different faults sit behind this one guard,
+    # and neither is answered by anything downstream:
+    #
+    # A NEGATIVE interval is accepted when the rule is built and raises during ITERATION, inside
+    # dateutil, where `ValueError` is neither a rejection nor unrepresentable, so it escaped the
+    # adapter with no sync state written.
+    #
+    # A ZERO interval never terminates. dateutil advances by the interval, so the rule never reaches
+    # a new value, and a bound counting the occurrences a rule YIELDS can never fire. That holds a
+    # worker tick and its transaction open rather than aborting them, which is worse than a raise.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:iv@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:FREQ=DAILY;INTERVAL={interval}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    assert "positive number of periods" in outcome.rejected[0].detail
+
+
+@pytest.mark.parametrize("interval", ["1", "2", "02", "0002"])
+def test_a_positive_interval_is_expanded_however_it_is_written(interval: str) -> None:
+    # The accepting side, including the padded forms RFC 5545's digit grammar permits, so the guard
+    # is shown to refuse a property rather than a spelling.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:iv@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:FREQ=DAILY;INTERVAL={interval}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.rejected == ()
+    assert len(outcome.events) > 1
+
+
 def test_a_component_overrunning_the_per_feed_bound_is_refused_whole_and_says_so() -> None:
     # A FREQ=MINUTELY rule stays inside the per-series step bound while producing more events than
     # syncr reads from one feed. Truncating the total would bound neither the memory nor the time it
@@ -419,12 +466,62 @@ def test_a_cancelled_duplicate_master_does_not_cancel_the_live_series_overrides(
     # a live master and a cancelled one under one UID has a live series, so its override belongs to
     # that series. Deciding by "is this UID cancelled anywhere" discards the moved hour and the
     # accounting still closes, so nothing would report the loss.
+    #
+    # Both masters carry SEQUENCE 0, so the tie keeps the one declared first, which is the live one.
+    # The cancelled duplicate therefore LOST a SEQUENCE comparison and is counted as a duplicate:
+    # what discarded it is the other revision, not its own cancellation.
     outcome = parse_feed(CANCELLED_DUPLICATE_MASTER, horizon=HORIZON, profile=HOME)
 
     assert "Moved hour" in {event.title for event in outcome.events}
     assert outcome.overrides_applied == 1
-    # The cancelled duplicate, and nothing else.
+    assert outcome.duplicates_discarded == 1
+    assert outcome.cancelled_discarded == 0
+
+
+def test_a_cancelled_revision_with_the_higher_sequence_beats_a_live_older_one() -> None:
+    # The duplicate rule has to run WHETHER OR NOT one of the two is cancelled. Reading the
+    # cancellation first lets an older live revision win by default, and places a whole series the
+    # feed's latest word says does not happen: four hours of hard occupancy from a superseded
+    # revision. Exchange bumps SEQUENCE and sets STATUS:CANCELLED together, so an overlapping export
+    # window carries both.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:rev@example.org\r\nSEQUENCE:1\r\nSUMMARY:Live older revision\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:rev@example.org\r\nSEQUENCE:7\r\nSTATUS:CANCELLED\r\n"
+        "SUMMARY:Cancelled newer revision\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
     assert outcome.cancelled_discarded == 1
+    assert outcome.duplicates_discarded == 1
+
+
+def test_two_orphaned_replacements_of_one_occurrence_resolve_by_sequence() -> None:
+    # The orphan branch needs every rule the master-present branch has, because the shapes reaching
+    # it are the same shapes. Two survivors would give ONE commitment two hard-occupancy events, and
+    # they would carry the SAME uid, so the reconciler would see two rows for one occurrence.
+    outcome = parse_feed(DUPLICATE_ORPHANS, horizon=HORIZON, profile=HOME)
+
+    assert [event.title for event in outcome.events] == ["Orphan moved to 16:00"]
+    assert len({event.uid for event in outcome.events}) == 1
+    assert outcome.duplicates_discarded == 1
+
+
+def test_an_orphaned_cancellation_suppresses_an_orphaned_override_of_that_occurrence() -> None:
+    # Cancellation wins whether or not the master is present. Reading it only against a live series
+    # leaves the moved hour standing as occupancy for an occurrence the feed cancelled, which is the
+    # harm the cancellation rules exist to prevent.
+    outcome = parse_feed(CANCELLED_ORPHAN, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert outcome.cancelled_discarded == 2
 
 
 def test_two_replacements_of_one_occurrence_resolve_by_sequence_and_count_the_discard() -> None:
@@ -501,7 +598,11 @@ def test_an_override_matching_no_occurrence_is_counted_rather_than_lost() -> Non
     outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
 
     assert titled(outcome.events, "Moved to Tuesday") == []
-    assert outcome.duplicates_discarded == 1
+    # Counted as read-and-placed-nothing rather than as a duplicate: the rule was edited, so nothing
+    # superseded this override and calling it a duplicate would put a claim on the panel that the
+    # parser cannot support.
+    assert outcome.unplaced == 1
+    assert outcome.duplicates_discarded == 0
     # And it is NOT counted as applied: the term means "replaced an occurrence", so its name and the
     # arithmetic agree.
     assert outcome.overrides_applied == 0
@@ -533,8 +634,9 @@ def test_a_duplicate_master_that_shifts_a_series_does_not_double_the_moved_hour(
     assert titled(outcome.events, "Moved to 14:00") == []
     on_the_17th = [event for event in outcome.events if event.interval.start.day == 17]
     assert len(on_the_17th) == 1
-    # The losing revision's master, and the override that belonged to it.
-    assert outcome.duplicates_discarded == 2
+    # The losing revision's master is a duplicate; the override that belonged to it placed nothing.
+    assert outcome.duplicates_discarded == 1
+    assert outcome.unplaced == 1
 
 
 def test_an_override_that_matches_an_occurrence_is_counted_as_applied() -> None:

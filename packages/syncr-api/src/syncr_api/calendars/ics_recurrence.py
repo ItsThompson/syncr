@@ -50,6 +50,7 @@ if TYPE_CHECKING:
 MAX_EXPANSION_STEPS: Final = 50_000
 
 _UNTIL: Final = "UNTIL"
+_INTERVAL: Final = "INTERVAL"
 _RULE_SEPARATOR: Final = ";"
 _WALL_FORMAT: Final = "%Y%m%dT%H%M%S"
 
@@ -83,13 +84,21 @@ def occurrences(
     """
     excluded_instants, excluded_dates = _exclusions(recurrence.excluded, profile)
     kept: list[datetime] = []
-    for step, wall in enumerate(_candidates(start, recurrence)):
-        if step >= limit:
-            message = (
-                f"the recurrence rule reaches {limit} occurrences without leaving the "
-                "window, so syncr will not read it"
-            )
-            raise UnparseableRecurrence(message)
+    candidates = _candidates(start, recurrence)
+    for _step in range(limit):
+        # `next` is called under the bound rather than the loop being driven by the iterator,
+        # because a rule can spend unbounded work WITHOUT yielding: dateutil advances by `INTERVAL`,
+        # so a zero interval never reaches a new value and a bound on yields never fires. Counting
+        # attempts bounds the work whether or not the rule produces anything.
+        try:
+            wall = next(candidates)
+        except StopIteration:
+            return tuple(kept)
+        except _RULE_FAULTS as error:
+            # dateutil validates a rule lazily, so a value it accepted at construction can still be
+            # refused here, on the first step that reads it.
+            message = f"the recurrence rule cannot be expanded: {error}"
+            raise UnparseableRecurrence(message) from error
         instant = resolve(start, profile, wall=wall)
         if instant >= window.end:
             break
@@ -98,6 +107,12 @@ def occurrences(
         if instant in excluded_instants or wall.date() in excluded_dates:
             continue
         kept.append(wall)
+    else:
+        message = (
+            f"the recurrence rule reaches {limit} occurrences without leaving the "
+            "window, so syncr will not read it"
+        )
+        raise UnparseableRecurrence(message)
     return tuple(kept)
 
 
@@ -116,6 +131,11 @@ def _candidates(start: IcsTime, recurrence: Recurrence) -> Iterator[datetime]:
     yield from merged
 
 
+# What dateutil raises when a rule it accepted turns out to be unexpandable. It validates lazily, so
+# these arrive during iteration rather than at construction.
+_RULE_FAULTS: Final = (ValueError, TypeError, OverflowError)
+
+
 def _parsed_rule(rule_text: str, start: IcsTime) -> rruleset:
     """``rule_text`` as a dateutil rule set anchored at the series' naive start.
 
@@ -126,11 +146,34 @@ def _parsed_rule(rule_text: str, start: IcsTime) -> rruleset:
     dateutil raises a bare ``ValueError`` on a malformed rule, naming neither the property
     nor the feed, so it is re-raised as the package's own rejection.
     """
+    _require_positive_interval(rule_text)
     try:
         return rrulestr(_wall_until(rule_text, start), dtstart=start.wall, forceset=True)
-    except (ValueError, TypeError, OverflowError) as error:
+    except _RULE_FAULTS as error:
         message = f"{rule_text!r} is not a recurrence rule syncr can expand: {error}"
         raise UnparseableRecurrence(message) from error
+
+
+def _require_positive_interval(rule_text: str) -> None:
+    """Refuse an ``INTERVAL`` that is not a positive number, naming the value.
+
+    RFC 5545 requires a positive integer and dateutil enforces neither bound. A NEGATIVE interval is
+    accepted at construction and raises during iteration, from inside dateutil, where the message
+    names neither the rule nor the feed. A ZERO interval is worse: dateutil advances by it, so the
+    rule never reaches a new value and never terminates. Both are answered here, where the rejection
+    can quote the value the feed stated.
+    """
+    for part in rule_text.split(_RULE_SEPARATOR):
+        key, separator, value = part.partition("=")
+        if not separator or key.strip().upper() != _INTERVAL:
+            continue
+        stated = value.strip()
+        if not stated.isdigit() or int(stated.lstrip("0") or "0") < 1:
+            message = (
+                f"the recurrence rule states an INTERVAL of {stated!r}, and an interval has to "
+                "be a positive number of periods"
+            )
+            raise UnparseableRecurrence(message)
 
 
 def _wall_until(rule_text: str, start: IcsTime) -> str:

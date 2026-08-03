@@ -130,11 +130,15 @@ def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOu
         events=tuple(collected.events),
         rejected=tuple(collected.rejected),
         events_read=len(components),
-        duplicates_discarded=series.duplicates + superseded,
+        duplicates_discarded=series.duplicates,
         cancelled_discarded=series.cancelled + unclaimed,
         placed=collected.placed,
         overrides_applied=len(collected.applied),
-        unplaced=collected.unplaced,
+        # A replacement no occurrence claimed is counted here rather than as a duplicate. Sometimes
+        # another revision did supersede it, but often the rule was simply edited and nothing
+        # replaced it, so "superseded" would be a claim the parser cannot support. "Read, and placed
+        # nothing" is true in every case.
+        unplaced=collected.unplaced + superseded,
     )
 
 
