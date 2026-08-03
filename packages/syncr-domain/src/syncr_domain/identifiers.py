@@ -18,3 +18,6 @@ type TenantId = UUID
 type UserId = UUID
 type PlanRevisionId = UUID
 type OperationId = UUID
+type AreaId = UUID
+type ProjectId = UUID
+type PreferenceId = UUID
