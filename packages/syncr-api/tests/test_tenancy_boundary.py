@@ -241,10 +241,8 @@ def test_no_repository_over_a_scoped_table_builds_a_statement_without_the_scope(
 def test_the_repository_walk_examines_the_packages_that_own_a_scoped_table(
     source_root: Path,
 ) -> None:
-    # What used to stand here was a tripwire asserting NO package owned a scoped table, so
-    # the rule above was armed and vacuous. The settings tables are the first, so the rule
-    # is live: this asserts the walk finds a subject, which is what the tripwire's failure
-    # was the notice of.
+    # The control for the rule above: it iterates over the packages that own a scoped
+    # table, so with none discovered it would pass while asserting nothing.
     scoped = packages_with_scoped_tables(mapped_classes(source_root))
 
     assert scoped, (
