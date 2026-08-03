@@ -3,7 +3,8 @@
  * One glyph, one meaning. The design language states it as a rule and the testing strategy states it as
  * a boundary test, because the marks that share a slot must not collide even where they appear at
  * different tiers and can never co-render. A table beats per-component literals for exactly that
- * reason: a collision is visible in one file, and `glyphs.test.ts` asserts every value is distinct.
+ * reason: a collision is visible in one file, and `__tests__/glyphTable.test.ts` asserts every value is
+ * distinct.
  *
  * THE MARKS ARE DRAWN AS GENERATED CONTENT, which is what makes this a table rather than a convention.
  * A glyph written as a string inside a component is a literal no other component can see; a glyph
@@ -45,7 +46,8 @@
  * see at once, and the meaning is already carried by the control's accessible name. Naming a second slot
  * class per meaning would put the same declaration in the file twice and make a real collision harder to
  * see. What must stay unique is the MARK TABLE above: one codepoint, one entry, which is what
- * `glyphs.test.ts` asserts. */
+ * `__tests__/glyphTable.test.ts` asserts. That file also reads the components, so a slot no component names
+ * and a mark no slot reaches are both findings rather than rules nobody notices. */
 .glyph::before {
   content: var(--glyph);
 }
