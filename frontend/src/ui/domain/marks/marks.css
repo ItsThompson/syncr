@@ -1,0 +1,54 @@
+/* Layer 2: the small marks a row or a block carries.
+ *
+ * Three components share this file because each is three declarations and all three are the same idea: a mark
+ * beside words, never instead of them. The Area chip pairs with the Area's name, the glyph slot sits beside a
+ * title, and a key hint sits beside the action it triggers.
+ *
+ * THE BRACKETED KEY HINT HAS EXACTLY ONE FORM, `[ j ]`, and it is drawn from the glyph table's bracket pair
+ * rather than from two literals here. There is no bordered key cap in this system: a border plus brackets at
+ * --fs-label is one idea said twice, and the brackets survive forced-colors mode where a border on a 10px box
+ * reads as a smudge. The key itself is real text rather than generated content, so a reader can select it and
+ * a screen reader reads `j` rather than nothing. */
+
+.area-chip {
+  /* Up to 10px, and 10px is what the sealed ramp is specimen'd at. One of the four legal circles. */
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+/* The chip and the name are one object: the gap is here rather than at the call site so no screen can pair
+   them at a distance where the chip stops reading as belonging to the name. */
+.area-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The glyph slot's own box. Where it SITS is the surface's decision, because a block floats it beside a
+   wrapping title and a ledger row lays it out in a gutter; what belongs here is that the mark sets in the
+   label size, takes the deepest ink, and reserves tabular figures for the overlap count it may carry. */
+.glyph-slot {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-deep);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.key-hint {
+  color: var(--ink-deep);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  white-space: nowrap;
+}
+
+.key-hint::before {
+  content: var(--glyph-bracket-open);
+}
+
+.key-hint::after {
+  content: var(--glyph-bracket-close);
+}

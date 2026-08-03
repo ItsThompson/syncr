@@ -1,0 +1,175 @@
+/* Layer 2: THE THREE NOTICE VOLUMES, WHICH ARE POSITION, AND THE FOUR PIGMENTS, WHICH ARE KIND.
+ *
+ * Volume 1 sits inline at the block or row it concerns, volume 2 at the head of the affected screen, volume 3
+ * persistently in the top bar. THERE IS NO VOLUME 4. A blocking notice is deliberately unused: this product
+ * does not stop a reader approving a knowingly-broken week, because infeasibility is its most valuable output
+ * and a week that cannot hold its commitments is impossible rather than broken. A modal would also be a fourth
+ * volume for a severity model that has three.
+ *
+ * PIGMENT IS SEALED TO THE MARK AND THE LEFT RULE, never to a fill and never to prose. The one sanctioned
+ * signal SURFACE in this system is --amber-wash on the infeasibility panel, which is a different component.
+ *
+ * AMBER HAS NO TEXT STEP. Its marker clears 4.52:1 on --paper-raised where a marker needs 3:1, and there is no
+ * amber that clears the 4.5:1 a label needs, so an amber notice sets its title in --text-muted while oxide and
+ * verdigris use their own text steps. `__tests__/pigment.test.ts` computes all four figures from the token
+ * files and refuses any rule that puts a signal pigment on prose.
+ *
+ * The panel and the banner carry --paper-raised, which is the surface amber's marker is measured against; the
+ * inline volume carries no box at all, and the surfaces it lands on -- a block, a table row, a panel body --
+ * are raised for the same reason. */
+
+.notice {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
+
+.notice__mark {
+  flex: 0 0 auto;
+}
+
+.notice__content {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.notice__title {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink-deep);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}
+
+.notice__detail {
+  color: var(--ink);
+  font-size: var(--fs-chrome);
+  line-height: var(--lh-chrome);
+}
+
+/* WHAT STILL WORKS IS PART OF THE NOTICE, not a footnote a screen may drop. The panel gives each capability
+   its own row; the two one-line volumes join them, because a list in the top bar would push the plan down. */
+.notice__capabilities {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  line-height: var(--lh-chrome);
+}
+
+.notice__capability {
+  display: block;
+}
+
+.notice__since {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+}
+
+/* ---- volume 2, panel: at the head of the affected screen ---- */
+.notice--panel {
+  border: var(--hairline) solid var(--rule-strong);
+  border-left-width: var(--state-conflict-border);
+  background: var(--paper-raised);
+  padding: 7px 10px;
+}
+
+/* ---- volume 3, banner: the full width of the top bar, until it clears ---- */
+.notice--banner {
+  align-items: center;
+  border-top: var(--hairline) solid var(--rule-strong);
+  border-bottom: var(--hairline) solid var(--rule-strong);
+  border-left: var(--state-conflict-border) solid var(--rule-strong);
+  background: var(--paper-raised);
+  padding: 7px 11px;
+}
+
+/* ---- volume 1, inline: no box at all, beside the thing it qualifies ---- */
+.notice--inline {
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 0;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+}
+
+.notice--inline .notice__title {
+  display: inline;
+  margin-bottom: 0;
+  letter-spacing: var(--ls-label);
+}
+
+.notice--inline .notice__detail {
+  font-size: var(--fs-eyebrow);
+  color: var(--text-muted);
+}
+
+.notice--inline .notice__capabilities {
+  margin-top: 0;
+  display: inline;
+}
+
+/* Inline, the capability line sits after the detail rather than under it: the volume is one line, and a second
+   line would be the panel volume with no box. */
+.notice--inline .notice__content {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+/* ---- the four pigments ---- */
+.notice--info .notice__mark {
+  color: var(--ink-bright);
+}
+
+.notice--info.notice--panel,
+.notice--info.notice--banner {
+  border-left-color: var(--ink-bright);
+}
+
+.notice--info .notice__title {
+  color: var(--ink-bright);
+}
+
+.notice--amber .notice__mark {
+  color: var(--signal-amber);
+}
+
+.notice--amber.notice--panel,
+.notice--amber.notice--banner {
+  border-left-color: var(--signal-amber);
+}
+
+/* The one pigment whose title is NOT its own ink: amber has no text step. */
+.notice--amber .notice__title {
+  color: var(--text-muted);
+}
+
+.notice--oxide .notice__mark {
+  color: var(--signal-oxide);
+}
+
+.notice--oxide.notice--panel,
+.notice--oxide.notice--banner {
+  border-left-color: var(--signal-oxide);
+}
+
+.notice--oxide .notice__title {
+  color: var(--oxide-ink);
+}
+
+.notice--verdigris .notice__mark {
+  color: var(--signal-verdigris);
+}
+
+.notice--verdigris.notice--panel,
+.notice--verdigris.notice--banner {
+  border-left-color: var(--signal-verdigris);
+}
+
+.notice--verdigris .notice__title {
+  color: var(--verdigris-ink);
+}

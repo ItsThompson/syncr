@@ -57,7 +57,7 @@ describe("Button", () => {
   it("takes its accessible name from the label where the child is a glyph", () => {
     render(
       <Button label="Close">
-        <span className="glyph glyph--dismiss" aria-hidden="true" />
+        <span className="glyph glyph--cross" aria-hidden="true" />
       </Button>,
     );
 

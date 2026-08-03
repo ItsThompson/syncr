@@ -1,0 +1,75 @@
+/* Layer 2: the first-run wizard's numbered rows.
+ *
+ * THERE IS NO PROGRESS BAR. Nothing in this product animates, and a bar would claim to measure a thing that is
+ * not a proportion: four steps, two of which block a first solve, is a LIST with a position in it. The current
+ * step takes the kit's row states plus a caret, which is what a reader's eye lands on.
+ *
+ * A BLOCKED STEP IS VISUALLY DISTINCT FROM ONE NOT STARTED, and it is distinct in three ways rather than one:
+ * its note says what blocks it in words, its left rule is DASHED at --text-muted, which is the form disabled
+ * takes everywhere in this kit and which survives forced-colors mode, and its note takes the oxide TEXT step.
+ * A step not started carries none of the three. Without that a reader cannot tell "you cannot do this yet" from
+ * "you have not done this yet", which is the whole dependency the wizard exists to show.
+ *
+ * It is a modifier class rather than a state attribute because a row here is a line in a list rather than a
+ * control: the listitem role does not support `aria-disabled`, and a step's status is data about the step rather
+ * than an interaction state that could diverge from an announced one.
+ *
+ * The mark column is reserved on every row, so becoming current changes a glyph rather than the row's width.
+ *
+ * THE BOX AROUND THE ROWS IS A `Panel` AT THE CALL SITE, not a rule in this file. A bordered block on raised paper
+ * has one definition in the kit, in the layout layer, and the rendered sheet's own wizard box is exactly that
+ * block: repeating its two declarations here would be a second definition under another name. */
+
+.wizard__step {
+  display: grid;
+  grid-template-columns: 26px 12px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  min-height: var(--h-row);
+  padding: 5px 11px;
+  border-bottom: var(--hairline) solid var(--rule);
+}
+
+.wizard__step:last-child {
+  border-bottom: 0;
+}
+
+.wizard__number {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  font-variant-numeric: tabular-nums;
+}
+
+.wizard__mark {
+  display: inline-block;
+  width: 12px;
+  color: var(--ink-deep);
+  font-size: var(--fs-label);
+}
+
+/* Verdigris is a confirmation used sparingly, and a completed step is exactly that. It is a marker rather than
+   a label, which is the role the signal's marker step is sealed to. */
+.wizard__mark--done {
+  color: var(--signal-verdigris);
+}
+
+.wizard__label {
+  color: var(--ink);
+  font-size: var(--fs-chrome);
+}
+
+.wizard__note {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.wizard__step--blocked {
+  border-left-style: dashed;
+  border-left-color: var(--text-muted);
+}
+
+.wizard__step--blocked .wizard__note {
+  color: var(--oxide-ink);
+}

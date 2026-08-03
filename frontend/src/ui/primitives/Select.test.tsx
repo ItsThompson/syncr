@@ -52,7 +52,7 @@ describe("Select", () => {
 
   it("carries the typographic mark from the glyph table, not a native arrow", () => {
     const { container } = renderSelect();
-    const mark = container.querySelector(".glyph--select-arrow");
+    const mark = container.querySelector(".glyph--triangle-down");
 
     expect(mark).not.toBeNull();
     expect(mark).toHaveAttribute("aria-hidden", "true");

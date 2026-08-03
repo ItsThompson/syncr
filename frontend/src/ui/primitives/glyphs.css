@@ -21,16 +21,63 @@
  * literal.
  *
  * The values come from the rendered sheet rather than from taste: the tick at U+2713, the minus at
- * U+2212, the dismiss at U+2715, the select arrow at U+25BE, and the month arrows at U+2039 and U+203A. */
+ * U+2212, the cross at U+2715, the triangles at U+25BE and U+25B4, and the month arrows at U+2039 and U+203A.
+ *
+ * A MARK USED BY TWO MEANINGS IS NAMED AFTER ITS SHAPE, which is why `cross` is not `dismiss` and
+ * `triangle-down` is not `select-arrow`. A dialog's dismiss control and a failure notice both draw U+2715, and a
+ * select's opener and a descending sort both draw U+25BE; the sheet draws each pair that way. A second entry
+ * holding the same codepoint is precisely the collision the uniqueness test exists to find, so each pair names
+ * one entry. The tick is the same case, drawn by a checked box, a completed wizard step and a resolved notice.
+ * Where a mark belongs to one meaning the entry is named for it, which is what lets the test say the
+ * proposal-source mark is not the transit arrow. */
 
 :root {
   --glyph-plus: "+";
   --glyph-minus: "\2212"; /* MINUS SIGN, not a hyphen: it sets at the width of the plus */
   --glyph-check: "\2713";
-  --glyph-dismiss: "\2715";
-  --glyph-select-arrow: "\25BE";
+  --glyph-cross: "\2715";
+  --glyph-triangle-down: "\25BE";
+  --glyph-triangle-up: "\25B4";
   --glyph-month-previous: "\2039";
   --glyph-month-next: "\203A";
+
+  /* THE ORIGIN MARKS, ONE PER ORIGIN KIND, and all seven kinds are here because a block whose title does not
+     fit is read from its mark alone. `docs/design/scratch/block-states.html` defines six of them and the
+     domain has seven: `template_entry` is the one the sheet's fixture never renders, and it takes the filled
+     square because the day shape it comes from is drawn as blocks.
+
+     The filled and hollow pairs are deliberate and reduce what a reader has to learn: an anchor is a filled
+     diamond and the prep it casts is a hollow one, a routine's band is a filled circle. */
+  --glyph-origin-frame: "\25CF";
+  --glyph-origin-template-entry: "\25A0";
+  --glyph-origin-habit: "\21BB";
+  --glyph-origin-task: "\25B8";
+  --glyph-origin-anchor: "\25C6";
+  --glyph-origin-prep: "\25C7";
+  --glyph-origin-transit: "\2192";
+
+  /* THE OTHER THREE OCCUPANTS OF THE GLYPH SLOT. The slot holds one mark at a time and the four kinds must
+     not collide even where they appear at different tiers and can never co-render, which is the whole reason
+     this table exists rather than a literal in each component.
+
+     The pinned mark is NOT the anchor's diamond and the proposal-source mark is NOT the transit arrow. Both
+     near-misses are called out in the sheet, and `__tests__/glyphTable.test.ts` asserts them. */
+  --glyph-pinned: "\25A3";
+  --glyph-proposal-source: "\00BB";
+  --glyph-overlap: "\29C9";
+
+  /* The current row's caret, which is what a wizard has instead of a progress bar.
+
+     The sheet draws it with the task origin's own triangle and this kit cannot: one glyph carries one
+     meaning, and a mark for "you are here" is not a mark for "this came from a task". It takes the hollow
+     form of the same triangle, which is the filled-and-hollow distinction the anchor and its prep use. */
+  --glyph-caret: "\25B9";
+
+  /* NOTICE KINDS. Pigment says what kind of thing happened, and a mark says it a second time, because colour
+     is never the only encoding of anything. Two of the four kinds draw a mark this table already holds: a
+     failure is the cross and a resolved notice is the tick. */
+  --glyph-notice-info: "\25CB";
+  --glyph-notice-attention: "\25B2";
 
   /* The bracketed form, stated once. Key hints take exactly this shape, `[ j ]`, and so does the
      accordion's disclosure, so there is one bracketed-glyph form in the system rather than two. A
@@ -68,12 +115,16 @@
   --glyph: var(--glyph-check);
 }
 
-.glyph--dismiss {
-  --glyph: var(--glyph-dismiss);
+.glyph--cross {
+  --glyph: var(--glyph-cross);
 }
 
-.glyph--select-arrow {
-  --glyph: var(--glyph-select-arrow);
+.glyph--triangle-down {
+  --glyph: var(--glyph-triangle-down);
+}
+
+.glyph--triangle-up {
+  --glyph: var(--glyph-triangle-up);
 }
 
 .glyph--month-previous {
@@ -82,6 +133,60 @@
 
 .glyph--month-next {
   --glyph: var(--glyph-month-next);
+}
+
+.glyph--origin-frame {
+  --glyph: var(--glyph-origin-frame);
+}
+
+.glyph--origin-template-entry {
+  --glyph: var(--glyph-origin-template-entry);
+}
+
+.glyph--origin-habit {
+  --glyph: var(--glyph-origin-habit);
+}
+
+.glyph--origin-task {
+  --glyph: var(--glyph-origin-task);
+}
+
+.glyph--origin-anchor {
+  --glyph: var(--glyph-origin-anchor);
+}
+
+.glyph--origin-prep {
+  --glyph: var(--glyph-origin-prep);
+}
+
+.glyph--origin-transit {
+  --glyph: var(--glyph-origin-transit);
+}
+
+.glyph--pinned {
+  --glyph: var(--glyph-pinned);
+}
+
+.glyph--proposal-source {
+  --glyph: var(--glyph-proposal-source);
+}
+
+/* The count sits beside the marker rather than inside it, so the mark is the table's and the figure is the
+ * grid's. The space is non-breaking: a count that wrapped away from its marker would read as a stray digit. */
+.glyph--overlap {
+  --glyph: var(--glyph-overlap) "\00A0";
+}
+
+.glyph--caret {
+  --glyph: var(--glyph-caret);
+}
+
+.glyph--notice-info {
+  --glyph: var(--glyph-notice-info);
+}
+
+.glyph--notice-attention {
+  --glyph: var(--glyph-notice-attention);
 }
 
 /* DISCLOSURE IS THE ONE GLYPH DRIVEN BY A STATE, so this is the kit's assignment of the glyph-slot

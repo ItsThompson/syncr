@@ -79,7 +79,7 @@ export function Select({
       >
         <RadixSelect.Value placeholder={placeholder} />
         <RadixSelect.Icon asChild>
-          <span className="glyph glyph--select-arrow select__arrow" aria-hidden="true" />
+          <span className="glyph glyph--triangle-down select__arrow" aria-hidden="true" />
         </RadixSelect.Icon>
       </RadixSelect.Trigger>
       <RadixSelect.Portal>

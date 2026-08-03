@@ -1,0 +1,84 @@
+/* Layer 2: the table. 28px rows, data-sized cells, tabular figures, a sortable header and a footer count.
+ *
+ * THE ROW HEIGHT IS --h-row AND THE CELLS SET AT --fs-data, which is the one size in the scale for numbers a
+ * reader compares down a column. Both are the reason a table is the right surface for the Backlog and the Today
+ * ledger rather than a proportional grid: the question there is "did this happen", and a checklist earns the
+ * density a table gives.
+ *
+ * TABULAR FIGURES ARE NOT A PREFERENCE. A column of durations set in proportional digits does not line up, and
+ * the whole point of the column is that a reader compares its values without reading them one at a time.
+ *
+ * THE SORTABLE HEADER IS A BUTTON INSIDE THE HEADER CELL, not a click handler on the cell. A sort is an action, so
+ * it is reachable by keyboard and announced as a control; `aria-sort` on the cell is what says which way the
+ * column currently runs, so the announced state and the drawn mark cannot diverge. */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.table__header {
+  height: var(--h-row);
+  padding: 0 7px;
+  border-bottom: var(--hairline) solid var(--rule-strong);
+  color: var(--text-muted);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.table__header--figure {
+  text-align: right;
+}
+
+/* The sort control fills its cell, so the whole header reads as the target rather than the word inside it. */
+.table__sort {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  height: var(--h-row);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.table__header--figure .table__sort {
+  justify-content: flex-end;
+}
+
+/* The direction mark is reserved, so sorting a column changes a glyph rather than the header's width. */
+.table__direction {
+  width: 10px;
+  color: var(--ink-deep);
+  font-size: var(--fs-label);
+}
+
+.table__row {
+  height: var(--h-row);
+  border-bottom: var(--hairline) solid var(--rule);
+}
+
+.table__cell {
+  padding: 0 7px;
+  color: var(--ink);
+}
+
+.table__cell--figure {
+  text-align: right;
+}
+
+.table__footer {
+  padding: 5px 7px;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  text-align: left;
+}

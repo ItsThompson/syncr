@@ -93,7 +93,7 @@ describe("the date field", () => {
   it("carries the same typographic mark the select uses", () => {
     const { container } = renderPicker();
 
-    expect(container.querySelector(".glyph--select-arrow")).not.toBeNull();
+    expect(container.querySelector(".glyph--triangle-down")).not.toBeNull();
   });
 });
 

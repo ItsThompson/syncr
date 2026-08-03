@@ -91,7 +91,7 @@ export function DatePicker({
             disabled={isDisabled}
             aria-label={`${label}, choose from a calendar`}
           >
-            <span className="glyph glyph--select-arrow" aria-hidden="true" />
+            <span className="glyph glyph--triangle-down" aria-hidden="true" />
           </RadixPopover.Trigger>
         </span>
       </RadixPopover.Anchor>

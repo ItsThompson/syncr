@@ -59,7 +59,7 @@ export function Dialog({
             <header className="on-ink-surface dialog__header">
               <RadixDialog.Title>{title}</RadixDialog.Title>
               <RadixDialog.Close className="dialog__dismiss" aria-label="Close">
-                <span className="glyph glyph--dismiss" aria-hidden="true" />
+                <span className="glyph glyph--cross" aria-hidden="true" />
               </RadixDialog.Close>
             </header>
             <div className="dialog__body">

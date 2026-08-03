@@ -74,7 +74,7 @@ describe("Dialog", () => {
   it("draws the dismiss mark from the glyph table", () => {
     const { baseElement } = renderDialog();
 
-    expect(baseElement.querySelector(".glyph--dismiss")).not.toBeNull();
+    expect(baseElement.querySelector(".glyph--cross")).not.toBeNull();
   });
 
   it("traps focus, so a keyboard cannot leave a modal by tabbing", async () => {

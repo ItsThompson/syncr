@@ -15,7 +15,7 @@
 import { describe, expect, it } from "vitest";
 import { parse } from "postcss";
 
-import { componentsNaming } from "../../../testing/kitSources";
+import { componentsNaming, appSourceRoot } from "../../../testing/kitSources";
 import { kitStylesheet } from "../../../testing/kitStylesheets";
 
 const GLYPH_DECLARATION = /--glyph-([a-z-]+):\s*("(?:[^"\\]|\\.)*")/g;
@@ -62,10 +62,14 @@ async function declaredSlots(): Promise<string[]> {
   return [...slots].toSorted();
 }
 
-/** Every slot class the layer's components name, which is the only evidence a rule is not dead. */
+/** Every slot class the layer's components name, which is the only evidence a rule is not dead.
+ *
+ * Read from the whole application rather than from the primitives layer, because the table is the KIT's and its
+ * consumers are wherever a mark is drawn: the dialog's dismiss control is a primitive, and the origin marks,
+ * the pin, the proposal source and the overlap count are drawn by domain components. */
 async function slotsInUse(): Promise<Set<string>> {
   const slots = await declaredSlots();
-  const consumers = await Promise.all(slots.map((slot) => componentsNaming(slot)));
+  const consumers = await Promise.all(slots.map((slot) => componentsNaming(slot, appSourceRoot)));
   return new Set(slots.filter((_, index) => consumers[index].length > 0));
 }
 
@@ -76,13 +80,44 @@ describe("the glyph table", () => {
     expect([...table.keys()].toSorted()).toEqual([
       "bracket-close",
       "bracket-open",
+      "caret",
       "check",
-      "dismiss",
+      "cross",
       "minus",
       "month-next",
       "month-previous",
+      "notice-attention",
+      "notice-info",
+      "origin-anchor",
+      "origin-frame",
+      "origin-habit",
+      "origin-prep",
+      "origin-task",
+      "origin-template-entry",
+      "origin-transit",
+      "overlap",
+      "pinned",
       "plus",
-      "select-arrow",
+      "proposal-source",
+      "triangle-down",
+      "triangle-up",
+    ]);
+  });
+
+  /* ONE MARK PER ORIGIN KIND, and the domain has seven. A block whose title no longer fits is read from its
+   * mark alone, so a kind with no mark is a block that says nothing at that tier. */
+  it("holds a mark for each of the domain's seven origin kinds", async () => {
+    const table = await glyphTable();
+    const origins = [...table.keys()].filter((mark) => mark.startsWith("origin-"));
+
+    expect(origins.toSorted()).toEqual([
+      "origin-anchor",
+      "origin-frame",
+      "origin-habit",
+      "origin-prep",
+      "origin-task",
+      "origin-template-entry",
+      "origin-transit",
     ]);
   });
 
@@ -120,8 +155,35 @@ describe("the glyph table", () => {
 
     expect(table.get("minus")).toBe('"\\2212"');
     expect(table.get("check")).toBe('"\\2713"');
-    expect(table.get("dismiss")).toBe('"\\2715"');
-    expect(table.get("select-arrow")).toBe('"\\25BE"');
+    expect(table.get("cross")).toBe('"\\2715"');
+    expect(table.get("triangle-down")).toBe('"\\25BE"');
+  });
+
+  /* THE TWO NEAR-MISSES THE DESIGN LANGUAGE CALLS OUT BY NAME. Both pairs are directional-looking marks that
+   * appear at different tiers and can never co-render, which is exactly why nothing but a check would catch a
+   * collision: the pin must not be the anchor's diamond, and the proposal source must not be the transit
+   * arrow. */
+  it("keeps the proposal-source mark off the transit origin's arrow", async () => {
+    const table = await glyphTable();
+
+    expect(table.get("proposal-source")).not.toBe(table.get("origin-transit"));
+  });
+
+  it("keeps the pinned mark off the anchor origin's diamond", async () => {
+    const table = await glyphTable();
+
+    expect(table.get("pinned")).not.toBe(table.get("origin-anchor"));
+  });
+
+  /* A mark used by two meanings is named after its SHAPE, so the two share one entry rather than holding one
+   * codepoint twice. The cross is the dialog's dismiss and a failure notice; the tick is a checked box, a
+   * completed wizard step and a resolved notice. Without that naming rule the uniqueness test above would fire
+   * on a pair that is deliberately one mark. */
+  it("names a shared mark after its shape, which is what keeps the table unique", async () => {
+    const table = await glyphTable();
+
+    expect(table.has("dismiss")).toBe(false);
+    expect((await componentsNaming("glyph--cross", appSourceRoot)).length).toBeGreaterThan(0);
   });
 
   it("draws the disclosure minus with the minus sign rather than a hyphen", async () => {

@@ -18,7 +18,10 @@
  *
  * Test files and fixtures are excluded. A test naming a class to assert its rule is not a component drawing
  * with it, so counting them as consumers would let a dead rule survive on the strength of the test that
- * reads it. */
+ * reads it.
+ *
+ * BOTH `.ts` AND `.tsx` ARE READ. A class list legitimately lives in a `.ts` module: a variant map shared by
+ * three components is not a component itself, and reading only `.tsx` would have called every class in it dead. */
 
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -58,7 +61,7 @@ export async function componentSources(root: string = primitivesDir): Promise<Co
   const entries = await readdir(root, { withFileTypes: true, recursive: true });
   const files = entries
     .filter((entry) => entry.isFile())
-    .filter((entry) => entry.name.endsWith(".tsx") && !entry.name.includes(".test."))
+    .filter((entry) => /\.tsx?$/.test(entry.name) && !entry.name.includes(".test."))
     .map((entry) => path.join(entry.parentPath, entry.name))
     .filter((file) => !path.relative(root, file).split(path.sep).includes(EXCLUDED_DIRECTORY))
     .toSorted();
