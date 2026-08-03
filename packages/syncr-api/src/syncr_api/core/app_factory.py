@@ -22,6 +22,8 @@ from fastapi import APIRouter, FastAPI
 
 from syncr_api.accounts.wiring import build_accounts_router
 from syncr_api.areas.wiring import build_areas_router
+from syncr_api.budgets.wiring import build_budget_router
+from syncr_api.calendars.wiring import build_calendars_router
 from syncr_api.core.correlation import CorrelationMiddleware
 from syncr_api.core.error_handlers import PROBLEM_RESPONSES, build_exception_handlers
 from syncr_api.core.observability import create_metrics_router
@@ -57,6 +59,8 @@ FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
     build_settings_router,
     build_oauth_router,
     build_areas_router,
+    build_budget_router,
+    build_calendars_router,
 )
 
 # The one place the api's version is stated: the package metadata uv installs from
