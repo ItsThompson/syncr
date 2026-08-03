@@ -342,10 +342,26 @@ def place_replacement(
     """The one event an ORPHANED replacement stands for, if it lands in the horizon.
 
     Placed rather than dropped, because no master in the body covers this commitment and the feed
-    asserts it. Its identity is the occurrence identity the series would have given it, so a later
-    sync that does carry the master reconciles to the same anchor rather than creating a second one.
-    That holds for a RECURRING master; a non-recurring one uses its bare uid, so an orphan of it
-    gets an occurrence-shaped identity the master would not have given it.
+    asserts it. Its identity is built from the wall time its own ``RECURRENCE-ID`` states, which is
+    the same identity the series would give that occurrence WHEN THE TWO ARE WRITTEN IN THE SAME
+    FORM, so a later sync carrying the master reconciles to the same anchor rather than creating a
+    second one.
+
+    Two limits on that, both measured, and neither fixable here:
+
+    - A ``RECURRENCE-ID`` in the UTC form on a zoned series states a different wall time for the
+      same occurrence, so its identity does not converge with the master's. An orphan has no master,
+      so the zone the master expands in is not knowable at this point. Matching is answered across
+      the two forms; identity cannot be.
+    - Identity follows the wall time, so when two revisions of one master name one instant in
+      different zones, the WINNER's zone decides the identity of every occurrence. A duplicate
+      dropping out of a later export renames the whole series.
+    - A NON-RECURRING master uses its bare uid, so an orphan of one gets an occurrence-shaped
+      identity that master would not have given it.
+
+    Both are recorded as known issues rather than papered over: the wall stamp is what a publisher
+    sends again, and an identity derived from the instant instead would move with a zone database
+    update.
 
     A replacement whose master IS present is not placed here: see :func:`stranded`.
     """
