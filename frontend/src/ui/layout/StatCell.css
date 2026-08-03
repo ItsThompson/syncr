@@ -1,0 +1,39 @@
+/* Layer 2: a figure and its label.
+ *
+ * THE FIGURE IS MONO AND NEVER SERIF. The serif appears in exactly two places in this system, the wordmark
+ * and the seven page titles, and a headline number is neither: a serif figure reads as an editorial pull
+ * quote, and these are values a reader compares against the same value last week.
+ *
+ * TABULAR FIGURES ARE NOT OPTIONAL EITHER. Three cells in a strip sit in a row, and proportional digits make
+ * the same figure land in a different place in each of them.
+ *
+ * The sub-line is where a qualifier goes, which is what keeps plan currency out of the figure: `91` in the
+ * cell and `solving` beneath it, so a word changes rather than a fifth cell appearing in a strip whose
+ * content budget is settled. */
+
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.stat-cell__label {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}
+
+.stat-cell__figure {
+  color: var(--ink-deep);
+  font-family: var(--font-mono);
+  font-size: var(--fs-stat);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-tight);
+}
+
+.stat-cell__sub {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+}

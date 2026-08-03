@@ -1,0 +1,47 @@
+/* Layer 2: the bordered block, and the ink header it may carry.
+ *
+ * THE BORDER IS --rule-strong AND NOT --rule-control. A panel encloses controls rather than being one: it
+ * measures 2.65:1 against raised paper, which is under the 3:1 an indicator has to clear and fine for
+ * something that indicates nothing. A field inside it draws --rule-control, which is what makes the control
+ * read as the boundary a reader aims at.
+ *
+ * THE HEADER IS ONE OF THE TWO INK FILLS IN THE PRODUCT, with the dialog's. It is wrapped in
+ * `on-ink-surface`, and that class is the point of the structure rather than decoration: `base.css` gives any
+ * focusable descendant of it the INVERSE focus ring, because --ink-bright on --ink-deep measures 1.61:1 and
+ * disappears. A control a later ticket puts in this header inherits the correct ring without knowing the rule
+ * exists.
+ *
+ * The header carries no shadow. The one hard offset lifts an overlay off the page, and a panel is in the
+ * page's own flow. */
+
+.panel {
+  border: var(--hairline) solid var(--rule-strong);
+  background: var(--paper-raised);
+}
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  height: var(--h-row);
+  padding: 0 9px;
+  background: var(--ink-deep);
+  color: var(--on-ink);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.panel__body {
+  padding: 9px;
+}
+
+/* The footer's rule is --rule rather than --rule-strong: it divides two parts of one block, where the
+ * block's own edge is what separates it from the page. */
+.panel__footer {
+  border-top: var(--hairline) solid var(--rule);
+  padding: 5px 9px;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+}

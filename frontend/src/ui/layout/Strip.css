@@ -1,0 +1,23 @@
+/* Layer 2: the horizontal band, at two heights.
+ *
+ * A FIXED HEIGHT IS A CORRECTNESS RULE ON THE WEEK SCREEN, not a preference. The summary strip sits directly
+ * above the grid, and a strip that grew by a line when a verdict arrived would shift the grid under the
+ * cursor mid-drag. --strip-h is the height that holds three readings and the verdict cell, so it is reserved
+ * whether or not there is anything to say yet.
+ *
+ * A readout row is the other consumer and it takes the auto height, because a row of labelled values in a
+ * settings pane has nothing beneath it that a reflow would move.
+ *
+ * A band draws no rule of its own: a hairline between two surfaces is a `Rule`, so the system has one
+ * separator rather than a component that is sometimes one. */
+
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  min-width: 0;
+}
+
+.strip--fixed {
+  height: var(--strip-h);
+}

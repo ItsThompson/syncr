@@ -1,4 +1,7 @@
-/* A dialog. The only family carrying --shadow-hard, and the only ink-filled surface in the product.
+/* A dialog. The only family carrying --shadow-hard, and one of the product's two ink-filled surfaces.
+ *
+ * The other is a titled `Panel`'s header, which is what the token layer sanctions: an ink fill belongs to a
+ * panel or dialog header and nowhere else, because the sidebar is paper.
  *
  * THE HEADER IS WRAPPED IN `on-ink-surface`, and that class is the point of this component's structure. The
  * focus ring is chosen by the surface it LANDS on rather than by the element's own fill, so the rule is

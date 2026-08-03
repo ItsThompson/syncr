@@ -1,0 +1,50 @@
+/* Layer 2: the form row. A label column, a field column, and the message under the field.
+ *
+ * THE LABEL COLUMN IS 132px, which is what the widest label in the seven screens sets at: `MINIMUM CHUNK` at
+ * --fs-label with --ls-label tracking measures 124.8px, and the column is rounded up to clear it. A label that
+ * wrapped would put its field's baseline below its neighbour's and stagger a column of rows.
+ *
+ * THE MESSAGE SITS IN THE FIELD COLUMN, not under the whole row. A hint indented to the field's own left edge
+ * reads as belonging to the field; the same words under the label column read as a second label.
+ *
+ * AN ERROR IS --oxide-ink AND NOT --signal-oxide. The signal's marker step carries dots, rules and glyphs at
+ * 3:1; label ink has to clear 4.5:1, and the two are not interchangeable. The message is words, so it takes
+ * the text step. */
+
+.form-row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  column-gap: 11px;
+  row-gap: 3px;
+  align-items: baseline;
+}
+
+.form-row__label {
+  color: var(--ink-deep);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+/* The required mark is a glyph rather than colour, and it is decorative: `aria-required` on the field is what
+ * a screen reader reads. */
+.form-row__required {
+  color: var(--text-muted);
+}
+
+.form-row__field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.form-row__message {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+}
+
+.form-row__message--error {
+  color: var(--oxide-ink);
+}

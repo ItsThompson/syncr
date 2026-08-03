@@ -1,0 +1,31 @@
+/* Layer 2: the hairline, and what it becomes on an ink fill.
+ *
+ * THE RULE IS CHOSEN BY THE SURFACE IT LANDS ON, not by the element that draws it, which is the same shape as
+ * the focus ring: --rule measures 1.59:1 on paper, and the same value on an ink header would be invisible.
+ * --rule-on-ink measures 1.61:1 there, deliberately matching, so a divider inside an ink header is not five
+ * times louder than its equivalent on the page.
+ *
+ * Scoping it to the container rather than to a modifier is what makes a rule added to a header later come out
+ * right without the author knowing the rule exists. */
+
+.rule {
+  margin: 0;
+  border: 0;
+  border-top: var(--hairline) solid var(--rule);
+}
+
+/* A vertical rule stretches to its row's height rather than declaring one, so a strip's own height stays the
+ * single decision about how tall the band is. */
+.rule--vertical {
+  align-self: stretch;
+  border-top: 0;
+  border-left: var(--hairline) solid var(--rule);
+}
+
+.on-ink-surface .rule {
+  border-top-color: var(--rule-on-ink);
+}
+
+.on-ink-surface .rule--vertical {
+  border-left-color: var(--rule-on-ink);
+}

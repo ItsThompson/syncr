@@ -1,4 +1,4 @@
-/* THE LAYER'S OWN RULES, ASSERTED OVER ITS STYLESHEETS.
+/* THE PRIMITIVES LAYER'S OWN RULES, ASSERTED OVER ITS STYLESHEETS.
  *
  * Four claims in the ticket are about the kit as a whole rather than about any one component, so they are
  * checked over every stylesheet in the layer:
@@ -8,105 +8,38 @@
  *   no component declares its own focus ring, because the ring is scoped to the surface
  *   no component restates a token's value
  *
- * A test over the files is the honest form for all four. jsdom applies no stylesheet, so a rendered element
- * says nothing about what a rule declares, and forced-colors mode cannot be entered in a headless DOM at
- * all: what CAN be checked is the property a state spends, which is exactly what the design language's own
- * reasoning turns on. */
+ * A test over the files is the honest form for all four, and the readers they rest on live in
+ * `src/testing/layerRules.ts` so the layout and domain layers ask the same question of their own
+ * directories. jsdom applies no stylesheet, so a rendered element says nothing about what a rule declares,
+ * and forced-colors mode cannot be entered in a headless DOM at all: what CAN be checked is the property a
+ * state spends, which is exactly what the design language's own reasoning turns on. */
 
-import { readdir } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { parse } from "postcss";
 
 import { componentsNaming, appSourceRoot } from "../../../testing/kitSources";
-import { kitStylesheet, primitivesDir } from "../../../testing/kitStylesheets";
+import { primitivesDir } from "../../../testing/kitStylesheets";
+import {
+  HOVER,
+  declaredClasses,
+  forcedColorsCasualties,
+  layerStylesheets,
+  propertiesByState,
+  stateRules,
+} from "../../../testing/layerRules";
 
-async function stylesheetNames(): Promise<string[]> {
-  const entries = await readdir(primitivesDir);
-  return entries.filter((entry) => entry.endsWith(".css")).toSorted();
-}
-
-async function sheets(): Promise<{ name: string; css: string }[]> {
-  const names = await stylesheetNames();
-  return Promise.all(names.map(async (name) => ({ name, css: await kitStylesheet(name) })));
-}
-
-/* Properties forced-colors mode overrides or drops, plus the ones that are invisible in a rendering. A state
- * carried ONLY by these does not survive it, which is the whole of the design language's argument for pairing
- * a fill with a rule or a glyph. A border COLOUR is not here: it is forced to the system's text colour, and a
- * border drawn transparent at rest therefore becomes visible, which is how the current row survives. */
-const NOT_A_SURVIVING_MARK = new Set([
-  "background",
-  "background-color",
-  "background-image",
-  "color",
-  "box-shadow",
-  "cursor",
-]);
-
-/** Selectors that name a state: a data attribute, an ARIA state, or a state pseudo-class. */
-const STATE_SELECTOR =
-  /\[(data-\w[\w-]*|aria-(?:invalid|selected|current|disabled|expanded))[^\]]*\]|:hover|:disabled/g;
-const HOVER = ":hover";
-
-interface StateRule {
-  readonly sheet: string;
-  readonly state: string;
-  readonly selector: string;
-  readonly declarations: readonly (readonly [string, string])[];
-}
-
-/** Every rule that styles a state, keyed by the state its selector names. */
-async function stateRules(): Promise<StateRule[]> {
-  const rules: StateRule[] = [];
-  for (const { name, css } of await sheets()) {
-    parse(css).walkRules((rule) => {
-      const states = [...rule.selector.matchAll(STATE_SELECTOR)].map((match) => match[0]);
-      if (states.length === 0) return;
-      const declarations: (readonly [string, string])[] = [];
-      rule.walkDecls((declaration) => {
-        declarations.push([declaration.prop, declaration.value]);
-      });
-      if (declarations.length === 0) return;
-      for (const state of states) {
-        rules.push({ sheet: name, state, selector: rule.selector, declarations });
-      }
-    });
-  }
-  return rules;
-}
-
-/**
- * Each state in each stylesheet, with every property that state spends there.
- *
- * Grouped by file rather than by rule, because a state is legitimately carried by two rules: a disabled
- * control dashes its own border and mutes the label beside it, and the state survives on the strength of the
- * dash. Judging a rule at a time would call the second rule a casualty while the state is perfectly visible.
- */
-async function propertiesByState(): Promise<Map<string, Set<string>>> {
-  const spent = new Map<string, Set<string>>();
-  for (const rule of await stateRules()) {
-    const key = `${rule.sheet} ${rule.state}`;
-    const properties = spent.get(key) ?? new Set<string>();
-    for (const [property] of rule.declarations) properties.add(property);
-    spent.set(key, properties);
-  }
-  return spent;
-}
+const sheets = () => layerStylesheets(primitivesDir);
+/* The consumers are read from the whole application rather than from the layer, because a kit class is
+ * legitimately named by a layout or a domain component. */
+const classesByStylesheet = () => declaredClasses(primitivesDir);
 
 describe("forced-colors mode", () => {
   it("reads the layer's state rules at all, so this check cannot pass on an empty list", async () => {
-    expect((await propertiesByState()).size).toBeGreaterThan(8);
+    expect((await propertiesByState(primitivesDir)).size).toBeGreaterThan(8);
   });
 
   it("leaves every state except hover with something that survives it", async () => {
-    const casualties: string[] = [];
-    for (const [state, properties] of await propertiesByState()) {
-      if (state.includes(HOVER)) continue;
-      const survives = [...properties].some((property) => !NOT_A_SURVIVING_MARK.has(property));
-      if (!survives) casualties.push(state);
-    }
-
-    expect(casualties).toEqual([]);
+    expect(await forcedColorsCasualties(primitivesDir)).toEqual([]);
   });
 
   /* Hover IS the casualty, and the test above is what enforces that it is the only one. What is worth pinning
@@ -114,7 +47,7 @@ describe("forced-colors mode", () => {
    * surface cannot quietly hover to a different wash. The tertiary button's hover also thickens its underline,
    * which happens to survive forced colors; that is a bonus rather than a requirement. */
   it("spends one fill everywhere it spends one, so there is a single hover in the kit", async () => {
-    const fills = (await stateRules())
+    const fills = (await stateRules(primitivesDir))
       .filter((rule) => rule.state.includes(HOVER))
       .flatMap((rule) =>
         rule.declarations.filter(([property]) => property.startsWith("background")),
@@ -193,22 +126,7 @@ describe("every rule the layer ships", () => {
   /* A rule nobody names is downloaded by every reader and drawn for none of them, and two of them shipped:
    * `.calendar__step` outlived the month-step control it styled, which is now a Button, and `.calendar__cell`
    * was superseded by `.calendar__day`. A second undeclared button style sitting beside the four the design
-   * language sanctions is the part that matters, and no check could see it.
-   *
-   * The consumers are read from the whole application rather than from the layer, because a kit class is
-   * legitimately named by a layout or a domain component. */
-  async function classesByStylesheet(): Promise<Map<string, string>> {
-    const declared = new Map<string, string>();
-    for (const { name, css } of await sheets()) {
-      parse(css).walkRules((rule) => {
-        for (const match of rule.selector.matchAll(/\.([a-zA-Z][\w-]*)/g)) {
-          if (!declared.has(match[1])) declared.set(match[1], name);
-        }
-      });
-    }
-    return declared;
-  }
-
+   * language sanctions is the part that matters, and no check could see it. */
   it("declares more than one class, so this check cannot pass on an empty selector list", async () => {
     expect((await classesByStylesheet()).size).toBeGreaterThan(50);
   });

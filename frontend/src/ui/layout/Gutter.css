@@ -1,0 +1,17 @@
+/* Layer 2: the adornment column at the head of a row.
+ *
+ * The width is what a 10px Area chip needs with air either side, stated as a layer-2 property because it is
+ * this component's own geometry rather than a value the system reads elsewhere. Every row that has one draws
+ * it at the same width, which is the point: a ledger of rows whose chips do not line up reads as a rendering
+ * fault, and a row with no adornment still reserves the column so its title starts where its neighbour's
+ * does. */
+
+.gutter {
+  --gutter-w: 20px;
+
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--gutter-w);
+}
