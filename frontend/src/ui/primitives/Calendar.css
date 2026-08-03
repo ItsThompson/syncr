@@ -7,10 +7,11 @@
  *
  * IT IS A REAL BORDER RATHER THAN AN INSET SHADOW, which is where this file departs from
  * `docs/design/components.html`. The sheet draws the same mark as `box-shadow: inset ...` because it draws
- * its calendar with table cells, and a `td` cannot carry a border that survives `border-collapse`. A day
- * here is a button, so a border is available, and the system has exactly ONE shadow: stylelint and the
- * bundle gate both refuse a `box-shadow` that is not --shadow-hard, which is the rule working rather than an
- * obstacle. The border is reserved transparent at rest so becoming today changes a colour and not a height.
+ * its calendar with table cells, and a `td` cannot carry a border that survives `border-collapse`. A day here
+ * is a cell in a grid whose height is already reserved, so a border is available, and the system has exactly
+ * ONE shadow: stylelint and the bundle gate both refuse a `box-shadow` that is not --shadow-hard, which is
+ * the rule working rather than an obstacle. The border is reserved transparent at rest so becoming today
+ * changes a colour and not a height.
  *
  * The selected day is the one place in the kit where an ink FILL lands on a figure, and it is legal because
  * --on-ink on --ink-deep measures 14.83:1. A wash would not do: at 1.1:1 it cannot carry a meaning alone. */
@@ -32,15 +33,6 @@
   text-transform: uppercase;
 }
 
-.calendar__step {
-  padding: 0 4px;
-  border: 0;
-  background: transparent;
-  color: var(--ink-deep);
-  font: inherit;
-  cursor: pointer;
-}
-
 .calendar__grid {
   width: 100%;
   border-collapse: collapse;
@@ -53,11 +45,6 @@
   font-size: var(--fs-eyebrow);
   font-weight: 400;
   letter-spacing: var(--ls-nav);
-}
-
-.calendar__cell {
-  padding: 1px 0;
-  text-align: center;
 }
 
 .calendar__day {

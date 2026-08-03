@@ -17,7 +17,7 @@ import { readdir } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { parse } from "postcss";
 
-import { componentsNaming } from "../../../testing/kitSources";
+import { componentsNaming, appSourceRoot } from "../../../testing/kitSources";
 import { kitStylesheet, primitivesDir } from "../../../testing/kitStylesheets";
 
 async function stylesheetNames(): Promise<string[]> {
@@ -185,6 +185,43 @@ describe("the focus ring", () => {
         expect(`${name}: ${declaration.value}`).not.toMatch(/^\S+: (none|0)$/);
       });
     }
+  });
+});
+
+describe("every rule the layer ships", () => {
+  /* A rule nobody names is downloaded by every reader and drawn for none of them, and two of them shipped:
+   * `.calendar__step` outlived the month-step control it styled, which is now a Button, and `.calendar__cell`
+   * was superseded by `.calendar__day`. A second undeclared button style sitting beside the four the design
+   * language sanctions is the part that matters, and no check could see it.
+   *
+   * The consumers are read from the whole application rather than from the layer, because a kit class is
+   * legitimately named by a layout or a domain component. */
+  async function classesByStylesheet(): Promise<Map<string, string>> {
+    const declared = new Map<string, string>();
+    for (const { name, css } of await sheets()) {
+      parse(css).walkRules((rule) => {
+        for (const match of rule.selector.matchAll(/\.([a-zA-Z][\w-]*)/g)) {
+          if (!declared.has(match[1])) declared.set(match[1], name);
+        }
+      });
+    }
+    return declared;
+  }
+
+  it("declares more than one class, so this check cannot pass on an empty selector list", async () => {
+    expect((await classesByStylesheet()).size).toBeGreaterThan(50);
+  });
+
+  it("is named by something the application renders", async () => {
+    const declared = await classesByStylesheet();
+    const consumers = await Promise.all(
+      [...declared.keys()].map((className) => componentsNaming(className, appSourceRoot)),
+    );
+    const dead = [...declared.entries()]
+      .filter((_, index) => consumers[index].length === 0)
+      .map(([className, sheet]) => `${sheet} declares .${className}, which nothing names`);
+
+    expect(dead).toEqual([]);
   });
 });
 
