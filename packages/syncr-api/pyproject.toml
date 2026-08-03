@@ -16,6 +16,13 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36,<3",
     "asyncpg>=0.30.0,<1",
     "alembic>=1.14.0,<2",
+    # The Authorization Server's three cryptographic needs, none of which is written
+    # here: PyJWT signs and verifies the ES256 access token, cryptography generates the
+    # signing keypair and encrypts it at rest, and python-multipart is what lets FastAPI
+    # read the form-encoded body RFC 6749 requires on the token endpoint.
+    "pyjwt>=2.10.0,<3",
+    "cryptography>=44.0.0,<51",
+    "python-multipart>=0.0.20,<1",
     "syncr-common[http]",
     "syncr-domain",
     "syncr-solver",
@@ -30,6 +37,7 @@ syncr-solver = { workspace = true }
 syncr-api = "syncr_api.api.main:main"
 syncr-worker = "syncr_api.worker.main:main"
 syncr-bootstrap-user = "syncr_api.accounts.bootstrap:main"
+syncr-rotate-oauth-key = "syncr_api.oauth.rotation:main"
 
 [dependency-groups]
 dev = [

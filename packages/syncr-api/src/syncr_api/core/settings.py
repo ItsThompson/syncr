@@ -51,6 +51,32 @@ MINIMUM_SESSION_SIGNING_SECRET_LENGTH = 16
 # because a same-origin POST carries an Origin header too.
 DEV_ALLOWED_ORIGINS = ("http://localhost:5173", "http://localhost:8000")
 
+# The origin every OAuth URL is built from: the issuer in the discovery document, the
+# audience an access token is bound to, and the endpoint URLs the document advertises.
+#
+# PINNED, never derived from the request host. Cloudflare Tunnel reaches this process as
+# `http://api:8000` from inside `app-net`, so a request-derived issuer would advertise an
+# unreachable URL and would sign tokens whose `iss` no client can match against the one it
+# opened the flow at. That failure appears only through the tunnel, which is to say only in
+# the deployed stack.
+DEV_PUBLIC_BASE_URL = "http://localhost:8000"
+
+# The key the OAuth signing keys are encrypted with at rest. Same shape of rule as the
+# session secret: a development default exists so a fresh clone boots with no secret
+# file, and it is refused outside development. A Fernet key is 32 bytes as URL-safe
+# base64; this one is the ASCII of its own purpose, so it is recognizable in a diff.
+DEV_OAUTH_KEY_ENCRYPTION_KEY = (
+    "ZGV2LW9ubHktb2F1dGgta2V5LWVuY3J5cHRpb24ta2U="  # pragma: allowlist secret
+)
+
+# How to produce a real key-encryption key, named in the failure message for the same
+# reason the session hint is: that message is the whole user interface of a deployment
+# that got this wrong.
+_GENERATE_ENCRYPTION_KEY_HINT = (
+    "Generate one with "
+    '`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.'
+)
+
 # How to produce a real signing secret, named in both failure messages because that
 # message is the entire user interface of a deployment that got this wrong.
 _GENERATE_HINT = (
@@ -63,7 +89,8 @@ class EnvSettings(SyncrSettings):
     """Deployment-wide config, sourced from the environment.
 
     Field names mirror the root ``.env`` keys: ``ENVIRONMENT``, ``LOG_LEVEL``,
-    ``HOST``, ``DATABASE_URL``, ``SESSION_SIGNING_SECRET``, ``ALLOWED_ORIGINS``.
+    ``HOST``, ``DATABASE_URL``, ``SESSION_SIGNING_SECRET``, ``ALLOWED_ORIGINS``,
+    ``PUBLIC_BASE_URL``, ``OAUTH_KEYS_PATH``, ``OAUTH_KEY_ENCRYPTION_KEY``.
     Unknown keys are ignored (see
     :class:`syncr_common.config.SyncrSettings`).
     """
@@ -82,6 +109,16 @@ class EnvSettings(SyncrSettings):
     # `NoDecode` because pydantic-settings would otherwise JSON-decode a complex
     # field, and `ALLOWED_ORIGINS=https://a,https://b` is not JSON.
     allowed_origins: Annotated[tuple[str, ...], NoDecode] = DEV_ALLOWED_ORIGINS
+    # The pinned origin every OAuth URL and token claim is built from.
+    public_base_url: str = DEV_PUBLIC_BASE_URL
+    # Where the encrypted OAuth signing keys are read from. Empty means "no key file",
+    # which development answers with an ephemeral in-memory keypair and every other
+    # environment refuses, so a deployment cannot serve a JWKS whose keys vanish on
+    # restart and take every live token with them.
+    oauth_keys_path: str = ""
+    # The Fernet key the signing-key file is encrypted with. `SecretStr` so a settings
+    # dump, a repr, or a validation error cannot carry it.
+    oauth_key_encryption_key: SecretStr = SecretStr(DEV_OAUTH_KEY_ENCRYPTION_KEY)
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
@@ -132,6 +169,32 @@ class EnvSettings(SyncrSettings):
             raise ValueError(message)
         return self
 
+    @model_validator(mode="after")
+    def _refuse_the_development_key_encryption_key_elsewhere(self) -> EnvSettings:
+        """Fail construction rather than encrypt a signing key with a published key.
+
+        The default is in this file, so a deployment that kept it stores its OAuth signing
+        key under a key any reader of the repository holds, which is the same as storing it
+        in the clear.
+
+        Gated on there being a key file at all. With no ``OAUTH_KEYS_PATH`` nothing is
+        encrypted with this value: development generates an ephemeral key set in memory and
+        every other environment refuses to start at all, in
+        :func:`syncr_api.oauth.keys.load_signing_key_set`, which is the guard that catches
+        that case and states what to do about it.
+        """
+        if self.is_dev or not self.oauth_keys_path:
+            return self
+        if self.oauth_key_encryption_key.get_secret_value() == DEV_OAUTH_KEY_ENCRYPTION_KEY:
+            message = (
+                "OAUTH_KEY_ENCRYPTION_KEY is still the development default in "
+                f"environment={self.environment!r}, so the OAuth signing key at "
+                f"{self.oauth_keys_path} is effectively unencrypted. "
+                f"{_GENERATE_ENCRYPTION_KEY_HINT}"
+            )
+            raise ValueError(message)
+        return self
+
 
 class ServiceSettings(BaseModel):
     """Full settings for one process: shared env config plus its own identity.
@@ -149,6 +212,9 @@ class ServiceSettings(BaseModel):
     database_url: str
     session_signing_secret: SecretStr
     allowed_origins: tuple[str, ...]
+    public_base_url: str
+    oauth_keys_path: str
+    oauth_key_encryption_key: SecretStr
 
 
 def build_service_settings(
@@ -165,4 +231,7 @@ def build_service_settings(
         database_url=env.database_url,
         session_signing_secret=env.session_signing_secret,
         allowed_origins=env.allowed_origins,
+        public_base_url=env.public_base_url,
+        oauth_keys_path=env.oauth_keys_path,
+        oauth_key_encryption_key=env.oauth_key_encryption_key,
     )

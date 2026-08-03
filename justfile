@@ -145,6 +145,23 @@ bootstrap-user EMAIL:
     cd packages/syncr-api && SYNCR_BOOTSTRAP_EMAIL="{{EMAIL}}" \
       uv run --no-sync syncr-bootstrap-user
 
+# --- OAuth ------------------------------------------------------------------
+
+# Create or rotate the OAuth signing keys at OAUTH_KEYS_PATH.
+#
+# Run it once on a new deployment to create the file, and on the rotation schedule after
+# that. Rotation promotes the current key to previous and generates a new current: the
+# JWKS publishes both, so tokens signed before the rotation keep verifying until they
+# expire. The api reads the file at startup and never again, so RESTART THE API to pick
+# the new key up.
+#
+# The file is encrypted with OAUTH_KEY_ENCRYPTION_KEY and written 0600. With
+# OAUTH_KEYS_PATH empty this refuses rather than guessing a location.
+#
+# See docs/runbooks/rotate-oauth-signing-key.md
+rotate-oauth-key:
+    cd packages/syncr-api && uv run --no-sync syncr-rotate-oauth-key
+
 # --- Tests ------------------------------------------------------------------
 
 # Every backend suite. One failing member no longer hides the rest
