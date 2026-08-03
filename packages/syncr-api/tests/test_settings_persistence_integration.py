@@ -384,7 +384,14 @@ async def test_a_home_zone_change_leaves_an_approved_revision_exactly_as_it_was(
         )
 
     async with sessions() as session, session.begin():
-        await build_service(session, principal).update(principal, SettingsChange(home_zone=TOKYO))
+        changed = await build_service(session, principal).update(
+            principal, SettingsChange(home_zone=TOKYO)
+        )
+
+    # The test's own precondition. Without it, swapping the mutation for one that is not a
+    # solve input at all leaves every assertion below green, and the test would hold by
+    # construction rather than because the home-zone branch ran.
+    assert changed.home_zone == changed.active_zone == TOKYO
 
     async with sessions() as session:
         plans = PlanRepository(session, principal.tenant_id)
