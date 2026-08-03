@@ -11,10 +11,10 @@ tenant's whole sync pass aborted with the sync state written in the same transac
 
 **How the table is used.** Two ways, and both matter:
 
-- :func:`construction_calls` walks the package's own source for constructor calls and
+- :func:`construction_calls` walks the package's own source for calls to a DECLARED constructor and
   :mod:`tests.test_ics_construction_sweep` asserts every one appears below with a stated guard. So a
-  new unguarded read fails a test that names it, rather than waiting for a body that happens to
-  reach it.
+  new unguarded read of that kind fails a test that names it, rather than waiting for a body that
+  happens to reach it.
 - :data:`MAGNITUDE_AXES` is derived from the same understanding and crossed into bodies by
   :mod:`tests.hostile_ics`, so the corpus enumerates the axes rather than listing the failures
   somebody found.
@@ -38,10 +38,19 @@ exists:
   of ``(module, function, constructor)`` triples, so two ``int()`` calls in one function collapse to
   one row. A row says a function's conversions were considered, not that every one of them is
   guarded.
+- **A callable outside :data:`CONSTRUCTORS`.** The bare-name half is an allowlist, so a construction
+  through anything not listed is invisible: ``Fraction(text)`` and ``UUID(text)`` are not seen, and
+  ``Decimal`` had to be added by hand. Two live examples sit in the package already,
+  ``Interval(...)`` and ``rrulestr(...)``, both guarded and neither listed. The attribute half is
+  not an allowlist, so any attribute on a datetime type is caught; generalising the bare-name half
+  the same way needs a model of which callables can refuse, which this table does not have.
 - **Arithmetic.** Overflow from ``instant - lead`` is not a call and cannot be found by walking for
   one; that is exactly what the ``UNREPRESENTABLE`` net exists for.
+- **A library that validates late.** ``rrulestr`` accepts a negative ``INTERVAL`` and raises during
+  iteration, nowhere near the call. A static walk cannot see that, and two escapes were found that
+  way rather than by this table.
 
-All three are why the generated corpus is the other half rather than a supplement: a body that
+All of these are why the generated corpus is the other half rather than a supplement: a body that
 reaches an unguarded read fails a test whether or not the walk can see the call.
 """
 

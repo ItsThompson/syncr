@@ -27,7 +27,6 @@ from syncr_api.calendars.ics_values import MAX_MAGNITUDE_DIGITS
 from tests.hostile_ics import _EXTREMES, _STARTS, HOSTILE_MAGNITUDES
 from tests.ics_construction_sites import (
     AT_INT_CONVERSION,
-    CONSTRUCTORS,
     PAST_INT_CONVERSION,
     SITES,
     construction_calls,
@@ -73,8 +72,11 @@ def test_the_walk_finds_a_construction_call_and_ignores_other_calls(source_root:
 
     assert ("ics_values", "_number", "int") in found
     assert ("ics_values", "_build", "datetime") in found
-    # And it is a filter rather than a firehose: many of the package's calls construct nothing.
-    assert all(constructor in CONSTRUCTORS for _module, _function, constructor in found)
+    # And it is a filter rather than a firehose: most of the package's calls construct nothing, so
+    # the walk finds far fewer sites than the package has modules times three. Asserting the found
+    # NAMES are all in `CONSTRUCTORS` would be wrong: an attribute on a datetime type counts however
+    # it is spelled, which is what keeps a new sibling of `strptime` from being invisible.
+    assert 0 < len(found) < len(list((source_root / PACKAGE).rglob("*.py"))) * 3
 
 
 def test_every_declared_site_states_a_guard() -> None:
