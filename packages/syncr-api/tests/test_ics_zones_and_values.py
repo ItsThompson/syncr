@@ -8,6 +8,7 @@ puts an event in the wrong hour when it is wrong.
 
 from __future__ import annotations
 
+import sys
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -17,6 +18,7 @@ from syncr_api.calendars.config import MAX_EVENT_DAYS
 from syncr_api.calendars.ics_errors import MalformedValue, UnmappedZone
 from syncr_api.calendars.ics_times import resolve, resolve_day_span, resolve_span, zone_for
 from syncr_api.calendars.ics_values import (
+    MAX_MAGNITUDE_DIGITS,
     IcsTime,
     ZoneKind,
     parse_duration,
@@ -25,6 +27,7 @@ from syncr_api.calendars.ics_values import (
 )
 from syncr_api.calendars.ics_zones import TZID_ALIASES, resolve_tzid
 from syncr_domain.zones import TravelOverride, UnknownZoneError, ZoneProfile, resolve_zone
+from tests.ics_construction_sites import PAST_INT_CONVERSION
 
 LONDON = "Europe/London"
 TOKYO = "Asia/Tokyo"
@@ -189,8 +192,8 @@ def test_a_duration_that_is_not_positive_is_rejected(value: str) -> None:
 
 @pytest.mark.parametrize(
     "value",
-    ["P9999999999D", "P999999999W", "PT99999999999999S", f"P{MAX_EVENT_DAYS + 1}D"],
-    ids=["days past the constructor", "weeks", "seconds", "one day past the bound"],
+    ["P9999999999D", "P999999999W", f"P{MAX_EVENT_DAYS + 1}D"],
+    ids=["days past the constructor", "weeks", "one day past the bound"],
 )
 def test_a_duration_longer_than_syncr_will_place_is_rejected_by_name(value: str) -> None:
     # A magnitude is not a syntax error: each of these parses perfectly and then overflows the
@@ -200,19 +203,51 @@ def test_a_duration_longer_than_syncr_will_place_is_rejected_by_name(value: str)
         parse_duration(value)
 
     assert str(MAX_EVENT_DAYS) in str(raised.value)
-    assert "days syncr will place" in str(raised.value)
+    assert "syncr will place" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "digits",
+    [PAST_INT_CONVERSION, "9" * (MAX_MAGNITUDE_DIGITS + 1)],
+    ids=["past the interpreter's conversion limit", "one digit past the bound's own width"],
+)
+def test_a_duration_component_is_bounded_by_its_length_before_it_is_converted(digits: str) -> None:
+    # The step a bound on the total cannot see. `int()` on a string refuses more than
+    # `sys.get_int_max_str_digits()` digits, and it raises BEFORE any sum exists, so the magnitude
+    # bound never runs. `ValueError` is neither a rejection nor in the unrepresentable set, so
+    # without a length bound here it escapes the adapter with no sync state to write.
+    with pytest.raises(MalformedValue) as raised:
+        parse_duration(f"PT{digits}S")
+
+    # The same bound named the same way, whichever step refused the value.
+    assert str(MAX_EVENT_DAYS) in str(raised.value)
+    assert "syncr will place" in str(raised.value)
+
+
+def test_the_length_bound_never_refuses_a_duration_the_magnitude_bound_would_allow() -> None:
+    # The accepting side, and the reason the length bound is derived rather than chosen: it is one
+    # digit wider than the largest value the magnitude bound can accept.
+    assert parse_duration(f"P{MAX_EVENT_DAYS}D").days == MAX_EVENT_DAYS
+    assert len(str(MAX_EVENT_DAYS)) <= MAX_MAGNITUDE_DIGITS
+
+
+def test_the_length_bound_is_narrower_than_the_interpreter_would_enforce() -> None:
+    # Which is the point of owning it. `sys.get_int_max_str_digits()` is settable through
+    # PYTHONINTMAXSTRDIGITS, so a boundary that relied on the interpreter's limit would move with
+    # the deployment's environment rather than with this code.
+    assert sys.get_int_max_str_digits() > MAX_MAGNITUDE_DIGITS
 
 
 def test_a_duration_at_the_bound_is_accepted() -> None:
-    # The accepting side, so the comparison is shown not to be off by one. A multi-year all-day
-    # event is legitimate, which is why this bound is not the projection horizon.
+    # A multi-year all-day event is legitimate, which is why this bound is not the projection
+    # horizon.
     assert parse_duration(f"P{MAX_EVENT_DAYS}D").days == MAX_EVENT_DAYS
 
 
-def test_the_duration_bound_covers_every_unit_through_one_sum() -> None:
-    # The units are summed as integer seconds before a timedelta exists, so one bound covers all
-    # five and no intermediate value can overflow. Stated as a test because the alternative,
-    # bounding each unit separately, passes the obvious cases and lets a mixed value through.
+def test_the_magnitude_bound_covers_every_unit_through_one_sum() -> None:
+    # Once the groups are integers, one bound on their sum covers all five units: a mixed value
+    # cannot slip past by splitting itself between them. This is a claim about the SUM only. The
+    # conversion that produces those integers is bounded separately, by length, above.
     with pytest.raises(MalformedValue):
         parse_duration(f"P{MAX_EVENT_DAYS}DT24H")
 

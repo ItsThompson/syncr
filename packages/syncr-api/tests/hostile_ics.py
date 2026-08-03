@@ -24,6 +24,9 @@ from __future__ import annotations
 
 from typing import Final
 
+from syncr_api.calendars.config import MAX_EVENT_DAYS
+from tests.ics_construction_sites import AT_INT_CONVERSION, PAST_INT_CONVERSION
+
 # A university timetable, Celcat-style. CRLF throughout, a folded SUMMARY, a named TZID, a
 # weekly RRULE whose UNTIL is in UTC while DTSTART is not (which is what the standard
 # requires and what dateutil refuses to expand without conversion), an EXDATE for reading
@@ -95,8 +98,9 @@ ASSESSMENTS_FEED: Final = (
 
 # A published Outlook calendar. LF-only line endings, Windows zone names rather than IANA
 # keys, one component naming a zone no table maps, one cancelled master, one cancelled
-# OCCURRENCE of a live series, and a duplicate UID pair produced by an export covering two
-# overlapping windows: the same meeting at two SEQUENCE values, the later of which moved it.
+# OCCURRENCE of a live series, a cancelled series that kept one of its overrides, and a duplicate
+# UID pair produced by an export covering two overlapping windows: the same meeting at two SEQUENCE
+# values, the later of which moved it.
 PUBLISHED_OUTLOOK: Final = (
     "BEGIN:VCALENDAR\n"
     "VERSION:2.0\n"
@@ -146,6 +150,24 @@ PUBLISHED_OUTLOOK: Final = (
     "SUMMARY:Placement standup\n"
     "DTSTART;TZID=GMT Standard Time:20260216T081500\n"
     "DTEND;TZID=GMT Standard Time:20260216T083000\n"
+    "END:VEVENT\n"
+    # A cancelled series that kept one of its overrides, which an export cancelling a whole meeting
+    # while its moved occurrence is still in the window produces. The override has nothing live to
+    # attach to: placing it would turn the cancellation back into occupancy.
+    "BEGIN:VEVENT\n"
+    "UID:AAMkAGI2-workshop@example.com\n"
+    "SUMMARY:Cancelled: onboarding workshop\n"
+    "STATUS:CANCELLED\n"
+    "DTSTART;TZID=GMT Standard Time:20260217T090000\n"
+    "DTEND;TZID=GMT Standard Time:20260217T110000\n"
+    "RRULE:FREQ=WEEKLY\n"
+    "END:VEVENT\n"
+    "BEGIN:VEVENT\n"
+    "UID:AAMkAGI2-workshop@example.com\n"
+    "RECURRENCE-ID;TZID=GMT Standard Time:20260217T090000\n"
+    "SUMMARY:Onboarding workshop\n"
+    "DTSTART;TZID=GMT Standard Time:20260217T140000\n"
+    "DTEND;TZID=GMT Standard Time:20260217T160000\n"
     "END:VEVENT\n"
     "END:VCALENDAR\n"
 )
@@ -261,66 +283,92 @@ TIMED_START: Final = "DTSTART:20260209T090000Z"
 ZONED_START: Final = "DTSTART;TZID=Pacific/Kiritimati:20260209T090000"
 DAY_START: Final = "DTSTART;VALUE=DATE:20260209"
 
-# Magnitudes, as a matrix rather than a list.
+# The axes a magnitude body is crossed from.
 #
 # A feed states NUMBERS as well as syntax, and a number that parses perfectly can still overflow the
-# date arithmetic that would place it: `DTEND;VALUE=DATE:99991231` is how some publishers express an
-# open-ended all-day event, and an over-long `DURATION` is a routine broken-export value. Neither
-# needs malice, and neither is a syntax error, so neither is caught by any amount of grammar.
+# arithmetic that places it or the conversion that reads it. `DTEND;VALUE=DATE:99991231` is how some
+# publishers express an open-ended all-day event and an over-long `DURATION` is a routine broken
+# export, so neither needs malice and neither is a syntax error.
 #
-# One entry per place a publisher-controlled magnitude reaches date, time, or timedelta
-# construction, so the boundary test that reads this covers the CLASS rather than the two instances
-# that happened to be found. Some of these are legitimate and produce events; that is the point of a
-# matrix over a list of known-bad values.
-HOSTILE_MAGNITUDES: Final[dict[str, str]] = {
-    "duration over a billion days": _one_event(TIMED_START, "DURATION:P9999999999D"),
-    "duration in weeks": _one_event(TIMED_START, "DURATION:P999999999W"),
-    "duration in seconds": _one_event(TIMED_START, "DURATION:PT99999999999999S"),
-    "duration at the constructor's own edge": _one_event(TIMED_START, "DURATION:P999999999D"),
-    "duration of a century": _one_event(TIMED_START, "DURATION:P36600D"),
-    "duration of a decade": _one_event(TIMED_START, "DURATION:P3650D"),
-    "whole days to the end of time": _one_event(DAY_START, "DTEND;VALUE=DATE:99991231"),
-    "whole days from the start of time": _one_event(
-        "DTSTART;VALUE=DATE:00010101", "DTEND;VALUE=DATE:99991231"
+# CROSSED rather than listed, and that distinction is the whole point. Three rounds of this ticket
+# were spent fixing the instances that had been found, and a list can only ever hold those. Every
+# value below is derived from a bound the code owns or from the interpreter's own limit, so the
+# corpus moves when either of those moves.
+_STARTS: Final[dict[str, str]] = {
+    "a timed start": TIMED_START,
+    "a zoned start": ZONED_START,
+    "a whole-day start": DAY_START,
+    "a start at the first representable date": "DTSTART;VALUE=DATE:00010101",
+    "a zoned start at the first representable date": (
+        "DTSTART;TZID=Pacific/Midway:00010101T000000"
     ),
-    "whole days by duration": _one_event(DAY_START, "DURATION:P999999999D"),
-    "a start at the first representable date": _one_event(
-        "DTSTART;VALUE=DATE:00010101", "DTEND;VALUE=DATE:00010102"
-    ),
-    "a start at the last representable date": _one_event(
-        "DTSTART;VALUE=DATE:99991230", "DTEND;VALUE=DATE:99991231"
-    ),
-    "a zoned start at the last representable date": _one_event(
-        "DTSTART;TZID=Pacific/Kiritimati:99991231T235959", "DURATION:PT1H"
-    ),
-    "a zoned start at the first representable date": _one_event(
-        "DTSTART;TZID=Pacific/Midway:00010101T000000", "DURATION:PT1H"
-    ),
-    "an until past the end of time": _one_event(
-        ZONED_START, "DURATION:PT1H", "RRULE:FREQ=DAILY;UNTIL=99991231T235959Z"
-    ),
-    "an interval nothing can walk": _one_event(
-        TIMED_START, "DURATION:PT1H", "RRULE:FREQ=DAILY;INTERVAL=999999999"
-    ),
-    "a count nothing can walk": _one_event(
-        TIMED_START, "DURATION:PT1H", "RRULE:FREQ=DAILY;COUNT=999999999"
-    ),
-    "a yearly rule from the first representable year": _one_event(
-        "DTSTART:00010101T000000Z", "DURATION:PT1H", "RRULE:FREQ=YEARLY"
-    ),
-    "an exclusion past the end of time": _one_event(
-        TIMED_START, "DURATION:PT1H", "RRULE:FREQ=DAILY", "EXDATE:99991231T235959Z"
-    ),
-    "an extra date past the end of time": _one_event(
-        TIMED_START, "DURATION:PT1H", "RDATE:99991231T235959Z"
-    ),
-    "a sequence of four hundred digits": _one_event(
-        TIMED_START, "DURATION:PT1H", f"SEQUENCE:{'9' * 400}"
-    ),
-    "a recurrence id past the end of time": _one_event(
-        TIMED_START, "DURATION:PT1H", "RECURRENCE-ID:99991231T235959Z"
+    "a zoned start at the last representable date": (
+        "DTSTART;TZID=Pacific/Kiritimati:99991231T235959"
     ),
 }
+
+_EXTREMES: Final[dict[str, tuple[str, ...]]] = {
+    # Durations, at and past both bounds: the digit count `int()` will convert, and the day count
+    # syncr will place.
+    "a duration past the conversion limit": (f"DURATION:PT{PAST_INT_CONVERSION}S",),
+    "a duration at the conversion limit": (f"DURATION:PT{AT_INT_CONVERSION}S",),
+    "a duration past the day bound": (f"DURATION:P{MAX_EVENT_DAYS + 1}D",),
+    "a duration at the day bound": (f"DURATION:P{MAX_EVENT_DAYS}D",),
+    "a duration mixing units past the bound": (f"DURATION:P{MAX_EVENT_DAYS}DT24H",),
+    "a duration in weeks past the constructor": ("DURATION:P999999999W",),
+    "a legitimate duration": ("DURATION:PT1H",),
+    # Whole-day ranges, which reach the day count through DTEND rather than through DURATION.
+    "a whole-day range to the end of time": ("DTEND;VALUE=DATE:99991231",),
+    "a whole-day range of one day": ("DTEND;VALUE=DATE:20260210",),
+    # Recurrence, where the magnitude reaches dateutil rather than a constructor here.
+    "an until past the end of time": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=DAILY;UNTIL=99991231T235959Z",
+    ),
+    "an interval past the conversion limit": (
+        "DURATION:PT1H",
+        f"RRULE:FREQ=DAILY;INTERVAL={PAST_INT_CONVERSION}",
+    ),
+    "a count past the conversion limit": (
+        "DURATION:PT1H",
+        f"RRULE:FREQ=DAILY;COUNT={PAST_INT_CONVERSION}",
+    ),
+    "a yearly rule from the start of time": ("DURATION:PT1H", "RRULE:FREQ=YEARLY"),
+    "an exclusion past the end of time": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=DAILY",
+        "EXDATE:99991231T235959Z",
+    ),
+    "an extra date past the end of time": ("DURATION:PT1H", "RDATE:99991231T235959Z"),
+    # Values read by their own converters rather than by the duration path.
+    "a sequence past the conversion limit": (
+        "DURATION:PT1H",
+        f"SEQUENCE:{PAST_INT_CONVERSION}",
+    ),
+    "a recurrence id past the end of time": (
+        "DURATION:PT1H",
+        "RECURRENCE-ID:99991231T235959Z",
+    ),
+    "a whole-day start with a timed end": ("DTEND:20260210T090000Z",),
+}
+
+
+def _crossed() -> dict[str, str]:
+    """Every start crossed with every extreme value, as one body each.
+
+    Some combinations are legitimate and produce events, and some are nonsense a publisher would
+    never emit. Both belong: what the corpus asserts is that each is ANSWERED, not that each is
+    refused, and a cross product is how a body nobody would have thought to write gets included. The
+    site that justified the whole ``UNREPRESENTABLE`` net was found exactly that way.
+    """
+    return {
+        f"{extreme} with {start}": _one_event(_STARTS[start], *_EXTREMES[extreme])
+        for extreme in _EXTREMES
+        for start in _STARTS
+    }
+
+
+HOSTILE_MAGNITUDES: Final[dict[str, str]] = _crossed()
 
 # Every body above, so a test can assert a property over the whole corpus.
 ALL_FEEDS: Final = {

@@ -40,6 +40,11 @@ _SECONDS_PER_HOUR: Final = 60 * _SECONDS_PER_MINUTE
 _SECONDS_PER_DAY: Final = 24 * _SECONDS_PER_HOUR
 _SECONDS_PER_WEEK: Final = 7 * _SECONDS_PER_DAY
 
+# How many digits one duration component may carry. Derived from the largest value the bound below
+# can accept rather than chosen, and one wider so a group that could still be inside the bound is
+# never refused for its length alone.
+MAX_MAGNITUDE_DIGITS: Final = len(str(MAX_EVENT_DAYS * _SECONDS_PER_DAY)) + 1
+
 # RFC 5545 duration: `P` then weeks, or days with an optional time part. A leading `-`
 # makes it negative, which a DURATION on an event must not be.
 _DURATION: Final = re.compile(
@@ -129,15 +134,13 @@ def parse_time(value: str, *, params: tuple[tuple[str, str], ...]) -> IcsTime:
 def parse_duration(value: str) -> timedelta:
     """One DURATION value as a positive timedelta inside the bound syncr can place.
 
-    A negative or zero duration is rejected. An interval needs a positive length, and an
-    event that claims to end before it starts tells syncr nothing about occupancy, which
-    is the same failure a missing DTEND is.
+    A negative or zero duration is rejected: an interval needs a positive length, and an event that
+    claims to end before it starts tells syncr nothing about occupancy.
 
-    The magnitude is bounded, and the total is summed as INTEGER SECONDS before a ``timedelta``
-    exists. The constructor refuses a day count over 999,999,999 with an ``OverflowError``, which is
-    not a rejection and would escape the adapter; and even a span it accepts can overflow the
-    arithmetic that places it. Summing first means one bound covers every unit and no intermediate
-    value can overflow, because Python integers do not.
+    The magnitude is bounded twice, at two different steps, because two different things can fail.
+    Each digit group is bounded by its LENGTH before it is converted, and the total is bounded once
+    the groups are summed as integer seconds. Neither bound covers the other's step; see
+    :func:`_number` for why the first is not redundant.
     """
     matched = _DURATION.fullmatch(value.strip())
     if matched is None:
@@ -155,12 +158,19 @@ def parse_duration(value: str) -> timedelta:
         message = f"{value!r} is a duration of {seconds} seconds, and an event needs a positive one"
         raise MalformedValue(message)
     if seconds > MAX_EVENT_DAYS * _SECONDS_PER_DAY:
-        message = (
-            f"{value!r} is a duration of about {seconds // _SECONDS_PER_DAY} days, longer than the "
-            f"{MAX_EVENT_DAYS} days syncr will place for one event"
-        )
-        raise MalformedValue(message)
+        raise _too_long(f"{value!r} is about {seconds // _SECONDS_PER_DAY} days")
     return timedelta(seconds=seconds)
+
+
+def _too_long(what: str) -> MalformedValue:
+    """The one rejection both duration bounds answer with.
+
+    Shared so a caller reading either message sees the same bound named the same way, whichever step
+    refused the value.
+    """
+    return MalformedValue(
+        f"{what}, and the longest event syncr will place is {MAX_EVENT_DAYS} days"
+    )
 
 
 def parse_sequence(value: str) -> int:
@@ -207,4 +217,19 @@ def _build(
 
 
 def _number(part: str | None) -> int:
-    return 0 if part is None else int(part)
+    """One digit group of a duration, bounded by its LENGTH before it is converted.
+
+    The length is what has to be checked, and it has to be checked here. ``int()`` on a string
+    refuses more than ``sys.get_int_max_str_digits()`` digits, and that raises before any sum
+    exists, so the magnitude bound in :func:`parse_duration` never sees the value. Bounding the
+    digit count also keeps the threshold the code's own: the interpreter's limit is settable through
+    ``PYTHONINTMAXSTRDIGITS``, so a bound that relied on it would move with the deployment.
+
+    Once a group is converted, Python integer arithmetic is exact and unbounded, which is what makes
+    one bound on the summed total sufficient for every unit.
+    """
+    if part is None:
+        return 0
+    if len(part) > MAX_MAGNITUDE_DIGITS:
+        raise _too_long(f"a duration component of {len(part)} digits")
+    return int(part)
