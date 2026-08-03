@@ -1,14 +1,12 @@
 """The construction sweep, executable: no site reads a feed's value without a declared guard.
 
-Three rounds of this ticket went on one class of defect. Each round the fix was right and each round
-the class survived somewhere else, because what existed was a list of the failures that had been
-found rather than a statement of where a feed's values are converted. This is that statement, and
-these tests are what make it fail rather than rot.
+A feed's values reach constructors that refuse some inputs by raising something no caller in this
+package declares. :mod:`tests.ics_construction_sites` declares every such call with its guard, and
+these tests compare that table against the package's own source.
 
-Two directions, and both are needed. A site the source contains and the table does not is the defect
-that recurred: an unguarded conversion nobody noticed. A site the table contains and the source does
-not is a stale row, which is how a table stops describing the code while still looking
-authoritative.
+Two directions, and both are needed. A site the source contains and the table does not is an
+unguarded conversion nobody has answered. A site the table contains and the source does not is a
+stale row, which is how a table stops describing the code while still looking authoritative.
 
 The generated corpus is the other half. The table says where the values land; the axes in
 :mod:`tests.hostile_ics` say which values to send, derived from the bounds rather than written out,
@@ -26,7 +24,7 @@ import pytest
 
 from syncr_api.calendars.config import MAX_EVENT_DAYS
 from syncr_api.calendars.ics_values import MAX_MAGNITUDE_DIGITS
-from tests.hostile_ics import ALL_FEEDS, HOSTILE_MAGNITUDES
+from tests.hostile_ics import _EXTREMES, _STARTS, HOSTILE_MAGNITUDES
 from tests.ics_construction_sites import (
     AT_INT_CONVERSION,
     CONSTRUCTORS,
@@ -51,9 +49,7 @@ def declared() -> set[tuple[str, str, str]]:
 
 
 def test_every_construction_call_in_the_package_is_declared(source_root: Path) -> None:
-    # The direction that catches the defect this ticket kept reproducing. A conversion with no row
-    # is a value a feed can reach with nothing saying how it is answered, and the reviews found
-    # three such sites across three iterations by reading rather than by running anything.
+    # A conversion with no row is a value a feed can reach with nothing stating how it is answered.
     undeclared = construction_calls(source_root, PACKAGE) - declared()
 
     assert undeclared == set(), (
@@ -97,14 +93,14 @@ def test_the_magnitude_corpus_is_crossed_rather_than_listed() -> None:
     # A list holds the failures somebody found; a cross product holds combinations nobody would have
     # thought to write. The site that justified the unrepresentable net was found exactly that way,
     # so this is the property that earned its keep rather than a stylistic preference.
-    assert len(HOSTILE_MAGNITUDES) > len(ALL_FEEDS) - len(HOSTILE_MAGNITUDES)
+    assert len(HOSTILE_MAGNITUDES) == len(_STARTS) * len(_EXTREMES)
     # Every body is one event in one calendar, so a count is a count of combinations.
     assert all(body.count("BEGIN:VEVENT") == 1 for body in HOSTILE_MAGNITUDES.values())
 
 
 def test_the_corpus_carries_both_sides_of_the_conversion_limit() -> None:
-    # The axis the hand-written list stopped short of, and therefore the axis the must-fix sat on. A
-    # corpus with only the passing side cannot fail when the conversion is left unguarded.
+    # A corpus holding only the accepted side cannot fail when the conversion is left unguarded, so
+    # both sides of the boundary have to be present.
     bodies = "".join(HOSTILE_MAGNITUDES.values())
 
     assert PAST_INT_CONVERSION in bodies
@@ -113,7 +109,7 @@ def test_the_corpus_carries_both_sides_of_the_conversion_limit() -> None:
 
 def test_the_conversion_axis_is_read_from_the_interpreter_rather_than_written_out() -> None:
     # A literal 4301 would stop testing the boundary the moment a deployment set
-    # PYTHONINTMAXSTRDIGITS, which is exactly the kind of drift that hid the must-fix.
+    # PYTHONINTMAXSTRDIGITS, so the axis reads the limit it is meant to straddle.
     assert len(PAST_INT_CONVERSION) == sys.get_int_max_str_digits() + 1
     assert len(AT_INT_CONVERSION) == sys.get_int_max_str_digits()
 

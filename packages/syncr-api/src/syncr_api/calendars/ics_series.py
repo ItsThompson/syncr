@@ -136,6 +136,12 @@ def sort_components(readable: list[EventComponent]) -> Series:
             continue
         key = replaced_key(replacement)
         if replacement.cancelled:
+            if key in tombstones:
+                # A repeated cancellation of one occurrence. There is no SEQUENCE question to settle
+                # (both say the same thing), but the second component still has to be counted or it
+                # vanishes from the arithmetic exactly as a repeated override would.
+                duplicates += 1
+                continue
             tombstones.add(key)
             continue
         held = overrides.get(key)
@@ -205,11 +211,13 @@ def expand(
 def place_replacement(
     replacement: EventComponent, *, horizon: Interval, profile: ZoneProfile
 ) -> Placement:
-    """The one event a replacement no series claimed stands for, if it lands in the horizon.
+    """The one event an ORPHANED replacement stands for, if it lands in the horizon.
 
-    Placed rather than dropped, because the feed asserts the commitment. Its identity is the
-    occurrence identity the series would have given it, so a later sync that does carry the master
-    reconciles to the same anchor rather than creating a second one.
+    Placed rather than dropped, because no master in the body covers this commitment and the feed
+    asserts it. Its identity is the occurrence identity the series would have given it, so a later
+    sync that does carry the master reconciles to the same anchor rather than creating a second one.
+
+    A replacement whose master IS present is not placed here: see :func:`stranded`.
     """
     span = interval_of(replacement, at=replacement.start.wall, profile=profile)
     if not span.overlaps(horizon):
@@ -230,18 +238,23 @@ def place_replacement(
     )
 
 
-def stranded(
-    series: Series, applied: frozenset[OccurrenceKey]
-) -> tuple[tuple[EventComponent, ...], int]:
-    """The replacements no occurrence claimed: the live ones, and how many tombstones.
+def stranded(series: Series, applied: frozenset[OccurrenceKey]) -> tuple[int, int]:
+    """How many replacements no occurrence claimed: superseded live ones, and tombstones.
 
     A replacement is registered by UID and read by occurrence, so one naming a time the master's
     rule never produces is registered and never consulted. Comparing what expansion consumed against
     what was registered is the only way to see that, because the partition cannot know which
     occurrences a rule will produce.
+
+    Both are COUNTED rather than placed. Every replacement here has a master in the same body, by
+    construction: one without a master was sorted as an orphan. So the series that owns it did
+    expand, and its current rule is what the feed asserts. Placing the replacement as well puts two
+    events on one occurrence, which is what a duplicate master shifting the series' times produces:
+    the losing revision's override outlives the revision it belonged to and doubles the hour. An
+    orphan is different and is still placed, because there no master covers the commitment at all.
     """
-    live = tuple(replacement for key, replacement in series.overrides.items() if key not in applied)
-    return live, len(series.tombstones - applied)
+    superseded = len([key for key in series.overrides if key not in applied])
+    return superseded, len(series.tombstones - applied)
 
 
 def replaced_key(replacement: EventComponent) -> OccurrenceKey:

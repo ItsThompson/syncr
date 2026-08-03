@@ -246,11 +246,28 @@ def test_leading_zeros_do_not_count_toward_the_length_bound(padded: str) -> None
     assert parse_duration(padded).total_seconds() > 0
 
 
-def test_the_length_bound_is_narrower_than_the_interpreter_would_enforce() -> None:
+def test_a_padded_group_past_the_interpreters_limit_is_a_rejection_rather_than_a_fault() -> None:
+    # The two counts a reader can confuse. The bound is on the SIGNIFICANT digits, so the padded
+    # value below is well inside it, while the string `int()` would see is past what the interpreter
+    # will convert. Bounding one and converting the other lets `ValueError` escape the adapter,
+    # which is the whole defect this bound exists to answer.
+    padded = "PT" + "0" * (sys.get_int_max_str_digits() + 1) + "1S"
+
+    assert parse_duration(padded).total_seconds() == 1
+
+
+def test_the_bound_refuses_before_the_interpreter_would() -> None:
     # Which is the point of owning it. `sys.get_int_max_str_digits()` is settable through
     # PYTHONINTMAXSTRDIGITS, so a boundary that relied on the interpreter's limit would move with
-    # the deployment's environment rather than with this code.
-    assert sys.get_int_max_str_digits() > MAX_MAGNITUDE_DIGITS
+    # the deployment. Asserted by behaviour rather than by comparing two numbers: a group between
+    # the two is refused by NAME, with the property and the bound stated.
+    between = "9" * (MAX_MAGNITUDE_DIGITS + 1)
+    assert len(between) < sys.get_int_max_str_digits()
+
+    with pytest.raises(MalformedValue) as raised:
+        parse_duration(f"PT{between}S")
+
+    assert "syncr will place" in str(raised.value)
 
 
 def test_a_duration_at_the_bound_is_accepted() -> None:

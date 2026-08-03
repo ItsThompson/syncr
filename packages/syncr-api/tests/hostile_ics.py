@@ -25,7 +25,11 @@ from __future__ import annotations
 from typing import Final
 
 from syncr_api.calendars.config import MAX_EVENT_DAYS
-from tests.ics_construction_sites import AT_INT_CONVERSION, PAST_INT_CONVERSION
+from tests.ics_construction_sites import (
+    AT_INT_CONVERSION,
+    PADDED_PAST_INT_CONVERSION,
+    PAST_INT_CONVERSION,
+)
 
 # A university timetable, Celcat-style. CRLF throughout, a folded SUMMARY, a named TZID, a
 # weekly RRULE whose UNTIL is in UTC while DTSTART is not (which is what the standard
@@ -290,10 +294,10 @@ DAY_START: Final = "DTSTART;VALUE=DATE:20260209"
 # publishers express an open-ended all-day event and an over-long `DURATION` is a routine broken
 # export, so neither needs malice and neither is a syntax error.
 #
-# CROSSED rather than listed, and that distinction is the whole point. Three rounds of this ticket
-# were spent fixing the instances that had been found, and a list can only ever hold those. Every
-# value below is derived from a bound the code owns or from the interpreter's own limit, so the
-# corpus moves when either of those moves.
+# CROSSED rather than listed, and that distinction is the whole point: a list holds the instances
+# somebody found, while a cross product includes the body nobody would have thought to write. The
+# values that decide an outcome are derived from a bound this code owns or from the interpreter's
+# own conversion limit, so the corpus follows either when it moves.
 _STARTS: Final[dict[str, str]] = {
     "a timed start": TIMED_START,
     "a zoned start": ZONED_START,
@@ -312,6 +316,7 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
     # syncr will place.
     "a duration past the conversion limit": (f"DURATION:PT{PAST_INT_CONVERSION}S",),
     "a duration at the conversion limit": (f"DURATION:PT{AT_INT_CONVERSION}S",),
+    "a duration padded past the conversion limit": (f"DURATION:PT{PADDED_PAST_INT_CONVERSION}S",),
     "a duration past the day bound": (f"DURATION:P{MAX_EVENT_DAYS + 1}D",),
     "a duration at the day bound": (f"DURATION:P{MAX_EVENT_DAYS}D",),
     "a duration mixing units past the bound": (f"DURATION:P{MAX_EVENT_DAYS}DT24H",),
@@ -436,6 +441,41 @@ MOVED_AND_CANCELLED: Final = _series_with(
     ),
 )
 
+# Two identical cancellations of one occurrence. A repeated tombstone carries no SEQUENCE question,
+# but the second component still has to be counted or it leaves the arithmetic.
+DUPLICATE_TOMBSTONES: Final = _series_with(
+    _replacement(
+        "STATUS:CANCELLED",
+        "SUMMARY:Cancelled",
+        "DTSTART:20260217T100000Z",
+        "DTEND:20260217T110000Z",
+    ),
+    _replacement(
+        "STATUS:CANCELLED",
+        "SUMMARY:Cancelled again",
+        "DTSTART:20260217T100000Z",
+        "DTEND:20260217T110000Z",
+    ),
+)
+
+# A live master and a duplicate that moved the series, plus the override the losing revision left
+# behind. That override names an occurrence the winning rule never produces, so placing it as well
+# would put two events on one hour.
+SHIFTED_BY_A_DUPLICATE_MASTER: Final = (
+    "BEGIN:VCALENDAR\r\n"
+    "BEGIN:VEVENT\r\nUID:shift@example.org\r\nSEQUENCE:1\r\nSUMMARY:Weekly at 10\r\n"
+    "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+    "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:shift@example.org\r\nSEQUENCE:2\r\nSUMMARY:Weekly at 12\r\n"
+    "DTSTART:20260210T120000Z\r\nDTEND:20260210T130000Z\r\n"
+    "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:shift@example.org\r\nSUMMARY:Moved to 14:00\r\n"
+    "RECURRENCE-ID:20260217T100000Z\r\n"
+    "DTSTART:20260217T140000Z\r\nDTEND:20260217T150000Z\r\nEND:VEVENT\r\n"
+    "END:VCALENDAR\r\n"
+)
+
+
 # A live master AND a cancelled one under one UID, with an override. The override belongs to the
 # live series: a cancelled duplicate must not take the live master's occurrences down with it.
 CANCELLED_DUPLICATE_MASTER: Final = _series_with(
@@ -459,5 +499,7 @@ ALL_FEEDS: Final = {
     "duplicate_replacements_reversed": DUPLICATE_REPLACEMENTS_REVERSED,
     "moved_and_cancelled": MOVED_AND_CANCELLED,
     "cancelled_duplicate_master": CANCELLED_DUPLICATE_MASTER,
+    "duplicate_tombstones": DUPLICATE_TOMBSTONES,
+    "shifted_by_a_duplicate_master": SHIFTED_BY_A_DUPLICATE_MASTER,
     **HOSTILE_MAGNITUDES,
 }

@@ -120,19 +120,17 @@ def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOu
         collected.take(master, partial(expand, master, series, horizon=horizon, profile=profile))
 
     # Which replacements found an occurrence is only known once every master has expanded, so the
-    # ones that found none are placed after that rather than guessed at during the partition.
-    strays, unclaimed = stranded(series, frozenset(collected.applied))
-    for replacement in (*series.orphans, *strays):
-        collected.take(
-            replacement, partial(place_replacement, replacement, horizon=horizon, profile=profile)
-        )
+    # ones that found none are accounted for after that rather than guessed at during the partition.
+    superseded, unclaimed = stranded(series, frozenset(collected.applied))
+    for orphan in series.orphans:
+        collected.take(orphan, partial(place_replacement, orphan, horizon=horizon, profile=profile))
 
     return FetchOutcome(
         reparsed=True,
         events=tuple(collected.events),
         rejected=tuple(collected.rejected),
         events_read=len(components),
-        duplicates_discarded=series.duplicates,
+        duplicates_discarded=series.duplicates + superseded,
         cancelled_discarded=series.cancelled + unclaimed,
         placed=collected.placed,
         overrides_applied=len(collected.applied),

@@ -217,18 +217,19 @@ def _build(
 
 
 def _number(part: str | None) -> int:
-    """One digit group of a duration, bounded by its LENGTH before it is converted.
+    """One digit group of a duration, bounded before it is converted.
 
-    The length is what has to be checked, and it has to be checked here. ``int()`` on a string
-    refuses more than ``sys.get_int_max_str_digits()`` digits, and that raises before any sum
-    exists, so the magnitude bound in :func:`parse_duration` never sees the value.
+    ``int()`` on a string refuses more than ``sys.get_int_max_str_digits()`` digits, and it raises
+    before any sum exists, so the magnitude bound in :func:`parse_duration` never sees the value.
 
-    Leading zeros are not counted, because RFC 5545's ``\\d+`` permits them and a padded group names
-    a small number. Counting them would refuse ``PT0000000000030S``, which is thirty seconds.
+    The count that has to be bounded is the count ``int()`` will see, so the leading zeros RFC
+    5545's ``\\d+`` permits are stripped and the STRIPPED string is converted. Bounding the
+    significant digits while converting the original leaves the interpreter's limit as the operative
+    bound for a padded group, which is the defect this function exists to answer.
     """
     if part is None:
         return 0
-    digits = len(part.lstrip("0"))
-    if digits > MAX_MAGNITUDE_DIGITS:
-        raise _too_long(f"a duration component of {digits} significant digits")
-    return int(part)
+    significant = part.lstrip("0")
+    if len(significant) > MAX_MAGNITUDE_DIGITS:
+        raise _too_long(f"a duration component of {len(significant)} significant digits")
+    return int(significant) if significant else 0

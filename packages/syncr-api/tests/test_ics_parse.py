@@ -34,6 +34,7 @@ from tests.hostile_ics import (
     CANCELLED_DUPLICATE_MASTER,
     DUPLICATE_REPLACEMENTS,
     DUPLICATE_REPLACEMENTS_REVERSED,
+    DUPLICATE_TOMBSTONES,
     EMPTY_FEED,
     HOLIDAY_FEED,
     MOVED_AND_CANCELLED,
@@ -452,6 +453,19 @@ def test_the_surviving_replacement_does_not_depend_on_declaration_order() -> Non
     assert reversed_order.duplicates_discarded == 1
 
 
+def test_a_repeated_cancellation_of_one_occurrence_is_counted() -> None:
+    # The sibling of the duplicate-override rule, three lines away in the same loop. A repeated
+    # tombstone has no SEQUENCE question to settle, so the risk is not a wrong answer but a
+    # component absorbed by a set and dropped out of the arithmetic.
+    outcome = parse_feed(DUPLICATE_TOMBSTONES, horizon=HORIZON, profile=HOME)
+
+    assert outcome.duplicates_discarded == 1
+    # The surviving tombstone claimed a real occurrence, so it is an override that was applied.
+    assert outcome.overrides_applied == 1
+    on_the_17th = [event for event in outcome.events if event.interval.start.day == 17]
+    assert on_the_17th == []
+
+
 def test_an_occurrence_both_moved_and_cancelled_is_cancelled_and_the_override_counted() -> None:
     # Cancellation is read before the replacement, as everywhere else here: the feed said the hour
     # does not happen. The override it displaces is still a component, so it is counted rather than
@@ -463,11 +477,16 @@ def test_an_occurrence_both_moved_and_cancelled_is_cancelled_and_the_override_co
     assert outcome.overrides_applied == 1
 
 
-def test_an_override_matching_no_occurrence_is_placed_rather_than_lost() -> None:
+def test_an_override_matching_no_occurrence_is_counted_rather_than_lost() -> None:
     # A publisher that edits a series' rule and keeps a previously emitted override produces one,
     # and Google and Exchange exports both do. A replacement is registered by UID and read by
     # occurrence, so one naming a time the rule never produces is only visible by comparing what
     # expansion consumed against what was registered.
+    #
+    # Counted, NOT placed. Every replacement that reaches this point has a master in the same body,
+    # so the series did expand and its current rule is what the feed asserts. Placing the stale
+    # override as well puts two events on one occupied hour, which is what a duplicate master that
+    # shifts the series' times produces.
     body = (
         "BEGIN:VCALENDAR\r\n"
         "BEGIN:VEVENT\r\nUID:m@example.org\r\nSUMMARY:Weekly Monday\r\n"
@@ -481,14 +500,41 @@ def test_an_override_matching_no_occurrence_is_placed_rather_than_lost() -> None
 
     outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
 
-    moved = titled(outcome.events, "Moved to Tuesday")
-    assert len(moved) == 1
-    assert moved[0].interval.start == utc(2026, 2, 10, 14, 0)
+    assert titled(outcome.events, "Moved to Tuesday") == []
+    assert outcome.duplicates_discarded == 1
     # And it is NOT counted as applied: the term means "replaced an occurrence", so its name and the
     # arithmetic agree.
     assert outcome.overrides_applied == 0
     # The Mondays the rule does produce are untouched.
     assert len(titled(outcome.events, "Weekly Monday")) == 2
+
+
+def test_a_duplicate_master_that_shifts_a_series_does_not_double_the_moved_hour() -> None:
+    # The shape that makes the rule above load-bearing, and the one an export covering two
+    # overlapping windows produces: the same meeting at two SEQUENCE values, the later of which
+    # moved it, plus the override the earlier window emitted. Placing that override alongside
+    # the winning master's occurrence puts two hours of hard occupancy on one commitment.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:shift@example.org\r\nSEQUENCE:1\r\nSUMMARY:Weekly at 10\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:shift@example.org\r\nSEQUENCE:2\r\nSUMMARY:Weekly at 12\r\n"
+        "DTSTART:20260210T120000Z\r\nDTEND:20260210T130000Z\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:shift@example.org\r\nSUMMARY:Moved to 14:00\r\n"
+        "RECURRENCE-ID:20260217T100000Z\r\n"
+        "DTSTART:20260217T140000Z\r\nDTEND:20260217T150000Z\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert titled(outcome.events, "Moved to 14:00") == []
+    on_the_17th = [event for event in outcome.events if event.interval.start.day == 17]
+    assert len(on_the_17th) == 1
+    # The losing revision's master, and the override that belonged to it.
+    assert outcome.duplicates_discarded == 2
 
 
 def test_an_override_that_matches_an_occurrence_is_counted_as_applied() -> None:
@@ -564,25 +610,26 @@ def test_every_component_of_every_feed_is_accounted_for() -> None:
         assert accounted == outcome.events_read, label
 
 
-def test_the_accounting_sees_a_stray_replacement_of_a_series_it_also_placed() -> None:
-    # The case that shows why `placed` is reported rather than derived. Both components contribute
-    # events naming one series, so counting the events' series reads two components as one and the
-    # arithmetic closes one short while a commitment is unaccounted for.
+def test_the_accounting_sees_two_orphans_of_one_series() -> None:
+    # The case that shows why `placed` is reported rather than derived. Two orphaned replacements of
+    # one absent master are both placed and both name that series, so counting the events' series
+    # reads two components as one and the arithmetic closes one short while a commitment is
+    # unaccounted for.
     body = (
         "BEGIN:VCALENDAR\r\n"
-        "BEGIN:VEVENT\r\nUID:m@example.org\r\nSUMMARY:Weekly Monday\r\n"
-        "DTSTART:20260209T090000Z\r\nDTEND:20260209T100000Z\r\n"
-        "RRULE:FREQ=WEEKLY;BYDAY=MO\r\nEND:VEVENT\r\n"
-        "BEGIN:VEVENT\r\nUID:m@example.org\r\nSUMMARY:Moved to Tuesday\r\n"
+        "BEGIN:VEVENT\r\nUID:gone@example.org\r\nSUMMARY:First orphan\r\n"
         "RECURRENCE-ID:20260210T090000Z\r\n"
         "DTSTART:20260210T140000Z\r\nDTEND:20260210T150000Z\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:gone@example.org\r\nSUMMARY:Second orphan\r\n"
+        "RECURRENCE-ID:20260217T090000Z\r\n"
+        "DTSTART:20260217T140000Z\r\nDTEND:20260217T150000Z\r\nEND:VEVENT\r\n"
         "END:VCALENDAR\r\n"
     )
 
     outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
 
     assert outcome.placed == 2
-    assert {event.series_uid for event in outcome.events} == {"m@example.org"}
+    assert {event.series_uid for event in outcome.events} == {"gone@example.org"}
     assert outcome.placed + outcome.overrides_applied + outcome.unplaced == outcome.events_read
 
 

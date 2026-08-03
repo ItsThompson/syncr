@@ -1,16 +1,13 @@
 """The construction sites a feed's values reach, declared in the tree and read by a test.
 
-This table is the sweep. It exists in the repository, rather than in a review document, for one
-reason: three rounds of this ticket were spent on the same class of defect, and each round fixed
-the instances that had been found rather than the axis they sat on. A hand-written list of failures
-cannot fail when a twelfth site is added. A table the tests read can.
+This table is the sweep, and it lives in the tree so that the tests can read it. A list of known
+failures cannot fail when a new site is added; a table compared against the source can.
 
 **What the class is.** A feed states values, and every value eventually reaches a constructor:
 ``int``, ``timedelta``, ``datetime``. Each of those refuses some inputs, and each refuses them by
 raising something that is NOT an :class:`~syncr_api.calendars.ics_errors.IcsRejection`. Such an
-exception escapes ``IcsAdapter.fetch``, which is documented never to raise, and the cost was
-measured three times: a tenant's whole sync pass aborted, and the sync state already written in the
-same transaction rolled back with it.
+exception escapes ``IcsAdapter.fetch``, which is documented never to raise, and the cost is a
+tenant's whole sync pass aborted with the sync state written in the same transaction rolled back.
 
 **How the table is used.** Two ways, and both matter:
 
@@ -24,14 +21,28 @@ same transaction rolled back with it.
 
 **Arithmetic is deliberately not in the call table.** Overflow from ``instant - lead`` is not a call
 and cannot be found by walking for one; that is exactly what the ``UNREPRESENTABLE`` net exists for,
-and the generated corpus is what exercises it. This paragraph is the only place that exclusion is
-stated, so read the table as covering CALLS and nothing else.
+and the generated corpus is what exercises it.
 
 **What the walk does and does not see.** It reads every ``.py`` file under the package, including
-subpackages, and attributes each call to its nearest enclosing ``def`` or ``class``, so a conversion
-in a class body or in a provider module is found. It matches on the name a call uses, so a
-constructor reached through an alias the walk cannot resolve would still be missed; adding one is a
-change to :data:`CONSTRUCTORS`.
+subpackages, identifies a module by its path relative to the package, and attributes each call to
+its nearest enclosing ``def`` or ``class``. An attribute call counts whenever its receiver is a
+type, so a sibling of ``strptime`` nobody has used yet is caught without being listed.
+
+Three things it cannot see, stated because a reader who assumes otherwise is the reason this file
+exists:
+
+- **An aliased or indirect binding.** ``from datetime import datetime as dt`` then ``dt(...)``, or
+  ``_convert = int``, or ``functools.partial(int, ...)``. The walk matches names in source, so a
+  rebound constructor is invisible to it.
+- **A second unguarded call inside a function that already has a row.** The comparison is over a set
+  of ``(module, function, constructor)`` triples, so two ``int()`` calls in one function collapse to
+  one row. A row says a function's conversions were considered, not that every one of them is
+  guarded.
+- **Arithmetic.** Overflow from ``instant - lead`` is not a call and cannot be found by walking for
+  one; that is exactly what the ``UNREPRESENTABLE`` net exists for.
+
+All three are why the generated corpus is the other half rather than a supplement: a body that
+reaches an unguarded read fails a test whether or not the walk can see the call.
 """
 
 from __future__ import annotations
@@ -53,10 +64,12 @@ CONSTRUCTORS: Final = frozenset(
     {
         "int",
         "float",
+        "Decimal",
         "timedelta",
         "datetime",
         "date",
         "time",
+        "timezone",
         "combine",
         "strptime",
         "fromisoformat",
@@ -182,14 +195,19 @@ def construction_calls(source_root: Path, package: str) -> set[tuple[str, str, s
     Read from the source rather than from a registry, because the point is to notice a call nobody
     declared. A call at module scope is reported against ``"module scope"``, so a constant is
     accounted for rather than invisible.
+
+    ``module`` is the path RELATIVE to the package, without the suffix, so ``providers/config.py``
+    is reported as ``providers/config``, not absorbed by the row for the ``config`` beside it.
     """
+    root = source_root / package
     found: set[tuple[str, str, str]] = set()
-    for path in sorted((source_root / package).rglob("*.py")):
+    for path in sorted(root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        module = path.relative_to(root).with_suffix("").as_posix()
         for function, call in _calls_in(tree):
             name = _called_name(call)
-            if name in CONSTRUCTORS:
-                found.add((path.stem, function, name))
+            if name is not None:
+                found.add((module, function, name))
     return found
 
 
@@ -224,14 +242,17 @@ CONSTRUCTING_RECEIVERS: Final = frozenset({"datetime", "date", "time", "timedelt
 
 
 def _called_name(call: ast.Call) -> str | None:
-    """The bare name of what a call constructs, or ``None`` when it constructs nothing.
+    """What this call constructs, or ``None`` when it constructs nothing.
 
-    A bare name is a constructor if it is one. An attribute is one only when its receiver is a
-    datetime type: ``datetime.strptime`` builds a value from a string a feed supplied, while
-    ``wall.date()`` projects a value that already exists and has nothing left to refuse.
+    Two rules, and the second is deliberately not an allowlist. A bare name counts when it is in
+    :data:`CONSTRUCTORS`. An attribute counts whenever its RECEIVER is a datetime type, whatever the
+    attribute is called: ``datetime.strptime`` and ``datetime.fromtimestamp`` both build a value
+    from something a feed supplied, and listing the ones that exist today would leave the next one
+    invisible. ``wall.date()`` is not caught, because ``wall`` is a value rather than a type, and a
+    projection off an existing value has nothing left to refuse.
     """
     if isinstance(call.func, ast.Name):
-        return call.func.id
+        return call.func.id if call.func.id in CONSTRUCTORS else None
     if isinstance(call.func, ast.Attribute):
         receiver = call.func.value
         if isinstance(receiver, ast.Name) and receiver.id in CONSTRUCTING_RECEIVERS:
@@ -250,3 +271,9 @@ PAST_INT_CONVERSION: Final = "9" * (sys.get_int_max_str_digits() + 1)
 
 # The last group `int()` still converts, so the corpus holds both sides of that boundary.
 AT_INT_CONVERSION: Final = "9" * sys.get_int_max_str_digits()
+
+# A group past what `int()` will convert whose SIGNIFICANT digits are well inside every bound syncr
+# owns. RFC 5545's `\d+` permits leading zeros, so this is a legitimate way to write one second, and
+# it separates the two counts a reader can confuse: a bound on the significant digits does not
+# protect the conversion unless the stripped value is what gets converted.
+PADDED_PAST_INT_CONVERSION: Final = "0" * (sys.get_int_max_str_digits() + 1) + "1"
