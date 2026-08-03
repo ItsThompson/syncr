@@ -1142,9 +1142,27 @@ def test_a_budget_leaves_a_feed_the_product_exists_to_read_alone() -> None:
 
 
 def test_a_rejection_detail_is_bounded_however_long_the_feed_makes_it() -> None:
-    # Several details quote a value the publisher supplied, or a converter's complaint about one, so
-    # the length of a stored detail is the feed's to choose unless something bounds it. Each one is
-    # written to JSONB on the sync state and served whole by the read route.
+    # The net. A detail is written to JSONB on the sync state and served whole by the read route,
+    # and some messages quote a value the publisher supplied, so the length of a stored detail is
+    # the feed's to choose unless something bounds it where the rejection is built.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:zone@example.org\r\n"
+        f"DTSTART;TZID={'Nowhere/' * 900}:20260210T100000\r\n"
+        "DTEND;TZID=UTC:20260210T110000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert len(outcome.rejected) == 1
+    detail = outcome.rejected[0].detail
+    assert len(detail) <= DETAIL_MAX_LENGTH + 40
+    assert "characters in all" in detail
+
+
+def test_a_refused_rule_is_named_by_size_rather_than_quoted_whole() -> None:
+    # The attribution half, for the one value a feed can make arbitrarily long and still have
+    # refused by a library: the rule itself. Truncating it would fill the panel with the publisher's
+    # padding, so past a readable width the rule is named by size and the library's reason is kept.
     body = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:long@example.org\r\n"
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
@@ -1154,10 +1172,11 @@ def test_a_rejection_detail_is_bounded_however_long_the_feed_makes_it() -> None:
 
     outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
 
-    assert len(outcome.rejected) == 1
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
     detail = outcome.rejected[0].detail
-    assert len(detail) <= DETAIL_MAX_LENGTH + 40
-    assert "characters in all" in detail
+    assert "6019 characters" in detail
+    assert "second must be in 0..59" in detail
+    assert "61,61" not in detail
 
 
 def test_an_occurrence_ending_exactly_at_the_horizon_places_nothing() -> None:
@@ -1281,3 +1300,60 @@ def test_an_rdate_in_its_own_zone_is_resolved_in_that_zone() -> None:
 
     added = [event for event in outcome.events if event.interval.start.day == 12]
     assert [event.interval.start for event in added] == [utc(2026, 2, 12, 14, 0)]
+
+
+@pytest.mark.parametrize(
+    ("rule", "refused"),
+    [
+        # dateutil holds each BY list as a set of integers, so these name one member, not two or
+        # three, and a position past one member selects nothing.
+        ("FREQ=HOURLY;BYMINUTE=0,0;BYSETPOS=2", True),
+        ("FREQ=MINUTELY;BYSECOND=0,00;BYSETPOS=2", True),
+        ("FREQ=HOURLY;BYMINUTE=30,030;BYSETPOS=2", True),
+        ("FREQ=MINUTELY;BYSECOND=0,0,0;BYSETPOS=3", True),
+        ("FREQ=HOURLY;BYMINUTE=0,0,30;BYSETPOS=3", True),
+        # A list where SOME member lands is legitimate: dateutil skips the ones that do not and
+        # yields for the rest, so refusing on the largest member lost a whole live series.
+        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,5", False),
+        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,2,3,4", False),
+        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=-1,-5", False),
+    ],
+)
+def test_a_setpos_is_read_against_the_values_dateutil_will_hold(rule: str, refused: bool) -> None:
+    # Two ways to get the room wrong, and each let a rule walk to year 9999 inside one call or lost
+    # a rule that works. The room is the count of DISTINCT VALUES, because that is what dateutil
+    # stores; the reach is the SMALLEST position, because one member landing makes the rule yield.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:sp2@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    if refused:
+        assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+        assert "produces nothing" in outcome.rejected[0].detail
+    else:
+        assert outcome.rejected == ()
+        assert outcome.events != ()
+
+
+@pytest.mark.parametrize("padded", ["0" * 4302, "0" * 4301 + "1"])
+def test_a_padded_rule_value_is_refused_without_the_conversion_complaining(padded: str) -> None:
+    # The interpreter's conversion limit counts the CHARACTERS handed to int(), not the value, so a
+    # bound on significant digits only holds if the significant digits are what gets converted. It
+    # was not, so four thousand leading zeros passed the bound and the conversion raised, and the
+    # panel told a publisher to change syncr's interpreter setting.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:pad@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:FREQ=DAILY;INTERVAL={padded}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    detail = outcome.rejected[0].detail
+    assert "set_int_max_str_digits" not in detail
+    assert "INTERVAL" in detail

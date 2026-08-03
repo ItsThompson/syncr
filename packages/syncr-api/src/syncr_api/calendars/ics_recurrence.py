@@ -71,6 +71,11 @@ _EXPANDING_PARTS: Final = {
 _RULE_SEPARATOR: Final = ";"
 _WALL_FORMAT: Final = "%Y%m%dT%H%M%S"
 
+# How much of a refused rule the message quotes. A rule is worth quoting, because the property that
+# broke is in it; a rule the publisher padded to eight thousand characters is not, and a detail is
+# stored and served rather than logged and dropped.
+_QUOTED_RULE_WIDTH: Final = 200
+
 
 @dataclass(frozen=True, slots=True)
 class Recurrence:
@@ -180,7 +185,10 @@ def _parsed_rule(rule_text: str, start: IcsTime) -> rruleset:
     try:
         return rrulestr(_wall_until(rule_text, start), dtstart=start.wall, forceset=True)
     except _RULE_FAULTS as error:
-        message = f"{rule_text!r} is not a recurrence rule syncr can expand: {error}"
+        message = (
+            f"{_stated(rule_text, width=_QUOTED_RULE_WIDTH)} is not a recurrence rule syncr can "
+            f"expand: {error}"
+        )
         raise UnparseableRecurrence(message) from error
 
 
@@ -210,8 +218,18 @@ def _require_selectable_setpos(rule_text: str) -> None:
     Which parts count as room is per-frequency and is the whole difficulty: see
     ``_EXPANDING_PARTS``. The position is compared against that size rather than the shape being
     refused outright, so ``FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2`` still expands its 303
-    occurrences: it selects the second of two, which dateutil answers in milliseconds. Only a
-    position with nothing to land on is refused.
+    occurrences: it selects the second of two, which dateutil answers in milliseconds.
+
+    Two subtleties, each of which let a walking rule through once:
+
+    - The room is how many values dateutil will HOLD, not how many the publisher wrote. It stores
+      each ``BY`` list as a set of integers, so ``BYMINUTE=0,0`` and ``BYMINUTE=30,030`` hold one
+      member each while naming two. Counting the spellings inflated the room and the position
+      walked.
+    - A position list is refused only when NONE of its members can land. dateutil skips an
+      out-of-range member and still yields for the rest, so ``BYSETPOS=1,5`` against a set of two is
+      a legitimate rule that produces the first member of every period. Comparing the largest member
+      lost the whole series.
 
     A daily or longer frequency is left to dateutil. The same shape produces nothing there too, but
     it terminates, in two seconds at the worst frequency measured, because the periods are large
@@ -225,7 +243,9 @@ def _require_selectable_setpos(rule_text: str) -> None:
     expanding = _EXPANDING_PARTS.get(parts.get(_FREQ, "").strip())
     if positions is None or expanding is None:
         return
-    reach = max((abs(int(value)) for value in positions.split(",") if _signed(value)), default=0)
+    reach = min(
+        (abs(_number(value)) for value in positions.split(",") if _signed(value)), default=0
+    )
     room = prod(_members(parts.get(part)) for part in expanding)
     if reach > room:
         message = (
@@ -237,34 +257,60 @@ def _require_selectable_setpos(rule_text: str) -> None:
 
 
 def _members(value: str | None) -> int:
-    """How many values a ``BY`` list names, or one when it names none.
+    """How many DISTINCT values a ``BY`` list names, or one when it names none.
 
     One rather than zero, because an absent part still leaves the period holding the single member
     ``DTSTART`` names.
+
+    Distinct by VALUE rather than by spelling, because that is what dateutil holds: it stores each
+    list as a set of integers. ``0,0`` names one minute and ``30,030`` names one minute, and
+    counting them as two put a position past the real set on the safe side of this guard.
     """
     if value is None:
         return 1
-    return max(len([item for item in value.split(",") if item.strip()]), 1)
+    named = {_canonical(item) for item in value.split(",") if item.strip()}
+    return max(len(named), 1)
+
+
+def _canonical(item: str) -> str:
+    """One ``BY`` list member as the value it means, so two spellings of it count once."""
+    stated = item.strip()
+    return str(_number(stated)) if _signed(stated) else stated
+
+
+def _number(value: str) -> int:
+    """A rule value ``_signed`` has accepted, converted from its SIGNIFICANT digits.
+
+    The interpreter's conversion limit counts the characters handed to ``int``, not the value, so a
+    padded string passes a bound on significant digits and then refuses to convert. Stripping first
+    is what makes ``_signed`` a promise the conversion keeps rather than one it nearly keeps.
+    """
+    stated = value.strip()
+    sign = -1 if stated.startswith("-") else 1
+    digits = stated.removeprefix("+").removeprefix("-").lstrip("0")
+    return sign * int(digits) if digits else 0
 
 
 def _signed(value: str) -> bool:
-    """Whether ``int`` will convert this, bounded so the conversion cannot refuse.
+    """Whether ``_number`` will convert this, bounded so the conversion cannot refuse.
 
     ``isdecimal`` rather than ``isdigit``, and the difference is the point: ``isdigit`` is true
     for ``'2'`` superscript and for circled digits, which ``int`` then refuses. A feed can carry
     either. Checking the wrong predicate left the conversion able to raise while the table beside it
     claimed the site was guarded here.
 
-    The length bound is the second half. ``int`` refuses a decimal string longer than the
-    interpreter's digit limit, so a bound on significant digits is what makes the conversion total.
+    The length bound is the second half, and it is a bound on SIGNIFICANT digits, so it only holds
+    if the caller converts the significant digits too. ``_number`` does. Converting the original
+    string instead left four thousand leading zeros passing this and refusing there, which is the
+    same defect the duration bound was corrected for two rounds earlier.
     """
     stated = value.strip().removeprefix("+").removeprefix("-")
     return stated.isdecimal() and len(stated.lstrip("0")) <= MAX_MAGNITUDE_DIGITS
 
 
-def _stated(value: str) -> str:
-    """How a refused value is named, without quoting a value thousands of characters wide."""
-    if len(value) <= MAX_MAGNITUDE_DIGITS:
+def _stated(value: str, *, width: int = MAX_MAGNITUDE_DIGITS) -> str:
+    """How a refused value is named, without quoting a value the feed chose the length of."""
+    if len(value) <= width:
         return repr(value)
     return f"a value of {len(value)} characters"
 
@@ -286,7 +332,7 @@ def _require_positive_interval(rule_text: str) -> None:
         if not separator or key.strip().upper() != _INTERVAL:
             continue
         stated = value.strip()
-        if not _signed(stated) or int(stated.lstrip("0") or "0") < 1:
+        if not _signed(stated) or _number(stated) < 1:
             message = (
                 f"the recurrence rule states an INTERVAL of {_stated(stated)}, and an interval has "
                 "to be a positive number of periods"

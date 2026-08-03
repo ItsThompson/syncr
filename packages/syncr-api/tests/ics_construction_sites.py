@@ -160,16 +160,9 @@ SITES: Final[tuple[Site, ...]] = (
     ),
     Site(
         module="ics_recurrence",
-        function="_require_positive_interval",
+        function="_number",
         constructor="int",
-        reads="an INTERVAL a feed stated",
-        guard=GUARDED_HERE,
-    ),
-    Site(
-        module="ics_recurrence",
-        function="_require_selectable_setpos",
-        constructor="int",
-        reads="a BYSETPOS position a feed stated",
+        reads="an INTERVAL or a BYSETPOS position a feed stated",
         guard=GUARDED_HERE,
     ),
     Site(

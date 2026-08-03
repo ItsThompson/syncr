@@ -367,6 +367,23 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         "DURATION:PT1H",
         "RRULE:FREQ=MINUTELY;BYMINUTE=0,30;BYSECOND=0,30;BYSETPOS=-3",
     ),
+    # A set member written twice, and written twice with padding. dateutil holds a BY list as a set
+    # of integers, so these name ONE member however they are spelled, and a position past one
+    # selects nothing. Counting the spellings rather than the values is what let them through.
+    "a setpos past a repeated set member": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=HOURLY;BYMINUTE=0,0;BYSETPOS=2",
+    ),
+    "a setpos past a zero-padded repeat": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=HOURLY;BYMINUTE=30,030;BYSETPOS=2",
+    ),
+    # The accepting mirror on the same axis: one member of the list lands, so the rule yields and
+    # must not be refused.
+    "a setpos list where only one member lands": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,5",
+    ),
     "a count past the conversion limit": (
         "DURATION:PT1H",
         f"RRULE:FREQ=DAILY;COUNT={PAST_INT_CONVERSION}",
