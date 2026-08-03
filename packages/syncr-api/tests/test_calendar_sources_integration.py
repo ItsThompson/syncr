@@ -256,11 +256,8 @@ async def test_a_value_outside_a_closed_vocabulary_is_rejected(
     # The annotation is erased at runtime, so the check constraint is what stops a caller reaching
     # this table from a later revision or a psql session.
     #
-    # `IntegrityError` exactly, and both values are chosen to fit their column. A wildcard tuple
-    # ending in `Exception` passes on any failure at all, and it was hiding one: the earlier
-    # `"outlook"` is seven characters against a `varchar(6)`, so it never reached the constraint
-    # this test is about. It failed on column WIDTH, as a `DBAPIError`, and the assertion was wide
-    # enough to accept that.
+    # Both values fit their column, so each reaches the constraint rather than failing on width, and
+    # `IntegrityError` is named exactly: a wildcard would pass on the width failure too.
     with pytest.raises(IntegrityError):
         await add(sessions, tenant_id, provider=provider, role=role)
 

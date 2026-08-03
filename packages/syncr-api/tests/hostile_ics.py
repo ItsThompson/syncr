@@ -97,8 +97,6 @@ ASSESSMENTS_FEED: Final = (
 # keys, one component naming a zone no table maps, one cancelled master, one cancelled
 # OCCURRENCE of a live series, and a duplicate UID pair produced by an export covering two
 # overlapping windows: the same meeting at two SEQUENCE values, the later of which moved it.
-# UID pair produced by an export covering two overlapping windows: the same meeting at two
-# SEQUENCE values, the later of which moved it.
 PUBLISHED_OUTLOOK: Final = (
     "BEGIN:VCALENDAR\n"
     "VERSION:2.0\n"
