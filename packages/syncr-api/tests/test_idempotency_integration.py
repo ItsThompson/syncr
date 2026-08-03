@@ -36,6 +36,7 @@ from syncr_api.idempotency.errors import RequestInFlight
 from syncr_api.idempotency.fingerprints import request_fingerprint
 from syncr_api.idempotency.guard import IdempotencyGuard
 from syncr_api.idempotency.injection import (
+    BLANK_KEY_DETAIL,
     MISSING_KEY_DETAIL,
     OVERSIZE_KEY_DETAIL,
     get_idempotency_guard,
@@ -470,14 +471,16 @@ async def test_a_route_that_demands_a_key_refuses_a_request_without_one(
     assert IDEMPOTENCY_KEY_HEADER in MISSING_KEY_DETAIL
 
 
-async def test_a_key_wider_than_the_column_is_refused_before_it_reaches_one(
+async def test_a_key_outside_the_bound_is_refused_before_it_reaches_the_column(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
     # A caller-supplied value out of bounds is a 400 naming the bound, not a driver failure on
-    # the way to storing it. The key at the bound is the control, so the check is shown to
-    # refuse what is too wide rather than everything long.
+    # the way to storing it, and not a key nobody chose. Both ends are refused and both have a
+    # control beside them: a key AT the bound is accepted, and a request with no header at all
+    # still runs, because the header is offered rather than demanded.
     principal = Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset())
-    work = CountingWork(Created(block_id="abc", minutes=45))
+    at_the_bound_work = CountingWork(Created(block_id="abc", minutes=45))
+    no_header_work = CountingWork(Created(block_id="def", minutes=30))
 
     async with sessions() as session, session.begin():
         oversize = post_request(
@@ -486,11 +489,28 @@ async def test_a_key_wider_than_the_column_is_refused_before_it_reaches_one(
         with pytest.raises(MalformedRequest, match=str(KEY_MAX_LENGTH)):
             await get_idempotency_guard(oversize, session, principal)
 
+        for blank in ("", " ", "\t"):
+            empty = post_request(headers={IDEMPOTENCY_KEY_HEADER: blank}, body=BODY)
+            with pytest.raises(MalformedRequest, match="carries no value"):
+                await get_idempotency_guard(empty, session, principal)
+
         at_the_bound = post_request(
             headers={IDEMPOTENCY_KEY_HEADER: "k" * KEY_MAX_LENGTH}, body=BODY
         )
-        guard = await get_idempotency_guard(at_the_bound, session, principal)
-        answered = await guard.once(ROUTE, Created, work)
+        answered = await (await get_idempotency_guard(at_the_bound, session, principal)).once(
+            ROUTE, Created, at_the_bound_work
+        )
 
-    assert (work.calls, answered) == (1, work.response)
+        absent = post_request(headers={}, body=BODY)
+        await (await get_idempotency_guard(absent, session, principal)).once(
+            OTHER_ROUTE, Created, no_header_work
+        )
+
+    assert (at_the_bound_work.calls, answered) == (1, at_the_bound_work.response)
+    assert no_header_work.calls == 1
     assert str(KEY_MAX_LENGTH) in OVERSIZE_KEY_DETAIL
+    assert IDEMPOTENCY_KEY_HEADER in BLANK_KEY_DETAIL
+    # The empty header was refused rather than stored, and the absent one stored nothing.
+    assert [row.idempotency_key for row in await stored_keys(sessions, owner.tenant_id)] == [
+        "k" * KEY_MAX_LENGTH
+    ]
