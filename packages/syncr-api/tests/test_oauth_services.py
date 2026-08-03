@@ -952,17 +952,18 @@ async def test_expiry_removes_a_consumed_code_and_a_live_one_alike(
     store: Store,
     clock: MovableClock,
 ) -> None:
-    # What the sweep deletes, asserted against the boundary rather than "some time later".
+    # What the sweep deletes, asserted over both kinds of row rather than "some time later".
     # Two codes: one abandoned in a browser, one exchanged. Both are dead weight once expired.
+    # The boundary instant itself belongs to the database and is asserted against real Postgres
+    # in test_oauth_flow_integration.py, because a fake that implements the same comparison
+    # cannot tell a production `<` from a `<=`.
     await granted_code(consent, principal)
     await exchange_code(consent, tokens, principal)
     scoped = FakeScoped(store, principal.tenant_id)
     assert len(store.codes) == 2
 
-    clock.advance(AUTHORIZATION_CODE_LIFETIME)
-    assert await scoped.delete_expired_codes(clock.now) == 0, "a code expiring now is not past"
+    clock.advance(AUTHORIZATION_CODE_LIFETIME * 2)
 
-    clock.advance(timedelta(seconds=1))
     assert await scoped.delete_expired_codes(clock.now) == 2
     assert store.codes == {}
 
@@ -993,14 +994,15 @@ async def test_a_revoked_grant_is_kept_for_the_retention_window_and_then_removed
     clock: MovableClock,
 ) -> None:
     # Not removed the moment it dies: an operator investigating a revocation needs something
-    # to read.
+    # to read. Well inside the window here; the window's exact edge is the database's, and is
+    # asserted against real Postgres in test_oauth_flow_integration.py.
     await exchange_code(consent, tokens, principal)
     scoped = FakeScoped(store, principal.tenant_id)
     await scoped.revoke_family(next(iter(store.grants)), clock.now)
 
-    clock.advance(DEAD_GRANT_RETENTION)
+    clock.advance(DEAD_GRANT_RETENTION / 2)
     assert await scoped.delete_grants_revoked_before(clock.now - DEAD_GRANT_RETENTION) == 0
 
-    clock.advance(timedelta(seconds=1))
+    clock.advance(DEAD_GRANT_RETENTION)
     assert await scoped.delete_grants_revoked_before(clock.now - DEAD_GRANT_RETENTION) == 1
     assert store.grants == {}
