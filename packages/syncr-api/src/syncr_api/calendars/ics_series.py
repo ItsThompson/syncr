@@ -49,11 +49,16 @@ if TYPE_CHECKING:
     from syncr_api.calendars.ics_components import EventComponent
     from syncr_domain.zones import ZoneProfile
 
-# A replacement is found by the series it belongs to and the INSTANT of the occurrence it replaces.
-# An instant rather than a wall time, because RFC 5545 lets a publisher write a RECURRENCE-ID as UTC
-# or with a TZID, and both forms name one occurrence. Comparing the wall text made a UTC-form value
-# match nothing on a zoned series: a moved hour was dropped, and a CANCELLED one left the occurrence
-# standing as hard occupancy the feed says does not happen.
+# A replacement is found by the series it belongs to and the WALL TIME of the occurrence it
+# replaces, which is the text a RECURRENCE-ID states and what makes one occurrence distinct from
+# every other.
+#
+# It cannot be the instant, though matching has to reach across forms. Two occurrences of one
+# series can share an instant: a wall time inside a spring-forward gap resolves onto the same
+# instant as the real wall time an hour later, so an instant key named two occurrences at once.
+# Measured, that placed one override twice and lost the other of a pair. Cross-form matching is a
+# SECOND index instead: see ``Series.same_instant``.
+# ``Series.same_instant``.
 type OccurrenceKey = tuple[str, datetime]
 
 _OCCURRENCE_STAMP = "%Y%m%dT%H%M%S"
@@ -77,6 +82,7 @@ class Series:
     masters: tuple[EventComponent, ...] = ()
     overrides: Mapping[OccurrenceKey, EventComponent] = field(default_factory=dict)
     tombstones: frozenset[OccurrenceKey] = frozenset()
+    same_instant: Mapping[tuple[str, datetime], OccurrenceKey] = field(default_factory=dict)
     orphans: tuple[EventComponent, ...] = ()
     duplicates: int = 0
     cancelled: int = 0
@@ -170,6 +176,7 @@ def sort_components(readable: list[EventComponent]) -> Series:
         masters=tuple(live.values()),
         overrides=held_by_a_series.overrides,
         tombstones=frozenset(held_by_a_series.tombstones),
+        same_instant=held_by_a_series.same_instant,
         orphans=tuple(orphaned.overrides.values()),
         duplicates=duplicates,
         cancelled=cancelled,
@@ -182,6 +189,7 @@ class _Resolved:
 
     overrides: dict[OccurrenceKey, EventComponent]
     tombstones: set[OccurrenceKey]
+    same_instant: dict[tuple[str, datetime], OccurrenceKey]
     duplicates: int
     cancelled: int
 
@@ -205,13 +213,19 @@ def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
     part only when a cancelled override carries a LOWER ``SEQUENCE`` than a live one, where this
     keeps the hour clear. Refusing to place an hour the feed cancelled somewhere is the safe
     direction, because the alternative is immovable occupancy the user was told does not happen.
+
+    ``same_instant`` is built alongside: the instant each surviving key names, so an occurrence can
+    find a replacement written in the other legal form. It is an INDEX and not the key, because two
+    keys can share one instant.
     """
     overrides: dict[OccurrenceKey, EventComponent] = {}
     tombstones: set[OccurrenceKey] = set()
+    instants: dict[OccurrenceKey, datetime] = {}
     duplicates = 0
     cancelled = 0
     for replacement in replacements:
         key = replaced_key(replacement)
+        instants[key] = replacement.replaces_at or key[1]
         if replacement.cancelled:
             if key in tombstones:
                 duplicates += 1
@@ -229,8 +243,17 @@ def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
     for key in tombstones & overrides.keys():
         del overrides[key]
         cancelled += 1
+    same_instant = {
+        (key[0], instant): key
+        for key, instant in instants.items()
+        if key in overrides or key in tombstones
+    }
     return _Resolved(
-        overrides=overrides, tombstones=tombstones, duplicates=duplicates, cancelled=cancelled
+        overrides=overrides,
+        tombstones=tombstones,
+        same_instant=same_instant,
+        duplicates=duplicates,
+        cancelled=cancelled,
     )
 
 
@@ -258,10 +281,7 @@ def expand(
     built: list[RawEvent] = []
     applied: set[OccurrenceKey] = set()
     for wall in occurrences(master.start, master.recurrence, window=window, profile=profile):
-        # Keyed on the INSTANT, so a RECURRENCE-ID written as UTC finds the occurrence of a zoned
-        # series that it names. Identity stays the wall stamp, because that is what a publisher
-        # sends again next time.
-        key = (master.uid, resolve(master.start, profile, wall=wall))
+        key = _named_by(series, master, wall, applied=applied, profile=profile)
         if key in series.tombstones:
             applied.add(key)
             continue
@@ -285,6 +305,35 @@ def expand(
             )
         )
     return Placement(events=tuple(built), applied=frozenset(applied))
+
+
+def _named_by(
+    series: Series,
+    master: EventComponent,
+    wall: datetime,
+    *,
+    applied: set[OccurrenceKey],
+    profile: ZoneProfile,
+) -> OccurrenceKey:
+    """The replacement key this occurrence answers to, in the publisher's spelling or the other one.
+
+    A ``RECURRENCE-ID`` matching this occurrence's own wall time is the ordinary case and is taken
+    first. RFC 5545 also permits the UTC form, which names the same occurrence with different text,
+    so a miss falls back to the instant the occurrence lands on.
+
+    **A replacement found that way is only used once.** Two occurrences can share one instant,
+    because a wall time inside a spring-forward gap resolves onto the same instant as the real wall
+    time an hour later. The replacement belongs to the occurrence whose own wall it names; offering
+    it to the other one placed the same component twice, on two identities, for one commitment.
+    """
+    exact = (master.uid, wall)
+    if exact in series.overrides or exact in series.tombstones:
+        return exact
+    instant = resolve(master.start, profile, wall=wall)
+    other = series.same_instant.get((master.uid, instant))
+    if other is None or other in applied or other[1] == wall:
+        return exact
+    return other
 
 
 def place_replacement(
@@ -405,15 +454,16 @@ def _never_offered(
 
 
 def replaced_key(replacement: EventComponent) -> OccurrenceKey:
-    """The occurrence a replacement names, as an instant.
+    """The occurrence a replacement names, by the wall time its ``RECURRENCE-ID`` states.
 
-    The instant is resolved where the component's other values are read, so this cannot raise and
-    the partition stays free of arithmetic on a publisher's magnitudes.
+    The wall time and not the instant, because two occurrences of one series can share an instant
+    across a spring-forward gap while their wall times always differ. Matching across the two legal
+    forms of a ``RECURRENCE-ID`` is done with a second index rather than by keying on the instant.
     """
-    if replacement.replaces_at is None:  # pragma: no cover - only replacements reach here
+    if replacement.replaces is None:  # pragma: no cover - only replacements reach here
         message = "a component with no RECURRENCE-ID was sorted as a replacement"
         raise MalformedValue(message)
-    return (replacement.uid, replacement.replaces_at)
+    return (replacement.uid, replacement.replaces.wall)
 
 
 def occurrence_uid(uid: str, wall: datetime) -> str:

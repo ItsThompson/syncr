@@ -483,6 +483,28 @@ CANCELLED_NEWER_REVISION: Final = (
     "END:VCALENDAR\r\n"
 )
 
+# London springs forward on 2026-03-29: 01:00 GMT becomes 02:00 BST, so no wall time in the 01:xx
+# hour exists and one resolves onto the same instant as the real wall time an hour later. So two
+# occurrences of an hourly series share an instant, and a key made of the instant named both at
+# once.
+SPRING_FORWARD_GAP: Final = (
+    "BEGIN:VCALENDAR\r\n"
+    "BEGIN:VEVENT\r\nUID:gap@example.org\r\nSUMMARY:Hourly across the gap\r\n"
+    "DTSTART;TZID=Europe/London:20260329T003000\r\n"
+    "DTEND;TZID=Europe/London:20260329T005500\r\n"
+    "RRULE:FREQ=HOURLY;COUNT=4\r\nEND:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:gap@example.org\r\nSUMMARY:Moved from the gap hour\r\n"
+    "RECURRENCE-ID;TZID=Europe/London:20260329T013000\r\n"
+    "DTSTART;TZID=Europe/London:20260329T190000\r\n"
+    "DTEND;TZID=Europe/London:20260329T195500\r\nEND:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:gap@example.org\r\nSUMMARY:Moved from the hour after\r\n"
+    "RECURRENCE-ID;TZID=Europe/London:20260329T023000\r\n"
+    "DTSTART;TZID=Europe/London:20260329T200000\r\n"
+    "DTEND;TZID=Europe/London:20260329T205500\r\nEND:VEVENT\r\n"
+    "END:VCALENDAR\r\n"
+)
+
+
 HOSTILE_MAGNITUDES: Final[dict[str, str]] = _crossed()
 
 
@@ -630,5 +652,6 @@ ALL_FEEDS: Final = {
     "duplicate_orphans": DUPLICATE_ORPHANS,
     "cancelled_orphan": CANCELLED_ORPHAN,
     "cancelled_newer_revision": CANCELLED_NEWER_REVISION,
+    "spring_forward_gap": SPRING_FORWARD_GAP,
     **HOSTILE_MAGNITUDES,
 }

@@ -47,6 +47,7 @@ from tests.hostile_ics import (
     PUBLISHED_OUTLOOK,
     RUNAWAY_RECURRENCE,
     SHIFTED_BY_A_DUPLICATE_MASTER,
+    SPRING_FORWARD_GAP,
     UNIVERSITY_TIMETABLE,
     nested_feed,
 )
@@ -1357,3 +1358,73 @@ def test_a_padded_rule_value_is_refused_without_the_conversion_complaining(padde
     detail = outcome.rejected[0].detail
     assert "set_int_max_str_digits" not in detail
     assert "INTERVAL" in detail
+
+
+# The horizon around the spring-forward transition the gap body sits in.
+_TRANSITION = Interval(
+    datetime(2026, 3, 28, 0, 0, tzinfo=UTC), datetime(2026, 3, 31, 0, 0, tzinfo=UTC)
+)
+
+
+def test_two_occurrences_sharing_one_instant_keep_their_own_replacements() -> None:
+    # A wall time inside a spring-forward gap resolves onto the same instant as the real wall time
+    # an hour later, so an hourly series has two occurrences at one instant. Keyed on the instant,
+    # one override was placed on BOTH of them, giving one component two events and two identities,
+    # and a pair of overrides collapsed to one with the other counted as a duplicate revision of it.
+    outcome = parse_feed(SPRING_FORWARD_GAP, horizon=_TRANSITION, profile=HOME)
+
+    # A list of pairs rather than a mapping by title: keyed by title, a component placed TWICE
+    # collapses into one entry and the assertion cannot see the defect it was written for.
+    moved = sorted(
+        (event.title, event.interval.start)
+        for event in outcome.events
+        if event.title.startswith("Moved")
+    )
+    assert moved == [
+        ("Moved from the gap hour", utc(2026, 3, 29, 18, 0)),
+        ("Moved from the hour after", utc(2026, 3, 29, 19, 0)),
+    ]
+    assert len(outcome.events) == 4
+    assert len({event.uid for event in outcome.events}) == 4
+    assert outcome.overrides_applied == 2
+    assert outcome.duplicates_discarded == 0
+
+
+def test_a_cancellation_in_the_gap_does_not_suppress_the_hour_after_it() -> None:
+    # The same collision on the cancellation path. The tombstone names the gap wall; the occurrence
+    # an hour later shares its instant and must keep its own event.
+    body = SPRING_FORWARD_GAP.replace(
+        "SUMMARY:Moved from the gap hour\r\n",
+        "STATUS:CANCELLED\r\nSUMMARY:Cancelled in the gap\r\n",
+    )
+
+    outcome = parse_feed(body, horizon=_TRANSITION, profile=HOME)
+
+    titles = sorted(event.title for event in outcome.events)
+    assert titles == ["Hourly across the gap", "Hourly across the gap", "Moved from the hour after"]
+
+
+def test_one_replacement_cannot_be_placed_on_both_occurrences_of_a_shared_instant() -> None:
+    # The narrow shape the cross-form fallback opens: ONE override, and two occurrences sharing its
+    # instant. The one whose own wall it names takes it; the other must not be offered it again, or
+    # a single component becomes two hours of hard occupancy under two identities.
+    body = SPRING_FORWARD_GAP.replace(
+        "BEGIN:VEVENT\r\nUID:gap@example.org\r\nSUMMARY:Moved from the hour after\r\n"
+        "RECURRENCE-ID;TZID=Europe/London:20260329T023000\r\n"
+        "DTSTART;TZID=Europe/London:20260329T200000\r\n"
+        "DTEND;TZID=Europe/London:20260329T205500\r\nEND:VEVENT\r\n",
+        "",
+    )
+
+    outcome = parse_feed(body, horizon=_TRANSITION, profile=HOME)
+
+    moved = [event for event in outcome.events if event.title.startswith("Moved")]
+    assert len(moved) == 1
+    assert moved[0].interval.start == utc(2026, 3, 29, 18, 0)
+    # The occurrence that shares the instant keeps its own event rather than a copy of the override.
+    assert sorted(event.title for event in outcome.events) == [
+        "Hourly across the gap",
+        "Hourly across the gap",
+        "Hourly across the gap",
+        "Moved from the gap hour",
+    ]
