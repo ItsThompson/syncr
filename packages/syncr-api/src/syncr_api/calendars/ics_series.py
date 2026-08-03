@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from syncr_api.calendars.events import RawEvent
-from syncr_api.calendars.ics_errors import UNREPRESENTABLE, MalformedValue
+from syncr_api.calendars.ics_errors import MalformedValue
 from syncr_api.calendars.ics_recurrence import occurrences
 from syncr_api.calendars.ics_times import ONE_DAY, resolve, resolve_day_span, resolve_span
 from syncr_domain.intervals import Interval
@@ -49,7 +49,11 @@ if TYPE_CHECKING:
     from syncr_api.calendars.ics_components import EventComponent
     from syncr_domain.zones import ZoneProfile
 
-# A replacement is found by the series it belongs to and the occurrence it replaces.
+# A replacement is found by the series it belongs to and the INSTANT of the occurrence it replaces.
+# An instant rather than a wall time, because RFC 5545 lets a publisher write a RECURRENCE-ID as UTC
+# or with a TZID, and both forms name one occurrence. Comparing the wall text made a UTC-form value
+# match nothing on a zoned series: a moved hour was dropped, and a CANCELLED one left the occurrence
+# standing as hard occupancy the feed says does not happen.
 type OccurrenceKey = tuple[str, datetime]
 
 _OCCURRENCE_STAMP = "%Y%m%dT%H%M%S"
@@ -254,7 +258,10 @@ def expand(
     built: list[RawEvent] = []
     applied: set[OccurrenceKey] = set()
     for wall in occurrences(master.start, master.recurrence, window=window, profile=profile):
-        key = (master.uid, wall)
+        # Keyed on the INSTANT, so a RECURRENCE-ID written as UTC finds the occurrence of a zoned
+        # series that it names. Identity stays the wall stamp, because that is what a publisher
+        # sends again next time.
+        key = (master.uid, resolve(master.start, profile, wall=wall))
         if key in series.tombstones:
             applied.add(key)
             continue
@@ -299,7 +306,9 @@ def place_replacement(
     return Placement(
         events=(
             RawEvent(
-                uid=occurrence_uid(replacement.uid, replaced_key(replacement)[1]),
+                uid=occurrence_uid(replacement.uid, replacement.replaces.wall)
+                if replacement.replaces is not None
+                else replacement.uid,
                 series_uid=replacement.uid,
                 title=replacement.title,
                 interval=span,
@@ -386,26 +395,25 @@ def _never_offered(
     No master means none expanded to cover this hour, whether the master was absent or refused, so
     the answer is the orphan rule's: nothing declined it.
 
-    A magnitude that cannot be resolved is treated as never offered, which hands the component to
-    the placement path. That path reports it as a rejection naming the component and the line, where
-    raising here would leave the package's no-raise contract to a caller.
+    A magnitude that cannot be resolved has already been refused where the component was read, so
+    there is nothing to catch here.
     """
-    if master is None or replacement.replaces is None:
+    if master is None or replacement.replaces_at is None:
         return True
     window = _window(horizon, master)
-    try:
-        original = resolve(replacement.replaces, profile)
-    except UNREPRESENTABLE:
-        return True
-    return not (window.start <= original < window.end)
+    return not (window.start <= replacement.replaces_at < window.end)
 
 
 def replaced_key(replacement: EventComponent) -> OccurrenceKey:
-    """The occurrence a replacement names."""
-    if replacement.replaces is None:  # pragma: no cover - only replacements reach here
+    """The occurrence a replacement names, as an instant.
+
+    The instant is resolved where the component's other values are read, so this cannot raise and
+    the partition stays free of arithmetic on a publisher's magnitudes.
+    """
+    if replacement.replaces_at is None:  # pragma: no cover - only replacements reach here
         message = "a component with no RECURRENCE-ID was sorted as a replacement"
         raise MalformedValue(message)
-    return (replacement.uid, replacement.replaces.wall)
+    return (replacement.uid, replacement.replaces_at)
 
 
 def occurrence_uid(uid: str, wall: datetime) -> str:

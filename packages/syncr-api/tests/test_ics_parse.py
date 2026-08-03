@@ -1194,3 +1194,62 @@ def test_syncr_s_own_refusal_is_not_re_explained_as_a_library_fault() -> None:
     detail = outcome.rejected[0].detail
     assert detail.startswith("the recurrence rule selects position 2")
     assert "cannot be expanded" not in detail
+
+
+# July, when London runs an hour ahead of UTC, so the two RECURRENCE-ID forms differ in text while
+# naming one instant. The corpus sits in February at an offset of zero, where they cannot differ.
+_SUMMER = Interval(datetime(2026, 7, 6, 0, 0, tzinfo=UTC), datetime(2026, 7, 20, 0, 0, tzinfo=UTC))
+_ZONED_SERIES = (
+    "BEGIN:VEVENT\r\nUID:zoned@example.org\r\nSUMMARY:Weekly 09:00 London\r\n"
+    "DTSTART;TZID=Europe/London:20260706T090000\r\n"
+    "DTEND;TZID=Europe/London:20260706T100000\r\n"
+    "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+)
+
+
+@pytest.mark.parametrize(
+    "recurrence_id",
+    ["RECURRENCE-ID:20260713T080000Z", "RECURRENCE-ID;TZID=Europe/London:20260713T090000"],
+)
+def test_a_recurrence_id_names_one_occurrence_in_either_form(recurrence_id: str) -> None:
+    # RFC 5545 lets a publisher write a RECURRENCE-ID as UTC or with a TZID, and both name the same
+    # occurrence. Matching on the wall TEXT made the UTC form match nothing wherever the zone's
+    # offset is non-zero, so the moved hour was dropped and the original stood in the plan.
+    body = (
+        f"BEGIN:VCALENDAR\r\n{_ZONED_SERIES}"
+        "BEGIN:VEVENT\r\nUID:zoned@example.org\r\nSUMMARY:Moved to 14:00\r\n"
+        f"{recurrence_id}\r\n"
+        "DTSTART;TZID=Europe/London:20260713T140000\r\n"
+        "DTEND;TZID=Europe/London:20260713T150000\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=_SUMMER, profile=HOME)
+
+    assert outcome.overrides_applied == 1
+    on_the_13th = [event for event in outcome.events if event.interval.start.day == 13]
+    assert [event.interval.start for event in on_the_13th] == [utc(2026, 7, 13, 13, 0)]
+
+
+@pytest.mark.parametrize(
+    "recurrence_id",
+    ["RECURRENCE-ID:20260713T080000Z", "RECURRENCE-ID;TZID=Europe/London:20260713T090000"],
+)
+def test_a_cancelled_occurrence_is_suppressed_in_either_form(recurrence_id: str) -> None:
+    # The same defect on the cancellation path, which is the one that costs the user an hour: the
+    # feed says this occurrence does not happen, and a key that matched nothing left it standing as
+    # hard occupancy while the arithmetic closed over a component counted as cancelled.
+    body = (
+        f"BEGIN:VCALENDAR\r\n{_ZONED_SERIES}"
+        "BEGIN:VEVENT\r\nUID:zoned@example.org\r\nSTATUS:CANCELLED\r\n"
+        "SUMMARY:Cancelled occurrence\r\n"
+        f"{recurrence_id}\r\n"
+        "DTSTART;TZID=Europe/London:20260713T090000\r\n"
+        "DTEND;TZID=Europe/London:20260713T100000\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=_SUMMER, profile=HOME)
+
+    assert [event.interval.start.day for event in outcome.events] == [6]
+    assert outcome.overrides_applied == 1

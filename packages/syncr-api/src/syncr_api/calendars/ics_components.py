@@ -30,7 +30,7 @@ from syncr_api.calendars.ics_times import ONE_DAY, resolve
 from syncr_api.calendars.ics_values import parse_duration, parse_sequence, parse_time
 
 if TYPE_CHECKING:
-    from datetime import timedelta
+    from datetime import datetime, timedelta
 
     from syncr_api.calendars.ics_lines import Component, ContentLine
     from syncr_api.calendars.ics_values import IcsTime
@@ -60,6 +60,14 @@ class EventComponent:
     ``cancelled`` and ``transparent`` are read but not acted on here. What each MEANS is decided
     above this module: a cancellation by whether the component also carries a ``RECURRENCE-ID``,
     and transparency by the work that decides what an anchor means at all.
+
+    ``replaces_at`` is the INSTANT a ``RECURRENCE-ID`` names, resolved in that value's own zone, and
+    ``replaces`` is the wall time a publisher wrote. Both are kept because they answer different
+    questions: an occurrence is MATCHED by instant, so the same moment written as UTC and written
+    with a ``TZID`` name the same occurrence, while the occurrence's IDENTITY stays the wall stamp a
+    ``RECURRENCE-ID`` states, which is what a later sync will send again. Resolving it here rather
+    than where it is compared is what keeps a magnitude no zone can represent a rejection naming
+    this component, instead of a fault raised from the middle of the partition.
     """
 
     component: Component
@@ -72,6 +80,7 @@ class EventComponent:
     days: int | None
     recurrence: Recurrence
     replaces: IcsTime | None
+    replaces_at: datetime | None
     cancelled: bool
     transparent: bool
 
@@ -104,6 +113,7 @@ def read_component(component: Component, profile: ZoneProfile) -> EventComponent
     start = parse_time(start_line.value, params=start_line.params)
     span, days = _extent(start, component, profile)
     replaced = component.first("RECURRENCE-ID")
+    replaced_time = None if replaced is None else parse_time(replaced.value, params=replaced.params)
     sequence = component.first("SEQUENCE")
     return EventComponent(
         component=component,
@@ -115,7 +125,8 @@ def read_component(component: Component, profile: ZoneProfile) -> EventComponent
         span=span,
         days=days,
         recurrence=_recurrence(component),
-        replaces=None if replaced is None else parse_time(replaced.value, params=replaced.params),
+        replaces=replaced_time,
+        replaces_at=None if replaced_time is None else resolve(replaced_time, profile),
         cancelled=(text_of(component, "STATUS") or "").upper() == CANCELLED,
         transparent=(text_of(component, "TRANSP") or "").upper() == TRANSPARENT,
     )
