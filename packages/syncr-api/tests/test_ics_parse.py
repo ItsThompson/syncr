@@ -1253,3 +1253,31 @@ def test_a_cancelled_occurrence_is_suppressed_in_either_form(recurrence_id: str)
 
     assert [event.interval.start.day for event in outcome.events] == [6]
     assert outcome.overrides_applied == 1
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="an RDATE's own TZID does not travel into the candidate generator, so it resolves in "
+    "the series' zone: measured five hours out. Fixing it threads the zone profile through "
+    "expansion, which is deliberately deferred rather than done alongside these repairs.",
+)
+def test_an_rdate_in_its_own_zone_is_resolved_in_that_zone() -> None:
+    # A KNOWN DEFECT, written as the test that will turn green when it is fixed rather than left as
+    # prose. RFC 5545 lets an RDATE carry its own TZID, and a publisher that writes one means it: a
+    # New York time on a London series is 14:00 UTC, not 09:00 UTC.
+    #
+    # The sibling EXDATE path is correct, which is what makes this a gap rather than a design: the
+    # exclusion resolves each value in its own zone and the addition does not.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:rdate@example.org\r\nSUMMARY:Zoned addition\r\n"
+        "DTSTART;TZID=Europe/London:20260210T090000\r\n"
+        "DTEND;TZID=Europe/London:20260210T100000\r\n"
+        "RDATE;TZID=America/New_York:20260212T090000\r\n"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    added = [event for event in outcome.events if event.interval.start.day == 12]
+    assert [event.interval.start for event in added] == [utc(2026, 2, 12, 14, 0)]
