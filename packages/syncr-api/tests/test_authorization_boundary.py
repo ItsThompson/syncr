@@ -15,10 +15,12 @@ The three rules:
 1. Every route resolves a principal, except the ones named below.
 2. Every service method takes that principal FIRST, so authorizing is not optional.
 3. No route module can reach persistence, so it has no way to skip the service layer.
+4. No route module checks a scope, so authorization is decided in one place per request.
 """
 
 from __future__ import annotations
 
+import ast
 from typing import TYPE_CHECKING, Annotated
 
 import pytest
@@ -28,6 +30,7 @@ from syncr_api.accounts.config import AUTH_PREFIX
 from syncr_api.accounts.injection import require_principal, require_trusted_origin
 from syncr_api.accounts.service import SessionDescription, SessionService
 from syncr_api.core.observability import METRICS_ENDPOINT
+from syncr_api.core.principal import require_scope
 from syncr_api.oauth.config import (
     JWKS_PATH,
     OAUTH_PREFIX,
@@ -130,6 +133,12 @@ FORBIDDEN_IN_A_ROUTE_MODULE = frozenset(
 FORBIDDEN_SIBLINGS = frozenset({"models", "repository", "provisioning"})
 
 ROUTE_MODULE_NAME = "api.py"
+
+# The scope check's own name, read off the function so a rename keeps the rule working. A route
+# module must not reference it at all: a scope checked in a route is a second place a request's
+# authority is decided, and the check inside the service method then becomes something a reader
+# has to go and confirm rather than the whole answer.
+SCOPE_CHECK = require_scope.__name__
 
 
 def authenticated_routes(app: FastAPI) -> list[tuple[str, str, Callable[..., object]]]:
@@ -289,6 +298,42 @@ def test_no_route_module_can_reach_persistence(source_root: Path) -> None:
     )
 
 
+def scope_check_lines(source: str) -> list[int]:
+    """The lines where a route module's source reaches the scope check, if any.
+
+    Imported, called, or reached through the module it lives in: all three are the same
+    mistake, so all three are reported.
+    """
+    return sorted(node.lineno for node in ast.walk(ast.parse(source)) if _reaches_scope_check(node))
+
+
+def _reaches_scope_check(node: ast.AST) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id == SCOPE_CHECK
+    if isinstance(node, ast.Attribute):
+        return node.attr == SCOPE_CHECK
+    if isinstance(node, ast.alias):
+        return node.name == SCOPE_CHECK
+    return False
+
+
+def test_no_route_module_checks_a_scope(source_root: Path) -> None:
+    modules = route_modules(source_root)
+    assert modules, f"no {ROUTE_MODULE_NAME} was found under {source_root}"
+
+    violations = {
+        str(module.relative_to(source_root)): lines
+        for module in modules
+        if (lines := scope_check_lines(module.read_text(encoding="utf-8")))
+    }
+
+    assert violations == {}, (
+        f"{violations} reach {SCOPE_CHECK} from a route. It is called once, as the first act "
+        "of the service method the route delegates to, so the whole authorization decision is "
+        "visible in that method."
+    )
+
+
 # --------------------------------------------------------------------------------
 # The controls. Each one is a rule broken on purpose, asserting that the check above
 # reports it rather than passing.
@@ -368,3 +413,20 @@ def test_the_route_module_check_reports_a_handler_reaching_persistence(
     source: str, expected: list[str]
 ) -> None:
     assert forbidden_reach(source) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("from syncr_api.core.principal import require_scope", [1]),
+        ("require_scope(principal, Scope.ADMIN)", [1]),
+        ("principal_module.require_scope(principal, Scope.ADMIN)", [1]),
+        ("from syncr_api.core.principal import authorize_tenant", []),
+        ("return await service.read(principal)", []),
+    ],
+    ids=["imported", "called", "reached through its module", "another check", "delegating"],
+)
+def test_the_scope_rule_reports_a_route_that_decides_authorization_itself(
+    source: str, expected: list[int]
+) -> None:
+    assert scope_check_lines(source) == expected
