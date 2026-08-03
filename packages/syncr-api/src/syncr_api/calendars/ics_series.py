@@ -274,6 +274,8 @@ def place_replacement(
     Placed rather than dropped, because no master in the body covers this commitment and the feed
     asserts it. Its identity is the occurrence identity the series would have given it, so a later
     sync that does carry the master reconciles to the same anchor rather than creating a second one.
+    That holds for a RECURRING master; a non-recurring one uses its bare uid, so an orphan of it
+    gets an occurrence-shaped identity the master would not have given it.
 
     A replacement whose master IS present is not placed here: see :func:`stranded`.
     """

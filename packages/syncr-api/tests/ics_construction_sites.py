@@ -19,16 +19,16 @@ tenant's whole sync pass aborted with the sync state written in the same transac
   :mod:`tests.hostile_ics`, so the corpus enumerates the axes rather than listing the failures
   somebody found.
 
-**Arithmetic is deliberately not in the call table.** Overflow from ``instant - lead`` is not a call
-and cannot be found by walking for one; that is exactly what the ``UNREPRESENTABLE`` net exists for,
-and the generated corpus is what exercises it.
+**What the table covers.** Calls to a declared constructor, and nothing else. The five exclusions
+below are the whole of what it does not see; the generated corpus in :mod:`tests.hostile_ics` is the
+other half, and it reaches an unguarded read whether or not the walk can see the call.
 
 **What the walk does and does not see.** It reads every ``.py`` file under the package, including
 subpackages, identifies a module by its path relative to the package, and attributes each call to
 its nearest enclosing ``def`` or ``class``. An attribute call counts whenever its receiver is a
 type, so a sibling of ``strptime`` nobody has used yet is caught without being listed.
 
-Three things it cannot see, stated because a reader who assumes otherwise is the reason this file
+Five things it cannot see, stated because a reader who assumes otherwise is the reason this file
 exists:
 
 - **An aliased or indirect binding.** ``from datetime import datetime as dt`` then ``dt(...)``, or
@@ -45,7 +45,7 @@ exists:
   not an allowlist, so any attribute on a datetime type is caught; generalising the bare-name half
   the same way needs a model of which callables can refuse, which this table does not have.
 - **Arithmetic.** Overflow from ``instant - lead`` is not a call and cannot be found by walking for
-  one; that is exactly what the ``UNREPRESENTABLE`` net exists for.
+  one; that is what the ``UNREPRESENTABLE`` net exists for.
 - **A library that validates late.** ``rrulestr`` accepts a negative ``INTERVAL`` and raises during
   iteration, nowhere near the call. A static walk cannot see that, and two escapes were found that
   way rather than by this table.
