@@ -1,11 +1,12 @@
-"""Persistence for the ``operations`` table: enqueue one, and read the week's in-flight one.
+"""Persistence for ``operations``: enqueue one, read the week's in-flight one, complete one.
 
-Deliberately two methods. The coordinator's claim, terminal transitions, the follow-up
+Deliberately few methods. The coordinator's claim, terminal transitions, the follow-up
 enqueue, the reaper, and the retention sweep all belong to the ticket that builds the worker
 loop, and writing their bodies before the loop exists would be inventing a protocol for a
 caller nobody has read. What exists here is what the schema needs proven: a row can be
-enqueued, and the single-flight invariant is enforced by the database rather than by the
-method that inserts.
+enqueued, the single-flight invariant is enforced by the database rather than by the method
+that inserts, and an operation whose work a request performed inline can be closed in that
+request's own transaction.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from syncr_api.solving.config import (
     FIRST_ATTEMPT,
     NON_TERMINAL_STATUSES,
     PENDING,
+    SUCCEEDED,
     OperationKind,
     OperationStatus,
 )
@@ -89,6 +91,26 @@ class OperationRepository(TenantScopedRepository):
             )
         )
         return _as_record(found) if found is not None else None
+
+    async def mark_succeeded(self, operation_id: OperationId, *, at: datetime) -> OperationRecord:
+        """Complete one operation whose work finished inside the caller's own transaction.
+
+        The narrow case only: an operation a request performed synchronously, so there is no
+        claim to release, no attempt to increment, and no failure to record. **The worker-loop
+        ticket owns the general transition logic** (the claim, the terminal transitions, the
+        reaper, and the retention sweep); this is not a second lifecycle and must not grow into
+        one.
+        """
+        await self._session.execute(
+            self.scoped_update(Operation)
+            .where(Operation.id == operation_id)
+            .values(status=SUCCEEDED, started_at=at, finished_at=at)
+        )
+        completed = await self.find(operation_id)
+        if completed is None:  # pragma: no cover - the caller holds the row it just created
+            message = f"operation {operation_id} vanished before it could be completed"
+            raise RuntimeError(message)
+        return completed
 
 
 def _as_record(operation: Operation) -> OperationRecord:

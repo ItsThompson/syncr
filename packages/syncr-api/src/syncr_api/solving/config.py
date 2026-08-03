@@ -17,6 +17,7 @@ OPERATIONS_TABLE = "operations"
 
 type OperationKind = Literal["solve", "materialize", "calendar_sync", "projection"]
 SOLVE: Final[OperationKind] = "solve"
+CALENDAR_SYNC: Final[OperationKind] = "calendar_sync"
 OPERATION_KINDS: Final = ("solve", "materialize", "calendar_sync", "projection")
 
 type OperationStatus = Literal["pending", "running", "succeeded", "failed", "superseded"]

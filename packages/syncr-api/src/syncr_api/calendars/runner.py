@@ -1,0 +1,130 @@
+"""The calendar poll the worker runs: one tenant at a time, one pass per interval.
+
+Feeds are polled on a schedule rather than on demand, because an ICS publisher's own refresh is
+measured in hours and a user who never opens Settings still needs their timetable current.
+
+**The pass is per tenant, and that is deliberate.** Every statement over a table that holds a
+plan carries its tenant, with no exception for maintenance, so the runner enumerates tenants and
+builds one scoped repository for each rather than issuing one unscoped read. The cost is a query
+per tenant per tick on a deployment whose tenant count is one; what it buys is that "every scoped
+statement is scoped" stays a property of the code rather than a property with a footnote.
+
+**Due-ness lives on the source, not in the runner.** A restart therefore does not reset every
+feed's schedule, and a source added mid-interval is polled on the next tick rather than waiting
+out an interval it was not present for. The runner's own interval only decides how often it looks.
+
+**The zone profile and the horizon are read per tenant.** A floating time resolves in the zone
+the user is in on that date, and the horizon is the write target's, so both are the tenant's
+rather than the deployment's.
+
+**One transaction per tenant.** A publisher that hangs must not hold every other tenant's sync
+state uncommitted behind it, and a tenant whose feed failed still has its attempt recorded.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from syncr_api.accounts.repository import TenantRepository
+from syncr_api.calendars.feeds import HttpFeedFetcher, create_feed_client
+from syncr_api.calendars.ics_adapter import IcsAdapter
+from syncr_api.calendars.injection import read_ingest_horizon
+from syncr_api.calendars.repository import CalendarSourceRepository
+from syncr_api.calendars.sync import SourceSyncer, SyncPass
+from syncr_api.solving.repository import OperationRepository
+from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
+from syncr_api.user_settings.zone_reading import as_domain, zone_profile
+from syncr_common.logging import get_logger
+from syncr_common.metrics import measured
+
+if TYPE_CHECKING:
+    from datetime import datetime, timedelta
+
+    import httpx
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from syncr_api.core.clock import Clock
+    from syncr_api.worker.main import WorkerContext
+    from syncr_domain.identifiers import TenantId
+
+_log = get_logger("syncr.calendars")
+
+
+class CalendarSyncRunner:
+    """One duty on the worker loop: poll every tenant's due feeds, or return immediately.
+
+    A callable object rather than a closure, so the loop's name lookup finds a stable name for its
+    failure metric and so a test can read when the poll is next due.
+
+    The FIRST tick schedules rather than polls. A process that restarts often would otherwise
+    fetch every feed on every boot, which is a burst of requests at a publisher for no new data.
+    """
+
+    __name__ = "calendar_sync"
+
+    def __init__(self, *, interval: timedelta, clock: Clock) -> None:
+        self._interval = interval
+        self._clock = clock
+        self._next_due_at: datetime | None = None
+
+    @property
+    def next_due_at(self) -> datetime | None:
+        """When this runner will next do work, or ``None`` before its first tick."""
+        return self._next_due_at
+
+    async def __call__(self, context: WorkerContext) -> None:
+        now = self._clock()
+        if self._next_due_at is None or now < self._next_due_at:
+            self._next_due_at = self._next_due_at or now + self._interval
+            return
+        self._next_due_at = now + self._interval
+        # One client for the whole tick, so several feeds on one host reuse a connection.
+        async with create_feed_client() as client:
+            await self.poll(context, client, now=now)
+
+    @measured("calendar_sync")
+    async def poll(
+        self, context: WorkerContext, client: httpx.AsyncClient, *, now: datetime
+    ) -> SyncPass:
+        """One pass over every tenant, each in its own transaction."""
+        async with context.database.sessionmaker() as reader:
+            tenants = await TenantRepository(reader).list_ids()
+
+        total = SyncPass()
+        for tenant_id in tenants:
+            async with context.database.sessionmaker() as session, session.begin():
+                tally = await self._poll_tenant(session, client, tenant_id, now=now)
+            total = SyncPass(
+                attempted=total.attempted + tally.attempted,
+                succeeded=total.succeeded + tally.succeeded,
+                events=total.events + tally.events,
+                rejected=total.rejected + tally.rejected,
+            )
+        if total.attempted:
+            _log.info("calendars.poll.completed", **total.as_log_fields())
+        return total
+
+    async def _poll_tenant(
+        self,
+        session: AsyncSession,
+        client: httpx.AsyncClient,
+        tenant_id: TenantId,
+        *,
+        now: datetime,
+    ) -> SyncPass:
+        sources = CalendarSourceRepository(session, tenant_id)
+        settings = await SettingsRepository(session, tenant_id).read()
+        overrides = await TravelOverrideRepository(session, tenant_id).list_all()
+        adapter = IcsAdapter(
+            fetcher=HttpFeedFetcher(client),
+            profile=zone_profile(settings.home_zone, as_domain(overrides)),
+            horizon=await read_ingest_horizon(sources, now=now),
+            clock=self._clock,
+        )
+        syncer = SourceSyncer(
+            sources=sources,
+            operations=OperationRepository(session, tenant_id),
+            adapter=adapter,
+            clock=self._clock,
+        )
+        return await syncer.sync_due(now=now)
