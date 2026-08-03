@@ -307,7 +307,12 @@ def place_replacement(
 
 
 def stranded(
-    series: Series, applied: frozenset[OccurrenceKey], *, horizon: Interval, profile: ZoneProfile
+    series: Series,
+    applied: frozenset[OccurrenceKey],
+    *,
+    expanded: frozenset[str],
+    horizon: Interval,
+    profile: ZoneProfile,
 ) -> tuple[tuple[EventComponent, ...], int, int]:
     """What became of the replacements no occurrence claimed.
 
@@ -329,6 +334,14 @@ def stranded(
     times and this override belonged to the losing revision. Placing it as well puts two events on
     one occupied hour, so it is counted.
 
+    ``expanded`` is why the premise is "a master that expanded" rather than "a master in the body".
+    A master whose own values were refused places nothing, so nothing in the feed covers the hour
+    its replacement names, which is the orphan rule's premise exactly. Reading presence instead made
+    the answer depend on WHICH LAYER refused the master: a master with an unreadable zone never
+    reaches the partition, so its replacement was sorted as an orphan and placed, while a master
+    with an unexpandable rule does reach it, so its replacement was counted and the hour vanished.
+    Same feed shape, two answers, decided by which property the publisher got wrong.
+
     **Whether the replacement's own span reaches the horizon is deliberately not decided here.**
     This function runs outside the boundary that turns a component's values into a rejection, so
     building a span here would put an overflow from a publisher's magnitude outside every catch in
@@ -336,7 +349,7 @@ def stranded(
     replacement that lands nowhere as read-and-placed-nothing: the same term this would have added
     it to.
     """
-    by_uid = {master.uid: master for master in series.masters}
+    by_uid = {master.uid: master for master in series.masters if master.uid in expanded}
     reachable: list[EventComponent] = []
     superseded = 0
     for key, replacement in series.overrides.items():
@@ -363,6 +376,9 @@ def _never_offered(
     would be some other master's, and a longer or shorter one changes the answer: the same three
     components then say two different things depending on the order they are declared in, which is
     the harm the duplicate-master tie-break exists to prevent.
+
+    No master means none expanded to cover this hour, whether the master was absent or refused, so
+    the answer is the orphan rule's: nothing declined it.
 
     A magnitude that cannot be resolved is treated as never offered, which hands the component to
     the placement path. That path reports it as a rejection naming the component and the line, where

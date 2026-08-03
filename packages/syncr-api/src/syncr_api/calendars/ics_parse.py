@@ -76,6 +76,7 @@ class _Collected:
     rejected: list[RejectedComponent]
     events: list[RawEvent] = field(default_factory=list)
     applied: set[OccurrenceKey] = field(default_factory=set)
+    expanded: set[str] = field(default_factory=set)
     placed: int = 0
     unplaced: int = 0
     remaining: int = MAX_EVENTS_PER_FEED
@@ -88,6 +89,10 @@ class _Collected:
         except _REPORTABLE as error:
             self.rejected.append(_rejection(source.component, as_rejection(error), uid=source.uid))
             return
+        # Recorded on the way through rather than inferred later, because "this series expanded" is
+        # what decides the fate of a replacement nothing claimed, and a rejected master expands as
+        # little as an absent one.
+        self.expanded.add(source.uid)
         if placed.events:
             self.placed += 1
         else:
@@ -122,7 +127,11 @@ def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOu
     # Which replacements found an occurrence is only known once every master has expanded, so the
     # ones that found none are accounted for after that rather than guessed at during the partition.
     reachable, superseded, unclaimed = stranded(
-        series, frozenset(collected.applied), horizon=horizon, profile=profile
+        series,
+        frozenset(collected.applied),
+        expanded=frozenset(collected.expanded),
+        horizon=horizon,
+        profile=profile,
     )
     for replacement in (*series.orphans, *reachable):
         collected.take(

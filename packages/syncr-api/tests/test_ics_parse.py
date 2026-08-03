@@ -1051,3 +1051,42 @@ def test_a_magnitude_on_an_unclaimed_override_is_reported_rather_than_raised() -
     assert [event.title for event in outcome.events] == ["Standup", "Standup"]
     assert len(outcome.rejected) == 1
     assert outcome.rejected[0].line != 0
+
+
+_MOVED_OVERRIDE = (
+    "BEGIN:VEVENT\r\nUID:refused@example.org\r\nSUMMARY:Moved hour\r\n"
+    "RECURRENCE-ID:20260210T100000Z\r\n"
+    "DTSTART:20260217T140000Z\r\nDTEND:20260217T150000Z\r\nEND:VEVENT\r\n"
+)
+
+
+@pytest.mark.parametrize(
+    "master",
+    [
+        # Refused while its VALUES are read, so it never reaches the partition at all.
+        "BEGIN:VEVENT\r\nUID:refused@example.org\r\nSUMMARY:Series\r\n"
+        "DTSTART;TZID=Nowhere/Land:20260210T100000\r\n"
+        "DTEND;TZID=Nowhere/Land:20260210T110000\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n",
+        # Refused while it EXPANDS, so it is present in the partition and places nothing.
+        "BEGIN:VEVENT\r\nUID:refused@example.org\r\nSUMMARY:Series\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        "RRULE:FREQ=DAILY;INTERVAL=0\r\nEND:VEVENT\r\n",
+        # Refused while it expands, by a different property again.
+        "BEGIN:VEVENT\r\nUID:refused@example.org\r\nSUMMARY:Series\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        "RRULE:FREQ=MONTHLY;BYDAY=8MO\r\nEND:VEVENT\r\n",
+    ],
+)
+def test_a_replacement_outlives_a_master_the_feed_got_wrong(master: str) -> None:
+    # A master syncr refused places nothing, so nothing in the feed covers the hour its replacement
+    # names: the orphan rule's premise exactly. Reading the master's PRESENCE instead of whether it
+    # expanded made the answer depend on which layer refused it, so the same feed shape kept the
+    # moved hour when the zone was wrong and lost it when the rule was.
+    body = f"BEGIN:VCALENDAR\r\n{master}{_MOVED_OVERRIDE}END:VCALENDAR\r\n"
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert [event.title for event in outcome.events] == ["Moved hour"]
+    assert len(outcome.rejected) == 1
+    assert outcome.events_read == 2
