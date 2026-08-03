@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from math import prod
 from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo
 
@@ -56,8 +57,17 @@ _BYMINUTE: Final = "BYMINUTE"
 _BYSECOND: Final = "BYSECOND"
 _FREQ: Final = "FREQ"
 
-# Frequencies whose period expansion is too small for BYSETPOS to select from reliably.
-_SUB_DAILY: Final = frozenset({"HOURLY", "MINUTELY", "SECONDLY"})
+# Which BY parts EXPAND a period into the set BYSETPOS selects from, at each frequency small enough
+# for that set to be enumerable. RFC 5545 section 3.3.10 splits the BY parts two ways per frequency:
+# one expands a period into more members, the other LIMITS which periods are considered at all. The
+# split moves with the frequency, and BYMINUTE is the trap: it expands an hour into minutes, and
+# merely limits which minutes a MINUTELY rule looks at. Counting a limiting part as room overstates
+# the set, which is how three of these shapes passed the guard and walked to year 9999 anyway.
+_EXPANDING_PARTS: Final = {
+    "HOURLY": (_BYMINUTE, _BYSECOND),
+    "MINUTELY": (_BYSECOND,),
+    "SECONDLY": (),
+}
 _RULE_SEPARATOR: Final = ";"
 _WALL_FORMAT: Final = "%Y%m%dT%H%M%S"
 
@@ -179,30 +189,35 @@ def _require_selectable_setpos(rule_text: str) -> None:
     """Refuse a ``BYSETPOS`` that reaches past the set its own period can hold.
 
     ``BYSETPOS`` picks the Nth member of each period's expansion. On an hourly, minutely or
-    secondly frequency that set is built only from ``BYMINUTE`` and ``BYSECOND``, so it is tiny and
-    a position past it selects NOTHING. dateutil then advances period by period to its own maximum
-    year INSIDE ONE STEP: about seventy million iterations, measured at sixty seconds for ONE
-    component, with the worker tick and its transaction held open throughout.
+    secondly frequency that set is built from at most ``BYMINUTE`` and ``BYSECOND``, so it is tiny
+    and a position past it selects NOTHING. dateutil then advances period by period to its own
+    maximum year INSIDE ONE STEP: about seventy million iterations, measured at sixty seconds for
+    ONE component, with the worker tick and its transaction held open throughout.
 
     A bound on steps cannot see that, and neither can an ``UNTIL``: dateutil compares against
     ``UNTIL`` only when a period yields a value, so a period that selects nothing never reaches the
     comparison. Measured, an ``UNTIL`` two days out and a ``COUNT`` of five both still walk.
 
-    The position is compared against the set SIZE rather than the shape being refused outright, so
-    ``FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2`` still expands: it selects the second of two, which
-    dateutil answers in milliseconds. Only a position with nothing to land on is refused.
+    Which parts count as room is per-frequency and is the whole difficulty: see
+    ``_EXPANDING_PARTS``. The position is compared against that size rather than the shape being
+    refused outright, so ``FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2`` still expands its 303
+    occurrences: it selects the second of two, which dateutil answers in milliseconds. Only a
+    position with nothing to land on is refused.
 
-    The general problem, a foreign expander spending unbounded time inside one call, is NOT closed
-    by this, and is recorded as a known issue.
+    A daily or longer frequency is left to dateutil. The same shape produces nothing there too, but
+    it terminates, in two seconds at the worst frequency measured, because the periods are large
+    enough to reach the year dateutil stops at. The general problem, a foreign expander spending
+    unbounded time inside one call, is NOT closed by this and is recorded as a known issue.
     """
     parts = dict(
         part.partition("=")[::2] for part in rule_text.upper().split(_RULE_SEPARATOR) if "=" in part
     )
     positions = parts.get(_SETPOS)
-    if positions is None or parts.get(_FREQ, "").strip() not in _SUB_DAILY:
+    expanding = _EXPANDING_PARTS.get(parts.get(_FREQ, "").strip())
+    if positions is None or expanding is None:
         return
     reach = max((abs(int(value)) for value in positions.split(",") if _signed(value)), default=0)
-    room = _members(parts.get(_BYMINUTE)) * _members(parts.get(_BYSECOND))
+    room = prod(_members(parts.get(part)) for part in expanding)
     if reach > room:
         message = (
             f"the recurrence rule selects position {reach} of a "
@@ -213,16 +228,36 @@ def _require_selectable_setpos(rule_text: str) -> None:
 
 
 def _members(value: str | None) -> int:
-    """How many values a ``BY`` list names, or one when it names none."""
+    """How many values a ``BY`` list names, or one when it names none.
+
+    One rather than zero, because an absent part still leaves the period holding the single member
+    ``DTSTART`` names.
+    """
     if value is None:
         return 1
     return max(len([item for item in value.split(",") if item.strip()]), 1)
 
 
 def _signed(value: str) -> bool:
-    """Whether this is a number ``int`` will convert, bounded so the conversion cannot refuse."""
+    """Whether ``int`` will convert this, bounded so the conversion cannot refuse.
+
+    ``isdecimal`` rather than ``isdigit``, and the difference is the point: ``isdigit`` is true
+    for ``'2'`` superscript and for circled digits, which ``int`` then refuses. A feed can carry
+    either. Checking the wrong predicate left the conversion able to raise while the table beside it
+    claimed the site was guarded here.
+
+    The length bound is the second half. ``int`` refuses a decimal string longer than the
+    interpreter's digit limit, so a bound on significant digits is what makes the conversion total.
+    """
     stated = value.strip().removeprefix("+").removeprefix("-")
-    return stated.isdigit() and len(stated.lstrip("0")) <= MAX_MAGNITUDE_DIGITS
+    return stated.isdecimal() and len(stated.lstrip("0")) <= MAX_MAGNITUDE_DIGITS
+
+
+def _stated(value: str) -> str:
+    """How a refused value is named, without quoting a value thousands of characters wide."""
+    if len(value) <= MAX_MAGNITUDE_DIGITS:
+        return repr(value)
+    return f"a value of {len(value)} characters"
 
 
 def _require_positive_interval(rule_text: str) -> None:
@@ -233,16 +268,19 @@ def _require_positive_interval(rule_text: str) -> None:
     names neither the rule nor the feed. A ZERO interval is worse: dateutil advances by it, so the
     rule never reaches a new value and never terminates. Both are answered here, where the rejection
     can quote the value the feed stated.
+
+    A leading ``+`` is accepted, as dateutil accepts it. The standard does not write the sign, but a
+    publisher that does means one, and losing a whole series over it would be the wrong trade.
     """
     for part in rule_text.split(_RULE_SEPARATOR):
         key, separator, value = part.partition("=")
         if not separator or key.strip().upper() != _INTERVAL:
             continue
         stated = value.strip()
-        if not stated.isdigit() or int(stated.lstrip("0") or "0") < 1:
+        if not _signed(stated) or int(stated.lstrip("0") or "0") < 1:
             message = (
-                f"the recurrence rule states an INTERVAL of {stated!r}, and an interval has to "
-                "be a positive number of periods"
+                f"the recurrence rule states an INTERVAL of {_stated(stated)}, and an interval has "
+                "to be a positive number of periods"
             )
             raise UnparseableRecurrence(message)
 

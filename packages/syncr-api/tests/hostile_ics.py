@@ -352,6 +352,21 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         "RRULE:FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2",
     ),
     "a setpos on a secondly rule": ("DURATION:PT1H", "RRULE:FREQ=SECONDLY;BYSETPOS=2"),
+    # The same reach, at the frequencies where the named part LIMITS rather than expands, so the
+    # period holds fewer members than the parts suggest. Crossing the frequency with the part is the
+    # axis: reading BYMINUTE as room on a MINUTELY rule is how three of these walked anyway.
+    "a setpos past a limiting minute list": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=MINUTELY;BYMINUTE=0,30;BYSETPOS=2",
+    ),
+    "a setpos past a limiting second list": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=SECONDLY;BYSECOND=0,30;BYSETPOS=2",
+    ),
+    "a negative setpos past two limiting lists": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=MINUTELY;BYMINUTE=0,30;BYSECOND=0,30;BYSETPOS=-3",
+    ),
     "a count past the conversion limit": (
         "DURATION:PT1H",
         f"RRULE:FREQ=DAILY;COUNT={PAST_INT_CONVERSION}",
