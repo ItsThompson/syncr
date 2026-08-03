@@ -23,6 +23,7 @@ from uuid import uuid4
 import pytest
 
 from syncr_api.calendars.config import ANCHOR_SOURCE, ICS, SYNC_INTERVAL
+from syncr_api.calendars.events import FetchOutcome
 from syncr_api.calendars.feeds import FeedAnswer, FeedBody, FeedUnreachable
 from syncr_api.calendars.ics_adapter import IcsAdapter
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
@@ -317,18 +318,32 @@ async def test_an_excluded_source_is_not_fetched_at_all(clock: MovableClock) -> 
     excluded = replace(source(), included=False)
     fetcher = RecordedFetcher({})
 
-    outcome = await syncer(FakeSources(), fetcher, clock).sync(excluded)
+    outcome, state = await syncer(FakeSources(), fetcher, clock).sync(excluded)
 
     assert fetcher.asked == []
     assert outcome.reparsed is False
     assert outcome.events == ()
+    # And its state is handed back untouched: the last attempt on it still describes the last time
+    # syncr actually read it, rather than being overwritten by an attempt that never happened.
+    assert state == excluded.sync_state
 
 
-def test_no_pass_count_is_bound_under_a_name_the_redactor_eats() -> None:
-    # Redaction is by key name and cannot tell a title from a number, so a count bound under a
-    # key the redactor eats would render as [redacted] and the line would say nothing. Checked
-    # against the redactor's own predicate rather than a copied list, which would drift.
-    fields = SyncPass(attempted=1, succeeded=1, events=2, rejected=3).as_log_fields()
-
+@pytest.mark.parametrize(
+    "fields",
+    [
+        SyncPass(attempted=1, succeeded=1, events=2, rejected=3).as_log_fields(),
+        FetchOutcome(
+            events_read=3, duplicates_discarded=1, cancelled_discarded=1, reparsed=True
+        ).as_log_fields(),
+    ],
+    ids=["a poll's tally", "a parse's tally"],
+)
+def test_no_count_is_bound_under_a_name_the_redactor_eats(fields: dict[str, int]) -> None:
+    # Redaction is by key name and cannot tell a title from a number, so a count bound under a key
+    # the redactor eats would render as [redacted] and the line would say nothing. Asked of the
+    # redactor's own predicate rather than of a list copied from it, so a rename over there is
+    # caught here rather than in a log nobody is reading at the time.
+    #
+    # Both tallies, because the parse's is the one the adapter binds on EVERY read.
     assert fields
     assert [key for key in fields if is_sensitive_key(key)] == []

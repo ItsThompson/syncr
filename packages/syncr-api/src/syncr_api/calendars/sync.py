@@ -39,13 +39,18 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from syncr_api.calendars.ics_adapter import IcsAdapter
-    from syncr_api.calendars.records import CalendarSourceRecord
+    from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
     from syncr_api.calendars.repository import CalendarSourceRepository
     from syncr_api.core.clock import Clock
     from syncr_api.solving.records import OperationRecord
     from syncr_api.solving.repository import OperationRepository
 
 _log = get_logger("syncr.calendars")
+
+# What one attempt produced, and the state it wrote. Returned together so a caller reports the
+# attempt without reading the row back, which is also what lets a failed forced sync log the truth
+# rather than a tally of zeroes.
+type SyncResult = tuple[FetchOutcome, SyncStateRecord]
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,36 +105,40 @@ class SourceSyncer:
         self._clock = clock
 
     @measured("calendars")
-    async def sync(self, source: CalendarSourceRecord) -> FetchOutcome:
+    async def sync(self, source: CalendarSourceRecord) -> SyncResult:
         """One attempt on one source, with its sync state written either way.
 
-        An excluded source is not fetched, and its sync state is left exactly as it was: the
-        last attempt on it still describes the last time syncr actually read it.
+        Returns the state as well as the outcome, so a caller reports what the attempt did without
+        reading the row back. An excluded source is not fetched, and its state is handed back
+        untouched: the last attempt on it still describes the last time syncr actually read it.
         """
         if not source.included:
-            return FetchOutcome()
+            return FetchOutcome(), source.sync_state
         outcome, state = await self._adapter.fetch(source)
         await self._sources.save_sync_state(source.id, state)
-        return outcome
+        return outcome, state
 
-    @measured("calendars")
     async def sync_now(self, source: CalendarSourceRecord) -> OperationRecord:
         """Sync one source and answer with the operation that did it.
 
         The operation is created and completed in this transaction. Ticket 28 owns the claim and
         the terminal transitions; this must not become a second operation lifecycle.
+
+        Not timed: it delegates to :meth:`sync`, which is, and a timer on both would count one
+        attempt twice.
         """
         now = self._clock()
         operation = await self._operations.enqueue(
             kind=CALENDAR_SYNC, scheduled_for=now, source_id=source.id
         )
-        outcome = await self.sync(source)
+        outcome, state = await self.sync(source)
         completed = await self._operations.mark_succeeded(operation.id, at=now)
         _log.info(
             "calendars.sync.forced",
             tenant_id=str(source.tenant_id),
             source_id=str(source.id),
             operation_id=str(operation.id),
+            failed=state.last_error is not None,
             **outcome.as_log_fields(),
         )
         return completed
@@ -146,8 +155,7 @@ class SourceSyncer:
         for source in await self._sources.included_for(ICS):
             if not _is_due(source, now=now):
                 continue
-            outcome, state = await self._adapter.fetch(source)
-            await self._sources.save_sync_state(source.id, state)
+            outcome, state = await self.sync(source)
             pass_tally = pass_tally.plus(outcome, failed=state.last_error is not None)
         if pass_tally.attempted:
             _log.info("calendars.sync.polled", **pass_tally.as_log_fields())

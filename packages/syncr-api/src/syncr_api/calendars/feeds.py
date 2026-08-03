@@ -15,8 +15,8 @@ poll reparses a whole term's timetable.
 
 **The body is read with a hard cap and a hard timeout.** A publisher that stalls must not
 hold a worker tick open, and one that streams without end must not exhaust the process. Both
-become a stated ``last_error`` with the anchors retained, which is what section 06's error
-table requires.
+become a stated ``last_error`` with the anchors retained, so an outage costs the plan neither its
+occupancy nor a full reparse.
 
 **Decoding tolerates what the standard forbids.** RFC 5545 requires UTF-8; feeds arrive with
 a byte-order mark and, from older exporters, in Latin-1. A decode failure would lose a whole
@@ -100,7 +100,10 @@ class HttpFeedFetcher:
             return await self._read(url, cursor)
         except httpx.TimeoutException:
             return FeedUnreachable(f"the feed did not answer within {FETCH_TIMEOUT_SECONDS:.0f}s")
-        except httpx.HTTPError as error:
+        except (httpx.HTTPError, httpx.InvalidURL) as error:
+            # InvalidURL is NOT an HTTPError, so it is named separately. No value stored today
+            # reaches it, and the contract above is that none of these answers raises, so naming it
+            # costs one word and missing it costs a worker tick.
             return FeedUnreachable(f"the feed could not be reached: {type(error).__name__}")
 
     async def _read(self, url: str, cursor: str | None) -> FeedAnswer:

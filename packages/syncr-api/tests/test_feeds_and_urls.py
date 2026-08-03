@@ -30,6 +30,10 @@ FEED_URL = "https://example.ac.uk/timetable.ics"
 ETAG_VALUE = 'W/"abc123"'
 ETAG_CURSOR = f"etag:{ETAG_VALUE}"
 MODIFIED_VALUE = "Wed, 04 Feb 2026 09:15:00 GMT"
+
+# An address carrying userinfo. Not a credential: the shape of one, so the test can prove the
+# normalizer drops it rather than storing it back onto the Settings panel.
+CREDENTIALED_URL = "https://user:secret@example.ac.uk/t.ics"  # pragma: allowlist secret
 MODIFIED_CURSOR = f"modified:{MODIFIED_VALUE}"
 
 
@@ -214,6 +218,9 @@ async def test_a_latin_1_feed_is_decoded_rather_than_lost() -> None:
         ),
         ("https://example.ac.uk/t.ics?token=abc123", "https://example.ac.uk/t.ics?token=abc123"),
         ("https://example.ac.uk/t.ics#frag", "https://example.ac.uk/t.ics"),
+        ("https://Example.AC.UK/Timetable.ics", "https://example.ac.uk/Timetable.ics"),
+        (CREDENTIALED_URL, "https://example.ac.uk/t.ics"),
+        ("https://example.ac.uk:8443/t.ics", "https://example.ac.uk:8443/t.ics"),
     ],
     ids=[
         "webcal",
@@ -224,10 +231,31 @@ async def test_a_latin_1_feed_is_decoded_rather_than_lost() -> None:
         "an escaped google address survives",
         "a feed token survives",
         "a fragment is dropped",
+        "the host is folded but the path is not",
+        "userinfo is dropped",
+        "a port survives",
     ],
 )
 def test_an_accepted_address_is_normalized_to_what_syncr_fetches(raw: str, expected: str) -> None:
     assert normalize_feed_url(raw) == expected
+
+
+def test_two_spellings_of_one_host_normalize_to_one_address() -> None:
+    # The duplication this module exists to prevent. A host is case-insensitive, so two rows
+    # differing only in its case would be two sources for one feed, each contributing the same
+    # commitments and the solver treating one lecture as two.
+    assert normalize_feed_url("https://Example.com/t.ics") == normalize_feed_url(
+        "https://example.com/t.ics"
+    )
+
+
+def test_a_credential_in_the_address_is_not_stored_to_be_read_back() -> None:
+    # The stored address is what the Settings panel shows, so userinfo would put a password on a
+    # screen the user reads.
+    normalized = normalize_feed_url(CREDENTIALED_URL)
+
+    assert "secret" not in normalized
+    assert "user" not in normalized
 
 
 @pytest.mark.parametrize(

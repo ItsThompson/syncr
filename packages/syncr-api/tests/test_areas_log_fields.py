@@ -1,4 +1,4 @@
-"""No field the Area or budget modules log is bound under a name the redactor eats.
+"""No field these modules log is bound under a name the redactor eats.
 
 Two rules meet in one line of source, and getting either wrong is silent.
 
@@ -7,8 +7,9 @@ The redactor treats ``name`` as user CONTENT and eats it exactly or as a ``_`` s
 Area's name genuinely IS content, so logging one would disclose as much as a block title does.
 The two rules point the same way, which is why the fix is the same one: log the identifier.
 
-Stated over every module of both packages, by reading the source for the keywords each logging
-call binds, so a module a later ticket adds comes under it without this file being edited. The
+Stated over every module of the packages named below, by reading the source for the keywords each
+logging call binds, so a module added to one of them comes under the rule without this file being
+edited. The
 question is asked of the redactor's own predicate rather than of a list of names copied from it,
 so a rename over there is caught here rather than in a log nobody is reading at the time.
 """
@@ -25,9 +26,10 @@ from syncr_common.logging import is_sensitive_key
 if TYPE_CHECKING:
     from pathlib import Path
 
-# The packages this rule is stated over. Both are this ticket's, and both log an identifier for
-# a row whose name is the user's own words.
-PACKAGES = ("areas", "budgets")
+# The packages this rule is stated over. Each logs an identifier for a row whose name, title, or
+# location is the user's own words, so each has the same way of getting this wrong. Append a package
+# here when it starts logging; the rule then reads every module of it without further editing.
+PACKAGES = ("areas", "budgets", "calendars")
 
 # structlog's own levels. A call to any of them binds fields.
 LOG_METHODS = frozenset({"debug", "info", "warning", "error", "critical", "exception"})

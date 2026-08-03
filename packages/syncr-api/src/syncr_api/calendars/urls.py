@@ -17,11 +17,14 @@ make setup depend on a publisher's uptime.
 
 from __future__ import annotations
 
-from typing import Final
+from typing import TYPE_CHECKING, Final
 from urllib.parse import urlsplit, urlunsplit
 
 from syncr_api.calendars.config import EXTERNAL_ID_MAX_LENGTH
 from syncr_api.core.errors import ValidationFailed
+
+if TYPE_CHECKING:
+    from urllib.parse import SplitResult
 
 HTTPS: Final = "https"
 HTTP: Final = "http"
@@ -57,10 +60,23 @@ def normalize_feed_url(raw: str) -> str:
         raise ValidationFailed(_rejection("it names no host"))
 
     fetchable = HTTPS if scheme in REWRITTEN_SCHEMES else scheme
-    # The fragment is dropped: it is never sent to a server, so keeping it would make two
-    # rows for one feed. Query and path are preserved exactly, because a feed's token lives
-    # in one of them and normalizing either would break the subscription.
-    return urlunsplit((fetchable, parts.netloc, parts.path, parts.query, ""))
+    # Three things are dropped or folded, all for the reason this module exists. The fragment is
+    # never sent to a server. The host is case-insensitive, so `Example.com` and `example.com` are
+    # one feed and storing both would be exactly the duplication normalization prevents. And any
+    # userinfo would put a credential on the Settings panel, where the address is read back.
+    #
+    # Path and query are preserved exactly, because a feed's token lives in one of them and
+    # normalizing either would break the subscription.
+    return urlunsplit((fetchable, _host(parts), parts.path, parts.query, ""))
+
+
+def _host(parts: SplitResult) -> str:
+    """The netloc as syncr stores it: lower-cased, with any userinfo removed.
+
+    A port is kept as given: it is part of what identifies the endpoint, and lower-casing a number
+    changes nothing.
+    """
+    return parts.netloc.rsplit("@", 1)[-1].lower()
 
 
 def _rejection(because: str) -> str:
