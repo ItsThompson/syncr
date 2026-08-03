@@ -491,7 +491,7 @@
       },
       "TravelOverrideRequest": {
         "additionalProperties": false,
-        "description": "A range to declare. Both dates inclusive, and the range may not overlap another.\n\n``startDate`` after ``endDate`` is a 422, and an overlap with an existing override is\na 409 naming both ranges. Two ranges that abut exactly are accepted: adjacency is not\noverlap.",
+        "description": "A range to declare. Both dates inclusive, and the range may not overlap another.\n\n``startDate`` after ``endDate`` is a 422 naming ``endDate``, and an overlap with an\nexisting override is a 409 naming both ranges. Two ranges that abut exactly are\naccepted: adjacency is not overlap.",
         "properties": {
           "endDate": {
             "format": "date",

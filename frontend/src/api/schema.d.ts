@@ -590,9 +590,9 @@ export interface components {
          * TravelOverrideRequest
          * @description A range to declare. Both dates inclusive, and the range may not overlap another.
          *
-         *     ``startDate`` after ``endDate`` is a 422, and an overlap with an existing override is
-         *     a 409 naming both ranges. Two ranges that abut exactly are accepted: adjacency is not
-         *     overlap.
+         *     ``startDate`` after ``endDate`` is a 422 naming ``endDate``, and an overlap with an
+         *     existing override is a 409 naming both ranges. Two ranges that abut exactly are
+         *     accepted: adjacency is not overlap.
          */
         TravelOverrideRequest: {
             /**

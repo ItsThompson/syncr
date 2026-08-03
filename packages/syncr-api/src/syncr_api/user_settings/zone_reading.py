@@ -18,6 +18,7 @@ from syncr_api.core.errors import Conflict, ValidationFailed
 from syncr_domain.zones import (
     OverlappingTravelError,
     TravelOverride,
+    UnknownZoneError,
     ZoneError,
     ZoneProfile,
     resolve_zone,
@@ -61,10 +62,15 @@ def stated_rejection(*, field: str) -> Iterator[None]:
     """Turn a domain zone rejection into the status the boundary owes it.
 
     An overlap is a state conflict, so 409. Anything else the zone layer rejects is a bad
-    value in the request, so 422. Every rejection ``resolve_zone`` can produce arrives as a
-    ``ZoneError``, whatever shape the identifier had, which is why one clause covers an
-    absent zone, a malformed one, an over-length one, and one naming a directory in the tz
-    database.
+    value in the request, so 422.
+
+    The two 422 clauses are separate because the zone layer refuses two different things
+    through one error type. Every rejection ``resolve_zone`` can produce is an
+    ``UnknownZoneError``, whatever shape the identifier had, which is why one clause covers
+    an absent zone, a malformed one, an over-length one, and one naming a directory in the
+    tz database: all four are answered with the remedy. A bare ``ZoneError`` is something
+    else, a range that ends before it starts, and offering an identifier as its remedy
+    would send the caller to the wrong field.
     """
     try:
         yield
@@ -74,8 +80,11 @@ def stated_rejection(*, field: str) -> Iterator[None]:
             "Shorten or remove the overlapping override and declare this range again. "
             "Two ranges that abut exactly are accepted, because adjacency is not overlap."
         ) from error
-    except ZoneError as error:
+    except UnknownZoneError as error:
         raise ValidationFailed(
             f"The {field} was not accepted: {error}. Nothing was changed. "
             "Use an IANA identifier such as 'Europe/London'."
         ) from error
+    except ZoneError as error:
+        detail = f"The request was not accepted: {error}. Nothing was changed."
+        raise ValidationFailed(detail) from error

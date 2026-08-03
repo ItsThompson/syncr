@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import date, time  # noqa: TC003 - pydantic resolves annotations at runtime
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator
 
 from syncr_api.core.schemas import WireModel
 from syncr_api.user_settings.config import (
@@ -122,9 +122,9 @@ class TravelOverridesResponse(WireModel):
 class TravelOverrideRequest(WireModel):
     """A range to declare. Both dates inclusive, and the range may not overlap another.
 
-    ``startDate`` after ``endDate`` is a 422, and an overlap with an existing override is
-    a 409 naming both ranges. Two ranges that abut exactly are accepted: adjacency is not
-    overlap.
+    ``startDate`` after ``endDate`` is a 422 naming ``endDate``, and an overlap with an
+    existing override is a 409 naming both ranges. Two ranges that abut exactly are
+    accepted: adjacency is not overlap.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -132,3 +132,25 @@ class TravelOverrideRequest(WireModel):
     start_date: date
     end_date: date
     zone: str = Field(min_length=1, max_length=MAX_ZONE_KEY_LENGTH, description=_ZONE_DESCRIPTION)
+
+    @field_validator("end_date")
+    @classmethod
+    def _not_before_the_start(cls, end_date: date, info: ValidationInfo) -> date:
+        """Reject a range that runs backwards, pointing at the field that has to move.
+
+        The domain refuses the pair too, but as a zone rejection: it raises the same error
+        type an unreadable identifier does, so a caller who inverted two dates would be
+        told to supply an IANA identifier. Checked here so the field pointer and the
+        remedy both name what is actually wrong.
+
+        ``start_date`` is absent from ``info.data`` when it failed its own validation,
+        which is already a stated 422 of its own.
+        """
+        start_date = info.data.get("start_date")
+        if start_date is None or start_date <= end_date:
+            return end_date
+        message = (
+            f"is {end_date}, before the start date {start_date}. Both dates are inclusive, "
+            "so a one-day range states the same date twice."
+        )
+        raise ValueError(message)

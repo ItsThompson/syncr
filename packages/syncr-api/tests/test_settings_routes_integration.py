@@ -135,20 +135,24 @@ def test_a_first_read_answers_the_defaults_and_writes_nothing(
     owner: UserRecord,
     live_database_url: str,
 ) -> None:
+    before = datetime.now(UTC).date()
     response = http.get(SETTINGS, headers=signed_in)
+    after = datetime.now(UTC).date()
 
     assert response.status_code == HTTPStatus.OK
-    assert response.json() == {
+    body = response.json()
+    # The default home zone IS UTC, so today in it is today in UTC. Bracketed by the two
+    # dates either side of the request rather than read back from the response, which would
+    # assert nothing about which date the server chose, and rather than one computed date,
+    # which a run crossing UTC midnight would fail on.
+    assert body.pop("activeZoneDate") in {before.isoformat(), after.isoformat()}
+    assert body == {
         "visibleHours": VISIBLE_HOURS_DEFAULT,
         "dayStart": DAY_START_DEFAULT.isoformat(),
         "dayEnd": DAY_END_DEFAULT.isoformat(),
         "reviewCadence": REVIEW_CADENCE_DEFAULT.value,
         "homeZone": HOME_ZONE_DEFAULT,
         "activeZone": HOME_ZONE_DEFAULT,
-        # The default home zone IS UTC, so today in it is today in UTC. Stated as a
-        # computed date rather than read back from the response, which would assert
-        # nothing about which date the server chose.
-        "activeZoneDate": datetime.now(UTC).date().isoformat(),
     }
     # A read never writes. Without this the endpoint would still look correct while
     # putting an INSERT on the read path of every screen that shows a setting.
@@ -367,6 +371,8 @@ def test_the_settings_read_states_the_zone_an_override_makes_active_today(
 def test_a_range_that_ends_before_it_starts_is_rejected(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
+    # Rejected at the schema, so the 422 points at the field that has to move and offers no
+    # zone identifier as the remedy: the zone in this body is perfectly readable.
     response = http.post(
         TRAVEL_OVERRIDES,
         json={"startDate": "2026-09-10", "endDate": "2026-09-01", "zone": TOKYO},
@@ -374,7 +380,25 @@ def test_a_range_that_ends_before_it_starts_is_rejected(
     )
 
     assert response.status_code == ValidationFailed.status
-    assert "start_date <= end_date" in response.json()["detail"]
+    fields = [error["field"] for error in response.json()["errors"]]
+    assert fields == ["body.endDate"], response.text
+    assert "IANA" not in response.text
+
+
+def test_a_malformed_start_date_is_reported_on_its_own_field(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    # The control for the pair rule above: it compares `endDate` against `startDate`, so a
+    # `startDate` that never parsed must not produce a second, invented complaint.
+    response = http.post(
+        TRAVEL_OVERRIDES,
+        json={"startDate": "the ninth", "endDate": "2026-09-10", "zone": TOKYO},
+        headers=signed_in,
+    )
+
+    assert response.status_code == ValidationFailed.status
+    fields = [error["field"] for error in response.json()["errors"]]
+    assert fields == ["body.startDate"], response.text
 
 
 def test_removing_an_override_that_does_not_exist_is_a_404(
