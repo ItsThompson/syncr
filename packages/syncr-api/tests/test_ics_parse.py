@@ -355,19 +355,31 @@ def test_a_byday_ordinal_past_its_period_is_a_rejection_rather_than_a_fault(rule
         ("FREQ=HOURLY;BYSETPOS=2", True),
         ("FREQ=SECONDLY;BYSETPOS=2", True),
         ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=3", True),
+        # A part that LIMITS at this frequency adds nothing to the set, so these select nothing
+        # however many values they name.
+        ("FREQ=MINUTELY;BYMINUTE=0,30;BYSETPOS=2", True),
+        ("FREQ=SECONDLY;BYSECOND=0,30;BYSETPOS=2", True),
+        ("FREQ=SECONDLY;BYMINUTE=0,30;BYSECOND=0,15;BYSETPOS=3", True),
+        ("FREQ=MINUTELY;BYMINUTE=0,30;BYSECOND=0,30;BYSETPOS=-3", True),
         ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2", False),
         ("FREQ=HOURLY;BYSETPOS=1", False),
+        # BYSECOND expands a MINUTELY period, so this one has somewhere to land.
+        ("FREQ=MINUTELY;BYSECOND=0,30;BYSETPOS=2", False),
     ],
 )
 def test_a_setpos_is_refused_only_when_its_period_cannot_hold_it(rule: str, refused: bool) -> None:
-    # BYSETPOS picks the Nth member of each period's set. On a sub-daily frequency that set is built
-    # only from BYMINUTE and BYSECOND, so a position past it selects nothing, the rule yields
-    # nothing, and dateutil walks to its own maximum year INSIDE ONE next() call: measured at sixty
-    # seconds for one component, with the worker tick held open. Neither a step bound nor an UNTIL
-    # can see that, because dateutil compares against UNTIL only when a period yields.
+    # BYSETPOS picks the Nth member of each period's set. A position past it selects nothing, the
+    # rule yields nothing, and dateutil walks to its own maximum year INSIDE ONE next() call:
+    # measured at sixty seconds for one component, with the worker tick held open. Neither a step
+    # bound nor an UNTIL can see that, because dateutil compares against UNTIL only when a period
+    # yields.
     #
-    # Compared against the set SIZE rather than refused as a shape, so the fourth case below still
-    # expands: selecting the second of two is a rule dateutil answers in milliseconds.
+    # WHICH parts build that set is per-frequency: RFC 5545 has BYMINUTE expand an hour and merely
+    # limit which minutes a MINUTELY rule looks at, and nothing expands a second. Counting a
+    # limiting part as room passed three of these shapes through to dateutil, which walked anyway.
+    #
+    # Compared against the set SIZE rather than refused as a shape, so the last three still expand:
+    # selecting the second of two is a rule dateutil answers in milliseconds.
     body = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:sp@example.org\r\n"
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
@@ -380,14 +392,16 @@ def test_a_setpos_is_refused_only_when_its_period_cannot_hold_it(rule: str, refu
         assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
         assert "produces nothing" in outcome.rejected[0].detail
     else:
-        assert outcome.rejected == ()
-        assert outcome.events != ()
+        # Not "nothing was rejected": one of these expands past the per-feed event bound and is
+        # refused BY that bound. What matters is that this guard did not fire.
+        assert all("produces nothing" not in item.detail for item in outcome.rejected)
 
 
-@pytest.mark.parametrize("interval", ["1", "2", "02", "0002"])
+@pytest.mark.parametrize("interval", ["1", "2", "02", "0002", "+1"])
 def test_a_positive_interval_is_expanded_however_it_is_written(interval: str) -> None:
-    # The accepting side, including the padded forms RFC 5545's digit grammar permits, so the guard
-    # is shown to refuse a property rather than a spelling.
+    # The accepting side, including the padded forms RFC 5545's digit grammar permits and the signed
+    # form it does not write but dateutil accepts, so the guard is shown to refuse a property rather
+    # than a spelling.
     body = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:iv@example.org\r\n"
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
@@ -917,3 +931,123 @@ def test_an_override_moving_an_occurrence_out_of_the_horizon_places_nothing() ->
     assert "Pushed to August" not in {event.title for event in outcome.events}
     assert all(event.interval.start < utc(2026, 3, 1, 0, 0) for event in outcome.events)
     assert outcome.overrides_applied == 1
+
+
+@pytest.mark.parametrize(
+    ("value", "property_named"),
+    [
+        ("INTERVAL=\u00b2", "INTERVAL"),
+        ("INTERVAL=\u2461", "INTERVAL"),
+        ("BYSETPOS=\u00b2", None),
+    ],
+)
+def test_a_digit_int_refuses_is_answered_where_it_is_read(
+    value: str, property_named: str | None
+) -> None:
+    # str.isdigit is true for a superscript two and for a circled two, and int() refuses both. A
+    # publisher can carry either, so gating a conversion on isdigit leaves it able to raise while
+    # reading as bounded. The package answers these where the value is read, so the detail can name
+    # the property rather than quoting a converter's complaint about a literal.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:nd@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:FREQ=HOURLY;BYMINUTE=0;{value}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    detail = outcome.rejected[0].detail
+    assert "invalid literal" not in detail
+    if property_named is not None:
+        assert property_named in detail
+
+
+def test_a_refused_interval_is_named_by_size_rather_than_quoted_whole() -> None:
+    # The message has to survive a value the feed chose the length of. Quoting it would put
+    # thousands of characters on the panel and into the stored rejection, which is the reasoning
+    # the duration bound already applies by reporting a digit count.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:big@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:FREQ=DAILY;INTERVAL={'9' * 5_000}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    detail = outcome.rejected[0].detail
+    assert "5000 characters" in detail
+    assert "9999" not in detail
+    assert len(detail) < 200
+
+
+# One long all-day master and one short timed master in the same feed. Their expansion windows reach
+# back by their OWN lengths, ten days against one hour, so a window taken from either one is wrong
+# for the other.
+_LONG_MASTER = (
+    "BEGIN:VEVENT\r\nUID:halfterm@example.org\r\nSUMMARY:Half term\r\n"
+    "DTSTART;VALUE=DATE:20260202\r\nDTEND;VALUE=DATE:20260212\r\nEND:VEVENT\r\n"
+)
+_SHORT_MASTER = (
+    "BEGIN:VEVENT\r\nUID:weekly@example.org\r\nSUMMARY:Weekly\r\n"
+    "DTSTART:20260209T100000Z\r\nDTEND:20260209T110000Z\r\n"
+    "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+)
+# An override of the SHORT series naming an occurrence a week before the horizon: inside the long
+# master's window, outside the short one's, which is the band where the two disagree.
+_PULLED_FORWARD = (
+    "BEGIN:VEVENT\r\nUID:weekly@example.org\r\nSUMMARY:Pulled forward\r\n"
+    "RECURRENCE-ID:20260202T100000Z\r\n"
+    "DTSTART:20260218T140000Z\r\nDTEND:20260218T150000Z\r\nEND:VEVENT\r\n"
+)
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        (_LONG_MASTER, _SHORT_MASTER, _PULLED_FORWARD),
+        (_SHORT_MASTER, _LONG_MASTER, _PULLED_FORWARD),
+        (_PULLED_FORWARD, _LONG_MASTER, _SHORT_MASTER),
+    ],
+)
+def test_an_unclaimed_override_is_judged_against_its_own_master_s_window(
+    order: tuple[str, ...],
+) -> None:
+    # Whether an override was ever OFFERED to its master depends on that master's own expansion
+    # window, and each master's window reaches back by its own length. One window for the whole feed
+    # is some other master's: a longer one swallows the override's original time and the moved hour
+    # is counted as superseded instead of placed, a shorter one does the reverse and doubles an
+    # occupied hour. Either way the same components answer differently depending on the order they
+    # arrive in, which is what the duplicate-master tie-break exists to prevent.
+    body = f"BEGIN:VCALENDAR\r\n{''.join(order)}END:VCALENDAR\r\n"
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    titles = sorted(event.title for event in outcome.events)
+    assert titles == ["Half term", "Pulled forward", "Weekly", "Weekly"]
+    assert outcome.events_read == 3
+
+
+def test_a_magnitude_on_an_unclaimed_override_is_reported_rather_than_raised() -> None:
+    # `stranded` runs outside the boundary that turns a component's values into a rejection, so any
+    # arithmetic it performs on a publisher's magnitude escapes the whole package. It decides only
+    # whether the master could have covered the hour; the placement path builds the span, under the
+    # boundary, so an overflow arrives as a rejection naming the component and the line.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:series@example.org\r\nSUMMARY:Standup\r\n"
+        "DTSTART:20260210T140000Z\r\nDTEND:20260210T150000Z\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:series@example.org\r\nSUMMARY:Stale override\r\n"
+        "RECURRENCE-ID:20250101T140000Z\r\n"
+        "DTSTART:99991201T000000Z\r\nDURATION:P36600D\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert [event.title for event in outcome.events] == ["Standup", "Standup"]
+    assert len(outcome.rejected) == 1
+    assert outcome.rejected[0].line != 0

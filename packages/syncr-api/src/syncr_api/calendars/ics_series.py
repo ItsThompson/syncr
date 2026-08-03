@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from syncr_api.calendars.events import RawEvent
-from syncr_api.calendars.ics_errors import MalformedValue
+from syncr_api.calendars.ics_errors import UNREPRESENTABLE, MalformedValue
 from syncr_api.calendars.ics_recurrence import occurrences
 from syncr_api.calendars.ics_times import ONE_DAY, resolve, resolve_day_span, resolve_span
 from syncr_domain.intervals import Interval
@@ -100,11 +100,12 @@ def sort_components(readable: list[EventComponent]) -> Series:
     emitted and the feed's cancelled hour stays in the plan as hard occupancy.
 
     Two components with one UID and no ``RECURRENCE-ID`` are the duplicate case. The higher
-    ``SEQUENCE`` wins, and a tie keeps the one declared first, so the answer does not depend on the
-    order a dictionary happens to hold. **Two replacements of the same occurrence resolve the same
-    way**, because an overlapping export repeats an override as readily as it repeats a master. Two
-    CANCELLED replacements of one occurrence say the same thing, so there is nothing to resolve, but
-    the second is still counted rather than absorbed.
+    ``SEQUENCE`` wins, and an equal ``SEQUENCE`` keeps the LIVE one, so the answer does not depend
+    on the order a dictionary happens to hold. **Two replacements of the same occurrence resolve by
+    ``SEQUENCE`` too**, because an overlapping export repeats an override as readily as it repeats
+    a master, but there a cancellation wins outright rather than by revision: see :func:`_resolve`.
+    Two CANCELLED replacements of one occurrence say the same thing, so there is nothing to resolve,
+    but the second is still counted rather than absorbed.
     """
     masters: dict[str, EventComponent] = {}
     replacements: list[EventComponent] = []
@@ -193,6 +194,13 @@ def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
       is still counted or a set absorbs it and the arithmetic loses a component.
     - A cancellation beats a replacement of the same occurrence, because the feed's cancellation is
       what it means, and the override it displaces is counted rather than dropped silently.
+
+    That last rule is deliberately NOT the master rule, where a cancellation wins only on a higher
+    or equal ``SEQUENCE``. Here it wins outright. Most publishers emit no ``SEQUENCE`` at all, so
+    the common case is a tie either way, and on a tie both rules agree: the cancellation holds. They
+    part only when a cancelled override carries a LOWER ``SEQUENCE`` than a live one, where this
+    keeps the hour clear. Refusing to place an hour the feed cancelled somewhere is the safe
+    direction, because the alternative is immovable occupancy the user was told does not happen.
     """
     overrides: dict[OccurrenceKey, EventComponent] = {}
     tombstones: set[OccurrenceKey] = set()
@@ -310,31 +318,64 @@ def stranded(
 
     Two outcomes, and the discriminator is whether the master could have covered this hour at all.
 
-    A replacement whose ORIGINAL time falls outside the expansion window was never offered to the
-    master: the series did not decline it, the window simply did not reach it. If its own time lands
-    in the horizon then it is an hour the user is busy that nothing else reports, so it is PLACED,
-    exactly as an orphan is. Dropping it hides an occurrence a publisher moved forward into the
-    window, and the plan books over it.
+    A replacement whose ORIGINAL time falls outside its master's expansion window was never offered
+    to that master: the series did not decline it, the window simply did not reach it. It is handed
+    back to be placed, exactly as an orphan is, because it may be an hour the user is busy that
+    nothing else reports. Dropping it hides an occurrence a publisher moved forward into the window,
+    and the plan books over it.
 
     A replacement whose original time WAS inside the window and still went unclaimed is superseded:
     the rule that would have produced it has changed, or a duplicate master shifted the series'
     times and this override belonged to the losing revision. Placing it as well puts two events on
     one occupied hour, so it is counted.
+
+    **Whether the replacement's own span reaches the horizon is deliberately not decided here.**
+    This function runs outside the boundary that turns a component's values into a rejection, so
+    building a span here would put an overflow from a publisher's magnitude outside every catch in
+    the package. The placement path already answers it, under that boundary, and counts a
+    replacement that lands nowhere as read-and-placed-nothing: the same term this would have added
+    it to.
     """
-    window = _window(horizon, series.masters[0]) if series.masters else horizon
-    placeable: list[EventComponent] = []
+    by_uid = {master.uid: master for master in series.masters}
+    reachable: list[EventComponent] = []
     superseded = 0
     for key, replacement in series.overrides.items():
         if key in applied:
             continue
-        original = resolve(replacement.replaces, profile) if replacement.replaces else None
-        never_offered = original is not None and not (window.start <= original < window.end)
-        span = interval_of(replacement, at=replacement.start.wall, profile=profile)
-        if never_offered and span.overlaps(horizon):
-            placeable.append(replacement)
+        owner = by_uid.get(replacement.uid)
+        if _never_offered(replacement, owner, horizon=horizon, profile=profile):
+            reachable.append(replacement)
             continue
         superseded += 1
-    return tuple(placeable), superseded, len(series.tombstones - applied)
+    return tuple(reachable), superseded, len(series.tombstones - applied)
+
+
+def _never_offered(
+    replacement: EventComponent,
+    master: EventComponent | None,
+    *,
+    horizon: Interval,
+    profile: ZoneProfile,
+) -> bool:
+    """Whether this master's expansion could not have reached the occurrence at all.
+
+    The window is this replacement's OWN master's, looked up by UID. One window for the whole feed
+    would be some other master's, and a longer or shorter one changes the answer: the same three
+    components then say two different things depending on the order they are declared in, which is
+    the harm the duplicate-master tie-break exists to prevent.
+
+    A magnitude that cannot be resolved is treated as never offered, which hands the component to
+    the placement path. That path reports it as a rejection naming the component and the line, where
+    raising here would leave the package's no-raise contract to a caller.
+    """
+    if master is None or replacement.replaces is None:
+        return True
+    window = _window(horizon, master)
+    try:
+        original = resolve(replacement.replaces, profile)
+    except UNREPRESENTABLE:
+        return True
+    return not (window.start <= original < window.end)
 
 
 def replaced_key(replacement: EventComponent) -> OccurrenceKey:

@@ -88,10 +88,14 @@ CONSTRUCTORS: Final = frozenset(
 
 # How a site is answered. Every row of the table below carries one of these, so "safe" is never a
 # bare word: it names the mechanism a reader can go and check.
+#
+# There used to be a fifth term for "an enclosing except in occurrences() answers it by name", which
+# is a weaker guarantee: the conversion still raises and something further out catches it. Two rows
+# carried it. Both are now guarded where they read, so the term names nothing and is gone rather
+# than left as vocabulary for a mechanism the package no longer relies on.
 GUARDED_HERE: Final = "guarded at the read site"
 GUARDED_BY_CALLER: Final = "guarded by an enclosing except in this package"
 BOUNDED_BY_THE_PATTERN: Final = "bounded by the regex's fixed-width groups"
-BOUNDED_BY_THE_CALLER_S_CATCH: Final = "an enclosing except in occurrences() answers it by name"
 NOT_A_FEED_VALUE: Final = "constructed from syncr's own values, not the feed's"
 
 
@@ -159,7 +163,7 @@ SITES: Final[tuple[Site, ...]] = (
         function="_require_positive_interval",
         constructor="int",
         reads="an INTERVAL a feed stated",
-        guard=BOUNDED_BY_THE_CALLER_S_CATCH,
+        guard=GUARDED_HERE,
     ),
     Site(
         module="ics_recurrence",
