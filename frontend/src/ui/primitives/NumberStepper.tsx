@@ -28,8 +28,6 @@ const STEP_BY_MEASURE: Readonly<Record<NumberStepperMeasure, number>> = {
   "actual-minutes": RECORDED_STEP_MINUTES,
 };
 
-const FIELD_CLASS = "control control--figure number-stepper__field";
-
 export interface NumberStepperProps {
   readonly value: number;
   readonly onValueChange: (next: number) => void;
@@ -109,7 +107,7 @@ export function NumberStepper({
       <input
         ref={ref}
         type="number"
-        className={FIELD_CLASS}
+        className="control control--figure number-stepper__field"
         id={id}
         name={name}
         value={draft ?? value}
