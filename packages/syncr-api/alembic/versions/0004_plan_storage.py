@@ -26,8 +26,8 @@ defined in the domain package by a later slice. This migration is what those sli
 
 ``weight_sets`` is seeded with version 1 for every tenant that already exists. On a fresh
 database that is none, because migrations run before any account exists, so account
-provisioning seeds the same row for a tenant it creates. Both paths read one definition of the
-P0 weights.
+provisioning seeds the same row for a tenant it creates. The numbers are spelled out below
+rather than imported, and a test compares them against the definition provisioning reads.
 
 Revision ID: 0004_plan_storage
 Revises: 0003_settings_and_overrides
@@ -43,13 +43,44 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-from syncr_api.learned.config import FIRST_WEIGHT_SET_VERSION, HAND_TUNED, P0_WEIGHTS
-
 # Kept inside 32 characters, which is what `alembic_version.version_num` holds.
 revision: str = "0004_plan_storage"
 down_revision: str | None = "0003_settings_and_overrides"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# What version 1 holds, as this revision saw it. A migration is a historical artifact and
+# names columns that exist at its own point in the chain, so reading the application's live
+# definition would let a later milestone's new objective term change the statement below.
+# Postgres resolves an INSERT's column list when it parses the statement, before it reads a
+# row, so a name that has not been added yet fails the upgrade on every fresh database
+# whether or not any tenant exists to seed. `test_migrations.py` compares these against
+# `learned/config.py`, so intentional divergence is an edit and accidental divergence fails.
+SEEDED_VERSION = 1
+SEEDED_ORIGIN = "hand-tuned"
+SEEDED_WEIGHTS: dict[str, float] = {
+    "deadline_risk": 10.0,
+    "budget_deviation": 3.0,
+    "time_of_day_misfit": 2.0,
+    "fragmentation": 1.5,
+    "churn": 4.0,
+    "context_switch": 1.0,
+    "staleness": 1.5,
+    "context_switch_cost": 1.0,
+    "churn_tolerance": 3.0,
+}
+
+_SEED_WEIGHT_SETS = sa.text(
+    "INSERT INTO weight_sets "
+    "(tenant_id, version, active, origin, created_at, "
+    "deadline_risk, budget_deviation, time_of_day_misfit, fragmentation, churn, "
+    "context_switch, staleness, context_switch_cost, churn_tolerance) "
+    "SELECT id, :version, true, :origin, now(), "
+    ":deadline_risk, :budget_deviation, :time_of_day_misfit, :fragmentation, :churn, "
+    ":context_switch, :staleness, :context_switch_cost, :churn_tolerance "
+    "FROM tenants "
+    "ON CONFLICT DO NOTHING"
+)
 
 
 def upgrade() -> None:
@@ -536,25 +567,14 @@ def upgrade() -> None:
 def _seed_hand_tuned_weight_sets() -> None:
     """Give every tenant that already exists its version 1, hand-tuned and active.
 
-    Imports the weights rather than restating them, and that is safe here rather than a
-    migration reaching into application code: the statement selects EXISTING tenants, so on a
-    fresh database it inserts nothing and a replay cannot produce a different row than the
-    one an older database already has. Every tenant created afterwards is seeded by account
-    provisioning, from this same definition.
+    A fresh database has none, because migrations run before any account does, and every
+    tenant created afterwards is seeded by account provisioning.
 
     ``ON CONFLICT DO NOTHING`` covers a re-run: a tenant that already has version 1, or
     already has an active set, keeps it.
     """
-    weights = {name: float(value) for name, value in P0_WEIGHTS.items()}
-    columns = ", ".join(weights)
-    placeholders = ", ".join(f":{name}" for name in weights)
     op.execute(
-        sa.text(
-            f"INSERT INTO weight_sets "  # noqa: S608 - the names are this module's own constants
-            f"(tenant_id, version, active, origin, created_at, {columns}) "
-            f"SELECT id, :version, true, :origin, now(), {placeholders} FROM tenants "
-            f"ON CONFLICT DO NOTHING"
-        ).bindparams(version=FIRST_WEIGHT_SET_VERSION, origin=HAND_TUNED, **weights)
+        _SEED_WEIGHT_SETS.bindparams(version=SEEDED_VERSION, origin=SEEDED_ORIGIN, **SEEDED_WEIGHTS)
     )
 
 
