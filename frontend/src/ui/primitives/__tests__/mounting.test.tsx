@@ -7,8 +7,8 @@
  *
  * It is also the layer's smoke test: each component has to render with the props its own type demands. The
  * set of components is READ FROM THE BARREL rather than restated below, because a list beside the cases
- * cannot report the component it does not name: comparing one hand-written list against another passed while
- * `CommandItem` was exported and mounted nowhere. */
+ * cannot report the component it does not name: comparing one hand-written list against another lets an
+ * export nothing mounts pass unnoticed. */
 
 import { render } from "@testing-library/react";
 import { Inbox } from "lucide-react";

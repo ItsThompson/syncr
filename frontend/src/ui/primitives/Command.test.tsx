@@ -76,9 +76,9 @@ describe("Command", () => {
 
   it("says so when nothing matches, rather than showing an empty box", async () => {
     renderCommand();
-
-    await userEvent.type(screen.getByRole("combobox"), "zzz");
     const field = screen.getByRole("combobox");
+
+    await userEvent.type(field, "zzz");
 
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(screen.getByText("No command matches")).toBeInTheDocument();
