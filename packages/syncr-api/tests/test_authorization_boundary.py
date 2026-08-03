@@ -28,6 +28,14 @@ from syncr_api.accounts.config import AUTH_PREFIX
 from syncr_api.accounts.injection import require_principal, require_trusted_origin
 from syncr_api.accounts.service import SessionDescription, SessionService
 from syncr_api.core.observability import METRICS_ENDPOINT
+from syncr_api.oauth.config import (
+    JWKS_PATH,
+    OAUTH_PREFIX,
+    REVOKE_PATH,
+    TOKEN_PATH,
+    WELL_KNOWN_PREFIX,
+)
+from syncr_api.oauth.metadata import DISCOVERY_PATH
 from syncr_common.health import HEALTHZ_ENDPOINT, READYZ_ENDPOINT
 from tests.boundaries import (
     METHODS_WITHOUT_A_BODY,
@@ -50,6 +58,18 @@ if TYPE_CHECKING:
 #
 #   POST /auth/login   is what PRODUCES a principal. Requiring one would make signing
 #                      in possible only while already signed in.
+#   POST /oauth/token  is the same thing for the CLI's credential: it exchanges an
+#                      authorization code or a refresh token FOR a principal. The
+#                      credential is in the body and is verified there, and the code is
+#                      single-use, so what protects it is not an ambient session.
+#   POST /oauth/revoke takes the refresh token being revoked as its subject. A client whose
+#                      token is the only thing it still holds must be able to end it, and
+#                      RFC 7009 answers identically whatever is presented, so there is
+#                      nothing a principal would gate.
+#   /.well-known/*     are read by a client BEFORE it has a credential: the discovery
+#                      document is how it finds the token endpoint, and the JWKS is public
+#                      key material published for verifiers. Neither discloses anything
+#                      about a plan or an account.
 #   /healthz /readyz   are read by Docker's healthcheck, by the deploy gate, and by an
 #                      external probe, none of which holds a credential. Neither
 #                      discloses anything about the plan.
@@ -62,9 +82,31 @@ if TYPE_CHECKING:
 UNAUTHENTICATED_ROUTES = frozenset(
     {
         ("POST", f"{AUTH_PREFIX}/login"),
+        ("POST", f"{OAUTH_PREFIX}{TOKEN_PATH}"),
+        ("POST", f"{OAUTH_PREFIX}{REVOKE_PATH}"),
+        ("GET", DISCOVERY_PATH),
+        ("GET", f"{WELL_KNOWN_PREFIX}{JWKS_PATH}"),
         ("GET", HEALTHZ_ENDPOINT),
         ("GET", READYZ_ENDPOINT),
         ("GET", METRICS_ENDPOINT),
+    }
+)
+
+# The unsafe routes that deliberately carry no origin check, and why the check does not apply.
+#
+# The origin check is the half of CSRF protection that `SameSite=Lax` does not cover, and CSRF
+# exists because a cookie is AMBIENT: a browser attaches it to a forged cross-origin request as
+# readily as to a real one. These two routes read no cookie. Their credential is a code or a
+# refresh token carried in the request body, which a hostile page cannot obtain, so a forged
+# request from one carries nothing and achieves nothing.
+#
+# Requiring the check here would instead break every legitimate caller: the CLI is not a browser
+# and sends no `Origin` header at all, so the token endpoint would answer 403 to the only client
+# that exists.
+ROUTES_WITHOUT_AN_ORIGIN_CHECK = frozenset(
+    {
+        ("POST", f"{OAUTH_PREFIX}{TOKEN_PATH}"),
+        ("POST", f"{OAUTH_PREFIX}{REVOKE_PATH}"),
     }
 )
 
@@ -177,6 +219,7 @@ def test_every_unsafe_route_carries_the_origin_check(app: FastAPI) -> None:
         for route in api_routes(app)
         for method, path in sorted(route_identity(route))
         if method not in METHODS_WITHOUT_A_BODY
+        and (method, path) not in ROUTES_WITHOUT_AN_ORIGIN_CHECK
         and require_trusted_origin not in resolved_dependencies(route)
     ]
 
@@ -184,6 +227,37 @@ def test_every_unsafe_route_carries_the_origin_check(app: FastAPI) -> None:
         f"{unguarded} can change state without an origin check, which is the half of "
         "CSRF protection that SameSite=Lax does not cover."
     )
+
+
+def test_the_routes_exempt_from_the_origin_check_read_no_cookie(app: FastAPI) -> None:
+    # The exemption is safe only because these routes have no ambient credential to forge. If
+    # one of them ever resolves a session, the exemption becomes a CSRF hole rather than a
+    # statement about how OAuth clients authenticate, and this is what says so.
+    exempt = [
+        f"{method} {path}"
+        for route in api_routes(app)
+        for method, path in sorted(route_identity(route))
+        if (method, path) in ROUTES_WITHOUT_AN_ORIGIN_CHECK
+        and require_principal in resolved_dependencies(route)
+    ]
+
+    assert exempt == [], (
+        f"{exempt} are exempt from the origin check AND read the session cookie, which is "
+        "exactly the combination CSRF protection exists for."
+    )
+
+
+def test_every_exempt_route_actually_exists(app: FastAPI) -> None:
+    # A stale exemption is a hole that outlives the route it was written for: it would silently
+    # cover whatever later takes that path.
+    declared = {
+        (method, path)
+        for route in api_routes(app)
+        for method, path in sorted(route_identity(route))
+    }
+
+    assert declared >= ROUTES_WITHOUT_AN_ORIGIN_CHECK
+    assert declared >= UNAUTHENTICATED_ROUTES
 
 
 def route_modules(source_root: Path) -> list[Path]:
