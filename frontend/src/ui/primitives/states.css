@@ -14,7 +14,10 @@
  *
  * A CURRENT ROW TAKES THE FILL PLUS A 3px --ink-deep LEFT RULE, which is the same channel a selected
  * block uses. One idea, one form. The rule is drawn transparent at rest so becoming current changes a
- * colour and not a width: a width change would shift every label in the row by three pixels.
+ * colour and not a width: a width change would shift every label in the row by three pixels. Those two
+ * declarations are the whole of the state: it also set `color`, which is a third channel the table does
+ * not deal to it and which no check could see, so a row that became current also darkened its text
+ * without that being anyone's decision.
  *
  * data-highlighted TAKES THE OUTLINE AND NOTHING ELSE. It is Radix's keyboard cursor in a listbox or a
  * combobox, so it maps to focus: giving it the wash as well would make a hovered row and the cursor row
@@ -33,7 +36,6 @@
 .state-row[data-current] {
   background-color: var(--state-hover);
   border-left-color: var(--state-selected-color);
-  color: var(--ink-deep);
 }
 
 .state-row[data-highlighted] {
