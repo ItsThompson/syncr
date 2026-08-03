@@ -150,6 +150,13 @@ def read_key_file(path: Path, encryption_key: str) -> SigningKeySet:
         )
         raise RuntimeError(message) from invalid
     document = json.loads(plaintext)
+    if CURRENT_SLOT not in document:
+        missing = (
+            f"the OAuth signing keys at {path} decrypt but carry no {CURRENT_SLOT!r} key, so "
+            "this process has nothing to sign with. Write the file with "
+            "`just rotate-oauth-key`; see docs/runbooks/rotate-oauth-signing-key.md."
+        )
+        raise RuntimeError(missing)
     return SigningKeySet(
         current=_key_from_document(document[CURRENT_SLOT]),
         previous=(

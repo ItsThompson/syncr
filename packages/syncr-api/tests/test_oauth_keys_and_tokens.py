@@ -19,6 +19,7 @@ from uuid import uuid4
 
 import jwt
 import pytest
+from cryptography.fernet import Fernet
 
 from syncr_api.core.scopes import ALL_SCOPES, Scope
 from syncr_api.core.settings import (
@@ -201,6 +202,16 @@ def test_another_deployments_encryption_key_cannot_read_the_file(
         read_key_file(path, OTHER_ENCRYPTION_KEY)
 
 
+def test_a_key_file_with_no_current_key_says_what_to_do_about_it(tmp_path: Path) -> None:
+    # Only the rotation command writes this file, so the case is close to unreachable. A bare
+    # `KeyError: 'current'` at boot is what it used to cost to be wrong about that.
+    path = tmp_path / "keys.enc"
+    path.write_bytes(Fernet(ENCRYPTION_KEY.encode("ascii")).encrypt(b'{"previous": null}'))
+
+    with pytest.raises(RuntimeError, match="rotate-oauth-key"):
+        read_key_file(path, ENCRYPTION_KEY)
+
+
 def test_an_interrupted_write_leaves_the_previous_key_set_intact(
     tmp_path: Path, keys: SigningKeySet
 ) -> None:
@@ -257,6 +268,37 @@ def test_outside_development_a_missing_key_file_refuses_to_start() -> None:
         load_signing_key_set(config)
 
 
+@pytest.mark.parametrize(
+    "unusable",
+    ["typo-key", ENCRYPTION_KEY[:-4], "", f"{ENCRYPTION_KEY[:-1]}\u00e9"],
+    ids=["not base64", "truncated", "empty", "non-ascii"],
+)
+def test_an_encryption_key_that_cannot_encrypt_is_refused_by_name(unusable: str) -> None:
+    # Without this the value travels as far as the first read of the key file, where
+    # `cryptography` reports "Fernet key must be 32 url-safe base64-encoded bytes" and names
+    # neither the variable, nor the file, nor how to generate one.
+    with pytest.raises(ValueError, match="OAUTH_KEY_ENCRYPTION_KEY is not a Fernet key") as refused:
+        EnvSettings(
+            _env_file=None,
+            environment="production",
+            session_signing_secret="a-real-session-signing-secret",  # pragma: allowlist secret
+            oauth_keys_path="/var/lib/syncr/oauth-signing-keys.enc",
+            oauth_key_encryption_key=unusable,
+        )
+
+    stated = str(refused.value)
+    assert "/var/lib/syncr/oauth-signing-keys.enc" in stated
+    assert "Fernet.generate_key" in stated
+
+
+def test_an_unusable_encryption_key_is_ignored_where_nothing_is_encrypted_with_it() -> None:
+    # Development with no key file encrypts nothing, and refusing the boot there would be a
+    # guard on a value nothing reads.
+    settings = EnvSettings(_env_file=None, environment="development", oauth_key_encryption_key="x")
+
+    assert settings.oauth_keys_path == ""
+
+
 def test_the_development_encryption_key_is_refused_where_a_key_file_exists() -> None:
     with pytest.raises(ValueError, match="OAUTH_KEY_ENCRYPTION_KEY"):
         EnvSettings(
@@ -269,7 +311,7 @@ def test_the_development_encryption_key_is_refused_where_a_key_file_exists() -> 
 
 
 def test_a_supplied_encryption_key_is_accepted_where_a_key_file_exists() -> None:
-    # The control. Without it the assertion above would pass on a validator that refused
+    # The control. Without it the assertions above would pass on a validator that refused
     # every value.
     settings = EnvSettings(
         _env_file=None,

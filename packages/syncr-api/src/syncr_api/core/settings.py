@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
+from cryptography.fernet import Fernet
 from pydantic import BaseModel, SecretStr, field_validator, model_validator
 from pydantic_settings import NoDecode
 
@@ -193,6 +194,28 @@ class EnvSettings(SyncrSettings):
                 f"{_GENERATE_ENCRYPTION_KEY_HINT}"
             )
             raise ValueError(message)
+        return self
+
+    @model_validator(mode="after")
+    def _refuse_a_key_that_cannot_encrypt(self) -> EnvSettings:
+        """Fail construction rather than let a library report a truncated paste.
+
+        Without this the value is carried as far as the first read of the key file, where
+        ``Fernet`` raises "Fernet key must be 32 url-safe base64-encoded bytes": a message that
+        names neither the variable, nor the file, nor how to generate one. Every other way of
+        misconfiguring this pair says all three, and a truncated paste is the likeliest of them.
+        """
+        if not self.oauth_keys_path:
+            return self
+        try:
+            Fernet(self.oauth_key_encryption_key.get_secret_value().encode("ascii"))
+        except (ValueError, UnicodeEncodeError) as unusable:
+            message = (
+                "OAUTH_KEY_ENCRYPTION_KEY is not a Fernet key, so the OAuth signing keys at "
+                f"{self.oauth_keys_path} can be neither written nor read. "
+                f"{_GENERATE_ENCRYPTION_KEY_HINT}"
+            )
+            raise ValueError(message) from unusable
         return self
 
 
