@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from typing import Final
 
+from syncr_api.calendars.ics_errors import UnmappedZone
 from syncr_domain.zones import UnknownZoneError, resolve_zone
 
 # Windows and CDO zone names onto IANA keys. Keys are compared upper-cased and with
@@ -62,27 +63,12 @@ TZID_ALIASES: Final[dict[str, str]] = {
 }
 
 
-class UnmappedZoneError(UnknownZoneError):
-    """A ``TZID`` naming neither an IANA zone nor a known alias.
-
-    Extends the domain's own rejection so a caller that already handles an unknown zone
-    handles this too, and carries the offending name so the panel can state it.
-    """
-
-    def __init__(self, tzid: str) -> None:
-        self.tzid = tzid
-        super().__init__(
-            f"{tzid!r} names no IANA time zone and no known alias, so syncr cannot tell "
-            "when this event happens"
-        )
-
-
 def resolve_tzid(tzid: str) -> str:
     """The IANA key ``tzid`` names, directly or through the alias table.
 
-    Raises :class:`UnmappedZoneError` naming the zone otherwise. Nothing here falls back to
-    a default: an event placed in the wrong zone is occupancy in the wrong hour, and the
-    plan built on it would look entirely reasonable.
+    Raises :class:`~syncr_api.calendars.ics_errors.UnmappedZone` naming the zone otherwise.
+    Nothing here falls back to a default: an event placed in the wrong zone is occupancy in
+    the wrong hour, and the plan built on it would look entirely reasonable.
     """
     candidate = tzid.strip()
     try:
@@ -90,6 +76,6 @@ def resolve_tzid(tzid: str) -> str:
     except UnknownZoneError:
         aliased = TZID_ALIASES.get(candidate.upper())
         if aliased is None:
-            raise UnmappedZoneError(tzid) from None
+            raise UnmappedZone(tzid) from None
         return aliased
     return candidate

@@ -27,8 +27,8 @@ from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Final
 
+from syncr_api.calendars.ics_errors import MalformedValue
 from syncr_api.calendars.ics_zones import resolve_tzid
-from syncr_domain.errors import DomainError
 
 # `20260209T090000` with an optional trailing Z, and the date-only form.
 _DATE_TIME: Final = re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$")
@@ -44,10 +44,6 @@ _DURATION: Final = re.compile(
 VALUE_PARAM: Final = "VALUE"
 TZID_PARAM: Final = "TZID"
 DATE_VALUE: Final = "DATE"
-
-
-class IcsValueError(DomainError):
-    """A property's value does not parse, so the event it describes cannot be placed."""
 
 
 class ZoneKind(Enum):
@@ -82,10 +78,10 @@ class IcsTime:
     def __post_init__(self) -> None:
         if self.wall.tzinfo is not None:
             message = f"{self.wall!r} carries a zone, but an ICS wall time names none"
-            raise IcsValueError(message)
+            raise MalformedValue(message)
         if (self.zone is None) is (self.kind is ZoneKind.NAMED):
             message = f"a {self.kind.value} time and a zone of {self.zone!r} disagree"
-            raise IcsValueError(message)
+            raise MalformedValue(message)
 
     @property
     def on(self) -> date:
@@ -110,7 +106,7 @@ def parse_time(value: str, *, params: tuple[tuple[str, str], ...]) -> IcsTime:
     matched = _DATE_TIME.fullmatch(text)
     if matched is None:
         message = f"{value!r} is neither an ICS date nor an ICS date-time"
-        raise IcsValueError(message)
+        raise MalformedValue(message)
     year, month, day, hour, minute, second, utc_suffix = matched.groups()
     wall = _build(int(year), int(month), int(day), int(hour), int(minute), int(second), text)
 
@@ -133,7 +129,7 @@ def parse_duration(value: str) -> timedelta:
     matched = _DURATION.fullmatch(value.strip())
     if matched is None:
         message = f"{value!r} is not an ICS duration"
-        raise IcsValueError(message)
+        raise MalformedValue(message)
     parts = matched.groupdict()
     span = timedelta(
         weeks=_number(parts["weeks"]),
@@ -144,7 +140,7 @@ def parse_duration(value: str) -> timedelta:
     )
     if parts["sign"] == "-" or span <= timedelta():
         message = f"{value!r} is a duration of {span}, and an event needs a positive one"
-        raise IcsValueError(message)
+        raise MalformedValue(message)
     return span
 
 
@@ -159,7 +155,7 @@ def parse_sequence(value: str) -> int:
         return int(value.strip())
     except ValueError as error:
         message = f"{value!r} is not a SEQUENCE number"
-        raise IcsValueError(message) from error
+        raise MalformedValue(message) from error
 
 
 def _param(params: tuple[tuple[str, str], ...], key: str) -> str | None:
@@ -170,7 +166,7 @@ def _parse_date(text: str) -> datetime:
     matched = _DATE_ONLY.fullmatch(text)
     if matched is None:
         message = f"{text!r} is not an ICS date"
-        raise IcsValueError(message)
+        raise MalformedValue(message)
     year, month, day = (int(part) for part in matched.groups())
     return _build(year, month, day, 0, 0, 0, text)
 
@@ -188,7 +184,7 @@ def _build(
         return datetime(year, month, day, hour, minute, second)  # noqa: DTZ001 - wall time
     except ValueError as error:
         message = f"{text!r} names no real date and time: {error}"
-        raise IcsValueError(message) from error
+        raise MalformedValue(message) from error
 
 
 def _number(part: str | None) -> int:

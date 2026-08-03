@@ -30,7 +30,8 @@ from __future__ import annotations
 from datetime import UTC, timedelta
 from typing import TYPE_CHECKING
 
-from syncr_api.calendars.ics_values import IcsValueError, ZoneKind
+from syncr_api.calendars.ics_errors import MalformedValue
+from syncr_api.calendars.ics_values import ZoneKind
 from syncr_domain.intervals import Interval, as_instant
 from syncr_domain.zones import active_zone, to_instant
 
@@ -90,7 +91,7 @@ def resolve_day_span(
     """
     if days < 1:
         message = f"an all-day event needs at least one day, got {days}"
-        raise IcsValueError(message)
+        raise MalformedValue(message)
     first = wall.date()
     last = first + ONE_DAY * days
     midnight = wall.time().replace(hour=_LOCAL_MIDNIGHT, minute=0, second=0, microsecond=0)

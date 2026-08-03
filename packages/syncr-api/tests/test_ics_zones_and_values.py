@@ -13,16 +13,16 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from syncr_api.calendars.ics_errors import MalformedValue, UnmappedZone
 from syncr_api.calendars.ics_times import resolve, resolve_day_span, resolve_span, zone_for
 from syncr_api.calendars.ics_values import (
     IcsTime,
-    IcsValueError,
     ZoneKind,
     parse_duration,
     parse_sequence,
     parse_time,
 )
-from syncr_api.calendars.ics_zones import TZID_ALIASES, UnmappedZoneError, resolve_tzid
+from syncr_api.calendars.ics_zones import TZID_ALIASES, resolve_tzid
 from syncr_domain.zones import TravelOverride, UnknownZoneError, ZoneProfile, resolve_zone
 
 LONDON = "Europe/London"
@@ -62,7 +62,7 @@ def test_an_iana_key_needs_no_alias_entry() -> None:
 
 
 def test_an_unmapped_zone_rejects_the_event_and_names_the_zone() -> None:
-    with pytest.raises(UnmappedZoneError) as raised:
+    with pytest.raises(UnmappedZone) as raised:
         resolve_tzid("Mars Standard Time")
 
     assert raised.value.tzid == "Mars Standard Time"
@@ -159,7 +159,7 @@ def test_a_timed_event_at_midnight_is_not_an_all_day_event() -> None:
     ids=["no such day", "hour 25", "extended form", "no seconds", "empty", "prose"],
 )
 def test_an_unreadable_value_is_rejected_rather_than_guessed(value: str) -> None:
-    with pytest.raises(IcsValueError):
+    with pytest.raises(MalformedValue):
         timed(value)
 
 
@@ -182,7 +182,7 @@ def test_a_duration_reads_every_form_the_standard_defines(value: str, expected: 
 def test_a_duration_that_is_not_positive_is_rejected(value: str) -> None:
     # An event that ends before it starts says nothing about occupancy, which is the same
     # failure a missing DTEND is.
-    with pytest.raises(IcsValueError):
+    with pytest.raises(MalformedValue):
         parse_duration(value)
 
 
@@ -190,7 +190,7 @@ def test_an_unreadable_sequence_is_rejected_rather_than_read_as_zero() -> None:
     # SEQUENCE decides which of two duplicate UIDs wins, so defaulting a bad one to zero
     # would let an older revision beat a newer one.
     assert parse_sequence(" 3 ") == 3
-    with pytest.raises(IcsValueError):
+    with pytest.raises(MalformedValue):
         parse_sequence("three")
 
 
@@ -253,14 +253,14 @@ def test_a_multi_day_all_day_event_covers_every_day_it_names() -> None:
 def test_an_all_day_event_of_no_days_is_rejected() -> None:
     day = timed("20260209", value="DATE")
 
-    with pytest.raises(IcsValueError):
+    with pytest.raises(MalformedValue):
         resolve_day_span(day, HOME, wall=day.wall, days=0)
 
 
 def test_a_wall_time_carrying_a_zone_is_not_an_ics_wall_time() -> None:
     # The invariant that keeps recurrence expansion from drifting: an aware datetime here
     # would already have resolved a zone, and expansion would then apply a second one.
-    with pytest.raises(IcsValueError):
+    with pytest.raises(MalformedValue):
         IcsTime(
             wall=datetime(2026, 2, 9, 9, 0, tzinfo=UTC), kind=ZoneKind.UTC, zone=None, all_day=False
         )
@@ -268,7 +268,7 @@ def test_a_wall_time_carrying_a_zone_is_not_an_ics_wall_time() -> None:
 
 def test_a_zone_kind_and_a_zone_that_disagree_are_rejected() -> None:
     naive = datetime(2026, 2, 9, 9, 0)  # noqa: DTZ001 - the shape a feed carries
-    with pytest.raises(IcsValueError):
+    with pytest.raises(MalformedValue):
         IcsTime(wall=naive, kind=ZoneKind.NAMED, zone=None, all_day=False)
-    with pytest.raises(IcsValueError):
+    with pytest.raises(MalformedValue):
         IcsTime(wall=naive, kind=ZoneKind.FLOATING, zone=LONDON, all_day=False)

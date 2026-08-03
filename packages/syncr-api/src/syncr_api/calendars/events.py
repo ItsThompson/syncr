@@ -12,17 +12,17 @@ render a panel: the component, the line it started on, and the class of the fail
 
 ``FetchOutcome`` binds them together with the counts the source's panel reports. A count
 that changes is how progress is reported in this product, so the counts are part of the
-return rather than something a caller derives.
+return rather than something a caller derives. It is ONE shape for both the parser and the
+adapter: an unchanged feed is a fetch that read nothing, which is the same tally with
+``unchanged`` set, and a second near-identical struct would have to be kept in step by hand.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from syncr_api.calendars.config import RejectionKind
     from syncr_domain.intervals import Interval
 
@@ -73,12 +73,18 @@ class FetchOutcome:
     ``len(events)`` whenever a rejection or a duplicate happened and a smaller one whenever
     a recurrence expanded. Both are reported, because "12 events read, 48 anchors" and "12
     events read, 9 anchors, 3 rejected" are different stories about the same feed.
+
+    The four discard counts account for every component the feed offered: each one was kept,
+    rejected, discarded as a duplicate, discarded as cancelled, or applied as an override. A
+    component that appeared in none of those would be the user's occupancy vanishing with no
+    explanation anywhere.
     """
 
     events: tuple[RawEvent, ...] = ()
     rejected: tuple[RejectedComponent, ...] = ()
     events_read: int = 0
     duplicates_discarded: int = 0
+    cancelled_discarded: int = 0
     # Set when the feed answered "not modified", so the caller records a successful attempt
     # without touching the anchors it already holds.
     unchanged: bool = False
@@ -100,18 +106,5 @@ class FetchOutcome:
             "event_count": len(self.events),
             "rejected_count": self.rejected_count,
             "duplicate_count": self.duplicates_discarded,
+            "cancelled_count": self.cancelled_discarded,
         }
-
-
-@dataclass(frozen=True, slots=True)
-class ParseOutcome:
-    """What parsing one feed body produced, before HTTP concerns are folded in.
-
-    Separate from :class:`FetchOutcome` so the parser is a pure function of bytes and a
-    zone profile, testable against a fixture with no client at all.
-    """
-
-    events: Sequence[RawEvent] = field(default_factory=tuple)
-    rejected: Sequence[RejectedComponent] = field(default_factory=tuple)
-    events_read: int = 0
-    duplicates_discarded: int = 0
