@@ -5,13 +5,17 @@
  * attribute a role does not support. Those warnings do not fail a test that ignores them, which is how they
  * accumulate, and every one of them is a real defect at runtime.
  *
- * It is also the layer's smoke test: the barrel has to export what it says it exports, and each component has to
- * render with the props its own type demands. */
+ * It is also the layer's smoke test: each component has to render with the props its own type demands. The
+ * set of components is READ FROM THE BARREL rather than restated below, because a list beside the cases
+ * cannot report the component it does not name: comparing one hand-written list against another passed while
+ * `CommandItem` was exported and mounted nowhere. */
 
 import { render } from "@testing-library/react";
 import { Inbox } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { componentNamesIn } from "../../../testing/kitExports";
+import * as primitives from "../index";
 import {
   Accordion,
   Button,
@@ -171,24 +175,7 @@ describe("the primitives layer", () => {
     expect(complaints).toEqual([]);
   });
 
-  it("exports every component the inventory names", () => {
-    expect(PRIMITIVES.map(([name]) => name).toSorted()).toEqual([
-      "Accordion",
-      "Button",
-      "Calendar",
-      "Checkbox",
-      "Command",
-      "DatePicker",
-      "Dialog",
-      "Icon",
-      "Input",
-      "NumberStepper",
-      "Radio",
-      "Select",
-      "Tabs",
-      "Textarea",
-      "TimeInput",
-      "TimeRangeInput",
-    ]);
+  it("exports every component the inventory names, and nothing this file has not mounted", () => {
+    expect(PRIMITIVES.map(([name]) => name).toSorted()).toEqual(componentNamesIn(primitives));
   });
 });

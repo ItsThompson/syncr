@@ -36,10 +36,6 @@ REQUEST_HASH_LENGTH = 64
 # request, so the answer is "about now, but not this instant".
 IN_FLIGHT_RETRY_AFTER_SECONDS = 1
 
-REPLAYED_DETAIL = (
-    "This request was already applied under the same idempotency key, so the original "
-    "response is returned and nothing was applied twice."
-)
 IN_FLIGHT_DETAIL = (
     "A request with this idempotency key is still being applied. Retry shortly to receive "
     "its response. Nothing was applied twice."

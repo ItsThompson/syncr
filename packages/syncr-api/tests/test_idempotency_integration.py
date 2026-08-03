@@ -21,7 +21,7 @@ from sqlalchemy import select
 from starlette.requests import Request
 
 from syncr_api.core.db import create_db_engine, create_sessionmaker
-from syncr_api.core.errors import Conflict, MalformedRequest, ValidationFailed
+from syncr_api.core.errors import MalformedRequest, ValidationFailed
 from syncr_api.core.principal import Principal
 from syncr_api.core.schemas import WireModel
 from syncr_api.idempotency.config import (
@@ -32,6 +32,7 @@ from syncr_api.idempotency.config import (
     KEY_MAX_LENGTH,
     RETENTION,
 )
+from syncr_api.idempotency.errors import RequestInFlight
 from syncr_api.idempotency.fingerprints import request_fingerprint
 from syncr_api.idempotency.guard import IdempotencyGuard
 from syncr_api.idempotency.injection import (
@@ -65,6 +66,9 @@ NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 
 # Long enough for a real lock wait to resolve, short enough that a hang fails the test.
 TIMEOUT_SECONDS = 5
+
+# The status the in-flight refusal keeps, so its own type does not move it off 409.
+HTTP_CONFLICT = 409
 
 
 class Created(WireModel):
@@ -240,11 +244,12 @@ async def test_a_key_another_transaction_holds_is_answered_with_a_retry_after(
 
         async with sessions() as second, second.begin():
             guard = guard_for(second, owner.tenant_id)
-            with pytest.raises(Conflict) as refused:
+            with pytest.raises(RequestInFlight) as refused:
                 await guard.once(ROUTE, Created, contending)
 
     assert contending.calls == 0
     assert refused.value.response_headers() == {"Retry-After": str(IN_FLIGHT_RETRY_AFTER_SECONDS)}
+    assert refused.value.status == HTTP_CONFLICT
     assert "still being applied" in refused.value.detail
 
 
@@ -266,7 +271,7 @@ async def test_a_committed_in_flight_row_is_answered_the_same_way(
 
     work = CountingWork(Created(block_id="abc", minutes=45))
     async with sessions() as session, session.begin():
-        with pytest.raises(Conflict):
+        with pytest.raises(RequestInFlight):
             await guard_for(session, owner.tenant_id).once(ROUTE, Created, work)
 
     assert work.calls == 0

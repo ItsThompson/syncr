@@ -29,13 +29,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from syncr_api.core.errors import Conflict, ValidationFailed
-from syncr_api.idempotency.config import (
-    IN_FLIGHT_DETAIL,
-    IN_FLIGHT_RETRY_AFTER_SECONDS,
-    RETENTION,
-    REUSED_KEY_DETAIL,
-)
+from syncr_api.core.errors import ValidationFailed
+from syncr_api.idempotency.config import IN_FLIGHT_DETAIL, RETENTION, REUSED_KEY_DETAIL
+from syncr_api.idempotency.errors import RequestInFlight
 from syncr_common.logging import get_logger
 
 if TYPE_CHECKING:
@@ -48,8 +44,6 @@ if TYPE_CHECKING:
     from syncr_api.idempotency.repository import IdempotencyKeyRepository
 
 _log = get_logger("syncr.idempotency")
-
-_RETRY_AFTER = {"Retry-After": str(IN_FLIGHT_RETRY_AFTER_SECONDS)}
 
 
 class IdempotencyGuard:
@@ -98,7 +92,7 @@ class IdempotencyGuard:
         if not await self._keys.hold(route=route, key=key):
             # Another transaction holds the key right now. Its row is not committed, so
             # there is nothing to classify and nothing to replay yet.
-            raise Conflict(IN_FLIGHT_DETAIL, headers=_RETRY_AFTER)
+            raise RequestInFlight(IN_FLIGHT_DETAIL)
         at = self._clock()
         expires_at = at + RETENTION
         claimed = await self._keys.claim(
@@ -124,10 +118,10 @@ class IdempotencyGuard:
         if stored is None:
             # The row was swept between the failed claim and this read. Nothing was applied
             # twice; the caller retries and claims the key cleanly.
-            raise Conflict(IN_FLIGHT_DETAIL, headers=_RETRY_AFTER)
+            raise RequestInFlight(IN_FLIGHT_DETAIL)
         if not stored.answers(self._request_hash):
             raise ValidationFailed(REUSED_KEY_DETAIL)
         if not stored.is_completed() or stored.response_body is None:
-            raise Conflict(IN_FLIGHT_DETAIL, headers=_RETRY_AFTER)
+            raise RequestInFlight(IN_FLIGHT_DETAIL)
         _log.info("idempotency.request.replayed", route=stored.route)
         return response_model.model_validate(stored.response_body)
