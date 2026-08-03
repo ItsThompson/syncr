@@ -65,19 +65,24 @@ export function Calendar({
   label,
   ref,
 }: CalendarProps) {
-  /* The keyboard cursor, and null until an arrow key moves it. It is one piece of state rather than a
-   * position plus a flag: the flag would say "a key has been pressed at some point", which is not a
-   * question this component ever needs to ask, and focus would follow every later render. */
-  const [keyboardCursor, setKeyboardCursor] = useState<string | null>(null);
+  /* THE CURSOR IS WHERE THE READER LAST WAS, whether they arrived by an arrow key or by a click, and null
+   * until they arrive at all. It is one piece of state rather than a position plus a flag: the flag would say
+   * "a key has been pressed at some point", which is not a question this component ever needs to ask, and
+   * focus would follow every later render.
+   *
+   * A click sets it too, because the cursor is what the month's one tab stop follows. Setting it on the arrow
+   * keys alone left the stop on the last key-moved day, so tabbing out and shift-tabbing back in re-entered
+   * the grid on a day the reader had not picked. */
+  const [cursor, setCursor] = useState<string | null>(null);
   const cellsByDay = useRef(new Map<string, HTMLTableCellElement>());
 
   /* Focus moves once per cursor change. Focusing from a ref callback instead would fire on every render,
    * because a new callback identity detaches and re-attaches all 35 cells, and paging the month and back
    * would take focus off the button the reader had just clicked. */
   useEffect(() => {
-    if (keyboardCursor === null) return;
-    cellsByDay.current.get(keyboardCursor)?.focus();
-  }, [keyboardCursor]);
+    if (cursor === null) return;
+    cellsByDay.current.get(cursor)?.focus();
+  }, [cursor]);
 
   const weeks = monthGrid(month);
   const days = weeks.flat();
@@ -87,24 +92,27 @@ export function Calendar({
    * first day. The fallback is the first day IN the month rather than the grid's first cell, which is a
    * leading day of the previous month whenever the month does not start on a Monday. */
   const tabStop =
-    [keyboardCursor, selected, today].find(inMonth) ??
-    days.find((day) => !day.isOutsideMonth)?.iso ??
-    null;
+    [cursor, selected, today].find(inMonth) ?? days.find((day) => !day.isOutsideMonth)?.iso ?? null;
 
   const moveCursor = (from: string, offset: number) => {
     const next = shiftDate(from, offset);
     if (next === null) return;
-    setKeyboardCursor(next);
+    setCursor(next);
     const moved = parseIsoDate(next);
     if (moved !== null && (moved.year !== month.year || moved.month !== month.month)) {
       onMonthChange({ year: moved.year, month: moved.month });
     }
   };
 
+  const choose = (iso: string) => {
+    setCursor(iso);
+    onSelect(iso);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTableCellElement>, iso: string) => {
     if (ACTIVATION_KEYS.has(event.key)) {
       event.preventDefault();
-      onSelect(iso);
+      choose(iso);
       return;
     }
     const offset = KEY_OFFSETS[event.key];
@@ -168,7 +176,7 @@ export function Calendar({
                     else cellsByDay.current.set(day.iso, node);
                   }}
                   onKeyDown={(event) => onKeyDown(event, day.iso)}
-                  onClick={() => onSelect(day.iso)}
+                  onClick={() => choose(day.iso)}
                 >
                   {day.dayOfMonth}
                 </td>
