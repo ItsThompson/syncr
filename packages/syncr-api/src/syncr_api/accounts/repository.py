@@ -33,7 +33,25 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_api.accounts.session_tokens import SessionId
-    from syncr_domain.identifiers import UserId
+    from syncr_domain.identifiers import TenantId, UserId
+
+
+class TenantRepository:
+    """Reads the tenants a deployment holds.
+
+    Exists for the maintenance sweeps. Every statement over a table that holds a plan carries
+    its tenant, so a sweep that spans the deployment enumerates the scopes first and then
+    works inside each one; this is what enumerates them. ``tenants`` is the scope itself, so
+    this repository is not and cannot be scoped.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def list_ids(self) -> list[TenantId]:
+        """Every tenant id, oldest first, so a sweep visits them in a stable order."""
+        found = await self._session.scalars(select(Tenant.id).order_by(Tenant.created_at))
+        return list(found)
 
 
 class UserRepository:
@@ -50,6 +68,18 @@ class UserRepository:
     async def find(self, user_id: UserId) -> UserRecord | None:
         """The user with this id, or ``None``."""
         found = await self._session.get(User, user_id)
+        return _as_user_record(found) if found is not None else None
+
+    async def find_by_tenant(self, tenant_id: TenantId) -> UserRecord | None:
+        """The one user this tenant holds, or ``None``.
+
+        Answerable because ``users.tenant_id`` is UNIQUE, which is what makes the relation
+        1:1 rather than conventional. It exists because no table that holds a plan may carry
+        a ``user_id``, so a caller that has a tenant and needs the subject behind it (an
+        access token's ``sub``, for one) resolves it here rather than storing a second copy
+        of it on a scoped row.
+        """
+        found = await self._session.scalar(select(User).where(User.tenant_id == tenant_id))
         return _as_user_record(found) if found is not None else None
 
     async def create_tenant_with_user(
