@@ -2,13 +2,14 @@
 
 A revision is a historical artifact: it describes the schema at its own point in the chain,
 and it is replayed forever against databases at that point. So it may not import the
-application, whose definitions describe the schema as it is now. The seeded weight set is
-where that bites hardest, and the drift test below keeps the two statements of those numbers
-in step without coupling one to the other.
+workspace's own code, whose definitions describe the schema as it is now. The seeded weight
+set is where that bites hardest, and the drift test below keeps the two statements of those
+numbers in step without coupling one to the other.
 """
 
 from __future__ import annotations
 
+import tomllib
 from types import ModuleType
 from typing import TYPE_CHECKING
 
@@ -34,6 +35,9 @@ if TYPE_CHECKING:
 BASELINE_REVISION = "0001_baseline"
 PLAN_STORAGE_REVISION = "0004_plan_storage"
 
+# packages/syncr-api/alembic -> packages/syncr-api -> packages -> the workspace root.
+WORKSPACE_ROOT = ALEMBIC_DIR.parents[2]
+
 
 def revision_files() -> list[Path]:
     return sorted((ALEMBIC_DIR / "versions").glob("*.py"))
@@ -46,11 +50,29 @@ def revision_module(revision: str) -> ModuleType:
     return module
 
 
-def application_imports(source: str) -> list[str]:
-    """The modules of this application a revision's source imports."""
-    return sorted(
-        module for module in imported_modules(source) if module.split(".")[0] == PACKAGE_NAME
+def workspace_packages() -> frozenset[str]:
+    """Every importable package the workspace's own members ship.
+
+    Derived from the member list and the members' own source trees rather than named, because
+    the rule below is about a revision reading code that moves, and every member's code moves.
+    A member added later comes under the rule without this test being edited. ``syncr_domain``
+    is the near miss the derivation exists for: it holds the closed vocabularies and the
+    identifier types, so it is the most inviting thing for a revision author to reach for.
+    """
+    manifest = tomllib.loads((WORKSPACE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    members: list[str] = manifest["tool"]["uv"]["workspace"]["members"]
+    return frozenset(
+        package.name
+        for member in members
+        for package in (WORKSPACE_ROOT / member / "src").iterdir()
+        if (package / "__init__.py").exists()
     )
+
+
+def workspace_imports(source: str) -> list[str]:
+    """The workspace's own modules a revision's source imports."""
+    shipped = workspace_packages()
+    return sorted(module for module in imported_modules(source) if module.split(".")[0] in shipped)
 
 
 def test_the_chain_has_exactly_one_head() -> None:
@@ -69,8 +91,8 @@ def test_expected_head_resolves_the_single_head() -> None:
     assert expected_head() == script_heads()[0]
 
 
-def test_no_revision_imports_the_application() -> None:
-    # A revision runs against a database at ITS point in the chain, and the application
+def test_no_revision_imports_the_workspace() -> None:
+    # A revision runs against a database at ITS point in the chain, and the workspace's code
     # describes the schema at the head. An INSERT built from a live constant names whatever
     # columns that constant holds today, and Postgres resolves an INSERT's column list when it
     # parses the statement, so a column a later revision adds fails the upgrade on every fresh
@@ -78,21 +100,49 @@ def test_no_revision_imports_the_application() -> None:
     reaching = {
         path.name: found
         for path in revision_files()
-        if (found := application_imports(path.read_text(encoding="utf-8")))
+        if (found := workspace_imports(path.read_text(encoding="utf-8")))
     }
 
     assert reaching == {}, (
         f"{reaching}. Spell the values the revision needs in the revision, and keep them in "
-        "step with the application's definition through a test rather than through an import."
+        "step with the workspace's definition through a test rather than through an import."
     )
 
 
-def test_the_import_check_reports_a_revision_that_reaches_into_the_application() -> None:
-    # The control. Without it, "no revision imports the application" passes on a reading that
-    # finds nothing, and goes on passing after someone adds the import it forbids.
-    source = "import sqlalchemy as sa\nfrom syncr_api.learned.config import P0_WEIGHTS\n"
+def test_the_rule_covers_every_package_the_workspace_ships() -> None:
+    # The derivation's control. Stated over one package, the rule would pass on a revision
+    # importing any of the other five, which carry the same hazard for the same reason.
+    shipped = workspace_packages()
 
-    assert application_imports(source) == ["syncr_api.learned.config"]
+    assert PACKAGE_NAME in shipped
+    assert {"syncr_domain", "syncr_common", "syncr_solver", "syncr_learning", "syncr_cli"} <= (
+        shipped
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import sqlalchemy as sa\nfrom syncr_api.learned.config import P0_WEIGHTS\n",
+        "from syncr_domain.identifiers import TenantId\n",
+        "import syncr_common.logging\n",
+    ],
+    ids=["api", "domain", "common"],
+)
+def test_the_import_check_reports_a_revision_that_reaches_into_the_workspace(source: str) -> None:
+    # The control. Without it, "no revision imports the workspace" passes on a reading that
+    # finds nothing, and goes on passing after someone adds the import it forbids.
+    assert workspace_imports(source) != []
+
+
+def test_the_import_check_leaves_a_third_party_import_alone() -> None:
+    # The other half of the control: the rule must distinguish, not flag every import a
+    # revision needs. Alembic and SQLAlchemy are exactly what a revision is written with.
+    source = (
+        "import sqlalchemy as sa\nfrom alembic import op\nfrom collections.abc import Sequence\n"
+    )
+
+    assert workspace_imports(source) == []
 
 
 def test_the_seeded_weight_set_matches_the_definition_provisioning_reads() -> None:
@@ -104,8 +154,10 @@ def test_the_seeded_weight_set_matches_the_definition_provisioning_reads() -> No
     definition = dict(P0_WEIGHTS)
 
     assert definition == seeding.SEEDED_WEIGHTS, (
-        "the migration seeds different weights than provisioning does, so two tenants of one "
-        "deployment would be planned under different numbers at version 1"
+        "the seeded weights and the definition account provisioning reads have diverged. If a "
+        "weight was RETUNED, change both. If an objective TERM was added after this revision, "
+        "do not add a column to a revision that cannot have one: narrow this comparison to the "
+        "keys the revision names, and decide what a tenant seeded before the term holds."
     )
     assert seeding.SEEDED_VERSION == FIRST_WEIGHT_SET_VERSION
     assert seeding.SEEDED_ORIGIN == HAND_TUNED
