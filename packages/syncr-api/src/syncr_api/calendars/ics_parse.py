@@ -76,6 +76,7 @@ def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOu
             rejected.append(_rejection(master.component, error, uid=master.uid))
 
     return FetchOutcome(
+        reparsed=True,
         events=tuple(events[:MAX_EVENTS_PER_FEED]),
         rejected=tuple(rejected),
         events_read=len(components),

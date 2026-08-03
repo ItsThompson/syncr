@@ -85,9 +85,11 @@ class FetchOutcome:
     events_read: int = 0
     duplicates_discarded: int = 0
     cancelled_discarded: int = 0
-    # Set when the feed answered "not modified", so the caller records a successful attempt
-    # without touching the anchors it already holds.
-    unchanged: bool = False
+    # Whether this outcome came from reading a feed body. False for an unchanged feed and for
+    # an unreachable one, and it is the ONLY thing that distinguishes those from a feed that
+    # genuinely holds no events: all three carry an empty event list, and only one of them
+    # means the caller should remove the anchors it holds.
+    reparsed: bool = False
 
     @property
     def rejected_count(self) -> int:
