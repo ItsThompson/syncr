@@ -84,8 +84,10 @@ class FetchOutcome:
     The counts account for every component the feed offered, and each is its own term because
     each is a different thing to have happened: one was kept, rejected, discarded as a duplicate,
     discarded as a cancelled master, applied as an override, or read and found to place nothing
-    inside the horizon. A component in none of those would be the user's occupancy vanishing with
-    no explanation anywhere, which is what the arithmetic exists to make impossible.
+    inside the horizon. **Every term is reported rather than derived**, because a term recomputed
+    from the events cannot tell two components apart when both contribute events under one identity.
+    A component in none of them would be the user's occupancy vanishing with no explanation
+    anywhere, which is what the arithmetic exists to make impossible.
     """
 
     events: tuple[RawEvent, ...] = ()
@@ -93,6 +95,11 @@ class FetchOutcome:
     events_read: int = 0
     duplicates_discarded: int = 0
     cancelled_discarded: int = 0
+    # Components that produced at least one event. Reported rather than derived from the events,
+    # because two components can contribute events carrying ONE ``series_uid``: a replacement no
+    # occurrence claimed is placed on its own and still names the series it belongs to. Counting the
+    # events' series would read those two as one and leave the arithmetic short.
+    placed: int = 0
     # Override components applied against a master present in the same body, whether they replaced
     # an occurrence or suppressed one. Neither kept as an event of their own nor discarded, so the
     # accounting needs its own term for them or every override looks like a loss.
@@ -125,6 +132,7 @@ class FetchOutcome:
             "rejected_count": self.rejected_count,
             "duplicate_count": self.duplicates_discarded,
             "cancelled_count": self.cancelled_discarded,
+            "placed_count": self.placed,
             "override_count": self.overrides_applied,
             "unplaced_count": self.unplaced,
         }

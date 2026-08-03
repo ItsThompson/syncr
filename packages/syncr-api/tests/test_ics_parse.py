@@ -253,9 +253,11 @@ def test_a_cancelled_component_produces_no_event_and_is_counted() -> None:
     outcome = parse_feed(PUBLISHED_OUTLOOK, horizon=HORIZON, profile=HOME)
 
     assert titled(outcome.events, "budget sign-off") == []
-    # One cancelled MASTER. The cancelled occurrence in the same body is an override rather than a
-    # discarded component, so it is not counted here.
-    assert outcome.cancelled_discarded == 1
+    # Three cancellations in this body, each a different form: the cancelled master above, the
+    # cancelled series further down, and that series' surviving override, which the cancellation
+    # takes with it. The cancelled OCCURRENCE of the live standup is an applied override rather
+    # than a discard, so it is not counted here.
+    assert outcome.cancelled_discarded == 3
 
 
 def test_a_cancelled_occurrence_is_removed_from_its_live_series() -> None:
@@ -276,8 +278,8 @@ def test_a_cancelled_occurrence_is_not_also_counted_as_a_discard() -> None:
     # short and the panel reporting a component that went nowhere.
     outcome = parse_feed(PUBLISHED_OUTLOOK, horizon=HORIZON, profile=HOME)
 
-    assert outcome.cancelled_discarded == 1
-    assert outcome.events_read == 6
+    assert outcome.cancelled_discarded == 3
+    assert outcome.events_read == 8
 
 
 def test_a_runaway_recurrence_is_rejected_rather_than_expanded() -> None:
@@ -382,6 +384,87 @@ def test_an_orphaned_cancellation_places_nothing_and_is_counted() -> None:
     assert outcome.overrides_applied == 0
 
 
+def test_a_cancelled_master_cancels_its_overrides_too() -> None:
+    # A replacement whose series the feed cancelled has nothing live to attach to and is not an
+    # occurrence OF anything. Deciding that by dictionary membership instead places it as a
+    # standalone event: a component the feed said does not happen becoming hard occupancy, which is
+    # the inverse of the harm the cancellation rules exist to prevent.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:s@example.org\r\nSUMMARY:Cancelled series\r\n"
+        "STATUS:CANCELLED\r\nDTSTART:20260209T090000Z\r\nDTEND:20260209T100000Z\r\n"
+        "RRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:s@example.org\r\nSUMMARY:Moved occurrence of a cancelled series\r\n"
+        "RECURRENCE-ID:20260216T090000Z\r\n"
+        "DTSTART:20260216T140000Z\r\nDTEND:20260216T150000Z\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert outcome.rejected == ()
+    # Both components, counted: the master and the replacement it took with it.
+    assert outcome.cancelled_discarded == 2
+    assert outcome.overrides_applied == 0
+
+
+def test_an_override_matching_no_occurrence_is_placed_rather_than_lost() -> None:
+    # A publisher that edits a series' rule and keeps a previously emitted override produces one,
+    # and Google and Exchange exports both do. A replacement is registered by UID and read by
+    # occurrence, so one naming a time the rule never produces is only visible by comparing what
+    # expansion consumed against what was registered.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:m@example.org\r\nSUMMARY:Weekly Monday\r\n"
+        "DTSTART:20260209T090000Z\r\nDTEND:20260209T100000Z\r\n"
+        "RRULE:FREQ=WEEKLY;BYDAY=MO\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:m@example.org\r\nSUMMARY:Moved to Tuesday\r\n"
+        "RECURRENCE-ID:20260210T090000Z\r\n"
+        "DTSTART:20260210T140000Z\r\nDTEND:20260210T150000Z\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    moved = titled(outcome.events, "Moved to Tuesday")
+    assert len(moved) == 1
+    assert moved[0].interval.start == utc(2026, 2, 10, 14, 0)
+    # And it is NOT counted as applied: the term means "replaced an occurrence", so its name and the
+    # arithmetic agree.
+    assert outcome.overrides_applied == 0
+    # The Mondays the rule does produce are untouched.
+    assert len(titled(outcome.events, "Weekly Monday")) == 2
+
+
+def test_an_override_that_matches_an_occurrence_is_counted_as_applied() -> None:
+    # The other side of that term, so it is shown to distinguish rather than to count nothing.
+    outcome = parse_feed(UNIVERSITY_TIMETABLE, horizon=HORIZON, profile=HOME)
+
+    assert outcome.overrides_applied == 1
+
+
+def test_a_tombstone_matching_no_occurrence_is_counted_rather_than_dropped() -> None:
+    # It cancels an occurrence the rule never produces, so there is nothing to suppress. Counted,
+    # because a component that placed nothing and explained nothing reads as a loss.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:m@example.org\r\nSUMMARY:Weekly Monday\r\n"
+        "DTSTART:20260209T090000Z\r\nDTEND:20260209T100000Z\r\n"
+        "RRULE:FREQ=WEEKLY;BYDAY=MO\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:m@example.org\r\nSUMMARY:Weekly Monday\r\n"
+        "RECURRENCE-ID:20260210T090000Z\r\nSTATUS:CANCELLED\r\n"
+        "DTSTART:20260210T090000Z\r\nDTEND:20260210T100000Z\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.cancelled_discarded == 1
+    assert outcome.overrides_applied == 0
+    assert len(titled(outcome.events, "Weekly Monday")) == 2
+
+
 def test_an_applied_override_is_counted_as_applied() -> None:
     # The term the accounting depends on. An override is neither kept as an event of its own nor
     # discarded, so without its own count it reads as a component that vanished.
@@ -410,13 +493,14 @@ def test_every_component_of_every_feed_is_accounted_for() -> None:
     # The counts are what the panel reports, so they have to close: a component that appeared in
     # none of the buckets would be occupancy that vanished with no explanation.
     #
-    # Every term is read off the OUTCOME rather than off the body's text. A term counted from the
-    # text excuses a component whatever the parser did with it, so the arithmetic would close on a
-    # component the parser dropped on the floor exactly as it does on one the parser applied.
+    # Every term is read off the OUTCOME, including how many components placed something. A term
+    # recomputed from the events cannot tell two components apart when both contribute events under
+    # one identity, and a term counted from the body's text excuses a component whatever the parser
+    # did with it.
     for label, body in ALL_FEEDS.items():
         outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
         accounted = (
-            len(_placed_components(outcome))
+            outcome.placed
             + len(_component_rejections(outcome))
             + outcome.duplicates_discarded
             + outcome.cancelled_discarded
@@ -426,14 +510,26 @@ def test_every_component_of_every_feed_is_accounted_for() -> None:
         assert accounted == outcome.events_read, label
 
 
-def _placed_components(outcome: FetchOutcome) -> set[str]:
-    """The components that produced at least one event, by their own identity.
+def test_the_accounting_sees_a_stray_replacement_of_a_series_it_also_placed() -> None:
+    # The case that shows why `placed` is reported rather than derived. Both components contribute
+    # events naming one series, so counting the events' series reads two components as one and the
+    # arithmetic closes one short while a commitment is unaccounted for.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:m@example.org\r\nSUMMARY:Weekly Monday\r\n"
+        "DTSTART:20260209T090000Z\r\nDTEND:20260209T100000Z\r\n"
+        "RRULE:FREQ=WEEKLY;BYDAY=MO\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:m@example.org\r\nSUMMARY:Moved to Tuesday\r\n"
+        "RECURRENCE-ID:20260210T090000Z\r\n"
+        "DTSTART:20260210T140000Z\r\nDTEND:20260210T150000Z\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
 
-    A series expands into many events sharing one ``series_uid``, and an orphaned override produces
-    one event carrying a ``series_uid`` it does not own, so both collapse to the component that
-    placed them.
-    """
-    return {event.series_uid or event.uid for event in outcome.events}
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.placed == 2
+    assert {event.series_uid for event in outcome.events} == {"m@example.org"}
+    assert outcome.placed + outcome.overrides_applied + outcome.unplaced == outcome.events_read
 
 
 def _component_rejections(outcome: FetchOutcome) -> list[RejectedComponent]:
