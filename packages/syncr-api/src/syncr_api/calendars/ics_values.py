@@ -41,8 +41,9 @@ _SECONDS_PER_DAY: Final = 24 * _SECONDS_PER_HOUR
 _SECONDS_PER_WEEK: Final = 7 * _SECONDS_PER_DAY
 
 # How many SIGNIFICANT digits one duration component may carry. Derived from the largest value the
-# bound below can accept rather than chosen, and one wider so a group that could still be inside
-# that bound is never refused for its length alone.
+# bound below can accept rather than chosen, and one wider on purpose: a group in that extra decade
+# passes here and is then refused BY MAGNITUDE, so the caller is told the event is longer than syncr
+# will place rather than that its digit count is wrong.
 MAX_MAGNITUDE_DIGITS: Final = len(str(MAX_EVENT_DAYS * _SECONDS_PER_DAY)) + 1
 
 # RFC 5545 duration: `P` then weeks, or days with an optional time part. A leading `-`

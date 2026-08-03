@@ -14,13 +14,17 @@ after a series did emits the moved occurrence and not the master, so this is a r
 behavior rather than a broken feed. The feed asserts the commitment; dropping it loses an hour the
 user is busy.
 
-**An override no occurrence claims is placed the same way.** A publisher that edits a series' rule
-and keeps a previously emitted override produces one, and Google and Exchange exports both do. It is
-found by comparing what was registered against what expansion actually consumed, so the answer
-depends on what the parser DID rather than on what the partition guessed it would do.
+**An override no occurrence claims is counted, not placed.** A publisher that edits a series' rule
+and keeps a previously emitted override produces one, and Google and Exchange exports both do. Every
+such override has a master in the same body, so the series it belongs to did expand and its current
+rule is what the feed asserts; placing the override as well would put a second event on an occupied
+hour, which is what a duplicate master shifting the series' times produces. It is found by comparing
+what was registered against what expansion actually consumed, so the answer depends on what the
+parser DID rather than on what the partition guessed it would do.
 
 **A tombstone that claims nothing is counted, not silently dropped.** It cancels an occurrence
 nobody sent, so there is nothing to suppress, and a count is the only way the arithmetic can see it.
+A REPEATED tombstone is counted the same way, for the same reason: a set would absorb it.
 
 ``applied`` is the thread through all of this: expansion reports which override keys it consumed, so
 one number can mean "replacements that actually replaced something" rather than "replacements that
@@ -60,9 +64,10 @@ class Series:
     and conflating them is how a cancelled occurrence ends up in the plan.
 
     ``cancelled`` counts every component a cancellation discarded, whichever form it took: a
-    cancelled master, a tombstone whose series is absent, and a replacement of a series the feed
-    cancelled. All three place nothing, and all three need counting or they vanish from the
-    arithmetic.
+    cancelled master, a tombstone whose series is absent, a replacement of a series the feed
+    cancelled, and an override a tombstone on the same occurrence displaced. Each places nothing,
+    and each needs counting or it vanishes from the arithmetic. :func:`parse_feed` adds one more
+    form to the reported total, a tombstone no occurrence claimed, so a caller's field holds five.
     """
 
     masters: tuple[EventComponent, ...] = ()
@@ -97,7 +102,9 @@ def sort_components(readable: list[EventComponent]) -> Series:
     Two components with one UID and no ``RECURRENCE-ID`` are the duplicate case. The higher
     ``SEQUENCE`` wins, and a tie keeps the one declared first, so the answer does not depend on the
     order a dictionary happens to hold. **Two replacements of the same occurrence resolve the same
-    way**, because an overlapping export repeats an override as readily as it repeats a master.
+    way**, because an overlapping export repeats an override as readily as it repeats a master. Two
+    CANCELLED replacements of one occurrence say the same thing, so there is nothing to resolve, but
+    the second is still counted rather than absorbed.
     """
     masters: dict[str, EventComponent] = {}
     cancelled_uids: set[str] = set()

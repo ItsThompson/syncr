@@ -82,18 +82,21 @@ class FetchOutcome:
     events read, 9 anchors, 3 rejected" are different stories about the same feed.
 
     The counts account for every component the feed offered, and each is its own term because
-    each is a different thing to have happened: one was kept, rejected, discarded as a duplicate,
-    discarded as a cancelled master, applied as an override, or read and found to place nothing
-    inside the horizon. **Every term is reported rather than derived**, because a term recomputed
-    from the events cannot tell two components apart when both contribute events under one identity.
-    A component in none of them would be the user's occupancy vanishing with no explanation
-    anywhere, which is what the arithmetic exists to make impossible.
+    each is a different thing to have happened: one was kept, rejected, superseded by another
+    component, discarded by a cancellation, applied as an override, or read and found to place
+    nothing inside the horizon. **Every term is reported rather than derived**, because a term
+    recomputed from the events cannot tell two components apart when both contribute events under
+    one identity. A component in none of them would be the user's occupancy vanishing with no
+    explanation anywhere, which is what the arithmetic exists to make impossible.
     """
 
     events: tuple[RawEvent, ...] = ()
     rejected: tuple[RejectedComponent, ...] = ()
     events_read: int = 0
+    # Components another component superseded: a duplicate master or override the higher SEQUENCE
+    # beat, and an override whose occurrence the surviving series no longer produces.
     duplicates_discarded: int = 0
+    # Components a cancellation discarded, in any of its five forms. See `Series.cancelled`.
     cancelled_discarded: int = 0
     # Components that produced at least one event. Reported rather than derived from the events,
     # because two components can contribute events carrying ONE ``series_uid``: a replacement no
