@@ -23,6 +23,12 @@ dependencies = [
     "pyjwt>=2.10.0,<3",
     "cryptography>=44.0.0,<51",
     "python-multipart>=0.0.20,<1",
+    # ICS ingest. httpx fetches a feed with a conditional GET and a hard timeout, and
+    # dateutil expands an RRULE: RFC 5545 recurrence is a solved problem with a large
+    # surface (BYDAY, BYSETPOS, WKST, COUNT, UNTIL), and a second implementation of it
+    # would be wrong in ways only a real feed reveals.
+    "httpx>=0.27.0,<1",
+    "python-dateutil>=2.9.0,<3",
     "syncr-common[http]",
     "syncr-domain",
     "syncr-solver",
@@ -46,7 +52,7 @@ dev = [
     "pytest-cov>=6.0.0,<8",
     "ruff>=0.8.0,<1",
     "mypy>=1.13.0,<3",
-    "httpx>=0.27.0,<1",
+    "types-python-dateutil>=2.9.0,<3",
 ]
 
 [build-system]
