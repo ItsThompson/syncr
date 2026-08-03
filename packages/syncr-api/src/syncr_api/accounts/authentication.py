@@ -26,6 +26,7 @@ from syncr_api.accounts.records import SessionRecord
 from syncr_api.accounts.session_tokens import mint_session_token
 from syncr_api.core.errors import Unauthorized
 from syncr_api.core.principal import Principal
+from syncr_api.core.scopes import ALL_SCOPES
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
@@ -104,7 +105,7 @@ class Authenticator:
         )
         return EstablishedSession(
             token=token,
-            principal=Principal(tenant_id=user.tenant_id, user_id=user.id),
+            principal=Principal(tenant_id=user.tenant_id, user_id=user.id, scopes=ALL_SCOPES),
             email=user.email,
             expires_at=session.usable_until(),
         )
@@ -127,7 +128,10 @@ class Authenticator:
 
         if now - session.last_seen_at >= SESSION_SLIDE_INTERVAL:
             await self._sessions.touch(session_id, now)
-        return Principal(tenant_id=session.tenant_id, user_id=session.user_id)
+        # Every scope, because the user is acting directly in their own browser. Scopes
+        # exist to withhold authority from a third party holding a token on the user's
+        # behalf, and a session has no third party.
+        return Principal(tenant_id=session.tenant_id, user_id=session.user_id, scopes=ALL_SCOPES)
 
 
 def _rejection_reason(session: SessionRecord | None, now: datetime) -> str:

@@ -31,6 +31,7 @@ from syncr_api.accounts.service import SessionService
 from syncr_api.accounts.session_tokens import make_token_digest
 from syncr_api.core.errors import NotFound, Unauthorized
 from syncr_api.core.principal import Principal
+from syncr_api.core.scopes import ALL_SCOPES
 
 if TYPE_CHECKING:
     from syncr_api.accounts.session_tokens import SessionId
@@ -148,7 +149,9 @@ async def test_signing_in_establishes_a_session_for_the_matching_user(
 ) -> None:
     established = await authenticator.log_in(EMAIL, PASSWORD)
 
-    assert established.principal == Principal(tenant_id=owner.tenant_id, user_id=owner.id)
+    assert established.principal == Principal(
+        tenant_id=owner.tenant_id, user_id=owner.id, scopes=ALL_SCOPES
+    )
     assert established.email == EMAIL
     assert len(sessions.rows) == 1
 
@@ -234,7 +237,7 @@ async def test_a_fresh_session_resolves_to_its_principal(
 
     resolved = await authenticator.resolve(established.token)
 
-    assert resolved == Principal(tenant_id=owner.tenant_id, user_id=owner.id)
+    assert resolved == Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=ALL_SCOPES)
 
 
 async def test_an_unknown_token_is_rejected(authenticator: Authenticator) -> None:
@@ -249,7 +252,7 @@ async def test_a_session_survives_a_gap_shorter_than_the_idle_window(
     clock.advance(SESSION_IDLE_TIMEOUT - timedelta(minutes=1))
 
     assert await authenticator.resolve(established.token) == Principal(
-        tenant_id=owner.tenant_id, user_id=owner.id
+        tenant_id=owner.tenant_id, user_id=owner.id, scopes=ALL_SCOPES
     )
 
 
@@ -394,7 +397,7 @@ async def test_describing_another_tenants_session_is_a_404_and_never_a_403(
 ) -> None:
     established = await authenticator.log_in(EMAIL, PASSWORD)
     session_id = make_token_digest(SIGNING_SECRET)(established.token)
-    intruder = Principal(tenant_id=uuid4(), user_id=uuid4())
+    intruder = Principal(tenant_id=uuid4(), user_id=uuid4(), scopes=ALL_SCOPES)
 
     with pytest.raises(NotFound) as rejected:
         await service.describe(intruder, session_id)
@@ -407,7 +410,7 @@ async def test_revoking_another_tenants_session_is_a_404_and_changes_nothing(
 ) -> None:
     established = await authenticator.log_in(EMAIL, PASSWORD)
     session_id = make_token_digest(SIGNING_SECRET)(established.token)
-    intruder = Principal(tenant_id=uuid4(), user_id=uuid4())
+    intruder = Principal(tenant_id=uuid4(), user_id=uuid4(), scopes=ALL_SCOPES)
 
     with pytest.raises(NotFound):
         await service.log_out(intruder, session_id)
@@ -418,7 +421,9 @@ async def test_revoking_another_tenants_session_is_a_404_and_changes_nothing(
 
 async def test_an_unknown_session_id_is_a_404(service: SessionService) -> None:
     with pytest.raises(NotFound):
-        await service.describe(Principal(tenant_id=uuid4(), user_id=uuid4()), "0" * 64)
+        await service.describe(
+            Principal(tenant_id=uuid4(), user_id=uuid4(), scopes=ALL_SCOPES), "0" * 64
+        )
 
 
 async def test_describing_a_revoked_session_is_a_404_even_with_its_own_principal(
