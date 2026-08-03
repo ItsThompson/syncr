@@ -1,0 +1,17 @@
+/* A ramp whose adjacent gaps are all legal and whose DEAL ORDER is not: the first four dealt are 01, 05, 08 and
+   10, and 08 sits 60 degrees from 10 here. A user with four Areas would get two that read as the same category,
+   which is the whole promise the deal order exists to keep. */
+:root {
+  --pigment-area-01: #9B3B3B;
+  --pigment-area-02: #9B633B;
+  --pigment-area-03: #9B8B3B;
+  --pigment-area-04: #8B9B3B;
+  --pigment-area-05: #6B9B3B;
+  --pigment-area-06: #439B3B;
+  --pigment-area-07: #3B9B5B;
+  --pigment-area-08: #3B9B9B;
+  --pigment-area-09: #3B6B9B;
+  --pigment-area-10: #3B3B9B;
+  --pigment-area-11: #9B3B9B;
+  --pigment-area-12: #9B3B6B;
+}

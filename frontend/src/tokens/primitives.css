@@ -54,13 +54,16 @@
      dark colors separate. The carrier rule in color.css is what disambiguates them: a
      signal is never a fill, an Area is only ever a fill or a rule.
 
-     The tightest adjacent gaps are 02/03 at 19.4 degrees, 06/07 and 07/08 at 20.3, and
-     12/01 at 20.4: uniform, and about as tight as two dark colors can be and still separate.
+     The tightest adjacent gaps are 02/03 at 19.4 degrees, 07/08 at 20.0, 12/01 at 20.4 and 06/07
+     at 20.6: uniform, and about as tight as two dark colors can be and still separate.
      --pigment-area-07 was retuned from 183 to 176 degrees to get there. At 183 it sat 13.0
      degrees from 08, which was the one genuinely indistinguishable pair in the ramp, and an
      earlier version of this comment misreported the tightest pair as 02/03 at 23 degrees.
-     Every figure here is now computed in specimen.html section 6 rather than asserted, so
-     the comment cannot drift from the pigments again.
+     EVERY FIGURE HERE IS DERIVED FROM THE HEXES ABOVE BY `just tokens-validate`, which refuses a
+     hue written beside a pigment that disagrees with it, refuses a reference sheet holding its
+     own copy of the ledger, and refuses a ramp whose tightest gap falls below 19 degrees or
+     whose first four dealt fall within 75. specimen.html renders the same figures and no longer
+     carries them: it held the pre-retune ledger for a while and printed that stale 23.
 
      What protects an adjacent pair is that the two carry DIFFERENT HATCHES, which
      specimen.html verifies for all four tightest pairs. It is not the deal order: 07 and 08

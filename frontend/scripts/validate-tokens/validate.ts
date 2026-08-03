@@ -14,9 +14,12 @@
  *   4. every `var()` reference in a token file resolves
  *   5. every `var()` reference in a reference sheet resolves against the token files
  *   6. every stylesheet reference resolves on disk, in a token file and in a sheet
+ *   7. the Area ramp's hue ledger is derived from the pigments, and neither the comment beside a pigment nor a
+ *      reference sheet's own copy of it may disagree
  *
  * Check 6 is what keeps the six sheets honest: they render live from the tokens that ship,
- * and a moved file would turn them into the second copy of the values they exist to avoid. */
+ * and a moved file would turn them into the second copy of the values they exist to avoid.
+ * Check 7 is the same rule applied to a ledger that had already become one. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -25,6 +28,7 @@ import { isCustomPropertyDeclaration, scanCss, type CssScan } from "../lib/css-s
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
 import { scanHtml, type HtmlScan } from "../lib/html-scan.ts";
 import { relativeToRepo } from "../lib/paths.ts";
+import { checkAreaHues, pigmentFile } from "./hues.ts";
 
 export interface ValidateInput {
   /** Absolute paths of every file in the token layer. */
@@ -65,20 +69,27 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
 
   /* The theme is the bridge that turns a token into a utility, so a dangling reference there
    * compiles to an invalid declaration and produces exactly the plausible-looking page this whole
-   * check exists to prevent. A consumer resolves against the layer PLUS its own declarations,
-   * because a component sheet legitimately declares its own layer-2 properties. */
+   * check exists to prevent.
+   *
+   * A CONSUMER RESOLVES AGAINST THE TOKEN LAYER PLUS EVERY CONSUMER'S OWN DECLARATIONS, which is the
+   * cascade a browser actually loads. A component sheet legitimately declares layer-2 properties, and it
+   * legitimately reads another sheet's: the kit's glyph table is declared in `ui/primitives/glyphs.css`
+   * and a domain component's key hint draws its brackets from it. Resolving each sheet against itself
+   * alone reported that as dangling while the browser resolves it, which is a check disagreeing with the
+   * artifact. A renamed property is still caught, because the declaration disappears from every sheet at
+   * once. */
+  const consumerScans: ScannedFile[] = [];
   let consumerReferences = 0;
   for (const file of input.consumerFiles) {
     const scan = scanCss(await readFile(file, "utf8"));
+    consumerScans.push({ file, scan });
     consumerReferences += scan.varReferences.length;
     findings.push(...checkComments(file, scan));
     findings.push(...(await checkImports(file, scan)));
-    const visible = new Set([
-      ...declared,
-      ...scan.declarations.map((declaration) => declaration.name),
-    ]);
-    findings.push(...checkTokenReferences([{ file, scan }], visible, callerProvided));
   }
+
+  const visible = new Set([...declared, ...collectDeclaredNames(consumerScans)]);
+  findings.push(...checkTokenReferences(consumerScans, visible, callerProvided));
 
   let dynamicInSheets = 0;
   let resolvedInSheets = 0;
@@ -99,6 +110,10 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
   if (callerProvided.size > 0) {
     notes.push(`caller-provided by contract: ${[...callerProvided].toSorted().join(", ")}`);
   }
+
+  const ramp = await checkAreaHues({ pigmentFile, sheetFiles: input.sheetFiles });
+  findings.push(...ramp.findings);
+  notes.push(...ramp.notes);
 
   return { findings, notes };
 }

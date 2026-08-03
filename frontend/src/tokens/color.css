@@ -115,8 +115,8 @@
      not as a category competing with Fitness.
 
      ASSIGNMENT ORDER, not numeric order. Areas are assigned in the order below so that a
-     user with four Areas gets four pigments at least 75 degrees apart, which is computed in
-     specimen.html rather than asserted here:
+     user with four Areas gets four pigments at least 75 degrees apart, which `just tokens-validate`
+     derives from the hexes and refuses when it falls below that floor:
        01, 05, 08, 10, 03, 07, 12, 06, 02, 04, 09, 11
 
      The order does NOT defer the tightest pairs, and an earlier version of this comment

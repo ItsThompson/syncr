@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- A reference sheet holding its own copy of the hue ledger, which is the shape specimen.html had: the array
+     disagrees with the pigments it claims to describe, and the sheet prints those figures as measurements.
+     Written with single quotes, because that is how the real sheet writes it. -->
+<html lang="en">
+  <head>
+    <title>A sheet with a second copy of the ledger</title>
+    <link rel="stylesheet" href="../../../src/tokens/index.css">
+  </head>
+  <body>
+    <script>
+const AREAS = [
+  {n:'01', hue:355, pigment:'madder'},
+  {n:'02', hue:25,  pigment:'sienna'},
+  {n:'07', hue:176, pigment:'teal'}
+];
+document.body.textContent = AREAS.map(a => a.n + ' ' + a.hue).join(', ');
+    </script>
+  </body>
+</html>

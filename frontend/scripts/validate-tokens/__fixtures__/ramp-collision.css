@@ -1,0 +1,17 @@
+/* A ramp with the pair that was genuinely indistinguishable: 01 and 02 sit 13 degrees apart, which is where
+   --pigment-area-07 sat against 08 before it was retuned from 183 to 176. No hue is stated here and the deal order
+   is far apart, so the only finding is the separation one. */
+:root {
+  --pigment-area-01: #9B3B3B;
+  --pigment-area-02: #9B503B;
+  --pigment-area-03: #9B8B3B;
+  --pigment-area-04: #8B9B3B;
+  --pigment-area-05: #6B9B3B;
+  --pigment-area-06: #439B3B;
+  --pigment-area-07: #3B9B5B;
+  --pigment-area-08: #3B9B9B;
+  --pigment-area-09: #3B739B;
+  --pigment-area-10: #6B3B9B;
+  --pigment-area-11: #9B3B9B;
+  --pigment-area-12: #9B3B6B;
+}

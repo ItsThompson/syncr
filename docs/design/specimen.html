@@ -733,19 +733,24 @@ const HATCH = {
   fwd:['--hatch-fwd',null], back:['--hatch-back',null], vert:['--hatch-vert',null],
   horz:['--hatch-horz',null], cross:['--hatch-cross',null], dot:['--hatch-dot','--hatch-dot-size']
 };
+/* The hue beside each pigment is the hue its HEX resolves to, and `just tokens-validate` refuses a figure here
+   that disagrees with the pigment it describes. This array held the pre-retune ledger for a while -- 07 at 180
+   where the shipped teal is 176, and 02/03 reading 23 degrees apart where they are 19.4 -- and the sheet printed
+   those figures as measurements. The check is what makes this a rendering of the ramp rather than a second copy
+   of it. */
 const AREAS = [
-  {n:'01', hue:355, pigment:'madder',   name:'Career',   hatch:'fwd',   order:1},
-  {n:'02', hue:25,  pigment:'sienna',   name:'unassigned', hatch:'vert',  order:9},
-  {n:'03', hue:48,  pigment:'ochre',    name:'Projects', hatch:'dot',   order:5},
-  {n:'04', hue:72,  pigment:'olive',    name:'unassigned', hatch:'cross', order:10},
-  {n:'05', hue:100, pigment:'moss',     name:'Study',    hatch:'back',  order:2},
-  {n:'06', hue:145, pigment:'viridian', name:'unassigned', hatch:'fwd',   order:8},
-  {n:'07', hue:180, pigment:'teal',     name:'Admin',    hatch:'horz',  order:6},
-  {n:'08', hue:202, pigment:'cerulean', name:'Fitness',  hatch:'vert',  order:3},
-  {n:'09', hue:262, pigment:'indigo',   name:'unassigned', hatch:'dot',   order:11},
-  {n:'10', hue:288, pigment:'violet',   name:'Research', hatch:'cross', order:4},
-  {n:'11', hue:312, pigment:'magenta',  name:'unassigned', hatch:'horz',  order:12},
-  {n:'12', hue:335, pigment:'wine',     name:'Transit',  hatch:'back',  order:7}
+  {n:'01', hue:350, pigment:'madder',   name:'Career',   hatch:'fwd',   order:1},
+  {n:'02', hue:23,  pigment:'sienna',   name:'unassigned', hatch:'vert',  order:9},
+  {n:'03', hue:42,  pigment:'ochre',    name:'Projects', hatch:'dot',   order:5},
+  {n:'04', hue:64,  pigment:'olive',    name:'unassigned', hatch:'cross', order:10},
+  {n:'05', hue:96,  pigment:'moss',     name:'Study',    hatch:'back',  order:2},
+  {n:'06', hue:156, pigment:'viridian', name:'unassigned', hatch:'fwd',   order:8},
+  {n:'07', hue:176, pigment:'teal',     name:'Admin',    hatch:'horz',  order:6},
+  {n:'08', hue:196, pigment:'cerulean', name:'Fitness',  hatch:'vert',  order:3},
+  {n:'09', hue:250, pigment:'indigo',   name:'unassigned', hatch:'dot',   order:11},
+  {n:'10', hue:275, pigment:'violet',   name:'Research', hatch:'cross', order:4},
+  {n:'11', hue:304, pigment:'magenta',  name:'unassigned', hatch:'horz',  order:12},
+  {n:'12', hue:330, pigment:'wine',     name:'Transit',  hatch:'back',  order:7}
 ];
 const areaTok = a => '--area-' + a.n;
 const AREA_BY_NAME = {};

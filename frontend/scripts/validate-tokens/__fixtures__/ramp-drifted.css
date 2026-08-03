@@ -1,0 +1,17 @@
+/* A ramp whose stated hues are the PRE-RETUNE ledger: every figure disagrees with the pigment it is written
+   beside, which is the drift this check exists to refuse. The hexes themselves are a legal ramp -- no adjacent
+   pair is tighter than 20 degrees and the first four dealt sit 90 apart -- so the only findings are ledger ones. */
+:root {
+  --pigment-area-01: #9B3B3B; /* 355  madder    5.00:1 */
+  --pigment-area-02: #9B633B; /* 26   sienna    5.00:1 */
+  --pigment-area-03: #9B8B3B; /* 48   ochre     5.00:1 */
+  --pigment-area-04: #8B9B3B; /* 72   olive     5.00:1 */
+  --pigment-area-05: #6B9B3B; /* 100  moss      5.00:1 */
+  --pigment-area-06: #439B3B; /* 145  viridian  5.00:1 */
+  --pigment-area-07: #3B9B5B; /* 183  teal      5.00:1 */
+  --pigment-area-08: #3B9B9B; /* 202  cerulean  5.00:1 */
+  --pigment-area-09: #3B739B; /* 262  indigo    5.00:1 */
+  --pigment-area-10: #6B3B9B; /* 288  violet    5.00:1 */
+  --pigment-area-11: #9B3B9B; /* 312  magenta   5.00:1 */
+  --pigment-area-12: #9B3B6B; /* 335  wine      5.00:1 */
+}
