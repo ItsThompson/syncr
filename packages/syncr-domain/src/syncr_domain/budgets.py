@@ -166,9 +166,14 @@ def budget_report(
 ) -> BudgetReport:
     """Every budget figure for the period ``discretionary`` describes.
 
-    ``covered`` maps an Area to the intervals its blocks occupy. Each is intersected with
-    the discretionary set before it is measured, so an Area's actual can never count time
-    that left the denominator and the wedges plus ``unallocated`` always add up to it.
+    ``covered`` maps an Area to the intervals its blocks occupy. Each is intersected with the
+    discretionary set before it is measured, so an Area's actual can never count time that left
+    the denominator.
+
+    What tiles the denominator is the UNION of the covered sets plus ``unallocated``, not the sum
+    of the per-Area actuals. The two agree only while the per-Area sets are mutually disjoint,
+    which they are for real blocks and which nothing here enforces: a minute claimed by two Areas
+    is removed once from the residual and counted once in each actual.
     """
     discretionary_minutes = discretionary.total_minutes()
     after_floors = minutes_after_floors(discretionary_minutes, shares)

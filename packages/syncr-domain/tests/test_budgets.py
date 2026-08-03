@@ -91,9 +91,9 @@ def test_the_remainder_is_what_the_floors_leave() -> None:
 
 
 def test_the_remainder_is_clamped_at_zero_when_the_floors_alone_do_not_fit() -> None:
-    # Without the clamp, a negative remainder is multiplied by each percentage and taken off
-    # that Area's floor, so the floors' own excess cancels itself out and an impossible
-    # budget reports as feasible.
+    # Asserted at the helper. What the clamp PREVENTS is asserted through the whole report in
+    # `test_floors_that_cannot_fit_are_reported_as_oversubscription`, which is the test that
+    # fails on the unclamped arithmetic.
     shares = [share(FITNESS, floor_hours="100"), share(CAREER, floor_hours="100")]
 
     assert minutes_after_floors(WEEK_MINUTES, shares) == 0
@@ -231,6 +231,9 @@ def test_a_floor_a_frame_only_week_cannot_meet_is_reported_as_oversubscription()
     # A target is GROSS: netted against nothing and clamped to nothing, because it is a
     # reporting figure rather than a reservation. So a floor declared in a week with no
     # discretionary time stays visible, as the excess it is.
+    #
+    # This case passes with or without the clamp, because a zero share multiplies the remainder
+    # away. The clamp's own case is the test below.
     frame_only = discretionary_intervals(
         WEEK, IntervalSet([WEEK]), IntervalSet(), IntervalSet(), IntervalSet()
     )
@@ -240,6 +243,40 @@ def test_a_floor_a_frame_only_week_cannot_meet_is_reported_as_oversubscription()
 
     assert report.allocations[0].target_minutes == 240
     assert report.oversubscription_minutes == 240
+
+
+def test_floors_that_cannot_fit_are_reported_as_oversubscription() -> None:
+    # The clamp, asserted where the defect it prevents actually appears: through the report,
+    # with floors that exceed discretionary time AND a share above zero. Both conditions are
+    # needed, which is why the two tests above cannot stand in for this one.
+    #
+    # Two Areas, each declaring a 100-hour floor and half the remainder, over a 168-hour week:
+    #
+    #   discretionary     10080
+    #   floors sum        12000
+    #   CLAMPED   targets [6000, 6000]   oversubscription 1920   the floors' own excess
+    #   UNCLAMPED targets [5040, 5040]   oversubscription    0   an impossible budget, feasible
+    #
+    # Unclamped, each 50% share multiplies the -1920 remainder and takes 960 off that Area's own
+    # floor, so the summed targets collapse to exactly discretionary and a budget needing 200
+    # hours in a 168-hour week reports as fitting perfectly.
+    report = budget_report(
+        discretionary=an_open_week(),
+        shares=[
+            share(FITNESS, percent="50", floor_hours="100"),
+            share(CAREER, percent="50", floor_hours="100"),
+        ],
+        covered={},
+    )
+
+    assert [allocation.target_minutes for allocation in report.allocations] == [6000, 6000]
+    assert report.oversubscription_minutes == 1920
+    # The reported excess IS the floors' excess, which is what makes the figure actionable: the
+    # user has to give back 32 hours of floor, not reword a percentage.
+    assert report.oversubscription_minutes == 12000 - WEEK_MINUTES
+    # And the residual is untouched by any of it. Nothing is planned, so every discretionary
+    # minute is still in no block.
+    assert report.unallocated_minutes == WEEK_MINUTES
 
 
 def test_a_child_areas_time_rolls_up_into_its_parent() -> None:
