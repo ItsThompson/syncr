@@ -56,7 +56,9 @@
                   "**/app",
                   "**/app/**",
                   "**/contract",
-                  "**/contract/**"
+                  "**/contract/**",
+                  "**/assets",
+                  "**/assets/**"
                 ],
                 "message": "a primitive accepts dependencies as props: it never fetches, reads config, knows a route, or names a domain type. A control that needs a Problem is misfiled."
               }
@@ -85,7 +87,9 @@
                   "**/app",
                   "**/app/**",
                   "**/contract",
-                  "**/contract/**"
+                  "**/contract/**",
+                  "**/assets",
+                  "**/assets/**"
                 ],
                 "message": "a layout container accepts dependencies as props: it never fetches, reads config, knows a route, or names a domain type."
               }
@@ -95,9 +99,10 @@
       }
     },
     {
-      // `domain` may read `contract/`, because a component that renders a Problem has to name one.
-      // It may reach nothing under `api/`: the client is the fetching, `keys.ts` is cache
-      // invalidation, and the generated schema is the fetching layer's own input.
+      // `domain` may read `contract/`, because a component that renders a Problem has to name one, and
+      // `assets/`, because the illustration plates are committed content a domain component places. It may
+      // reach nothing under `api/`: the client is the fetching, `keys.ts` is cache invalidation, and the
+      // generated schema is the fetching layer's own input.
       "files": ["src/ui/domain/**"],
       "rules": {
         "no-restricted-imports": [

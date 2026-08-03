@@ -1,0 +1,66 @@
+/* Layer 2: the ledger row. The Today register's line, and the Templates lists'.
+ *
+ * A LEDGER IS NOT A ONE-COLUMN GRID. The Week screen is proportional because a reader drags in it; Today answers a
+ * different question, "did this happen", so it is a checklist in time order and it earns the density a row gives.
+ *
+ * THE DURATION IS RIGHT-ALIGNED AND TABULAR, which is the whole reason it has a column of its own: a reader
+ * compares durations down the ledger without reading them one at a time, and proportional digits do not line up.
+ *
+ * THE AREA CHIP IS PAIRED WITH THE AREA'S NAME, not with the block's title. `docs/design/screens.html` draws the
+ * chip against the title, and this kit cannot: a chip identifies an Area, colour is never the only encoding of
+ * anything, and a chip beside `Leetcode` leaves the Area unnamed. So the row carries both, and the Area's name is
+ * a column of its own between the duration and the title.
+ *
+ * The adornment column is reserved on every row whether or not it holds a mark, so a pinned row's title starts
+ * where its neighbour's does.
+ *
+ * THE BOX AROUND THE ROWS IS A `Panel`, not a rule in this file. A bordered block on raised paper has one
+ * definition in the kit, in the layout layer, and a second one here would be the same two declarations under
+ * another name. */
+
+.ledger__row {
+  display: grid;
+  grid-template-columns: auto 74px 46px auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  height: var(--h-row);
+  padding: 0 9px;
+  border-bottom: var(--hairline) solid var(--rule);
+  font-size: var(--fs-chrome);
+}
+
+.ledger__row:last-child {
+  border-bottom: 0;
+}
+
+.ledger__time,
+.ledger__duration {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger__duration {
+  text-align: right;
+}
+
+.ledger__area {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+}
+
+/* The title is the one cell that may run out of room, and it clips rather than pushing the controls off the row:
+   a ledger's controls are at a fixed offset so a reader's pointer lands on the same place in every row. */
+.ledger__title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger__outcome {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}

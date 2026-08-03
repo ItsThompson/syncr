@@ -26,6 +26,7 @@ const AREAS = [
   "lib",
   "testing",
   "tokens",
+  "assets",
 ] as const;
 
 export type Area = (typeof AREAS)[number];
@@ -34,7 +35,7 @@ export type Area = (typeof AREAS)[number];
 export const REACHABLE: Readonly<Record<string, readonly Area[]>> = {
   "ui/primitives": ["ui/primitives", "lib", "tokens"],
   "ui/layout": ["ui/primitives", "ui/layout", "lib", "tokens"],
-  "ui/domain": ["ui/primitives", "ui/layout", "ui/domain", "contract", "lib", "tokens"],
+  "ui/domain": ["ui/primitives", "ui/layout", "ui/domain", "contract", "lib", "tokens", "assets"],
 };
 
 /* Why each area is unreachable from the kit, phrased as the capability rather than the path. */
@@ -44,6 +45,10 @@ const DENIAL_REASON: Readonly<Record<string, string>> = {
   routes: "it is a route, and a component does not know one",
   contract: "a Problem is a domain concept: a control or a container that names one is misfiled",
   testing: "it is test-only",
+  assets:
+    "an asset is committed content, and placing it is a domain decision: the illustration plates are " +
+    "the only ones, they are never behind data, and a control or a container that reached for one " +
+    "would be drawing ornament into a surface the design language keeps clear",
 };
 
 /**
@@ -53,6 +58,16 @@ const DENIAL_REASON: Readonly<Record<string, string>> = {
  * own turn, so following it would report the same violation twice.
  */
 export const CONDUITS: readonly Area[] = ["lib", "contract", "tokens"];
+
+/**
+ * Areas that are the end of a chain, because nothing in them imports anything.
+ *
+ * `assets` holds committed binary plates. A chain cannot be laundered through a PNG, so following one would be
+ * reading an image as source. Every non-kit area a zone may reach is either a conduit or a leaf, and the zone
+ * test asserts that, so a directory added to `REACHABLE` has to be classified as one or the other rather than
+ * quietly becoming a hole the walk stops at.
+ */
+export const LEAVES: readonly Area[] = ["assets"];
 
 /** The area a resolved file belongs to, or null when it is outside every named area. */
 export function areaOf(sourceRoot: string, resolved: string): Area | null {

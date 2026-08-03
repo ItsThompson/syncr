@@ -1,0 +1,18 @@
+/* Layer 2: the palette's own surface.
+ *
+ * It sits ABOVE THE CENTRE rather than in it, which is the one place this overlay differs from a dialog: a reader's
+ * eye is already at the top of the page when they reach for the palette, and a centred list of actions puts the
+ * first result under their hands rather than under their eye.
+ *
+ * The width is the query field's own comfortable measure, and it stops there: a palette as wide as the page turns
+ * a list of five actions into five lines of empty space. */
+
+.palette__scrim {
+  align-items: start;
+  padding-top: 88px;
+}
+
+.palette {
+  width: 520px;
+  max-width: 92vw;
+}

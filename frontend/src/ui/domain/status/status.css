@@ -1,0 +1,46 @@
+/* Layer 2: the three surfaces with nothing to show, and NONE OF THEM SPINS.
+ *
+ * Empty, pending and failed are three static renderings. There is no spinner, no skeleton and no shimmer in this
+ * kit at all: motion is zero without exception, and progress that must be shown is a count that changes, which
+ * is a discrete redraw. A pending surface therefore says what it is waiting for in words, which is more than a
+ * spinner has ever said.
+ *
+ * The three share one shape because they answer one question in three ways, and a reader should not have to
+ * learn three layouts to read "there is nothing here yet", "it is coming" and "it did not arrive". What differs
+ * is the pigment of the mark and whether the surface offers an action.
+ *
+ * A failure takes the oxide TEXT step for its title, because a title is words: the marker step is sealed to
+ * dots, rules and glyphs, and the two are not interchangeable. */
+
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 15px 11px;
+}
+
+.status__mark {
+  color: var(--text-muted);
+  font-size: var(--fs-label);
+}
+
+.status__title {
+  color: var(--ink-deep);
+  font-size: var(--fs-data);
+}
+
+.status__detail {
+  max-width: 62ch;
+  color: var(--ink-soft);
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
+}
+
+.status--error .status__mark {
+  color: var(--signal-oxide);
+}
+
+.status--error .status__title {
+  color: var(--oxide-ink);
+}

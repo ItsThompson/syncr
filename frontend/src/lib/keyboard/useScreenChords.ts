@@ -10,17 +10,9 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router";
 
 import type { Screen } from "../../ui/domain/shell/navigation";
+import { isTyping } from "./typing";
 
 const PREFIX = "g";
-
-/** True while the keystroke belongs to something the user is typing into. */
-function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  // `closest` rather than `isContentEditable`, so a keystroke inside a rich-text region counts
-  // as typing even when the focused node is a child of the editable element.
-  if (target.closest("[contenteditable]:not([contenteditable='false'])") !== null) return true;
-  return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
 
 export function useScreenChords(screens: readonly Screen[]): void {
   const navigate = useNavigate();

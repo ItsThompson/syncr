@@ -1,0 +1,29 @@
+/* Layer 2: the illustration plate.
+ *
+ * NEVER BEHIND DATA, AND THE STRUCTURE IS WHAT ENFORCES IT rather than a review. A plate is an `img` in the normal
+ * flow: it has no `position`, no `z-index` and it is never a `background-image`, so there is no way to put one
+ * under a grid, a ledger or a chart. The week grid is the densest surface in the product and gets no ornament at
+ * all; the five surfaces a plate is sanctioned on are the first-run wizard, the Areas header band, the weekly
+ * session header, an empty state and an error screen.
+ *
+ * The ink is baked into the file by the generator, resolved from --ink-deep, and the paper is transparent, so one
+ * plate sits correctly on both paper surfaces. Nothing here tints it: a plate is bytes, and a filter is banned. */
+
+.plate {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* A band crops rather than scales: a header band is a fixed height and the plate bleeds out of it, which is what
+   makes it read as a plate rather than as a picture with margins. */
+.plate--band {
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+  object-position: left top;
+}
+
+.plate--figure {
+  width: 210px;
+}

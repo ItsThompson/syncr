@@ -5,9 +5,9 @@
  * --paper-raised and is therefore BANNED on a control, while --rule-control measures 5.28:1.
  *
  * Those two figures are the reason `control.css` reads --rule-control, so they are computed here from the
- * token files rather than trusted: the ratio is derived by resolving the token chain to a hex, converting to
- * relative luminance, and applying the WCAG formula. A retuned pigment that dropped the border below 3:1
- * would fail this file, which is what "every number is computed, never asserted" means in a test.
+ * token files rather than trusted: `src/testing/contrast.ts` resolves the token chain to a hex, converts to
+ * relative luminance, and applies the WCAG formula. A retuned pigment that dropped the border below 3:1 would
+ * fail this file, which is what "every number is computed, never asserted" means in a test.
  *
  * BOTH SURFACES ARE MEASURED, not only the expected one. The review checklist asks for a computed ratio
  * against every surface a pair can reach, and a control legitimately sits on --paper as well as on
@@ -18,66 +18,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { srcDir } from "../../testing/compileTheme";
-
-const tokenDir = path.join(srcDir, "tokens");
-
-async function declaredTokens(): Promise<Map<string, string>> {
-  const files = ["primitives.css", "color.css", "layout.css", "type.css"];
-  const sources = await Promise.all(
-    files.map((file) => readFile(path.join(tokenDir, file), "utf8")),
-  );
-  const tokens = new Map<string, string>();
-  for (const source of sources) {
-    // Comments are stripped first: the token files explain themselves at length, and a declaration inside
-    // a comment is prose rather than a value.
-    const declarations = source.replace(/\/\*[\s\S]*?\*\//g, "");
-    for (const match of declarations.matchAll(/(--[\w-]+):\s*([^;]+);/g)) {
-      tokens.set(match[1], match[2].trim());
-    }
-  }
-  return tokens;
-}
-
-/** Resolves a token through however many `var()` hops it takes to reach a literal. */
-function resolve(tokens: ReadonlyMap<string, string>, name: string): string {
-  let value = tokens.get(name);
-  for (let hop = 0; hop < 8 && value !== undefined; hop += 1) {
-    const reference = /^var\((--[\w-]+)\)$/.exec(value.trim());
-    if (reference === null) return value.trim();
-    value = tokens.get(reference[1]);
-  }
-  throw new Error(`${name} does not resolve to a literal`);
-}
-
-function channelLuminance(channel: number): number {
-  const ratio = channel / 255;
-  return ratio <= 0.039_28 ? ratio / 12.92 : ((ratio + 0.055) / 1.055) ** 2.4;
-}
-
-function relativeLuminance(hex: string): number {
-  const digits = /^#([0-9a-f]{6})$/i.exec(hex.trim());
-  if (digits === null) throw new Error(`${hex} is not a six-digit hex colour`);
-  const value = Number.parseInt(digits[1], 16);
-  const red = channelLuminance((value >> 16) & 0xff);
-  const green = channelLuminance((value >> 8) & 0xff);
-  const blue = channelLuminance(value & 0xff);
-  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-}
-
-function contrastRatio(one: string, two: string): number {
-  const first = relativeLuminance(one);
-  const second = relativeLuminance(two);
-  const lighter = Math.max(first, second);
-  const darker = Math.min(first, second);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-async function ratioBetween(foreground: string, background: string): Promise<number> {
-  const tokens = await declaredTokens();
-  return contrastRatio(resolve(tokens, foreground), resolve(tokens, background));
-}
-
-const INDICATOR_FLOOR = 3;
+import { INDICATOR_FLOOR, ratioBetween } from "../../testing/contrast";
 
 describe("the control border", () => {
   it("clears the 3:1 indicator floor on the raised surface it normally sits on", async () => {

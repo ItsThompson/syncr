@@ -18,6 +18,7 @@ import {
   CONDUITS,
   denialReasonFor,
   isUnderSourceRoot,
+  LEAVES,
   REACHABLE,
   unmodelledMessage,
   type Area,
@@ -98,14 +99,16 @@ describe("what the model says when it denies something", () => {
 
 describe("the conduits a chain is followed through", () => {
   /* A conduit is an area a kit zone may read and no other check constrains, which is exactly the shape a
-   * one-line re-export laundered an import through. Every non-kit area any zone may reach has to be one:
-   * `contract` is readable from `ui/domain` alone and is still a conduit, because that is the zone that can
-   * launder through it. A kit zone is not one, since it is checked on its own turn. */
-  it("holds every non-kit area a kit zone may reach, and no kit zone", () => {
+   * one-line re-export laundered an import through. Every non-kit area any zone may reach is either a conduit or
+   * a LEAF: `contract` is readable from `ui/domain` alone and is still a conduit, because that is the zone that
+   * can launder through it, while `assets` holds binary plates that import nothing and end a chain. A kit zone is
+   * neither, since it is checked on its own turn. */
+  it("holds every non-kit area a kit zone may reach, as a conduit or a leaf", () => {
     const reachable = new Set(Object.values(REACHABLE).flat());
     const nonKit = [...reachable].filter((area) => !area.startsWith("ui/"));
 
-    expect(nonKit.toSorted()).toEqual([...CONDUITS].toSorted());
+    expect(nonKit.toSorted()).toEqual([...CONDUITS, ...LEAVES].toSorted());
     expect(CONDUITS.filter((area) => area.startsWith("ui/"))).toEqual([]);
+    expect(CONDUITS.filter((area) => LEAVES.includes(area))).toEqual([]);
   });
 });

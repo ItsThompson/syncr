@@ -1,0 +1,26 @@
+{
+  "plates": [
+    {
+      "id": "armillary",
+      "subject": "Armillary sphere on a stand",
+      "source": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Armillary-sphere-on-stand.svg/960px-Armillary-sphere-on-stand.svg.png",
+      "licence": "CC0 1.0 public-domain dedication",
+      "author": "unattributed (Wikimedia Commons)",
+      "sourceDigest": "sha256:bfbc21ae220c51a0db4707b07546a5c87380ddeddeee2b096f0814c54a654304",
+      "inkToken": "--ink-deep",
+      "width": 420,
+      "height": 420
+    },
+    {
+      "id": "astrolabe",
+      "subject": "Planispheric astrolabe, drawn for the latitude of Varese",
+      "source": "https://upload.wikimedia.org/wikipedia/commons/c/cb/Planispheric_astrolabe.png",
+      "licence": "Public domain",
+      "author": "Frb ds (Wikimedia Commons)",
+      "sourceDigest": "sha256:54e3681ca3385cb0a346f40d7d664d648d1a8cfa30d8a4bf515f0e93784b6b41",
+      "inkToken": "--ink-deep",
+      "width": 420,
+      "height": 482
+    }
+  ]
+}
