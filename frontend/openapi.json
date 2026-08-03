@@ -13,6 +13,7 @@
           },
           "externalId": {
             "description": "A feed address for an ICS source: ics, webcal, http, or https, normalized on the way in. A calendarId for a Google source, taken as the provider states it.",
+            "maxLength": 2048,
             "minLength": 1,
             "title": "Externalid",
             "type": "string"
@@ -1247,8 +1248,7 @@
           "missing-duration",
           "unknown-zone",
           "malformed-value",
-          "unparseable-recurrence",
-          "duplicate-uid"
+          "unparseable-recurrence"
         ],
         "type": "string"
       },
