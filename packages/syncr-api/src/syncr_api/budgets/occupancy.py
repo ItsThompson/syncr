@@ -41,6 +41,13 @@ class WeekOccupancy:
     times their producers resolved. ``by_area`` is the numerator: the intervals each Area's
     blocks occupy, which is what an Area's actual and the ``unallocated`` residual are measured
     from.
+
+    **The per-Area sets are expected to be mutually disjoint, and nothing enforces it.** A minute
+    claimed by two Areas is removed once from the residual and counted once in each Area's actual,
+    so the residual stays correct while ``sum(actual) + unallocated`` exceeds the denominator by
+    the overlap. Two blocks cannot really occupy one minute, so a producer that emits an overlap
+    has a defect upstream of this shape: the pie's wedges stop tiling, which is a milder failure
+    than a negative residual but is still one.
     """
 
     frame: IntervalSet = field(default_factory=IntervalSet)

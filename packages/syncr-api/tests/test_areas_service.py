@@ -531,6 +531,9 @@ async def test_patching_an_area_that_does_not_exist_is_a_404(
 async def test_a_credential_without_admin_cannot_change_a_budget(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
+    # The scope arithmetic, on a hand-built principal. It is one of the four links between an
+    # `Authorization` header and a 403, and the other three have no product route to run over
+    # yet: every route here resolves a browser session, which carries every scope.
     service, areas = build_areas(principal, versions)
     reader = Principal(
         tenant_id=principal.tenant_id,

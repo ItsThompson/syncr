@@ -28,6 +28,13 @@ its ``tenant_id`` IS the principal's, and the scoped ``SELECT`` is what turns an
 identifier into a 404 rather than an edit. The call is defense in depth rather than the check
 producing that 404, and it sits where the caller supplies an identifier because that is the
 only place an unscoped read could ever be introduced.
+
+``require_scope`` **denies nothing over HTTP today, and that is a property of the credential
+rather than of the check.** Every route reaching these methods resolves a browser session, and a
+session carries every scope because the user is acting directly. The check becomes live the first
+time a bearer credential reaches one of these routes, which is where its narrower grant starts
+mattering, and it is written now so the authority a route needs is stated where the request is
+authorized rather than retrofitted onto nine methods later.
 """
 
 from __future__ import annotations
