@@ -1,0 +1,13 @@
+/* A current row spending a property no channel names.
+ *
+ * The two declarations are the review's own plant, put back into `.state-row[data-current]` after the third
+ * was dropped: `check-channels`, the combination matrix and the layer rules all passed with both in place,
+ * because a property in no channel was skipped rather than reported.
+ *
+ * `color` is a named exemption for the control families and NOT for a row, which is why it is here. */
+.state-row[data-current] {
+  background-color: var(--state-hover);
+  border-left-color: var(--state-selected-color);
+  color: var(--ink-deep);
+  letter-spacing: var(--ls-label);
+}

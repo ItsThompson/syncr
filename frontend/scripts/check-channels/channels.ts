@@ -14,7 +14,13 @@
  *
  * A channel is assigned either by a CSS declaration inside a rule that selects on a state, or by a
  * variant-prefixed utility in markup. Both are read, because a rule enforced on only one of them is
- * bypassed by writing the other. */
+ * bypassed by writing the other.
+ *
+ * AND WHAT THE MODEL DOES NOT NAME IS A FINDING, NOT A PERMISSION. `channelFor` returning null used to
+ * mean "not a channel", so a state spending a property nobody had modelled was not merely unassigned:
+ * it was unseen, and a row could take a third declaration with this check, the combination matrix and the
+ * layer rules all green. `UNCHANNELLED` is the other half of the model: a property spent by a state either
+ * carries a channel or is named there with the reason it carries none. Silence is what the check reports. */
 
 export interface Channel {
   readonly name: string;
@@ -81,6 +87,26 @@ export const CHANNELS: readonly Channel[] = [
     properties: ["content", "--glyph", "list-style-type", "list-style"],
     utilityPrefixes: ["content-", "before:content", "after:content"],
   },
+  /* THE BOTTOM RULE. An active tab takes it at --rule-emphasis, the tertiary button's hover solidifies it
+   * rather than spending a fill, and a disabled select item dashes it. Three surfaces, one channel, and the
+   * drag's quarter-line weight below claims the same properties for `data-dragging` alone. */
+  {
+    name: "bottom rule",
+    properties: [
+      "border-bottom",
+      "border-bottom-color",
+      "border-bottom-width",
+      "border-bottom-style",
+    ],
+    utilityPrefixes: ["border-b"],
+  },
+  /* THE CONTROL BORDER, all four edges at once. A field's border is the only thing marking where the control
+   * begins, so disabled dashes it and mutes it rather than changing the fill. */
+  {
+    name: "control border",
+    properties: ["border", "border-color", "border-style", "border-width"],
+    utilityPrefixes: ["border-dashed", "border-solid", "border-dotted"],
+  },
   /* QUARTER-LINE WEIGHT belongs to `data-dragging` on the grid: at rest the quarter hour is drawn at
    * --grid-line-quarter and during a drag it steps up to hour weight, so the snap targets sharpen at
    * the one moment the user is aiming at them. A discrete state change, not motion. */
@@ -99,6 +125,54 @@ function matching(candidates: readonly Channel[], state: string): Channel | unde
     candidates.find((channel) => channel.states?.includes(state) === true) ??
     candidates.find((channel) => channel.states === undefined)
   );
+}
+
+export interface Unchannelled {
+  readonly property: string;
+  /** Why the property carries no channel. Printed in the finding, so the decision travels with the refusal. */
+  readonly reason: string;
+  /**
+   * States that may spend it. Absent means any state may.
+   *
+   * Stated per state where the property is legitimate for one state and was a real defect for another: the
+   * control families mute their own label under `disabled`, and a current ROW spending the same `color` was
+   * a third declaration on a state the channel table deals two, which nothing could see.
+   */
+  readonly states?: readonly string[] | undefined;
+}
+
+export const UNCHANNELLED: readonly Unchannelled[] = [
+  {
+    property: "position",
+    reason:
+      "it is the stacking context the keyboard cursor's inset ring needs, not a mark a reader sees",
+  },
+  {
+    property: "z-index",
+    reason: "it orders two surfaces and draws nothing of its own",
+  },
+  {
+    property: "cursor",
+    reason: "it is a pointer affordance: invisible in a rendering and absent from a keyboard",
+  },
+  {
+    property: "color",
+    states: ["data-disabled", "data-state"],
+    reason:
+      "text ink is not a channel. A control family mutes its own label under disabled, so modelling it " +
+      "would report three files as drift for a state that legitimately does it everywhere. It is granted " +
+      "per state rather than outright, because a ROW spending it is the defect this entry exists to keep " +
+      "visible",
+  },
+];
+
+/** Why a state may spend a property that carries no channel, or null when the model does not permit it. */
+export function unchannelledReason(property: string, state: string): string | null {
+  const named = UNCHANNELLED.filter((entry) => entry.property === property);
+  const entry =
+    named.find((candidate) => candidate.states?.includes(state) === true) ??
+    named.find((candidate) => candidate.states === undefined);
+  return entry?.reason ?? null;
 }
 
 export function channelFor(property: string, state: string): string | null {

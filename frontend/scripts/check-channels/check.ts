@@ -1,8 +1,10 @@
-/* Asserting that each state channel is assigned in exactly one file under the kit.
+/* Asserting that each state channel is assigned in exactly one file under the kit, and that a state spends
+ * no property the channel model does not name.
  *
- * It passes trivially now, with one file assigning three pairs. That is the point: it is the
- * mechanism that keeps passing as the kit grows, and the first duplicate assignment fails a gate
- * rather than reaching a review that has to notice it by eye. */
+ * The two halves answer different failures. The first is drift: two files assigning hover's fill is how two
+ * surfaces come to disagree, and nothing on a rendered screen reveals it until the states co-occur. The
+ * second is blindness: a property in no channel was skipped rather than reported, so a state could spend one
+ * with this check, the combination matrix and the layer rules all green. */
 
 import { readFile } from "node:fs/promises";
 
@@ -11,7 +13,7 @@ import { codeWithoutComments, createPositionResolver } from "../lib/css-scan.ts"
 import { parseCustomVariants } from "../lib/custom-variants.ts";
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
 import { relativeToRepo } from "../lib/paths.ts";
-import { PSEUDO_STATES, channelFor, channelForUtility } from "./channels.ts";
+import { PSEUDO_STATES, channelFor, channelForUtility, unchannelledReason } from "./channels.ts";
 
 export interface CheckChannelsInput {
   /** Absolute paths of the kit's CSS and TSX files. */
@@ -26,6 +28,22 @@ interface Assignment {
   readonly file: string;
   readonly line: number;
   readonly column: number;
+}
+
+/** A property a state spends that carries no channel and is not named as carrying none. */
+interface Unmodelled {
+  readonly state: string;
+  readonly property: string;
+  readonly file: string;
+  readonly line: number;
+  readonly column: number;
+}
+
+interface CssReading {
+  readonly assignments: readonly Assignment[];
+  readonly unmodelled: readonly Unmodelled[];
+  /** Declarations under a state selector that the model permits by name, counted so a silent zero shows. */
+  readonly permitted: number;
 }
 
 const RULE = /([^{}]+)\{([^{}]*)\}/g;
@@ -51,10 +69,12 @@ function statesInSelector(selector: string): string[] {
   return [...found];
 }
 
-function assignmentsInCss(file: string, source: string): Assignment[] {
+function readCss(file: string, source: string): CssReading {
   const at = createPositionResolver(source);
   const code = codeWithoutComments(source);
   const assignments: Assignment[] = [];
+  const unmodelled: Unmodelled[] = [];
+  let permitted = 0;
 
   for (const rule of code.matchAll(RULE)) {
     const states = statesInSelector(rule[1]);
@@ -64,14 +84,23 @@ function assignmentsInCss(file: string, source: string): Assignment[] {
     for (const statement of rule[2].split(";")) {
       const property = statement.split(":")[0].trim();
       const position = at(offset + (statement.length - statement.trimStart().length));
+      offset += statement.length + 1;
+      if (property === "" || !statement.includes(":")) continue;
       for (const state of states) {
         const channel = channelFor(property, state);
-        if (channel !== null) assignments.push({ state, channel, file, ...position });
+        if (channel !== null) {
+          assignments.push({ state, channel, file, ...position });
+          continue;
+        }
+        if (unchannelledReason(property, state) !== null) {
+          permitted += 1;
+          continue;
+        }
+        unmodelled.push({ state, property, file, ...position });
       }
-      offset += statement.length + 1;
     }
   }
-  return assignments;
+  return { assignments, unmodelled, permitted };
 }
 
 function assignmentsInMarkup(
@@ -106,11 +135,17 @@ function assignmentsInMarkup(
 export async function checkChannels(input: CheckChannelsInput): Promise<CheckOutcome> {
   const states = variantStates(await readFile(input.themeFile, "utf8"));
   const assignments: Assignment[] = [];
+  const unmodelled: Unmodelled[] = [];
+  let permitted = 0;
 
   for (const file of input.kitFiles) {
     const source = await readFile(file, "utf8");
-    if (file.endsWith(".css")) assignments.push(...assignmentsInCss(file, source));
-    else assignments.push(...assignmentsInMarkup(file, source, states));
+    if (file.endsWith(".css")) {
+      const reading = readCss(file, source);
+      assignments.push(...reading.assignments);
+      unmodelled.push(...reading.unmodelled);
+      permitted += reading.permitted;
+    } else assignments.push(...assignmentsInMarkup(file, source, states));
   }
 
   const byPair = new Map<string, Assignment[]>();
@@ -138,10 +173,25 @@ export async function checkChannels(input: CheckChannelsInput): Promise<CheckOut
     });
   }
 
+  for (const spend of unmodelled) {
+    findings.push({
+      file: spend.file,
+      line: spend.line,
+      column: spend.column,
+      check: "unmodelled-channel",
+      message:
+        `${spend.state} spends ${spend.property}, which no channel in the model names. A property ` +
+        "the model is silent about is not unassigned but UNSEEN: no check can tell whether a second " +
+        "file spends it too. Add it to CHANNELS, or name it in UNCHANNELLED with the reason it " +
+        "carries no channel, or stop spending it.",
+    });
+  }
+
   return {
     findings,
     notes: [
       `${input.kitFiles.length} kit file(s), ${byPair.size} state channel(s) assigned`,
+      `${assignments.length} declaration(s) carry one, ${permitted} named as carrying none`,
       ...[...byPair.keys()].toSorted().map((pair) => `  ${pair}`),
     ],
   };

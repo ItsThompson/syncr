@@ -1,0 +1,16 @@
+/* The properties a state may spend that carry no channel, each granted by name.
+ *
+ * The keyboard cursor's ring needs a stacking context, and a control family mutes its own label under
+ * disabled. Neither is a channel, and both have to be legal, so the model names them rather than staying
+ * silent about them. */
+.select__item[data-disabled] {
+  border-bottom: var(--hairline) dashed var(--text-muted);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.state-row[data-highlighted] {
+  position: relative;
+  z-index: 1;
+  outline: var(--state-focus-ring);
+}

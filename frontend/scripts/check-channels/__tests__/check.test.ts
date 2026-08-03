@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { appSourceDir } from "../../lib/paths.ts";
+import { UNCHANNELLED, unchannelledReason } from "../channels.ts";
 import { checkChannels, variantStates } from "../check.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -92,6 +93,66 @@ describe("the glyph slot and the quarter-line weight", () => {
     const outcome = await check(["drag-weight.css"]);
 
     expect(outcome.notes).toContain("  data-dragging -> quarter-line weight");
+  });
+});
+
+/* A PROPERTY THE MODEL DOES NOT NAME WAS UNSEEN RATHER THAN UNASSIGNED.
+ *
+ * `channelFor` returns null for a property in no channel, and the caller skipped it, so a state could spend
+ * one with every check green: the review put `color` and `letter-spacing` back onto the current row and this
+ * script, the combination matrix and the layer rules all passed. Modelling text colour as a channel was the
+ * other candidate fix and was rejected, because three control families legitimately mute their own label and
+ * the pair rule would report all three as drift. So the model names what carries no channel instead, and its
+ * silence is the finding. */
+describe("a property no channel names", () => {
+  it("is reported, naming the state and the property", async () => {
+    const outcome = await check(["unmodelled-property.css"]);
+    const unmodelled = outcome.findings.filter((finding) => finding.check === "unmodelled-channel");
+
+    expect(unmodelled.map((finding) => finding.message.split(", which")[0])).toEqual([
+      "data-current spends color",
+      "data-current spends letter-spacing",
+    ]);
+  });
+
+  it("says what to do about it, in the words the model uses", async () => {
+    const outcome = await check(["unmodelled-property.css"]);
+    const first = outcome.findings.find((finding) => finding.check === "unmodelled-channel");
+
+    expect(first?.message).toContain("UNSEEN");
+    expect(first?.message).toContain("CHANNELS");
+    expect(first?.message).toContain("UNCHANNELLED");
+  });
+
+  it("points at the declaration rather than at the rule", async () => {
+    const outcome = await check(["unmodelled-property.css"]);
+    const letterSpacing = outcome.findings.find((finding) =>
+      finding.message.includes("letter-spacing"),
+    );
+
+    expect(letterSpacing?.line).toBe(12);
+  });
+
+  it("leaves the two channels the row does spend alone", async () => {
+    const outcome = await check(["unmodelled-property.css"]);
+
+    expect(outcome.notes).toContain("  data-current -> fill");
+    expect(outcome.notes).toContain("  data-current -> left rule");
+  });
+
+  it("permits the properties the model names as carrying none", async () => {
+    const outcome = await check(["unchannelled-by-name.css"]);
+
+    expect(outcome.findings).toEqual([]);
+  });
+
+  it("grants text ink to a control family and not to a row, which is where it was a defect", () => {
+    expect(unchannelledReason("color", "data-disabled")).toContain("control family");
+    expect(unchannelledReason("color", "data-current")).toBeNull();
+  });
+
+  it("states a reason for every exemption, so silence cannot arrive as a list entry", () => {
+    for (const entry of UNCHANNELLED) expect(entry.reason.length).toBeGreaterThan(20);
   });
 });
 
