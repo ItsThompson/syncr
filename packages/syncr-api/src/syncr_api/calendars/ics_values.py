@@ -159,7 +159,10 @@ def parse_duration(value: str) -> timedelta:
         message = f"{value!r} is a duration of {seconds} seconds, and an event needs a positive one"
         raise MalformedValue(message)
     if seconds > MAX_EVENT_DAYS * _SECONDS_PER_DAY:
-        raise _too_long(f"{value!r} is about {seconds // _SECONDS_PER_DAY} days")
+        # Rounded UP, so the message cannot read "36600 days, and the longest is 36600 days".
+        # Flooring a value one second over the bound states a figure the bound would have accepted.
+        days = -(-seconds // _SECONDS_PER_DAY)
+        raise _too_long(f"{value!r} is about {days} days")
     return timedelta(seconds=seconds)
 
 

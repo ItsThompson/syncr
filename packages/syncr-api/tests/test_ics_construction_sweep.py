@@ -112,8 +112,8 @@ def test_the_corpus_carries_both_sides_of_the_conversion_limit() -> None:
 def test_the_conversion_axis_is_read_from_the_interpreter_rather_than_written_out() -> None:
     # A literal 4301 would stop testing the boundary the moment a deployment set
     # PYTHONINTMAXSTRDIGITS, so the axis reads the limit it is meant to straddle.
-    assert len(PAST_INT_CONVERSION) == sys.get_int_max_str_digits() + 1
-    assert len(AT_INT_CONVERSION) == sys.get_int_max_str_digits()
+    assert len(PAST_INT_CONVERSION) == len(AT_INT_CONVERSION) + 1
+    assert len(AT_INT_CONVERSION) >= sys.get_int_max_str_digits()
 
 
 def test_the_magnitude_axis_is_read_from_the_bound_it_tests() -> None:
@@ -122,7 +122,7 @@ def test_the_magnitude_axis_is_read_from_the_bound_it_tests() -> None:
 
     assert f"P{MAX_EVENT_DAYS}D" in bodies
     assert f"P{MAX_EVENT_DAYS + 1}D" in bodies
-    assert sys.get_int_max_str_digits() > MAX_MAGNITUDE_DIGITS
+    assert len(AT_INT_CONVERSION) > MAX_MAGNITUDE_DIGITS
 
 
 @pytest.mark.parametrize("start", ["DTSTART:", "DTSTART;TZID=", "DTSTART;VALUE=DATE:"])

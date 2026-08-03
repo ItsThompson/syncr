@@ -8,7 +8,6 @@ puts an event in the wrong hour when it is wrong.
 
 from __future__ import annotations
 
-import sys
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -27,7 +26,11 @@ from syncr_api.calendars.ics_values import (
 )
 from syncr_api.calendars.ics_zones import TZID_ALIASES, resolve_tzid
 from syncr_domain.zones import TravelOverride, UnknownZoneError, ZoneProfile, resolve_zone
-from tests.ics_construction_sites import PAST_INT_CONVERSION
+from tests.ics_construction_sites import (
+    AT_INT_CONVERSION,
+    PADDED_PAST_INT_CONVERSION,
+    PAST_INT_CONVERSION,
+)
 
 LONDON = "Europe/London"
 TOKYO = "Asia/Tokyo"
@@ -251,7 +254,7 @@ def test_a_padded_group_past_the_interpreters_limit_is_a_rejection_rather_than_a
     # value below is well inside it, while the string `int()` would see is past what the interpreter
     # will convert. Bounding one and converting the other lets `ValueError` escape the adapter,
     # which is the whole defect this bound exists to answer.
-    padded = "PT" + "0" * (sys.get_int_max_str_digits() + 1) + "1S"
+    padded = "PT" + PADDED_PAST_INT_CONVERSION + "S"
 
     assert parse_duration(padded).total_seconds() == 1
 
@@ -262,7 +265,7 @@ def test_the_bound_refuses_before_the_interpreter_would() -> None:
     # the deployment. Asserted by behaviour rather than by comparing two numbers: a group between
     # the two is refused by NAME, with the property and the bound stated.
     between = "9" * (MAX_MAGNITUDE_DIGITS + 1)
-    assert len(between) < sys.get_int_max_str_digits()
+    assert len(between) < len(AT_INT_CONVERSION)
 
     with pytest.raises(MalformedValue) as raised:
         parse_duration(f"PT{between}S")

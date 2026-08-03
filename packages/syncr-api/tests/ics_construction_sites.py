@@ -283,13 +283,20 @@ def _called_name(call: ast.Call) -> str | None:
 # One digit group past what `int()` will convert. Read from the interpreter rather than written as
 # 4301, because the limit is settable and a literal would stop testing the boundary the moment a
 # deployment changed it.
-PAST_INT_CONVERSION: Final = "9" * (sys.get_int_max_str_digits() + 1)
+#
+# Clamped to the DEFAULT limit as a floor, because `sys.set_int_max_str_digits(0)` disables the
+# limit entirely: read raw, the axis would degenerate to one digit and six corpus bodies would send
+# a one-digit duration while their labels claimed a past-limit one. The axis follows the limit
+# upward, and refuses to follow it into meaninglessness.
+_CONVERSION_LIMIT: Final = max(sys.get_int_max_str_digits(), 4300)
+
+PAST_INT_CONVERSION: Final = "9" * (_CONVERSION_LIMIT + 1)
 
 # The last group `int()` still converts, so the corpus holds both sides of that boundary.
-AT_INT_CONVERSION: Final = "9" * sys.get_int_max_str_digits()
+AT_INT_CONVERSION: Final = "9" * _CONVERSION_LIMIT
 
 # A group past what `int()` will convert whose SIGNIFICANT digits are well inside every bound syncr
 # owns. RFC 5545's `\d+` permits leading zeros, so this is a legitimate way to write one second, and
 # it separates the two counts a reader can confuse: a bound on the significant digits does not
 # protect the conversion unless the stripped value is what gets converted.
-PADDED_PAST_INT_CONVERSION: Final = "0" * (sys.get_int_max_str_digits() + 1) + "1"
+PADDED_PAST_INT_CONVERSION: Final = "0" * (_CONVERSION_LIMIT + 1) + "1"
