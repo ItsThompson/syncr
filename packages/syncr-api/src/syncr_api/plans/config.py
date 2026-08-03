@@ -68,6 +68,7 @@ VERDICT_PROVENANCES: Final = ("probe", "solver")
 VERDICT_SURFACES: Final = ("pin", "mutation", "tradeoff", "solve", "cli", "maintainer")
 
 # The four tradeoff concessions an approval can persist.
+type AdjustmentKind = Literal["drop_item", "reduce_routine", "breach_floor", "accept_partial"]
 ADJUSTMENT_KINDS: Final = ("drop_item", "reduce_routine", "breach_floor", "accept_partial")
 
 # A block id is a hash of the week and the content identity, derived on construction and

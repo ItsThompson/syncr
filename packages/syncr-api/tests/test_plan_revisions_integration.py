@@ -24,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
-from syncr_api.plans.config import APPLIED, APPROVED, PLAN_REVISIONS_TABLE
+from syncr_api.plans.config import APPLIED, APPROVED, PLAN_REVISIONS_TABLE, AdjustmentKind
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
@@ -34,6 +34,7 @@ from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
+    from uuid import UUID
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -447,10 +448,15 @@ async def test_concessions_of_different_kinds_and_targets_coexist(
     # The control for the collapse above: composition is the normal case, because each
     # concession names a distinct target and kind.
     area, task = uuid4(), uuid4()
+    composed: tuple[tuple[AdjustmentKind, UUID], ...] = (
+        ("breach_floor", area),
+        ("drop_item", task),
+        ("accept_partial", task),
+    )
 
     async with sessions() as session, session.begin():
         adjustments = WeekAdjustmentRepository(session, owner.tenant_id)
-        for kind, target in (("breach_floor", area), ("drop_item", task), ("accept_partial", task)):
+        for kind, target in composed:
             await adjustments.upsert(
                 iso_week=WEEK,
                 kind=kind,
@@ -493,11 +499,13 @@ async def test_a_concession_does_not_carry_into_the_next_week(
 async def test_a_concession_kind_the_vocabulary_does_not_name_is_rejected(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
+    # The annotation is erased at runtime, and a later migration or a `psql` session is not
+    # type-checked at all, so the check constraint is what actually closes the vocabulary.
     async with sessions() as session, session.begin():
         with pytest.raises(IntegrityError, match="kind_is_known"):
             await WeekAdjustmentRepository(session, owner.tenant_id).upsert(
                 iso_week=WEEK,
-                kind="cancel_the_week",
+                kind="cancel_the_week",  # type: ignore[arg-type]  # the point of the test
                 target_id=uuid4(),
                 created_at=NOW,
                 created_by_operation_id=uuid4(),

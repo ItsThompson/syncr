@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from syncr_api.core.columns import JsonObject
-    from syncr_api.plans.config import RevisionReason, RevisionStatus
+    from syncr_api.plans.config import AdjustmentKind, RevisionReason, RevisionStatus
     from syncr_domain.identifiers import OperationId, PlanRevisionId, TenantId
     from syncr_domain.weeks import IsoWeek
 
@@ -70,7 +70,7 @@ class WeekAdjustmentRecord:
     id: UUID
     tenant_id: TenantId
     iso_week: IsoWeek
-    kind: str
+    kind: AdjustmentKind
     target_id: UUID
     reductions: JsonObject
     delta_minutes: int | None

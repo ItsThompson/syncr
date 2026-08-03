@@ -14,7 +14,7 @@ Requesting a tradeoff writes nothing here. Only approval does.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from sqlalchemy.dialects.postgresql import insert
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from syncr_api.core.columns import JsonDocument
+    from syncr_api.plans.config import AdjustmentKind
     from syncr_domain.identifiers import OperationId
 
 # The columns a replacement leaves alone: the row's identity, and the concession it is a
@@ -45,7 +46,7 @@ class WeekAdjustmentRepository(TenantScopedRepository):
         self,
         *,
         iso_week: IsoWeek,
-        kind: str,
+        kind: AdjustmentKind,
         target_id: UUID,
         created_at: datetime,
         created_by_operation_id: OperationId,
@@ -91,7 +92,9 @@ def _as_record(adjustment: WeekAdjustment) -> WeekAdjustmentRecord:
         id=adjustment.id,
         tenant_id=adjustment.tenant_id,
         iso_week=IsoWeek.parse(adjustment.iso_week),
-        kind=adjustment.kind,
+        # The column's value set is enforced by a check constraint, so the narrowing here
+        # states what the database already guarantees rather than re-checking it.
+        kind=cast("AdjustmentKind", adjustment.kind),
         target_id=adjustment.target_id,
         reductions=adjustment.reductions,
         delta_minutes=adjustment.delta_minutes,
