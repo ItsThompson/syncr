@@ -32,12 +32,18 @@
    `transition-behavior`; a fixture moved under `src/` shipped a blur and an unfenced shadow; and one
    word of prose in a comment shipped `.backdrop-filter` for three review iterations.
 
-   So a test and a fixture are excluded, and `scripts/check-bundle` reads the built stylesheet and
-   refuses a banned declaration in it. The exclusions keep dead bytes out; the gate is what makes the
-   guarantee true, because it judges the artifact rather than the scan. Neither replaces the other. */
+   So a test, a fixture and the test-only helpers under `testing/` are excluded, and
+   `scripts/check-bundle` reads the built stylesheet and refuses a banned declaration in it. The
+   exclusions keep dead bytes out; the gate is what makes the guarantee true, because it judges the
+   artifact rather than the scan. Neither replaces the other.
+
+   `testing/` is excluded for the same reason a test is: nothing there reaches a browser. It is not
+   named `*.test.ts`, so the test glob does not cover it, and a helper explaining WHY a check blanks
+   comments has to be able to name the utility that incident shipped. */
 @source "./**/*.{ts,tsx}";
 @source not "./**/*.test.{ts,tsx}";
 @source not "./**/__fixtures__/**";
+@source not "./testing/**";
 
 /* AND THE WORDS THIS CODEBASE'S PROSE HAS TO BE ABLE TO USE.
 
