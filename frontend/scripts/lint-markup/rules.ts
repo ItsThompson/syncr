@@ -81,23 +81,75 @@ const DATA_ATTRIBUTE_SHAPES = [
  * when the violation is added.
  *
  * The emitted-CSS gate covers part of it from the other side, because `transition-property: all` is a banned
- * declaration in the built stylesheet whatever named it. The circle allowlist has no second reader: a
+ * declaration in the built stylesheet whatever named it. THE CIRCLE ALLOWLIST HAS NO SECOND READER: a
  * `border-radius: 50%` is legal CSS for the four allowlisted files, so only a scan that knows WHICH file
  * wrote the class can judge it. Refusing the unreadable shape is what keeps that rule enforceable.
  *
- * TWO SHAPES ARE REFUSED, and a third case is knowingly left open. An expression carrying no string literal
- * and calling no variant map hides the whole list; a template literal with an interpolation hides the
- * interpolated part. A ternary whose condition is an identifier and whose branches are literals is readable
- * and stays legal, which is the shape the kit is written in. What survives is a ternary between a literal and
- * a constant, where the literal keeps the expression legal: deciding that needs to know which identifiers
- * reach the class list, which needs a JavaScript parser, and a parser inside a check is the defect this
- * repository has produced five times. */
+ * THREE SHAPES ARE REFUSED. An expression carrying no string literal and calling no variant map hides the
+ * whole list. A template literal with an interpolation hides the interpolated part. And a TERNARY BRANCH that
+ * is not a literal hides that branch: `cond ? "tabs" : LIST_CLASS` passed both this scan and the bundle gate,
+ * which is the exposure that matters, because the constant behind the identifier is where a circle goes to
+ * hide.
+ *
+ * The branches are split at top-level `?` and `:`, which needs no parser: quotes, brackets, `?.` and `??` are
+ * tracked, and the segment before a `?` is a condition rather than a branch. An earlier version of this comment
+ * said deciding this needed a JavaScript parser, and that was wrong for this shape: what needs one is an
+ * identifier whose VALUE has to be traced, while a branch is decided by what is written in it. Every
+ * `className` expression in `src` that mixes a literal with an identifier is either a variant map's call or a
+ * ternary whose branches are both literals, so the rule refuses nothing the kit is written with. */
 const TEMPLATE_INTERPOLATION = /\$\{/;
 const STRING_LITERAL = /["'`]/;
+const QUOTES = new Set(['"', "'", "`"]);
+const OPENERS = new Set(["(", "[", "{"]);
+const CLOSERS = new Set([")", "]", "}"]);
+
+/**
+ * The value branches of a ternary, split at top-level `?` and `:`. Empty when the expression has no ternary.
+ *
+ * The segment before a `?` is a condition and is not returned: `isWide ? "a" : "b"` yields the two class lists
+ * and not the test that chooses between them. A nested ternary yields each of its value branches for the same
+ * reason.
+ */
+function ternaryBranches(expression: string): string[] {
+  const branches: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let quote = "";
+
+  for (let index = 0; index < expression.length; index += 1) {
+    const character = expression[index];
+    if (quote !== "") {
+      if (character === "\\") index += 1;
+      else if (character === quote) quote = "";
+      continue;
+    }
+    if (QUOTES.has(character)) {
+      quote = character;
+      continue;
+    }
+    if (OPENERS.has(character)) depth += 1;
+    else if (CLOSERS.has(character)) depth -= 1;
+    else if (depth === 0 && character === "?") {
+      // `?.` and `??` are not a ternary.
+      if (expression[index + 1] === "." || expression[index + 1] === "?") continue;
+      start = index + 1;
+    } else if (depth === 0 && character === ":" && start !== -1) {
+      branches.push(expression.slice(start, index));
+      start = index + 1;
+    }
+  }
+
+  if (branches.length > 0 && start !== -1) branches.push(expression.slice(start));
+  return branches;
+}
 
 function unreadableClassList(expression: string, products: ReadonlySet<string>): string | null {
   if (TEMPLATE_INTERPOLATION.test(expression)) {
     return "interpolates part of its class list, so the interpolated part reaches an element unread";
+  }
+  const hidden = ternaryBranches(expression).find((branch) => !STRING_LITERAL.test(branch));
+  if (hidden !== undefined) {
+    return `chooses a branch, \`${hidden.trim()}\`, which is not a class list the scan can read`;
   }
   if (STRING_LITERAL.test(expression)) return null;
   const callsVariantMap = [...products].some((name) =>

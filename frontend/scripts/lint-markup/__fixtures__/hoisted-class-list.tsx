@@ -1,8 +1,10 @@
-/* The class-list shapes a rule can read, and the two it cannot.
+/* The class-list shapes a rule can read, and the three it cannot.
  *
  * `className="tabs rounded-full transition-all"` at the attribute is three findings. The identical string in a
  * module constant was none at all, and the utility count went DOWN when it moved, so the only available signal
- * pointed the wrong way. Each element below is either a shape the scan reads or a shape it must refuse. */
+ * pointed the wrong way. A ternary branch was the same hole one step further in: a literal in the OTHER branch kept
+ * the expression legal, and the bundle gate cannot see the circle half. Each element below is either a shape the
+ * scan reads or a shape it must refuse. */
 
 import { cva } from "class-variance-authority";
 
@@ -20,6 +22,9 @@ export function HoistedClassList({ rank, isWide }: { rank: "lead" | "quiet"; isW
       <span className={`panel ${EXTRA}`} />
       <span className={strip({ rank })} />
       <span className={isWide ? "panel panel--wide" : "panel"} />
+      <span className={isWide ? "panel" : HOISTED} />
+      <span className={isWide ? "panel" : rank === "lead" ? "panel--lead" : EXTRA} />
+      <span className={strip({ rank: isWide ? "lead" : "quiet" })} />
     </div>
   );
 }

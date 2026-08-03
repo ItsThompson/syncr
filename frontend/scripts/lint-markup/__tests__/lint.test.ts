@@ -155,20 +155,42 @@ describe("an unreadable class list", () => {
   }
 
   it("is refused when the list is a module constant", async () => {
-    const hoisted = (await readabilityFindings()).find((finding) => finding.line === 19);
+    const hoisted = (await readabilityFindings()).find((finding) => finding.line === 21);
 
     expect(hoisted?.message).toContain("className={HOISTED}");
     expect(hoisted?.message).toContain("cannot read");
   });
 
   it("is refused when a template literal interpolates part of it", async () => {
-    const interpolated = (await readabilityFindings()).find((finding) => finding.line === 20);
+    const interpolated = (await readabilityFindings()).find((finding) => finding.line === 22);
 
     expect(interpolated?.message).toContain("interpolates part of its class list");
   });
 
+  /* THE BRANCH THAT HID A CIRCLE. A literal in one branch kept the expression legal, and `rounded-full` in the
+   * constant behind the other reached an element with nothing reading it: `lint:bundle` cannot judge a
+   * `border-radius: 50%`, which is legal CSS for the four allowlisted files, so this scan is the only reader the
+   * circle allowlist has. */
+  it("is refused when a ternary branch is not a literal, naming the branch", async () => {
+    const branch = (await readabilityFindings()).find((finding) => finding.line === 25);
+
+    expect(branch?.message).toContain("chooses a branch");
+    expect(branch?.message).toContain("HOISTED");
+  });
+
+  it("reads a nested ternary's branches, not the conditions between them", async () => {
+    const nested = (await readabilityFindings()).find((finding) => finding.line === 26);
+
+    // The branch it names is the hidden VALUE, `EXTRA`, rather than the `rank === "lead"` that chose it.
+    expect(nested?.message).toContain("chooses a branch, `EXTRA`");
+  });
+
   it("leaves a variant map's own call alone, which is the shape the kit is written in", async () => {
-    expect((await readabilityFindings()).map((finding) => finding.line)).toEqual([19, 20]);
+    expect((await readabilityFindings()).map((finding) => finding.line)).toEqual([21, 22, 25, 26]);
+  });
+
+  it("leaves a ternary inside a variant map's argument alone", async () => {
+    expect((await readabilityFindings()).some((finding) => finding.line === 27)).toBe(false);
   });
 
   /* The hoisted constant carries `rounded-full` and `transition-all`. Refusing the attribute is the only
