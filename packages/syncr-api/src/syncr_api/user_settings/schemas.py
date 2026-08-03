@@ -149,8 +149,10 @@ class TravelOverrideRequest(WireModel):
         start_date = info.data.get("start_date")
         if start_date is None or start_date <= end_date:
             return end_date
+        # Pydantic prefixes this with "Value error, ", so it reads as a clause rather than
+        # opening with a capital.
         message = (
-            f"is {end_date}, before the start date {start_date}. Both dates are inclusive, "
-            "so a one-day range states the same date twice."
+            f"the end date {end_date} is before the start date {start_date}. Both dates are "
+            "inclusive, so a one-day range states the same date twice."
         )
         raise ValueError(message)

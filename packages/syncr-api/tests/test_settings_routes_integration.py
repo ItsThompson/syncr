@@ -382,6 +382,8 @@ def test_a_range_that_ends_before_it_starts_is_rejected(
     assert response.status_code == ValidationFailed.status
     fields = [error["field"] for error in response.json()["errors"]]
     assert fields == ["body.endDate"], response.text
+    # The message names both dates, so a form can explain itself without a second request.
+    assert "2026-09-01 is before the start date 2026-09-10" in response.text
     assert "IANA" not in response.text
 
 
