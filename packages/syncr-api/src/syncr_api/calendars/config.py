@@ -85,6 +85,13 @@ EXTERNAL_ID_MAX_LENGTH: Final = 2_048
 CURSOR_MAX_LENGTH: Final = 512
 LAST_ERROR_MAX_LENGTH: Final = 500
 
+# How long one rejection's detail may be. Every detail is written to JSONB on the sync state and
+# served whole by the read route, and several of them quote a value the FEED chose the length of: a
+# rule dateutil refused, or a converter's own complaint about a literal. A publisher can make any of
+# those megabytes wide. Bounding the detail where it is built is the net; the messages that name a
+# value's SIZE instead of quoting it are the attribution, and both are wanted.
+DETAIL_MAX_LENGTH: Final = 300
+
 # How long a feed read may take, and how much of one is read. A publisher that stalls must
 # not hold a worker tick open, and a feed that streams forever must not exhaust memory: both
 # become a stated `last_error` with the anchors retained.

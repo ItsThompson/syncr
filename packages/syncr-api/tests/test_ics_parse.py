@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from syncr_api.calendars.config import (
+    DETAIL_MAX_LENGTH,
     MALFORMED_VALUE,
     MAX_EVENT_DAYS,
     MAX_EVENTS_PER_FEED,
@@ -33,6 +34,7 @@ from tests.hostile_ics import (
     ASSESSMENTS_FEED,
     CANCELLED_DUPLICATE_MASTER,
     CANCELLED_DUPLICATE_MASTER_REVERSED,
+    CANCELLED_NEWER_REVISION,
     CANCELLED_ORPHAN,
     DUPLICATE_ORPHANS,
     DUPLICATE_REPLACEMENTS,
@@ -44,6 +46,7 @@ from tests.hostile_ics import (
     OVERRUNNING_RECURRENCE,
     PUBLISHED_OUTLOOK,
     RUNAWAY_RECURRENCE,
+    SHIFTED_BY_A_DUPLICATE_MASTER,
     UNIVERSITY_TIMETABLE,
     nested_feed,
 )
@@ -571,19 +574,7 @@ def test_a_cancelled_revision_with_the_higher_sequence_beats_a_live_older_one() 
     # feed's latest word says does not happen: four hours of hard occupancy from a superseded
     # revision. Exchange bumps SEQUENCE and sets STATUS:CANCELLED together, so an overlapping export
     # window carries both.
-    body = (
-        "BEGIN:VCALENDAR\r\n"
-        "BEGIN:VEVENT\r\nUID:rev@example.org\r\nSEQUENCE:1\r\nSUMMARY:Live older revision\r\n"
-        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
-        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
-        "BEGIN:VEVENT\r\nUID:rev@example.org\r\nSEQUENCE:7\r\nSTATUS:CANCELLED\r\n"
-        "SUMMARY:Cancelled newer revision\r\n"
-        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
-        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
-        "END:VCALENDAR\r\n"
-    )
-
-    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+    outcome = parse_feed(CANCELLED_NEWER_REVISION, horizon=HORIZON, profile=HOME)
 
     assert outcome.events == ()
     assert outcome.cancelled_discarded == 1
@@ -702,21 +693,7 @@ def test_a_duplicate_master_that_shifts_a_series_does_not_double_the_moved_hour(
     # overlapping windows produces: the same meeting at two SEQUENCE values, the later of which
     # moved it, plus the override the earlier window emitted. Placing that override alongside
     # the winning master's occurrence puts two hours of hard occupancy on one commitment.
-    body = (
-        "BEGIN:VCALENDAR\r\n"
-        "BEGIN:VEVENT\r\nUID:shift@example.org\r\nSEQUENCE:1\r\nSUMMARY:Weekly at 10\r\n"
-        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
-        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
-        "BEGIN:VEVENT\r\nUID:shift@example.org\r\nSEQUENCE:2\r\nSUMMARY:Weekly at 12\r\n"
-        "DTSTART:20260210T120000Z\r\nDTEND:20260210T130000Z\r\n"
-        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
-        "BEGIN:VEVENT\r\nUID:shift@example.org\r\nSUMMARY:Moved to 14:00\r\n"
-        "RECURRENCE-ID:20260217T100000Z\r\n"
-        "DTSTART:20260217T140000Z\r\nDTEND:20260217T150000Z\r\nEND:VEVENT\r\n"
-        "END:VCALENDAR\r\n"
-    )
-
-    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+    outcome = parse_feed(SHIFTED_BY_A_DUPLICATE_MASTER, horizon=HORIZON, profile=HOME)
 
     assert titled(outcome.events, "Moved to 14:00") == []
     on_the_17th = [event for event in outcome.events if event.interval.start.day == 17]
@@ -1162,3 +1139,58 @@ def test_a_budget_leaves_a_feed_the_product_exists_to_read_alone() -> None:
 
     assert outcome.rejected == ()
     assert len(outcome.events) == 20 * 14
+
+
+def test_a_rejection_detail_is_bounded_however_long_the_feed_makes_it() -> None:
+    # Several details quote a value the publisher supplied, or a converter's complaint about one, so
+    # the length of a stored detail is the feed's to choose unless something bounds it. Each one is
+    # written to JSONB on the sync state and served whole by the read route.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:long@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:FREQ=DAILY;BYSECOND={','.join(['61'] * 2_000)}\r\n"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert len(outcome.rejected) == 1
+    detail = outcome.rejected[0].detail
+    assert len(detail) <= DETAIL_MAX_LENGTH + 40
+    assert "characters in all" in detail
+
+
+def test_an_occurrence_ending_exactly_at_the_horizon_places_nothing() -> None:
+    # The expansion window reaches back by the series' own length so an occurrence running INTO the
+    # horizon is found. That also finds one ending exactly AT it, and the horizon is half-open, so
+    # that event occupies none of it. Filtering only the replacements left the same position
+    # answered two ways depending on whether a publisher had moved it.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:edge@example.org\r\nSUMMARY:Ends at midnight\r\n"
+        "DTSTART:20260208T230000Z\r\nDTEND:20260209T000000Z\r\n"
+        "RRULE:FREQ=DAILY;COUNT=1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert outcome.unplaced == 1
+
+
+def test_syncr_s_own_refusal_is_not_re_explained_as_a_library_fault() -> None:
+    # IcsRejection is a ValueError by inheritance, so the catch written for a foreign expander's
+    # lazily raised faults also catches this package's own refusals and re-wrapped them. The panel
+    # then read "the recurrence rule cannot be expanded: the recurrence rule selects position 2 of a
+    # HOURLY period holding 1", which explains syncr's own decision as something dateutil could not
+    # do, and buries the property the publisher has to fix.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:own@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        "RRULE:FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    detail = outcome.rejected[0].detail
+    assert detail.startswith("the recurrence rule selects position 2")
+    assert "cannot be expanded" not in detail

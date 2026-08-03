@@ -32,7 +32,7 @@ from functools import partial
 from time import monotonic
 from typing import TYPE_CHECKING
 
-from syncr_api.calendars.config import MAX_EVENTS_PER_FEED, MAX_PARSE_SECONDS
+from syncr_api.calendars.config import DETAIL_MAX_LENGTH, MAX_EVENTS_PER_FEED, MAX_PARSE_SECONDS
 from syncr_api.calendars.events import FetchOutcome, RejectedComponent
 from syncr_api.calendars.ics_components import read_component
 from syncr_api.calendars.ics_errors import (
@@ -206,6 +206,23 @@ def _require_room_for(produced: tuple[RawEvent, ...], *, remaining: int) -> None
     raise UnparseableRecurrence(message)
 
 
+def _detail(error: IcsRejection) -> str:
+    """One rejection's detail, bounded because a feed can choose how long it is.
+
+    Several messages quote a value the publisher supplied, or a converter's complaint about one, so
+    the length of this string is the feed's to decide unless something decides it here. It is stored
+    as JSONB on the sync state and served whole by the read route, so an unbounded detail is an
+    unbounded write and an unbounded response.
+
+    The full length is named rather than the text silently ending, so a reader can tell a long value
+    from a truncated explanation.
+    """
+    stated = str(error)
+    if len(stated) <= DETAIL_MAX_LENGTH:
+        return stated
+    return f"{stated[:DETAIL_MAX_LENGTH]}... ({len(stated)} characters in all)"
+
+
 def _rejection(
     component: Component, error: IcsRejection, *, uid: str | None = None
 ) -> RejectedComponent:
@@ -215,7 +232,7 @@ def _rejection(
         kind=kind,
         line=component.line,
         component=component.name or VEVENT,
-        detail=str(error),
+        detail=_detail(error),
         uid=uid,
     )
 
@@ -231,5 +248,5 @@ def _feed_rejection(error: IcsRejection) -> RejectedComponent:
         kind=kind,
         line=error.line or _UNKNOWN_LINE,
         component=_FEED_COMPONENT,
-        detail=str(error),
+        detail=_detail(error),
     )

@@ -242,6 +242,12 @@ def expand(
     A replacement is placed at the time the REPLACEMENT states, so it can move an occurrence out of
     the horizon entirely. The occurrence generated it, but the event has to land in the window like
     any other, or a plan for February holds an anchor in August.
+
+    Every event is filtered the same way, replacement or not. The expansion window is widened
+    backwards by the series' length so an occurrence running INTO the horizon is found, which also
+    finds one ending exactly AT it: the horizon is half-open, so that event occupies none of it and
+    was an anchor one instant wide. Filtering only the replacements left the same position answered
+    two ways depending on whether a publisher had moved it.
     """
     window = _window(horizon, master)
     recurring = master.recurrence.recurring
@@ -257,7 +263,7 @@ def expand(
             applied.add(key)
         source = replacement or master
         span = interval_of(source, at=source.start.wall if replacement else wall, profile=profile)
-        if replacement is not None and not span.overlaps(horizon):
+        if not span.overlaps(horizon):
             continue
         built.append(
             RawEvent(

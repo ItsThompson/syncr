@@ -33,7 +33,7 @@ from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rruleset, rrulestr
 
-from syncr_api.calendars.ics_errors import UnparseableRecurrence
+from syncr_api.calendars.ics_errors import IcsRejection, UnparseableRecurrence
 from syncr_api.calendars.ics_times import resolve
 from syncr_api.calendars.ics_values import MAX_MAGNITUDE_DIGITS, ZoneKind
 
@@ -111,6 +111,12 @@ def occurrences(
             wall = next(candidates)
         except StopIteration:
             return tuple(kept)
+        except IcsRejection:
+            # This package's own refusal, which is already stated in the reader's language. It
+            # reaches here because it is a ValueError by inheritance, and re-wrapping it would
+            # prefix a foreign expander's excuse onto a message that already names the property:
+            # "the recurrence rule cannot be expanded: the recurrence rule selects position 2 of…".
+            raise
         except _RULE_FAULTS as error:
             # dateutil validates a rule lazily, so a value it accepted at construction can still be
             # refused here, on the first step that reads it.
@@ -154,6 +160,9 @@ def _candidates(start: IcsTime, recurrence: Recurrence) -> Iterator[datetime]:
 # ordinal past the weeks in the period walks off the end and raises IndexError. This is a local set
 # for one library's iteration, deliberately NOT `UNREPRESENTABLE`: it says "dateutil cannot expand",
 # where the net says "no value syncr can represent".
+#
+# It admits this package's own rejections too, by inheritance, so the caller re-raises those first
+# rather than describing a refusal syncr made as something dateutil could not do.
 _RULE_FAULTS: Final = (ValueError, TypeError, OverflowError, IndexError, KeyError)
 
 
