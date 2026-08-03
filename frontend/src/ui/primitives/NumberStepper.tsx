@@ -13,8 +13,7 @@
  * `docs/design/components.html` renders as invalid, and the caller decides whether to correct or to
  * refuse it. */
 
-import type { Ref } from "react";
-import { cva } from "class-variance-authority";
+import { useState, type Ref } from "react";
 
 import "./control.css";
 import "./glyphs.css";
@@ -29,7 +28,7 @@ const STEP_BY_MEASURE: Readonly<Record<NumberStepperMeasure, number>> = {
   "actual-minutes": RECORDED_STEP_MINUTES,
 };
 
-const field = cva("control control--figure number-stepper__field");
+const FIELD_CLASS = "control control--figure number-stepper__field";
 
 export interface NumberStepperProps {
   readonly value: number;
@@ -68,10 +67,32 @@ export function NumberStepper({
 }: NumberStepperProps) {
   const step = STEP_BY_MEASURE[measure];
 
+  /* WHAT THE READER HAS TYPED, while it is not a figure this control can hand back. `<input type="number">`
+   * reports an empty or half-typed field as "", and `Number("")` is 0, so emitting on every keystroke turned
+   * a cleared duration into a 0 the caller stored and the reader then had to delete again. The text is theirs
+   * until they leave the field or press a step; the caller's value is what the field shows at every other
+   * moment. */
+  const [draft, setDraft] = useState<string | null>(null);
+
   const commit = (next: number) => {
+    setDraft(null);
     const snapped = snapMinutes(next, step);
     const floored = min === undefined ? snapped : Math.max(min, snapped);
     onValueChange(max === undefined ? floored : Math.min(max, floored));
+  };
+
+  /* A typed figure reaches the caller unsnapped and unclamped, which is deliberate: 50 in a duration is the
+   * case the reference sheet renders as invalid, and the caller decides whether to correct it or refuse it. */
+  const type = (text: string) => {
+    setDraft(text);
+    if (text !== "") onValueChange(Number(text));
+  };
+
+  /* Leaving an emptied field restores the caller's value rather than committing the 0 it reports: a reader who
+   * cleared the box and tabbed away stated nothing. */
+  const leave = (text: string) => {
+    if (text === "") setDraft(null);
+    else commit(Number(text));
   };
 
   return (
@@ -88,10 +109,10 @@ export function NumberStepper({
       <input
         ref={ref}
         type="number"
-        className={field()}
+        className={FIELD_CLASS}
         id={id}
         name={name}
-        value={value}
+        value={draft ?? value}
         step={step}
         min={min}
         max={max}
@@ -99,8 +120,8 @@ export function NumberStepper({
         aria-invalid={isInvalid === true ? true : undefined}
         aria-label={label}
         aria-describedby={describedBy}
-        onChange={(event) => onValueChange(Number(event.target.value))}
-        onBlur={(event) => commit(Number(event.target.value))}
+        onChange={(event) => type(event.target.value)}
+        onBlur={(event) => leave(event.target.value)}
       />
       <button
         type="button"

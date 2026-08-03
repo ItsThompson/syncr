@@ -64,6 +64,43 @@ describe("a duration stepper", () => {
     expect(onValueChange).toHaveBeenLastCalledWith(50);
   });
 
+  /* An emptied `<input type="number">` reports "", and `Number("")` is 0. Emitting it made a cleared duration
+   * a stored 0 that came back into the field for the reader to delete again, and it passed a 0 to a caller
+   * whose floor is 15. */
+  it("emits nothing while the field is empty, and keeps the box empty for the next keystroke", () => {
+    const { onValueChange } = renderStepper({ value: 210, min: 15 });
+    const field = screen.getByRole("spinbutton");
+
+    fireEvent.change(field, { target: { value: "" } });
+
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(field).toHaveValue(null);
+  });
+
+  it("restores the caller's figure when an emptied field is left, because clearing states nothing", () => {
+    const { onValueChange } = renderStepper({ value: 210 });
+    const field = screen.getByRole("spinbutton");
+
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.blur(field);
+
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(field).toHaveValue(210);
+  });
+
+  it("hands a figure below the floor through as typed, and holds the floor on commit", () => {
+    const { onValueChange } = renderStepper({ value: 60, min: 15 });
+    const field = screen.getByRole("spinbutton");
+
+    fireEvent.change(field, { target: { value: "5" } });
+
+    expect(onValueChange).toHaveBeenLastCalledWith(5);
+
+    fireEvent.blur(field);
+
+    expect(onValueChange).toHaveBeenLastCalledWith(15);
+  });
+
   it("snaps a typed figure to the quarter hour on commit", async () => {
     const { onValueChange } = renderStepper({ value: 50 });
 
