@@ -112,7 +112,9 @@ export function Command({ actions, onSelect, label, placeholder, emptyLabel, ref
         placeholder={placeholder}
         aria-label={label}
         aria-expanded={hasResults}
-        aria-controls={listId}
+        /* Gated, because the list renders only when something matches: pointing at an id that is not in the
+           document is an unresolved reference a screen reader reads as a broken control. */
+        aria-controls={hasResults ? listId : undefined}
         aria-activedescendant={highlightedRowId}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={onKeyDown}
@@ -127,7 +129,13 @@ export function Command({ actions, onSelect, label, placeholder, emptyLabel, ref
               role="group"
               aria-label={group === "" ? undefined : group}
             >
-              {group === "" ? null : <p className="command__group">{group}</p>}
+              {group === "" ? null : (
+                /* The heading is decorative to a screen reader: the group already carries the same words as
+                   its accessible name, and a listbox's group holds options rather than prose. */
+                <p className="command__group" aria-hidden="true">
+                  {group}
+                </p>
+              )}
               {rows.map((action) => (
                 <CommandItem
                   key={action.id}

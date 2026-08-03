@@ -78,9 +78,25 @@ describe("Command", () => {
     renderCommand();
 
     await userEvent.type(screen.getByRole("combobox"), "zzz");
+    const field = screen.getByRole("combobox");
 
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(screen.getByText("No command matches")).toBeInTheDocument();
+    /* The list is gone, so the field must not still point at it: an unresolved id advertises a controlled
+     * element that is not in the document. */
+    expect(field).not.toHaveAttribute("aria-controls");
+    expect(field).toHaveAttribute("aria-expanded", "false");
+  });
+
+  /* A listbox's group heads a run of options, and the group already carries these words as its accessible
+   * name: announcing the paragraph as well reads the group's name twice. */
+  it("hides the group's visible heading from a screen reader, because the group is already named", () => {
+    const { container } = renderCommand();
+
+    const headings = [...container.querySelectorAll(".command__group")];
+
+    expect(headings.length).toBeGreaterThan(0);
+    for (const heading of headings) expect(heading).toHaveAttribute("aria-hidden", "true");
   });
 
   it("starts with the cursor on the first row", () => {
