@@ -52,7 +52,8 @@ class IdempotencyKey(Base, TenantScoped):
             f"(state = '{COMPLETED}') = (response_body IS NOT NULL)",
             name="completed_stores_its_response",
         ),
-        # What the retention sweep reads. Not tenant-led, because the sweep serves every
-        # tenant at once, so it is a single-column index rather than a composite one.
-        Index("ix_idempotency_keys_expires_at", "expires_at"),
+        # What the retention sweep reads: the keys of one tenant past their window. Tenant-led
+        # because the sweep is built from the scoped base like every other statement here, so
+        # it carries the tenant predicate whether or not the caller wanted one.
+        Index("ix_idempotency_keys_tenant_id_expires_at", TENANT_ID_COLUMN, "expires_at"),
     )

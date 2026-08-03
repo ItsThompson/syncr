@@ -123,12 +123,17 @@ DOMINANT_READS: dict[str, tuple[tuple[str, ...], ...]] = {
     WEEK_ADJUSTMENTS_TABLE: ((TENANT_ID_COLUMN, "iso_week"),),
     # The metric job reads a period across every week in it.
     VERDICT_EVENTS_TABLE: ((TENANT_ID_COLUMN, "occurred_at"), (TENANT_ID_COLUMN, "iso_week")),
-    # The week's operation for a client, and the worker's claim, which serves every tenant.
-    OPERATIONS_TABLE: ((TENANT_ID_COLUMN, "iso_week"), ("scheduled_for",)),
-    # A retry finds its key, and the sweep finds what expired, for every tenant at once.
+    # The week's operation for a client, the worker's claim, which serves every tenant, and
+    # the retention sweep over one tenant's terminal rows.
+    OPERATIONS_TABLE: (
+        (TENANT_ID_COLUMN, "iso_week"),
+        (TENANT_ID_COLUMN, "finished_at"),
+        ("scheduled_for",),
+    ),
+    # A retry finds its key, and the sweep finds what this tenant has past its window.
     IDEMPOTENCY_KEYS_TABLE: (
         (TENANT_ID_COLUMN, "route", "idempotency_key"),
-        ("expires_at",),
+        (TENANT_ID_COLUMN, "expires_at"),
     ),
 }
 

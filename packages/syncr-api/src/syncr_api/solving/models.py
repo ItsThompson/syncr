@@ -11,7 +11,7 @@ week.
 The partial index on ``scheduled_for`` is what the worker's claim reads. That query is
 deliberately not tenant-led, because the worker serves every tenant, so the index is on the
 one column it orders by and is narrowed by a ``WHERE`` clause instead of by a leading
-column.
+column. It is the only read of this table that is not scoped to one tenant.
 
 ``input_version`` is null until the worker LOADS inputs, and is stamped then rather than at
 creation. Stamping at creation would make a coalesced burst waste a solve: the operation
@@ -113,6 +113,7 @@ class Operation(Base, TenantScoped):
             "scheduled_for",
             postgresql_where=text(f"status = '{PENDING}'"),
         ),
-        # What the retention sweep reads: terminal rows past their window.
-        Index("ix_operations_finished_at", "finished_at"),
+        # What a retention sweep reads: one tenant's terminal rows past their window. Tenant-led
+        # like every scoped statement, unlike the claim above, which serves every tenant.
+        Index("ix_operations_tenant_id_finished_at", TENANT_ID_COLUMN, "finished_at"),
     )

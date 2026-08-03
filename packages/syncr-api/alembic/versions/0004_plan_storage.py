@@ -513,7 +513,12 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_operations")),
     )
-    op.create_index("ix_operations_finished_at", "operations", ["finished_at"], unique=False)
+    op.create_index(
+        "ix_operations_tenant_id_finished_at",
+        "operations",
+        ["tenant_id", "finished_at"],
+        unique=False,
+    )
     op.create_index(
         "ix_operations_pending_scheduled_for",
         "operations",
@@ -559,7 +564,10 @@ def upgrade() -> None:
         ),
     )
     op.create_index(
-        "ix_idempotency_keys_expires_at", "idempotency_keys", ["expires_at"], unique=False
+        "ix_idempotency_keys_tenant_id_expires_at",
+        "idempotency_keys",
+        ["tenant_id", "expires_at"],
+        unique=False,
     )
     _seed_hand_tuned_weight_sets()
 
@@ -579,7 +587,7 @@ def _seed_hand_tuned_weight_sets() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_idempotency_keys_expires_at", table_name="idempotency_keys")
+    op.drop_index("ix_idempotency_keys_tenant_id_expires_at", table_name="idempotency_keys")
     op.drop_table("idempotency_keys")
     op.drop_index(
         "uq_operations_tenant_id_iso_week_in_flight_solve",
@@ -592,7 +600,7 @@ def downgrade() -> None:
         table_name="operations",
         postgresql_where=sa.text("status = 'pending'"),
     )
-    op.drop_index("ix_operations_finished_at", table_name="operations")
+    op.drop_index("ix_operations_tenant_id_finished_at", table_name="operations")
     op.drop_table("operations")
     op.drop_index("ix_verdict_events_tenant_id_occurred_at", table_name="verdict_events")
     op.drop_index("ix_verdict_events_tenant_id_iso_week_occurred_at", table_name="verdict_events")
