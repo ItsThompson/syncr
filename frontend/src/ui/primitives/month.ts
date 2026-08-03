@@ -80,7 +80,7 @@ export function monthLabel(month: CalendarMonth): string {
 }
 
 /**
- * How a day reads to a screen reader: `Wednesday 19 February 2025`.
+ * How a day reads to a screen reader: `Wednesday, 19 February 2025`.
  *
  * The cell's visible text is the day of the month alone, which says nothing on its own out of the grid's
  * visual context, and an ISO string read aloud is a run of digits. The weekday is included because

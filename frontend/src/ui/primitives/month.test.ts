@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   WEEKDAY_INITIALS,
   WEEKDAY_NAMES,
+  dayLabel,
   daysInMonth,
   formatIsoDate,
   monthGrid,
@@ -152,5 +153,21 @@ describe("formatIsoDate", () => {
 describe("monthLabel", () => {
   it("reads as the sheet's own header", () => {
     expect(monthLabel({ year: 2025, month: 2 })).toBe("February 2025");
+  });
+});
+
+/* `dayLabel` is the calendar cell's accessible name, so the tests that find a day by that name use this same
+ * formatter: a test with its own copy would pass while a reader heard something else. */
+describe("dayLabel", () => {
+  it("reads as a date a person would say, weekday first", () => {
+    expect(dayLabel("2025-02-19")).toBe("Wednesday, 19 February 2025");
+  });
+
+  it("names the weekday, because choosing a deadline is a question about which day it lands on", () => {
+    expect(dayLabel("2025-02-14")).toContain("Friday");
+  });
+
+  it("hands back what it was given when that is not a date, rather than inventing one", () => {
+    expect(dayLabel("not-a-date")).toBe("not-a-date");
   });
 });
