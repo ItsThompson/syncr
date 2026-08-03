@@ -2,9 +2,13 @@
 
 The deal order is a design-language decision, so what is asserted here is the shape of it:
 that it is a permutation of the ramp, that it wraps rather than inventing a thirteenth step,
-and that the first four Areas take four distinct steps. The hue spacing those four steps
-give is computed in `docs/design/specimen.html`, against the inks themselves, which is where
-the inks live.
+and that the first four Areas take four distinct steps.
+
+**The hue spacing those four steps give is deliberately not asserted in Python.** The inks and
+their hues live in `frontend/src/tokens/primitives.css`, one of them has already been retuned,
+and restating twelve hue values here would be a second source of truth for the visual language:
+a spacing test written against a copy of them would go on passing after the copy went stale.
+What pins that spacing belongs in the token layer, beside the inks it is measured from.
 """
 
 from __future__ import annotations

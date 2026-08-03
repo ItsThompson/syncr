@@ -3,18 +3,24 @@
 A pigment is **assigned, never picked**. No colour picker exists anywhere in the product,
 so the only question this module answers is which step the next Area takes.
 
-The ramp itself lives in `frontend/src/tokens/primitives.css`, which holds the twelve inks
-and their measured contrast, and `docs/design/specimen.html` computes the hue ledger that
-verifies the deal order below. Nothing here names an ink: a step is an index, and which
-colour that index renders as is the token layer's alone. A second statement of the inks in
-Python would be a second source of truth for the visual language.
+The inks themselves live in `frontend/src/tokens/primitives.css`, which holds all twelve with
+their hue and their measured contrast, and that file is the authority for every hue figure
+below. Nothing here names an ink: a step is an index, and which colour that index renders as is
+the token layer's alone. A second statement of the inks in Python would be a second source of
+truth for the visual language, which is the same reason the token layer's own validator requires
+its reference sheets to render live from the tokens that ship.
 
 **The deal order is not numeric order.** Areas take steps in the order
-``01, 05, 08, 10, 03, 07, 12, 06, 02, 04, 09, 11`` (one-based, as the tokens are named),
-which is what gives a user with four Areas four pigments at least 75 degrees apart in hue.
-The order does not defer the ramp's tightest adjacent pairs and is not what separates
-them: a pair is separated by carrying different hatches and different Area names, and by
-the inks having been respaced so the tightest gap is 19.4 degrees.
+``01, 05, 08, 10, 03, 07, 12, 06, 02, 04, 09, 11`` (one-based, as the tokens are named), which is
+what gives a user with four Areas four pigments at least 75 degrees apart in hue. That figure is
+measured against the inks in `primitives.css` and nothing in this package pins it, deliberately:
+pinning it here would need a copy of the inks, and a spacing check written against a copy goes on
+passing after the copy goes stale. What pins it belongs beside the inks.
+
+The order does not defer the ramp's tightest adjacent pairs and is not what separates them: a
+pair is separated by carrying different hatches and different Area names, and by the inks having
+been respaced. How tight the tightest pair is, is the token layer's own figure and is not
+restated here for the reason above.
 
 **Past twelve Areas the ramp repeats**, and identity then rests on the hatch and the Area
 name. That is stated to the user rather than prevented, because a thirteenth Area is a
