@@ -27,6 +27,7 @@ from syncr_api.core.principal import Principal, require_scope
 from syncr_api.core.scopes import ALL_SCOPES, Scope, format_scopes, parse_scopes
 from syncr_api.oauth.access_tokens import AccessTokenCodec
 from syncr_api.oauth.authorization import (
+    STATE_MAX_LENGTH,
     AuthorizeParams,
     ConsentScreen,
     RedirectedError,
@@ -484,6 +485,31 @@ async def test_plain_pkce_is_refused_even_with_a_challenge_that_is_a_valid_verif
     assert isinstance(rejected, RedirectedRejection)
     assert "S256" in rejected.description
     assert "plain" in rejected.description
+
+
+async def test_a_state_too_long_to_echo_is_refused_with_the_limit_named(
+    consent: AuthorizationService, principal: Principal
+) -> None:
+    # Answering with a redirect that silently omitted the state would leave a client
+    # correlating on the value it sent with nothing to match. The limit is stated instead.
+    rejected = await consent.describe_consent(principal, params(state="s" * (STATE_MAX_LENGTH + 1)))
+
+    assert isinstance(rejected, RedirectedRejection)
+    assert rejected.error is RedirectedError.INVALID_REQUEST
+    assert str(STATE_MAX_LENGTH) in rejected.description
+    assert "state" not in query_of(rejected.url)
+
+
+async def test_a_state_at_the_limit_is_carried_through(
+    consent: AuthorizationService, principal: Principal
+) -> None:
+    # The control: what is refused is a value past the bound, not any long one.
+    at_the_limit = "s" * STATE_MAX_LENGTH
+
+    screen = await consent.describe_consent(principal, params(state=at_the_limit))
+
+    assert isinstance(screen, ConsentScreen)
+    assert screen.request.state == at_the_limit
 
 
 async def test_approving_delivers_a_code_and_the_clients_state(

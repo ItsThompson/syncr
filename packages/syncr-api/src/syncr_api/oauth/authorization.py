@@ -52,8 +52,9 @@ class RedirectedError(StrEnum):
     ACCESS_DENIED = "access_denied"
 
 
-# A state value is echoed back verbatim, so it is bounded: an unbounded one would be stored
-# in nothing but would be reflected into a redirect and into an HTML form.
+# A state value is echoed back verbatim into a redirect and into an HTML form, so it is
+# bounded, and a request that exceeds the bound is refused rather than answered without it: a
+# client correlating on the value it sent would otherwise get a redirect that silently omits it.
 STATE_MAX_LENGTH = 512
 
 
@@ -187,13 +188,20 @@ def validate_authorization(
             f"code has nowhere it may be sent. {_redirect_hint(client)}"
         )
 
-    state = _valid_state(params.state)
+    if params.state is not None and len(params.state) > STATE_MAX_LENGTH:
+        return RedirectedRejection(
+            params.redirect_uri,
+            RedirectedError.INVALID_REQUEST,
+            f"state must be at most {STATE_MAX_LENGTH} characters, and this one is "
+            f"{len(params.state)}. It is echoed back verbatim, so it is bounded.",
+            None,
+        )
     if params.response_type != RESPONSE_TYPE_CODE:
         return RedirectedRejection(
             params.redirect_uri,
             RedirectedError.UNSUPPORTED_RESPONSE_TYPE,
             f"Only response_type={RESPONSE_TYPE_CODE} is issued.",
-            state,
+            params.state,
         )
     if params.code_challenge_method != CODE_CHALLENGE_METHOD_S256:
         return RedirectedRejection(
@@ -202,14 +210,14 @@ def validate_authorization(
             f"code_challenge_method must be {CODE_CHALLENGE_METHOD_S256}. "
             f"{CODE_CHALLENGE_METHOD_PLAIN} is refused, because it proves nothing to a "
             "client that cannot hold a secret.",
-            state,
+            params.state,
         )
     if not is_well_formed_challenge(params.code_challenge):
         return RedirectedRejection(
             params.redirect_uri,
             RedirectedError.INVALID_REQUEST,
             "code_challenge is not an S256 challenge.",
-            state,
+            params.state,
         )
 
     requested = parse_scopes(params.scope)
@@ -218,7 +226,7 @@ def validate_authorization(
             params.redirect_uri,
             RedirectedError.INVALID_SCOPE,
             "scope names a scope this server does not serve.",
-            state,
+            params.state,
         )
     if not client.permits(requested):
         return RedirectedRejection(
@@ -226,7 +234,7 @@ def validate_authorization(
             RedirectedError.INVALID_SCOPE,
             "scope asks for more than this client is registered for. It may request "
             f"{format_scopes(client.allowed_scopes)}.",
-            state,
+            params.state,
         )
 
     return ValidatedAuthorization(
@@ -234,7 +242,7 @@ def validate_authorization(
         redirect_uri=params.redirect_uri,
         scopes=requested,
         code_challenge=params.code_challenge,
-        state=state,
+        state=params.state,
     )
 
 
@@ -264,13 +272,6 @@ def append_query(uri: str, params: dict[str, str]) -> str:
     """``uri`` with ``params`` added to its query string, preserving what was there."""
     separator = "&" if urlsplit(uri).query else "?"
     return f"{uri}{separator}{urlencode(params)}"
-
-
-def _valid_state(state: str | None) -> str | None:
-    """The state to echo back: the caller's, or nothing if it is too long to reflect."""
-    if state is None or len(state) > STATE_MAX_LENGTH:
-        return None
-    return state
 
 
 def _state_param(state: str | None) -> dict[str, str]:
