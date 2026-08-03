@@ -52,6 +52,234 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/areas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every Area, with the state of the pigment ramp
+         * @description The Areas, in the order the ramp dealt their pigments.
+         */
+        get: operations["list_areas_api_v1_areas_get"];
+        put?: never;
+        /**
+         * Declare an Area and deal it a pigment
+         * @description Declare an Area. The next step of the ramp is assigned; no colour is accepted.
+         */
+        post: operations["declare_area_api_v1_areas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/areas/{area_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One Area and the budget it declares
+         * @description One Area of this tenant's.
+         */
+        get: operations["read_area_api_v1_areas__area_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a name, floor, share, or pigment step
+         * @description Apply a partial update. An omitted field is left alone; an explicit null clears one.
+         */
+        patch: operations["update_area_api_v1_areas__area_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discretionary time, per-Area target and actual, and the two residuals
+         * @description One period's budget report. Writes nothing.
+         */
+        get: operations["read_budget_api_v1_budget_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every calendar source, with its sync state
+         * @description Each source's provider, anchor count, last sync time, and state.
+         */
+        get: operations["list_calendar_sources_api_v1_calendar_sources_get"];
+        put?: never;
+        /**
+         * Add an anchor source. No OAuth for an ICS feed
+         * @description Add a source, with an ICS feed address normalized on the way in.
+         */
+        post: operations["add_calendar_source_api_v1_calendar_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar-sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One source and its sync state
+         * @description One source, or a 404 that discloses nothing about another tenant's rows.
+         */
+        get: operations["read_calendar_source_api_v1_calendar_sources__source_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove a source and the anchors it contributed
+         * @description Remove a source. Its anchors go with it.
+         */
+        delete: operations["remove_calendar_source_api_v1_calendar_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Include or exclude a source, or rename it
+         * @description Apply a partial update. An excluded source reports zero anchors, not an error.
+         */
+        patch: operations["change_calendar_source_api_v1_calendar_sources__source_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/calendar-sources/{source_id}/horizon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set the projection horizon. Write-target only
+         * @description Set how many days ahead the plan is projected. 422 on an anchor source.
+         */
+        patch: operations["set_projection_horizon_api_v1_calendar_sources__source_id__horizon_patch"];
+        trace?: never;
+    };
+    "/api/v1/calendar-sources/{source_id}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Assign the write-target role. 409 if one exists
+         * @description Make this the one calendar syncr writes the plan to.
+         */
+        put: operations["designate_write_target_api_v1_calendar_sources__source_id__role_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar-sources/{source_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force a sync. Returns an Operation
+         * @description Sync one source now, and answer with the operation that did it.
+         */
+        post: operations["sync_calendar_source_api_v1_calendar_sources__source_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every Project, or the ones inside one Area
+         * @description The Projects, oldest first.
+         */
+        get: operations["list_projects_api_v1_projects_get"];
+        put?: never;
+        /**
+         * Declare a Project inside an Area
+         * @description Declare a Project. It carries no budget: its Area's allocation covers it.
+         */
+        post: operations["declare_project_api_v1_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One Project
+         * @description One Project of this tenant's.
+         */
+        get: operations["read_project_api_v1_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a name, deadline, or status
+         * @description Apply a partial update. Completing a Project is a status change and nothing else.
+         */
+        patch: operations["update_project_api_v1_projects__project_id__patch"];
+        trace?: never;
+    };
     "/api/v1/settings": {
         parameters: {
             query?: never;
@@ -311,6 +539,160 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AddCalendarSourceRequest
+         * @description Add an anchor source. No OAuth is required for an ICS source.
+         */
+        AddCalendarSourceRequest: {
+            /** Displayname */
+            displayName: string;
+            /**
+             * Externalid
+             * @description A feed address for an ICS source: ics, webcal, http, or https, normalized on the way in. A calendarId for a Google source, taken as the provider states it.
+             */
+            externalId: string;
+            provider: components["schemas"]["CalendarProvider"];
+        };
+        /**
+         * AreaBudgetReading
+         * @description One Area's row of the report.
+         *
+         *     ``targetMinutes`` is the Area's floor plus its share of what the floors leave. It is gross:
+         *     netted against nothing, because it is a reporting figure rather than a reservation.
+         */
+        AreaBudgetReading: {
+            /**
+             * Actualminutes
+             * @description Discretionary minutes covered by blocks carrying this Area.
+             */
+            actualMinutes: number;
+            /**
+             * Areaid
+             * Format: uuid
+             */
+            areaId: string;
+            /**
+             * Rolledupactualminutes
+             * @description This Area's actual plus every descendant Area's.
+             */
+            rolledUpActualMinutes: number;
+            /**
+             * Rolleduptargetminutes
+             * @description This Area's target plus every descendant Area's, because a child's time counts toward its parent in reports.
+             */
+            rolledUpTargetMinutes: number;
+            /**
+             * Targetminutes
+             * @description The Area's floor plus its share of the discretionary time remaining after every floor is honored.
+             */
+            targetMinutes: number;
+        };
+        /**
+         * AreaCreateRequest
+         * @description An Area to declare.
+         *
+         *     No pigment field: creation assigns the next step from the deal, so a caller cannot pick
+         *     one before the Area exists. Re-pick it through ``PATCH`` if the assignment is unwanted.
+         */
+        AreaCreateRequest: {
+            /** @description The share of discretionary time REMAINING after every Area's floor is honored, as a percentage from 0 to 100. Null means the Area declares no share. Shares summing past 100 across Areas are accepted and reported as oversubscription, never rejected. */
+            budgetPercent?: components["schemas"]["WireDecimal"] | null;
+            /** @description An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor. */
+            floorHours?: components["schemas"]["WireDecimal"] | null;
+            /**
+             * Name
+             * @description Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.
+             */
+            name: string;
+            /**
+             * Parentid
+             * @description The Area this one nests under, or null for a top-level Area. Declared once: a child's time rolls up into its parent in reports, so moving it would rewrite reported history.
+             */
+            parentId?: string | null;
+        };
+        /**
+         * AreaPatchRequest
+         * @description A partial update. An omitted field is left alone; an explicit null clears one.
+         *
+         *     The distinction is the point. ``floorHours: null`` removes the floor, and omitting
+         *     ``floorHours`` leaves whatever floor is stored, so both intentions are expressible.
+         *     ``name`` and ``pigmentIndex`` are not nullable and reject null.
+         *
+         *     ``parentId`` is not a member of this shape and an unknown field is rejected, so sending
+         *     one is a stated 422.
+         */
+        AreaPatchRequest: {
+            /** @description The share of discretionary time REMAINING after every Area's floor is honored, as a percentage from 0 to 100. Null means the Area declares no share. Shares summing past 100 across Areas are accepted and reported as oversubscription, never rejected. */
+            budgetPercent?: components["schemas"]["WireDecimal"] | null;
+            /** @description An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor. */
+            floorHours?: components["schemas"]["WireDecimal"] | null;
+            /**
+             * Name
+             * @description Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.
+             */
+            name?: string | null;
+            /**
+             * Pigmentindex
+             * @description A step of the sealed ramp, 0 to 11. Assigned on creation from the deal, and re-pickable from the ramp. There is no colour picker: a pigment is a step, not a value.
+             */
+            pigmentIndex?: number | null;
+        };
+        /**
+         * AreaResponse
+         * @description One Area, and the budget it declares.
+         */
+        AreaResponse: {
+            /** @description The share of discretionary time REMAINING after every Area's floor is honored, as a percentage from 0 to 100. Null means the Area declares no share. Shares summing past 100 across Areas are accepted and reported as oversubscription, never rejected. */
+            budgetPercent: components["schemas"]["WireDecimal"] | null;
+            /**
+             * Defaultpreferenceid
+             * @description The Area's placement preference, which the solver reads. Null when unset.
+             */
+            defaultPreferenceId: string | null;
+            /** @description An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor. */
+            floorHours: components["schemas"]["WireDecimal"] | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Name
+             * @description Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.
+             */
+            name: string;
+            /**
+             * Parentid
+             * @description The Area this one nests under, or null for a top-level Area. Declared once: a child's time rolls up into its parent in reports, so moving it would rewrite reported history.
+             */
+            parentId: string | null;
+            /**
+             * Pigmentindex
+             * @description A step of the sealed ramp, 0 to 11. Assigned on creation from the deal, and re-pickable from the ramp. There is no colour picker: a pigment is a step, not a value.
+             */
+            pigmentIndex: number;
+        };
+        /**
+         * AreaView
+         * @description One Area, with the state of the ramp it was dealt from.
+         */
+        AreaView: {
+            area: components["schemas"]["AreaResponse"];
+            ramp: components["schemas"]["RampReading"];
+        };
+        /**
+         * AreasResponse
+         * @description Every Area a tenant has declared, in the order the ramp dealt their pigments.
+         *
+         *     A wrapper rather than a bare array. The collection is bounded by how many life categories
+         *     a person holds, so it is not paginated, and an object leaves room for the ramp reading
+         *     beside it.
+         */
+        AreasResponse: {
+            /** Areas */
+            areas: components["schemas"]["AreaResponse"][];
+            ramp: components["schemas"]["RampReading"];
+        };
         /** Body_decide_oauth_authorize_decision_post */
         Body_decide_oauth_authorize_decision_post: {
             /**
@@ -382,6 +764,89 @@ export interface components {
             token_type_hint?: string | null;
         };
         /**
+         * BudgetResponse
+         * @description One period's discretionary time, and how the Areas divide it.
+         */
+        BudgetResponse: {
+            /** Areas */
+            areas: components["schemas"]["AreaBudgetReading"][];
+            /**
+             * Discretionaryminutes
+             * @description Total time in the period minus the INTERVAL UNION of the circadian frame, external anchors, absolutely forbidden windows, and off-plan periods. This is the denominator every percentage is measured against: never scheduled time, which would inflate every Area's share by excluding the hours nobody planned.
+             */
+            discretionaryMinutes: number;
+            /**
+             * Oversubscriptionminutes
+             * @description How far the Area targets exceed discretionary time. Zero when they fit. A separate quantity from unallocatedMinutes, and never rendered as a negative one.
+             */
+            oversubscriptionMinutes: number;
+            /**
+             * Period
+             * @description The ISO week the report covers, such as '2026-W07'.
+             */
+            period: string;
+            span: components["schemas"]["PeriodSpan"];
+            /**
+             * Unallocatedminutes
+             * @description Discretionary minutes covered by NO block carrying an Area. Never negative, and not zero merely because the shares sum to 100.
+             */
+            unallocatedMinutes: number;
+        };
+        /** @enum {string} */
+        CalendarProvider: "google" | "ics";
+        /** @enum {string} */
+        CalendarRole: "anchor-source" | "write-target";
+        /**
+         * CalendarSourcePatchRequest
+         * @description Include or exclude a source, and optionally rename it. An omitted field is left alone.
+         */
+        CalendarSourcePatchRequest: {
+            /** Displayname */
+            displayName?: string | null;
+            /** Included */
+            included?: boolean | null;
+        };
+        /**
+         * CalendarSourceResponse
+         * @description One calendar source, with the reading its Settings panel renders.
+         */
+        CalendarSourceResponse: {
+            /**
+             * Anchorcount
+             * @description How many commitments this source currently contributes. A count that changes is how progress is reported: there is no spinner and no progress bar anywhere in this product.
+             */
+            anchorCount: number;
+            /** Displayname */
+            displayName: string;
+            /** Externalid */
+            externalId: string;
+            /**
+             * Horizondays
+             * @description How many days ahead the plan is projected onto the write target. Null on an anchor source, which is read over whatever span the week being assembled needs.
+             */
+            horizonDays?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Included */
+            included: boolean;
+            provider: components["schemas"]["CalendarProvider"];
+            role: components["schemas"]["CalendarRole"];
+            /** @description What this source's panel reports. 'excluded' is not an error: the user asked for zero anchors from it. 'error' means the last attempt could not read it, and the anchors it already contributed are retained. */
+            state: components["schemas"]["SourceState"];
+            syncState: components["schemas"]["SyncStateResponse"];
+        };
+        /**
+         * CalendarSourcesResponse
+         * @description Every source this tenant has, oldest first.
+         */
+        CalendarSourcesResponse: {
+            /** Sources */
+            sources: components["schemas"]["CalendarSourceResponse"][];
+        };
+        /**
          * CheckReading
          * @description One check's contribution to readiness, as it appears on the wire.
          */
@@ -403,6 +868,14 @@ export interface components {
             field: string;
             /** Message */
             message: string;
+        };
+        /**
+         * HorizonPatchRequest
+         * @description Set how many days ahead the plan is projected. Write-target only.
+         */
+        HorizonPatchRequest: {
+            /** Horizondays */
+            horizonDays: number;
         };
         /**
          * JsonWebKeySet
@@ -440,6 +913,99 @@ export interface components {
             password: string;
         };
         /**
+         * OperationError
+         * @description Why an operation failed. Absent while it has not.
+         */
+        OperationError: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** @enum {string} */
+        OperationKind: "solve" | "materialize" | "calendar_sync" | "projection";
+        /**
+         * OperationResponse
+         * @description One tracked long-running job, as a client follows it.
+         *
+         *     ``attempt`` is exposed because a retrying job must not be silent: a count that changes is how
+         *     progress is reported in this product, and there is no spinner anywhere to imply movement.
+         */
+        OperationResponse: {
+            /**
+             * Attempt
+             * @description One-based, so a retrying job reads as 'try 2 of N'.
+             */
+            attempt: number;
+            error?: components["schemas"]["OperationError"] | null;
+            /** Finishedat */
+            finishedAt?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Inputversion
+             * @description The input snapshot this solve read. Null until the worker loads inputs.
+             */
+            inputVersion?: number | null;
+            kind: components["schemas"]["OperationKind"];
+            /** Resultrevisionid */
+            resultRevisionId?: string | null;
+            /**
+             * Scheduledfor
+             * Format: date-time
+             * @description When this operation became due.
+             */
+            scheduledFor: string;
+            /** Startedat */
+            startedAt?: string | null;
+            status: components["schemas"]["OperationStatus"];
+            /** Supersededby */
+            supersededBy?: string | null;
+            target: components["schemas"]["OperationTarget"];
+        };
+        /** @enum {string} */
+        OperationStatus: "pending" | "running" | "succeeded" | "failed" | "superseded";
+        /**
+         * OperationTarget
+         * @description What an operation acts on. Exactly one member is set.
+         */
+        OperationTarget: {
+            /**
+             * Isoweek
+             * @description The week a solve, a materialize, or a projection is for.
+             */
+            isoWeek?: string | null;
+            /**
+             * Sourceid
+             * @description The calendar source a sync is for.
+             */
+            sourceId?: string | null;
+        };
+        /**
+         * PeriodSpan
+         * @description The half-open interval the period covers, ``[start, end)``.
+         *
+         *     Present because it is what the denominator was derived from. It may be 167 or 169 hours
+         *     across a daylight-saving transition, and something else again in a zone whose transition is
+         *     not an hour, so a reader that needs the length reads these two instants rather than assuming
+         *     one.
+         */
+        PeriodSpan: {
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+        };
+        /**
          * Problem
          * @description RFC 9457 problem details. Optional members are omitted from the wire.
          */
@@ -456,6 +1022,105 @@ export interface components {
             title: string;
             /** Type */
             type: string;
+        };
+        /**
+         * ProjectCreateRequest
+         * @description A Project to declare, inside an Area that already exists.
+         */
+        ProjectCreateRequest: {
+            /**
+             * Areaid
+             * Format: uuid
+             */
+            areaId: string;
+            /** Deadline */
+            deadline?: string | null;
+            /** Name */
+            name: string;
+            /** @default active */
+            status: components["schemas"]["ProjectStatus"];
+        };
+        /**
+         * ProjectPatchRequest
+         * @description A partial update. An omitted field is left alone; an explicit null clears the deadline.
+         *
+         *     Completing a Project is ``status: "completed"`` here. It leaves the Project's historical
+         *     time attribution intact, because the attribution was always to its Area.
+         *
+         *     ``areaId`` is not a member of this shape and an unknown field is rejected.
+         */
+        ProjectPatchRequest: {
+            /** Deadline */
+            deadline?: string | null;
+            /** Name */
+            name?: string | null;
+            status?: components["schemas"]["ProjectStatus"] | null;
+        };
+        /**
+         * ProjectResponse
+         * @description One Project. It carries no budget field, because it inherits its Area's allocation.
+         */
+        ProjectResponse: {
+            /**
+             * Areaid
+             * Format: uuid
+             * @description The one Area this Project sits in. A Project never spans Areas, so time spent on it counts toward exactly this Area.
+             */
+            areaId: string;
+            /** Deadline */
+            deadline: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            status: components["schemas"]["ProjectStatus"];
+        };
+        /**
+         * ProjectStatus
+         * @description Where a Project is in its life. An Area has no equivalent, because it never ends.
+         * @enum {string}
+         */
+        ProjectStatus: "active" | "completed" | "abandoned";
+        /**
+         * ProjectsResponse
+         * @description Every Project a tenant has declared, oldest first.
+         */
+        ProjectsResponse: {
+            /** Projects */
+            projects: components["schemas"]["ProjectResponse"][];
+        };
+        /**
+         * RampReading
+         * @description How much of the sealed ramp this tenant's Areas are using.
+         *
+         *     Reported on the list and on every mutation, because both change it. ``statement`` is
+         *     non-null exactly when two Areas hold one step, which is what a thirteenth Area produces:
+         *     the ramp repeats rather than inventing a thirteenth ink, and the interface has to say so.
+         */
+        RampReading: {
+            /**
+             * Areassharingapigment
+             * @description How many Areas hold a step another Area also holds. Zero until the ramp is full.
+             */
+            areasSharingAPigment: number;
+            /**
+             * Pigmentcount
+             * @description How many steps the ramp holds. Sealed: it is always the same number.
+             */
+            pigmentCount: number;
+            /**
+             * Pigmentsinuse
+             * @description How many distinct steps of the ramp this tenant's Areas hold.
+             */
+            pigmentsInUse: number;
+            /**
+             * Statement
+             * @description What identity now rests on, stated when a step is shared.
+             */
+            statement?: string | null;
         };
         /**
          * ReadinessReading
@@ -476,6 +1141,26 @@ export interface components {
              */
             status: "ready" | "not_ready";
         };
+        /**
+         * RejectedEventResponse
+         * @description One component of a feed that produced no event, and why.
+         */
+        RejectedEventResponse: {
+            /** Component */
+            component: string;
+            /** Detail */
+            detail: string;
+            kind: components["schemas"]["RejectionKind"];
+            /**
+             * Line
+             * @description The line the component began on in the feed as delivered, before unfolding.
+             */
+            line: number;
+            /** Uid */
+            uid?: string | null;
+        };
+        /** @enum {string} */
+        RejectionKind: "missing-duration" | "unknown-zone" | "malformed-value" | "unparseable-recurrence" | "duplicate-uid";
         /**
          * ReviewCadence
          * @description Whether the pie review waits to be asked, or is offered on a schedule.
@@ -586,6 +1271,33 @@ export interface components {
              */
             visibleHours: number;
         };
+        /** @enum {string} */
+        SourceState: "never-synced" | "excluded" | "error" | "ok";
+        /**
+         * SyncStateResponse
+         * @description What the last attempt on a source did, successful or not.
+         *
+         *     Both instants are exposed because staleness is the difference between them: a recent attempt
+         *     with an older success is a source that is failing, and that is not the same as a source
+         *     nobody has polled.
+         */
+        SyncStateResponse: {
+            /** Eventsread */
+            eventsRead: number;
+            /** Lastattemptat */
+            lastAttemptAt?: string | null;
+            /**
+             * Lasterror
+             * @description Why the last attempt failed, stated with what still works. Null when it succeeded.
+             */
+            lastError?: string | null;
+            /** Lastsuccessat */
+            lastSuccessAt?: string | null;
+            /** Rejectedcount */
+            rejectedCount: number;
+            /** Rejections */
+            rejections: components["schemas"]["RejectedEventResponse"][];
+        };
         /**
          * TravelOverrideRequest
          * @description A range to declare. Both dates inclusive, and the range may not overlap another.
@@ -649,6 +1361,7 @@ export interface components {
             /** Overrides */
             overrides: components["schemas"]["TravelOverrideResponse"][];
         };
+        WireDecimal: number;
     };
     responses: never;
     parameters: never;
@@ -781,6 +1494,1225 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_areas_api_v1_areas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreasResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    declare_area_api_v1_areas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AreaCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreaView"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_area_api_v1_areas__area_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                area_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreaResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_area_api_v1_areas__area_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                area_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AreaPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreaView"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_budget_api_v1_budget_get: {
+        parameters: {
+            query: {
+                /** @description The ISO week to report on, such as '2026-W07'. Every figure in the report is week-scoped, because discretionary time derives from one week's span. */
+                period: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_calendar_sources_api_v1_calendar_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSourcesResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    add_calendar_source_api_v1_calendar_sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddCalendarSourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSourceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_calendar_source_api_v1_calendar_sources__source_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSourceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_calendar_source_api_v1_calendar_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    change_calendar_source_api_v1_calendar_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarSourcePatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSourceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    set_projection_horizon_api_v1_calendar_sources__source_id__horizon_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HorizonPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSourceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    designate_write_target_api_v1_calendar_sources__source_id__role_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSourceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    sync_calendar_source_api_v1_calendar_sources__source_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_projects_api_v1_projects_get: {
+        parameters: {
+            query?: {
+                areaId?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    declare_project_api_v1_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_project_api_v1_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_project_api_v1_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

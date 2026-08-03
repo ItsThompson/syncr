@@ -1,6 +1,301 @@
 {
   "components": {
     "schemas": {
+      "AddCalendarSourceRequest": {
+        "additionalProperties": false,
+        "description": "Add an anchor source. No OAuth is required for an ICS source.",
+        "properties": {
+          "displayName": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Displayname",
+            "type": "string"
+          },
+          "externalId": {
+            "description": "A feed address for an ICS source: ics, webcal, http, or https, normalized on the way in. A calendarId for a Google source, taken as the provider states it.",
+            "minLength": 1,
+            "title": "Externalid",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/CalendarProvider"
+          }
+        },
+        "required": [
+          "provider",
+          "displayName",
+          "externalId"
+        ],
+        "title": "AddCalendarSourceRequest",
+        "type": "object"
+      },
+      "AreaBudgetReading": {
+        "description": "One Area's row of the report.\n\n``targetMinutes`` is the Area's floor plus its share of what the floors leave. It is gross:\nnetted against nothing, because it is a reporting figure rather than a reservation.",
+        "properties": {
+          "actualMinutes": {
+            "description": "Discretionary minutes covered by blocks carrying this Area.",
+            "title": "Actualminutes",
+            "type": "integer"
+          },
+          "areaId": {
+            "format": "uuid",
+            "title": "Areaid",
+            "type": "string"
+          },
+          "rolledUpActualMinutes": {
+            "description": "This Area's actual plus every descendant Area's.",
+            "title": "Rolledupactualminutes",
+            "type": "integer"
+          },
+          "rolledUpTargetMinutes": {
+            "description": "This Area's target plus every descendant Area's, because a child's time counts toward its parent in reports.",
+            "title": "Rolleduptargetminutes",
+            "type": "integer"
+          },
+          "targetMinutes": {
+            "description": "The Area's floor plus its share of the discretionary time remaining after every floor is honored.",
+            "title": "Targetminutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "areaId",
+          "targetMinutes",
+          "actualMinutes",
+          "rolledUpTargetMinutes",
+          "rolledUpActualMinutes"
+        ],
+        "title": "AreaBudgetReading",
+        "type": "object"
+      },
+      "AreaCreateRequest": {
+        "additionalProperties": false,
+        "description": "An Area to declare.\n\nNo pigment field: creation assigns the next step from the deal, so a caller cannot pick\none before the Area exists. Re-pick it through ``PATCH`` if the assignment is unwanted.",
+        "properties": {
+          "budgetPercent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WireDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The share of discretionary time REMAINING after every Area's floor is honored, as a percentage from 0 to 100. Null means the Area declares no share. Shares summing past 100 across Areas are accepted and reported as oversubscription, never rejected."
+          },
+          "floorHours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WireDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor."
+          },
+          "name": {
+            "description": "Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Area this one nests under, or null for a top-level Area. Declared once: a child's time rolls up into its parent in reports, so moving it would rewrite reported history.",
+            "title": "Parentid"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AreaCreateRequest",
+        "type": "object"
+      },
+      "AreaPatchRequest": {
+        "additionalProperties": false,
+        "description": "A partial update. An omitted field is left alone; an explicit null clears one.\n\nThe distinction is the point. ``floorHours: null`` removes the floor, and omitting\n``floorHours`` leaves whatever floor is stored, so both intentions are expressible.\n``name`` and ``pigmentIndex`` are not nullable and reject null.\n\n``parentId`` is not a member of this shape and an unknown field is rejected, so sending\none is a stated 422.",
+        "properties": {
+          "budgetPercent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WireDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The share of discretionary time REMAINING after every Area's floor is honored, as a percentage from 0 to 100. Null means the Area declares no share. Shares summing past 100 across Areas are accepted and reported as oversubscription, never rejected."
+          },
+          "floorHours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WireDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.",
+            "title": "Name"
+          },
+          "pigmentIndex": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A step of the sealed ramp, 0 to 11. Assigned on creation from the deal, and re-pickable from the ramp. There is no colour picker: a pigment is a step, not a value.",
+            "title": "Pigmentindex"
+          }
+        },
+        "title": "AreaPatchRequest",
+        "type": "object"
+      },
+      "AreaResponse": {
+        "description": "One Area, and the budget it declares.",
+        "properties": {
+          "budgetPercent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WireDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The share of discretionary time REMAINING after every Area's floor is honored, as a percentage from 0 to 100. Null means the Area declares no share. Shares summing past 100 across Areas are accepted and reported as oversubscription, never rejected."
+          },
+          "defaultPreferenceId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Area's placement preference, which the solver reads. Null when unset.",
+            "title": "Defaultpreferenceid"
+          },
+          "floorHours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WireDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor."
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.",
+            "title": "Name",
+            "type": "string"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Area this one nests under, or null for a top-level Area. Declared once: a child's time rolls up into its parent in reports, so moving it would rewrite reported history.",
+            "title": "Parentid"
+          },
+          "pigmentIndex": {
+            "description": "A step of the sealed ramp, 0 to 11. Assigned on creation from the deal, and re-pickable from the ramp. There is no colour picker: a pigment is a step, not a value.",
+            "title": "Pigmentindex",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "parentId",
+          "name",
+          "pigmentIndex",
+          "budgetPercent",
+          "floorHours",
+          "defaultPreferenceId"
+        ],
+        "title": "AreaResponse",
+        "type": "object"
+      },
+      "AreaView": {
+        "description": "One Area, with the state of the ramp it was dealt from.",
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/AreaResponse"
+          },
+          "ramp": {
+            "$ref": "#/components/schemas/RampReading"
+          }
+        },
+        "required": [
+          "area",
+          "ramp"
+        ],
+        "title": "AreaView",
+        "type": "object"
+      },
+      "AreasResponse": {
+        "description": "Every Area a tenant has declared, in the order the ramp dealt their pigments.\n\nA wrapper rather than a bare array. The collection is bounded by how many life categories\na person holds, so it is not paginated, and an object leaves room for the ramp reading\nbeside it.",
+        "properties": {
+          "areas": {
+            "items": {
+              "$ref": "#/components/schemas/AreaResponse"
+            },
+            "title": "Areas",
+            "type": "array"
+          },
+          "ramp": {
+            "$ref": "#/components/schemas/RampReading"
+          }
+        },
+        "required": [
+          "areas",
+          "ramp"
+        ],
+        "title": "AreasResponse",
+        "type": "object"
+      },
       "Body_decide_oauth_authorize_decision_post": {
         "properties": {
           "client_id": {
@@ -144,6 +439,179 @@
         "title": "Body_revoke_oauth_revoke_post",
         "type": "object"
       },
+      "BudgetResponse": {
+        "description": "One period's discretionary time, and how the Areas divide it.",
+        "properties": {
+          "areas": {
+            "items": {
+              "$ref": "#/components/schemas/AreaBudgetReading"
+            },
+            "title": "Areas",
+            "type": "array"
+          },
+          "discretionaryMinutes": {
+            "description": "Total time in the period minus the INTERVAL UNION of the circadian frame, external anchors, absolutely forbidden windows, and off-plan periods. This is the denominator every percentage is measured against: never scheduled time, which would inflate every Area's share by excluding the hours nobody planned.",
+            "title": "Discretionaryminutes",
+            "type": "integer"
+          },
+          "oversubscriptionMinutes": {
+            "description": "How far the Area targets exceed discretionary time. Zero when they fit. A separate quantity from unallocatedMinutes, and never rendered as a negative one.",
+            "title": "Oversubscriptionminutes",
+            "type": "integer"
+          },
+          "period": {
+            "description": "The ISO week the report covers, such as '2026-W07'.",
+            "title": "Period",
+            "type": "string"
+          },
+          "span": {
+            "$ref": "#/components/schemas/PeriodSpan"
+          },
+          "unallocatedMinutes": {
+            "description": "Discretionary minutes covered by NO block carrying an Area. Never negative, and not zero merely because the shares sum to 100.",
+            "title": "Unallocatedminutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "span",
+          "discretionaryMinutes",
+          "unallocatedMinutes",
+          "oversubscriptionMinutes",
+          "areas"
+        ],
+        "title": "BudgetResponse",
+        "type": "object"
+      },
+      "CalendarProvider": {
+        "enum": [
+          "google",
+          "ics"
+        ],
+        "type": "string"
+      },
+      "CalendarRole": {
+        "enum": [
+          "anchor-source",
+          "write-target"
+        ],
+        "type": "string"
+      },
+      "CalendarSourcePatchRequest": {
+        "additionalProperties": false,
+        "description": "Include or exclude a source, and optionally rename it. An omitted field is left alone.",
+        "properties": {
+          "displayName": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayname"
+          },
+          "included": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Included"
+          }
+        },
+        "title": "CalendarSourcePatchRequest",
+        "type": "object"
+      },
+      "CalendarSourceResponse": {
+        "description": "One calendar source, with the reading its Settings panel renders.",
+        "properties": {
+          "anchorCount": {
+            "description": "How many commitments this source currently contributes. A count that changes is how progress is reported: there is no spinner and no progress bar anywhere in this product.",
+            "title": "Anchorcount",
+            "type": "integer"
+          },
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "externalId": {
+            "title": "Externalid",
+            "type": "string"
+          },
+          "horizonDays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many days ahead the plan is projected onto the write target. Null on an anchor source, which is read over whatever span the week being assembled needs.",
+            "title": "Horizondays"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "included": {
+            "title": "Included",
+            "type": "boolean"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/CalendarProvider"
+          },
+          "role": {
+            "$ref": "#/components/schemas/CalendarRole"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SourceState",
+            "description": "What this source's panel reports. 'excluded' is not an error: the user asked for zero anchors from it. 'error' means the last attempt could not read it, and the anchors it already contributed are retained."
+          },
+          "syncState": {
+            "$ref": "#/components/schemas/SyncStateResponse"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "role",
+          "displayName",
+          "externalId",
+          "included",
+          "state",
+          "anchorCount",
+          "syncState"
+        ],
+        "title": "CalendarSourceResponse",
+        "type": "object"
+      },
+      "CalendarSourcesResponse": {
+        "description": "Every source this tenant has, oldest first.",
+        "properties": {
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarSourceResponse"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources"
+        ],
+        "title": "CalendarSourcesResponse",
+        "type": "object"
+      },
       "CheckReading": {
         "description": "One check's contribution to readiness, as it appears on the wire.",
         "properties": {
@@ -187,6 +655,23 @@
           "message"
         ],
         "title": "FieldError",
+        "type": "object"
+      },
+      "HorizonPatchRequest": {
+        "additionalProperties": false,
+        "description": "Set how many days ahead the plan is projected. Write-target only.",
+        "properties": {
+          "horizonDays": {
+            "maximum": 90.0,
+            "minimum": 1.0,
+            "title": "Horizondays",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "horizonDays"
+        ],
+        "title": "HorizonPatchRequest",
         "type": "object"
       },
       "JsonWebKeySet": {
@@ -244,6 +729,207 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "OperationError": {
+        "description": "Why an operation failed. Absent while it has not.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "OperationError",
+        "type": "object"
+      },
+      "OperationKind": {
+        "enum": [
+          "solve",
+          "materialize",
+          "calendar_sync",
+          "projection"
+        ],
+        "type": "string"
+      },
+      "OperationResponse": {
+        "description": "One tracked long-running job, as a client follows it.\n\n``attempt`` is exposed because a retrying job must not be silent: a count that changes is how\nprogress is reported in this product, and there is no spinner anywhere to imply movement.",
+        "properties": {
+          "attempt": {
+            "description": "One-based, so a retrying job reads as 'try 2 of N'.",
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperationError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "inputVersion": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The input snapshot this solve read. Null until the worker loads inputs.",
+            "title": "Inputversion"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OperationKind"
+          },
+          "resultRevisionId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resultrevisionid"
+          },
+          "scheduledFor": {
+            "description": "When this operation became due.",
+            "format": "date-time",
+            "title": "Scheduledfor",
+            "type": "string"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OperationStatus"
+          },
+          "supersededBy": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersededby"
+          },
+          "target": {
+            "$ref": "#/components/schemas/OperationTarget"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "target",
+          "scheduledFor",
+          "attempt"
+        ],
+        "title": "OperationResponse",
+        "type": "object"
+      },
+      "OperationStatus": {
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "superseded"
+        ],
+        "type": "string"
+      },
+      "OperationTarget": {
+        "description": "What an operation acts on. Exactly one member is set.",
+        "properties": {
+          "isoWeek": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The week a solve, a materialize, or a projection is for.",
+            "title": "Isoweek"
+          },
+          "sourceId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The calendar source a sync is for.",
+            "title": "Sourceid"
+          }
+        },
+        "title": "OperationTarget",
+        "type": "object"
+      },
+      "PeriodSpan": {
+        "description": "The half-open interval the period covers, ``[start, end)``.\n\nPresent because it is what the denominator was derived from. It may be 167 or 169 hours\nacross a daylight-saving transition, and something else again in a zone whose transition is\nnot an hour, so a reader that needs the length reads these two instants rather than assuming\none.",
+        "properties": {
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "PeriodSpan",
+        "type": "object"
+      },
       "Problem": {
         "description": "RFC 9457 problem details. Optional members are omitted from the wire.",
         "properties": {
@@ -298,6 +984,198 @@
         "title": "Problem",
         "type": "object"
       },
+      "ProjectCreateRequest": {
+        "additionalProperties": false,
+        "description": "A Project to declare, inside an Area that already exists.",
+        "properties": {
+          "areaId": {
+            "format": "uuid",
+            "title": "Areaid",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProjectStatus",
+            "default": "active"
+          }
+        },
+        "required": [
+          "areaId",
+          "name"
+        ],
+        "title": "ProjectCreateRequest",
+        "type": "object"
+      },
+      "ProjectPatchRequest": {
+        "additionalProperties": false,
+        "description": "A partial update. An omitted field is left alone; an explicit null clears the deadline.\n\nCompleting a Project is ``status: \"completed\"`` here. It leaves the Project's historical\ntime attribution intact, because the attribution was always to its Area.\n\n``areaId`` is not a member of this shape and an unknown field is rejected.",
+        "properties": {
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ProjectPatchRequest",
+        "type": "object"
+      },
+      "ProjectResponse": {
+        "description": "One Project. It carries no budget field, because it inherits its Area's allocation.",
+        "properties": {
+          "areaId": {
+            "description": "The one Area this Project sits in. A Project never spans Areas, so time spent on it counts toward exactly this Area.",
+            "format": "uuid",
+            "title": "Areaid",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProjectStatus"
+          }
+        },
+        "required": [
+          "id",
+          "areaId",
+          "name",
+          "deadline",
+          "status"
+        ],
+        "title": "ProjectResponse",
+        "type": "object"
+      },
+      "ProjectStatus": {
+        "description": "Where a Project is in its life. An Area has no equivalent, because it never ends.",
+        "enum": [
+          "active",
+          "completed",
+          "abandoned"
+        ],
+        "title": "ProjectStatus",
+        "type": "string"
+      },
+      "ProjectsResponse": {
+        "description": "Every Project a tenant has declared, oldest first.",
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectResponse"
+            },
+            "title": "Projects",
+            "type": "array"
+          }
+        },
+        "required": [
+          "projects"
+        ],
+        "title": "ProjectsResponse",
+        "type": "object"
+      },
+      "RampReading": {
+        "description": "How much of the sealed ramp this tenant's Areas are using.\n\nReported on the list and on every mutation, because both change it. ``statement`` is\nnon-null exactly when two Areas hold one step, which is what a thirteenth Area produces:\nthe ramp repeats rather than inventing a thirteenth ink, and the interface has to say so.",
+        "properties": {
+          "areasSharingAPigment": {
+            "description": "How many Areas hold a step another Area also holds. Zero until the ramp is full.",
+            "title": "Areassharingapigment",
+            "type": "integer"
+          },
+          "pigmentCount": {
+            "description": "How many steps the ramp holds. Sealed: it is always the same number.",
+            "title": "Pigmentcount",
+            "type": "integer"
+          },
+          "pigmentsInUse": {
+            "description": "How many distinct steps of the ramp this tenant's Areas hold.",
+            "title": "Pigmentsinuse",
+            "type": "integer"
+          },
+          "statement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What identity now rests on, stated when a step is shared.",
+            "title": "Statement"
+          }
+        },
+        "required": [
+          "pigmentCount",
+          "pigmentsInUse",
+          "areasSharingAPigment"
+        ],
+        "title": "RampReading",
+        "type": "object"
+      },
       "ReadinessReading": {
         "description": "``GET /readyz``, at 200 and at 503 alike.\n\nDeclared rather than left as an untyped body because the browser reads it through the\ngenerated client. Without a model the frontend has to hard-code the 503 and cannot reach\n``checks`` at all, which is the one payload that says WHICH capability is unavailable.",
         "properties": {
@@ -323,6 +1201,56 @@
         ],
         "title": "ReadinessReading",
         "type": "object"
+      },
+      "RejectedEventResponse": {
+        "description": "One component of a feed that produced no event, and why.",
+        "properties": {
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RejectionKind"
+          },
+          "line": {
+            "description": "The line the component began on in the feed as delivered, before unfolding.",
+            "title": "Line",
+            "type": "integer"
+          },
+          "uid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uid"
+          }
+        },
+        "required": [
+          "kind",
+          "line",
+          "component",
+          "detail"
+        ],
+        "title": "RejectedEventResponse",
+        "type": "object"
+      },
+      "RejectionKind": {
+        "enum": [
+          "missing-duration",
+          "unknown-zone",
+          "malformed-value",
+          "unparseable-recurrence",
+          "duplicate-uid"
+        ],
+        "type": "string"
       },
       "ReviewCadence": {
         "description": "Whether the pie review waits to be asked, or is offered on a schedule.\n\nThe review proposes revised Area percentages and never applies them, so the cadence\ndecides when it is offered rather than when anything changes.",
@@ -489,6 +1417,78 @@
         "title": "SettingsResponse",
         "type": "object"
       },
+      "SourceState": {
+        "enum": [
+          "never-synced",
+          "excluded",
+          "error",
+          "ok"
+        ],
+        "type": "string"
+      },
+      "SyncStateResponse": {
+        "description": "What the last attempt on a source did, successful or not.\n\nBoth instants are exposed because staleness is the difference between them: a recent attempt\nwith an older success is a source that is failing, and that is not the same as a source\nnobody has polled.",
+        "properties": {
+          "eventsRead": {
+            "title": "Eventsread",
+            "type": "integer"
+          },
+          "lastAttemptAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastattemptat"
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the last attempt failed, stated with what still works. Null when it succeeded.",
+            "title": "Lasterror"
+          },
+          "lastSuccessAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastsuccessat"
+          },
+          "rejectedCount": {
+            "title": "Rejectedcount",
+            "type": "integer"
+          },
+          "rejections": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedEventResponse"
+            },
+            "title": "Rejections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "eventsRead",
+          "rejectedCount",
+          "rejections"
+        ],
+        "title": "SyncStateResponse",
+        "type": "object"
+      },
       "TravelOverrideRequest": {
         "additionalProperties": false,
         "description": "A range to declare. Both dates inclusive, and the range may not overlap another.\n\n``startDate`` after ``endDate`` is a 422 naming ``endDate``, and an overlap with an\nexisting override is a 409 naming both ranges. Two ranges that abut exactly are\naccepted: adjacency is not overlap.",
@@ -568,6 +1568,9 @@
         ],
         "title": "TravelOverridesResponse",
         "type": "object"
+      },
+      "WireDecimal": {
+        "type": "number"
       }
     }
   },
@@ -740,6 +1743,1501 @@
         "summary": "Authorization Server metadata",
         "tags": [
           "oauth"
+        ]
+      }
+    },
+    "/api/v1/areas": {
+      "get": {
+        "description": "The Areas, in the order the ramp dealt their pigments.",
+        "operationId": "list_areas_api_v1_areas_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AreasResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Every Area, with the state of the pigment ramp",
+        "tags": [
+          "areas"
+        ]
+      },
+      "post": {
+        "description": "Declare an Area. The next step of the ramp is assigned; no colour is accepted.",
+        "operationId": "declare_area_api_v1_areas_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AreaCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AreaView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Declare an Area and deal it a pigment",
+        "tags": [
+          "areas"
+        ]
+      }
+    },
+    "/api/v1/areas/{area_id}": {
+      "get": {
+        "description": "One Area of this tenant's.",
+        "operationId": "read_area_api_v1_areas__area_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "area_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Area Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AreaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "One Area and the budget it declares",
+        "tags": [
+          "areas"
+        ]
+      },
+      "patch": {
+        "description": "Apply a partial update. An omitted field is left alone; an explicit null clears one.",
+        "operationId": "update_area_api_v1_areas__area_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "area_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Area Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AreaPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AreaView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Change a name, floor, share, or pigment step",
+        "tags": [
+          "areas"
+        ]
+      }
+    },
+    "/api/v1/budget": {
+      "get": {
+        "description": "One period's budget report. Writes nothing.",
+        "operationId": "read_budget_api_v1_budget_get",
+        "parameters": [
+          {
+            "description": "The ISO week to report on, such as '2026-W07'. Every figure in the report is week-scoped, because discretionary time derives from one week's span.",
+            "in": "query",
+            "name": "period",
+            "required": true,
+            "schema": {
+              "description": "The ISO week to report on, such as '2026-W07'. Every figure in the report is week-scoped, because discretionary time derives from one week's span.",
+              "title": "Period",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Discretionary time, per-Area target and actual, and the two residuals",
+        "tags": [
+          "budgets"
+        ]
+      }
+    },
+    "/api/v1/calendar-sources": {
+      "get": {
+        "description": "Each source's provider, anchor count, last sync time, and state.",
+        "operationId": "list_calendar_sources_api_v1_calendar_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSourcesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Every calendar source, with its sync state",
+        "tags": [
+          "calendars"
+        ]
+      },
+      "post": {
+        "description": "Add a source, with an ICS feed address normalized on the way in.",
+        "operationId": "add_calendar_source_api_v1_calendar_sources_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCalendarSourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSourceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Add an anchor source. No OAuth for an ICS feed",
+        "tags": [
+          "calendars"
+        ]
+      }
+    },
+    "/api/v1/calendar-sources/{source_id}": {
+      "delete": {
+        "description": "Remove a source. Its anchors go with it.",
+        "operationId": "remove_calendar_source_api_v1_calendar_sources__source_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Remove a source and the anchors it contributed",
+        "tags": [
+          "calendars"
+        ]
+      },
+      "get": {
+        "description": "One source, or a 404 that discloses nothing about another tenant's rows.",
+        "operationId": "read_calendar_source_api_v1_calendar_sources__source_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSourceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "One source and its sync state",
+        "tags": [
+          "calendars"
+        ]
+      },
+      "patch": {
+        "description": "Apply a partial update. An excluded source reports zero anchors, not an error.",
+        "operationId": "change_calendar_source_api_v1_calendar_sources__source_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarSourcePatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSourceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Include or exclude a source, or rename it",
+        "tags": [
+          "calendars"
+        ]
+      }
+    },
+    "/api/v1/calendar-sources/{source_id}/horizon": {
+      "patch": {
+        "description": "Set how many days ahead the plan is projected. 422 on an anchor source.",
+        "operationId": "set_projection_horizon_api_v1_calendar_sources__source_id__horizon_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HorizonPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSourceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Set the projection horizon. Write-target only",
+        "tags": [
+          "calendars"
+        ]
+      }
+    },
+    "/api/v1/calendar-sources/{source_id}/role": {
+      "put": {
+        "description": "Make this the one calendar syncr writes the plan to.",
+        "operationId": "designate_write_target_api_v1_calendar_sources__source_id__role_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSourceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Assign the write-target role. 409 if one exists",
+        "tags": [
+          "calendars"
+        ]
+      }
+    },
+    "/api/v1/calendar-sources/{source_id}/sync": {
+      "post": {
+        "description": "Sync one source now, and answer with the operation that did it.",
+        "operationId": "sync_calendar_source_api_v1_calendar_sources__source_id__sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Force a sync. Returns an Operation",
+        "tags": [
+          "calendars"
+        ]
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "description": "The Projects, oldest first.",
+        "operationId": "list_projects_api_v1_projects_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "areaId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Areaid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Every Project, or the ones inside one Area",
+        "tags": [
+          "areas"
+        ]
+      },
+      "post": {
+        "description": "Declare a Project. It carries no budget: its Area's allocation covers it.",
+        "operationId": "declare_project_api_v1_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Declare a Project inside an Area",
+        "tags": [
+          "areas"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}": {
+      "get": {
+        "description": "One Project of this tenant's.",
+        "operationId": "read_project_api_v1_projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "One Project",
+        "tags": [
+          "areas"
+        ]
+      },
+      "patch": {
+        "description": "Apply a partial update. Completing a Project is a status change and nothing else.",
+        "operationId": "update_project_api_v1_projects__project_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Change a name, deadline, or status",
+        "tags": [
+          "areas"
         ]
       }
     },
