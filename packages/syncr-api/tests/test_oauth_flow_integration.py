@@ -766,7 +766,7 @@ def test_a_row_expiring_at_the_instant_swept_to_survives_and_one_before_it_does_
 
     swept = swept_at(live_database_url, instant)
 
-    # The flow's own code expired an hour ago on this clock; its refresh token has not.
+    # The flow's own code expired a day before this instant; its two-month refresh token has not.
     assert (swept.codes, swept.refresh_tokens) == (2, 1)
     assert {
         code.id for code in rows_of(live_database_url, OAuthAuthorizationCode, owner.tenant_id)
