@@ -23,10 +23,12 @@ set the Week grid's default axis extent and the third decides when the pie revie
 offered, so changing any of them bumps nothing and triggers no solve.
 
 ``authorize_tenant`` is called once here, on the one row a caller addresses by identifier.
-Every other row these methods touch was fetched through a repository scoped to the
-principal's own tenant, so its ``tenant_id`` IS the principal's and a check would compare
-a value against itself. Where the caller supplies the identifier, the check is what turns
-another tenant's override into a 404 rather than a deletion.
+Every row these methods touch was fetched through a repository scoped to the principal's
+own tenant, so its ``tenant_id`` IS the principal's. The scoped ``SELECT`` never returns a
+foreign row, and that is what turns another tenant's override identifier into a 404 rather
+than a deletion. The one call is defense in depth rather than the check producing that 404,
+and it sits where the caller supplies an identifier because that is the only place an
+unscoped read could ever be introduced.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from typing import TYPE_CHECKING
 
 from syncr_api.core.errors import NotFound, ValidationFailed
 from syncr_api.core.principal import authorize_tenant
+from syncr_api.user_settings.config import VISIBLE_HOURS_MAX, VISIBLE_HOURS_MIN
 from syncr_api.user_settings.solve_inputs import weeks_covering, weeks_from
 from syncr_api.user_settings.zone_reading import (
     as_domain,
@@ -138,7 +141,7 @@ class SettingsService:
         now = self._clock()
         current = await self._settings.lock(created_at=now)
         merged = change.applied_to(current)
-        _require_a_positive_day(merged)
+        _require_a_renderable_grid(merged)
 
         overrides = await self._overrides.list_all()
         # Built before the write, so an unknown zone is rejected rather than stored.
@@ -203,6 +206,7 @@ class SettingsService:
         self, principal: Principal, override_id: TravelOverrideId
     ) -> None:
         """Remove one override, so the home zone governs its dates again."""
+        now = self._clock()
         found = await self._overrides.find(override_id)
         if found is None:
             raise NotFound(f"No {TRAVEL_OVERRIDE_RESOURCE} matches that identifier.")
@@ -215,7 +219,7 @@ class SettingsService:
             override_id=str(override_id),
         )
         settings = await self._settings.read()
-        await self._bump_for(found, today=local_date(self._clock(), settings.home_zone))
+        await self._bump_for(found, today=local_date(now, settings.home_zone))
 
     async def _bump_for(self, override: TravelOverrideRecord, *, today: date) -> None:
         """Bump the future weeks this override's range covers, if it covers any."""
@@ -248,18 +252,28 @@ def _or_current[ValueT](change: ValueT | None, current: ValueT) -> ValueT:
     return current if change is None else change
 
 
-def _require_a_positive_day(merged: SettingsRecord) -> None:
-    """Reject day bounds that do not describe a forward span.
+def _require_a_renderable_grid(merged: SettingsRecord) -> None:
+    """Reject grid geometry the Week screen cannot draw.
 
-    Checked against the MERGED record rather than the request, because a patch may set
-    one bound and inherit the other, and it is the pair that has to make sense. The Week
-    grid derives its default extent as the interval between them, and an interval needs
-    a positive length.
+    Both rules are stated over the MERGED record rather than the request, because a patch
+    may set one value and inherit the other, and it is the resulting pair that has to make
+    sense. The Week grid derives its default extent as the interval between the day bounds,
+    and an interval needs a positive length.
+
+    Visible hours is bounded by the request schema as well. It is restated here because
+    ``SettingsService`` is a public interface: a caller reaching it without FastAPI would
+    otherwise get an ``IntegrityError`` from the CHECK constraint where the day bounds give
+    a stated 422.
     """
-    if merged.day_start < merged.day_end:
-        return
-    raise ValidationFailed(
-        f"The day starts at {merged.day_start:%H:%M} and ends at {merged.day_end:%H:%M}, "
-        "so it has no length. Day start must be earlier than day end. Nothing was "
-        "changed; every other setting still reads as it did."
-    )
+    if not VISIBLE_HOURS_MIN <= merged.visible_hours <= VISIBLE_HOURS_MAX:
+        raise ValidationFailed(
+            f"Visible hours is {merged.visible_hours}, outside the grid's zoom range of "
+            f"{VISIBLE_HOURS_MIN} to {VISIBLE_HOURS_MAX} hours. Nothing was changed; every "
+            "other setting still reads as it did."
+        )
+    if merged.day_start >= merged.day_end:
+        raise ValidationFailed(
+            f"The day starts at {merged.day_start:%H:%M} and ends at {merged.day_end:%H:%M}, "
+            "so it has no length. Day start must be earlier than day end. Nothing was "
+            "changed; every other setting still reads as it did."
+        )

@@ -111,6 +111,11 @@ def weeks_covering(start_date: date, end_date: date, *, today: date) -> WeekRang
 
     ``None`` when the whole range is behind the current week: those weeks keep the span
     they were computed with, so there is nothing to re-derive and nothing to bump.
+
+    ``start_date <= end_date`` is a precondition. The domain refuses the reversed pair
+    before an override can be stored or declared, so a caller here already holds a range
+    that runs forward; passing a reversed one raises ``ValueError`` from ``WeekRange``
+    rather than returning a range nobody could act on.
     """
     current = IsoWeek.containing(today)
     last = IsoWeek.containing(end_date)

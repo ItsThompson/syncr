@@ -7,7 +7,7 @@
  * a reader wonder whether the feature exists. `count` absent means the tab counts nothing at all, which is
  * a different statement from counting none. */
 
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import * as RadixTabs from "@radix-ui/react-tabs";
 
 import "./Tabs.css";
@@ -26,11 +26,13 @@ export interface TabsProps {
   readonly tabs: readonly Tab[];
   /** Names the tab strip, which is what a screen reader announces before the tabs themselves. */
   readonly label: string;
+  /** The strip and its panels together, which is the element a screen positions. */
+  readonly ref?: Ref<HTMLDivElement> | undefined;
 }
 
-export function Tabs({ value, onValueChange, tabs, label }: TabsProps) {
+export function Tabs({ value, onValueChange, tabs, label, ref }: TabsProps) {
   return (
-    <RadixTabs.Root value={value} onValueChange={onValueChange}>
+    <RadixTabs.Root ref={ref} value={value} onValueChange={onValueChange}>
       <RadixTabs.List className="tabs" aria-label={label}>
         {tabs.map((tab) => (
           <RadixTabs.Trigger key={tab.value} value={tab.value} className="tabs__trigger">

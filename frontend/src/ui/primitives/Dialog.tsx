@@ -12,7 +12,7 @@
  * `isOpen` is the caller's, because a dialog in this product is opened by a route, a keyboard chord or a
  * verdict row, and each of those already owns the state that decides. */
 
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 
 import "./Dialog.css";
@@ -29,6 +29,13 @@ export interface DialogProps {
   readonly footer?: ReactNode;
   /** Announced to a screen reader with the title. A dialog whose body is prose needs none. */
   readonly description?: string | undefined;
+  /**
+   * The panel, which is the element a caller measures or scrolls.
+   *
+   * Focus is Radix's: it is trapped in the panel while open and returned to the trigger on close, so a
+   * caller does not need this node to place the caret.
+   */
+  readonly ref?: Ref<HTMLDivElement> | undefined;
 }
 
 export function Dialog({
@@ -38,13 +45,14 @@ export function Dialog({
   children,
   footer,
   description,
+  ref,
 }: DialogProps) {
   return (
     <RadixDialog.Root open={isOpen} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         {/* The scrim is the centring container, so the panel needs no transform: see overlay.css. */}
         <RadixDialog.Overlay className="overlay__scrim">
-          <RadixDialog.Content className="overlay dialog">
+          <RadixDialog.Content ref={ref} className="overlay dialog">
             <header className="on-ink-surface dialog__header">
               <RadixDialog.Title>{title}</RadixDialog.Title>
               <RadixDialog.Close className="dialog__dismiss" aria-label="Close">

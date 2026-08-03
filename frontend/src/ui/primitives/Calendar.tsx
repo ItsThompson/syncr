@@ -15,7 +15,7 @@
  * `aria-selected` on the cell, which is the role that supports it. A button in every cell would put 35 stops
  * in the tab order and would need `aria-pressed`, which announces a toggle rather than a choice. */
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type Ref } from "react";
 
 import "./Calendar.css";
 import "./glyphs.css";
@@ -52,6 +52,8 @@ export interface CalendarProps {
   readonly today: string;
   /** Names the grid, which is what a screen reader announces on entering it. */
   readonly label: string;
+  /** The calendar, which is the element a popover or a panel positions. */
+  readonly ref?: Ref<HTMLDivElement> | undefined;
 }
 
 export function Calendar({
@@ -61,6 +63,7 @@ export function Calendar({
   onSelect,
   today,
   label,
+  ref,
 }: CalendarProps) {
   /* The keyboard cursor, and null until an arrow key moves it. It is one piece of state rather than a
    * position plus a flag: the flag would say "a key has been pressed at some point", which is not a
@@ -111,7 +114,7 @@ export function Calendar({
   };
 
   return (
-    <div className="calendar">
+    <div className="calendar" ref={ref}>
       <div className="calendar__header">
         <Button
           rank="quiet"

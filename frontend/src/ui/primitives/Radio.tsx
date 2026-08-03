@@ -7,7 +7,7 @@
  * Radix owns the roving tab order, so the group takes one tab stop and the arrow keys move within it, which
  * is what a keyboard-first product needs from a set of exclusive choices. */
 
-import { useId } from "react";
+import { useId, type Ref } from "react";
 import * as RadixRadioGroup from "@radix-ui/react-radio-group";
 
 import "./toggle.css";
@@ -27,6 +27,13 @@ export interface RadioProps {
   readonly name?: string | undefined;
   readonly isDisabled?: boolean | undefined;
   readonly isRequired?: boolean | undefined;
+  /**
+   * The group, because one radio on its own means nothing and the group is what a form points at.
+   *
+   * Radix owns the roving tab order, so the group's one tab stop is a descendant rather than the group
+   * itself: a caller that means to focus the choice reads `[role="radio"][tabindex="0"]` off this node.
+   */
+  readonly ref?: Ref<HTMLDivElement> | undefined;
 }
 
 export function Radio({
@@ -37,11 +44,13 @@ export function Radio({
   name,
   isDisabled,
   isRequired,
+  ref,
 }: RadioProps) {
   const groupId = useId();
 
   return (
     <RadixRadioGroup.Root
+      ref={ref}
       className="flex flex-col gap-1"
       value={value}
       onValueChange={onValueChange}

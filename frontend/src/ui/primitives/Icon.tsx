@@ -15,6 +15,7 @@
  * `label`, which becomes the accessible name instead. */
 
 import type { LucideIcon } from "lucide-react";
+import type { Ref } from "react";
 import { cva } from "class-variance-authority";
 
 import "./Icon.css";
@@ -42,11 +43,14 @@ export interface IconProps {
    * illustrates, and announcing both reads the row twice.
    */
   readonly label?: string | undefined;
+  /** The drawn svg, which is what a caller measures when an icon has to line up with type. */
+  readonly ref?: Ref<SVGSVGElement> | undefined;
 }
 
-export function Icon({ mark: Mark, size, label }: IconProps) {
+export function Icon({ mark: Mark, size, label, ref }: IconProps) {
   return (
     <Mark
+      ref={ref}
       className={icon({ size })}
       aria-hidden={label === undefined ? true : undefined}
       aria-label={label}

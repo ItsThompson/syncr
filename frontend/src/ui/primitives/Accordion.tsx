@@ -7,7 +7,7 @@
  * `canExpandMany` is the one behavioural choice a caller makes. A Templates screen with several sections
  * open at once is the case that needs it; a settings group where one answer at a time is the point does not. */
 
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import * as RadixAccordion from "@radix-ui/react-accordion";
 
 import "./Accordion.css";
@@ -27,6 +27,8 @@ export interface AccordionProps {
   readonly openValues: readonly string[];
   readonly onOpenValuesChange: (next: readonly string[]) => void;
   readonly canExpandMany?: boolean | undefined;
+  /** The accordion, which is the element a screen positions or scrolls a section into view within. */
+  readonly ref?: Ref<HTMLDivElement> | undefined;
 }
 
 export function Accordion({
@@ -34,6 +36,7 @@ export function Accordion({
   openValues,
   onOpenValuesChange,
   canExpandMany,
+  ref,
 }: AccordionProps) {
   const shared = sections.map((section) => (
     <RadixAccordion.Item key={section.value} value={section.value} className="accordion__item">
@@ -60,6 +63,7 @@ export function Accordion({
   if (canExpandMany === true) {
     return (
       <RadixAccordion.Root
+        ref={ref}
         type="multiple"
         className="accordion"
         value={[...openValues]}
@@ -72,6 +76,7 @@ export function Accordion({
 
   return (
     <RadixAccordion.Root
+      ref={ref}
       type="single"
       collapsible
       className="accordion"

@@ -14,7 +14,7 @@
  * component keeps the highlighted ACTION ID and falls back to the first result whenever that id is not in
  * the current results, so there is no state to synchronise and no effect at all. */
 
-import { useId, useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent, type Ref } from "react";
 
 import "./Command.css";
 import "./states.css";
@@ -39,6 +39,8 @@ export interface CommandProps {
   readonly placeholder?: string | undefined;
   /** Shown in place of the list when the query matches nothing. */
   readonly emptyLabel: string;
+  /** The query field, which is where the caret belongs when a route or a chord opens a palette. */
+  readonly ref?: Ref<HTMLInputElement> | undefined;
 }
 
 function matching(actions: readonly CommandAction[], query: string): readonly CommandAction[] {
@@ -59,7 +61,7 @@ function grouped(actions: readonly CommandAction[]): readonly [string, CommandAc
   return [...groups.entries()];
 }
 
-export function Command({ actions, onSelect, label, placeholder, emptyLabel }: CommandProps) {
+export function Command({ actions, onSelect, label, placeholder, emptyLabel, ref }: CommandProps) {
   const [query, setQuery] = useState("");
   const [requestedId, setRequestedId] = useState<string | null>(null);
   /* The field points at the list and at the cursor's row by id, so the ids have to be unique in the
@@ -102,6 +104,7 @@ export function Command({ actions, onSelect, label, placeholder, emptyLabel }: C
   return (
     <div className="command">
       <input
+        ref={ref}
         type="text"
         role="combobox"
         className="command__query"

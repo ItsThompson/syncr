@@ -9,7 +9,7 @@
  * on the control rather than on the label, and what makes clicking the text toggle the box without a
  * handler: a `button` is a labelable element. */
 
-import { useId } from "react";
+import { useId, type Ref } from "react";
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 
 import "./glyphs.css";
@@ -32,6 +32,8 @@ export interface CheckboxProps {
   readonly name?: string | undefined;
   readonly isDisabled?: boolean | undefined;
   readonly isRequired?: boolean | undefined;
+  /** The box, which is the button here and where a form focusing this control lands. */
+  readonly ref?: Ref<HTMLButtonElement> | undefined;
 }
 
 export function Checkbox({
@@ -42,6 +44,7 @@ export function Checkbox({
   name,
   isDisabled,
   isRequired,
+  ref,
 }: CheckboxProps) {
   const generated = useId();
   const controlId = id ?? generated;
@@ -49,6 +52,7 @@ export function Checkbox({
   return (
     <span className="toggle">
       <RadixCheckbox.Root
+        ref={ref}
         id={controlId}
         /* Radix types its optional props as `?: T` rather than `?: T | undefined`, and under
            `exactOptionalPropertyTypes` passing an explicit undefined is an error, so an absent value is
@@ -58,6 +62,8 @@ export function Checkbox({
         checked={CHECKED_BY_STATE[state]}
         disabled={isDisabled === true}
         required={isRequired === true}
+        /* Radix types the callback with its own three-valued `CheckedState`, so the indeterminate arm is
+           required by the type even though an activation always resolves to a boolean. */
         onCheckedChange={(next) =>
           onStateChange(next === "indeterminate" ? "indeterminate" : next ? "checked" : "unchecked")
         }

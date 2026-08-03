@@ -10,7 +10,7 @@
  * `today` is the caller's, because today depends on the reader's home zone or their travel override. A
  * control that read a clock would also be a control no test could pin to a date. */
 
-import { useState } from "react";
+import { useState, type Ref } from "react";
 import * as RadixPopover from "@radix-ui/react-popover";
 
 import "./control.css";
@@ -41,6 +41,8 @@ export interface DatePickerProps {
   readonly isRequired?: boolean | undefined;
   /** The id of the hint or error text under the field, which the form row owns. */
   readonly describedBy?: string | undefined;
+  /** The date field, which is the typeable primary way in and where a form focusing this lands. */
+  readonly ref?: Ref<HTMLInputElement> | undefined;
 }
 
 export function DatePicker({
@@ -54,6 +56,7 @@ export function DatePicker({
   isInvalid,
   isRequired,
   describedBy,
+  ref,
 }: DatePickerProps) {
   const [isOpen, setOpen] = useState(false);
   const [month, setMonth] = useState<CalendarMonth>(() => monthOf(value, today));
@@ -68,6 +71,7 @@ export function DatePicker({
       <RadixPopover.Anchor asChild>
         <span className="date-picker">
           <input
+            ref={ref}
             type="text"
             inputMode="numeric"
             className="control control--figure date-picker__field"

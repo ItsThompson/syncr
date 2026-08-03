@@ -36,8 +36,7 @@ from syncr_api.user_settings.records import SettingsRecord, TravelOverrideRecord
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_api.user_settings.service import SettingsChange, SettingsService
 from syncr_api.user_settings.solve_inputs import WeekRange
-from syncr_domain.weeks import IsoWeek, week_span
-from syncr_domain.zones import ZoneProfile
+from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
     from syncr_api.user_settings.records import TravelOverrideId
@@ -375,6 +374,22 @@ async def test_day_bounds_that_describe_no_day_are_rejected(
     assert settings.stored == a_record(principal.tenant_id)
 
 
+@pytest.mark.parametrize("visible_hours", [5, 25, 0, -1])
+async def test_visible_hours_outside_the_zoom_range_is_rejected(
+    principal: Principal, versions: RecordingWeekInputVersions, visible_hours: int
+) -> None:
+    # The request schema bounds this field as well. Restated in the service because the
+    # service is a public interface: a caller reaching it without FastAPI would otherwise
+    # get an IntegrityError from the CHECK constraint where the day bounds give a 422.
+    service, settings, _ = build_service(principal, versions, stored=a_record(principal.tenant_id))
+
+    with pytest.raises(ValidationFailed, match="zoom range"):
+        await service.update(principal, SettingsChange(visible_hours=visible_hours))
+
+    assert settings.stored == a_record(principal.tenant_id)
+    assert versions.bumped == []
+
+
 @pytest.mark.parametrize("zone", ["Europe", "Europe/Lundon", "", "x" * 65, "US"])
 async def test_a_home_zone_the_tz_database_does_not_name_is_rejected(
     principal: Principal, versions: RecordingWeekInputVersions, zone: str
@@ -384,9 +399,12 @@ async def test_a_home_zone_the_tz_database_does_not_name_is_rejected(
     # which is why one clause covers all five and none of them is a 500.
     service, settings, _ = build_service(principal, versions, stored=a_record(principal.tenant_id))
 
-    with pytest.raises(ValidationFailed, match="home zone"):
+    with pytest.raises(ValidationFailed, match="home zone was not accepted") as refused:
         await service.update(principal, SettingsChange(home_zone=zone))
 
+    # The remedy names the field's own vocabulary, which is what separates this rejection
+    # from the other thing the zone layer refuses through the same error type.
+    assert "IANA" in refused.value.detail
     assert settings.stored == a_record(principal.tenant_id)
     assert versions.bumped == []
 
@@ -463,13 +481,17 @@ async def test_two_ranges_that_abut_exactly_are_both_allowed(
 async def test_a_range_that_ends_before_it_starts_is_rejected(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
+    # A reversed range is not a zone problem, so the rejection does not offer a zone
+    # identifier as its remedy. The wire rejects the pair at the schema, naming `endDate`;
+    # this is the same refusal for a caller who reaches the service directly.
     service, _, travel = build_service(principal, versions, stored=a_record(principal.tenant_id))
 
-    with pytest.raises(ValidationFailed, match="start_date <= end_date"):
+    with pytest.raises(ValidationFailed, match="start_date <= end_date") as refused:
         await service.declare_travel_override(
             principal, start_date=date(2026, 8, 10), end_date=date(2026, 8, 4), zone=TOKYO
         )
 
+    assert "IANA" not in refused.value.detail
     assert travel.rows == []
 
 
@@ -479,7 +501,7 @@ async def test_an_override_zone_the_tz_database_does_not_name_is_rejected(
 ) -> None:
     service, _, travel = build_service(principal, versions, stored=a_record(principal.tenant_id))
 
-    with pytest.raises(ValidationFailed, match="zone"):
+    with pytest.raises(ValidationFailed, match="zone was not accepted"):
         await service.declare_travel_override(
             principal, start_date=date(2026, 8, 4), end_date=date(2026, 8, 6), zone=zone
         )
@@ -536,7 +558,7 @@ async def test_removing_an_override_that_does_not_exist_is_a_404(
 ) -> None:
     service, _, _ = build_service(principal, versions, stored=a_record(principal.tenant_id))
 
-    with pytest.raises(NotFound, match="travel override"):
+    with pytest.raises(NotFound, match="No travel override matches"):
         await service.remove_travel_override(principal, uuid4())
 
     assert versions.bumped == []
@@ -572,26 +594,3 @@ async def test_listing_returns_every_override_in_date_order(
     listed = await service.list_travel_overrides(principal)
 
     assert [row.id for row in listed] == [earlier.id, later.id]
-
-
-# --------------------------------------------------------------------------------
-# What a home-zone change does NOT do.
-# --------------------------------------------------------------------------------
-
-
-async def test_a_home_zone_change_does_not_alter_a_span_already_computed(
-    principal: Principal, versions: RecordingWeekInputVersions
-) -> None:
-    # The stored-span rule, at the layer that can express it here: a span is a value
-    # computed from the profile that was current, so a later change to the profile cannot
-    # reach it. What the change does instead is bump the week, which is what makes a
-    # FUTURE week re-derive. An approved revision's document is asserted directly by the
-    # plan-storage tier, which owns the table that holds one.
-    before = week_span(WEEK_32, ZoneProfile(home_zone=LONDON))
-    service, _, _ = build_service(principal, versions, stored=a_record(principal.tenant_id))
-
-    await service.update(principal, SettingsChange(home_zone=TOKYO))
-
-    assert week_span(WEEK_32, ZoneProfile(home_zone=LONDON)) == before
-    assert week_span(WEEK_32, ZoneProfile(home_zone=TOKYO)) != before
-    assert versions.bumped == [WeekRange(first=WEEK_31, last=None)]

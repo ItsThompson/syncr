@@ -11,6 +11,7 @@
  * The options are data rather than children, because every consumer in this product has a list to hand:
  * Areas, a sort order, a grain. A caller that needs arbitrary content in a row needs a different control. */
 
+import type { Ref } from "react";
 import * as RadixSelect from "@radix-ui/react-select";
 
 import "./control.css";
@@ -40,6 +41,8 @@ export interface SelectProps {
   readonly label?: string | undefined;
   /** The id of the hint or error text under the control, which the form row owns. */
   readonly describedBy?: string | undefined;
+  /** The trigger, which is the focusable half of this control and where a form focusing it lands. */
+  readonly ref?: Ref<HTMLButtonElement> | undefined;
 }
 
 export function Select({
@@ -54,6 +57,7 @@ export function Select({
   isRequired,
   label,
   describedBy,
+  ref,
 }: SelectProps) {
   return (
     <RadixSelect.Root
@@ -66,6 +70,7 @@ export function Select({
       {...(name === undefined ? {} : { name })}
     >
       <RadixSelect.Trigger
+        ref={ref}
         id={id}
         className="control select__trigger"
         aria-invalid={isInvalid === true ? true : undefined}

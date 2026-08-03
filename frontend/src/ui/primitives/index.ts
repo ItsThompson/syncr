@@ -25,14 +25,37 @@
  * `Icon` is here rather than in the inventory because the icon policy needs a home: three sizes read from
  * --icon-sm, --icon and --icon-lg, with the stroke, caps and joins read from tokens. Ticket 3 deferred the
  * sidebar's icons to this ticket for exactly that reason, since half-building them would hard-code the
- * values the tokens already state. */
+ * values the tokens already state.
+ *
+ * REFS AND `asChild`, WHICH ARE NOT THE SAME DECISION.
+ *
+ * Every control here forwards a ref, to the element a caller would reach for: the focusable half of a field
+ * family control, the query field of the command list, the panel of the dialog, the group of the radio set.
+ * That is what lets a form focus its first invalid field and a route put the caret where the reader is about
+ * to type, in a product whose primary input is a keyboard. Each prop names the element it lands on, and
+ * `__tests__/refs.test.tsx` renders every export and asserts the node it receives.
+ *
+ * `asChild` is exposed on `Button` alone, and the reason is structural rather than a matter of demand.
+ * `Button` renders ONE element and its children are the caller's, so substituting the element changes
+ * nothing the kit decided: an anchor with an href keeps middle-click and cmd-click, which is what makes the
+ * rule that anything navigating is a real link satisfiable at all. Every other component here either
+ * composes several elements of its own (the dialog's header, body and footer; the checkbox's box and its
+ * label; the select's trigger and its list) or takes its rows as DATA rather than as children. In both
+ * shapes there is no single child element to substitute: the prop would have to arrive as a render prop per
+ * part, and it would hand a caller one piece of a structure this kit designed. Radix supports `asChild` on
+ * several of those roots, and it stays unexposed here until a screen states which part it needs and why.
+ *
+ * A navigating tab strip is the case that looks like it wants one and does not: a Radix tab trigger switches
+ * a panel in place, and a strip of links that changes the route is a `nav`, which the layout layer owns.
+ *
+ * `CommandItem` is deliberately not exported. A palette row is composed from the actions `Command` is given,
+ * because a caller assembling rows would be composing a row this kit has not designed. */
 
 export { Accordion, type AccordionProps, type AccordionSection } from "./Accordion";
 export { Button, type ButtonProps, type ButtonRank } from "./Button";
 export { Calendar, type CalendarProps } from "./Calendar";
 export { Checkbox, type CheckboxProps, type CheckboxState } from "./Checkbox";
 export { Command, type CommandAction, type CommandProps } from "./Command";
-export { CommandItem, type CommandItemProps } from "./CommandItem";
 export { DatePicker, type DatePickerProps } from "./DatePicker";
 export { Dialog, type DialogProps } from "./Dialog";
 export { Icon, type IconProps } from "./Icon";

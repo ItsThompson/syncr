@@ -8,6 +8,8 @@
  * refused it would forbid the case the product exists to handle. The caller that knows which day each end
  * belongs to is the one that can judge it. */
 
+import type { Ref } from "react";
+
 import { TimeInput } from "./TimeInput";
 
 export interface TimeRange {
@@ -27,6 +29,8 @@ export interface TimeRangeInputProps {
   readonly label: string;
   /** The id of the hint or error text under the control, which the form row owns. */
   readonly describedBy?: string | undefined;
+  /** The start field, which is the first of the two and where a form focusing the interval lands. */
+  readonly ref?: Ref<HTMLInputElement> | undefined;
 }
 
 export function TimeRangeInput({
@@ -36,12 +40,14 @@ export function TimeRangeInput({
   isInvalid,
   label,
   describedBy,
+  ref,
 }: TimeRangeInputProps) {
   return (
     /* A fieldset rather than a span with `role="group"`: the native element carries the grouping, and one
        label names the interval rather than each end naming itself. */
     <fieldset className="inline-flex items-center gap-2" aria-label={label}>
       <TimeInput
+        ref={ref}
         value={value.start}
         onValueChange={(start) => onValueChange({ ...value, start })}
         isDisabled={isDisabled}
