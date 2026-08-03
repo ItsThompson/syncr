@@ -174,6 +174,22 @@ describe("the month grid", () => {
     expect(stops[0]).toHaveAttribute("aria-label", dayLabel("2025-02-19"));
   });
 
+  /* March 2025 starts on a Saturday, so the grid's first CELL is Monday 24 February. A tab stop there puts
+   * the reader in the previous month while the header reads March, and the arrow keys then move from a day
+   * they cannot see is current. */
+  it("keeps the tab stop inside the month on show, not on the grid's first cell", async () => {
+    renderPicker();
+    await openCalendar();
+
+    await userEvent.click(screen.getByRole("button", { name: "Next month" }));
+    const stops = screen
+      .getAllByRole("cell")
+      .filter((cell) => cell.getAttribute("tabindex") === "0");
+
+    expect(stops).toHaveLength(1);
+    expect(stops[0]).toHaveAttribute("aria-label", dayLabel("2025-03-01"));
+  });
+
   it("moves the cursor a day at a time with the arrow keys", async () => {
     renderPicker();
     await openCalendar();
@@ -213,6 +229,23 @@ describe("the month grid", () => {
     await userEvent.keyboard("{ArrowRight}{Enter}");
 
     expect(onValueChange).toHaveBeenCalledWith("2025-02-20");
+  });
+
+  /* Focus follows the cursor when the cursor MOVES, and at no other time. Paging away and back re-renders a
+   * grid that contains the cursor's day again, and a focus call on that render takes the reader off the
+   * button they just pressed. */
+  it("leaves focus alone on a render the arrow keys did not cause", async () => {
+    renderPicker();
+    await openCalendar();
+
+    day("2025-02-19").focus();
+    await userEvent.keyboard("{ArrowRight}");
+    const next = screen.getByRole("button", { name: "Next month" });
+    await userEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    await userEvent.click(next);
+
+    expect(next).toHaveFocus();
+    expect(day("2025-02-20")).not.toHaveFocus();
   });
 
   it("draws the neighbouring months' days muted rather than dropping them", async () => {

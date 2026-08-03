@@ -15,7 +15,7 @@
  * `aria-selected` on the cell, which is the role that supports it. A button in every cell would put 35 stops
  * in the tab order and would need `aria-pressed`, which announces a toggle rather than a choice. */
 
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import "./Calendar.css";
 import "./glyphs.css";
@@ -62,21 +62,36 @@ export function Calendar({
   today,
   label,
 }: CalendarProps) {
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [isKeyboardDriven, setKeyboardDriven] = useState(false);
+  /* The keyboard cursor, and null until an arrow key moves it. It is one piece of state rather than a
+   * position plus a flag: the flag would say "a key has been pressed at some point", which is not a
+   * question this component ever needs to ask, and focus would follow every later render. */
+  const [keyboardCursor, setKeyboardCursor] = useState<string | null>(null);
+  const cellsByDay = useRef(new Map<string, HTMLTableCellElement>());
+
+  /* Focus moves once per cursor change. Focusing from a ref callback instead would fire on every render,
+   * because a new callback identity detaches and re-attaches all 35 cells, and paging the month and back
+   * would take focus off the button the reader had just clicked. */
+  useEffect(() => {
+    if (keyboardCursor === null) return;
+    cellsByDay.current.get(keyboardCursor)?.focus();
+  }, [keyboardCursor]);
 
   const weeks = monthGrid(month);
   const days = weeks.flat();
   const inMonth = (iso: string | null) =>
     iso !== null && days.some((day) => day.iso === iso && !day.isOutsideMonth);
-  /* One tab stop for the month: where the cursor is, else the chosen day, else today, else the first cell. */
-  const tabStop = [cursor, selected, today].find(inMonth) ?? days[0]?.iso ?? null;
+  /* One tab stop for the month: where the cursor is, else the chosen day, else today, else the month's
+   * first day. The fallback is the first day IN the month rather than the grid's first cell, which is a
+   * leading day of the previous month whenever the month does not start on a Monday. */
+  const tabStop =
+    [keyboardCursor, selected, today].find(inMonth) ??
+    days.find((day) => !day.isOutsideMonth)?.iso ??
+    null;
 
   const moveCursor = (from: string, offset: number) => {
     const next = shiftDate(from, offset);
     if (next === null) return;
-    setKeyboardDriven(true);
-    setCursor(next);
+    setKeyboardCursor(next);
     const moved = parseIsoDate(next);
     if (moved !== null && (moved.year !== month.year || moved.month !== month.month)) {
       onMonthChange({ year: moved.year, month: moved.month });
@@ -146,7 +161,8 @@ export function Calendar({
                   aria-current={day.iso === today ? "date" : undefined}
                   aria-label={dayLabel(day.iso)}
                   ref={(node) => {
-                    if (isKeyboardDriven && day.iso === cursor) node?.focus();
+                    if (node === null) cellsByDay.current.delete(day.iso);
+                    else cellsByDay.current.set(day.iso, node);
                   }}
                   onKeyDown={(event) => onKeyDown(event, day.iso)}
                   onClick={() => onSelect(day.iso)}
