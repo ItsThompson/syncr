@@ -145,6 +145,55 @@ def test_a_missing_inner_end_closes_at_the_outer_one() -> None:
     assert [value_of(event, "UID") for event in events_in(components)] == ["one"]
 
 
+def test_a_repeated_begin_closes_the_component_it_repeats() -> None:
+    # RFC 5545 defines no component that contains another of the same name, so a BEGIN:VEVENT while
+    # a VEVENT is open means the previous one lost its END. Read as nesting instead, a publisher
+    # that never closes its events would build a tree one deep per event.
+    feed = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:one\r\nEND:EVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:two\r\nEND:EVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:three\r\nEND:EVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    components = parse_components(feed)
+
+    # Three siblings of the calendar, not three levels of nesting.
+    assert [value_of(event, "UID") for event in events_in(components)] == ["one", "two", "three"]
+    assert [child.name for child in components[0].children] == ["VEVENT"] * 3
+    # And each keeps its own properties rather than inheriting the one before it.
+    assert all(len(child.all_values("UID")) == 1 for child in components[0].children)
+
+
+def test_a_feed_that_never_closes_a_component_is_read_however_many_it_holds() -> None:
+    # The tolerance parse_components promises, past the depth bound. A bound that counted open
+    # frames would refuse this feed whole, which is the answer the tolerance exists to avoid, and it
+    # would tell the publisher its feed nests a hundred deep when what it has is unclosed siblings.
+    events = "".join(f"BEGIN:VEVENT\r\nUID:e{index}\r\nEND:EVENT\r\n" for index in range(500))
+    feed = f"BEGIN:VCALENDAR\r\n{events}END:VCALENDAR\r\n"
+
+    found = list(events_in(parse_components(feed)))
+
+    assert len(found) == 500
+    assert value_of(found[0], "UID") == "e0"
+    assert value_of(found[-1], "UID") == "e499"
+
+
+def test_a_genuinely_nested_component_still_nests() -> None:
+    # The other side of the repeated-BEGIN rule: names that DIFFER nest, so a VALARM inside a
+    # VEVENT is still a child and the depth bound still measures something real.
+    feed = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:one\r\n"
+        "BEGIN:VALARM\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\n"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    event = next(events_in(parse_components(feed)))
+
+    assert [child.name for child in event.children] == ["VALARM"]
+
+
 def test_an_end_naming_nothing_open_discards_no_component() -> None:
     feed = "END:VTIMEZONE\r\nBEGIN:VEVENT\r\nUID:one\r\nEND:VEVENT\r\n"
 

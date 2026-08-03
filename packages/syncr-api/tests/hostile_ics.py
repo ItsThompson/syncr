@@ -180,6 +180,10 @@ EMPTY_FEED: Final = (
     "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//example.ac.uk//Timetable//EN\r\nEND:VCALENDAR\r\n"
 )
 
+# The two container names :func:`nested_feed` alternates between. Neither is `VEVENT`, so the buried
+# event's own `BEGIN` cannot be read as repeating its wrapper's name.
+_NESTING_NAMES: Final = ("VCALENDAR", "VTIMEZONE")
+
 # A rule with neither COUNT nor UNTIL at a frequency no calendar publisher means. Bounded
 # expansion is what stops it holding a worker tick open.
 RUNAWAY_RECURRENCE: Final = (
@@ -213,17 +217,22 @@ def nested_feed(depth: int) -> str:
     """A feed in which the one ``VEVENT`` sits at nesting depth ``depth``.
 
     ``depth`` counts the event itself, so ``nested_feed(3)`` is the shape a real feed has:
-    ``VCALENDAR`` holding a ``VCALENDAR`` holding the event. Stated that way round so a caller can
-    write the bound it is testing rather than the bound minus one.
+    a container holding a container holding the event. Stated that way round so a caller can write
+    the bound it is testing rather than the bound minus one.
+
+    The wrappers ALTERNATE between two component names, because a repeated ``BEGIN`` closes the
+    component of the same name it repeats: RFC 5545 defines no component that contains another of
+    its own kind, so a repeat means a missing ``END`` rather than nesting. A same-name fixture
+    would therefore build a flat feed and test the sibling rule instead of the depth bound.
 
     A function rather than a constant, because the depth that matters is the one past the reader's
     own bound and several hundred literal lines would say less than the number does. A publisher
     controls nesting depth as much as it controls anything else in a body, so a reader that walked
     it recursively would turn a 21 KB feed into a ``RecursionError`` and take a worker tick with it.
     """
-    wrappers = max(depth - 1, 0)
-    opens = "BEGIN:VCALENDAR\r\n" * wrappers
-    closes = "END:VCALENDAR\r\n" * wrappers
+    wrappers = [_NESTING_NAMES[level % len(_NESTING_NAMES)] for level in range(max(depth - 1, 0))]
+    opens = "".join(f"BEGIN:{name}\r\n" for name in wrappers)
+    closes = "".join(f"END:{name}\r\n" for name in reversed(wrappers))
     event = (
         "BEGIN:VEVENT\r\n"
         "UID:buried@example.org\r\n"

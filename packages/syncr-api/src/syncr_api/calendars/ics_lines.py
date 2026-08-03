@@ -174,7 +174,9 @@ def parse_components(text: str) -> tuple[Component, ...]:
     Nesting past :data:`MAX_COMPONENT_DEPTH` is refused, naming the line. A feed is accepted up to
     the size bound, which is room for hundreds of thousands of ``BEGIN`` lines, and lexing all of
     them into a tree nothing can use is work done on a publisher's say-so. Refusing states the
-    reason on the panel instead.
+    reason on the panel instead. The bound measures genuine NESTING: a repeated ``BEGIN`` closes the
+    component of the same name it repeats, so a publisher that never closes its events is read
+    rather than refused.
     """
     root = _OpenComponent(name="", line=0)
     stack = [root]
@@ -183,8 +185,10 @@ def parse_components(text: str) -> tuple[Component, ...]:
         if line is None:
             continue
         if line.name == _BEGIN:
+            beginning = line.value.strip().upper()
+            _close_unclosed_sibling(stack, beginning)
             _require_a_readable_depth(stack, number)
-            stack.append(_OpenComponent(name=line.value.strip().upper(), line=number))
+            stack.append(_OpenComponent(name=beginning, line=number))
         elif line.name == _END:
             _close(stack, line.value.strip().upper())
         else:
@@ -192,6 +196,22 @@ def parse_components(text: str) -> tuple[Component, ...]:
     while len(stack) > 1:
         _close(stack, stack[-1].name)
     return tuple(root.children)
+
+
+def _close_unclosed_sibling(stack: list[_OpenComponent], beginning: str) -> None:
+    """Close the innermost open component when a ``BEGIN`` repeats its name.
+
+    RFC 5545 defines no component that contains another of the same name, so a ``BEGIN:VEVENT``
+    arriving while a ``VEVENT`` is open means the previous one lost its ``END`` rather than that the
+    feed nests.
+
+    Without this the depth bound counts siblings a publisher failed to close, which is neither what
+    its name says nor what its message tells the publisher to look at, and a systematically
+    unclosing feed is refused whole past the bound: exactly the answer the tolerance above exists to
+    avoid.
+    """
+    if len(stack) > 1 and stack[-1].name == beginning:
+        _close(stack, beginning)
 
 
 def _require_a_readable_depth(stack: list[_OpenComponent], line: int) -> None:
