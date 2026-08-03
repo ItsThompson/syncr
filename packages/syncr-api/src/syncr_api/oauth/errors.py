@@ -15,6 +15,11 @@ token whose scope is too narrow is :class:`~syncr_api.core.errors.Forbidden`, ra
 :func:`~syncr_api.core.principal.require_scope`: that error already means insufficient
 scope, and a second class for the same condition would be a second thing to keep in
 step.
+
+There is no class for a bad scope on the authorize request. That failure has a checked
+redirect target by the time it is reached, so it is delivered there as
+``error=invalid_scope`` in a query parameter, which is the RFC's spelling because it is
+what a client parses.
 """
 
 from __future__ import annotations
@@ -51,13 +56,6 @@ class InvalidGrant(MalformedRequest):
 
     type = "syncr:oauth-invalid-grant"
     title = "Invalid grant"
-
-
-class InvalidScope(MalformedRequest):
-    """400: a requested scope is not one this server serves, or not one this client may."""
-
-    type = "syncr:oauth-invalid-scope"
-    title = "Invalid scope"
 
 
 class UnsupportedGrantType(MalformedRequest):
