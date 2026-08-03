@@ -1090,3 +1090,75 @@ def test_a_replacement_outlives_a_master_the_feed_got_wrong(master: str) -> None
     assert [event.title for event in outcome.events] == ["Moved hour"]
     assert len(outcome.rejected) == 1
     assert outcome.events_read == 2
+
+
+# A rule that can never match: February has no thirtieth. RFC 5545 says an instance on an invalid
+# date is ignored, and dateutil ignores it by scanning to the last year it can represent, at a cost
+# of about two and a half seconds and one expansion step while placing nothing.
+_NEVER_MATCHES = "RRULE:FREQ=MINUTELY;BYMONTH=2;BYMONTHDAY=30"
+
+
+def _slow_feed(count: int) -> str:
+    body = "".join(
+        f"BEGIN:VEVENT\r\nUID:slow-{index}@example.org\r\nSUMMARY:S{index}\r\n"
+        "DTSTART:20260210T090000Z\r\nDTEND:20260210T100000Z\r\n"
+        f"{_NEVER_MATCHES}\r\nEND:VEVENT\r\n"
+        for index in range(count)
+    )
+    return f"BEGIN:VCALENDAR\r\n{body}END:VCALENDAR\r\n"
+
+
+def test_a_feed_cannot_spend_more_than_its_reading_budget() -> None:
+    # Nothing bounds a feed's COMPONENT COUNT. The per-feed bound counts placed events, and these
+    # place none; the per-series bound counts expansion steps, and these take one each. So the cost
+    # multiplies by however many components the byte limit allows: measured at 2.5 seconds each and
+    # linear, which is 36 hours of one worker tick with its transaction open for a feed at
+    # MAX_FEED_BYTES, reporting no events and no rejections.
+    #
+    # A budget of zero states a spent budget rather than waiting for one, which is why it is a
+    # parameter.
+    outcome = parse_feed(_slow_feed(6), horizon=HORIZON, profile=HOME, budget=0.0)
+
+    assert outcome.events == ()
+    assert len(outcome.rejected) == 6
+    assert "seconds of reading" in outcome.rejected[0].detail
+    # The bound in force, not the constant: a message that names the default while honoring the
+    # parameter is a bound describing a figure it did not apply. Anchored on "its", because "0
+    # seconds" is a substring of the default's own "30 seconds" and matched it either way.
+    assert "its 0 seconds" in outcome.rejected[0].detail
+
+
+def test_a_feed_that_spends_its_budget_still_accounts_for_every_component() -> None:
+    # Refusing the remainder must not open the arithmetic. Every component past the deadline is
+    # rejected individually, with a reason, rather than the parse returning early and leaving
+    # components read but unaccounted for.
+    outcome = parse_feed(_slow_feed(4), horizon=HORIZON, profile=HOME, budget=0.0)
+
+    accounted = (
+        outcome.placed
+        + outcome.unplaced
+        + len(outcome.rejected)
+        + outcome.duplicates_discarded
+        + outcome.cancelled_discarded
+    )
+    assert accounted == outcome.events_read == 4
+
+
+def test_a_budget_leaves_a_feed_the_product_exists_to_read_alone() -> None:
+    # The bound has to clear the slowest LEGITIMATE feed with room, or it refuses what syncr is for.
+    # Measured: 7.1 seconds for 9,800 events from 700 daily series running since 2010, against a
+    # default budget four times that.
+    body = "".join(
+        f"BEGIN:VEVENT\r\nUID:real-{index}@example.org\r\nSUMMARY:Lecture {index}\r\n"
+        "DTSTART;TZID=Europe/London:20100901T090000\r\n"
+        "DTEND;TZID=Europe/London:20100901T100000\r\n"
+        "RRULE:FREQ=DAILY\r\nEND:VEVENT\r\n"
+        for index in range(20)
+    )
+
+    outcome = parse_feed(
+        f"BEGIN:VCALENDAR\r\n{body}END:VCALENDAR\r\n", horizon=HORIZON, profile=HOME
+    )
+
+    assert outcome.rejected == ()
+    assert len(outcome.events) == 20 * 14

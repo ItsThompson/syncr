@@ -29,9 +29,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import partial
+from time import monotonic
 from typing import TYPE_CHECKING
 
-from syncr_api.calendars.config import MAX_EVENTS_PER_FEED
+from syncr_api.calendars.config import MAX_EVENTS_PER_FEED, MAX_PARSE_SECONDS
 from syncr_api.calendars.events import FetchOutcome, RejectedComponent
 from syncr_api.calendars.ics_components import read_component
 from syncr_api.calendars.ics_errors import (
@@ -74,6 +75,8 @@ class _Collected:
     """
 
     rejected: list[RejectedComponent]
+    deadline: float = 0.0
+    budget: float = 0.0
     events: list[RawEvent] = field(default_factory=list)
     applied: set[OccurrenceKey] = field(default_factory=set)
     expanded: set[str] = field(default_factory=set)
@@ -84,6 +87,7 @@ class _Collected:
     def take(self, source: EventComponent, produce: Callable[[], Placement]) -> None:
         """Run one component's placement, or report why it produced nothing."""
         try:
+            _require_time_left(deadline=self.deadline, budget=self.budget)
             placed = produce()
             _require_room_for(placed.events, remaining=self.remaining)
         except _REPORTABLE as error:
@@ -102,8 +106,15 @@ class _Collected:
         self.remaining -= len(placed.events)
 
 
-def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOutcome:
-    """Every event ``body`` declares inside ``horizon``, plus the rejections it produced."""
+def parse_feed(
+    body: str, *, horizon: Interval, profile: ZoneProfile, budget: float = MAX_PARSE_SECONDS
+) -> FetchOutcome:
+    """Every event ``body`` declares inside ``horizon``, plus the rejections it produced.
+
+    ``budget`` is the seconds the whole parse may spend. It is a parameter rather than only a
+    constant so a test can state a spent budget instead of waiting for one.
+    """
+    deadline = monotonic() + budget
     try:
         components = tuple(events_in(parse_components(body)))
     except _REPORTABLE as error:
@@ -120,7 +131,7 @@ def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOu
             rejected.append(_rejection(component, as_rejection(error)))
 
     series = sort_components(readable)
-    collected = _Collected(rejected=rejected)
+    collected = _Collected(rejected=rejected, deadline=deadline, budget=budget)
     for master in series.masters:
         collected.take(master, partial(expand, master, series, horizon=horizon, profile=profile))
 
@@ -154,6 +165,30 @@ def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOu
         # nothing" is true in every case.
         unplaced=collected.unplaced + superseded,
     )
+
+
+def _require_time_left(*, deadline: float, budget: float) -> None:
+    """Refuse a component the feed no longer has time to expand, naming the bound.
+
+    Checked between components rather than inside one, because a bound syncr owns cannot interrupt a
+    third-party expander mid-call. That is the shape of the problem: one component's cost is not
+    bounded, so what has to be bounded is how many of them a feed gets to spend.
+
+    Every component past the deadline is rejected individually rather than the parse returning
+    early, which is what keeps the panel's arithmetic closing: each one is accounted for, with a
+    reason a reader can act on.
+
+    ``monotonic`` rather than the injected clock seam, because this is a duration and not an
+    instant: the seam exists so a service can be asked what it would do an hour from now, and a wall
+    clock can step backwards under an NTP correction while a work budget must not.
+    """
+    if monotonic() < deadline:
+        return
+    message = (
+        f"this feed spent its {budget:g} seconds of reading before reaching this component, "
+        "so none of it was read"
+    )
+    raise UnparseableRecurrence(message)
 
 
 def _require_room_for(produced: tuple[RawEvent, ...], *, remaining: int) -> None:

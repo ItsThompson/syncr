@@ -110,3 +110,18 @@ MAX_EVENT_DAYS: Final = 36_600
 # for as long as the horizon allows, and a hostile or mistaken feed can hold thousands of
 # such rules, so expansion is bounded rather than trusted.
 MAX_EVENTS_PER_FEED: Final = 10_000
+
+# How long one feed's whole parse may take. FETCH_TIMEOUT_SECONDS bounds the network half of a read
+# for exactly this reason; this is the other half, and it was missing.
+#
+# Nothing bounds a feed's COMPONENT COUNT, so the per-series step bound multiplies by however many
+# components 8 MiB holds. Measured: a rule that yields nothing but forces dateutil to scan to its
+# maximum year costs 2.5 seconds and one step, and 8 MiB of that shape is 36 hours of one worker
+# tick with its transaction open, reporting no events and no rejections. A feed of legitimate shape
+# can reach tens of minutes the same way.
+#
+# A bound syncr owns cannot interrupt a call it is inside, so this is checked BETWEEN components:
+# one pathological component is tolerated, a feed made of them is not. The value is more than four
+# times the slowest legitimate feed measured, which is 7.1 seconds for 9,800 events from 700 daily
+# series running since 2010, so a feed the product exists to read has room.
+MAX_PARSE_SECONDS: Final = 30.0
