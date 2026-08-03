@@ -26,9 +26,10 @@ VERIFIER_MIN_LENGTH = 43
 VERIFIER_MAX_LENGTH = 128
 _VERIFIER_ALPHABET = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 
-# The S256 challenge is a SHA-256 digest in unpadded URL-safe base64, so its length is
-# fixed. A value of any other length was not produced by the transform.
+# The S256 challenge is a SHA-256 digest in unpadded URL-safe base64, so its length and its
+# alphabet are both fixed. A value outside either was not produced by the transform.
 CHALLENGE_LENGTH = 43
+_CHALLENGE_ALPHABET = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 
 
 def derive_s256_challenge(verifier: str) -> str:
@@ -67,4 +68,11 @@ def verifies(verifier: str, challenge: str) -> bool:
 
 
 def _is_base64url(value: str) -> bool:
-    return all(character.isalnum() or character in "-_" for character in value)
+    """True when every character of ``value`` is one unpadded URL-safe base64 uses.
+
+    Spelled as an explicit ASCII alphabet rather than with ``str.isalnum``, which is
+    Unicode-aware: an accented letter and an Arabic-Indic digit are both alphanumeric to it,
+    so a right-length non-ASCII challenge would satisfy the shape rule, be stored on a code
+    row, and then reach ``secrets.compare_digest``, which refuses non-ASCII operands.
+    """
+    return all(character in _CHALLENGE_ALPHABET for character in value)

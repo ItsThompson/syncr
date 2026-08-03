@@ -73,9 +73,21 @@ def test_a_plain_challenge_never_verifies_even_against_its_own_verifier() -> Non
         ("a" * (VERIFIER_MAX_LENGTH + 1), False),
         ("-._~" + "a" * VERIFIER_MIN_LENGTH, True),
         ("!" + "a" * VERIFIER_MIN_LENGTH, False),
+        ("Á" * VERIFIER_MIN_LENGTH, False),
+        ("٣" * VERIFIER_MIN_LENGTH, False),
         ("", False),
     ],
-    ids=["floor", "ceiling", "under", "over", "unreserved", "reserved character", "empty"],
+    ids=[
+        "floor",
+        "ceiling",
+        "under",
+        "over",
+        "unreserved",
+        "reserved character",
+        "non-ascii letter",
+        "non-ascii digit",
+        "empty",
+    ],
 )
 def test_the_verifier_shape_rules_are_the_rfcs(verifier: str, expected: bool) -> None:
     assert is_well_formed_verifier(verifier) is expected
@@ -88,12 +100,32 @@ def test_the_verifier_shape_rules_are_the_rfcs(verifier: str, expected: bool) ->
         ("a" * CHALLENGE_LENGTH, True),
         ("a" * (CHALLENGE_LENGTH - 1), False),
         (f"{'a' * (CHALLENGE_LENGTH - 1)}=", False),
+        ("Á" * CHALLENGE_LENGTH, False),
+        ("٣" * CHALLENGE_LENGTH, False),
         ("", False),
     ],
-    ids=["real", "right length", "short", "padded", "empty"],
+    ids=[
+        "real",
+        "right length",
+        "short",
+        "padded",
+        "non-ascii letter",
+        "non-ascii digit",
+        "empty",
+    ],
 )
 def test_only_a_digest_shaped_value_is_a_challenge(challenge: str, expected: bool) -> None:
     assert is_well_formed_challenge(challenge) is expected
+
+
+def test_a_non_ascii_challenge_is_refused_rather_than_compared() -> None:
+    # The digest comparison refuses non-ASCII operands by raising, so a challenge outside the
+    # base64url alphabet has to be turned away by the shape rule: a request carrying one is a
+    # rejection at the client's redirect, not a 500 at the token endpoint.
+    challenge = "Á" * CHALLENGE_LENGTH
+
+    assert not is_well_formed_challenge(challenge)
+    assert not verifies(RFC_VERIFIER, challenge)
 
 
 def test_a_malformed_verifier_cannot_verify_however_the_challenge_was_derived() -> None:

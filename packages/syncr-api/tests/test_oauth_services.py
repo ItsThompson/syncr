@@ -46,7 +46,7 @@ from syncr_api.oauth.config import (
 )
 from syncr_api.oauth.errors import InvalidClient, InvalidGrant, InvalidRequest, UnsupportedGrantType
 from syncr_api.oauth.keys import SigningKeySet, generate_signing_key
-from syncr_api.oauth.pkce import derive_s256_challenge
+from syncr_api.oauth.pkce import CHALLENGE_LENGTH, derive_s256_challenge
 from syncr_api.oauth.records import (
     AuthorizationCodeRecord,
     ClientRecord,
@@ -438,6 +438,7 @@ async def test_an_unregistered_redirect_is_refused_and_not_redirected(
         ({"code_challenge_method": "plain"}, RedirectedError.INVALID_REQUEST),
         ({"code_challenge_method": ""}, RedirectedError.INVALID_REQUEST),
         ({"code_challenge": ""}, RedirectedError.INVALID_REQUEST),
+        ({"code_challenge": "Á" * CHALLENGE_LENGTH}, RedirectedError.INVALID_REQUEST),
         ({"response_type": "token"}, RedirectedError.UNSUPPORTED_RESPONSE_TYPE),
         ({"scope": "admin"}, RedirectedError.INVALID_SCOPE),
         ({"scope": "plan:everything"}, RedirectedError.INVALID_SCOPE),
@@ -447,6 +448,7 @@ async def test_an_unregistered_redirect_is_refused_and_not_redirected(
         "plain pkce",
         "absent pkce method",
         "absent challenge",
+        "a right-length non-ascii challenge",
         "implicit flow",
         "a scope the cli may not hold",
         "a scope nobody serves",
