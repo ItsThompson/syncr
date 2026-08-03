@@ -1,3 +1,7 @@
+/* Reaches the base sheet as well, so one closure reaches it twice: a diamond, which the walk has to fold rather
+   than follow forever. */
+@import "./base.css";
+
 .table {
   border-collapse: collapse;
 }

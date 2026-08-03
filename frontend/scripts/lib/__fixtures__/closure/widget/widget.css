@@ -1,5 +1,7 @@
 /* The widget's own sheet, which pulls a base sheet in through a CSS @import: an @import is as much an edge as a
-   module import, which is how `theme.css` pulls the token layer. */
+   module import, which is how `theme.css` pulls the token layer. The bare specifier is there for the same reason
+   `theme.css` carries one: a package is not a file this walk resolves. */
+@import "tailwindcss";
 @import "../shared/base.css";
 
 .widget {
