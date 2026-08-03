@@ -32,8 +32,15 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
+from syncr_api.calendars.ics_errors import MalformedValue
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
+
+# How deep a feed may nest components. A real one nests three (``VCALENDAR`` holding a ``VEVENT``
+# holding a ``VALARM``), so this is enormous headroom and anything past it is a broken export or a
+# hostile body rather than a calendar.
+MAX_COMPONENT_DEPTH: Final = 100
 
 # Any of the three line breaks a real feed uses, in order of preference so a CRLF is one
 # break rather than two.
@@ -163,6 +170,11 @@ def parse_components(text: str) -> tuple[Component, ...]:
     feed. A truncated download is a real failure mode, and the events before the cut are
     real occupancy: discarding a whole timetable because its last event lost its ``END``
     would be a worse answer than keeping what parsed.
+
+    Nesting past :data:`MAX_COMPONENT_DEPTH` is refused, naming the line. A feed is accepted up to
+    the size bound, which is room for hundreds of thousands of ``BEGIN`` lines, and lexing all of
+    them into a tree nothing can use is work done on a publisher's say-so. Refusing states the
+    reason on the panel instead.
     """
     root = _OpenComponent(name="", line=0)
     stack = [root]
@@ -171,6 +183,7 @@ def parse_components(text: str) -> tuple[Component, ...]:
         if line is None:
             continue
         if line.name == _BEGIN:
+            _require_a_readable_depth(stack, number)
             stack.append(_OpenComponent(name=line.value.strip().upper(), line=number))
         elif line.name == _END:
             _close(stack, line.value.strip().upper())
@@ -181,12 +194,38 @@ def parse_components(text: str) -> tuple[Component, ...]:
     return tuple(root.children)
 
 
+def _require_a_readable_depth(stack: list[_OpenComponent], line: int) -> None:
+    """Refuse a feed that nests deeper than syncr reads.
+
+    The root frame is not a component, so the open count is one more than the nesting depth.
+    """
+    if len(stack) <= MAX_COMPONENT_DEPTH:
+        return
+    message = (
+        f"the feed nests components more than {MAX_COMPONENT_DEPTH} deep, which is deeper than "
+        "syncr will read"
+    )
+    raise MalformedValue(message, line=line)
+
+
 def events_in(components: Sequence[Component]) -> Iterator[Component]:
-    """Every ``VEVENT`` at any depth, in the order the feed declared them."""
-    for component in components:
+    """Every ``VEVENT`` at any depth, in the order the feed declared them.
+
+    Iterative, with an explicit stack, for the same reason :func:`parse_components` is: nesting
+    depth is a property of a feed a third-party publisher controls, and a recursive walk turns a
+    deeply nested body into a ``RecursionError``. That error is not an
+    :class:`~syncr_api.calendars.ics_errors.IcsRejection`, so it would escape the adapter and
+    break the one contract the whole module is built on.
+
+    The stack is reversed on each push so children are visited in declaration order, which is the
+    order a rejection's reported line has to agree with.
+    """
+    stack = list(reversed(components))
+    while stack:
+        component = stack.pop()
         if component.name == VEVENT:
             yield component
-        yield from events_in(component.children)
+        stack.extend(reversed(component.children))
 
 
 @dataclass(slots=True)

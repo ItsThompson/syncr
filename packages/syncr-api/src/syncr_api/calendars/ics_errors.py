@@ -28,9 +28,18 @@ if TYPE_CHECKING:
 
 
 class IcsRejection(DomainError):
-    """A component syncr will not turn into an event."""
+    """A component syncr will not turn into an event.
+
+    ``line`` is set only when the failure is not attributable to a component the caller already
+    holds: a depth bound is exceeded part-way through the lexer, before any component closes, so
+    the position has to travel with the error or the panel would report line 0.
+    """
 
     kind: ClassVar[RejectionKind] = MALFORMED_VALUE
+
+    def __init__(self, detail: str, *, line: int | None = None) -> None:
+        self.line = line
+        super().__init__(detail)
 
 
 class MalformedValue(IcsRejection):

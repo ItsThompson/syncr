@@ -1,4 +1,4 @@
-"""Parsing the ``hostile_ics`` corpus: every row of section 06's ICS ingest table.
+"""Parsing the ``hostile_ics`` corpus: every row of the ICS ingest table.
 
 Fixture-driven rather than synthetic, per the testing strategy. Each body in
 :mod:`tests.hostile_ics` carries one publisher's real defects, and every expected instant and
@@ -18,10 +18,12 @@ import pytest
 
 from syncr_api.calendars.config import (
     MALFORMED_VALUE,
+    MAX_EVENTS_PER_FEED,
     MISSING_DURATION,
     UNKNOWN_ZONE,
     UNPARSEABLE_RECURRENCE,
 )
+from syncr_api.calendars.ics_lines import MAX_COMPONENT_DEPTH, VEVENT
 from syncr_api.calendars.ics_parse import parse_feed
 from syncr_domain.intervals import Interval
 from syncr_domain.zones import TravelOverride, ZoneProfile
@@ -30,13 +32,15 @@ from tests.hostile_ics import (
     ASSESSMENTS_FEED,
     EMPTY_FEED,
     HOLIDAY_FEED,
+    OVERRUNNING_RECURRENCE,
     PUBLISHED_OUTLOOK,
     RUNAWAY_RECURRENCE,
     UNIVERSITY_TIMETABLE,
+    nested_feed,
 )
 
 if TYPE_CHECKING:
-    from syncr_api.calendars.events import RawEvent
+    from syncr_api.calendars.events import FetchOutcome, RawEvent, RejectedComponent
 
 LONDON = "Europe/London"
 TOKYO = "Asia/Tokyo"
@@ -248,7 +252,31 @@ def test_a_cancelled_component_produces_no_event_and_is_counted() -> None:
     outcome = parse_feed(PUBLISHED_OUTLOOK, horizon=HORIZON, profile=HOME)
 
     assert titled(outcome.events, "budget sign-off") == []
+    # One cancelled MASTER. The cancelled occurrence in the same body is an override rather than a
+    # discarded component, so it is not counted here.
     assert outcome.cancelled_discarded == 1
+
+
+def test_a_cancelled_occurrence_is_removed_from_its_live_series() -> None:
+    # How Exchange and most CalDAV servers express a deleted occurrence: a RECURRENCE-ID naming it,
+    # on a component whose STATUS is CANCELLED, while the master stays live. Read as the absence of
+    # an override, the master's rule places it anyway and blanks an hour the user actually has.
+    standups = titled(parsed(PUBLISHED_OUTLOOK), "standup")
+
+    cancelled = utc(2026, 2, 16).date()
+    assert [event for event in standups if event.interval.start.date() == cancelled] == []
+    # The rest of the series is untouched: a tombstone removes one occurrence, not the rule.
+    assert utc(2026, 2, 9).date() in {event.interval.start.date() for event in standups}
+
+
+def test_a_cancelled_occurrence_is_not_also_counted_as_a_discard() -> None:
+    # The counting rule the arithmetic depends on. A tombstone is an override, and an override is
+    # already accounted for by its role, so counting it as a cancellation too leaves the totals
+    # short and the panel reporting a component that went nowhere.
+    outcome = parse_feed(PUBLISHED_OUTLOOK, horizon=HORIZON, profile=HOME)
+
+    assert outcome.cancelled_discarded == 1
+    assert outcome.events_read == 6
 
 
 def test_a_runaway_recurrence_is_rejected_rather_than_expanded() -> None:
@@ -257,6 +285,26 @@ def test_a_runaway_recurrence_is_rejected_rather_than_expanded() -> None:
     assert outcome.events == ()
     assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
     assert "will not read" in outcome.rejected[0].detail
+
+
+def test_a_component_overrunning_the_per_feed_bound_is_refused_whole_and_says_so() -> None:
+    # A FREQ=MINUTELY rule stays inside the per-series step bound while producing more events than
+    # syncr reads from one feed. Truncating the total would bound neither the memory nor the time it
+    # took to build, and would discard occupancy with nothing counting the loss: the panel would
+    # report the source healthy while some of the user's commitments had silently vanished.
+    outcome = parse_feed(OVERRUNNING_RECURRENCE, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    assert str(MAX_EVENTS_PER_FEED) in outcome.rejected[0].detail
+    assert "none of it was read" in outcome.rejected[0].detail
+
+
+def test_no_feed_returns_more_events_than_the_per_feed_bound() -> None:
+    # The bound's own control: whatever a body asks for, the returned list is within it.
+    for label, body in ALL_FEEDS.items():
+        outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+        assert len(outcome.events) <= MAX_EVENTS_PER_FEED, label
 
 
 def test_a_valid_feed_with_no_events_is_a_success_rather_than_a_failure() -> None:
@@ -268,26 +316,36 @@ def test_a_valid_feed_with_no_events_is_a_success_rather_than_a_failure() -> Non
 
 
 def test_every_component_of_every_feed_is_accounted_for() -> None:
-    # The counts are what the panel reports, so they have to close: a component that appeared
-    # in none of the four buckets would be occupancy that vanished with no explanation.
+    # The counts are what the panel reports, so they have to close: a component that appeared in
+    # none of the buckets would be occupancy that vanished with no explanation.
     for label, body in ALL_FEEDS.items():
         outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
         masters = {event.series_uid or event.uid for event in outcome.events}
         accounted = (
             len(masters)
-            + len(outcome.rejected)
+            + len(_component_rejections(outcome))
             + outcome.duplicates_discarded
             + outcome.cancelled_discarded
         )
-        assert accounted == outcome.events_read - _overrides_in(body), label
+        assert accounted == outcome.events_read - _replacements_in(body), label
 
 
-def _overrides_in(body: str) -> int:
+def _component_rejections(outcome: FetchOutcome) -> list[RejectedComponent]:
+    """The rejections that describe a component the parser read.
+
+    A feed-level rejection names the calendar rather than an event, because the lexer refused the
+    body before any component was read. It is excluded here rather than skipped, so the arithmetic
+    stays a real check on every body including that one, whose ``events_read`` is zero.
+    """
+    return [rejected for rejected in outcome.rejected if rejected.component == VEVENT]
+
+
+def _replacements_in(body: str) -> int:
     """How many components of ``body`` replace an occurrence rather than declaring a series.
 
-    An override is read and applied, so it is neither kept as an event of its own nor rejected,
-    nor discarded. Counting it here is what keeps the arithmetic above a real check rather than
-    one loosened until it passed.
+    An override is read and applied, and a cancelled one becomes a tombstone; either way it is
+    neither kept as an event of its own nor rejected, nor counted as a discard. Counting it here is
+    what keeps the arithmetic above a real check rather than one loosened until it passed.
     """
     return body.count("RECURRENCE-ID")
 
@@ -297,6 +355,30 @@ def test_no_feed_in_the_corpus_raises(label: str) -> None:
     # The adapter's whole contract: hostility is absorbed and returned, never raised at a
     # caller. A body that raised would take a worker tick down with it.
     parse_feed(ALL_FEEDS[label], horizon=HORIZON, profile=HOME)
+
+
+def test_a_deeply_nested_feed_is_a_stated_rejection_rather_than_a_recursion_error() -> None:
+    # Nesting depth is a property of a body a third-party publisher controls, and a recursive walk
+    # turns 21 KB of it into a RecursionError. That is not an IcsRejection, so it would escape the
+    # adapter, abort the whole tenant's sync pass, and roll back the sync state of every feed read
+    # before it.
+    outcome = parse_feed(nested_feed(MAX_COMPONENT_DEPTH + 1), horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [MALFORMED_VALUE]
+    assert outcome.rejected[0].component == "VCALENDAR"
+    # The line the lexer gave up on, so a publisher has somewhere to look.
+    assert outcome.rejected[0].line > 0
+    assert str(MAX_COMPONENT_DEPTH) in outcome.rejected[0].detail
+
+
+def test_a_feed_nesting_up_to_the_bound_is_read() -> None:
+    # The accepting side of the bound, so the comparison is shown not to be off by one. The event is
+    # buried under the deepest nesting syncr accepts and still comes back.
+    outcome = parse_feed(nested_feed(MAX_COMPONENT_DEPTH), horizon=HORIZON, profile=HOME)
+
+    assert outcome.rejected == ()
+    assert [event.uid for event in outcome.events] == ["buried@example.org"]
 
 
 def test_a_component_with_no_uid_is_rejected_rather_than_placed() -> None:

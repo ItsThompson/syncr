@@ -14,7 +14,7 @@ render a panel: the component, the line it started on, and the class of the fail
 that changes is how progress is reported in this product, so the counts are part of the
 return rather than something a caller derives. It is ONE shape for both the parser and the
 adapter: an unchanged feed is a fetch that read nothing, which is the same tally with
-``unchanged`` set, and a second near-identical struct would have to be kept in step by hand.
+``reparsed`` unset, and a second near-identical struct would have to be kept in step by hand.
 """
 
 from __future__ import annotations
@@ -31,12 +31,18 @@ if TYPE_CHECKING:
 class RawEvent:
     """One occupied span a provider reported, with every zone question already answered.
 
-    ``uid`` is the reconciliation key together with ``occurrence_key``. A recurring series
-    expands into many events sharing one ``series_uid``, and each occurrence needs an
-    identity of its own or the second one would overwrite the first.
+    ``uid`` is the reconciliation key. A recurring series expands into many events sharing one
+    ``series_uid``, and each occurrence's ``uid`` carries the original wall time of the occurrence
+    it stands for, so an override that moved one keeps that occurrence's identity rather than
+    becoming a second event.
 
     ``sequence`` is carried rather than dropped because it is what resolves a duplicate
     ``UID`` within one feed: the later revision wins.
+
+    ``transparent`` is carried and **not acted on here**. A feed can declare that an event does not
+    consume the user's time, which a holiday feed does for every whole day it publishes. Whether
+    that makes it occupancy is a question about what an anchor MEANS, which the anchor-typing work
+    owns; carrying the bit is what lets that work decide without reopening the parser.
     """
 
     uid: str
@@ -46,6 +52,7 @@ class RawEvent:
     location: str | None
     sequence: int
     all_day: bool
+    transparent: bool = False
 
 
 @dataclass(frozen=True, slots=True)

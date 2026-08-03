@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from syncr_domain.zones import ZoneProfile
 
 CANCELLED = "CANCELLED"
+TRANSPARENT = "TRANSPARENT"
 
 # What an event with no SUMMARY is called. A feed that omits one still states occupancy, so
 # the event is kept; a title is how the user recognizes it, not how syncr places it.
@@ -54,6 +55,10 @@ class EventComponent:
     ``span`` and ``days`` are exclusive: a timed event has an absolute span, an all-day event
     has a whole-day count. Exactly one is set, which is what lets the builder ask ``all_day``
     once rather than carrying a nullable in both directions.
+
+    ``cancelled`` and ``transparent`` are read but not acted on here. What each MEANS is decided
+    above this module: a cancellation by whether the component also carries a ``RECURRENCE-ID``,
+    and transparency by the work that decides what an anchor means at all.
     """
 
     component: Component
@@ -67,6 +72,7 @@ class EventComponent:
     recurrence: Recurrence
     replaces: IcsTime | None
     cancelled: bool
+    transparent: bool
 
     @property
     def all_day(self) -> bool:
@@ -110,6 +116,7 @@ def read_component(component: Component, profile: ZoneProfile) -> EventComponent
         recurrence=_recurrence(component),
         replaces=None if replaced is None else parse_time(replaced.value, params=replaced.params),
         cancelled=(text_of(component, "STATUS") or "").upper() == CANCELLED,
+        transparent=(text_of(component, "TRANSP") or "").upper() == TRANSPARENT,
     )
 
 
