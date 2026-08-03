@@ -326,6 +326,63 @@ def test_an_interval_that_is_not_a_positive_number_is_refused_by_name(interval: 
     assert "positive number of periods" in outcome.rejected[0].detail
 
 
+@pytest.mark.parametrize(
+    "rule",
+    ["FREQ=MONTHLY;BYDAY=8MO", "FREQ=MONTHLY;BYDAY=99MO", "FREQ=YEARLY;BYDAY=99MO"],
+)
+def test_a_byday_ordinal_past_its_period_is_a_rejection_rather_than_a_fault(rule: str) -> None:
+    # dateutil indexes its own weekday mask with the publisher's ordinal, so one past the weeks a
+    # period holds walks off the end and raises IndexError. That is not a value error, so a caught
+    # set of dateutil's VALUE faults did not cover it and it escaped the adapter with no state.
+    # RFC 5545 allows +1..+5 there, so 8MO is one index slip in an exporter.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:bd@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+
+
+@pytest.mark.parametrize(
+    ("rule", "refused"),
+    [
+        ("FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2", True),
+        ("FREQ=HOURLY;BYSETPOS=2", True),
+        ("FREQ=SECONDLY;BYSETPOS=2", True),
+        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=3", True),
+        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2", False),
+        ("FREQ=HOURLY;BYSETPOS=1", False),
+    ],
+)
+def test_a_setpos_is_refused_only_when_its_period_cannot_hold_it(rule: str, refused: bool) -> None:
+    # BYSETPOS picks the Nth member of each period's set. On a sub-daily frequency that set is built
+    # only from BYMINUTE and BYSECOND, so a position past it selects nothing, the rule yields
+    # nothing, and dateutil walks to its own maximum year INSIDE ONE next() call: measured at sixty
+    # seconds for one component, with the worker tick held open. Neither a step bound nor an UNTIL
+    # can see that, because dateutil compares against UNTIL only when a period yields.
+    #
+    # Compared against the set SIZE rather than refused as a shape, so the fourth case below still
+    # expands: selecting the second of two is a rule dateutil answers in milliseconds.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:sp@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    if refused:
+        assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+        assert "produces nothing" in outcome.rejected[0].detail
+    else:
+        assert outcome.rejected == ()
+        assert outcome.events != ()
+
+
 @pytest.mark.parametrize("interval", ["1", "2", "02", "0002"])
 def test_a_positive_interval_is_expanded_however_it_is_written(interval: str) -> None:
     # The accepting side, including the padded forms RFC 5545's digit grammar permits, so the guard

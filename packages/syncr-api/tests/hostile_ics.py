@@ -341,6 +341,17 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
     "a negative interval": ("DURATION:PT1H", "RRULE:FREQ=DAILY;INTERVAL=-1"),
     "a negative monthly interval": ("DURATION:PT1H", "RRULE:FREQ=MONTHLY;INTERVAL=-1"),
     "a count of zero": ("DURATION:PT1H", "RRULE:FREQ=DAILY;COUNT=0"),
+    # A BYDAY ordinal past the weeks a period holds. dateutil indexes its own weekday mask with it
+    # and walks off the end, raising IndexError: not a value error, so not in the caught set.
+    "a byday ordinal past the period": ("DURATION:PT1H", "RRULE:FREQ=MONTHLY;BYDAY=8MO"),
+    "a byday ordinal far past the period": ("DURATION:PT1H", "RRULE:FREQ=YEARLY;BYDAY=99MO"),
+    # A BYSETPOS reaching past the set its own period holds. It selects nothing, so the rule yields
+    # nothing and a bound on yielded occurrences never fires while dateutil walks to year 9999.
+    "a setpos past a sub-daily set": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2",
+    ),
+    "a setpos on a secondly rule": ("DURATION:PT1H", "RRULE:FREQ=SECONDLY;BYSETPOS=2"),
     "a count past the conversion limit": (
         "DURATION:PT1H",
         f"RRULE:FREQ=DAILY;COUNT={PAST_INT_CONVERSION}",

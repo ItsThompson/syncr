@@ -34,7 +34,7 @@ from dateutil.rrule import rruleset, rrulestr
 
 from syncr_api.calendars.ics_errors import UnparseableRecurrence
 from syncr_api.calendars.ics_times import resolve
-from syncr_api.calendars.ics_values import ZoneKind
+from syncr_api.calendars.ics_values import MAX_MAGNITUDE_DIGITS, ZoneKind
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -51,6 +51,13 @@ MAX_EXPANSION_STEPS: Final = 50_000
 
 _UNTIL: Final = "UNTIL"
 _INTERVAL: Final = "INTERVAL"
+_SETPOS: Final = "BYSETPOS"
+_BYMINUTE: Final = "BYMINUTE"
+_BYSECOND: Final = "BYSECOND"
+_FREQ: Final = "FREQ"
+
+# Frequencies whose period expansion is too small for BYSETPOS to select from reliably.
+_SUB_DAILY: Final = frozenset({"HOURLY", "MINUTELY", "SECONDLY"})
 _RULE_SEPARATOR: Final = ";"
 _WALL_FORMAT: Final = "%Y%m%dT%H%M%S"
 
@@ -131,9 +138,13 @@ def _candidates(start: IcsTime, recurrence: Recurrence) -> Iterator[datetime]:
     yield from merged
 
 
-# What dateutil raises when a rule it accepted turns out to be unexpandable. It validates lazily, so
-# these arrive during iteration rather than at construction.
-_RULE_FAULTS: Final = (ValueError, TypeError, OverflowError)
+# What a foreign expander raises when a rule it accepted turns out to be unexpandable. dateutil
+# validates lazily, so these arrive during ITERATION rather than at construction, and they are not
+# all value errors: it indexes its own weekday mask with the publisher's BYDAY ordinal, so an
+# ordinal past the weeks in the period walks off the end and raises IndexError. This is a local set
+# for one library's iteration, deliberately NOT `UNREPRESENTABLE`: it says "dateutil cannot expand",
+# where the net says "no value syncr can represent".
+_RULE_FAULTS: Final = (ValueError, TypeError, OverflowError, IndexError, KeyError)
 
 
 def _parsed_rule(rule_text: str, start: IcsTime) -> rruleset:
@@ -146,12 +157,72 @@ def _parsed_rule(rule_text: str, start: IcsTime) -> rruleset:
     dateutil raises a bare ``ValueError`` on a malformed rule, naming neither the property
     nor the feed, so it is re-raised as the package's own rejection.
     """
-    _require_positive_interval(rule_text)
+    _require_expandable(rule_text)
     try:
         return rrulestr(_wall_until(rule_text, start), dtstart=start.wall, forceset=True)
     except _RULE_FAULTS as error:
         message = f"{rule_text!r} is not a recurrence rule syncr can expand: {error}"
         raise UnparseableRecurrence(message) from error
+
+
+def _require_expandable(rule_text: str) -> None:
+    """Refuse a rule dateutil cannot expand in bounded time or bounded steps, naming the property.
+
+    Two shapes, both of which defeat a bound on how many occurrences a rule YIELDS, because neither
+    yields at all.
+    """
+    _require_positive_interval(rule_text)
+    _require_selectable_setpos(rule_text)
+
+
+def _require_selectable_setpos(rule_text: str) -> None:
+    """Refuse a ``BYSETPOS`` that reaches past the set its own period can hold.
+
+    ``BYSETPOS`` picks the Nth member of each period's expansion. On an hourly, minutely or
+    secondly frequency that set is built only from ``BYMINUTE`` and ``BYSECOND``, so it is tiny and
+    a position past it selects NOTHING. dateutil then advances period by period to its own maximum
+    year INSIDE ONE STEP: about seventy million iterations, measured at sixty seconds for ONE
+    component, with the worker tick and its transaction held open throughout.
+
+    A bound on steps cannot see that, and neither can an ``UNTIL``: dateutil compares against
+    ``UNTIL`` only when a period yields a value, so a period that selects nothing never reaches the
+    comparison. Measured, an ``UNTIL`` two days out and a ``COUNT`` of five both still walk.
+
+    The position is compared against the set SIZE rather than the shape being refused outright, so
+    ``FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2`` still expands: it selects the second of two, which
+    dateutil answers in milliseconds. Only a position with nothing to land on is refused.
+
+    The general problem, a foreign expander spending unbounded time inside one call, is NOT closed
+    by this, and is recorded as a known issue.
+    """
+    parts = dict(
+        part.partition("=")[::2] for part in rule_text.upper().split(_RULE_SEPARATOR) if "=" in part
+    )
+    positions = parts.get(_SETPOS)
+    if positions is None or parts.get(_FREQ, "").strip() not in _SUB_DAILY:
+        return
+    reach = max((abs(int(value)) for value in positions.split(",") if _signed(value)), default=0)
+    room = _members(parts.get(_BYMINUTE)) * _members(parts.get(_BYSECOND))
+    if reach > room:
+        message = (
+            f"the recurrence rule selects position {reach} of a "
+            f"{parts[_FREQ].strip()} period holding {room}, so it produces nothing and "
+            "syncr will not expand it"
+        )
+        raise UnparseableRecurrence(message)
+
+
+def _members(value: str | None) -> int:
+    """How many values a ``BY`` list names, or one when it names none."""
+    if value is None:
+        return 1
+    return max(len([item for item in value.split(",") if item.strip()]), 1)
+
+
+def _signed(value: str) -> bool:
+    """Whether this is a number ``int`` will convert, bounded so the conversion cannot refuse."""
+    stated = value.strip().removeprefix("+").removeprefix("-")
+    return stated.isdigit() and len(stated.lstrip("0")) <= MAX_MAGNITUDE_DIGITS
 
 
 def _require_positive_interval(rule_text: str) -> None:

@@ -91,6 +91,7 @@ CONSTRUCTORS: Final = frozenset(
 GUARDED_HERE: Final = "guarded at the read site"
 GUARDED_BY_CALLER: Final = "guarded by an enclosing except in this package"
 BOUNDED_BY_THE_PATTERN: Final = "bounded by the regex's fixed-width groups"
+BOUNDED_BY_THE_CALLER_S_CATCH: Final = "an enclosing except in occurrences() answers it by name"
 NOT_A_FEED_VALUE: Final = "constructed from syncr's own values, not the feed's"
 
 
@@ -158,6 +159,13 @@ SITES: Final[tuple[Site, ...]] = (
         function="_require_positive_interval",
         constructor="int",
         reads="an INTERVAL a feed stated",
+        guard=BOUNDED_BY_THE_CALLER_S_CATCH,
+    ),
+    Site(
+        module="ics_recurrence",
+        function="_require_selectable_setpos",
+        constructor="int",
+        reads="a BYSETPOS position a feed stated",
         guard=GUARDED_HERE,
     ),
     Site(
