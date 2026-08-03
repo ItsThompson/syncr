@@ -21,7 +21,7 @@ The three rules:
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, TypeGuard
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -307,7 +307,7 @@ def scope_check_lines(source: str) -> list[int]:
     return sorted(node.lineno for node in ast.walk(ast.parse(source)) if _reaches_scope_check(node))
 
 
-def _reaches_scope_check(node: ast.AST) -> bool:
+def _reaches_scope_check(node: ast.AST) -> TypeGuard[ast.Name | ast.Attribute | ast.alias]:
     if isinstance(node, ast.Name):
         return node.id == SCOPE_CHECK
     if isinstance(node, ast.Attribute):
