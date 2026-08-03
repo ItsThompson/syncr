@@ -56,7 +56,12 @@ from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.solving.config import NON_TERMINAL_STATUSES, OPERATIONS_TABLE, SOLVE
 from syncr_api.solving.models import Operation  # noqa: F401 - registers its table
-from tests.boundaries import public_methods
+from tests.boundaries import (
+    mapped_classes,
+    package_mapped_classes,
+    public_methods,
+    table_names,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -94,9 +99,9 @@ PRUNING_VERBS = frozenset({"prune", "sweep", "purge", "expire"})
 
 PLAN_PACKAGES = ("plans", "solving", "learned", "idempotency")
 
-# The read each table exists to serve, as the leading columns an index has to offer it. A
-# table with no entry fails the completeness assertion below, so a thirteenth table cannot
-# arrive without stating what reads it.
+# The read each table exists to serve, as the leading columns an index has to offer it. The
+# subject set is derived from the packages themselves, so a table added later is either listed
+# here or fails the completeness assertion below.
 DOMINANT_READS: dict[str, tuple[tuple[str, ...], ...]] = {
     # The live plan, the churn baseline, and the projector's two-week range.
     PLAN_REVISIONS_TABLE: ((TENANT_ID_COLUMN, "iso_week"),),
@@ -303,14 +308,38 @@ def test_one_outcome_per_block_and_revision_is_a_unique_index() -> None:
 # --------------------------------------------------------------------------------
 
 
-def test_every_table_this_slice_creates_states_what_reads_it() -> None:
-    # So a thirteenth table cannot arrive without an entry, which is the only thing that keeps
-    # the rule below from passing on a table nobody listed.
-    declared = set(DOMINANT_READS)
-    known = set(Base.metadata.tables)
+def plan_side_tables(source_root: Path) -> set[str]:
+    """Every table the plan-side packages declare, discovered rather than listed."""
+    return table_names(
+        model for package in PLAN_PACKAGES for model in package_mapped_classes(source_root, package)
+    )
 
-    assert declared <= known, sorted(declared - known)
-    assert len(declared) == 12
+
+def test_every_table_this_slice_creates_states_what_reads_it(source_root: Path) -> None:
+    # An equality, not a containment: the subject is what the packages declare, so a table
+    # added by a later ticket has to state what reads it, and an entry for a table that went
+    # away has to go with it.
+    declared = set(DOMINANT_READS)
+    owned = plan_side_tables(source_root)
+
+    assert declared == owned, {
+        "states no read": sorted(owned - declared),
+        "names no table": sorted(declared - owned),
+    }
+
+
+def test_the_table_walk_reads_the_whole_package_rather_than_its_models_module(
+    source_root: Path,
+) -> None:
+    # The control for the subject set. Half of these tables are declared in `plans/facts.py`,
+    # so a walk over `models.py` alone would leave them outside the rule above, and the rule
+    # would go on passing once someone shortened the list to match what the walk could see.
+    owned = plan_side_tables(source_root)
+    from_models_modules = table_names(mapped_classes(source_root))
+
+    assert {BLOCK_OUTCOMES_TABLE, EDIT_EVENTS_TABLE, VERDICT_EVENTS_TABLE} <= owned
+    assert BLOCK_OUTCOMES_TABLE not in from_models_modules
+    assert PLAN_REVISIONS_TABLE in from_models_modules
 
 
 @pytest.mark.parametrize("table_name", sorted(DOMINANT_READS))

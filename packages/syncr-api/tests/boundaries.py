@@ -273,6 +273,11 @@ def packages_with_scoped_tables(models: Iterable[type]) -> set[str]:
     return packages
 
 
+def table_names(models: Iterable[type]) -> set[str]:
+    """The table each of these mapped classes declares."""
+    return {name for model in models if (name := getattr(model, "__tablename__", None))}
+
+
 def package_modules(source_root: Path, package: str) -> list[Path]:
     """Every module of one feature package, in a stable order.
 
@@ -295,6 +300,26 @@ def mapped_classes(source_root: Path) -> list[type]:
     discovered: list[type] = []
     for path in sorted(source_root.glob(f"*/{MODELS_MODULE_NAME}")):
         module = import_module(f"{PACKAGE_NAME}.{path.parent.name}.models")
+        discovered.extend(
+            member
+            for _name, member in inspect.getmembers(module, inspect.isclass)
+            if member.__module__ == module.__name__ and hasattr(member, "__tablename__")
+        )
+    return discovered
+
+
+def package_mapped_classes(source_root: Path, package: str) -> list[type]:
+    """Every model class one feature package declares, in whichever module declares it.
+
+    Wider than :func:`mapped_classes`, which reads ``models.py`` alone. A package that
+    splits its tables by concern keeps some of them elsewhere, so a rule stated over "the
+    tables this package owns" has to read the whole package or it silently covers a subset.
+    """
+    discovered: list[type] = []
+    for path in package_modules(source_root, package):
+        if path.stem.startswith("_"):
+            continue
+        module = import_module(f"{PACKAGE_NAME}.{package}.{path.stem}")
         discovered.extend(
             member
             for _name, member in inspect.getmembers(module, inspect.isclass)
