@@ -32,6 +32,7 @@ from tests.hostile_ics import (
     ALL_FEEDS,
     ASSESSMENTS_FEED,
     CANCELLED_DUPLICATE_MASTER,
+    CANCELLED_DUPLICATE_MASTER_REVERSED,
     CANCELLED_ORPHAN,
     DUPLICATE_ORPHANS,
     DUPLICATE_REPLACEMENTS,
@@ -535,6 +536,21 @@ def test_a_cancelled_duplicate_master_does_not_cancel_the_live_series_overrides(
     assert outcome.cancelled_discarded == 0
 
 
+def test_a_cancelled_duplicate_does_not_win_a_tie_and_delete_a_live_series() -> None:
+    # Most publishers emit no SEQUENCE at all, so a tie is the COMMON case, not an edge. Letting
+    # document order settle it made the same three components answer two ways: with the cancelled
+    # duplicate declared first, a whole live series and its moved hour vanished, and the accounting
+    # closed over the loss because one component simply moved from `placed` into `cancelled`.
+    forward = parse_feed(CANCELLED_DUPLICATE_MASTER, horizon=HORIZON, profile=HOME)
+    reversed_order = parse_feed(CANCELLED_DUPLICATE_MASTER_REVERSED, horizon=HORIZON, profile=HOME)
+
+    assert {event.title for event in forward.events} == {
+        event.title for event in reversed_order.events
+    }
+    assert "Moved hour" in {event.title for event in reversed_order.events}
+    assert reversed_order.duplicates_discarded == 1
+
+
 def test_a_cancelled_revision_with_the_higher_sequence_beats_a_live_older_one() -> None:
     # The duplicate rule has to run WHETHER OR NOT one of the two is cancelled. Reading the
     # cancellation first lets an older live revision win by default, and places a whole series the
@@ -857,3 +873,47 @@ def test_an_event_ending_before_it_starts_is_rejected_rather_than_crashing() -> 
 
     assert outcome.events == ()
     assert [item.kind for item in outcome.rejected] == [MALFORMED_VALUE]
+
+
+def test_an_override_moving_an_occurrence_into_the_horizon_is_placed() -> None:
+    # The occurrence the feed moved is INSIDE the horizon; the one it moved FROM is not, so
+    # expansion never offered that key and the override went unclaimed. Counting it loses an hour
+    # the user is busy, and nothing else reports it: the panel shows a component read and no
+    # occupancy, while the solver books over a meeting the publisher pulled forward.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:fwd@example.org\r\nSUMMARY:Weekly\r\n"
+        "DTSTART:20260303T100000Z\r\nDTEND:20260303T110000Z\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:fwd@example.org\r\nSUMMARY:Pulled forward\r\n"
+        "RECURRENCE-ID:20260310T100000Z\r\n"
+        "DTSTART:20260216T140000Z\r\nDTEND:20260216T150000Z\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert [event.title for event in outcome.events] == ["Pulled forward"]
+    assert outcome.events[0].interval.start == utc(2026, 2, 16, 14, 0)
+
+
+def test_an_override_moving_an_occurrence_out_of_the_horizon_places_nothing() -> None:
+    # The mirror. The occurrence generated the event, but a replacement is placed at the time the
+    # REPLACEMENT states, so an override moving one to August must not leave an anchor in a plan for
+    # February. It is still counted as applied, because it did replace the occurrence.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:out@example.org\r\nSUMMARY:Weekly\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:out@example.org\r\nSUMMARY:Pushed to August\r\n"
+        "RECURRENCE-ID:20260217T100000Z\r\n"
+        "DTSTART:20260817T140000Z\r\nDTEND:20260817T150000Z\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert "Pushed to August" not in {event.title for event in outcome.events}
+    assert all(event.interval.start < utc(2026, 3, 1, 0, 0) for event in outcome.events)
+    assert outcome.overrides_applied == 1

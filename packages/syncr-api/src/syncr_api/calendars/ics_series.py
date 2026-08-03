@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 from syncr_api.calendars.events import RawEvent
 from syncr_api.calendars.ics_errors import MalformedValue
 from syncr_api.calendars.ics_recurrence import occurrences
-from syncr_api.calendars.ics_times import ONE_DAY, resolve_day_span, resolve_span
+from syncr_api.calendars.ics_times import ONE_DAY, resolve, resolve_day_span, resolve_span
 from syncr_domain.intervals import Interval
 
 if TYPE_CHECKING:
@@ -121,8 +121,15 @@ def sort_components(readable: list[EventComponent]) -> Series:
         # Two revisions of one series. The higher SEQUENCE wins WHETHER OR NOT either is cancelled:
         # reading the cancellation first would let an older live revision beat the cancellation that
         # superseded it, and place a whole series the feed's latest word says does not happen.
+        #
+        # At EQUAL SEQUENCE the live one wins, rather than whichever was declared first. Most
+        # publishers emit no SEQUENCE at all, so a tie is the common case, and letting document
+        # order decide made the same three components answer two ways: declare the cancelled
+        # duplicate first and a whole live series with its moved hour disappeared, with the
+        # accounting closing over the loss. Preferring the live one is the safe direction, because
+        # the alternative deletes occupancy the feed also asserts.
         duplicates += 1
-        if candidate.sequence > held.sequence:
+        if (candidate.sequence, not candidate.cancelled) > (held.sequence, not held.cancelled):
             masters[candidate.uid] = candidate
 
     live = {uid: master for uid, master in masters.items() if not master.cancelled}
@@ -223,6 +230,10 @@ def expand(
     An occurrence the feed cancelled produces nothing: the feed said it does not happen, and placing
     it would blank an hour the user actually has. Both a suppressed occurrence and a replaced one
     report their key as applied, because both are replacements that did their job.
+
+    A replacement is placed at the time the REPLACEMENT states, so it can move an occurrence out of
+    the horizon entirely. The occurrence generated it, but the event has to land in the window like
+    any other, or a plan for February holds an anchor in August.
     """
     window = _window(horizon, master)
     recurring = master.recurrence.recurring
@@ -237,14 +248,15 @@ def expand(
         if replacement is not None:
             applied.add(key)
         source = replacement or master
+        span = interval_of(source, at=source.start.wall if replacement else wall, profile=profile)
+        if replacement is not None and not span.overlaps(horizon):
+            continue
         built.append(
             RawEvent(
                 uid=occurrence_uid(master.uid, wall) if recurring else master.uid,
                 series_uid=master.uid if recurring else None,
                 title=source.title,
-                interval=interval_of(
-                    source, at=source.start.wall if replacement else wall, profile=profile
-                ),
+                interval=span,
                 location=source.location,
                 sequence=source.sequence,
                 all_day=source.all_day,
@@ -284,23 +296,43 @@ def place_replacement(
     )
 
 
-def stranded(series: Series, applied: frozenset[OccurrenceKey]) -> tuple[int, int]:
-    """How many replacements no occurrence claimed: superseded live ones, and tombstones.
+def stranded(
+    series: Series, applied: frozenset[OccurrenceKey], *, horizon: Interval, profile: ZoneProfile
+) -> tuple[tuple[EventComponent, ...], int, int]:
+    """What became of the replacements no occurrence claimed.
 
     A replacement is registered by UID and read by occurrence, so one naming a time the master's
     rule never produces is registered and never consulted. Comparing what expansion consumed against
     what was registered is the only way to see that, because the partition cannot know which
     occurrences a rule will produce.
 
-    Both are COUNTED rather than placed. Every replacement here has a master in the same body, by
-    construction: one without a master was sorted as an orphan. So the series that owns it did
-    expand, and its current rule is what the feed asserts. Placing the replacement as well puts two
-    events on one occurrence, which is what a duplicate master shifting the series' times produces:
-    the losing revision's override outlives the revision it belonged to and doubles the hour. An
-    orphan is different and is still placed, because there no master covers the commitment at all.
+    Two outcomes, and the discriminator is whether the master could have covered this hour at all.
+
+    A replacement whose ORIGINAL time falls outside the expansion window was never offered to the
+    master: the series did not decline it, the window simply did not reach it. If its own time lands
+    in the horizon then it is an hour the user is busy that nothing else reports, so it is PLACED,
+    exactly as an orphan is. Dropping it hides an occurrence a publisher moved forward into the
+    window, and the plan books over it.
+
+    A replacement whose original time WAS inside the window and still went unclaimed is superseded:
+    the rule that would have produced it has changed, or a duplicate master shifted the series'
+    times and this override belonged to the losing revision. Placing it as well puts two events on
+    one occupied hour, so it is counted.
     """
-    superseded = len([key for key in series.overrides if key not in applied])
-    return superseded, len(series.tombstones - applied)
+    window = _window(horizon, series.masters[0]) if series.masters else horizon
+    placeable: list[EventComponent] = []
+    superseded = 0
+    for key, replacement in series.overrides.items():
+        if key in applied:
+            continue
+        original = resolve(replacement.replaces, profile) if replacement.replaces else None
+        never_offered = original is not None and not (window.start <= original < window.end)
+        span = interval_of(replacement, at=replacement.start.wall, profile=profile)
+        if never_offered and span.overlaps(horizon):
+            placeable.append(replacement)
+            continue
+        superseded += 1
+    return tuple(placeable), superseded, len(series.tombstones - applied)
 
 
 def replaced_key(replacement: EventComponent) -> OccurrenceKey:

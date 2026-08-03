@@ -563,6 +563,21 @@ CANCELLED_DUPLICATE_MASTER: Final = _series_with(
     _replacement("SUMMARY:Moved hour", "DTSTART:20260217T140000Z", "DTEND:20260217T150000Z"),
 )
 
+# The same pair with the cancelled duplicate declared FIRST. Neither master carries a SEQUENCE,
+# which is what most publishers emit, so a tie decided by document order answered these two bodies
+# differently and lost a whole live series in one of them.
+CANCELLED_DUPLICATE_MASTER_REVERSED: Final = (
+    "BEGIN:VCALENDAR\r\n"
+    "BEGIN:VEVENT\r\nUID:conflict@example.org\r\nSTATUS:CANCELLED\r\n"
+    "SUMMARY:Cancelled duplicate\r\nDTSTART:20260210T100000Z\r\n"
+    "DTEND:20260210T110000Z\r\nEND:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:conflict@example.org\r\nSUMMARY:Weekly\r\n"
+    "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+    "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+    + _replacement("SUMMARY:Moved hour", "DTSTART:20260217T140000Z", "DTEND:20260217T150000Z")
+    + "END:VCALENDAR\r\n"
+)
+
 # Every body above, so a test can assert a property over the whole corpus.
 ALL_FEEDS: Final = {
     "university_timetable": UNIVERSITY_TIMETABLE,
@@ -577,6 +592,7 @@ ALL_FEEDS: Final = {
     "duplicate_replacements_reversed": DUPLICATE_REPLACEMENTS_REVERSED,
     "moved_and_cancelled": MOVED_AND_CANCELLED,
     "cancelled_duplicate_master": CANCELLED_DUPLICATE_MASTER,
+    "cancelled_duplicate_master_reversed": CANCELLED_DUPLICATE_MASTER_REVERSED,
     "duplicate_tombstones": DUPLICATE_TOMBSTONES,
     "shifted_by_a_duplicate_master": SHIFTED_BY_A_DUPLICATE_MASTER,
     "duplicate_orphans": DUPLICATE_ORPHANS,

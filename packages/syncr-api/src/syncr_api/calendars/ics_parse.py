@@ -121,9 +121,14 @@ def parse_feed(body: str, *, horizon: Interval, profile: ZoneProfile) -> FetchOu
 
     # Which replacements found an occurrence is only known once every master has expanded, so the
     # ones that found none are accounted for after that rather than guessed at during the partition.
-    superseded, unclaimed = stranded(series, frozenset(collected.applied))
-    for orphan in series.orphans:
-        collected.take(orphan, partial(place_replacement, orphan, horizon=horizon, profile=profile))
+    reachable, superseded, unclaimed = stranded(
+        series, frozenset(collected.applied), horizon=horizon, profile=profile
+    )
+    for replacement in (*series.orphans, *reachable):
+        collected.take(
+            replacement,
+            partial(place_replacement, replacement, horizon=horizon, profile=profile),
+        )
 
     return FetchOutcome(
         reparsed=True,
