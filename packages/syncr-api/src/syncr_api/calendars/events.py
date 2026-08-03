@@ -1,0 +1,117 @@
+"""The calendar package's public value types: what an adapter returns to a caller.
+
+``RawEvent`` is the whole contract between an adapter and the anchor reconciler. It carries
+absolute instants, so every provider quirk (a floating time, a `VALUE=DATE` day, a zone
+alias) has already been resolved by the time one exists. That is what "callers never see
+raw ICS" means concretely: there is no residue of the wire format on this shape.
+
+``RejectedComponent`` is the other half of the same contract, and it is why a fetch does
+not raise on a bad event. A feed that half-works must read as neither fully working nor
+fully broken, so the rejections travel back alongside the events with enough detail to
+render a panel: the component, the line it started on, and the class of the failure.
+
+``FetchOutcome`` binds them together with the counts the source's panel reports. A count
+that changes is how progress is reported in this product, so the counts are part of the
+return rather than something a caller derives.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from syncr_api.calendars.config import RejectionKind
+    from syncr_domain.intervals import Interval
+
+
+@dataclass(frozen=True, slots=True)
+class RawEvent:
+    """One occupied span a provider reported, with every zone question already answered.
+
+    ``uid`` is the reconciliation key together with ``occurrence_key``. A recurring series
+    expands into many events sharing one ``series_uid``, and each occurrence needs an
+    identity of its own or the second one would overwrite the first.
+
+    ``sequence`` is carried rather than dropped because it is what resolves a duplicate
+    ``UID`` within one feed: the later revision wins.
+    """
+
+    uid: str
+    series_uid: str | None
+    title: str
+    interval: Interval
+    location: str | None
+    sequence: int
+    all_day: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RejectedComponent:
+    """One component that produced no event, and enough to say why on a panel.
+
+    ``line`` is the line the component began on in the feed as delivered, before
+    unfolding, because that is the line a publisher can look at. ``detail`` names the
+    specific thing that was wrong (the zone that mapped to nothing, the property that
+    would not parse) so the panel states a reason rather than a count alone.
+    """
+
+    kind: RejectionKind
+    line: int
+    component: str
+    detail: str
+    uid: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FetchOutcome:
+    """Everything one fetch produced: the events, the rejections, and the counts.
+
+    ``events_read`` counts the components the feed offered, which is a larger number than
+    ``len(events)`` whenever a rejection or a duplicate happened and a smaller one whenever
+    a recurrence expanded. Both are reported, because "12 events read, 48 anchors" and "12
+    events read, 9 anchors, 3 rejected" are different stories about the same feed.
+    """
+
+    events: tuple[RawEvent, ...] = ()
+    rejected: tuple[RejectedComponent, ...] = ()
+    events_read: int = 0
+    duplicates_discarded: int = 0
+    # Set when the feed answered "not modified", so the caller records a successful attempt
+    # without touching the anchors it already holds.
+    unchanged: bool = False
+
+    @property
+    def rejected_count(self) -> int:
+        return len(self.rejected)
+
+    def as_log_fields(self) -> dict[str, int]:
+        """This tally as log fields, under names the redactor does not eat.
+
+        Redaction is by key name, so a count bound under a key containing ``title`` or
+        ``name`` would render as ``[redacted]`` and the line would say nothing. Naming the
+        fields on the tally rather than at each call site is what stops the next caller
+        reintroducing that.
+        """
+        return {
+            "events_read": self.events_read,
+            "event_count": len(self.events),
+            "rejected_count": self.rejected_count,
+            "duplicate_count": self.duplicates_discarded,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ParseOutcome:
+    """What parsing one feed body produced, before HTTP concerns are folded in.
+
+    Separate from :class:`FetchOutcome` so the parser is a pure function of bytes and a
+    zone profile, testable against a fixture with no client at all.
+    """
+
+    events: Sequence[RawEvent] = field(default_factory=tuple)
+    rejected: Sequence[RejectedComponent] = field(default_factory=tuple)
+    events_read: int = 0
+    duplicates_discarded: int = 0
