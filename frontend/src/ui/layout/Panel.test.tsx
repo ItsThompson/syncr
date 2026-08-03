@@ -7,6 +7,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { layoutDir, kitStylesheet } from "../../testing/kitStylesheets";
 import { Button } from "../primitives";
 import { Panel } from "./Panel";
 
@@ -77,5 +78,19 @@ describe("the footer", () => {
     const { container } = render(<Panel>body</Panel>);
 
     expect(container.querySelector(".panel__footer")).toBeNull();
+  });
+});
+
+/* THE BORDER IS --rule-strong AND NOT --rule-control, which is the fact the criterion names and the one nothing
+ * would fail on if it changed. A panel encloses controls rather than being one: --rule-strong measures 2.65:1 on
+ * raised paper, under the 3:1 an indicator has to clear and fine for something that indicates nothing, while a
+ * field inside it draws --rule-control at 5.28:1. Read from the stylesheet, because jsdom applies none. */
+describe("the block's border", () => {
+  it("is the decorative rule, not the control rule", async () => {
+    const css = await kitStylesheet("Panel.css", layoutDir);
+    const panel = /\.panel\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+
+    expect(panel).toContain("border: var(--hairline) solid var(--rule-strong)");
+    expect(panel).not.toContain("--rule-control");
   });
 });

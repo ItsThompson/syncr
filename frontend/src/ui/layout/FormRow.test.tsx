@@ -7,6 +7,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { kitStylesheet, layoutDir } from "../../testing/kitStylesheets";
 import { Input } from "../primitives";
 import { FormRow } from "./FormRow";
 
@@ -66,12 +67,19 @@ describe("the message under the field", () => {
     expect(screen.queryByText("minutes, stepping by 15")).toBeNull();
   });
 
-  it("takes the signal's TEXT step rather than its marker step, which fails 4.5:1", () => {
+  /* THE TEXT STEP, READ FROM THE STYLESHEET. An error message is words, so it takes --oxide-ink at 4.5:1 and not
+   * the marker step, which is sealed to dots, rules and glyphs at 3:1. Nothing in a rendering can see which of the
+   * two a rule chose, so the rule is what this reads. */
+  it("takes the signal's TEXT step rather than its marker step, which fails 4.5:1", async () => {
     const { container } = renderRow({ error: "an estimate cannot be zero" });
+    const css = await kitStylesheet("FormRow.css", layoutDir);
+    const message = /\.form-row__message--error\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
 
     expect(container.querySelector(".form-row__message--error")).toHaveTextContent(
       "an estimate cannot be zero",
     );
+    expect(message).toContain("color: var(--oxide-ink)");
+    expect(message).not.toContain("--signal-oxide");
   });
 
   it("describes the field by nothing when there is no message at all", () => {

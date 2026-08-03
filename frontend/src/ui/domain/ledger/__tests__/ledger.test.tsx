@@ -89,6 +89,12 @@ describe("the duration column", () => {
     const css = await stylesheet();
 
     expect(/\.ledger__duration\s*\{[^}]*text-align:\s*right/.test(css)).toBe(true);
-    expect(/font-variant-numeric:\s*tabular-nums/.test(css)).toBe(true);
+    /* The two figure cells share one rule, so the tabular declaration is asserted where it is written rather than
+     * anywhere in the file: an unanchored match would pass on any rule that happened to carry it. */
+    expect(
+      /\.ledger__time,\s*\.ledger__duration\s*\{[^}]*font-variant-numeric:\s*tabular-nums/.test(
+        css,
+      ),
+    ).toBe(true);
   });
 });
