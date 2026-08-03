@@ -689,13 +689,24 @@ async def test_a_mismatched_redirect_uri_fails(
         )
 
 
-async def test_a_missing_verifier_is_a_malformed_request_rather_than_a_bad_grant(
-    tokens: TokenService,
+@pytest.mark.parametrize(
+    "missing",
+    ["code", "code_verifier", "redirect_uri"],
+    ids=["no code", "no verifier", "no redirect_uri"],
+)
+async def test_an_exchange_missing_a_parameter_is_malformed_rather_than_a_bad_grant(
+    tokens: TokenService, missing: str
 ) -> None:
+    # Three parameters are required, so none of the checks below can be skipped by omission.
+    # RFC 6749 section 4.1.3 requires the redirect_uri whenever the authorize request carried
+    # one, and every authorize request here does.
+    presented = {"code": "syncrc_x", "code_verifier": VERIFIER, "redirect_uri": LOOPBACK}
+    del presented[missing]
+
     with pytest.raises(InvalidRequest):
         await tokens.exchange(
             TokenRequest(
-                grant_type=GRANT_TYPE_AUTHORIZATION_CODE, client_id=CLI_CLIENT_ID, code="syncrc_x"
+                grant_type=GRANT_TYPE_AUTHORIZATION_CODE, client_id=CLI_CLIENT_ID, **presented
             )
         )
 

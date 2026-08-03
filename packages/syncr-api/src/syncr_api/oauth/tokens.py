@@ -213,10 +213,10 @@ class TokenService:
         return principal
 
     async def _exchange_code(self, request: TokenRequest) -> IssuedTokens:
-        if not request.code or not request.code_verifier:
+        if not request.code or not request.code_verifier or not request.redirect_uri:
             raise InvalidRequest(
-                "code and code_verifier are both required to exchange an authorization "
-                "code. Nothing was changed."
+                "code, code_verifier, and redirect_uri are all required to exchange an "
+                "authorization code. Nothing was changed."
             )
         code = await self._credentials.find_code(digest_of(request.code))
         now = self._clock()
@@ -233,7 +233,10 @@ class TokenService:
             )
         if code.client_id != request.client_id:
             raise self._rejected("client_mismatch", client_id=request.client_id)
-        if request.redirect_uri is not None and request.redirect_uri != code.redirect_uri:
+        # RFC 6749 section 4.1.3 makes this REQUIRED whenever the authorize request carried
+        # one, and no path through `GET /oauth/authorize` omits it. Compared rather than
+        # optionally compared, so a caller cannot skip the check by dropping the parameter.
+        if request.redirect_uri != code.redirect_uri:
             raise self._rejected("redirect_mismatch", client_id=request.client_id)
         if not verifies(request.code_verifier, code.code_challenge):
             raise self._rejected("pkce_failed", client_id=request.client_id)

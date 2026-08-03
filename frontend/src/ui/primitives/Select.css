@@ -5,7 +5,9 @@
  * arrives in a platform-drawn well with its own corner radius, so the arrow here is the typographic mark
  * from the glyph table and the box is drawn by this system on every platform.
  *
- * The list is a popover, one of the three surfaces `--shadow-hard` exists for, so it takes `.overlay`.
+ * The list is a popover, and a carrier of --shadow-hard: the sheet draws a native `<select>`, which has no
+ * floating surface of its own, so a Radix list is a surface this system had to lift off the page itself. It
+ * takes `.overlay`, where that shadow is declared once for the three surfaces that float.
  * Its rows take `.state-row`, which is where hover's fill and the keyboard cursor's ring are decided for
  * the whole kit. A row is --h-row 28px, the same pitch a table row and a ledger row use. */
 

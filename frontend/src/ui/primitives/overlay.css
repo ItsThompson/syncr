@@ -1,10 +1,19 @@
 /* Layer 2: THE ONE HARD OFFSET, ASSIGNED IN ONE FILE.
  *
- * Print has no blur, so the lift is a 4px hard offset and there is exactly one of it. Section 14 names
- * the Dialog family as its carrier and `docs/design/components.html` renders the same shadow on three
- * surfaces: the dialog, the date picker's popover and the command palette. All three are the same idea,
- * an overlay that has to lift off the page, so the shadow has one definition here and the three
- * components name it. A block, a card, a panel and a button carry no shadow at all.
+ * Print has no blur, so the lift is a 4px hard offset and there is exactly one of it. Section 14 names the
+ * Dialog family as its carrier, and three surfaces in this layer carry it: the dialog, the date picker's
+ * popover and the select's list. All three are the same idea, a surface that floats over the page and has to
+ * lift off it, so the shadow has one definition here and those three components name `.overlay`. A block, a
+ * card, a panel and a button carry no shadow at all.
+ *
+ * THE SELECT'S LIST IS A CARRIER THIS SYSTEM ADDED. `docs/design/components.html` draws the select as a
+ * native `<select>`, which has no floating surface of its own to draw, and Radix's list is a real popover
+ * that would otherwise sit on the page with nothing separating it from the rows beneath. The command
+ * palette is the opposite case and is NOT a carrier: `Command` is the control, and the palette that floats
+ * it is a domain component that composes `.overlay` itself.
+ *
+ * `__tests__/layerRules.test.ts` asserts both halves: one stylesheet declares the shadow, and exactly these
+ * three components name the class, so the enumeration in this paragraph is checked rather than claimed.
  *
  * THE SCRIM IS TRANSLUCENT AND DERIVED, at --scrim, which is --ink-deep at 30%. The surface being
  * explained stays legible beneath the thing explaining it, and no new pigment is introduced. There is no

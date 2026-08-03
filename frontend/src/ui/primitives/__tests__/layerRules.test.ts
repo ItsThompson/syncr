@@ -17,6 +17,7 @@ import { readdir } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { parse } from "postcss";
 
+import { componentsNaming } from "../../../testing/kitSources";
 import { kitStylesheet, primitivesDir } from "../../../testing/kitStylesheets";
 
 async function stylesheetNames(): Promise<string[]> {
@@ -135,6 +136,19 @@ describe("the one hard offset", () => {
 
     expect([...new Set(declaring)]).toEqual(["overlay.css"]);
   });
+
+  /* Declaring the shadow once and CARRYING it are two different claims, and only the first was checked: a
+   * count of declarations cannot see a fourth component taking the class. So the carriers are enumerated
+   * here, which is what makes the paragraph in `overlay.css` falsifiable. The select's list is one of them
+   * because Radix draws a real popover where the reference sheet has a native control, and the command
+   * palette is not: `Command` is the control, and the domain component that floats it composes the overlay. */
+  it("is carried by exactly the three surfaces that float over the page", async () => {
+    expect(await componentsNaming("overlay")).toEqual([
+      "DatePicker.tsx",
+      "Dialog.tsx",
+      "Select.tsx",
+    ]);
+  });
   it("is the only shadow the layer declares, so nothing else lifts off the page", async () => {
     for (const { name, css } of await sheets()) {
       const shadows: string[] = [];
@@ -180,8 +194,8 @@ describe("every value the layer draws with", () => {
    * while #16307F would be a pigment nobody sealed. */
   it("is a token where it is a colour", async () => {
     for (const { name, css } of await sheets()) {
-      expect(name + css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-      expect(name + css).not.toMatch(/\b(?:rgba?|hsla?|oklch)\s*\(/i);
+      expect(`${name} ${css}`).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+      expect(`${name} ${css}`).not.toMatch(/\b(?:rgba?|hsla?|oklch)\s*\(/i);
     }
   });
 
