@@ -11,12 +11,10 @@ not is a stale row, which is how a table stops describing the code while still l
 authoritative.
 
 The generated corpus is the other half. The table says where the values land; the axes in
-:mod:`tests.hostile_ics` say which values to send, derived from the bounds rather than written
-out, so
-the corpus follows a bound when it moves. What neither half can do is find an overflow in
-arithmetic,
-which is not a call: that is what the unrepresentable net is for, and the corpus is what exercises
-it.
+:mod:`tests.hostile_ics` say which values to send, derived from the bounds rather than written out,
+so the corpus follows a bound when it moves. What neither half can do is find an overflow in
+arithmetic, which is not a call: that is what the unrepresentable net is for, and the corpus is what
+exercises it.
 """
 
 from __future__ import annotations
@@ -53,9 +51,8 @@ def declared() -> set[tuple[str, str, str]]:
 
 
 def test_every_construction_call_in_the_package_is_declared(source_root: Path) -> None:
-    # The direction that catches the defect this ticket kept reproducing. A conversion added without
-    # a row is a value a feed can reach with nothing saying how it is answered, and the reviews
-    # found
+    # The direction that catches the defect this ticket kept reproducing. A conversion with no row
+    # is a value a feed can reach with nothing saying how it is answered, and the reviews found
     # three such sites across three iterations by reading rather than by running anything.
     undeclared = construction_calls(source_root, PACKAGE) - declared()
 
@@ -80,8 +77,7 @@ def test_the_walk_finds_a_construction_call_and_ignores_other_calls(source_root:
 
     assert ("ics_values", "_number", "int") in found
     assert ("ics_values", "_build", "datetime") in found
-    # And it is a filter rather than a firehose: the package makes many calls that construct
-    # nothing.
+    # And it is a filter rather than a firehose: many of the package's calls construct nothing.
     assert all(constructor in CONSTRUCTORS for _module, _function, constructor in found)
 
 
@@ -134,6 +130,5 @@ def test_the_magnitude_axis_is_read_from_the_bound_it_tests() -> None:
 @pytest.mark.parametrize("start", ["DTSTART:", "DTSTART;TZID=", "DTSTART;VALUE=DATE:"])
 def test_every_start_form_is_crossed_with_the_extremes(start: str) -> None:
     # Three forms reach three different resolution paths: an instant, a named zone, and a whole
-    # local
-    # day. An extreme value crossed with only one of them tests one path.
+    # local day. An extreme value crossed with only one of them tests one path.
     assert any(start in body for body in HOSTILE_MAGNITUDES.values())

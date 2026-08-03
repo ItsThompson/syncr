@@ -349,7 +349,7 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         "DURATION:PT1H",
         "RECURRENCE-ID:99991231T235959Z",
     ),
-    "a whole-day start with a timed end": ("DTEND:20260210T090000Z",),
+    "a timed end": ("DTEND:20260210T090000Z",),
 }
 
 
@@ -370,6 +370,81 @@ def _crossed() -> dict[str, str]:
 
 HOSTILE_MAGNITUDES: Final[dict[str, str]] = _crossed()
 
+
+def _series_with(*replacements: str) -> str:
+    """A weekly master, plus whatever replacements of its second occurrence are given."""
+    master = (
+        "BEGIN:VEVENT\r\nUID:conflict@example.org\r\nSUMMARY:Weekly\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
+    )
+    return "BEGIN:VCALENDAR\r\n" + master + "".join(replacements) + "END:VCALENDAR\r\n"
+
+
+def _replacement(*lines: str) -> str:
+    body = "\r\n".join(lines)
+    return (
+        "BEGIN:VEVENT\r\nUID:conflict@example.org\r\n"
+        "RECURRENCE-ID:20260217T100000Z\r\n" + body + "\r\nEND:VEVENT\r\n"
+    )
+
+
+# Two replacements of ONE occurrence. An export that overlaps two edits repeats an override as
+# readily as it repeats a master, so the same SEQUENCE rule has to settle it and the discard has to
+# be counted.
+DUPLICATE_REPLACEMENTS: Final = _series_with(
+    _replacement(
+        "SEQUENCE:1",
+        "SUMMARY:Moved to 14:00",
+        "DTSTART:20260217T140000Z",
+        "DTEND:20260217T150000Z",
+    ),
+    _replacement(
+        "SEQUENCE:3",
+        "SUMMARY:Moved to 16:00",
+        "DTSTART:20260217T160000Z",
+        "DTEND:20260217T170000Z",
+    ),
+)
+
+# The higher SEQUENCE declared FIRST, so a rule that kept whichever arrived last would answer this
+# body differently from the one above.
+DUPLICATE_REPLACEMENTS_REVERSED: Final = _series_with(
+    _replacement(
+        "SEQUENCE:3",
+        "SUMMARY:Moved to 16:00",
+        "DTSTART:20260217T160000Z",
+        "DTEND:20260217T170000Z",
+    ),
+    _replacement(
+        "SEQUENCE:1",
+        "SUMMARY:Moved to 14:00",
+        "DTSTART:20260217T140000Z",
+        "DTEND:20260217T150000Z",
+    ),
+)
+
+# One occurrence both moved and cancelled. The cancellation is what the feed means, and the override
+# it displaces is a component that has to be accounted for.
+MOVED_AND_CANCELLED: Final = _series_with(
+    _replacement("SUMMARY:Moved", "DTSTART:20260217T140000Z", "DTEND:20260217T150000Z"),
+    _replacement(
+        "STATUS:CANCELLED",
+        "SUMMARY:Gone",
+        "DTSTART:20260217T100000Z",
+        "DTEND:20260217T110000Z",
+    ),
+)
+
+# A live master AND a cancelled one under one UID, with an override. The override belongs to the
+# live series: a cancelled duplicate must not take the live master's occurrences down with it.
+CANCELLED_DUPLICATE_MASTER: Final = _series_with(
+    "BEGIN:VEVENT\r\nUID:conflict@example.org\r\nSTATUS:CANCELLED\r\n"
+    "SUMMARY:Cancelled duplicate\r\nDTSTART:20260210T100000Z\r\n"
+    "DTEND:20260210T110000Z\r\nEND:VEVENT\r\n",
+    _replacement("SUMMARY:Moved hour", "DTSTART:20260217T140000Z", "DTEND:20260217T150000Z"),
+)
+
 # Every body above, so a test can assert a property over the whole corpus.
 ALL_FEEDS: Final = {
     "university_timetable": UNIVERSITY_TIMETABLE,
@@ -380,5 +455,9 @@ ALL_FEEDS: Final = {
     "runaway": RUNAWAY_RECURRENCE,
     "overrunning": OVERRUNNING_RECURRENCE,
     "deeply_nested": DEEPLY_NESTED,
+    "duplicate_replacements": DUPLICATE_REPLACEMENTS,
+    "duplicate_replacements_reversed": DUPLICATE_REPLACEMENTS_REVERSED,
+    "moved_and_cancelled": MOVED_AND_CANCELLED,
+    "cancelled_duplicate_master": CANCELLED_DUPLICATE_MASTER,
     **HOSTILE_MAGNITUDES,
 }

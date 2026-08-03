@@ -31,8 +31,12 @@ from syncr_domain.zones import TravelOverride, ZoneProfile
 from tests.hostile_ics import (
     ALL_FEEDS,
     ASSESSMENTS_FEED,
+    CANCELLED_DUPLICATE_MASTER,
+    DUPLICATE_REPLACEMENTS,
+    DUPLICATE_REPLACEMENTS_REVERSED,
     EMPTY_FEED,
     HOLIDAY_FEED,
+    MOVED_AND_CANCELLED,
     OVERRUNNING_RECURRENCE,
     PUBLISHED_OUTLOOK,
     RUNAWAY_RECURRENCE,
@@ -407,6 +411,56 @@ def test_a_cancelled_master_cancels_its_overrides_too() -> None:
     # Both components, counted: the master and the replacement it took with it.
     assert outcome.cancelled_discarded == 2
     assert outcome.overrides_applied == 0
+
+
+def test_a_cancelled_duplicate_master_does_not_cancel_the_live_series_overrides() -> None:
+    # The counterpart to the test above, and the edge its fix can overreach on. A feed holding BOTH
+    # a live master and a cancelled one under one UID has a live series, so its override belongs to
+    # that series. Deciding by "is this UID cancelled anywhere" discards the moved hour and the
+    # accounting still closes, so nothing would report the loss.
+    outcome = parse_feed(CANCELLED_DUPLICATE_MASTER, horizon=HORIZON, profile=HOME)
+
+    assert "Moved hour" in {event.title for event in outcome.events}
+    assert outcome.overrides_applied == 1
+    # The cancelled duplicate, and nothing else.
+    assert outcome.cancelled_discarded == 1
+
+
+def test_two_replacements_of_one_occurrence_resolve_by_sequence_and_count_the_discard() -> None:
+    # An export overlapping two edits repeats an override as readily as it repeats a master, so the
+    # rule that settles duplicate masters has to settle these too. Overwriting by document order
+    # loses a component silently AND makes the answer depend on declaration order.
+    outcome = parse_feed(DUPLICATE_REPLACEMENTS, horizon=HORIZON, profile=HOME)
+
+    titles = {event.title for event in outcome.events}
+    assert "Moved to 16:00" in titles
+    assert "Moved to 14:00" not in titles
+    assert outcome.duplicates_discarded == 1
+    assert outcome.overrides_applied == 1
+
+
+def test_the_surviving_replacement_does_not_depend_on_declaration_order() -> None:
+    # The same two components with the higher SEQUENCE first. A rule that kept whichever arrived
+    # last would answer the two bodies differently, which is the defect the master rule already
+    # avoids by comparing SEQUENCE rather than position.
+    first = parse_feed(DUPLICATE_REPLACEMENTS, horizon=HORIZON, profile=HOME)
+    reversed_order = parse_feed(DUPLICATE_REPLACEMENTS_REVERSED, horizon=HORIZON, profile=HOME)
+
+    assert {event.title for event in first.events} == {
+        event.title for event in reversed_order.events
+    }
+    assert reversed_order.duplicates_discarded == 1
+
+
+def test_an_occurrence_both_moved_and_cancelled_is_cancelled_and_the_override_counted() -> None:
+    # Cancellation is read before the replacement, as everywhere else here: the feed said the hour
+    # does not happen. The override it displaces is still a component, so it is counted rather than
+    # dropped where no term would report it.
+    outcome = parse_feed(MOVED_AND_CANCELLED, horizon=HORIZON, profile=HOME)
+
+    assert "Moved" not in {event.title for event in outcome.events}
+    assert outcome.cancelled_discarded == 1
+    assert outcome.overrides_applied == 1
 
 
 def test_an_override_matching_no_occurrence_is_placed_rather_than_lost() -> None:

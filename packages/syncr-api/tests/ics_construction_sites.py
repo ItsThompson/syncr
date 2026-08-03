@@ -24,8 +24,14 @@ same transaction rolled back with it.
 
 **Arithmetic is deliberately not in the call table.** Overflow from ``instant - lead`` is not a call
 and cannot be found by walking for one; that is exactly what the ``UNREPRESENTABLE`` net exists for,
-and the generated corpus is what exercises it. The table says so per row rather than pretending the
-static walk covers it.
+and the generated corpus is what exercises it. This paragraph is the only place that exclusion is
+stated, so read the table as covering CALLS and nothing else.
+
+**What the walk does and does not see.** It reads every ``.py`` file under the package, including
+subpackages, and attributes each call to its nearest enclosing ``def`` or ``class``, so a conversion
+in a class body or in a provider module is found. It matches on the name a call uses, so a
+constructor reached through an alias the walk cannot resolve would still be missed; adding one is a
+change to :data:`CONSTRUCTORS`.
 """
 
 from __future__ import annotations
@@ -54,6 +60,7 @@ CONSTRUCTORS: Final = frozenset(
         "combine",
         "strptime",
         "fromisoformat",
+        "ZoneInfo",
     }
 )
 
@@ -61,6 +68,7 @@ CONSTRUCTORS: Final = frozenset(
 # bare word: it names the mechanism a reader can go and check.
 GUARDED_HERE: Final = "guarded at the read site"
 GUARDED_BY_CALLER: Final = "guarded by an enclosing except in this package"
+BOUNDED_BY_THE_PATTERN: Final = "bounded by the regex's fixed-width groups"
 NOT_A_FEED_VALUE: Final = "constructed from syncr's own values, not the feed's"
 
 
@@ -100,14 +108,14 @@ SITES: Final[tuple[Site, ...]] = (
         function="_parse_date",
         constructor="int",
         reads="the year, month and day of a DATE",
-        guard=GUARDED_BY_CALLER,
+        guard=BOUNDED_BY_THE_PATTERN,
     ),
     Site(
         module="ics_values",
         function="parse_time",
         constructor="int",
         reads="the six fields of a DATE-TIME",
-        guard=GUARDED_BY_CALLER,
+        guard=BOUNDED_BY_THE_PATTERN,
     ),
     Site(
         module="ics_values",
@@ -129,6 +137,13 @@ SITES: Final[tuple[Site, ...]] = (
         constructor="strptime",
         reads="a UTC UNTIL inside an RRULE",
         guard=GUARDED_BY_CALLER,
+    ),
+    Site(
+        module="ics_recurrence",
+        function="_as_series_wall",
+        constructor="ZoneInfo",
+        reads="the literal 'UTC', and a zone resolve_tzid already accepted",
+        guard=NOT_A_FEED_VALUE,
     ),
     Site(
         module="ics_times",
@@ -169,7 +184,7 @@ def construction_calls(source_root: Path, package: str) -> set[tuple[str, str, s
     accounted for rather than invisible.
     """
     found: set[tuple[str, str, str]] = set()
-    for path in sorted((source_root / package).glob("*.py")):
+    for path in sorted((source_root / package).rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for function, call in _calls_in(tree):
             name = _called_name(call)
@@ -179,21 +194,27 @@ def construction_calls(source_root: Path, package: str) -> set[tuple[str, str, s
 
 
 def _calls_in(tree: ast.Module) -> Iterator[tuple[str, ast.Call]]:
-    """Every call in a module, paired with the function that contains it."""
+    """Every call in a module, paired with the innermost scope that contains it.
+
+    Each call is attributed to its nearest enclosing ``def`` or ``class``, so a call in an ``if``
+    inside a method is reported against the method, not the module. A class body is a scope of its
+    own: a conversion evaluated there runs at import and can still refuse.
+    """
+    scopes: dict[ast.AST, str] = {}
+    for parent in ast.walk(tree):
+        inherited = scopes.get(parent, "module scope")
+        for child in ast.iter_child_nodes(parent):
+            scopes[child] = _scope_name(parent) or inherited
     for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            continue
-        for inner in ast.walk(node):
-            if isinstance(inner, ast.Call):
-                yield node.name, inner
-    for node in tree.body:
-        for inner in ast.walk(node):
-            if isinstance(inner, ast.Call) and not _inside_a_function(node):
-                yield "module scope", inner
+        if isinstance(node, ast.Call):
+            yield scopes.get(node, "module scope"), node
 
 
-def _inside_a_function(node: ast.stmt) -> bool:
-    return isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+def _scope_name(node: ast.AST) -> str | None:
+    """The name this node introduces as a scope, or ``None`` when it introduces none."""
+    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+        return node.name
+    return None
 
 
 # The names a construction can be reached through as an attribute. `datetime.combine(...)` builds a
@@ -205,10 +226,9 @@ CONSTRUCTING_RECEIVERS: Final = frozenset({"datetime", "date", "time", "timedelt
 def _called_name(call: ast.Call) -> str | None:
     """The bare name of what a call constructs, or ``None`` when it constructs nothing.
 
-    A bare name is a constructor if it is one. An attribute is a constructor only when its
-    receiver is
-    one of the datetime types: ``datetime.strptime`` builds a value from a string a feed supplied,
-    while ``wall.date()`` projects a value that already exists and has nothing left to refuse.
+    A bare name is a constructor if it is one. An attribute is one only when its receiver is a
+    datetime type: ``datetime.strptime`` builds a value from a string a feed supplied, while
+    ``wall.date()`` projects a value that already exists and has nothing left to refuse.
     """
     if isinstance(call.func, ast.Name):
         return call.func.id

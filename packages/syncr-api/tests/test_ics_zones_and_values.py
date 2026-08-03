@@ -225,10 +225,25 @@ def test_a_duration_component_is_bounded_by_its_length_before_it_is_converted(di
 
 
 def test_the_length_bound_never_refuses_a_duration_the_magnitude_bound_would_allow() -> None:
-    # The accepting side, and the reason the length bound is derived rather than chosen: it is one
-    # digit wider than the largest value the magnitude bound can accept.
-    assert parse_duration(f"P{MAX_EVENT_DAYS}D").days == MAX_EVENT_DAYS
-    assert len(str(MAX_EVENT_DAYS)) <= MAX_MAGNITUDE_DIGITS
+    # The accepting side, and the reason the length bound is derived rather than chosen. The widest
+    # group the magnitude bound can accept is MAX_EVENT_DAYS expressed in seconds, so that is the
+    # value the length bound has to admit.
+    widest = MAX_EVENT_DAYS * 24 * 60 * 60
+
+    assert parse_duration(f"PT{widest}S").days == MAX_EVENT_DAYS
+    assert len(str(widest)) <= MAX_MAGNITUDE_DIGITS
+
+
+@pytest.mark.parametrize(
+    "padded",
+    ["PT00000000030S", "PT0000000000000000030S", f"P{'0' * 40}{MAX_EVENT_DAYS}D"],
+    ids=["just inside the width", "far past it", "a padded value at the bound"],
+)
+def test_leading_zeros_do_not_count_toward_the_length_bound(padded: str) -> None:
+    # RFC 5545's `\d+` permits leading zeros, so a padded group names a small number written wide.
+    # Counting the characters rather than the significant digits refuses thirty seconds, and says so
+    # in a message about a bound the value is nowhere near.
+    assert parse_duration(padded).total_seconds() > 0
 
 
 def test_the_length_bound_is_narrower_than_the_interpreter_would_enforce() -> None:

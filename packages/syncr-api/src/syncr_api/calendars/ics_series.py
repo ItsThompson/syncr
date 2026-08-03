@@ -96,7 +96,8 @@ def sort_components(readable: list[EventComponent]) -> Series:
 
     Two components with one UID and no ``RECURRENCE-ID`` are the duplicate case. The higher
     ``SEQUENCE`` wins, and a tie keeps the one declared first, so the answer does not depend on the
-    order a dictionary happens to hold.
+    order a dictionary happens to hold. **Two replacements of the same occurrence resolve the same
+    way**, because an overlapping export repeats an override as readily as it repeats a master.
     """
     masters: dict[str, EventComponent] = {}
     cancelled_uids: set[str] = set()
@@ -123,14 +124,12 @@ def sort_components(readable: list[EventComponent]) -> Series:
     tombstones: set[OccurrenceKey] = set()
     orphans: list[EventComponent] = []
     for replacement in replacements:
-        if replacement.uid in cancelled_uids:
-            # The feed cancelled the series this replaces, so there is nothing live to attach it to
-            # and nothing it could be an occurrence OF. Placing it would turn a cancellation into
-            # occupancy.
-            cancelled += 1
-            continue
         if replacement.uid not in masters:
-            if replacement.cancelled:
+            # No live master, so there is no occurrence this could be. A replacement of a series the
+            # feed cancelled is counted rather than placed: placing it would turn a cancellation
+            # into occupancy. A replacement of a series that is simply absent is an orphan, which
+            # the caller places on its own because the feed asserts the commitment.
+            if replacement.cancelled or replacement.uid in cancelled_uids:
                 cancelled += 1
             else:
                 orphans.append(replacement)
@@ -138,8 +137,21 @@ def sort_components(readable: list[EventComponent]) -> Series:
         key = replaced_key(replacement)
         if replacement.cancelled:
             tombstones.add(key)
-        else:
+            continue
+        held = overrides.get(key)
+        if held is None:
             overrides[key] = replacement
+            continue
+        duplicates += 1
+        if replacement.sequence > held.sequence:
+            overrides[key] = replacement
+
+    # A feed that both moves an occurrence and cancels it has said it does not happen. The
+    # cancellation is read before the replacement, as everywhere else here, and the override it
+    # displaces is counted so the component is not lost silently.
+    for key in tombstones & overrides.keys():
+        del overrides[key]
+        cancelled += 1
 
     return Series(
         masters=tuple(masters.values()),

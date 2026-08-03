@@ -40,9 +40,9 @@ _SECONDS_PER_HOUR: Final = 60 * _SECONDS_PER_MINUTE
 _SECONDS_PER_DAY: Final = 24 * _SECONDS_PER_HOUR
 _SECONDS_PER_WEEK: Final = 7 * _SECONDS_PER_DAY
 
-# How many digits one duration component may carry. Derived from the largest value the bound below
-# can accept rather than chosen, and one wider so a group that could still be inside the bound is
-# never refused for its length alone.
+# How many SIGNIFICANT digits one duration component may carry. Derived from the largest value the
+# bound below can accept rather than chosen, and one wider so a group that could still be inside
+# that bound is never refused for its length alone.
 MAX_MAGNITUDE_DIGITS: Final = len(str(MAX_EVENT_DAYS * _SECONDS_PER_DAY)) + 1
 
 # RFC 5545 duration: `P` then weeks, or days with an optional time part. A leading `-`
@@ -221,15 +221,14 @@ def _number(part: str | None) -> int:
 
     The length is what has to be checked, and it has to be checked here. ``int()`` on a string
     refuses more than ``sys.get_int_max_str_digits()`` digits, and that raises before any sum
-    exists, so the magnitude bound in :func:`parse_duration` never sees the value. Bounding the
-    digit count also keeps the threshold the code's own: the interpreter's limit is settable through
-    ``PYTHONINTMAXSTRDIGITS``, so a bound that relied on it would move with the deployment.
+    exists, so the magnitude bound in :func:`parse_duration` never sees the value.
 
-    Once a group is converted, Python integer arithmetic is exact and unbounded, which is what makes
-    one bound on the summed total sufficient for every unit.
+    Leading zeros are not counted, because RFC 5545's ``\\d+`` permits them and a padded group names
+    a small number. Counting them would refuse ``PT0000000000030S``, which is thirty seconds.
     """
     if part is None:
         return 0
-    if len(part) > MAX_MAGNITUDE_DIGITS:
-        raise _too_long(f"a duration component of {len(part)} digits")
+    digits = len(part.lstrip("0"))
+    if digits > MAX_MAGNITUDE_DIGITS:
+        raise _too_long(f"a duration component of {digits} significant digits")
     return int(part)
