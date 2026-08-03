@@ -9,12 +9,29 @@ schema cannot ship half-converted, which would be a contract that reads two ways
 document advertises the camelCase alias, which is what a generated client sends; the
 snake_case field name stays usable from a test and from the CLI without a second
 schema.
+
+``WireDecimal`` is here for the same reason the casing is: a shape that reads two ways is a
+contract that drifts. Pydantic renders a bare ``Decimal`` as ``anyOf: [number, string]`` and
+serializes it as a string, so the generated TypeScript would be ``number | string`` and every
+caller would have to narrow it before doing arithmetic. Both readings are pinned to a number
+here, and exact ``Decimal`` arithmetic stays on the server where the budget is computed.
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from decimal import Decimal
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, PlainSerializer, WithJsonSchema
 from pydantic.alias_generators import to_camel
+
+# A fractional value the wire carries as a number. Field-level bounds still apply: only the
+# type and the serialized form are fixed here.
+type WireDecimal = Annotated[
+    Decimal,
+    PlainSerializer(float, return_type=float, when_used="json"),
+    WithJsonSchema({"type": "number"}),
+]
 
 
 class WireModel(BaseModel):
