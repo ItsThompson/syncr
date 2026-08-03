@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from syncr_api.calendars.config import HORIZON_DAYS_MAX, HORIZON_DAYS_MIN, WRITE_TARGET
+from syncr_api.calendars.config import HORIZON_DAYS_MAX, HORIZON_DAYS_MIN, ICS, WRITE_TARGET
 from syncr_api.core.errors import Conflict, ValidationFailed
 
 if TYPE_CHECKING:
@@ -85,4 +85,21 @@ def require_a_projectable_horizon(horizon_days: int) -> None:
         f"A projection horizon of {horizon_days} days is outside the range syncr writes, "
         f"{HORIZON_DAYS_MIN} to {HORIZON_DAYS_MAX} days. Nothing was changed; the plan still "
         "projects over the horizon already set."
+    )
+
+
+def require_a_readable_provider(source: CalendarSourceRecord) -> None:
+    """Reject a sync on a provider syncr does not read yet.
+
+    A Google source can be created today, and its external identifier is a calendarId rather than
+    an address. Handed to the ICS adapter it is fetched as a URL, fails, and the source is recorded
+    as failing with a transport message: the panel then tells the user their calendar is broken
+    when the truth is that syncr does not read that provider yet.
+    """
+    if source.provider == ICS:
+        return
+    raise ValidationFailed(
+        f"{source.display_name!r} is a {source.provider} calendar, and syncr reads ICS feeds "
+        "today. Nothing was changed and nothing about this source is wrong: it will sync when the "
+        f"{source.provider} integration lands. Every ICS source still syncs."
     )

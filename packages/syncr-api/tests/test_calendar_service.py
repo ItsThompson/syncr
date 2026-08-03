@@ -34,6 +34,7 @@ from syncr_api.calendars.config import (
     HORIZON_DAYS_DEFAULT,
     HORIZON_DAYS_MAX,
     ICS,
+    NEVER_SYNCED,
     WRITE_TARGET,
 )
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
@@ -501,6 +502,22 @@ async def test_a_forced_sync_delegates_and_answers_with_a_terminal_operation(
     # resolve. The worker-loop ticket owns the general transition logic.
     assert operation.status == SUCCEEDED
     assert operation.status != PENDING
+
+
+async def test_a_forced_sync_on_a_provider_syncr_does_not_read_is_refused(wiring: Wiring) -> None:
+    # Without the guard the calendarId is handed to the ICS adapter as a URL, the fetch fails, and
+    # the source is recorded as failing with a transport message: the panel then says the user's
+    # calendar is broken when the truth is that syncr does not read Google yet.
+    held = wiring.sources.hold(record(provider=GOOGLE, external_id="abc@group.calendar"))
+
+    with pytest.raises(ValidationFailed) as raised:
+        await wiring.service.sync_source(OWNER, held.id)
+
+    assert "google" in raised.value.detail
+    assert "nothing about this source is wrong" in raised.value.detail
+    # Nothing was fetched and nothing was written, so the source does not read as failing.
+    assert wiring.syncer.synced == []
+    assert wiring.sources.rows[held.id].state == NEVER_SYNCED
 
 
 async def test_removing_a_source_removes_it(wiring: Wiring) -> None:

@@ -590,3 +590,28 @@ def test_a_google_source_needs_no_url_normalization(
     )
 
     assert created["externalId"] == "abc123@group.calendar.google.com"
+
+
+def test_a_forced_sync_on_a_google_source_is_refused_rather_than_fetched(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    # Without the guard the calendarId is handed to the ICS adapter as a URL, the fetch fails, and
+    # the source is recorded as failing with a transport message. The panel would then tell the
+    # user their calendar is broken when the truth is that syncr does not read Google yet.
+    created = add_source(
+        http,
+        signed_in,
+        provider=GOOGLE,
+        external_id="abc123@group.calendar.google.com",
+        display_name="Personal",
+    )
+
+    response = http.post(f"{SOURCES}/{created['id']}/sync", headers=signed_in)
+
+    assert response.status_code == ValidationFailed.status
+    assert "nothing about this source is wrong" in response.json()["detail"]
+    # And the source did not acquire an error state from an attempt that should not have happened.
+    read = http.get(f"{SOURCES}/{created['id']}", headers=signed_in).json()
+    assert read["state"] == NEVER_SYNCED
+    assert read["syncState"]["lastError"] is None
+    assert read["syncState"]["lastAttemptAt"] is None

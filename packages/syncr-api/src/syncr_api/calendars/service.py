@@ -36,6 +36,7 @@ from syncr_api.calendars.config import (
 )
 from syncr_api.calendars.rules import (
     require_a_projectable_horizon,
+    require_a_readable_provider,
     require_no_anchor_history,
     require_no_write_target,
     require_the_write_target,
@@ -218,7 +219,9 @@ class CalendarSourceService:
     ) -> OperationRecord:
         """Force one source to sync now, and answer with the operation that did it."""
         require_scope(principal, Scope.ADMIN)
-        return await self._syncer.sync_now(await self._found(principal, source_id))
+        found = await self._found(principal, source_id)
+        require_a_readable_provider(found)
+        return await self._syncer.sync_now(found)
 
     @measured("calendars")
     async def remove_source(self, principal: Principal, source_id: CalendarSourceId) -> None:
