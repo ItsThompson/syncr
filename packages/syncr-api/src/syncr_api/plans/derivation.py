@@ -18,22 +18,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from syncr_api.plans.errors import PlanDocumentRejected
 from syncr_domain.weeks import IsoWeek, IsoWeekError
 
 if TYPE_CHECKING:
     from syncr_api.core.columns import JsonDocument
 
 DOCUMENT_ISO_WEEK_KEY = "iso_week"
-
-
-class PlanDocumentRejected(Exception):
-    """A document that cannot describe itself, so no row may be written from it.
-
-    Not a :class:`~syncr_api.core.errors.SyncrError`: a document reaches storage from a
-    Pydantic model that has already validated it, so a missing or unparseable week is a
-    defect in the writer rather than something a caller can correct. It renders as the
-    generic 500 the catch-all handler produces, and the fault is logged there.
-    """
 
 
 def derive_iso_week(document: JsonDocument) -> IsoWeek:

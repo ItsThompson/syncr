@@ -24,6 +24,7 @@ from uuid import uuid4
 from syncr_api.core.repository import TenantScopedReader
 from syncr_api.plans.config import APPROVED, RevisionReason, RevisionStatus
 from syncr_api.plans.derivation import derive_iso_week
+from syncr_api.plans.errors import RevisionRejected
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.records import PlanRevisionRecord
 from syncr_domain.weeks import IsoWeek
@@ -59,13 +60,13 @@ class PlanRepository(TenantScopedReader):
     ) -> PlanRevisionRecord:
         """Append one revision, deriving every document-describing column from the document.
 
-        Raises :class:`ValueError` when an approved revision states no instant of assent.
-        The database rejects that pair too; the guard is here as well so the failure names
-        the invariant instead of naming a constraint, and so it surfaces at the call that
-        broke it rather than at the transaction's commit.
+        Raises :class:`~syncr_api.plans.errors.RevisionRejected` when an approved revision
+        states no instant of assent. The database rejects that pair too; the guard is here as
+        well so the failure names the invariant instead of naming a constraint, and so it
+        surfaces at the call that broke it rather than at the transaction's commit.
         """
         if status == APPROVED and approved_at is None:
-            raise ValueError(
+            raise RevisionRejected(
                 "an approved revision must state when it was approved: the retro reads "
                 "the plan of record as of a date, and the churn baseline reads its instant"
             )

@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 import pytest
 from sqlalchemy import Column, Index, MetaData, String, Table, Uuid
 
+from syncr_api.core.columns import values_in
 from syncr_api.core.orm import Base
 from syncr_api.core.repository import TenantScopedReader, TenantScopedRepository
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
@@ -41,6 +42,7 @@ from syncr_api.learned.config import WEIGHT_SETS_TABLE
 from syncr_api.learned.models import WeightSet  # noqa: F401 - registers its table
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.config import (
+    ADJUSTMENT_KINDS,
     BLOCK_OUTCOMES_TABLE,
     CONFLICTS_TABLE,
     EDIT_EVENTS_TABLE,
@@ -367,6 +369,26 @@ def test_the_index_check_reports_a_table_that_lacks_one() -> None:
     assert reads_without_an_index(unindexed, ((TENANT_ID_COLUMN, "iso_week"),)) == [
         "unindexed_things has no index leading with ['tenant_id', 'iso_week']"
     ]
+
+
+# --------------------------------------------------------------------------------
+# The check-constraint helper the vocabularies are rendered by
+# --------------------------------------------------------------------------------
+
+
+def test_a_closed_vocabulary_renders_as_a_check_constraint() -> None:
+    assert values_in("kind", ADJUSTMENT_KINDS) == (
+        "kind IN ('drop_item', 'reduce_routine', 'breach_floor', 'accept_partial')"
+    )
+
+
+def test_a_vocabulary_member_carrying_a_quote_is_refused() -> None:
+    # The members are rendered as literals rather than bound, which is safe because every
+    # caller passes its own package's constants. A member carrying a quote would end the
+    # string and whatever followed it would be read as SQL, so the rendering refuses one
+    # rather than trusting every future caller to keep the convention.
+    with pytest.raises(ValueError, match="carries a quote"):
+        values_in("kind", ("drop_item", "') OR true --"))
 
 
 # --------------------------------------------------------------------------------

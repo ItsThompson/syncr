@@ -13,14 +13,12 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import UnboundExecutionError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from syncr_api.plans.config import APPLIED, APPROVED
-from syncr_api.plans.derivation import (
-    DOCUMENT_ISO_WEEK_KEY,
-    PlanDocumentRejected,
-    derive_iso_week,
-)
+from syncr_api.plans.derivation import DOCUMENT_ISO_WEEK_KEY, derive_iso_week
+from syncr_api.plans.errors import PlanDocumentRejected, RevisionRejected
 from syncr_api.plans.repository import PlanRepository
 from syncr_domain.weeks import IsoWeek
 
@@ -65,7 +63,7 @@ async def test_an_approved_revision_without_its_instant_is_refused_before_any_wr
     # guard has to raise before anything is added to it.
     repository = PlanRepository(AsyncSession(), uuid4())
 
-    with pytest.raises(ValueError, match="approved"):
+    with pytest.raises(RevisionRejected, match="approved"):
         await repository.append(
             document={DOCUMENT_ISO_WEEK_KEY: str(WEEK)},
             objective_breakdown={},
@@ -80,9 +78,11 @@ async def test_an_approved_revision_without_its_instant_is_refused_before_any_wr
 async def test_the_guard_is_specific_to_the_approved_status() -> None:
     # The control. An applied revision has no instant of assent and must not be refused for
     # lacking one, so the guard is shown to distinguish rather than to reject every write.
+    # Reaching the unbound session is the proof: the write got past the guard and failed for
+    # want of a database, which is as far as this tier goes.
     repository = PlanRepository(AsyncSession(), uuid4())
 
-    with pytest.raises(Exception) as refused:  # noqa: PT011 - the unbound session's own error
+    with pytest.raises(UnboundExecutionError):
         await repository.append(
             document={DOCUMENT_ISO_WEEK_KEY: str(WEEK)},
             objective_breakdown={},
@@ -92,8 +92,3 @@ async def test_the_guard_is_specific_to_the_approved_status() -> None:
             input_version=1,
             created_at=NOW,
         )
-
-    assert not isinstance(refused.value, ValueError), (
-        "an applied revision was refused by the approved-instant guard, so the guard is "
-        "rejecting every write rather than the pair it exists for"
-    )

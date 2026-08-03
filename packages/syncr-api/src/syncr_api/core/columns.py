@@ -51,6 +51,14 @@ def values_in(column: str, values: Sequence[str]) -> str:
     A closed vocabulary is enforced by the database as well as by the type annotation,
     because the annotation is erased at runtime and a caller reaching this table from a
     later migration or a ``psql`` session is not type-checked at all.
+
+    Every caller passes its own package's constants, so the members are rendered as literals
+    rather than bound. The rejection makes that a property of the call rather than a
+    convention: a member carrying a quote would close the string and whatever followed would
+    be read as SQL.
     """
+    quoted = [value for value in values if "'" in value]
+    if quoted:
+        raise ValueError(f"{column}'s vocabulary carries a quote, which would end it: {quoted}")
     rendered = ", ".join(f"'{value}'" for value in values)
     return f"{column} IN ({rendered})"
