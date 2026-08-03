@@ -4,6 +4,122 @@
  */
 
 export interface paths {
+    "/.well-known/jwks.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signing keys, current and previous
+         * @description The public keys a verifier needs.
+         *
+         *     Both keys, so a token signed a moment before a rotation still verifies. Public material
+         *     only: :meth:`~syncr_api.oauth.keys.SigningKeySet.jwks` builds it from the public halves and
+         *     has no path to a private one.
+         *
+         *     Not cached, deliberately. A verifier holding a stale key set is exactly the failure keeping
+         *     two keys exists to prevent, and this document is read once per verifier rather than per
+         *     request.
+         */
+        get: operations["jwks__well_known_jwks_json_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/oauth-authorization-server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Authorization Server metadata
+         * @description The RFC 8414 document, built from the pinned issuer and nothing else.
+         */
+        get: operations["as_metadata__well_known_oauth_authorization_server_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Grid geometry, home zone, review cadence, and the active zone
+         * @description The settings, and which zone is active today.
+         */
+        get: operations["read_settings_api_v1_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change visible hours, day bounds, home zone, or review cadence
+         * @description Apply a partial update. An omitted field is left alone.
+         */
+        patch: operations["update_settings_api_v1_settings_patch"];
+        trace?: never;
+    };
+    "/api/v1/settings/travel-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Declared ranges in another zone
+         * @description Every override, in date order.
+         */
+        get: operations["list_travel_overrides_api_v1_settings_travel_overrides_get"];
+        put?: never;
+        /**
+         * Declare a range in another zone
+         * @description Declare a range, or state why it overlaps one already declared.
+         */
+        post: operations["declare_travel_override_api_v1_settings_travel_overrides_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/travel-overrides/{override_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a declared range
+         * @description Remove an override, so the home zone governs its dates again.
+         */
+        delete: operations["remove_travel_override_api_v1_settings_travel_overrides__override_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -81,6 +197,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/oauth/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ask the account holder to authorize a client
+         * @description The consent screen, or a redirect carrying the client's rejection.
+         *
+         *     Every parameter defaults to empty rather than being required, so a malformed request is
+         *     answered by the protocol's own rules rather than by a 422 that names framework fields: a
+         *     client that omits ``code_challenge`` needs to be told PKCE is required, not that a query
+         *     parameter failed validation.
+         */
+        get: operations["authorize_oauth_authorize_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/authorize/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the account holder's answer
+         * @description Send the browser to the client's redirect with a code, or with a refusal.
+         */
+        post: operations["decide_oauth_authorize_decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a refresh token and its family
+         * @description Revoke server-side, and answer the same way whatever was presented.
+         *
+         *     ``token_type_hint`` is accepted and unused: RFC 7009 defines it as a hint for a server
+         *     that stores several token types under one lookup, and there is one lookup here. Accepting
+         *     it keeps a conforming client from having to know that.
+         */
+        post: operations["revoke_oauth_revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a code, or refresh a token
+         * @description The token pair, as RFC 6749 shapes it.
+         *
+         *     Form encoded in, JSON out, both because the specification says so. Rendered through an
+         *     explicit response rather than returned as a model, so the no-store headers cannot be
+         *     forgotten on the one response in the api that carries two live credentials.
+         */
+        post: operations["issue_token_oauth_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/readyz": {
         parameters: {
             query?: never;
@@ -102,6 +311,76 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Body_decide_oauth_authorize_decision_post */
+        Body_decide_oauth_authorize_decision_post: {
+            /**
+             * Client Id
+             * @default
+             */
+            client_id: string;
+            /**
+             * Code Challenge
+             * @default
+             */
+            code_challenge: string;
+            /**
+             * Code Challenge Method
+             * @default
+             */
+            code_challenge_method: string;
+            /** Decision */
+            decision: string;
+            /**
+             * Redirect Uri
+             * @default
+             */
+            redirect_uri: string;
+            /**
+             * Response Type
+             * @default
+             */
+            response_type: string;
+            /**
+             * Scope
+             * @default
+             */
+            scope: string;
+            /** State */
+            state?: string | null;
+        };
+        /** Body_issue_token_oauth_token_post */
+        Body_issue_token_oauth_token_post: {
+            /**
+             * Client Id
+             * @default
+             */
+            client_id: string;
+            /** Code */
+            code?: string | null;
+            /** Code Verifier */
+            code_verifier?: string | null;
+            /**
+             * Grant Type
+             * @default
+             */
+            grant_type: string;
+            /** Redirect Uri */
+            redirect_uri?: string | null;
+            /** Refresh Token */
+            refresh_token?: string | null;
+        };
+        /** Body_revoke_oauth_revoke_post */
+        Body_revoke_oauth_revoke_post: {
+            /**
+             * Client Id
+             * @default
+             */
+            client_id: string;
+            /** Token */
+            token: string;
+            /** Token Type Hint */
+            token_type_hint?: string | null;
+        };
         /**
          * CheckReading
          * @description One check's contribution to readiness, as it appears on the wire.
@@ -124,6 +403,20 @@ export interface components {
             field: string;
             /** Message */
             message: string;
+        };
+        /**
+         * JsonWebKeySet
+         * @description RFC 7517: the published key set. Public material only.
+         *
+         *     Typed loosely on purpose. A JWK's members depend on its key type, so pinning today's
+         *     ES256 shape in a schema would make an algorithm change a contract change in two places.
+         *     :meth:`~syncr_api.oauth.keys.SigningKey.as_public_jwk` is where the shape is decided.
+         */
+        JsonWebKeySet: {
+            /** Keys */
+            keys?: {
+                [key: string]: string;
+            }[];
         };
         /**
          * LivenessReading
@@ -184,6 +477,15 @@ export interface components {
             status: "ready" | "not_ready";
         };
         /**
+         * ReviewCadence
+         * @description Whether the pie review waits to be asked, or is offered on a schedule.
+         *
+         *     The review proposes revised Area percentages and never applies them, so the cadence
+         *     decides when it is offered rather than when anything changes.
+         * @enum {string}
+         */
+        ReviewCadence: "on_demand" | "quarterly";
+        /**
          * SessionResponse
          * @description The current principal, and when this session stops working.
          */
@@ -206,6 +508,147 @@ export interface components {
              */
             userId: string;
         };
+        /**
+         * SettingsPatchRequest
+         * @description A partial update. An omitted field is left alone.
+         *
+         *     No settings value is nullable, so nothing here can be cleared: a field sent as null
+         *     means unchanged, exactly as an absent field does.
+         *
+         *     The sleep floor is not a member of this shape and an unknown field is rejected, so
+         *     sending one is a stated 422. The floor is ``minDurationMinutes`` on the sleep
+         *     routine, set through ``PATCH /api/v1/routines/{id}``, where the solver reads it.
+         */
+        SettingsPatchRequest: {
+            /**
+             * Dayend
+             * @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
+             */
+            dayEnd?: string | null;
+            /**
+             * Daystart
+             * @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
+             */
+            dayStart?: string | null;
+            /**
+             * Homezone
+             * @description An IANA zone identifier, such as 'Europe/London'.
+             */
+            homeZone?: string | null;
+            reviewCadence?: components["schemas"]["ReviewCadence"] | null;
+            /**
+             * Visiblehours
+             * @description How many hours of the day the grid shows at once. The Week screen narrows this range further on a short display, so a thirty-minute block keeps its title.
+             */
+            visibleHours?: number | null;
+        };
+        /**
+         * SettingsResponse
+         * @description One tenant's settings, and the zone active today.
+         *
+         *     ``activeZone`` is resolved through the same function the solver and the assembler
+         *     read, so the screen and the plan cannot disagree about where the user is. One zone,
+         *     for one date: no time in this product is ever shown in two zones at once.
+         */
+        SettingsResponse: {
+            /**
+             * Activezone
+             * @description The zone in force on activeZoneDate: the travel override covering it, else the home zone.
+             */
+            activeZone: string;
+            /**
+             * Activezonedate
+             * Format: date
+             * @description The local date activeZone was resolved for, taken in the home zone. A date selects a travel override, so it cannot itself be read in the zone the override names.
+             */
+            activeZoneDate: string;
+            /**
+             * Dayend
+             * Format: time
+             * @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
+             */
+            dayEnd: string;
+            /**
+             * Daystart
+             * Format: time
+             * @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
+             */
+            dayStart: string;
+            /**
+             * Homezone
+             * @description An IANA zone identifier, such as 'Europe/London'.
+             */
+            homeZone: string;
+            reviewCadence: components["schemas"]["ReviewCadence"];
+            /**
+             * Visiblehours
+             * @description How many hours of the day the grid shows at once. The Week screen narrows this range further on a short display, so a thirty-minute block keeps its title.
+             */
+            visibleHours: number;
+        };
+        /**
+         * TravelOverrideRequest
+         * @description A range to declare. Both dates inclusive, and the range may not overlap another.
+         *
+         *     ``startDate`` after ``endDate`` is a 422, and an overlap with an existing override is
+         *     a 409 naming both ranges. Two ranges that abut exactly are accepted: adjacency is not
+         *     overlap.
+         */
+        TravelOverrideRequest: {
+            /**
+             * Enddate
+             * Format: date
+             */
+            endDate: string;
+            /**
+             * Startdate
+             * Format: date
+             */
+            startDate: string;
+            /**
+             * Zone
+             * @description An IANA zone identifier, such as 'Europe/London'.
+             */
+            zone: string;
+        };
+        /**
+         * TravelOverrideResponse
+         * @description A declared range in another zone. Both dates are inclusive.
+         */
+        TravelOverrideResponse: {
+            /**
+             * Enddate
+             * Format: date
+             */
+            endDate: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Startdate
+             * Format: date
+             */
+            startDate: string;
+            /**
+             * Zone
+             * @description An IANA zone identifier, such as 'Europe/London'.
+             */
+            zone: string;
+        };
+        /**
+         * TravelOverridesResponse
+         * @description Every override a tenant has declared, in date order.
+         *
+         *     A wrapper rather than a bare array. The collection is bounded by how much a person
+         *     travels, so it is not paginated, and an object leaves room for a later field without
+         *     changing the shape of what is already there.
+         */
+        TravelOverridesResponse: {
+            /** Overrides */
+            overrides: components["schemas"]["TravelOverrideResponse"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -215,6 +658,489 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    jwks__well_known_jwks_json_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JsonWebKeySet"];
+                };
+            };
+            /** @description Malformed request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Cross-origin request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    as_metadata__well_known_oauth_authorization_server_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Malformed request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Cross-origin request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_settings_api_v1_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_travel_overrides_api_v1_settings_travel_overrides_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelOverridesResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    declare_travel_override_api_v1_settings_travel_overrides_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TravelOverrideRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelOverrideResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_travel_override_api_v1_settings_travel_overrides__override_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                override_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     log_in_auth_login_post: {
         parameters: {
             query?: never;
@@ -428,6 +1354,322 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LivenessReading"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    authorize_oauth_authorize_get: {
+        parameters: {
+            query?: {
+                client_id?: string;
+                redirect_uri?: string;
+                response_type?: string;
+                code_challenge?: string;
+                code_challenge_method?: string;
+                scope?: string;
+                state?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Malformed request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Cross-origin request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    decide_oauth_authorize_decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_decide_oauth_authorize_decision_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Malformed request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Cross-origin request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revoke_oauth_revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_revoke_oauth_revoke_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Malformed request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Cross-origin request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    issue_token_oauth_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_issue_token_oauth_token_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Malformed request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Cross-origin request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
             /** @description Validation failed */

@@ -1,6 +1,149 @@
 {
   "components": {
     "schemas": {
+      "Body_decide_oauth_authorize_decision_post": {
+        "properties": {
+          "client_id": {
+            "default": "",
+            "title": "Client Id",
+            "type": "string"
+          },
+          "code_challenge": {
+            "default": "",
+            "title": "Code Challenge",
+            "type": "string"
+          },
+          "code_challenge_method": {
+            "default": "",
+            "title": "Code Challenge Method",
+            "type": "string"
+          },
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "redirect_uri": {
+            "default": "",
+            "title": "Redirect Uri",
+            "type": "string"
+          },
+          "response_type": {
+            "default": "",
+            "title": "Response Type",
+            "type": "string"
+          },
+          "scope": {
+            "default": "",
+            "title": "Scope",
+            "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "Body_decide_oauth_authorize_decision_post",
+        "type": "object"
+      },
+      "Body_issue_token_oauth_token_post": {
+        "properties": {
+          "client_id": {
+            "default": "",
+            "title": "Client Id",
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "code_verifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Verifier"
+          },
+          "grant_type": {
+            "default": "",
+            "title": "Grant Type",
+            "type": "string"
+          },
+          "redirect_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Uri"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
+          }
+        },
+        "title": "Body_issue_token_oauth_token_post",
+        "type": "object"
+      },
+      "Body_revoke_oauth_revoke_post": {
+        "properties": {
+          "client_id": {
+            "default": "",
+            "title": "Client Id",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "token_type_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Type Hint"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "Body_revoke_oauth_revoke_post",
+        "type": "object"
+      },
       "CheckReading": {
         "description": "One check's contribution to readiness, as it appears on the wire.",
         "properties": {
@@ -44,6 +187,23 @@
           "message"
         ],
         "title": "FieldError",
+        "type": "object"
+      },
+      "JsonWebKeySet": {
+        "description": "RFC 7517: the published key set. Public material only.\n\nTyped loosely on purpose. A JWK's members depend on its key type, so pinning today's\nES256 shape in a schema would make an algorithm change a contract change in two places.\n:meth:`~syncr_api.oauth.keys.SigningKey.as_public_jwk` is where the shape is decided.",
+        "properties": {
+          "keys": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Keys",
+            "type": "array"
+          }
+        },
+        "title": "JsonWebKeySet",
         "type": "object"
       },
       "LivenessReading": {
@@ -164,6 +324,15 @@
         "title": "ReadinessReading",
         "type": "object"
       },
+      "ReviewCadence": {
+        "description": "Whether the pie review waits to be asked, or is offered on a schedule.\n\nThe review proposes revised Area percentages and never applies them, so the cadence\ndecides when it is offered rather than when anything changes.",
+        "enum": [
+          "on_demand",
+          "quarterly"
+        ],
+        "title": "ReviewCadence",
+        "type": "string"
+      },
       "SessionResponse": {
         "description": "The current principal, and when this session stops working.",
         "properties": {
@@ -195,6 +364,210 @@
         ],
         "title": "SessionResponse",
         "type": "object"
+      },
+      "SettingsPatchRequest": {
+        "additionalProperties": false,
+        "description": "A partial update. An omitted field is left alone.\n\nNo settings value is nullable, so nothing here can be cleared: a field sent as null\nmeans unchanged, exactly as an absent field does.\n\nThe sleep floor is not a member of this shape and an unknown field is rejected, so\nsending one is a stated 422. The floor is ``minDurationMinutes`` on the sleep\nroutine, set through ``PATCH /api/v1/routines/{id}``, where the solver reads it.",
+        "properties": {
+          "dayEnd": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.",
+            "title": "Dayend"
+          },
+          "dayStart": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.",
+            "title": "Daystart"
+          },
+          "homeZone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An IANA zone identifier, such as 'Europe/London'.",
+            "title": "Homezone"
+          },
+          "reviewCadence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewCadence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visibleHours": {
+            "anyOf": [
+              {
+                "maximum": 24.0,
+                "minimum": 6.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many hours of the day the grid shows at once. The Week screen narrows this range further on a short display, so a thirty-minute block keeps its title.",
+            "title": "Visiblehours"
+          }
+        },
+        "title": "SettingsPatchRequest",
+        "type": "object"
+      },
+      "SettingsResponse": {
+        "description": "One tenant's settings, and the zone active today.\n\n``activeZone`` is resolved through the same function the solver and the assembler\nread, so the screen and the plan cannot disagree about where the user is. One zone,\nfor one date: no time in this product is ever shown in two zones at once.",
+        "properties": {
+          "activeZone": {
+            "description": "The zone in force on activeZoneDate: the travel override covering it, else the home zone.",
+            "title": "Activezone",
+            "type": "string"
+          },
+          "activeZoneDate": {
+            "description": "The local date activeZone was resolved for, taken in the home zone. A date selects a travel override, so it cannot itself be read in the zone the override names.",
+            "format": "date",
+            "title": "Activezonedate",
+            "type": "string"
+          },
+          "dayEnd": {
+            "description": "Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.",
+            "format": "time",
+            "title": "Dayend",
+            "type": "string"
+          },
+          "dayStart": {
+            "description": "Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.",
+            "format": "time",
+            "title": "Daystart",
+            "type": "string"
+          },
+          "homeZone": {
+            "description": "An IANA zone identifier, such as 'Europe/London'.",
+            "title": "Homezone",
+            "type": "string"
+          },
+          "reviewCadence": {
+            "$ref": "#/components/schemas/ReviewCadence"
+          },
+          "visibleHours": {
+            "description": "How many hours of the day the grid shows at once. The Week screen narrows this range further on a short display, so a thirty-minute block keeps its title.",
+            "title": "Visiblehours",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "visibleHours",
+          "dayStart",
+          "dayEnd",
+          "reviewCadence",
+          "homeZone",
+          "activeZone",
+          "activeZoneDate"
+        ],
+        "title": "SettingsResponse",
+        "type": "object"
+      },
+      "TravelOverrideRequest": {
+        "additionalProperties": false,
+        "description": "A range to declare. Both dates inclusive, and the range may not overlap another.\n\n``startDate`` after ``endDate`` is a 422, and an overlap with an existing override is\na 409 naming both ranges. Two ranges that abut exactly are accepted: adjacency is not\noverlap.",
+        "properties": {
+          "endDate": {
+            "format": "date",
+            "title": "Enddate",
+            "type": "string"
+          },
+          "startDate": {
+            "format": "date",
+            "title": "Startdate",
+            "type": "string"
+          },
+          "zone": {
+            "description": "An IANA zone identifier, such as 'Europe/London'.",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "startDate",
+          "endDate",
+          "zone"
+        ],
+        "title": "TravelOverrideRequest",
+        "type": "object"
+      },
+      "TravelOverrideResponse": {
+        "description": "A declared range in another zone. Both dates are inclusive.",
+        "properties": {
+          "endDate": {
+            "format": "date",
+            "title": "Enddate",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "startDate": {
+            "format": "date",
+            "title": "Startdate",
+            "type": "string"
+          },
+          "zone": {
+            "description": "An IANA zone identifier, such as 'Europe/London'.",
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "startDate",
+          "endDate",
+          "zone"
+        ],
+        "title": "TravelOverrideResponse",
+        "type": "object"
+      },
+      "TravelOverridesResponse": {
+        "description": "Every override a tenant has declared, in date order.\n\nA wrapper rather than a bare array. The collection is bounded by how much a person\ntravels, so it is not paginated, and an object leaves room for a later field without\nchanging the shape of what is already there.",
+        "properties": {
+          "overrides": {
+            "items": {
+              "$ref": "#/components/schemas/TravelOverrideResponse"
+            },
+            "title": "Overrides",
+            "type": "array"
+          }
+        },
+        "required": [
+          "overrides"
+        ],
+        "title": "TravelOverridesResponse",
+        "type": "object"
       }
     }
   },
@@ -204,6 +577,553 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/.well-known/jwks.json": {
+      "get": {
+        "description": "The public keys a verifier needs.\n\nBoth keys, so a token signed a moment before a rotation still verifies. Public material\nonly: :meth:`~syncr_api.oauth.keys.SigningKeySet.jwks` builds it from the public halves and\nhas no path to a private one.\n\nNot cached, deliberately. A verifier holding a stale key set is exactly the failure keeping\ntwo keys exists to prevent, and this document is read once per verifier rather than per\nrequest.",
+        "operationId": "jwks__well_known_jwks_json_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonWebKeySet"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Cross-origin request rejected"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "The signing keys, current and previous",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
+    "/.well-known/oauth-authorization-server": {
+      "get": {
+        "description": "The RFC 8414 document, built from the pinned issuer and nothing else.",
+        "operationId": "as_metadata__well_known_oauth_authorization_server_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response As Metadata  Well Known Oauth Authorization Server Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Cross-origin request rejected"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Authorization Server metadata",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "description": "The settings, and which zone is active today.",
+        "operationId": "read_settings_api_v1_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Grid geometry, home zone, review cadence, and the active zone",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "description": "Apply a partial update. An omitted field is left alone.",
+        "operationId": "update_settings_api_v1_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Change visible hours, day bounds, home zone, or review cadence",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/travel-overrides": {
+      "get": {
+        "description": "Every override, in date order.",
+        "operationId": "list_travel_overrides_api_v1_settings_travel_overrides_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelOverridesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Declared ranges in another zone",
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "description": "Declare a range, or state why it overlaps one already declared.",
+        "operationId": "declare_travel_override_api_v1_settings_travel_overrides_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TravelOverrideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelOverrideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Declare a range in another zone",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/travel-overrides/{override_id}": {
+      "delete": {
+        "description": "Remove an override, so the home zone governs its dates again.",
+        "operationId": "remove_travel_override_api_v1_settings_travel_overrides__override_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "override_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Override Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Remove a declared range",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/auth/login": {
       "post": {
         "description": "Verify credentials, establish a session, and set the cookie that carries it.",
@@ -461,6 +1381,433 @@
         "summary": "Healthz",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/oauth/authorize": {
+      "get": {
+        "description": "The consent screen, or a redirect carrying the client's rejection.\n\nEvery parameter defaults to empty rather than being required, so a malformed request is\nanswered by the protocol's own rules rather than by a 422 that names framework fields: a\nclient that omits ``code_challenge`` needs to be told PKCE is required, not that a query\nparameter failed validation.",
+        "operationId": "authorize_oauth_authorize_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "client_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Client Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "redirect_uri",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Redirect Uri",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "response_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Response Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code_challenge",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Code Challenge",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code_challenge_method",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Code Challenge Method",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Cross-origin request rejected"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Ask the account holder to authorize a client",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
+    "/oauth/authorize/decision": {
+      "post": {
+        "description": "Send the browser to the client's redirect with a code, or with a refusal.",
+        "operationId": "decide_oauth_authorize_decision_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_decide_oauth_authorize_decision_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Cross-origin request rejected"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Record the account holder's answer",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
+    "/oauth/revoke": {
+      "post": {
+        "description": "Revoke server-side, and answer the same way whatever was presented.\n\n``token_type_hint`` is accepted and unused: RFC 7009 defines it as a hint for a server\nthat stores several token types under one lookup, and there is one lookup here. Accepting\nit keeps a conforming client from having to know that.",
+        "operationId": "revoke_oauth_revoke_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_revoke_oauth_revoke_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Cross-origin request rejected"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Revoke a refresh token and its family",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "description": "The token pair, as RFC 6749 shapes it.\n\nForm encoded in, JSON out, both because the specification says so. Rendered through an\nexplicit response rather than returned as a model, so the no-store headers cannot be\nforgotten on the one response in the api that carries two live credentials.",
+        "operationId": "issue_token_oauth_token_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_issue_token_oauth_token_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Cross-origin request rejected"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Exchange a code, or refresh a token",
+        "tags": [
+          "oauth"
         ]
       }
     },

@@ -22,6 +22,9 @@ from pydantic import SecretStr
 
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.settings import API_PORT, API_SERVICE, ServiceSettings
+from syncr_api.oauth.config import build_oauth_config
+from syncr_api.oauth.injection import build_oauth_state
+from syncr_api.oauth.keys import SigningKeySet, generate_signing_key
 from syncr_common.logging import configure_logging
 
 # Fixed, so the document is a function of the code alone. `title` is the only one of
@@ -35,13 +38,31 @@ EXPORT_SETTINGS = ServiceSettings(
     database_url="postgresql+asyncpg://openapi-export/none",
     session_signing_secret=SecretStr("openapi-export-not-a-session-key"),
     allowed_origins=(),
+    public_base_url="https://openapi-export.invalid",
+    # Empty, so nothing is read from the filesystem: the export must not depend on a key
+    # file existing on the machine that runs it.
+    oauth_keys_path="",
+    oauth_key_encryption_key=SecretStr("openapi-export-not-an-encryption-key"),
 )
+
+# The `kid` is fixed too. No signing key reaches the document, but the state has to exist
+# for the OAuth routes to be mountable, and a generated key would be a value that differs
+# per run in a script whose whole purpose is to produce the same bytes twice.
+EXPORT_KEY_ID = "openapi-export"
 
 
 def build_document() -> dict[str, object]:
     """Return the OpenAPI document the deployed app serves."""
     configure_logging(environment=EXPORT_SETTINGS.environment, log_level=EXPORT_SETTINGS.log_level)
-    return create_app(EXPORT_SETTINGS).openapi()
+    app = create_app(EXPORT_SETTINGS)
+    # The OAuth routes read their signing keys per request, and the document is produced
+    # without serving one, so this exists only so the application is complete rather than
+    # half-wired. Nothing derived from it appears in the output.
+    oauth_config = build_oauth_config(EXPORT_SETTINGS, is_dev=True)
+    app.state.oauth = build_oauth_state(
+        oauth_config, SigningKeySet(current=generate_signing_key(EXPORT_KEY_ID))
+    )
+    return app.openapi()
 
 
 def render(document: dict[str, object]) -> str:
