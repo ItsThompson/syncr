@@ -26,7 +26,7 @@ from syncr_api.accounts.injection import (  # noqa: TC001 - resolved at runtime 
 )
 from syncr_api.core.clock import utc_now
 from syncr_api.core.errors import MalformedRequest
-from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
+from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER, KEY_MAX_LENGTH
 from syncr_api.idempotency.fingerprints import request_fingerprint
 from syncr_api.idempotency.guard import IdempotencyGuard
 from syncr_api.idempotency.repository import IdempotencyKeyRepository
@@ -35,15 +35,27 @@ MISSING_KEY_DETAIL = (
     f"This request needs an {IDEMPOTENCY_KEY_HEADER} header, so a retry cannot apply it "
     "twice. Nothing was changed. Resend it with a unique key."
 )
+OVERSIZE_KEY_DETAIL = (
+    f"An {IDEMPOTENCY_KEY_HEADER} may be at most {KEY_MAX_LENGTH} characters. Nothing was "
+    "changed. Resend the request with a shorter key, such as a UUID or a ULID."
+)
 
 
 async def get_idempotency_guard(
     request: Request, transaction: TransactionDep, principal: PrincipalDep
 ) -> IdempotencyGuard:
-    """The guard for this request, scoped to the caller's tenant."""
+    """The guard for this request, scoped to the caller's tenant.
+
+    The key's width is checked here, where the header is read, rather than left to the
+    column: a key wider than the primary key holds is a caller error, so it is a 400 with a
+    remedy rather than a driver failure on the way to storing it.
+    """
+    key = request.headers.get(IDEMPOTENCY_KEY_HEADER)
+    if key is not None and len(key) > KEY_MAX_LENGTH:
+        raise MalformedRequest(OVERSIZE_KEY_DETAIL)
     return IdempotencyGuard(
         IdempotencyKeyRepository(transaction, principal.tenant_id),
-        key=request.headers.get(IDEMPOTENCY_KEY_HEADER),
+        key=key,
         request_hash=request_fingerprint(await request.body()),
         clock=utc_now,
     )

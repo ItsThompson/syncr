@@ -29,12 +29,14 @@ from syncr_api.idempotency.config import (
     IDEMPOTENCY_KEY_HEADER,
     IN_FLIGHT,
     IN_FLIGHT_RETRY_AFTER_SECONDS,
+    KEY_MAX_LENGTH,
     RETENTION,
 )
 from syncr_api.idempotency.fingerprints import request_fingerprint
 from syncr_api.idempotency.guard import IdempotencyGuard
 from syncr_api.idempotency.injection import (
     MISSING_KEY_DETAIL,
+    OVERSIZE_KEY_DETAIL,
     get_idempotency_guard,
     require_idempotency_key,
 )
@@ -461,3 +463,29 @@ async def test_a_route_that_demands_a_key_refuses_a_request_without_one(
 
         assert await require_idempotency_key(withheader, keyed) is keyed
     assert IDEMPOTENCY_KEY_HEADER in MISSING_KEY_DETAIL
+
+
+async def test_a_key_wider_than_the_column_is_refused_before_it_reaches_one(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # A caller-supplied value out of bounds is a 400 naming the bound, not a driver failure on
+    # the way to storing it. The key at the bound is the control, so the check is shown to
+    # refuse what is too wide rather than everything long.
+    principal = Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset())
+    work = CountingWork(Created(block_id="abc", minutes=45))
+
+    async with sessions() as session, session.begin():
+        oversize = post_request(
+            headers={IDEMPOTENCY_KEY_HEADER: "k" * (KEY_MAX_LENGTH + 1)}, body=BODY
+        )
+        with pytest.raises(MalformedRequest, match=str(KEY_MAX_LENGTH)):
+            await get_idempotency_guard(oversize, session, principal)
+
+        at_the_bound = post_request(
+            headers={IDEMPOTENCY_KEY_HEADER: "k" * KEY_MAX_LENGTH}, body=BODY
+        )
+        guard = await get_idempotency_guard(at_the_bound, session, principal)
+        answered = await guard.once(ROUTE, Created, work)
+
+    assert (work.calls, answered) == (1, work.response)
+    assert str(KEY_MAX_LENGTH) in OVERSIZE_KEY_DETAIL
