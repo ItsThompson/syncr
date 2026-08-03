@@ -10,7 +10,12 @@
  *
  * The handler is held in a ref so the listener is attached once per binding rather than once per render: a fresh
  * closure on every render would detach and re-attach the document listener under every keystroke the app draws
- * for. */
+ * for.
+ *
+ * A HELD KEY FIRES ONCE. `event.repeat` is true for every repeat the platform sends, and a binding that opened a
+ * dialog would otherwise re-run its handler thirty times a second for as long as a reader leans on the key. Both
+ * current consumers set state that is already set, so this costs nothing today and is the guard the first binding
+ * that does real work would need. */
 
 import { useEffect, useRef } from "react";
 
@@ -35,6 +40,7 @@ export function hasPlatformModifier(event: KeyboardEvent): boolean {
 }
 
 function matches(key: string, withPlatformModifier: boolean, event: KeyboardEvent): boolean {
+  if (event.repeat) return false;
   if (event.key !== key) return false;
   if (withPlatformModifier) return hasPlatformModifier(event);
   if (event.metaKey || event.ctrlKey || event.altKey) return false;

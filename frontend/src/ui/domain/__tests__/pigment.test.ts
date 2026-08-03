@@ -152,7 +152,8 @@ describe("secondary text on a signal wash", () => {
     expect(await ratioBetween("--text-muted", "--paper-raised")).toBeGreaterThanOrEqual(TEXT_FLOOR);
   });
 
-  /* No component in the kit fills with a signal wash yet: the infeasibility panel is the one surface that will,\n   * and it arrives with the verdict panel. This is the check that will meet it. */
+  /* No component in the kit fills with a signal wash yet: the infeasibility panel is the one surface that will,
+   * and it arrives with the verdict panel. This is the check that will meet it. */
   it("is not paired with --text-muted by any rule that fills with a wash", async () => {
     const offenders: string[] = [];
     for (const { name, css } of await kitSheets()) {

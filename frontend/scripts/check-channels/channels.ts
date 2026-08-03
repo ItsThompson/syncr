@@ -162,7 +162,9 @@ export const UNCHANNELLED: readonly Unchannelled[] = [
       "text ink is not a channel. A control family mutes its own label under disabled, so modelling it " +
       "would report three files as drift for a state that legitimately does it everywhere. It is granted " +
       "per state rather than outright, because a ROW spending it is the defect this entry exists to keep " +
-      "visible",
+      "visible. The grant to `data-state` is wider than the one rule that needs it, the active tab's ink: " +
+      '`statesInSelector` reads the attribute without its value, so `data-state="active"` cannot be ' +
+      "named on its own until the model carries values",
   },
 ];
 

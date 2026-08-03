@@ -51,7 +51,6 @@ function readChunks(bytes: Buffer): Chunk[] {
   return chunks;
 }
 
-/** Undoes the per-scanline filter each row carries, in place, which is what makes the bytes pixels. */
 /** Undoes the per-scanline filter each row carries, which is what makes the bytes samples. */
 function unfilter(raw: Buffer, stride: number, height: number, bytesPerPixel: number): Buffer {
   const out = Buffer.alloc(stride * height);

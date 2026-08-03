@@ -11,7 +11,7 @@
 import { useMemo } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 
-import { useScreenChords } from "../../../lib/keyboard";
+import { useScreenChords } from "../../../lib/keyboard/useScreenChords";
 import type { CommandAction } from "../../primitives";
 import { CommandPalette } from "./CommandPalette";
 import { HelpOverlay } from "./HelpOverlay";
