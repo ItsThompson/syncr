@@ -246,16 +246,22 @@ async def test_a_horizon_outside_the_projection_range_is_rejected(
         await add(sessions, tenant_id, role=WRITE_TARGET, horizon_days=horizon_days)
 
 
-@pytest.mark.parametrize(("provider", "role"), [("outlook", ANCHOR_SOURCE), (ICS, "both")])
+@pytest.mark.parametrize(("provider", "role"), [("ical", ANCHOR_SOURCE), (ICS, "both")])
 async def test_a_value_outside_a_closed_vocabulary_is_rejected(
     sessions: async_sessionmaker[AsyncSession],
     tenant_id: TenantId,
     provider: str,
     role: str,
 ) -> None:
-    # The annotation is erased at runtime, so the check constraint is what stops a caller
-    # reaching this table from a later revision or a psql session.
-    with pytest.raises((IntegrityError, Exception)):
+    # The annotation is erased at runtime, so the check constraint is what stops a caller reaching
+    # this table from a later revision or a psql session.
+    #
+    # `IntegrityError` exactly, and both values are chosen to fit their column. A wildcard tuple
+    # ending in `Exception` passes on any failure at all, and it was hiding one: the earlier
+    # `"outlook"` is seven characters against a `varchar(6)`, so it never reached the constraint
+    # this test is about. It failed on column WIDTH, as a `DBAPIError`, and the assertion was wide
+    # enough to accept that.
+    with pytest.raises(IntegrityError):
         await add(sessions, tenant_id, provider=provider, role=role)
 
 

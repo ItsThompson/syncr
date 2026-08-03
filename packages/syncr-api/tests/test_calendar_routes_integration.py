@@ -36,8 +36,10 @@ from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.calendars.config import (
     ANCHOR_SOURCE,
     CALENDAR_SOURCES_PREFIX,
+    DISPLAY_NAME_MAX_LENGTH,
     ERROR,
     EXCLUDED,
+    EXTERNAL_ID_MAX_LENGTH,
     GOOGLE,
     HORIZON_DAYS_DEFAULT,
     ICS,
@@ -574,6 +576,42 @@ def test_a_removed_source_is_gone_from_the_listing(
     assert removed.status_code == HTTPStatus.NO_CONTENT
     assert removed.content == b""
     assert http.get(SOURCES, headers=signed_in).json()["sources"] == []
+
+
+def test_an_external_identifier_wider_than_the_column_is_a_stated_422(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    # For an ICS feed the normalizer enforces the bound. A Google calendarId is taken as the
+    # provider states it and is never normalized, so without a bound at the boundary the value
+    # reaches the driver and answers 500 rather than naming the field.
+    response = http.post(
+        SOURCES,
+        json={
+            "provider": GOOGLE,
+            "displayName": "Personal",
+            "externalId": "x" * (EXTERNAL_ID_MAX_LENGTH + 1),
+        },
+        headers=signed_in,
+    )
+
+    assert response.status_code == ValidationFailed.status
+    assert http.get(SOURCES, headers=signed_in).json()["sources"] == []
+
+
+def test_a_display_name_wider_than_the_column_is_a_stated_422(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    response = http.post(
+        SOURCES,
+        json={
+            "provider": ICS,
+            "displayName": "n" * (DISPLAY_NAME_MAX_LENGTH + 1),
+            "externalId": "https://example.ac.uk/t.ics",
+        },
+        headers=signed_in,
+    )
+
+    assert response.status_code == ValidationFailed.status
 
 
 def test_a_google_source_needs_no_url_normalization(

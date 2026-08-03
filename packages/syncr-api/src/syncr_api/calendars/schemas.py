@@ -29,6 +29,8 @@ from uuid import UUID  # noqa: TC003 - as above
 from pydantic import ConfigDict, Field
 
 from syncr_api.calendars.config import (
+    DISPLAY_NAME_MAX_LENGTH,
+    EXTERNAL_ID_MAX_LENGTH,
     HORIZON_DAYS_MAX,
     HORIZON_DAYS_MIN,
     CalendarProvider,
@@ -149,9 +151,13 @@ class AddCalendarSourceRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     provider: CalendarProvider
-    display_name: str = Field(min_length=1, max_length=200)
+    display_name: str = Field(min_length=1, max_length=DISPLAY_NAME_MAX_LENGTH)
     external_id: str = Field(
         min_length=1,
+        # Bounded at the boundary as well as inside the ICS normalizer, because a Google
+        # calendarId is taken as the provider states it and is never normalized: without this a
+        # value wider than the column reaches the driver and answers 500 rather than a stated 422.
+        max_length=EXTERNAL_ID_MAX_LENGTH,
         description=(
             "A feed address for an ICS source: ics, webcal, http, or https, normalized on the "
             "way in. A calendarId for a Google source, taken as the provider states it."
@@ -165,7 +171,7 @@ class CalendarSourcePatchRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     included: bool | None = None
-    display_name: str | None = Field(default=None, min_length=1, max_length=200)
+    display_name: str | None = Field(default=None, min_length=1, max_length=DISPLAY_NAME_MAX_LENGTH)
 
 
 class HorizonPatchRequest(WireModel):
