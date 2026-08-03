@@ -7,6 +7,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
@@ -29,6 +30,41 @@ describe("ShellLayout", () => {
   it("renders the route inside the shell", async () => {
     await renderSignedInAt("/today");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Today");
+  });
+});
+
+/* THE PALETTE'S ACTIONS ARE THE SCREEN TABLE'S, hint included, so the row a reader reads and the chord the
+ * keyboard answers to come from one place. Choosing a row has to actually navigate: a palette that lists the
+ * screens and goes nowhere is the shape a mocked router would happily pass. */
+async function openPalette(): Promise<void> {
+  await renderSignedInAt("/week");
+  await userEvent.keyboard("{Meta>}k{/Meta}");
+  await userEvent.keyboard("{Control>}k{/Control}");
+}
+
+describe("the shell's command palette", () => {
+  it("offers one action per screen, each with the chord that reaches it", async () => {
+    await openPalette();
+
+    for (const screenEntry of SCREENS) {
+      expect(screen.getByText(`Go to ${screenEntry.label}`)).toBeInTheDocument();
+      expect(screen.getByText(`g ${screenEntry.chord}`)).toBeInTheDocument();
+    }
+  });
+
+  it("marks the screen the reader is on as the current row", async () => {
+    await openPalette();
+
+    const current = screen.getByText("Go to week").closest("[data-current]");
+    expect(current).not.toBeNull();
+  });
+
+  it("navigates to the chosen screen, which is the whole of what it does today", async () => {
+    await openPalette();
+
+    await userEvent.click(screen.getByText("Go to backlog"));
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Backlog");
   });
 });
 
