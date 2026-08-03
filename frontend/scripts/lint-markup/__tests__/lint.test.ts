@@ -142,6 +142,50 @@ describe("the markup rules", () => {
   });
 });
 
+/* A CLASS LIST HAS TO SIT WHERE THE SCAN CAN READ IT.
+ *
+ * Four rules take a class list as their input, and a list hoisted into a module constant is read by none of
+ * them: the same string that produces three findings at the attribute produced an exit code of 0, and the
+ * utility count fell from 129 to 128 as the violation was added. The emitted-CSS gate catches the motion half
+ * from the artifact; nothing else reads the circle allowlist, so this rule is what keeps it enforceable. */
+describe("an unreadable class list", () => {
+  async function readabilityFindings() {
+    const outcome = await lint(["hoisted-class-list.tsx"]);
+    return outcome.findings.filter((finding) => finding.check === "readable-class-list");
+  }
+
+  it("is refused when the list is a module constant", async () => {
+    const hoisted = (await readabilityFindings()).find((finding) => finding.line === 19);
+
+    expect(hoisted?.message).toContain("className={HOISTED}");
+    expect(hoisted?.message).toContain("cannot read");
+  });
+
+  it("is refused when a template literal interpolates part of it", async () => {
+    const interpolated = (await readabilityFindings()).find((finding) => finding.line === 20);
+
+    expect(interpolated?.message).toContain("interpolates part of its class list");
+  });
+
+  it("leaves a variant map's own call alone, which is the shape the kit is written in", async () => {
+    expect((await readabilityFindings()).map((finding) => finding.line)).toEqual([19, 20]);
+  });
+
+  /* The hoisted constant carries `rounded-full` and `transition-all`. Refusing the attribute is the only
+   * reason either is reported at all: the class-list rules never see the string. */
+  it("is the whole of what the file reports, because the hidden utilities stay hidden", async () => {
+    const outcome = await lint(["hoisted-class-list.tsx"]);
+
+    expect(checksOf(outcome.findings)).toEqual(["readable-class-list"]);
+  });
+
+  it("is not asked of a test file, which asserts about markup rather than drawing it", async () => {
+    const outcome = await lint(["vocabulary.test.tsx"]);
+
+    expect(checksOf(outcome.findings)).toEqual([]);
+  });
+});
+
 /* THE SHAPES THAT COMPILED. Each one produced real CSS through Tailwind's own compiler while every
  * check was green, and four of them reach a prohibition the design language states without exception.
  * The theme cannot fence any of them: `[prop:value]` is not namespace-driven, so clearing

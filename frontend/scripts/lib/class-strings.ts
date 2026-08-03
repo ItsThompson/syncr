@@ -17,7 +17,7 @@ export interface ClassString extends Position {
 /* The helpers a variant map is written with. `cva` is the one section 14 names; the others are the
  * conventional companions, listed so a kit component cannot route around the rules by picking a
  * different composer. */
-const CLASS_COMPOSERS = ["cva", "cx", "cn", "clsx", "twMerge", "tv"];
+export const CLASS_COMPOSERS = ["cva", "cx", "cn", "clsx", "twMerge", "tv"];
 
 const CLASS_NAME_ATTRIBUTE = /className\s*=\s*/g;
 const COMPOSER_CALL = new RegExp(`\\b(?:${CLASS_COMPOSERS.join("|")})\\s*\\(`, "g");
@@ -78,6 +78,42 @@ export function classStringsIn(source: string): ClassString[] {
   }
 
   return found;
+}
+
+/**
+ * Every `className={...}` expression, with the braces stripped.
+ *
+ * `classStringsIn` returns the lists it CAN read, which is silence when there are none: a class list moved
+ * into a module constant leaves nothing behind for a rule to judge. This returns the attribute itself, so a
+ * rule can refuse the shapes the extractor cannot see rather than passing them.
+ */
+export function classNameExpressions(source: string): ClassString[] {
+  const at = createPositionResolver(source);
+  const found: ClassString[] = [];
+
+  for (const match of source.matchAll(CLASS_NAME_ATTRIBUTE)) {
+    const start = match.index + match[0].length;
+    if (source[start] !== "{") continue;
+    const end = findRegionEnd(source, start, "{", "}");
+    found.push({ ...at(start), text: source.slice(start + 1, end) });
+  }
+
+  return found;
+}
+
+/**
+ * The names a class composer's return value is bound to, such as `const button = cva(...)`.
+ *
+ * A variant map is called at the attribute, `className={button({ rank })}`, and the class lists live in the
+ * `cva` call this module already reads. Knowing which callees are those products is what separates that shape
+ * from a hoisted string constant, which reaches an element with nothing readable at either end.
+ */
+export function composerProductNames(source: string): Set<string> {
+  const bindings = new RegExp(
+    `\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*(?:${CLASS_COMPOSERS.join("|")})\\s*\\(`,
+    "g",
+  );
+  return new Set([...source.matchAll(bindings)].map((match) => match[1]));
 }
 
 /** The individual utility names in a class list, with the variant prefixes stripped. */

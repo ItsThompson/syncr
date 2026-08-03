@@ -27,3 +27,15 @@ export interface CheckOutcome {
 export function locate(file: string, line?: number, column?: number): string {
   return [file, line, column].filter((part) => part !== undefined).join(":");
 }
+
+/**
+ * A value quoted inside a message, collapsed onto one line and cut short.
+ *
+ * A composed `var(--tw-*)` chain runs to several hundred characters and a hoisted class expression can run to
+ * several lines. Neither says anything a reader needs past the first clause, and a finding that wraps four
+ * times buries the position it is pointing at.
+ */
+export function abbreviate(value: string, limit = 96): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length <= limit ? collapsed : `${collapsed.slice(0, limit - 3)}...`;
+}

@@ -5,7 +5,7 @@ import { classStringsIn, utilitiesIn } from "../lib/class-strings.ts";
 import { blankJsComments } from "../lib/comments.ts";
 import { codeWithoutComments, createPositionResolver } from "../lib/css-scan.ts";
 import { vocabularyOf } from "../lib/custom-variants.ts";
-import type { CheckOutcome, Finding } from "../lib/findings.ts";
+import { abbreviate, type CheckOutcome, type Finding } from "../lib/findings.ts";
 import { emittedDeclarationsFor } from "../lib/tailwind.ts";
 import { refusedByEmittedCss } from "./emitted.ts";
 import { lintSource } from "./rules.ts";
@@ -36,12 +36,6 @@ interface UtilityUse {
 }
 
 const APPLY_AT_RULE = /@apply\s+([^;{}]+)/g;
-
-/* A composed `var(--tw-*)` chain runs to several hundred characters and says nothing a reader needs. */
-function abbreviate(value: string): string {
-  const collapsed = value.replace(/\s+/g, " ").trim();
-  return collapsed.length <= 96 ? collapsed : `${collapsed.slice(0, 93)}...`;
-}
 
 /** Every utility named in an `@apply`, with the position of the directive that names it. */
 async function applyUsesIn(file: string): Promise<UtilityUse[]> {

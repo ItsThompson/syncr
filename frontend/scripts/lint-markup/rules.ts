@@ -8,6 +8,7 @@
  *   - `rounded-*` only inside the kit, and `rounded-full` only on the four legal circles
  *   - no decorative motion, because motion is zero without exception
  *   - no `data-*` attribute outside the closed vocabulary
+ *   - a class list sits where the scan can read it, so the four rules above have an input
  *
  * The inline `style` prop is the sixth rule family and lives in `inline-style.ts`: it reads an object's keys
  * and values rather than a class list, which is a scanner of its own.
@@ -15,10 +16,15 @@
  * The vocabulary is not restated here. It is READ from `theme.css`, where each state is declared as
  * a `@custom-variant`, so a state cannot be styleable without being lintable or the reverse. */
 
-import { classStringsIn, utilitiesIn } from "../lib/class-strings.ts";
+import {
+  classNameExpressions,
+  classStringsIn,
+  composerProductNames,
+  utilitiesIn,
+} from "../lib/class-strings.ts";
 import { blankJsComments } from "../lib/comments.ts";
 import { createPositionResolver } from "../lib/css-scan.ts";
-import type { Finding } from "../lib/findings.ts";
+import { abbreviate, type Finding } from "../lib/findings.ts";
 import { isCircleAllowed } from "./circles.ts";
 import { inlineStyleFindings } from "./inline-style.ts";
 
@@ -67,6 +73,39 @@ const DATA_ATTRIBUTE_SHAPES = [
   /(?<=[\s{])(data-[a-z][a-z0-9-]*)(?=[\s/>=}])/g,
   /(?<=["'])(data-[a-z][a-z0-9-]*)(?=["'])/g,
 ];
+
+/* A class list is read where it is WRITTEN, so a list that is not written at the attribute or inside a class
+ * composer's call is read by nothing at all. Four rules take a class list as their input and all four go
+ * silent together: hoisting `className="tabs rounded-full transition-all"` into a module constant turns three
+ * findings into an exit code of 0, and the only available signal, the count of utilities compiled, goes DOWN
+ * when the violation is added.
+ *
+ * The emitted-CSS gate covers part of it from the other side, because `transition-property: all` is a banned
+ * declaration in the built stylesheet whatever named it. The circle allowlist has no second reader: a
+ * `border-radius: 50%` is legal CSS for the four allowlisted files, so only a scan that knows WHICH file
+ * wrote the class can judge it. Refusing the unreadable shape is what keeps that rule enforceable.
+ *
+ * TWO SHAPES ARE REFUSED, and a third case is knowingly left open. An expression carrying no string literal
+ * and calling no variant map hides the whole list; a template literal with an interpolation hides the
+ * interpolated part. A ternary whose condition is an identifier and whose branches are literals is readable
+ * and stays legal, which is the shape the kit is written in. What survives is a ternary between a literal and
+ * a constant, where the literal keeps the expression legal: deciding that needs to know which identifiers
+ * reach the class list, which needs a JavaScript parser, and a parser inside a check is the defect this
+ * repository has produced five times. */
+const TEMPLATE_INTERPOLATION = /\$\{/;
+const STRING_LITERAL = /["'`]/;
+
+function unreadableClassList(expression: string, products: ReadonlySet<string>): string | null {
+  if (TEMPLATE_INTERPOLATION.test(expression)) {
+    return "interpolates part of its class list, so the interpolated part reaches an element unread";
+  }
+  if (STRING_LITERAL.test(expression)) return null;
+  const callsVariantMap = [...products].some((name) =>
+    new RegExp(`\\b${name}\\s*\\(`).test(expression),
+  );
+  if (callsVariantMap) return null;
+  return "names a class list the scan cannot read";
+}
 
 export interface MarkupRuleContext {
   readonly file: string;
@@ -171,6 +210,21 @@ export function lintSource(context: MarkupRuleContext): Finding[] {
         message: `${utility} rounds a corner outside the kit. Radius is zero.`,
       });
     }
+  }
+
+  for (const expression of context.isTestFile ? [] : classNameExpressions(code)) {
+    const reason = unreadableClassList(expression.text, composerProductNames(code));
+    if (reason === null) continue;
+    findings.push({
+      file: context.file,
+      line: expression.line,
+      column: expression.column,
+      check: "readable-class-list",
+      message:
+        `className={${abbreviate(expression.text)}} ${reason}. Four rules take a class list as ` +
+        "their input, and all four go silent on a list they cannot see. Write the list at the " +
+        "attribute, or inside a class composer's call.",
+    });
   }
 
   findings.push(...inlineStyleFindings({ file: context.file, code, at }));
