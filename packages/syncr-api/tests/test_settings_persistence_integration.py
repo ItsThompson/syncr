@@ -1,6 +1,6 @@
 """The settings tables as Postgres sees them, and the race the row lock closes.
 
-Four things here cannot be proven anywhere else.
+Five things here cannot be proven anywhere else.
 
 **The constraints are real.** A visible-hours value outside the zoom range, a day that ends
 before it starts, and a review cadence the enum does not name are all rejected by the
@@ -13,6 +13,11 @@ than by a repository remembering to update instead.
 **Every statement carries the scope.** Compiling a statement proves what a repository
 built; the recorder proves what reached Postgres. These are the first production tables
 the rule applies to.
+
+**An approved revision survives a home-zone change untouched.** Past weeks keep the span
+they were computed with, so moving the home zone must neither rewrite an approved
+revision's document nor append a re-derived one beside it. Storage holds the only document
+there is to alter, so this is the tier that can say so.
 
 **Two concurrent declarations cannot both land.** That is the interesting one. The overlap
 rule lives in the domain and runs against the rows already stored, so without
@@ -38,6 +43,8 @@ from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.errors import Conflict
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES
+from syncr_api.plans.config import APPROVED
+from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.user_settings.config import (
     DAY_END_DEFAULT,
@@ -343,6 +350,58 @@ async def test_declaring_a_travel_override_bumps_only_the_weeks_its_range_reache
         # A tracked week outside the range keeps its version: the override changes no zone
         # on any of its days.
         assert await versions.current(_FUTURE_WEEK) == 1
+
+
+# --------------------------------------------------------------------------------
+# What a home-zone change leaves alone
+# --------------------------------------------------------------------------------
+
+_A_PAST_DOCUMENT = {"iso_week": str(_PAST_WEEK), "blocks": [], "discretionary_minutes": 4_320}
+_A_BREAKDOWN = {"deadline_risk": 0.0, "budget_deviation": 12.5}
+
+
+async def test_a_home_zone_change_leaves_an_approved_revision_exactly_as_it_was(
+    sessions: async_sessionmaker[AsyncSession], principal: Principal
+) -> None:
+    # An approved revision is immutable and keeps the span it was computed with, so moving
+    # the home zone may neither rewrite its document nor append a re-derived one beside it.
+    # The week is given a version row first, so it is a week the bump enumerates at all and
+    # the floor is what leaves it alone rather than the counter never seeing it.
+    approved_at = utc_now()
+    async with sessions() as session, session.begin():
+        await WeekInputVersionRepository(session, principal.tenant_id).bump(
+            _PAST_WEEK, at=approved_at
+        )
+        appended = await PlanRepository(session, principal.tenant_id).append(
+            document=_A_PAST_DOCUMENT,
+            objective_breakdown=_A_BREAKDOWN,
+            status=APPROVED,
+            reason="user_approved",
+            weight_set_version=1,
+            input_version=1,
+            created_at=approved_at,
+            approved_at=approved_at,
+        )
+
+    async with sessions() as session, session.begin():
+        await build_service(session, principal).update(principal, SettingsChange(home_zone=TOKYO))
+
+    async with sessions() as session:
+        plans = PlanRepository(session, principal.tenant_id)
+        found = await plans.find(appended.id)
+        history = await plans.history(_PAST_WEEK)
+
+    assert found is not None
+    assert found.document == _A_PAST_DOCUMENT
+    assert found.objective_breakdown == _A_BREAKDOWN
+    assert found.iso_week == _PAST_WEEK
+    assert found.input_version == 1
+    assert found.approved_at == approved_at
+    assert found.status == APPROVED
+    # Nothing was appended beside it either. The table is append-only, so a re-derive-on-
+    # zone-change path would show up here as a second revision rather than as an altered
+    # document, and that is the change this assertion exists to catch.
+    assert [revision.id for revision in history] == [appended.id]
 
 
 # --------------------------------------------------------------------------------
