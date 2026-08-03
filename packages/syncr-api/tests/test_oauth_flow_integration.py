@@ -30,14 +30,16 @@ from sqlalchemy import select
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
-from syncr_api.core.errors import OriginRejected, Unauthorized
+from syncr_api.core.errors import Forbidden, OriginRejected, Unauthorized
 from syncr_api.core.scopes import Scope
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.core.tenancy import TenantScoped
+from syncr_api.oauth.cleanup import ExpirySweep, SweptRows
 from syncr_api.oauth.config import (
     AUTHORIZE_PATH,
     CLI_CLIENT_ID,
     CONSENT_DECISION_PATH,
+    DEAD_GRANT_RETENTION,
     GRANT_TYPE_AUTHORIZATION_CODE,
     GRANT_TYPE_REFRESH_TOKEN,
     JWKS_PATH,
@@ -48,20 +50,32 @@ from syncr_api.oauth.config import (
     build_oauth_config,
 )
 from syncr_api.oauth.consent import DECISION_APPROVE, DECISION_DENY, DECISION_FIELD
-from syncr_api.oauth.errors import InvalidGrant, InvalidRequest
+from syncr_api.oauth.errors import InvalidGrant, InvalidRequest, InvalidToken
 from syncr_api.oauth.injection import build_oauth_state
 from syncr_api.oauth.keys import SigningKeySet, generate_signing_key, rotate
 from syncr_api.oauth.metadata import DISCOVERY_PATH
 from syncr_api.oauth.models import OAuthAuthorizationCode, OAuthGrant, OAuthRefreshToken
-from syncr_api.oauth.pkce import derive_s256_challenge
+from syncr_api.oauth.pkce import CHALLENGE_LENGTH, derive_s256_challenge
+from syncr_api.oauth.repository import OAuthRepository
 from syncr_api.oauth.secrets import digest_of
 from syncr_common.logging import configure_logging
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
+from tests.scope_probe import (
+    PROBE_ADMIN_PATH,
+    PROBE_PLAN_WRITE_PATH,
+    REACHED_FIELD,
+    probe_router,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Awaitable, Callable, Iterator
+
+    import httpx
+    from fastapi import FastAPI
+    from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_api.accounts.records import UserRecord
+    from syncr_api.core.db import Database
     from syncr_api.core.settings import ServiceSettings
     from syncr_domain.identifiers import TenantId
 
@@ -76,6 +90,7 @@ CHALLENGE = derive_s256_challenge(VERIFIER)
 LOOPBACK = "http://127.0.0.1:54321/callback"
 STATE = "cli-supplied-state"
 REQUESTED_SCOPE = "plan:read plan:write"
+ONE_SECOND = timedelta(seconds=1)
 
 LOGIN = f"{AUTH_PREFIX}/login"
 AUTHORIZE = f"{OAUTH_PREFIX}{AUTHORIZE_PATH}"
@@ -112,16 +127,31 @@ def keys() -> SigningKeySet:
     return SigningKeySet(current=generate_signing_key("integration"))
 
 
-@pytest.fixture
-def http(
-    live_database_url: str, settings: ServiceSettings, keys: SigningKeySet
-) -> Iterator[TestClient]:
-    """A client against an app wired to the live database, as the api process wires it."""
-    database = create_database(live_database_url)
+def build_app(database: Database, settings: ServiceSettings, keys: SigningKeySet) -> FastAPI:
+    """An app wired to a live database and a key set, as the api entrypoint wires one."""
     app = create_app(settings, lifespan=create_db_lifespan(database.engine))
     app.state.db = database
     app.state.oauth = build_oauth_state(build_oauth_config(settings, is_dev=True), keys)
-    with TestClient(app, raise_server_exceptions=False, base_url=ISSUER) as client:
+    return app
+
+
+@pytest.fixture
+def oauth_app(live_database_url: str, settings: ServiceSettings, keys: SigningKeySet) -> FastAPI:
+    return build_app(create_database(live_database_url), settings, keys)
+
+
+@pytest.fixture
+def http(oauth_app: FastAPI) -> Iterator[TestClient]:
+    """A client against an app wired to the live database, as the api process wires it."""
+    with TestClient(oauth_app, raise_server_exceptions=False, base_url=ISSUER) as client:
+        yield client
+
+
+@pytest.fixture
+def probe_http(oauth_app: FastAPI) -> Iterator[TestClient]:
+    """The same client, with a scope-guarded route mounted for the bearer credential."""
+    oauth_app.include_router(probe_router)
+    with TestClient(oauth_app, raise_server_exceptions=False, base_url=ISSUER) as client:
         yield client
 
 
@@ -167,8 +197,10 @@ def exchange(http: TestClient, code: str, **overrides: str) -> dict[str, object]
     return body
 
 
-def refresh(http: TestClient, refresh_token: str) -> object:
-    return http.post(
+def refresh(http: TestClient, refresh_token: str) -> httpx.Response:
+    # Annotated on the way out rather than cast: `TestClient` is typed loosely enough that the
+    # response is `Any`, and every assertion in this module reads an attribute of it.
+    response: httpx.Response = http.post(
         TOKEN,
         data={
             "grant_type": GRANT_TYPE_REFRESH_TOKEN,
@@ -176,6 +208,32 @@ def refresh(http: TestClient, refresh_token: str) -> object:
             "refresh_token": refresh_token,
         },
     )
+    return response
+
+
+def bearer(issued: dict[str, object]) -> dict[str, str]:
+    """The header a client presents an access token in."""
+    return {"Authorization": f"Bearer {issued['access_token']}"}
+
+
+def in_a_transaction[ResultT](
+    live_database_url: str, work: Callable[[AsyncSession], Awaitable[ResultT]]
+) -> ResultT:
+    """Run one unit of work against the live database, on a loop and an engine of its own.
+
+    An asyncpg connection belongs to the loop that opened it, so a synchronous test cannot
+    reach into the application's.
+    """
+
+    async def opened() -> ResultT:
+        database = create_database(live_database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                return await work(session)
+        finally:
+            await database.engine.dispose()
+
+    return run(opened())
 
 
 def rows_of[ModelT: TenantScoped](
@@ -211,18 +269,15 @@ def test_the_discovery_document_is_served_at_the_path_the_rfc_fixes(http: TestCl
 def test_the_jwks_publishes_the_current_and_previous_key(
     live_database_url: str, settings: ServiceSettings, keys: SigningKeySet
 ) -> None:
-    database = create_database(live_database_url)
-    app = create_app(settings, lifespan=create_db_lifespan(database.engine))
-    app.state.db = database
-    app.state.oauth = build_oauth_state(build_oauth_config(settings, is_dev=True), rotate(keys))
+    # Rotated once, and the result held: `rotate` mints a random `kid` per call, so a second
+    # call could not name the keys this app was wired with.
+    rotated = rotate(keys)
+    app = build_app(create_database(live_database_url), settings, rotated)
 
     with TestClient(app, base_url=ISSUER) as client:
         published = client.get(JWKS).json()
 
-    assert [key["kid"] for key in published["keys"]] == [
-        rotate(keys).current.kid,
-        keys.current.kid,
-    ] or len(published["keys"]) == 2
+    assert [key["kid"] for key in published["keys"]] == [rotated.current.kid, keys.current.kid]
     assert all("d" not in key for key in published["keys"])
 
 
@@ -275,6 +330,26 @@ def test_plain_pkce_is_rejected_at_the_clients_redirect(
     assert answered["error"] == "invalid_request"
     assert "S256" in answered["error_description"]
     assert answered["state"] == STATE
+
+
+def test_a_challenge_outside_the_base64url_alphabet_is_rejected_at_the_redirect(
+    http: TestClient, owner: UserRecord
+) -> None:
+    # A right-length non-ASCII challenge used to pass the shape rule and reach the digest
+    # comparison at exchange time, which answered 500. The refusal belongs at the edge.
+    session = signed_in(http, owner.email)
+
+    response = http.get(
+        AUTHORIZE,
+        params=authorize_query(code_challenge="\u00c1" * CHALLENGE_LENGTH),
+        headers=session,
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    answered = delivered(response.headers["location"])
+    assert answered["error"] == "invalid_request"
+    assert "code_challenge" in answered["error_description"]
 
 
 def test_an_unregistered_redirect_is_answered_here_and_never_followed(
@@ -349,11 +424,7 @@ def test_a_bearer_token_cannot_consent_on_its_own_behalf(
     session = signed_in(http, owner.email)
     issued = exchange(http, consent(http, session)["code"])
 
-    response = http.get(
-        AUTHORIZE,
-        params=authorize_query(),
-        headers={"Authorization": f"Bearer {issued['access_token']}"},
-    )
+    response = http.get(AUTHORIZE, params=authorize_query(), headers=bearer(issued))
 
     assert response.status_code == 401
 
@@ -456,20 +527,20 @@ def test_a_refresh_rotates_and_a_replay_takes_the_family_down(
     first = str(issued["refresh_token"])
 
     rotated = refresh(http, first)
-    assert rotated.status_code == 200  # type: ignore[attr-defined]
-    second = rotated.json()["refresh_token"]  # type: ignore[attr-defined]
+    assert rotated.status_code == 200
+    second = rotated.json()["refresh_token"]
     assert second != first
 
     replayed = refresh(http, first)
 
-    assert replayed.status_code == 400  # type: ignore[attr-defined]
+    assert replayed.status_code == 400
     tokens = rows_of(live_database_url, OAuthRefreshToken, owner.tenant_id)
     assert len(tokens) == 2
     assert all(token.revoked_at is not None for token in tokens)
     (grant,) = rows_of(live_database_url, OAuthGrant, owner.tenant_id)
     assert grant.revoked_at is not None
     # The successor the honest client holds is dead too: the two holders cannot be told apart.
-    assert refresh(http, second).status_code == 400  # type: ignore[attr-defined]
+    assert refresh(http, second).status_code == 400
 
 
 def test_revoking_ends_the_family_server_side(
@@ -483,7 +554,7 @@ def test_revoking_ends_the_family_server_side(
 
     assert revoked.status_code == 200
     assert revoked.headers["cache-control"] == "no-store"
-    assert refresh(http, presented).status_code == 400  # type: ignore[attr-defined]
+    assert refresh(http, presented).status_code == 400
     (grant,) = rows_of(live_database_url, OAuthGrant, owner.tenant_id)
     assert grant.revoked_at is not None
 
@@ -511,6 +582,74 @@ def test_a_token_type_hint_is_accepted(http: TestClient, owner: UserRecord) -> N
     )
 
     assert response.status_code == 200
+
+
+# --- The bearer credential -------------------------------------------------------------
+
+
+def test_a_plan_write_token_is_refused_where_admin_is_required(
+    probe_http: TestClient, owner: UserRecord
+) -> None:
+    """The whole seam: an ``Authorization`` header, introspection, the scopes, then 403.
+
+    The scope arithmetic is asserted on its own in the service suite. This is what proves the
+    four links between a presented token and a refusal are joined: a broken bearer dependency,
+    a dropped ``scope`` claim, or a principal built with no scopes would pass that test and
+    fail this one.
+    """
+    session = signed_in(probe_http, owner.email)
+    issued = exchange(probe_http, consent(probe_http, session)["code"])
+
+    refused = probe_http.get(PROBE_ADMIN_PATH, headers=bearer(issued))
+
+    assert refused.status_code == 403
+    assert refused.json()["type"] == Forbidden.type
+    # The counterpart, so the assertion discriminates: the same token reaches the route whose
+    # scope its grant does carry.
+    allowed = probe_http.get(PROBE_PLAN_WRITE_PATH, headers=bearer(issued))
+    assert allowed.status_code == 200
+    assert allowed.json() == {REACHED_FIELD: Scope.PLAN_WRITE.value}
+
+
+def test_a_route_needing_a_token_says_how_to_present_one(probe_http: TestClient) -> None:
+    # RFC 6750 section 3: a 401 from a bearer-protected resource names the scheme, so a client
+    # learns what to present rather than guessing.
+    response = probe_http.get(PROBE_PLAN_WRITE_PATH)
+
+    assert response.status_code == 401
+    assert response.json()["type"] == InvalidToken.type
+    assert response.headers["www-authenticate"] == 'Bearer realm="syncr"'
+
+
+@pytest.mark.parametrize(
+    "presented",
+    ["not-a-jwt", "eyJ.eyJ.signature", ""],
+    ids=["nonsense", "jwt shaped", "empty"],
+)
+def test_a_token_this_server_never_signed_reaches_no_route(
+    probe_http: TestClient, presented: str
+) -> None:
+    response = probe_http.get(
+        PROBE_PLAN_WRITE_PATH, headers={"Authorization": f"Bearer {presented}"}
+    )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == 'Bearer realm="syncr"'
+
+
+def test_a_revoked_familys_access_token_still_reaches_a_route_until_it_expires(
+    probe_http: TestClient, owner: UserRecord
+) -> None:
+    # The stated cost of a credential verified without a database read, asserted rather than
+    # left as prose: revocation takes effect within the access token's fifteen minutes.
+    session = signed_in(probe_http, owner.email)
+    issued = exchange(probe_http, consent(probe_http, session)["code"])
+    probe_http.post(
+        REVOKE, data={"token": str(issued["refresh_token"]), "client_id": CLI_CLIENT_ID}
+    )
+
+    assert refresh(probe_http, str(issued["refresh_token"])).status_code == 400
+    assert probe_http.get(PROBE_PLAN_WRITE_PATH, headers=bearer(issued)).status_code == 200
 
 
 # --- Tenancy ---------------------------------------------------------------------------
@@ -548,10 +687,7 @@ def test_removing_a_tenant_removes_its_grants_and_tokens(
     live_database_url: str, settings: ServiceSettings, keys: SigningKeySet
 ) -> None:
     account = provision_owner(live_database_url)
-    database = create_database(live_database_url)
-    app = create_app(settings, lifespan=create_db_lifespan(database.engine))
-    app.state.db = database
-    app.state.oauth = build_oauth_state(build_oauth_config(settings, is_dev=True), keys)
+    app = build_app(create_database(live_database_url), settings, keys)
     with TestClient(app, raise_server_exceptions=False, base_url=ISSUER) as client:
         exchange(client, consent(client, signed_in(client, account.email))["code"])
     assert rows_of(live_database_url, OAuthRefreshToken, account.tenant_id)
@@ -566,32 +702,101 @@ def test_removing_a_tenant_removes_its_grants_and_tokens(
 # --- The sweep -------------------------------------------------------------------------
 
 
+def swept_at(live_database_url: str, instant: datetime) -> SweptRows:
+    """What one sweep removes when it believes the time is ``instant``."""
+    return in_a_transaction(
+        live_database_url, lambda opened: ExpirySweep(opened, lambda: instant).sweep()
+    )
+
+
 def test_the_sweep_removes_an_expired_code_and_leaves_a_live_refresh_token(
     http: TestClient, owner: UserRecord, live_database_url: str
 ) -> None:
-    from syncr_api.oauth.cleanup import ExpirySweep
-
     session = signed_in(http, owner.email)
     exchange(http, consent(http, session)["code"])
     assert len(rows_of(live_database_url, OAuthAuthorizationCode, owner.tenant_id)) == 1
 
-    async def sweep_later() -> object:
-        database = create_database(live_database_url)
-        try:
-            async with database.sessionmaker() as opened, opened.begin():
-                # An hour on: the code's minute is long past, the refresh token's two months
-                # are not. Passing the instant is what lets one sweep prove both.
-                return await ExpirySweep(
-                    opened, lambda: datetime.now(UTC) + timedelta(hours=1)
-                ).sweep()
-        finally:
-            await database.engine.dispose()
+    # An hour on: the code's minute is long past, the refresh token's two months are not.
+    # Passing the instant is what lets one sweep prove both.
+    swept = swept_at(live_database_url, datetime.now(UTC) + timedelta(hours=1))
 
-    swept = run(sweep_later())
-
-    assert swept.codes >= 1  # type: ignore[attr-defined]
+    assert swept.codes >= 1
     assert rows_of(live_database_url, OAuthAuthorizationCode, owner.tenant_id) == []
     assert len(rows_of(live_database_url, OAuthRefreshToken, owner.tenant_id)) == 1
+
+
+def test_a_row_expiring_at_the_instant_swept_to_survives_and_one_before_it_does_not(
+    http: TestClient, owner: UserRecord, live_database_url: str
+) -> None:
+    """The expiry boundary is exclusive, and the database is what decides it.
+
+    Asserted here rather than against the service fakes, which implement the same comparison
+    themselves and so cannot tell a production ``<`` from a production ``<=``. Two rows of
+    each kind are seeded a second apart around one instant, and the survivors are named.
+    """
+    session = signed_in(http, owner.email)
+    issued = exchange(http, consent(http, session)["code"])
+    instant = datetime.now(UTC) + timedelta(days=1)
+    at_the_instant = "expires-at-the-instant"
+    before_it = "expires-a-second-before"
+
+    async def seed(opened: AsyncSession) -> None:
+        scoped = OAuthRepository(opened, owner.tenant_id)
+        grant = await scoped.find_grant_for_client(CLI_CLIENT_ID)
+        assert grant is not None
+        for name, expires_at in ((at_the_instant, instant), (before_it, instant - ONE_SECOND)):
+            await scoped.create_code(
+                code_id=digest_of(name),
+                client_id=CLI_CLIENT_ID,
+                redirect_uri=LOOPBACK,
+                scopes=frozenset({Scope.PLAN_READ}),
+                code_challenge=CHALLENGE,
+                created_at=datetime.now(UTC),
+                expires_at=expires_at,
+            )
+            await scoped.create_refresh_token(
+                token_id=digest_of(name),
+                grant_id=grant.id,
+                scopes=frozenset({Scope.PLAN_READ}),
+                created_at=datetime.now(UTC),
+                expires_at=expires_at,
+            )
+
+    in_a_transaction(live_database_url, seed)
+
+    swept = swept_at(live_database_url, instant)
+
+    # The flow's own code expired an hour ago on this clock; its refresh token has not.
+    assert (swept.codes, swept.refresh_tokens) == (2, 1)
+    assert {
+        code.id for code in rows_of(live_database_url, OAuthAuthorizationCode, owner.tenant_id)
+    } == {digest_of(at_the_instant)}
+    assert {
+        token.id for token in rows_of(live_database_url, OAuthRefreshToken, owner.tenant_id)
+    } == {digest_of(str(issued["refresh_token"])), digest_of(at_the_instant)}
+
+
+def test_a_revoked_grant_is_kept_for_the_whole_retention_window_and_then_removed(
+    http: TestClient, owner: UserRecord, live_database_url: str
+) -> None:
+    # Not removed the moment it dies: an operator investigating a revocation needs something
+    # to read. The window's own boundary is the database's, so it is asserted here, against the
+    # instant the row actually carries rather than against one this test picked.
+    session = signed_in(http, owner.email)
+    issued = exchange(http, consent(http, session)["code"])
+    http.post(REVOKE, data={"token": str(issued["refresh_token"]), "client_id": CLI_CLIENT_ID})
+    (revoked,) = rows_of(live_database_url, OAuthGrant, owner.tenant_id)
+    assert revoked.revoked_at is not None
+
+    assert swept_at(live_database_url, revoked.revoked_at + DEAD_GRANT_RETENTION).grants == 0
+    assert rows_of(live_database_url, OAuthGrant, owner.tenant_id) != []
+
+    swept = swept_at(live_database_url, revoked.revoked_at + DEAD_GRANT_RETENTION + ONE_SECOND)
+
+    assert swept.grants == 1
+    assert rows_of(live_database_url, OAuthGrant, owner.tenant_id) == []
+    # The grant's refresh tokens go with it through the foreign key's cascade.
+    assert rows_of(live_database_url, OAuthRefreshToken, owner.tenant_id) == []
 
 
 # --- Logging ---------------------------------------------------------------------------
@@ -609,10 +814,7 @@ def test_no_secret_reaches_a_log_line_at_any_level(
     stream = StringIO()
     configure_logging(environment="test", log_level="debug", stream=stream)
     account = provision_owner(live_database_url)
-    database = create_database(live_database_url)
-    app = create_app(settings, lifespan=create_db_lifespan(database.engine))
-    app.state.db = database
-    app.state.oauth = build_oauth_state(build_oauth_config(settings, is_dev=True), keys)
+    app = build_app(create_database(live_database_url), settings, keys)
     try:
         with TestClient(app, raise_server_exceptions=False, base_url=ISSUER) as client:
             session = signed_in(client, account.email)
@@ -620,7 +822,7 @@ def test_no_secret_reaches_a_log_line_at_any_level(
             code = consent(client, session)["code"]
             issued = exchange(client, code)
             rotated = refresh(client, str(issued["refresh_token"]))
-            second = rotated.json()["refresh_token"]  # type: ignore[attr-defined]
+            second = rotated.json()["refresh_token"]
             # A replay, a refusal, and a revocation, so the warning and error paths log too.
             refresh(client, str(issued["refresh_token"]))
             client.post(REVOKE, data={"token": second, "client_id": CLI_CLIENT_ID})
