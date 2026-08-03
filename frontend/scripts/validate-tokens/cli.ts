@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* `just tokens-validate`. Also runs in the pre-commit hook and in CI. */
 
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { filesUnder } from "../lib/files.ts";
@@ -26,9 +26,24 @@ const consumerFiles = (await filesUnder(appSourceDir, [".css"])).filter(
   (file) => !file.startsWith(`${tokenDir}${path.sep}`),
 );
 
+/* Every module and stylesheet the application ships, which is the graph a consumer's references are resolved
+ * against: what a browser has loaded when it reads a component's sheet is whatever the module that imported that
+ * sheet pulled in with it. Tests are excluded, because a test's imports are not a shipped cascade. */
+const moduleFiles = (await filesUnder(appSourceDir, [".ts", ".tsx", ".css"])).filter(
+  (file) => !file.includes(".test."),
+);
+
 const outcome = await validateTokenLayer({
   tokenFiles: await filesWithExtension(tokenDir, ".css"),
   consumerFiles,
+  moduleFiles,
+  exists: async (candidate) => {
+    try {
+      return (await stat(candidate)).isFile();
+    } catch {
+      return false;
+    }
+  },
   tokenEntry,
   sheetFiles: await filesWithExtension(designSheetDir, ".html"),
 });

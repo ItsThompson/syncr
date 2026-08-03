@@ -27,7 +27,9 @@ import path from "node:path";
 import { isCustomPropertyDeclaration, scanCss, type CssScan } from "../lib/css-scan.ts";
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
 import { scanHtml, type HtmlScan } from "../lib/html-scan.ts";
+import type { Exists } from "../lib/module-graph.ts";
 import { relativeToRepo } from "../lib/paths.ts";
+import { stylesheetClosures } from "../lib/stylesheet-closure.ts";
 import { checkAreaHues, pigmentFile } from "./hues.ts";
 
 export interface ValidateInput {
@@ -39,6 +41,13 @@ export interface ValidateInput {
    * so a duplicate or a non-declaration statement in them is not this check's business.
    */
   readonly consumerFiles: readonly string[];
+  /**
+   * Absolute paths of every module and stylesheet the application ships, so a consumer's references can be
+   * resolved against the sheets its own component actually loads rather than against every sheet in the tree.
+   */
+  readonly moduleFiles: readonly string[];
+  /** True when a file exists at a candidate path, which is how a specifier is resolved. */
+  readonly exists: Exists;
   /** Absolute path of the entry point every reference sheet must link. */
   readonly tokenEntry: string;
   /** Absolute paths of the rendered reference sheets. */
@@ -71,25 +80,37 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
    * compiles to an invalid declaration and produces exactly the plausible-looking page this whole
    * check exists to prevent.
    *
-   * A CONSUMER RESOLVES AGAINST THE TOKEN LAYER PLUS EVERY CONSUMER'S OWN DECLARATIONS, which is the
-   * cascade a browser actually loads. A component sheet legitimately declares layer-2 properties, and it
-   * legitimately reads another sheet's: the kit's glyph table is declared in `ui/primitives/glyphs.css`
-   * and a domain component's key hint draws its brackets from it. Resolving each sheet against itself
-   * alone reported that as dangling while the browser resolves it, which is a check disagreeing with the
-   * artifact. A renamed property is still caught, because the declaration disappears from every sheet at
-   * once. */
-  const consumerScans: ScannedFile[] = [];
+   * A CONSUMER RESOLVES AGAINST THE TOKEN LAYER PLUS THE SHEETS ITS OWN COMPONENT LOADS, which is the cascade a
+   * browser actually has. A component sheet legitimately declares layer-2 properties and legitimately reads
+   * another sheet's: the kit's glyph table is declared in `ui/primitives/glyphs.css` and a domain component's key
+   * hint draws its brackets from it. Resolving each sheet against itself alone reported that as dangling while
+   * the browser resolves it, and resolving it against EVERY sheet in the tree passed a reference to a property
+   * declared in a sheet the component never imports. `scripts/lib/stylesheet-closure.ts` walks the import graph
+   * that answers it, and a sheet imported by two components is judged against the intersection of their
+   * closures, because a reference has to resolve in every context the sheet is loaded in. */
+  const closures = await stylesheetClosures({ files: input.moduleFiles, exists: input.exists });
+  const consumerScans = new Map<string, CssScan>();
   let consumerReferences = 0;
   for (const file of input.consumerFiles) {
     const scan = scanCss(await readFile(file, "utf8"));
-    consumerScans.push({ file, scan });
+    consumerScans.set(file, scan);
     consumerReferences += scan.varReferences.length;
     findings.push(...checkComments(file, scan));
     findings.push(...(await checkImports(file, scan)));
   }
 
-  const visible = new Set([...declared, ...collectDeclaredNames(consumerScans)]);
-  findings.push(...checkTokenReferences(consumerScans, visible, callerProvided));
+  let unloadedSheets = 0;
+  for (const [file, scan] of consumerScans) {
+    const closure = closures.get(file);
+    if (closure !== undefined && closure.importers.length === 0) unloadedSheets += 1;
+    const visible = new Set(declared);
+    for (const loaded of closure?.loadedWith ?? [file]) {
+      for (const declaration of consumerScans.get(loaded)?.declarations ?? []) {
+        visible.add(declaration.name);
+      }
+    }
+    findings.push(...checkTokenReferences([{ file, scan }], visible, callerProvided));
+  }
 
   let dynamicInSheets = 0;
   let resolvedInSheets = 0;
@@ -104,6 +125,8 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
   const notes = [
     `${input.tokenFiles.length} token file(s), ${declared.size} declared propert(ies)`,
     `${input.consumerFiles.length} consuming stylesheet(s), ${consumerReferences} var() reference(s) resolved`,
+    `  each against the token layer plus the sheets its own component loads`,
+    `  ${unloadedSheets} sheet(s) no module imports, which resolve against the token layer alone`,
     `${input.sheetFiles.length} reference sheet(s), ${resolvedInSheets} literal var() reference(s) resolved`,
     `${dynamicInSheets} var() reference(s) in the sheets are assembled at runtime and are not statically resolvable`,
   ];

@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -9,8 +10,27 @@ const fixture = (name: string): string => path.join(fixtures, name);
 
 const cleanEntry = fixture("clean.css");
 
-async function validate(tokenFiles: string[], sheetFiles: string[] = []) {
-  return validateTokenLayer({ tokenFiles, consumerFiles: [], tokenEntry: cleanEntry, sheetFiles });
+const onDisk = async (candidate: string): Promise<boolean> => {
+  try {
+    return (await stat(candidate)).isFile();
+  } catch {
+    return false;
+  }
+};
+
+async function validate(
+  tokenFiles: string[],
+  sheetFiles: string[] = [],
+  consumerFiles: string[] = [],
+) {
+  return validateTokenLayer({
+    tokenFiles,
+    consumerFiles,
+    moduleFiles: [...tokenFiles, ...consumerFiles],
+    exists: onDisk,
+    tokenEntry: cleanEntry,
+    sheetFiles,
+  });
 }
 
 const checksOf = (findings: readonly { check: string }[]): string[] =>

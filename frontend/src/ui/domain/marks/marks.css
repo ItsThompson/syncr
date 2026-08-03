@@ -1,5 +1,10 @@
 /* Layer 2: the small marks a row or a block carries.
  *
+ * THE GLYPH TABLE IS IMPORTED RATHER THAN ASSUMED. The key hint's brackets come from `--glyph-bracket-open` and
+ * `--glyph-bracket-close`, which are declared in the kit's one glyph table, so this sheet says so: a component that
+ * loads these rules loads the table with them, and `just tokens-validate` resolves each reference against the
+ * sheets the component actually imports rather than against every sheet in the tree.
+ *
  * Three components share this file because each is three declarations and all three are the same idea: a mark
  * beside words, never instead of them. The Area chip pairs with the Area's name, the glyph slot sits beside a
  * title, and a key hint sits beside the action it triggers.
@@ -9,6 +14,8 @@
  * --fs-label is one idea said twice, and the brackets survive forced-colors mode where a border on a 10px box
  * reads as a smudge. The key itself is real text rather than generated content, so a reader can select it and
  * a screen reader reads `j` rather than nothing. */
+
+@import "../../primitives/glyphs.css";
 
 .area-chip {
   /* Up to 10px, and 10px is what the sealed ramp is specimen'd at. One of the four legal circles. */

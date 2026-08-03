@@ -1,0 +1,7 @@
+/* The widget's own sheet, which pulls a base sheet in through a CSS @import: an @import is as much an edge as a
+   module import, which is how `theme.css` pulls the token layer. */
+@import "../shared/base.css";
+
+.widget {
+  padding: var(--widget-pad);
+}

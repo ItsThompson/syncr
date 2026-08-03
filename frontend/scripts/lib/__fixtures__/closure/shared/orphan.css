@@ -1,0 +1,5 @@
+/* A sheet no module imports. Nothing loads it, so it reaches no browser and its references resolve against
+   nothing, which is a fact the closure reports rather than a case it excuses. */
+.orphan {
+  color: var(--nowhere);
+}

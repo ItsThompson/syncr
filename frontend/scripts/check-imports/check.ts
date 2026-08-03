@@ -27,7 +27,9 @@
  * fail on later and which no other check here would name.
  *
  * The zone model itself is in `zones.ts`: which directories exist under `src/`, what each kit zone may reach,
- * and why an area is denied. This file is the walk. */
+ * and why an area is denied. This file is the walk, and how a specifier is found and resolved lives in
+ * `scripts/lib/module-graph.ts`, which `validate-tokens` reads too: a second copy of those patterns would be a
+ * second chance to miss the backtick and the `.js` specifier that reached earlier reviews. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -35,6 +37,7 @@ import path from "node:path";
 import { blankJsComments } from "../lib/comments.ts";
 import { createPositionResolver } from "../lib/css-scan.ts";
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
+import { candidatesFor, firstExisting, importSitesIn } from "../lib/module-graph.ts";
 import { relativeToRepo } from "../lib/paths.ts";
 import {
   areaOf,
@@ -45,54 +48,6 @@ import {
   unmodelledMessage,
   type Area,
 } from "./zones.ts";
-
-const QUOTED_SPECIFIER =
-  /(?:\bfrom\s*|\bimport\s*|\brequire\s*\(\s*|\bimport\s*\(\s*)["']([^"']+)["']/g;
-
-/* A separate pattern, because a template literal may legally contain a quote character and so cannot
- * be folded into the one above. A backtick was the escape that reached review iteration 4. */
-const TEMPLATE_SPECIFIER = /(?:\bfrom\s*|\bimport\s*|\brequire\s*\(\s*|\bimport\s*\(\s*)`([^`]*)`/g;
-
-/** Candidate files a specifier could resolve to, in the order a bundler would try them. */
-function candidatesFor(target: string): string[] {
-  // A `.js` specifier resolving to a `.ts` file is `moduleResolution: bundler` behaviour and needs
-  // no compiler flag, and `.d.ts` is how the generated schema is spelled on disk. Both were shapes
-  // an earlier enumeration missed, so both are resolved here rather than assumed away.
-  const withoutJs = target.replace(/\.js$/, "");
-  return [
-    target,
-    `${target}.ts`,
-    `${target}.tsx`,
-    `${target}.d.ts`,
-    `${target}.css`,
-    `${withoutJs}.ts`,
-    `${withoutJs}.tsx`,
-    path.join(target, "index.ts"),
-    path.join(target, "index.tsx"),
-  ];
-}
-
-/** A relative import as written, with where it was written. */
-interface ImportSite {
-  readonly specifier: string;
-  readonly index: number;
-  /** True when the specifier is assembled by interpolation, so no resolution is possible. */
-  readonly computed: boolean;
-}
-
-/** Every relative import in a source, whatever quote style it uses. */
-function importSitesIn(code: string): ImportSite[] {
-  const sites: ImportSite[] = [];
-  for (const match of code.matchAll(QUOTED_SPECIFIER)) {
-    sites.push({ specifier: match[1], index: match.index, computed: false });
-  }
-  for (const match of code.matchAll(TEMPLATE_SPECIFIER)) {
-    sites.push({ specifier: match[1], index: match.index, computed: match[1].includes("${") });
-  }
-  return sites
-    .filter((site) => site.specifier.startsWith("."))
-    .toSorted((left, right) => left.index - right.index);
-}
 
 export interface CheckImportsInput {
   /** Absolute paths of the kit files to read. */
@@ -271,14 +226,4 @@ export async function checkImports(input: CheckImportsInput): Promise<CheckOutco
       `${modulesWalked} module(s) walked past the first hop, through ${CONDUITS.join(", ")}`,
     ],
   };
-}
-
-async function firstExisting(
-  candidates: readonly string[],
-  exists: (candidate: string) => Promise<boolean>,
-): Promise<string | null> {
-  for (const candidate of candidates) {
-    if (await exists(candidate)) return candidate;
-  }
-  return null;
 }
