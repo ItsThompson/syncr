@@ -5,10 +5,10 @@ that it is a permutation of the ramp, that it wraps rather than inventing a thir
 and that the first four Areas take four distinct steps.
 
 **The hue spacing those four steps give is deliberately not asserted in Python.** The inks and
-their hues live in `frontend/src/tokens/primitives.css`, one of them has already been retuned,
-and restating twelve hue values here would be a second source of truth for the visual language:
+their hues live in `frontend/src/tokens/primitives.css`, one of them has already been retuned, and
+restating twelve hue values here would be a second source of truth for the visual language:
 a spacing test written against a copy of them would go on passing after the copy went stale.
-What pins that spacing belongs in the token layer, beside the inks it is measured from.
+The token layer's own gate pins the spacing instead, deriving each hue from the pigment's hex.
 """
 
 from __future__ import annotations

@@ -13,14 +13,19 @@ its reference sheets to render live from the tokens that ship.
 **The deal order is not numeric order.** Areas take steps in the order
 ``01, 05, 08, 10, 03, 07, 12, 06, 02, 04, 09, 11`` (one-based, as the tokens are named), which is
 what gives a user with four Areas four pigments at least 75 degrees apart in hue. That figure is
-measured against the inks in `primitives.css` and nothing in this package pins it, deliberately:
-pinning it here would need a copy of the inks, and a spacing check written against a copy goes on
-passing after the copy goes stale. What pins it belongs beside the inks.
+measured against the inks and pinned beside them, by the token layer's own gate in
+`frontend/scripts/validate-tokens`, which derives each hue from the pigment's hex and fails on a
+first-four pair below the floor. Nothing in this package pins it, deliberately: pinning it here
+would need a copy of the inks, and a spacing check written against a copy goes on passing after
+the copy goes stale.
+
+The gate holds its own copy of the deal order, because it needs one to know which four to measure.
+The two must agree, and both are the order `color.css` states.
 
 The order does not defer the ramp's tightest adjacent pairs and is not what separates them: a
 pair is separated by carrying different hatches and different Area names, and by the inks having
-been respaced. How tight the tightest pair is, is the token layer's own figure and is not
-restated here for the reason above.
+been respaced. How tight the tightest pair is, is a token-layer figure and is pinned there rather
+than restated here, for the reason above.
 
 **Past twelve Areas the ramp repeats**, and identity then rests on the hatch and the Area
 name. That is stated to the user rather than prevented, because a thirteenth Area is a
