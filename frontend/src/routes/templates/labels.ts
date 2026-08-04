@@ -5,9 +5,11 @@
  * make a column of them incomparable, which is the whole reason a duration column exists, so this file
  * states one: minutes below the hour, whole hours alone, and hours plus minutes otherwise.
  *
- * A FLEX BAND BELOW ONE STEP IS NOT A SMALL BAND, IT IS NO BAND. Every placement lands on the quarter hour,
- * so a band of five permits no shift at all and `±5m` would promise one. It reads as fixed instead, which is
- * what it is. */
+ * A FLEX BAND BELOW ONE STEP IS NOT A SMALL BAND, IT IS NO BAND. Every placement lands on the quarter hour, so a
+ * band of five permits no shift at all and `±5m` would promise one. It reads as `no shift` instead, which says
+ * what the column is for. It deliberately does not read as `fixed`: the entries table's own footer says every
+ * entry is fixed BY DERIVATION, which is a statement about what the solver may move, and one word carrying both
+ * meanings in one table is one word too few. */
 
 import { SNAP_MINUTES, WEEKDAY_NAMES } from "../../ui/primitives";
 import type { AnchorType } from "../../api/hooks/useAnchorTypes";
@@ -38,9 +40,9 @@ export function minutesLabel(minutes: number): string {
   return `${sign}${hours}h ${rest}m`;
 }
 
-/** How far a placement may shift the entry either way, or `fixed` when it may not. */
+/** How far a placement may shift the entry either way, or `no shift` when it may not. */
 export function flexLabel(minutes: number): string {
-  if (Math.trunc(minutes) < SNAP_MINUTES) return "fixed";
+  if (Math.trunc(minutes) < SNAP_MINUTES) return "no shift";
   return `\u00B1${minutesLabel(minutes)}`;
 }
 

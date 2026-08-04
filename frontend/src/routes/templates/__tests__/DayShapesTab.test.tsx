@@ -78,6 +78,21 @@ describe("the day shapes list", () => {
     );
   });
 
+  /* A NAME AT THE API'S CAP IS RENDERED WHOLE, and this pins that rather than approving of it. The list sits in a
+   * 236px column and the api caps a name at 60 characters, so the cell wraps and the row grows past the table's
+   * 28px pitch: measured in Chrome at 79px for a shape name and 167px for a day type name. Nothing here
+   * truncates, because a truncated name is the one thing a reader picking a shape cannot read, and the kit's
+   * table has no width or clamp vocabulary to say it better. Ticket 1242 owns that decision; what this test
+   * refuses is a silent ellipsis appearing before it is made. */
+  it("renders a name at the api's cap in full, rather than truncating it", () => {
+    const name = "Weekday with lectures, a placement interview and a gym slot";
+    renderTab({ shapes: { status: "ready", data: [buildShapeSummary({ name })] } });
+
+    expect(name).toHaveLength(59);
+    expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Day shapes" })).toHaveTextContent(name);
+  });
+
   it("reports the selected shape to its caller", async () => {
     const chosen: string[] = [];
     renderTab({ onSelect: (id) => chosen.push(id) });
@@ -130,14 +145,14 @@ describe("the selected shape's entries", () => {
     );
   });
 
-  it("renders a flex band under one step as fixed, because it permits no shift", () => {
+  it("renders a flex band under one step as no shift, because it permits none", () => {
     const shape = buildShape({ entries: [buildEntry({ flexBandMinutes: 5 })] });
     renderTab({ shape: { status: "ready", data: shape } });
 
-    /* Read as a CELL, not as the table's text: the footer's own sentence carries the word `fixed`, so an
-     * assertion against the table passes whatever the cell says. */
+    /* Read as a CELL, not as the table's text. The footer carries its own sentence about every entry being fixed
+     * by derivation, which is why the cell no longer says `fixed` at all: one word, one meaning. */
     const table = screen.getByRole("table", { name: /entries/ });
-    expect(within(table).getByText("fixed")).toBeInTheDocument();
+    expect(within(table).getByText("no shift")).toBeInTheDocument();
   });
 });
 

@@ -51,13 +51,18 @@ describe("minutesLabel", () => {
 
 describe("flexLabel", () => {
   /* Every placement lands on the quarter hour, so a band under one step permits no shift at all. Rendering
-   * `±5m` would promise a shift that cannot happen. */
+   * `±5m` would promise a shift that cannot happen, and rendering `fixed` would collide with the entries
+   * table's own footer, where `fixed by derivation` says something else entirely. */
   it.each([
-    [0, "fixed"],
-    [5, "fixed"],
-    [14, "fixed"],
-  ])("reads a band of %i as fixed, because it permits no shift", (minutes, expected) => {
+    [0, "no shift"],
+    [5, "no shift"],
+    [14, "no shift"],
+  ])("reads a band of %i as no shift, because it permits none", (minutes, expected) => {
     expect(flexLabel(minutes)).toBe(expected);
+  });
+
+  it("does not read as `fixed`, which the entries table already uses for derivation", () => {
+    expect(flexLabel(0)).not.toContain("fixed");
   });
 
   it.each([
