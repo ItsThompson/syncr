@@ -11,7 +11,8 @@ and a block straddling the instant is immovable for the whole of its span.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
@@ -29,6 +30,10 @@ from tests.assembly_fakes import (
     between,
 )
 
+if TYPE_CHECKING:
+    from syncr_domain.plan import PlanDocument
+    from syncr_solver.inputs import Pin
+
 TASK = uuid4()
 OTHER_TASK = uuid4()
 FITNESS = uuid4()
@@ -37,7 +42,12 @@ CAREER = uuid4()
 AN_HOUR = timedelta(hours=1)
 
 
-def placed_time(*, live_plan=None, pins=(), now=NOW) -> PlacedTime:  # type: ignore[no-untyped-def]
+def placed_time(
+    *,
+    live_plan: PlanDocument | None = None,
+    pins: tuple[Pin, ...] | list[Pin] = (),
+    now: datetime = NOW,
+) -> PlacedTime:
     return PlacedTime(placements(live_plan, pins, now=now), now=now)
 
 
@@ -74,12 +84,12 @@ def test_a_block_that_started_before_now_is_immovable() -> None:
     ],
 )
 def test_the_boundary_is_the_start_and_now_itself_has_started(
-    label: str, start: object, immovable_minutes: int
+    label: str, start: datetime, immovable_minutes: int
 ) -> None:
     # A block running ACROSS `now` is immovable for its whole span rather than for its elapsed
     # part: the rule is about whether the solver may move the block, not about how much of it
     # has happened.
-    interval = Interval(start, start + AN_HOUR)  # type: ignore[operator,arg-type]
+    interval = Interval(start, start + AN_HOUR)
     plan = a_plan(blocks=[a_task_block(task_id=TASK, area_id=FITNESS, interval=interval)])
 
     placed = placed_time(live_plan=plan)
@@ -108,8 +118,10 @@ def test_a_pin_and_the_block_it_pins_are_one_placement_at_the_pins_interval() ->
     )
     pin = a_pin(binding=BindingRef.for_task(TASK), interval=between(14, 15, day=3))
 
+    committed = placements(plan, [pin], now=NOW)
     placed = placed_time(live_plan=plan, pins=[pin])
 
+    assert [item.interval for item in committed] == [pin.interval]
     assert placed.immovable_minutes_of_task(TASK) == 60
     assert placed.minutes_of_area(FITNESS) == 60
 
@@ -139,8 +151,9 @@ def test_a_pin_for_a_binding_the_plan_does_not_hold_is_a_placement_of_its_own() 
     placed = placed_time(pins=[pin])
 
     assert placed.immovable_minutes_of_task(TASK) == 60
-    # The pin carries no Area of its own, so it charges no Area's floor. What it does charge is
-    # the task's remaining work, which is what makes the pinned hour count exactly once.
+    # A GAP, pinned here so it is not read as a rule: the pin carries no Area, so this hour is
+    # committed time no Area figure sees. Closing it needs an Area on the pin or a read of the
+    # binding's entity, neither of which exists while nothing writes a pin. Ticket 1251 owns it.
     assert placed.minutes_of_area(FITNESS) == 0
 
 

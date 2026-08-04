@@ -25,15 +25,14 @@ derivation. :class:`syncr_domain.routines.RoutineSpan` declares the same pair an
 neither. The two are checked differently today.
 
 **A declared duration owes the grid, and so does a wall time the user chose.** That is the side
-this product implements, and it is settled in four places rather than assumed here: a habit's
-both duration bounds and a template entry's target time and duration are refused off the grid,
-a preferred window's bounds are refused off it, and the week assembler snaps an elastic
-duration back onto it after the learned multiplier scales it. The reason is that every
-placement lands on the grid, so a declaration off it names a time or a length no block can
-hold. Tickets 1142, 1151, and 1161 carry the question for the shapes that do not enforce it
-yet: a routine's target time and duration, and a task's minimum chunk. Nothing in this module
-snaps on its own, so an unsnapped interval stays legal and a producer that owes the grid
-applies it to its own output.
+this product implements, and it is settled in five places rather than assumed here: a habit's both
+duration bounds, a template entry's target time and duration, a preferred window's bounds, a
+preference's ideal session length, and the week assembler snapping an elastic duration back onto
+the grid after the learned multiplier scales it. The reason is that every placement lands on the
+grid, so a declaration off it names a time or a length no block can hold. Tickets 1142, 1151, and
+1161 carry the question for the shapes that do not enforce it yet: a routine's target time and
+duration, and a task's minimum chunk. Nothing in this module snaps on its own, so an unsnapped
+interval stays legal and a producer that owes the grid applies it to its own output.
 """
 
 from __future__ import annotations

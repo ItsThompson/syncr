@@ -41,12 +41,15 @@ before it runs, so a reader asking what a concession touches reads one function 
 tracing a pipeline. A candidate concession being evaluated is an argument rather than a table
 read, which is what keeps a tradeoff request from persisting anything.
 
-## Three resolutions await another component, and each is honest rather than absent
+## Four resolutions await another component, and each is honest rather than absent
 
 *Anchors, shadows, and forbidden windows* are the calendar half of this method and land in the
-ticket that follows this one; the fields exist and are empty. *The live plan and its pins* come
-through a reader whose production implementation answers with nothing, because no code names the
-keys a stored binding holds yet. *The habit outcome log* is the same seam one module over.
+ticket that follows this one; the fields exist and are empty. *The preceding week's
+boundary-crossing frame occurrences* land with them: a Sunday ``Sleep 23:00 + 8h`` belongs to the
+week its start falls in, so the following week has to load its overhang as occupancy, and this
+method does not. *The live plan and its pins* come through a reader whose production implementation
+answers with nothing, because no code names the keys a stored binding holds yet. *The habit outcome
+log* is the same seam one module over.
 
 Each is a seam rather than a silence: the netting rules, the cursor, and the debt figure are all
 exercised through the real arithmetic in the suite, and bringing a reader online changes one line
@@ -276,7 +279,9 @@ class WeekAssembler:
             ),
         )
 
-        adjustments = _adjustments(await self._adjustments.for_week(iso_week), extra_adjustment)
+        adjustments = _adjustments(
+            await self._adjustments.for_week(iso_week), extra_adjustment, dates=dates
+        )
         folded = fold(adjustments, resolved)
 
         inputs = SolveInputs(
@@ -368,40 +373,47 @@ def _discretionary_minutes(
 
 
 def _adjustments(
-    stored: Sequence[WeekAdjustmentRecord], candidate: WeekAdjustment | None
+    stored: Sequence[WeekAdjustmentRecord],
+    candidate: WeekAdjustment | None,
+    *,
+    dates: Sequence[Date],
 ) -> tuple[WeekAdjustment, ...]:
     """Approved concessions, plus the one being evaluated. One list, so one code path folds them.
 
-    The candidate goes last, so a concession being evaluated for a kind and target that already
-    has a stored one is applied after it rather than instead of it.
+    The candidate goes last, so a concession being evaluated for a kind and target that already has
+    a stored one is applied after it rather than instead of it, and the two compound. ``fold`` says
+    so where the arithmetic is.
     """
-    approved = tuple(_as_adjustment(record) for record in stored)
+    approved = tuple(_as_adjustment(record, dates=dates) for record in stored)
     return approved if candidate is None else (*approved, candidate)
 
 
-def _as_adjustment(record: WeekAdjustmentRecord) -> WeekAdjustment:
+def _as_adjustment(record: WeekAdjustmentRecord, *, dates: Sequence[Date]) -> WeekAdjustment:
     """One stored concession as the pure value the fold and a reason clause both read."""
     return WeekAdjustment(
         adjustment_id=record.id,
         kind=AdjustmentKind(record.kind),
         target_id=record.target_id,
-        reductions=_reductions(record.reductions),
+        reductions=_reductions(record.reductions, dates=dates),
         delta_minutes=record.delta_minutes,
     )
 
 
-def _reductions(stored: Mapping[str, object]) -> Mapping[Date, int]:
-    """The per-date minutes a routine reduction carries, as dates rather than as stored keys.
+def _reductions(stored: Mapping[str, object], *, dates: Sequence[Date]) -> Mapping[Date, int]:
+    """The per-date minutes a routine reduction carries, as dates of THIS week.
 
-    A key that is not a date or a value that is not a count of minutes is dropped and reported: a
-    reduction nothing can pair with a frame occurrence would otherwise be applied to nothing while
-    the concession claimed to have been honoured.
+    An entry this week cannot honour is dropped and reported, and there are three of them: a key
+    that is not a date, a value that is not a count of minutes, and a date the week does not hold.
+    All three are the same fault, which is a reduction that would pair with no frame occurrence and
+    be applied to nothing while the concession claimed to have been honoured. A concession is
+    week-scoped, so a foreign date names an occurrence another week's assembly owns.
     """
+    week = set(dates)
     reductions: dict[Date, int] = {}
     unreadable: list[str] = []
     for key, value in stored.items():
         on = _a_date(key)
-        if on is None or isinstance(value, bool) or not isinstance(value, int):
+        if on is None or on not in week or isinstance(value, bool) or not isinstance(value, int):
             unreadable.append(key)
             continue
         reductions[on] = value

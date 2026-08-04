@@ -26,8 +26,6 @@ if TYPE_CHECKING:
 
     from syncr_domain.identifiers import TenantId
 
-# Declared here rather than among the domain's identifier aliases, because a span carries no
-# identity: the row is what has one, and the domain's frame arithmetic never needs it.
 # Re-exported rather than declared, so a routine's identifier has one spelling. The pure
 # package owns it because a pure shape names one: a frame entry says which routine it
 # materialized from.

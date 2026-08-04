@@ -68,8 +68,15 @@ class Concessions:
 def fold(adjustments: Sequence[WeekAdjustment], into: Concessions) -> Concessions:
     """``into`` with every concession applied, in the order the concessions arrive.
 
-    Order does not change the result. Each kind targets one entity and each pair of fields is
-    changed by one kind, so two concessions cannot compound on one figure.
+    Order does not change the result: each kind targets one entity, each pair of fields is changed
+    by one kind, and successive clamped subtraction commutes.
+
+    **Two concessions on one kind and one target COMPOUND.** The storage index makes that
+    unreachable for two stored concessions, and it does not cover a candidate being evaluated,
+    because a candidate is an argument rather than a row. So a stored breach of 60 minutes plus a
+    candidate breach of 120 lowers a 300-minute floor to 120. Whether the enumerator offers an
+    increment or an absolute figure is the enumerator's question, which is ticket 1255; what is
+    stated here is what this pass does.
     """
     folded = into
     for adjustment in adjustments:
@@ -130,8 +137,13 @@ def _floor_breached(into: Concessions, *, area_id: UUID, by_minutes: int | None)
 
     A concession that stated no minutes lowers nothing. The size of a breach is what the user
     approved, so inferring one here would be the assembler choosing how far to breach a floor.
+
+    A figure at or below zero lowers nothing either, and that guard is not defensive: subtracting a
+    negative would RAISE the floor, so a concession whose whole meaning is to relax a hard
+    constraint would tighten one. Nothing writes the column yet and it carries no check constraint,
+    so the fold is where the absurd state stops.
     """
-    if by_minutes is None:
+    if by_minutes is None or by_minutes <= 0:
         return into
     return replace(
         into,

@@ -97,6 +97,11 @@ def placements(
         committed[pin.binding] = Placement(
             binding=pin.binding,
             interval=pin.interval,
+            # A pin carries no Area of its own, so a pin whose binding the live plan no longer
+            # holds is committed time that NO Area figure sees: the task's remaining work nets it
+            # and the Area's placed minutes, floor, and reservation do not. That is a gap rather
+            # than a rule, and closing it needs an Area on the pin or a read of the binding's
+            # entity, neither of which exists while nothing writes a pin. Ticket 1251 owns it.
             area_id=None if placed is None else placed.area_id,
             immovable=True,
         )

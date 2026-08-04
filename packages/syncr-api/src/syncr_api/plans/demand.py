@@ -102,6 +102,13 @@ def task_demands(
     A task with no deadline has no demand: nothing has to fit before anything. A task whose
     placements already cover its corrected estimate has none either, which is the whole point
     of netting: making progress must never manufacture a shortfall.
+
+    **A deadline outside the week still produces a demand, in both directions.** A task due next
+    month yields one at that instant, and a task due last Tuesday yields one too, which is correct
+    because the work is overdue rather than excused. What a consumer does with a deadline the week's
+    capacity window does not reach is the consumer's rule: the probe clips its capacity to the span
+    and to ``now``, so a deadline in the past yields zero capacity and its whole demand is the
+    shortfall.
     """
     demands: list[TaskDemand] = []
     for task in tasks:

@@ -663,12 +663,17 @@ def test_the_bullet_count_reads_the_pipeline_rather_than_every_line_of_the_docst
 
 def test_every_repository_the_assembler_holds_is_read_once_per_assembly() -> None:
     # The read count is the other half of the budget's basis, and a collaborator the constructor
-    # takes and the method never asks is a dependency nothing needs.
+    # takes and the method never asks is a dependency nothing needs. Counted as a LIST as well as a
+    # set, because a set at sixteen would stay at sixteen if a second read of one repository were
+    # added, and the figure a latency budget rests on is reads rather than collaborators.
     held = _constructor_collaborators(WeekAssembler)
-    read = _awaited_collaborators(WeekAssembler)
+    reads = _awaited_collaborators(WeekAssembler)
 
-    assert held == read, {"held but never read": sorted(held - read)}
-    assert len(read) == REPOSITORY_READ_COUNT
+    assert held == set(reads), {"held but never read": sorted(held - set(reads))}
+    assert len(reads) == REPOSITORY_READ_COUNT
+    assert sorted(reads) == sorted(set(reads)), {
+        "read more than once": sorted({name for name in reads if reads.count(name) > 1})
+    }
 
 
 def test_the_assembly_histogram_carries_the_caller_and_no_other_label() -> None:
@@ -740,10 +745,14 @@ def _constructor_collaborators(service: type) -> set[str]:
     return {f"_{name}" for name in parameters if name != "caller"}
 
 
-def _awaited_collaborators(service: type) -> set[str]:
-    """Every ``self._x`` a method of ``service`` awaits, read from the source."""
+def _awaited_collaborators(service: type) -> list[str]:
+    """Every ``self._x`` a method of ``service`` awaits, read from the source, one entry per await.
+
+    A list rather than a set, so a repository read twice is visible: the count is what a latency
+    budget is calibrated against, and two reads of one collaborator cost two round trips.
+    """
     tree = ast.parse(inspect.getsource(service))
-    found: set[str] = set()
+    found: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Await):
             continue
@@ -752,5 +761,5 @@ def _awaited_collaborators(service: type) -> set[str]:
             continue
         owner = call.func.value
         if isinstance(owner, ast.Attribute) and isinstance(owner.value, ast.Name):
-            found.add(owner.attr)
+            found.append(owner.attr)
     return found
