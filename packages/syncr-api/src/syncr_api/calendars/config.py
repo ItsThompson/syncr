@@ -94,11 +94,15 @@ EXTERNAL_ID_MAX_LENGTH: Final = 2_048
 CURSOR_MAX_LENGTH: Final = 512
 LAST_ERROR_MAX_LENGTH: Final = 500
 
-# How long one rejection's detail may be. Every detail is written to JSONB on the sync state and
+# How much of one rejection's detail is KEPT. Every detail is written to JSONB on the sync state and
 # served whole by the read route, and several of them quote a value the FEED chose the length of: a
 # rule dateutil refused, or a converter's own complaint about a literal. A publisher can make any of
 # those megabytes wide. Bounding the detail where it is built is the net; the messages that name a
 # value's SIZE instead of quoting it are the attribution, and both are wanted.
+#
+# Not a maximum for the whole string: a truncated detail also states the full length, so the stored
+# value is this many characters plus that short suffix. Naming the length is the point, since a
+# reader has to be able to tell a long value from a truncated explanation.
 DETAIL_MAX_LENGTH: Final = 300
 
 # How long a feed read may take, and how much of one is read. A publisher that stalls must

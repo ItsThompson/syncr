@@ -58,7 +58,6 @@ if TYPE_CHECKING:
 # instant as the real wall time an hour later, so an instant key named two occurrences at once.
 # Measured, that placed one override twice and lost the other of a pair. Cross-form matching is a
 # SECOND index instead: see ``Series.same_instant``.
-# ``Series.same_instant``.
 type OccurrenceKey = tuple[str, datetime]
 
 _OCCURRENCE_STAMP = "%Y%m%dT%H%M%S"
