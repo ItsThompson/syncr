@@ -26,7 +26,7 @@ No method commits. One request is one transaction, opened and committed by
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -52,7 +52,6 @@ if TYPE_CHECKING:
     from datetime import datetime
     from uuid import UUID
 
-    from sqlalchemy import CursorResult, Delete, Update
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_api.core.scopes import Scope
@@ -95,17 +94,11 @@ class PresentedCredentialRepository:
 
 
 class OAuthRepository(TenantScopedRepository):
-    """One tenant's codes, grants, and refresh tokens, and no other tenant's."""
+    """One tenant's codes, grants, and refresh tokens, and no other tenant's.
 
-    async def _affected_rows(self, statement: Update | Delete) -> int:
-        """How many rows a scoped write changed.
-
-        One place that reads a row count, because SQLAlchemy types every ``execute`` as a
-        plain ``Result`` while a DML statement really returns a ``CursorResult``, and a cast
-        per call site would be six casts saying the same thing.
-        """
-        result = cast("CursorResult[Any]", await self._session.execute(statement))
-        return result.rowcount
+    Row counts come from :meth:`~syncr_api.core.repository.TenantScopedRepository._affected_rows`,
+    which is where the ``CursorResult`` cast that reads one lives.
+    """
 
     async def create_code(
         self,

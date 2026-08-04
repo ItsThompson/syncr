@@ -31,14 +31,14 @@ principal.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import delete, select, update
 
 from syncr_api.core.tenancy import TenantScoped
 
 if TYPE_CHECKING:
-    from sqlalchemy import Delete, Select, Update
+    from sqlalchemy import CursorResult, Delete, Select, Update
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_domain.identifiers import TenantId
@@ -76,3 +76,18 @@ class TenantScopedRepository(TenantScopedReader):
     def scoped_delete[ModelT: TenantScoped](self, model: type[ModelT]) -> Delete:
         """``DELETE`` over ``model``, already narrowed to this repository's tenant."""
         return delete(model).where(model.tenant_id == self._tenant_id)
+
+    async def _affected_rows(self, statement: Update | Delete) -> int:
+        """Execute a scoped write and answer how many rows it changed.
+
+        One place that reads a row count, because SQLAlchemy types every ``execute`` as a plain
+        ``Result`` while a DML statement really returns a ``CursorResult``, and a cast per call
+        site would be a dozen casts saying the same thing.
+
+        A count rather than nothing, because several writes here report progress: how many anchors
+        a sync marked possibly stale, how many occurrences of a series a retype moved, how many
+        grants a revocation ended. A count that changes is how progress is reported in this
+        product, so the number has to come back from the statement that produced it.
+        """
+        result = cast("CursorResult[Any]", await self._session.execute(statement))
+        return result.rowcount
