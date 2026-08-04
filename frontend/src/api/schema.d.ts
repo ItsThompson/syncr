@@ -232,6 +232,34 @@ export interface paths {
         patch: operations["update_area_api_v1_areas__area_id__patch"];
         trace?: never;
     };
+    "/api/v1/areas/{area_id}/preference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An Area's preference, and what is in effect for it
+         * @description An Area's own preference. For an Area, what it declares is what is in effect.
+         */
+        get: operations["read_area_preference_api_v1_areas__area_id__preference_get"];
+        /**
+         * Replace an Area's preference whole. The only shape taking a cap
+         * @description Replace an Area's preference. Every habit and task inside it inherits unless it overrides.
+         */
+        put: operations["replace_area_preference_api_v1_areas__area_id__preference_put"];
+        post?: never;
+        /**
+         * Remove an Area's preference. Nothing then biases its placement
+         * @description Remove an Area's preference. Its habits and tasks fall back to their own overrides only.
+         */
+        delete: operations["remove_area_preference_api_v1_areas__area_id__preference_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/budget": {
         parameters: {
             query?: never;
@@ -518,6 +546,34 @@ export interface paths {
          * @description Apply a partial update. Future occurrences change; recorded past ones do not.
          */
         patch: operations["change_habit_api_v1_habits__habit_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/habits/{habit_id}/preference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A habit's preference, and which one is in effect
+         * @description A habit's own preference if it has one, and its Area's otherwise.
+         */
+        get: operations["read_habit_preference_api_v1_habits__habit_id__preference_get"];
+        /**
+         * Replace a habit's preference whole. It replaces its Area's
+         * @description Override a habit's Area wholly. A cap is not a field of this shape, so one is a 422.
+         */
+        put: operations["replace_habit_preference_api_v1_habits__habit_id__preference_put"];
+        post?: never;
+        /**
+         * Remove a habit's override, restoring its Area's preference
+         * @description Remove the override. The response states which preference is in effect afterwards.
+         */
+        delete: operations["remove_habit_preference_api_v1_habits__habit_id__preference_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/off-plan": {
@@ -807,6 +863,34 @@ export interface paths {
          */
         post: operations["complete_task_api_v1_tasks__task_id__complete_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/preference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A task's preference, and which one is in effect
+         * @description A task's own preference if it has one, and its Area's otherwise.
+         */
+        get: operations["read_task_preference_api_v1_tasks__task_id__preference_get"];
+        /**
+         * Replace a task's preference whole. It replaces its Area's
+         * @description Override a task's Area wholly. A cap is not a field of this shape, so one is a 422.
+         */
+        put: operations["replace_task_preference_api_v1_tasks__task_id__preference_put"];
+        post?: never;
+        /**
+         * Remove a task's override, restoring its Area's preference
+         * @description Remove the override. The response states which preference is in effect afterwards.
+         */
+        delete: operations["remove_task_preference_api_v1_tasks__task_id__preference_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1501,6 +1585,32 @@ export interface components {
             pigmentIndex?: number | null;
         };
         /**
+         * AreaPreferenceRequest
+         * @description A preference to put on one Area, whole.
+         *
+         *     The override's three fields plus the one an Area alone may declare, so the cap is the only
+         *     difference between the two shapes and it is stated in exactly one of them.
+         */
+        AreaPreferenceRequest: {
+            /**
+             * Maxperdayminutes
+             * @description The most of this Area that may land in one day, 15 to 1440 minutes. A HARD constraint rather than a cost, and an Area's alone: a habit's or a task's preference has no field for one, so an override can never relax it. Null means no cap. It reaches the solver through the Area's budget rather than through the preference in effect, which is why the effective shape does not carry it.
+             */
+            maxPerDayMinutes?: number | null;
+            /**
+             * Preferreddurationminutes
+             * @description How long one session should ideally run, 15 to 1440 minutes in whole 15-minute steps. An IDEAL only: a task's minimum chunk stays a hard constraint, so a split shorter than this is placed and charged to the fragmentation cost rather than refused. Null means no ideal length, and on a habit's or a task's preference null is a statement rather than an omission, because a preference replaces its Area's ideal duration wholly.
+             */
+            preferredDurationMinutes?: number | null;
+            /** @description How much placing the work outside a preferred window costs. Both values are objective costs rather than constraints, so neither can leave a block unscheduled; 'strong' costs an order of magnitude more to violate than 'soft'. There is no 'hard': a temporal rule with a conditional escape is not a hard rule. Required even when no window is declared, in which case nothing weighs it. */
+            strength: components["schemas"]["PreferenceStrength"];
+            /**
+             * Windows
+             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.
+             */
+            windows?: components["schemas"]["TimeWindowRequest"][];
+        };
+        /**
          * AreaResponse
          * @description One Area, and the budget it declares.
          */
@@ -1509,7 +1619,7 @@ export interface components {
             budgetPercent: components["schemas"]["WireDecimal"] | null;
             /**
              * Defaultpreferenceid
-             * @description The Area's placement preference, which the solver reads. Null when unset.
+             * @description Always null. Nothing writes this column: an Area's placement preference is read through GET /api/v1/areas/{id}/preference, which is addressed by the Area and holds no identifier a caller needs. Read the preference there rather than this field.
              */
             defaultPreferenceId: string | null;
             /** @description An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor. */
@@ -1959,6 +2069,32 @@ export interface components {
             statement: string;
         };
         /**
+         * DeclaredPreferenceResponse
+         * @description The preference set on the owner in the path, exactly as it is stored.
+         *
+         *     ``maxPerDayMinutes`` is null on every habit's and every task's, because no request shape can
+         *     set one there and no row may hold one.
+         */
+        DeclaredPreferenceResponse: {
+            /**
+             * Maxperdayminutes
+             * @description The most of this Area that may land in one day, 15 to 1440 minutes. A HARD constraint rather than a cost, and an Area's alone: a habit's or a task's preference has no field for one, so an override can never relax it. Null means no cap. It reaches the solver through the Area's budget rather than through the preference in effect, which is why the effective shape does not carry it.
+             */
+            maxPerDayMinutes: number | null;
+            /**
+             * Preferreddurationminutes
+             * @description How long one session should ideally run, 15 to 1440 minutes in whole 15-minute steps. An IDEAL only: a task's minimum chunk stays a hard constraint, so a split shorter than this is placed and charged to the fragmentation cost rather than refused. Null means no ideal length, and on a habit's or a task's preference null is a statement rather than an omission, because a preference replaces its Area's ideal duration wholly.
+             */
+            preferredDurationMinutes: number | null;
+            /** @description How much placing the work outside a preferred window costs. Both values are objective costs rather than constraints, so neither can leave a block unscheduled; 'strong' costs an order of magnitude more to violate than 'soft'. There is no 'hard': a temporal rule with a conditional escape is not a hard rule. Required even when no window is declared, in which case nothing weighs it. */
+            strength: components["schemas"]["PreferenceStrength"];
+            /**
+             * Windows
+             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.
+             */
+            windows: components["schemas"]["TimeWindowResponse"][];
+        };
+        /**
          * DisclosedCalendarResponse
          * @description One Google calendar already configured as a source, and whether it is read.
          */
@@ -1967,6 +2103,34 @@ export interface components {
             displayName: string;
             /** Included */
             included: boolean;
+        };
+        /**
+         * EffectivePreferenceResponse
+         * @description The one preference the solver reads for this owner, and where it came from.
+         *
+         *     It carries no daily cap, and the absence is the contract rather than an omission: a cap travels
+         *     on the Area's budget, so nothing that resolves down an override chain can carry one.
+         */
+        EffectivePreferenceResponse: {
+            /**
+             * Preferreddurationminutes
+             * @description How long one session should ideally run, 15 to 1440 minutes in whole 15-minute steps. An IDEAL only: a task's minimum chunk stays a hard constraint, so a split shorter than this is placed and charged to the fragmentation cost rather than refused. Null means no ideal length, and on a habit's or a task's preference null is a statement rather than an omission, because a preference replaces its Area's ideal duration wholly.
+             */
+            preferredDurationMinutes: number | null;
+            /** @description Which Area, Habit, or Task declared the preference that is in effect. Equal to the owner in the path when this owner declared its own, and its Area otherwise. */
+            source: components["schemas"]["PreferenceOwnerResponse"];
+            /**
+             * Statement
+             * @description What is in effect and where it came from, in one sentence, for a caller that renders rather than compares.
+             */
+            statement: string;
+            /** @description How much placing the work outside a preferred window costs. Both values are objective costs rather than constraints, so neither can leave a block unscheduled; 'strong' costs an order of magnitude more to violate than 'soft'. There is no 'hard': a temporal rule with a conditional escape is not a hard rule. Required even when no window is declared, in which case nothing weighs it. */
+            strength: components["schemas"]["PreferenceStrength"];
+            /**
+             * Windows
+             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.
+             */
+            windows: components["schemas"]["TimeWindowResponse"][];
         };
         /**
          * EntryPatchRequest
@@ -2452,6 +2616,31 @@ export interface components {
             sourceId?: string | null;
         };
         /**
+         * OverridePreferenceRequest
+         * @description A preference to put on one Habit or Task, whole.
+         *
+         *     ``PUT`` rather than ``PATCH``: this replaces its Area's windows and ideal duration wholly, so a
+         *     field left out is null afterwards rather than unchanged, and there is no merge rule to express.
+         *
+         *     **There is no ``maxPerDayMinutes`` field here.** A daily cap is a hard constraint and an Area's
+         *     alone, so an unknown field is rejected and sending one is a stated 422. An override that could
+         *     carry a cap would be an override that could relax one.
+         */
+        OverridePreferenceRequest: {
+            /**
+             * Preferreddurationminutes
+             * @description How long one session should ideally run, 15 to 1440 minutes in whole 15-minute steps. An IDEAL only: a task's minimum chunk stays a hard constraint, so a split shorter than this is placed and charged to the fragmentation cost rather than refused. Null means no ideal length, and on a habit's or a task's preference null is a statement rather than an omission, because a preference replaces its Area's ideal duration wholly.
+             */
+            preferredDurationMinutes?: number | null;
+            /** @description How much placing the work outside a preferred window costs. Both values are objective costs rather than constraints, so neither can leave a block unscheduled; 'strong' costs an order of magnitude more to violate than 'soft'. There is no 'hard': a temporal rule with a conditional escape is not a hard rule. Required even when no window is declared, in which case nothing weighs it. */
+            strength: components["schemas"]["PreferenceStrength"];
+            /**
+             * Windows
+             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.
+             */
+            windows?: components["schemas"]["TimeWindowRequest"][];
+        };
+        /**
          * PeriodSpan
          * @description The half-open interval the period covers, ``[start, end)``.
          *
@@ -2474,6 +2663,54 @@ export interface components {
         };
         /** @enum {string} */
         PostScope: "none" | "all" | "areas";
+        /**
+         * PreferenceOwnerKind
+         * @description Which of the three things a preference is attached to.
+         * @enum {string}
+         */
+        PreferenceOwnerKind: "area" | "habit" | "task";
+        /**
+         * PreferenceOwnerResponse
+         * @description One Area, Habit, or Task, named by kind and identifier.
+         *
+         *     Two fields rather than three nullable ones, so a client reads which kind it has rather than
+         *     probing three keys, and a shape naming two owners at once is not expressible.
+         */
+        PreferenceOwnerResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["PreferenceOwnerKind"];
+        };
+        /**
+         * PreferenceResponse
+         * @description What one owner declares, and what is actually in effect for it.
+         *
+         *     One shape for all nine routes, so a caller reads the same body from a read, a replacement, and
+         *     a removal, and the answer to "what changed" is the whole state rather than a diff.
+         *
+         *     ``declared`` is null when this owner declares none of its own; ``effective`` is null only when
+         *     neither it nor its Area declares one.
+         */
+        PreferenceResponse: {
+            /** @description The preference set on this owner, or null when it declares none of its own. */
+            declared: components["schemas"]["DeclaredPreferenceResponse"] | null;
+            /** @description The preference in effect: this owner's own, or its Area's, or null when neither declares one. Never a merge of the two. */
+            effective: components["schemas"]["EffectivePreferenceResponse"] | null;
+            /** @description The Area, Habit, or Task the path named. Always present: these routes 404 on an owner that does not exist and never on a preference that is not set. */
+            owner: components["schemas"]["PreferenceOwnerResponse"];
+        };
+        /**
+         * PreferenceStrength
+         * @description How much violating a preferred window costs. Two members, and never a third.
+         *
+         *     Both are objective components rather than constraints, so neither can leave a block
+         *     unscheduled. ``STRONG`` costs an order of magnitude more to violate than ``SOFT``.
+         * @enum {string}
+         */
+        PreferenceStrength: "strong" | "soft";
         /**
          * Priority
          * @description How much the objective prefers placing this task over another in the same Area.
@@ -3369,6 +3606,34 @@ export interface components {
         TemplatesResponse: {
             /** Templates */
             templates: components["schemas"]["TemplateSummary"][];
+        };
+        /**
+         * TimeWindowRequest
+         * @description One preferred stretch of the day, as the caller states it.
+         */
+        TimeWindowRequest: {
+            /** @description Wall time, no date and no zone: '05:30' means 05:30 wherever the user is, resolved against the zone active on the date the window is read for. Minute resolution, on the quarter hour, and an offset is refused. */
+            end: components["schemas"]["WallTime"];
+            /** @description Wall time, no date and no zone: '05:30' means 05:30 wherever the user is, resolved against the zone active on the date the window is read for. Minute resolution, on the quarter hour, and an offset is refused. */
+            start: components["schemas"]["WallTime"];
+        };
+        /**
+         * TimeWindowResponse
+         * @description One preferred stretch of the day, as it is stored.
+         */
+        TimeWindowResponse: {
+            /**
+             * End
+             * Format: time
+             * @description Wall time, no date and no zone: '05:30' means 05:30 wherever the user is, resolved against the zone active on the date the window is read for. Minute resolution, on the quarter hour, and an offset is refused.
+             */
+            end: string;
+            /**
+             * Start
+             * Format: time
+             * @description Wall time, no date and no zone: '05:30' means 05:30 wherever the user is, resolved against the zone active on the date the window is read for. Minute resolution, on the quarter hour, and an offset is refused.
+             */
+            start: string;
         };
         /**
          * TravelOverrideRequest
@@ -4709,6 +4974,211 @@ export interface operations {
             };
             /** @description Conflict with the current state */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_area_preference_api_v1_areas__area_id__preference_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                area_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    replace_area_preference_api_v1_areas__area_id__preference_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                area_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AreaPreferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_area_preference_api_v1_areas__area_id__preference_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                area_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6110,6 +6580,211 @@ export interface operations {
             };
             /** @description Conflict with the current state */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_habit_preference_api_v1_habits__habit_id__preference_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                habit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    replace_habit_preference_api_v1_habits__habit_id__preference_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                habit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OverridePreferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_habit_preference_api_v1_habits__habit_id__preference_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                habit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7935,6 +8610,211 @@ export interface operations {
             };
             /** @description Conflict with the current state */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_task_preference_api_v1_tasks__task_id__preference_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    replace_task_preference_api_v1_tasks__task_id__preference_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OverridePreferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_task_preference_api_v1_tasks__task_id__preference_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
