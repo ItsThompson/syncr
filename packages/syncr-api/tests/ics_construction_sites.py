@@ -96,6 +96,7 @@ CONSTRUCTORS: Final = frozenset(
 GUARDED_HERE: Final = "guarded at the read site"
 GUARDED_BY_CALLER: Final = "guarded by an enclosing except in this package"
 BOUNDED_BY_THE_PATTERN: Final = "bounded by the regex's fixed-width groups"
+TOTAL_FOR_ACCEPTED_VALUES: Final = "total for the values its own predicate accepts, checked first"
 NOT_A_FEED_VALUE: Final = "constructed from syncr's own values, not the feed's"
 
 
@@ -160,10 +161,17 @@ SITES: Final[tuple[Site, ...]] = (
     ),
     Site(
         module="ics_recurrence",
+        function="_signed",
+        constructor="int",
+        reads="a rule value, to decide whether it is a number at all",
+        guard=GUARDED_HERE,
+    ),
+    Site(
+        module="ics_recurrence",
         function="_number",
         constructor="int",
         reads="an INTERVAL or a BYSETPOS position a feed stated",
-        guard=GUARDED_HERE,
+        guard=TOTAL_FOR_ACCEPTED_VALUES,
     ),
     Site(
         module="ics_recurrence",

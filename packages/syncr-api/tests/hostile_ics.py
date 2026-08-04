@@ -400,6 +400,25 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         "DURATION:PT1H",
         f"RRULE:FREQ=DAILY;COUNT={PADDED_PAST_INT_CONVERSION}",
     ),
+    # A separator `int` accepts and `str.isdecimal` refuses. The corpus crossed padding with a rule
+    # value and never SEPARATORS, which is how a readability predicate that disagreed with the
+    # library's own conversion shipped twice.
+    "a setpos written with a digit separator": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2_0",
+    ),
+    "a set member written with a digit separator": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=HOURLY;BYMINUTE=0,2_0;BYSETPOS=2",
+    ),
+    # Values outside the range RFC 5545 gives their property. Each can never match, so the rule
+    # yields nothing while dateutil walks looking for it: one measured past twenty minutes.
+    "a month day no month reaches": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2",
+    ),
+    "a month past the year": ("DURATION:PT1H", "RRULE:FREQ=MINUTELY;BYMONTH=13"),
+    "a setpos past every daily set": ("DURATION:PT1H", "RRULE:FREQ=DAILY;BYSETPOS=2"),
     "a count past the conversion limit": (
         "DURATION:PT1H",
         f"RRULE:FREQ=DAILY;COUNT={PAST_INT_CONVERSION}",

@@ -53,6 +53,7 @@ MAX_EXPANSION_STEPS: Final = 50_000
 _UNTIL: Final = "UNTIL"
 _INTERVAL: Final = "INTERVAL"
 _SETPOS: Final = "BYSETPOS"
+_BYHOUR: Final = "BYHOUR"
 _BYMINUTE: Final = "BYMINUTE"
 _BYSECOND: Final = "BYSECOND"
 _FREQ: Final = "FREQ"
@@ -63,10 +64,33 @@ _FREQ: Final = "FREQ"
 # split moves with the frequency, and BYMINUTE is the trap: it expands an hour into minutes, and
 # merely limits which minutes a MINUTELY rule looks at. Counting a limiting part as room overstates
 # the set, which is how three of these shapes passed the guard and walked to year 9999 anyway.
+#
+# DAILY is here because leaving it to dateutil was measured, not assumed, and the measurement was
+# wrong: one position past a daily set costs two seconds, and a LIST of them costs two seconds each.
+# A rule stating every position RFC 5545 allows, which is 366 of them, took 160 seconds in one call.
+# Weekly and coarser frequencies stay out: their sets are built from parts whose expansion is not
+# enumerable this cheaply, and each was measured under a second.
 _EXPANDING_PARTS: Final = {
+    "DAILY": (_BYHOUR, _BYMINUTE, _BYSECOND),
     "HOURLY": (_BYMINUTE, _BYSECOND),
     "MINUTELY": (_BYSECOND,),
     "SECONDLY": (),
+}
+# The range RFC 5545 section 3.3.10 gives each numeric rule part, read as a magnitude so the signed
+# forms are covered by one entry. BYSECOND reaches 60 for a leap second. BYDAY is absent on purpose:
+# it carries weekday codes rather than plain numbers, and dateutil does validate that one.
+#
+# These exist because a value outside its range can never match, so the rule yields nothing while
+# the expander walks looking for it, inside a single call no bound of syncr's can interrupt.
+_RULE_RANGES: Final = {
+    "BYMONTH": (1, 12),
+    "BYMONTHDAY": (1, 31),
+    "BYYEARDAY": (1, 366),
+    "BYWEEKNO": (1, 53),
+    "BYHOUR": (0, 23),
+    "BYMINUTE": (0, 59),
+    "BYSECOND": (0, 60),
+    "BYSETPOS": (1, 366),
 }
 _RULE_SEPARATOR: Final = ";"
 _WALL_FORMAT: Final = "%Y%m%dT%H%M%S"
@@ -235,16 +259,44 @@ def _require_readable_members(rule_text: str) -> None:
         key, separator, value = part.partition("=")
         if not separator:
             continue
+        name = key.strip().upper()
         for item in value.split(","):
             stated = item.strip()
-            if len(stated) <= MAX_RULE_ITEM_CHARS:
-                continue
-            message = (
-                f"the recurrence rule states a {len(stated)}-character value for "
-                f"{key.strip().upper() or 'a property'}, and syncr reads at most "
-                f"{MAX_RULE_ITEM_CHARS} characters per value"
-            )
-            raise UnparseableRecurrence(message)
+            if len(stated) > MAX_RULE_ITEM_CHARS:
+                message = (
+                    f"the recurrence rule states a {len(stated)}-character value for "
+                    f"{name[:MAX_RULE_ITEM_CHARS] or 'a property'}, and syncr reads at most "
+                    f"{MAX_RULE_ITEM_CHARS} characters per value"
+                )
+                raise UnparseableRecurrence(message)
+            _require_value_in_range(name, stated)
+
+
+def _require_value_in_range(name: str, stated: str) -> None:
+    """Refuse a numeric rule member outside the range RFC 5545 gives that property.
+
+    dateutil does not check these, and a value outside the range can never match anything, so the
+    rule yields nothing while the expander walks looking for it. Measured:
+    ``FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2`` did not return in twenty minutes, and no bound syncr
+    owns can see it, because the work is inside one call.
+
+    A month has at most 31 days, so 53 is not a publisher being unusual: it is a mistake, and
+    refusing it by name is more useful than a rule that quietly produces nothing. Only the purely
+    numeric properties are checked here. ``BYDAY`` carries weekday codes with optional ordinals and
+    is left to dateutil, which does validate that one.
+    """
+    limits = _RULE_RANGES.get(name)
+    if limits is None or not _signed(stated):
+        return
+    low, high = limits
+    magnitude = abs(_number(stated))
+    if low <= magnitude <= high:
+        return
+    message = (
+        f"the recurrence rule states {name}={stated}, and RFC 5545 allows "
+        f"{low} to {high} there, so the rule can never match"
+    )
+    raise UnparseableRecurrence(message)
 
 
 def _require_selectable_setpos(rule_text: str) -> None:
@@ -326,33 +378,43 @@ def _canonical(item: str) -> str:
 
 
 def _number(value: str) -> int:
-    """A rule value ``_signed`` has accepted, converted from its SIGNIFICANT digits.
+    """A rule value ``_signed`` has accepted, converted exactly as dateutil converts it.
 
-    The interpreter's conversion limit counts the characters handed to ``int``, not the value, so a
-    padded string passes a bound on significant digits and then refuses to convert. Stripping first
-    is what makes ``_signed`` a promise the conversion keeps rather than one it nearly keeps.
+    The same call the library makes, on the same text, so the two cannot read one value as two
+    different numbers. ``_signed`` has already bounded the length, so the conversion does not depend
+    on the interpreter's digit limit.
     """
-    stated = value.strip()
-    sign = -1 if stated.startswith("-") else 1
-    digits = stated.removeprefix("+").removeprefix("-").lstrip("0")
-    return sign * int(digits) if digits else 0
+    return int(value.strip())
 
 
 def _signed(value: str) -> bool:
-    """Whether ``_number`` will convert this, bounded so the conversion cannot refuse.
+    """Whether this is a number ``_number`` will convert to a magnitude syncr will act on.
 
-    ``isdecimal`` rather than ``isdigit``, and the difference is the point: ``isdigit`` is true
-    for ``'2'`` superscript and for circled digits, which ``int`` then refuses. A feed can carry
-    either. Checking the wrong predicate left the conversion able to raise while the table beside it
-    claimed the site was guarded here.
+    **The predicate is ``int`` itself, bounded, rather than a test that resembles it.** dateutil
+    converts these values with ``int``, so any predicate that merely approximates ``int``'s accept
+    set disagrees with the library somewhere, and both directions of disagreement have now cost a
+    defect:
 
-    The bound is on SIGNIFICANT digits, and it holds because ``_number`` converts the significant
-    digits. The RAW length is bounded too, but not here: see ``_require_readable_members``, which is
-    a pass over the whole rule rather than a predicate. This function is consumed as a refusal by
-    one caller and as a filter by two, so a bound placed here fails open at two of the three.
+    - ``str.isdigit`` is true for a superscript two and for circled digits, which ``int`` refuses. A
+      guard gated on it left the conversion able to raise while a table beside it called the site
+      guarded.
+    - ``str.isdecimal`` is false for ``'2_0'``, which ``int`` accepts as 20. Two guards read this
+      predicate as a FILTER, so an unreadable member was dropped rather than judged: a position
+      syncr could not read became no position at all and the rule walked to year 9999, while a set
+      member syncr could not read shrank the room and refused a rule dateutil would have expanded.
+
+    Asking ``int`` ends that class. The length check comes first so the conversion cannot depend on
+    the interpreter's digit limit whatever order the callers run in, and the magnitude check reads
+    off the converted number rather than off the text.
     """
-    stated = value.strip().removeprefix("+").removeprefix("-")
-    return stated.isdecimal() and len(stated.lstrip("0")) <= MAX_MAGNITUDE_DIGITS
+    stated = value.strip()
+    if len(stated) > MAX_RULE_ITEM_CHARS:
+        return False
+    try:
+        number = int(stated)
+    except ValueError:
+        return False
+    return len(str(abs(number))) <= MAX_MAGNITUDE_DIGITS
 
 
 def _stated(value: str, *, width: int = MAX_MAGNITUDE_DIGITS) -> str:

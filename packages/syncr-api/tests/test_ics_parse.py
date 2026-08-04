@@ -1169,10 +1169,13 @@ def test_a_refused_rule_is_named_by_size_rather_than_quoted_whole() -> None:
     # The attribution half, for the one value a feed can make arbitrarily long and still have
     # refused by a library: the rule itself. Truncating it would fill the panel with the publisher's
     # padding, so past a readable width the rule is named by size and the library's reason is kept.
+    #
+    # BYDAY carries weekday codes rather than numbers, so it is the part syncr does not range-check
+    # and dateutil does: exactly the shape where a library's own message reaches the panel.
     body = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:long@example.org\r\n"
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
-        f"RRULE:FREQ=DAILY;BYSECOND={','.join(['61'] * 2_000)}\r\n"
+        f"RRULE:FREQ=DAILY;BYDAY={','.join(['XX'] * 2_000)}\r\n"
         "END:VEVENT\r\nEND:VCALENDAR\r\n"
     )
 
@@ -1180,9 +1183,11 @@ def test_a_refused_rule_is_named_by_size_rather_than_quoted_whole() -> None:
 
     assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
     detail = outcome.rejected[0].detail
-    assert "6019 characters" in detail
-    assert "second must be in 0..59" in detail
-    assert "61,61" not in detail
+    assert "6016 characters" in detail
+    # syncr names the rule by size; dateutil's own reason still quotes part of the value, which is
+    # why the stored detail is bounded as well as named.
+    assert len(detail) <= DETAIL_MAX_LENGTH + 40
+    assert "characters in all" in detail
 
 
 def test_an_occurrence_ending_exactly_at_the_horizon_places_nothing() -> None:
@@ -1595,3 +1600,104 @@ def test_a_cancellation_suppresses_one_occurrence_when_two_share_its_instant() -
         utc(2026, 3, 29, 1, 30),
         utc(2026, 3, 29, 2, 30),
     ]
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        # int() accepts a PEP 515 underscore and str.isdecimal does not, so a readability predicate
+        # that resembles int() rather than BEING int() dropped the position instead of judging it:
+        # the guard concluded "no position" and dateutil, which converts with int(), walked.
+        "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2_0",
+        "FREQ=MINUTELY;BYSETPOS=1_0",
+        "FREQ=SECONDLY;BYMINUTE=0;BYSETPOS=2_0",
+    ],
+)
+def test_a_separator_a_publisher_can_write_cannot_walk_past_the_guard(rule: str) -> None:
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:sep@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+
+
+def test_a_separator_in_a_set_member_reads_as_the_number_dateutil_reads() -> None:
+    # The paired direction of the same disagreement. Dropping an unreadable member SHRANK the room,
+    # so this rule was refused while dateutil would have expanded it. One accept-set disagreement,
+    # two opposite failures, which is why the predicate is now int() itself.
+    def events_of(rule: str) -> list[datetime]:
+        body = (
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:sep2@example.org\r\n"
+            "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
+            f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        )
+        outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+        assert outcome.rejected == ()
+        return [event.interval.start for event in outcome.events]
+
+    assert (
+        events_of("FREQ=HOURLY;BYMINUTE=0,2_0;BYSETPOS=2")
+        == events_of("FREQ=HOURLY;BYMINUTE=0,20;BYSETPOS=2")
+        != []
+    )
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        # A value outside the range RFC 5545 gives its property can never match, so the rule yields
+        # nothing while the expander walks looking for it. One of these did not return in twenty
+        # minutes.
+        "FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2",
+        "FREQ=MINUTELY;BYMONTH=13",
+        "FREQ=SECONDLY;BYHOUR=24",
+        "FREQ=DAILY;BYYEARDAY=400",
+        "FREQ=DAILY;BYWEEKNO=54",
+        # And a position past every set a daily period can hold, stated 365 times: two seconds each,
+        # measured at 160 seconds in one call, at the frequency the guard used to leave alone.
+        "FREQ=DAILY;BYSETPOS=2",
+        "FREQ=DAILY;BYHOUR=9,10;BYSETPOS=3",
+    ],
+)
+def test_a_rule_that_can_never_match_is_refused_rather_than_walked(rule: str) -> None:
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:never@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+
+
+@pytest.mark.parametrize(
+    ("rule", "events"),
+    [
+        # The accepting side of both bounds, so they are shown to refuse a property rather than a
+        # shape. Every one of these is a rule a real publisher emits.
+        ("FREQ=DAILY;BYHOUR=9,10;BYSETPOS=2", 13),
+        ("FREQ=DAILY;BYSETPOS=1", 13),
+        ("FREQ=DAILY;BYSETPOS=-1", 13),
+        ("FREQ=MONTHLY;BYMONTHDAY=-31", 0),
+        ("FREQ=MONTHLY;BYDAY=-1FR", 0),
+        ("FREQ=DAILY;BYHOUR=0,23;BYMINUTE=0,59", 50),
+    ],
+)
+def test_a_rule_inside_every_range_is_still_expanded(rule: str, events: int) -> None:
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:ok@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.rejected == ()
+    assert len(outcome.events) == events
