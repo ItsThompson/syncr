@@ -235,8 +235,17 @@ async def test_a_declaration_may_give_a_routine_an_elastic_range(
         ({"min_duration_minutes": SLEEP_MINUTES + 1}, "minDurationMinutes"),
         ({"min_duration_minutes": 0}, "minDurationMinutes"),
         ({"flex_band_minutes": -1}, "flexBandMinutes"),
+        ({"target_time": time(5, 0, tzinfo=UTC)}, "targetTime"),
+        ({"target_time": time(5, 0, 30)}, "targetTime"),
     ],
-    ids=["no duration", "a floor above the target", "a floor of nothing", "a negative band"],
+    ids=[
+        "no duration",
+        "a floor above the target",
+        "a floor of nothing",
+        "a negative band",
+        "a target time carrying a zone",
+        "a target time carrying a second",
+    ],
 )
 async def test_a_refused_span_is_a_422_naming_its_field_and_is_not_stored(
     principal: Principal,

@@ -297,10 +297,36 @@ def test_a_target_time_that_is_not_wall_time_is_refused(
     # A wall time names no zone and no second. An offset would be dropped by the column and the
     # frame would sit in the wrong hour with nothing to say so.
     response = http.post(ROUTINES, json={**SLEEP, "targetTime": target_time}, headers=signed_in)
-
     assert response.status_code == ValidationFailed.status, response.text
     assert [error["field"] for error in response.json()["errors"]] == ["body.targetTime"]
     assert routine_rows(live_database_url, owner.tenant_id) == []
+
+
+@pytest.mark.parametrize(
+    "target_time",
+    ["23:00:00+01:00", "23:00:00Z", "23:00:30", "23:00:00.500000"],
+    ids=["an offset", "a UTC marker", "a second", "a microsecond"],
+)
+def test_a_patch_refuses_a_target_time_that_is_not_wall_time_either(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    target_time: str,
+) -> None:
+    # The rule reaches the patch through `WallTime | None`, which is exactly the seam where a
+    # validator stops applying under a later refactor. Driven over both verbs so nothing but the
+    # create path is standing between a refactor and a silently dropped offset.
+    created = declare_routine(http, signed_in)
+
+    response = http.patch(
+        f"{ROUTINES}/{created['id']}", json={"targetTime": target_time}, headers=signed_in
+    )
+
+    assert response.status_code == ValidationFailed.status, response.text
+    assert [error["field"] for error in response.json()["errors"]] == ["body.targetTime"]
+    stored = routine_rows(live_database_url, owner.tenant_id)
+    assert [row.target_time for row in stored] == [time(23, 0)]
 
 
 @pytest.mark.parametrize(
