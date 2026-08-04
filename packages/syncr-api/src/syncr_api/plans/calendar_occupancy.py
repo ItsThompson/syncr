@@ -38,6 +38,10 @@ them can be carried by an anchor that arrives without it. The anchor is then tre
 it occupies its own time and casts nothing, and the event is logged. The alternative is what the
 generator does when a pair disagrees, which is to refuse, and refusing here would fail every
 solve, pin, and live verdict for the week over a race that a version bump already re-solves.
+
+The mirror race needs no degradation: releasing a type from its anchors and deleting it are one
+transaction, so a delete that commits between the two reads is answered by anchors that no longer
+carry it.
 """
 
 from __future__ import annotations

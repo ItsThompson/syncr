@@ -382,11 +382,11 @@ class WeekAssembler:
     ) -> CalendarOccupancy:
         """The commitments this week holds, and everything their types cast inside it.
 
-        The types are read FIRST, and the order is load-bearing rather than incidental. Two
-        statements read a snapshot each, so a type deleted between them is answered by anchors
-        that no longer carry it, because releasing a type from its anchors and deleting it are one
-        transaction. Read the other way round, the same delete would leave an anchor carrying a
-        type this method could not find.
+        The types are read first, which is the cheaper order rather than a safe one: two statements
+        read a snapshot each under Postgres' default isolation, and releasing a type from its
+        anchors and deleting it are one transaction, so a delete that commits between the two reads
+        is answered by anchors that no longer carry it and nothing degrades. The opposite race, a
+        type created between them, is what the pairing's own guard covers.
         """
         types = await self._anchor_types.list_all()
         loaded = await self._anchors.overlapping(
