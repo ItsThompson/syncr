@@ -70,6 +70,19 @@ DEV_OAUTH_KEY_ENCRYPTION_KEY = (
     "ZGV2LW9ubHktb2F1dGgta2V5LWVuY3J5cHRpb24ta2U="  # pragma: allowlist secret
 )
 
+# The key a stored Google refresh token is encrypted with at rest. Its own value rather than
+# the OAuth signing key's, because the two rotate on different schedules and for different
+# reasons: rotating the signing key retires a JWKS entry, and rotating this one costs the user
+# a reconnect. Same shape of rule as the pair above, and refused outside development whenever
+# a Google client is configured, because a refresh token encrypted under a key from this
+# repository is a refresh token in the clear.
+#
+# A Fernet key is 32 bytes as URL-safe base64, so this one is the ASCII of its own purpose at
+# exactly that length. A development default that is not a usable key would fail the boot of every
+# development machine that configures a Google client, which is the check below doing its job
+# against the value this file supplies.
+DEV_GOOGLE_TOKEN_ENCRYPTION_KEY = "ZGV2LW9ubHktZ29vZ2xlLXRva2VuLWVuY3J5cHQta2U="  # noqa: S105 # pragma: allowlist secret
+
 # How to produce a real key-encryption key, named in the failure message for the same
 # reason the session hint is: that message is the whole user interface of a deployment
 # that got this wrong.
@@ -91,7 +104,9 @@ class EnvSettings(SyncrSettings):
 
     Field names mirror the root ``.env`` keys: ``ENVIRONMENT``, ``LOG_LEVEL``,
     ``HOST``, ``DATABASE_URL``, ``SESSION_SIGNING_SECRET``, ``ALLOWED_ORIGINS``,
-    ``PUBLIC_BASE_URL``, ``OAUTH_KEYS_PATH``, ``OAUTH_KEY_ENCRYPTION_KEY``.
+    ``PUBLIC_BASE_URL``, ``OAUTH_KEYS_PATH``, ``OAUTH_KEY_ENCRYPTION_KEY``,
+    ``GOOGLE_OAUTH_CLIENT_ID``, ``GOOGLE_OAUTH_CLIENT_SECRET``,
+    ``GOOGLE_OAUTH_REDIRECT_URI``, ``GOOGLE_TOKEN_ENCRYPTION_KEY``.
     Unknown keys are ignored (see
     :class:`syncr_common.config.SyncrSettings`).
     """
@@ -120,6 +135,17 @@ class EnvSettings(SyncrSettings):
     # The Fernet key the signing-key file is encrypted with. `SecretStr` so a settings
     # dump, a repr, or a validation error cannot carry it.
     oauth_key_encryption_key: SecretStr = SecretStr(DEV_OAUTH_KEY_ENCRYPTION_KEY)
+    # The web-application OAuth client for the one Google integration. Empty is a valid
+    # state: the stack boots and the connect flow reports that Google is not configured,
+    # so a machine with no Google credentials still runs every other surface.
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: SecretStr = SecretStr("")
+    # Which registered redirect URI this process uses. Google matches redirect URIs as exact
+    # strings, so this selects one of the URIs registered on the client rather than deriving
+    # one from a base URL.
+    google_oauth_redirect_uri: str = ""
+    # The Fernet key a stored Google refresh token is encrypted with.
+    google_token_encryption_key: SecretStr = SecretStr(DEV_GOOGLE_TOKEN_ENCRYPTION_KEY)
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
@@ -197,6 +223,50 @@ class EnvSettings(SyncrSettings):
         return self
 
     @model_validator(mode="after")
+    def _refuse_the_development_google_token_key_elsewhere(self) -> EnvSettings:
+        """Fail construction rather than store a refresh token under a published key.
+
+        Gated on a Google client being configured, for the same reason the signing-key rule is
+        gated on a key file: with no client there is no connect flow, so nothing is encrypted
+        with this value and refusing the boot would break a deployment that does not use Google.
+
+        A refresh token is the standing authority to write the user's calendar, so this is the
+        one secret whose compromise is silent: the plan keeps reaching the phone while somebody
+        else can rewrite it.
+        """
+        if self.is_dev or not self.google_oauth_client_id:
+            return self
+        if self.google_token_encryption_key.get_secret_value() == DEV_GOOGLE_TOKEN_ENCRYPTION_KEY:
+            message = (
+                "GOOGLE_TOKEN_ENCRYPTION_KEY is still the development default in "
+                f"environment={self.environment!r}, so every stored Google refresh token is "
+                f"effectively unencrypted. {_GENERATE_ENCRYPTION_KEY_HINT}"
+            )
+            raise ValueError(message)
+        return self
+
+    @model_validator(mode="after")
+    def _refuse_a_google_token_key_that_cannot_encrypt(self) -> EnvSettings:
+        """Fail construction rather than discover a truncated paste at the first connect.
+
+        Checked only where a client exists, so a deployment that does not use Google is not
+        asked for a key it never reads. Without this the value is carried as far as the first
+        token write, which is after the user has consented in a browser: the flow would fail
+        at the one point where retrying means consenting again.
+        """
+        if not self.google_oauth_client_id:
+            return self
+        try:
+            Fernet(self.google_token_encryption_key.get_secret_value().encode("ascii"))
+        except (ValueError, UnicodeEncodeError) as unusable:
+            message = (
+                "GOOGLE_TOKEN_ENCRYPTION_KEY is not a Fernet key, so a Google refresh token can "
+                f"be neither stored nor read. {_GENERATE_ENCRYPTION_KEY_HINT}"
+            )
+            raise ValueError(message) from unusable
+        return self
+
+    @model_validator(mode="after")
     def _refuse_a_key_that_cannot_encrypt(self) -> EnvSettings:
         """Fail construction rather than let a library report a truncated paste.
 
@@ -238,6 +308,10 @@ class ServiceSettings(BaseModel):
     public_base_url: str
     oauth_keys_path: str
     oauth_key_encryption_key: SecretStr
+    google_oauth_client_id: str
+    google_oauth_client_secret: SecretStr
+    google_oauth_redirect_uri: str
+    google_token_encryption_key: SecretStr
 
 
 def build_service_settings(
@@ -257,4 +331,8 @@ def build_service_settings(
         public_base_url=env.public_base_url,
         oauth_keys_path=env.oauth_keys_path,
         oauth_key_encryption_key=env.oauth_key_encryption_key,
+        google_oauth_client_id=env.google_oauth_client_id,
+        google_oauth_client_secret=env.google_oauth_client_secret,
+        google_oauth_redirect_uri=env.google_oauth_redirect_uri,
+        google_token_encryption_key=env.google_token_encryption_key,
     )

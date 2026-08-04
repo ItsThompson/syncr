@@ -43,6 +43,12 @@ EXPORT_SETTINGS = ServiceSettings(
     # file existing on the machine that runs it.
     oauth_keys_path="",
     oauth_key_encryption_key=SecretStr("openapi-export-not-an-encryption-key"),
+    # Empty for the same reason: the document describes the Google routes whether or not the
+    # machine running the export holds a Google OAuth client.
+    google_oauth_client_id="",
+    google_oauth_client_secret=SecretStr(""),
+    google_oauth_redirect_uri="",
+    google_token_encryption_key=SecretStr("openapi-export-not-an-encryption-key"),
 )
 
 # The `kid` is fixed too. No signing key reaches the document, but the state has to exist
