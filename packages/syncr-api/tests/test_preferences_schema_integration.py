@@ -10,9 +10,15 @@ than something the service remembers, and the ``CASE`` pairing the discriminator
 it names is what stops a row two owners could be read out of. Neither is expressible as an entity
 invariant, because the entity holds one owner and not three nullable columns.
 
-Each case is a single-column deviation from a row the table accepts, so a rejection names one
-constraint rather than several at once. The control at the top is what makes that meaningful: if the
-accepted row stopped being accepted, every rejection below would pass for the wrong reason.
+Each case deviates from a row the table accepts by one RULE, and each asserts the CONSTRAINT NAME
+rather than only the status. Without the name, a case that deviates on two rules passes on whichever
+fires first and goes on passing after the rule it names is dropped, which is exactly what one case
+here was doing. Two cases accept either of two names and each says why at the site: an unknown owner
+kind necessarily fails the ``CASE`` pairing as well as the vocabulary, and a malformed window list
+can abort on ``jsonb_array_length`` before the shape constraint names itself.
+
+The two controls at the top are what make all of that meaningful: if an accepted row stopped being
+accepted, every rejection below would pass for the wrong reason.
 """
 
 from __future__ import annotations
@@ -164,23 +170,55 @@ def test_a_habit_owned_row_is_accepted(table: LiveTable) -> None:
     table.insert(**table.on_the_habit())
 
 
+_OWNER_PAIRING = "ck_preferences_exactly_one_owner_and_it_is_the_kind_named"
+_KIND_VOCABULARY = "ck_preferences_owner_kind_is_known"
+_STRENGTH_VOCABULARY = "ck_preferences_a_strength_is_strong_or_soft_and_never_hard"
+_WINDOWS_ARE_A_LIST = "ck_preferences_windows_is_an_ordered_list"
+_WINDOW_COUNT = "ck_preferences_a_preference_names_a_few_times_of_day"
+_IDEAL_SESSION = "ck_preferences_an_ideal_session_lands_on_the_snap_grid"
+_CAP_IS_AN_AREAS = "ck_preferences_a_daily_cap_belongs_to_an_area"
+_CAP_BOUNDS = "ck_preferences_a_daily_cap_admits_at_least_one_block"
+
+# `jsonb_array_length` RAISES on a non-array rather than returning false, so on a malformed window
+# list the count constraint can abort the statement before the shape constraint names itself. Which
+# of the two speaks is Postgres's evaluation order, which is not declared, so both are accepted.
+_NOT_AN_ARRAY = "cannot get array length of a non-array"
+
+
 @pytest.mark.parametrize(
-    ("case", "overrides"),
+    ("case", "overrides", "refused_by"),
     [
-        ("an unknown kind of owner", {"owner_kind": "project"}),
-        ("an area kind naming no Area", {"owner_kind": "area", "area_id": None}),
-        ("a habit kind naming an Area", {"owner_kind": "habit", "habit_id": None}),
+        # Four characters, not `project`: `owner_kind` is varchar(5), so a longer value is refused
+        # by the column width and would prove that rather than the vocabulary. The cap is nulled
+        # for the reason the habit case below nulls it: a non-area kind may not carry one, so
+        # leaving the base row's 180 would fire the cap's constraint instead of either kind rule.
         (
-            "a row naming two owners",
-            {"owner_kind": "area", "habit_id": uuid4()},
+            "an unknown kind of owner",
+            {"owner_kind": "goal", "max_per_day_minutes": None},
+            (_OWNER_PAIRING, _KIND_VOCABULARY),
         ),
+        ("an area kind naming no Area", {"owner_kind": "area", "area_id": None}, (_OWNER_PAIRING,)),
+        (
+            "a habit kind naming an Area",
+            # The cap is nulled as well as the kind changed, and that is not a second deviation: a
+            # habit-owned row may not carry one at all, so leaving the base row's 180 would fire
+            # the cap's constraint and this case would pass with the owner pairing dropped.
+            {"owner_kind": "habit", "habit_id": None, "max_per_day_minutes": None},
+            (_OWNER_PAIRING,),
+        ),
+        ("a row naming two owners", {"owner_kind": "area", "habit_id": uuid4()}, (_OWNER_PAIRING,)),
         (
             "a row naming no owner at all",
             {"area_id": None, "habit_id": None, "task_id": None},
+            (_OWNER_PAIRING,),
         ),
-        ("a strength of hard", {"strength": "hard"}),
-        ("a strength of none", {"strength": ""}),
-        ("windows that are not a list", {"windows": '{"start": "05:30:00"}'}),
+        ("a strength of hard", {"strength": "hard"}, (_STRENGTH_VOCABULARY,)),
+        ("a strength of none", {"strength": ""}, (_STRENGTH_VOCABULARY,)),
+        (
+            "windows that are not a list",
+            {"windows": '{"start": "05:30:00"}'},
+            (_WINDOWS_ARE_A_LIST, _NOT_AN_ARRAY),
+        ),
         (
             "more windows than a preference names",
             {
@@ -191,18 +229,30 @@ def test_a_habit_owned_row_is_accepted(table: LiveTable) -> None:
                 )
                 + "]"
             },
+            (_WINDOW_COUNT,),
         ),
-        ("an ideal session below the grid step", {"preferred_duration_minutes": 10}),
-        ("an ideal session past a day", {"preferred_duration_minutes": 1455}),
-        ("an ideal session off the grid", {"preferred_duration_minutes": 25}),
-        ("a daily cap below one block", {"max_per_day_minutes": 14}),
-        ("a daily cap past a day", {"max_per_day_minutes": 1441}),
+        (
+            "an ideal session below the grid step",
+            {"preferred_duration_minutes": 10},
+            (_IDEAL_SESSION,),
+        ),
+        ("an ideal session past a day", {"preferred_duration_minutes": 1455}, (_IDEAL_SESSION,)),
+        ("an ideal session off the grid", {"preferred_duration_minutes": 25}, (_IDEAL_SESSION,)),
+        ("a daily cap below one block", {"max_per_day_minutes": 14}, (_CAP_BOUNDS,)),
+        ("a daily cap past a day", {"max_per_day_minutes": 1441}, (_CAP_BOUNDS,)),
     ],
     ids=lambda value: value if isinstance(value, str) else "",
 )
-def test_the_schema_refuses(table: LiveTable, case: str, overrides: dict[str, Any]) -> None:
-    with pytest.raises(DBAPIError):
+def test_the_schema_refuses(
+    table: LiveTable, case: str, overrides: dict[str, Any], refused_by: tuple[str, ...]
+) -> None:
+    # The CONSTRAINT is asserted, not only the status. Without that, a case deviating on two columns
+    # passes on whichever rule fires first and would go on passing after the rule it names is
+    # dropped, which is exactly what one case here was doing.
+    with pytest.raises(DBAPIError) as refused:
         table.insert(**overrides)
+
+    assert any(named in str(refused.value) for named in refused_by), str(refused.value)
 
 
 @pytest.mark.parametrize("kind", ["habit", "task"], ids=["habit", "task"])

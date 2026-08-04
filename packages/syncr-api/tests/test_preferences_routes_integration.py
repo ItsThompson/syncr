@@ -33,7 +33,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.config import AREAS_PREFIX
@@ -207,6 +207,34 @@ def input_version(database_url: str, tenant_id: TenantId, week: IsoWeek) -> int 
             await database.engine.dispose()
 
     return run(read())
+
+
+def store_a_window_no_reader_will_accept(database_url: str, tenant_id: TenantId) -> None:
+    """Write an offset into every stored window, around the application.
+
+    The only way into this state: the request validator refuses an offset and so does the entity, so
+    nothing the product does can produce it. A JSONB string keeps the offset verbatim rather than
+    dropping it the way a column with no offset would, which is why the read path refuses it too.
+    """
+
+    async def corrupt() -> None:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                await session.execute(
+                    text(
+                        "UPDATE preferences SET windows = CAST(:windows AS jsonb) "
+                        "WHERE tenant_id = :tenant_id"
+                    ),
+                    {
+                        "windows": '[{"start": "05:30:00+01:00", "end": "07:00:00"}]',
+                        "tenant_id": tenant_id,
+                    },
+                )
+        finally:
+            await database.engine.dispose()
+
+    run(corrupt())
 
 
 def put(http: TestClient, headers: dict[str, str], path: str, **body: object) -> dict[str, Any]:
@@ -475,7 +503,10 @@ def test_a_window_that_does_not_run_forward_is_refused(
     )
 
     assert refused.status_code == ValidationFailed.status, refused.text
-    assert "windows" in refused.text
+    # The FIELD rather than a substring of the whole body, so a different refusal that happened to
+    # contain the word cannot pass for this one.
+    assert [error["field"] for error in refused.json()["errors"]] == ["windows"]
+    assert "two stretches" in refused.json()["detail"]
 
 
 def test_two_overlapping_windows_are_refused(
@@ -488,7 +519,8 @@ def test_two_overlapping_windows_are_refused(
     )
 
     assert refused.status_code == ValidationFailed.status, refused.text
-    assert "overlap" in refused.text
+    assert [error["field"] for error in refused.json()["errors"]] == ["windows"]
+    assert "overlap" in refused.json()["detail"]
 
 
 def test_an_ideal_session_off_the_grid_is_refused(
@@ -501,6 +533,38 @@ def test_an_ideal_session_off_the_grid_is_refused(
     )
 
     assert refused.status_code == ValidationFailed.status, refused.text
+    assert [error["field"] for error in refused.json()["errors"]] == ["preferredDurationMinutes"]
+
+
+@pytest.mark.parametrize("kind", ["area", "habit", "task"], ids=["area", "habit", "task"])
+def test_an_omitted_window_list_is_refused_rather_than_read_as_an_opt_out(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    kind: str,
+    live_database_url: str,
+    owner: UserRecord,
+) -> None:
+    # An empty list is a statement: on an override it opts this one thing out of its Area's
+    # windows. A defaulted key could not carry that, because a forgotten key would make the same
+    # statement, which is a placement decision nobody made. So the key is required.
+    refused = http.put(owned.path(kind), json={"strength": "soft"}, headers=signed_in)
+
+    assert refused.status_code == ValidationFailed.status, refused.text
+    assert [error["field"] for error in refused.json()["errors"]] == ["body.windows"]
+    assert preference_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_an_explicit_empty_list_is_accepted_and_is_the_opt_out(
+    http: TestClient, signed_in: dict[str, str], owned: Owned
+) -> None:
+    # The control for the refusal above: the statement is sendable, and only sendable on purpose.
+    put(http, signed_in, owned.area, **GYM_WINDOWS)
+
+    body = put(http, signed_in, owned.habit, windows=[], strength="soft")
+
+    assert body["declared"]["windows"] == []
+    assert body["effective"]["source"] == {"kind": "habit", "id": owned.habit_id}
 
 
 def test_the_stored_window_is_the_wall_time_that_was_sent(
@@ -628,6 +692,110 @@ def test_removing_a_habit_removes_the_preference_it_owned(
     removed = http.delete(f"{HABITS_PREFIX}/{owned.habit_id}", headers=signed_in)
 
     assert removed.status_code == HTTPStatus.NO_CONTENT, removed.text
+    assert preference_rows(live_database_url, owner.tenant_id) == []
+
+
+# --------------------------------------------------------------------------------
+# A stored row nothing can read, and the path that repairs it
+# --------------------------------------------------------------------------------
+
+
+def test_a_stored_window_carrying_an_offset_is_a_422_on_read(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+) -> None:
+    # The read-back refusal, driven over a real request. A 422 rather than a 500, and rather than a
+    # window silently resolved against the wrong hour, which is the failure this layer exists for.
+    put(http, signed_in, owned.area, **GYM_WINDOWS)
+    store_a_window_no_reader_will_accept(live_database_url, owner.tenant_id)
+
+    refused = http.get(owned.area, headers=signed_in)
+
+    assert refused.status_code == ValidationFailed.status, refused.text
+    assert "names no zone" in refused.json()["detail"]
+    # The message names a time rather than a Python repr, because it reaches a caller here: the
+    # request validator that would normally refuse an offset never saw this value.
+    assert "05:30:00+01:00" in refused.json()["detail"]
+    assert "tzinfo" not in refused.json()["detail"]
+
+
+def test_a_corrupt_area_row_makes_its_habit_unreadable_too(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+) -> None:
+    # Correct, and worth pinning: a habit inheriting a window nothing can read must not be handed a
+    # resolved preference an hour off. The repair path below is what keeps this recoverable.
+    put(http, signed_in, owned.area, **GYM_WINDOWS)
+    store_a_window_no_reader_will_accept(live_database_url, owner.tenant_id)
+
+    refused = http.get(owned.habit, headers=signed_in)
+
+    assert refused.status_code == ValidationFailed.status, refused.text
+
+
+def test_a_clean_replacement_repairs_a_stored_row_nothing_could_read(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+) -> None:
+    # The row a replacement is about to overwrite is read OUTSIDE the context that maps a domain
+    # refusal to a 422, so a row nothing can read cannot refuse the request that would fix it.
+    # Without that, removal would be the only way to clear one.
+    put(http, signed_in, owned.area, **GYM_WINDOWS)
+    store_a_window_no_reader_will_accept(live_database_url, owner.tenant_id)
+
+    repaired = put(http, signed_in, owned.area, windows=[EVENING], strength="soft")
+
+    assert repaired["declared"]["windows"] == [{"start": "19:00:00", "end": "21:00:00"}]
+    assert http.get(owned.area, headers=signed_in).status_code == HTTPStatus.OK
+    rows = preference_rows(live_database_url, owner.tenant_id)
+    assert len(rows) == 1
+    assert rows[0].windows == [{"start": "19:00:00", "end": "21:00:00"}]
+
+
+def test_repairing_a_row_nothing_could_read_bumps_the_week(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+) -> None:
+    # A row nothing can read is a row nothing is equal to, so the gate treats the repair as a
+    # change. Anything else would leave a solve reading the value the repair replaced.
+    put(http, signed_in, owned.area, **GYM_WINDOWS)
+    store_a_window_no_reader_will_accept(live_database_url, owner.tenant_id)
+    track(live_database_url, owner.tenant_id, FUTURE_WEEK)
+    before = input_version(live_database_url, owner.tenant_id, FUTURE_WEEK)
+    assert before is not None
+
+    put(http, signed_in, owned.area, windows=[EVENING], strength="soft")
+
+    assert input_version(live_database_url, owner.tenant_id, FUTURE_WEEK) == before + 1
+
+
+def test_a_removal_still_clears_a_row_nothing_could_read(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+) -> None:
+    # The escape that existed before the repair path did. It still works, and now it is a choice
+    # rather than the only option.
+    put(http, signed_in, owned.habit, windows=[EVENING], strength="soft")
+    store_a_window_no_reader_will_accept(live_database_url, owner.tenant_id)
+
+    removed = http.delete(owned.habit, headers=signed_in)
+
+    assert removed.status_code == HTTPStatus.OK, removed.text
     assert preference_rows(live_database_url, owner.tenant_id) == []
 
 
