@@ -418,6 +418,15 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         "RRULE:FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2",
     ),
     "a month past the year": ("DURATION:PT1H", "RRULE:FREQ=MINUTELY;BYMONTH=13"),
+    # A negative value on a property RFC 5545 leaves UNSIGNED. Nothing in the corpus carried one, so
+    # a range check comparing the magnitude read it as valid and the rule walked for minutes.
+    "a negative month with an hour": ("DURATION:PT1H", "RRULE:FREQ=SECONDLY;BYMONTH=-1;BYHOUR=2"),
+    # And a magnitude wider than the digits syncr will act on, which is where the range check was
+    # skipped entirely rather than applied.
+    "a month day past every magnitude": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=SECONDLY;BYMONTHDAY=999999999999;BYHOUR=2",
+    ),
     "a setpos past every daily set": ("DURATION:PT1H", "RRULE:FREQ=DAILY;BYSETPOS=2"),
     "a count past the conversion limit": (
         "DURATION:PT1H",
