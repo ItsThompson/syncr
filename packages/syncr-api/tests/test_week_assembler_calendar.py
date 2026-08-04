@@ -720,6 +720,38 @@ async def a_denominator(**over: object) -> int:
     return inputs.areas[0].target_minutes
 
 
+async def test_the_denominator_subtracts_the_night_inherited_from_the_week_before() -> None:
+    # 168 hours, less six whole nights of Sleep from Monday to Saturday, less the one hour of
+    # Sunday night this week holds, less the seven hours the week BEFORE this one spent on its own
+    # last night. That last term is the one a week reading only its own occurrences leaves in, and
+    # leaving it in offers the user seven hours of sleep to plan work in.
+    sleep = a_routine(target_time=time(23, 0), duration_minutes=8 * MINUTES_PER_HOUR)
+
+    denominator = await a_denominator(routines=FakeRoutines([sleep]))
+
+    assert denominator == 168 * MINUTES_PER_HOUR - (
+        6 * 8 * MINUTES_PER_HOUR + MINUTES_PER_HOUR + 7 * MINUTES_PER_HOUR
+    )
+
+
+async def test_a_recovery_window_scoped_to_areas_stays_in_the_denominator() -> None:
+    # The asymmetry the subtraction table exists for, and the only figure in this ticket that a
+    # whole-week reading can get wrong in the direction that manufactures a shortfall. A scoped
+    # window is claimable by every Area it does not name, so it stays in; the commitment itself is
+    # time the product does not own, so it leaves. The two blocks the same declaration casts stay
+    # in as well, because a buffer with an Area is time ALLOCATED to it rather than removed.
+    interview_type, interview = a_commitment(
+        ATTRIBUTED_INTERVIEW, start=on_sunday(16, 0), minutes=45
+    )
+
+    empty = await a_denominator()
+    with_interview = await a_denominator(
+        anchors=FakeAnchors([interview]), anchor_types=FakeAnchorTypes([interview_type])
+    )
+
+    assert empty - with_interview == 45
+
+
 async def test_the_denominator_subtracts_a_commitment_and_an_absolute_window() -> None:
     # Time the product does not own, and time no Area can claim. Both leave the denominator, and
     # the two figures are asserted against the empty week rather than against each other.
