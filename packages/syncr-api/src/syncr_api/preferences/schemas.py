@@ -3,7 +3,7 @@
 Explicit schemas rather than mapped rows, so a column added to the table does not change the
 contract by itself and the generated TypeScript changes only when this file does.
 
-Four properties are stated in the field descriptions rather than only here, because the
+Five properties are stated in the field descriptions rather than only here, because the
 descriptions reach the OpenAPI document and therefore the caller.
 
 **``strength`` is ``strong`` or ``soft``.** The enum has two members, so ``hard`` is a stated 422
@@ -20,6 +20,12 @@ preference in effect, so it is absent from the effective shape too.
 dropped, and so is a second, because every figure the placement arithmetic derives is a count of
 minutes. The quarter-hour rule is stated in the domain instead of here, because it is one product
 question and one statement of it is what the answer will change.
+
+**``windows`` is required on a request, and an empty list is how a preference states that it names
+no time of day.** A defaulted key could not carry that statement: an omitted ``windows`` would
+silently opt an override out of its Area's, which is a placement decision nobody made. The key is
+therefore required and ``[]`` is explicit. The request shape's description says so and the two
+response shapes' do not, because a response always carries the field.
 
 **``effective`` states what is in effect and where it came from.** Its ``source`` is the owner that
 declared it, so an override reads as its own and an inherited preference reads as its Area's, and
@@ -59,10 +65,17 @@ _BOUND_DESCRIPTION = (
 _WINDOWS_DESCRIPTION = (
     f"The times of day this owner's work should happen, at most {MAX_WINDOWS} of them, returned "
     "earliest first. Each sits inside one local day, so its end is later than its start and a "
-    "stretch across midnight is refused. They may not overlap: two that do describe one window. An "
-    "empty list is legal and on a habit's or a task's preference it is a statement rather than an "
-    "omission, because a preference replaces its Area's windows wholly: no windows means this one "
-    "thing has no preferred time even though the rest of its Area does."
+    "stretch across midnight is refused. They may not overlap: two that do describe one window. "
+    "An empty list means this owner names no time of day, and on a habit's or a task's preference "
+    "that is a statement rather than an omission, because a preference replaces its Area's windows "
+    "wholly: it means this one thing has no preferred time even though the rest of its Area does."
+)
+# The same field means something more on a request, where an omitted key would otherwise be read as
+# the statement above, so the request shape says which and the two response shapes do not.
+_WINDOWS_ON_REQUEST = (
+    f"{_WINDOWS_DESCRIPTION} Required and not defaulted, so a forgotten key is refused rather than "
+    "read as that statement: opting one habit out of its Area's windows is a placement decision "
+    "and has to be made on purpose."
 )
 _STRENGTH_DESCRIPTION = (
     "How much placing the work outside a preferred window costs. Both values are objective costs "
@@ -170,7 +183,7 @@ class OverridePreferenceRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     windows: list[TimeWindowRequest] = Field(
-        default_factory=list, max_length=MAX_WINDOWS, description=_WINDOWS_DESCRIPTION
+        max_length=MAX_WINDOWS, description=_WINDOWS_ON_REQUEST
     )
     strength: PreferenceStrength = Field(description=_STRENGTH_DESCRIPTION)
     preferred_duration_minutes: int | None = Field(
