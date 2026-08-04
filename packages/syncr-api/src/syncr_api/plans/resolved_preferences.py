@@ -15,13 +15,26 @@ inside it. That is what the domain rule states and ticket 1212 carries the quest
 should walk.
 
 **The windows.** A declared window is wall time, so ``05:30-07:00`` becomes one interval per date
-of the week, each resolved against the zone active on that date. A window naming a stretch that a
-spring-forward gap moves is moved with it, because
-:func:`syncr_domain.zones.to_instant` resolves both bounds the same way.
+of the week, each resolved against the zone active on that date.
+
+**A day whose own gap swallows a window carries no window.** Resolving both bounds through
+:func:`syncr_domain.zones.to_instant` is NOT order-preserving across a spring-forward gap: every
+wall time inside the gap shifts onto a real time later in the day, so on ``Europe/London``,
+2026-03-29, both 01:30 and 02:30 resolve to ``2026-03-29T01:30Z``. A window from 01:30 to 02:30
+therefore collapses to one instant, and 01:45 to 02:00 inverts. The hour the user named does not
+exist on that date, so that date carries no window and every other date of the week keeps its own.
+The alternative, shifting the end forward by the gap, would invent an hour the day does not have,
+and a preference is a wall-clock window rather than a duration.
+
+A fall-back date is the other half of the same non-monotonicity and it needs no rule: ``fold=0``
+takes the earlier offset for an ambiguous start while the end sits after the repeat, so
+``01:00-02:00`` resolves to a 120-minute window on that date. A soft window twice as wide once a
+year costs nothing, and it is stated here so it is not read later as a defect.
 
 A window sits inside one local day: a declaration whose end is at or before its start is refused
-where it is authored, so nothing here resolves a wrapping window across two dates. Ticket 1211
-carries the question of whether a night-owl window should be expressible.
+where it is authored. That refusal is checked in WALL TIME, which is why the guard above exists: an
+invariant verified in one coordinate system does not survive a non-monotonic mapping into another.
+Ticket 1211 carries the question of whether a night-owl window should be expressible.
 
 **A daily cap is an Area's and it does not travel here.** It reaches the solver on the Area
 budget, which is what structurally prevents an override relaxing a hard cap: there is no field on
@@ -33,6 +46,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from syncr_common.logging import get_logger
 from syncr_domain.intervals import Interval
 from syncr_domain.preferences import (
     PreferenceOwner,
@@ -52,6 +66,8 @@ if TYPE_CHECKING:
     from syncr_domain.preferences import LocalTimeWindow, Preference
     from syncr_domain.zones import Date, ZoneId
     from syncr_solver.inputs import EligibleTask
+
+_log = get_logger("syncr.plans")
 
 
 def area_caps(stored: Sequence[PreferenceRecord]) -> Mapping[AreaId, int | None]:
@@ -136,17 +152,40 @@ class _WeekWindows:
         self._resolved: dict[tuple[LocalTimeWindow, ...], tuple[Interval, ...]] = {}
 
     def of(self, windows: Sequence[LocalTimeWindow]) -> tuple[Interval, ...]:
-        """Each declared window on each date of the week, in date then declaration order."""
+        """Each declared window on each date of the week, in date then declaration order.
+
+        A date whose own daylight-saving gap leaves a window naming no stretch of time contributes
+        nothing, so a week can carry fewer intervals than it has dates times declarations.
+        """
         declared = tuple(windows)
         found = self._resolved.get(declared)
         if found is None:
-            found = tuple(self._on(window, on) for on in self._dates for window in declared)
+            found = tuple(
+                interval
+                for on in self._dates
+                for window in declared
+                if (interval := self._on(window, on)) is not None
+            )
             self._resolved[declared] = found
         return found
 
-    def _on(self, window: LocalTimeWindow, on: Date) -> Interval:
+    def _on(self, window: LocalTimeWindow, on: Date) -> Interval | None:
+        """This window on ``on``, or nothing when the day's own gap leaves no stretch to name.
+
+        A spring-forward gap is not order-preserving, so two bounds a declaration ordered in wall
+        time can resolve to one instant, or backwards. The user named an hour the date does not
+        have, so the date carries no window: the alternative is an assembly that raises, and this
+        is the widest integration point in the product and the one with no degraded mode.
+        """
         zone = self._zone_by_date[on]
-        return Interval(
-            to_instant(window.start, on, zone),
-            to_instant(window.end, on, zone),
-        )
+        start = to_instant(window.start, on, zone)
+        end = to_instant(window.end, on, zone)
+        if start >= end:
+            _log.info(
+                "plans.preference.window_absent_on_this_date",
+                on=str(on),
+                zone=zone,
+                window=str(window),
+            )
+            return None
+        return Interval(start, end)

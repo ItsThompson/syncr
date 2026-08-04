@@ -16,8 +16,12 @@ import dataclasses
 from datetime import time
 from decimal import Decimal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
+
+import pytest
 
 from syncr_api.plans.config import ADJUSTMENT_KINDS
+from syncr_domain.fixtures.dst_weeks import FALL_BACK, SPRING_FORWARD
 from syncr_domain.habits import Duration
 from syncr_domain.identity import BindingRef, date_occurrence_key
 from syncr_domain.plan import AdjustmentKind
@@ -544,6 +548,85 @@ async def test_a_declared_window_resolves_against_each_days_own_zone() -> None:
     assert windows[6] == between(5.5, 7, day=6)
 
 
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [(time(1, 0), time(2, 0)), (time(1, 30), time(2, 30)), (time(1, 45), time(2, 0))],
+    ids=["collapses", "collapses at the gap's far side", "inverts"],
+)
+async def test_a_window_a_spring_forward_gap_swallows_leaves_that_date_without_one(
+    start: time, end: time
+) -> None:
+    # Both bounds resolve through one mapping that is NOT order-preserving across the gap: on
+    # Europe/London 2026-03-29 both 01:30 and 02:30 are 01:30Z, so a window the user declared
+    # forward in wall time collapses or inverts in instants. Every one of these raised from
+    # `Interval` before the guard, which failed the whole assembly: every solve, pin, live verdict
+    # and background assembly for that week, annually, on a declaration the boundary accepts.
+    fitness = an_area(name="Fitness")
+
+    inputs = await an_assembler(
+        areas=FakeAreas([fitness]),
+        settings=FakeSettings(SPRING_FORWARD.zone),
+        preferences=FakePreferences(
+            [a_preference(owner=an_area_owner(fitness.id), windows=[a_window(start, end)])]
+        ),
+    ).assemble(SPRING_FORWARD.iso_week, NOW)
+
+    windows = inputs.preferences[0].windows
+    assert len(windows) == 6
+    assert all(window.start < window.end for window in windows)
+    # The six that survive are the six dates that are not the transition, so the missing one is the
+    # date whose gap swallowed the hour rather than an arbitrary one.
+    assert SPRING_FORWARD.transition_date not in {
+        window.start.astimezone(ZoneInfo(SPRING_FORWARD.zone)).date() for window in windows
+    }
+
+
+async def test_a_window_clear_of_the_gap_survives_the_transition_date() -> None:
+    # The control for the guard above: it drops a date, not a week. A window outside the gap
+    # resolves on all seven dates of the same week.
+    fitness = an_area(name="Fitness")
+
+    inputs = await an_assembler(
+        areas=FakeAreas([fitness]),
+        settings=FakeSettings(SPRING_FORWARD.zone),
+        preferences=FakePreferences(
+            [
+                a_preference(
+                    owner=an_area_owner(fitness.id), windows=[a_window(time(5, 30), time(7, 0))]
+                )
+            ]
+        ),
+    ).assemble(SPRING_FORWARD.iso_week, NOW)
+
+    assert len(inputs.preferences[0].windows) == 7
+
+
+async def test_a_fall_back_date_carries_the_wider_window_the_repeated_hour_makes() -> None:
+    # The other half of the same non-monotonicity, and it needs no rule: `fold=0` takes the earlier
+    # offset for the ambiguous start while the end sits after the repeat, so this date's window is
+    # 120 minutes rather than 60. Pinned so a doubled window is a stated behaviour rather than a
+    # figure nobody wrote down.
+    fitness = an_area(name="Fitness")
+
+    inputs = await an_assembler(
+        areas=FakeAreas([fitness]),
+        settings=FakeSettings(FALL_BACK.zone),
+        preferences=FakePreferences(
+            [
+                a_preference(
+                    owner=an_area_owner(fitness.id), windows=[a_window(time(1, 0), time(2, 0))]
+                )
+            ]
+        ),
+    ).assemble(FALL_BACK.iso_week, NOW)
+
+    windows = inputs.preferences[0].windows
+    minutes = sorted({window.total_minutes() for window in windows})
+    assert len(windows) == 7
+    assert minutes == [60, 120]
+    assert sum(1 for window in windows if window.total_minutes() == 120) == 1
+
+
 async def test_an_area_with_no_preference_and_no_override_resolves_nothing() -> None:
     fitness = an_area(name="Fitness")
     habit = a_habit(area_id=fitness.id)
@@ -797,3 +880,107 @@ async def test_an_approved_concession_is_carried_so_a_reason_can_cite_it() -> No
 
     assert [entry.adjustment_id for entry in inputs.adjustments] == [stored.id]
     assert inputs.adjustments[0].kind is AdjustmentKind.BREACH_FLOOR
+
+
+async def test_a_stored_concession_and_a_candidate_on_one_target_compound() -> None:
+    # The storage index makes two STORED concessions on one kind and target unreachable, and it does
+    # not cover a candidate, which is an argument rather than a row. So the two apply in turn. This
+    # pins the shipped semantics rather than endorsing them: whether the enumerator offers an
+    # increment or an absolute figure is its own question, and ticket 1255 carries it.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(5))
+    stored = an_adjustment(
+        kind=AdjustmentKind.BREACH_FLOOR.value, target_id=fitness.id, delta_minutes=60
+    )
+    candidate = WeekAdjustment(
+        adjustment_id=uuid4(),
+        kind=AdjustmentKind.BREACH_FLOOR,
+        target_id=fitness.id,
+        delta_minutes=120,
+    )
+
+    inputs = await an_assembler(
+        areas=FakeAreas([fitness]), adjustments=FakeAdjustments([stored])
+    ).assemble(WEEK, NOW, candidate)
+
+    assert inputs.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR - 180
+    assert len(inputs.adjustments) == 2
+
+
+async def test_concessions_on_one_target_apply_in_either_order_to_one_figure() -> None:
+    # The half of the order claim that does hold: successive clamped subtraction commutes, so the
+    # figure does not depend on which concession the list carries first.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(5))
+    smaller = an_adjustment(
+        kind=AdjustmentKind.BREACH_FLOOR.value, target_id=fitness.id, delta_minutes=60
+    )
+    larger = WeekAdjustment(
+        adjustment_id=uuid4(),
+        kind=AdjustmentKind.BREACH_FLOOR,
+        target_id=fitness.id,
+        delta_minutes=120,
+    )
+    swapped = an_adjustment(
+        kind=AdjustmentKind.BREACH_FLOOR.value, target_id=fitness.id, delta_minutes=120
+    )
+    smaller_candidate = WeekAdjustment(
+        adjustment_id=uuid4(),
+        kind=AdjustmentKind.BREACH_FLOOR,
+        target_id=fitness.id,
+        delta_minutes=60,
+    )
+
+    forward = await an_assembler(
+        areas=FakeAreas([fitness]), adjustments=FakeAdjustments([smaller])
+    ).assemble(WEEK, NOW, larger)
+    backward = await an_assembler(
+        areas=FakeAreas([fitness]), adjustments=FakeAdjustments([swapped])
+    ).assemble(WEEK, NOW, smaller_candidate)
+
+    assert forward.areas[0].floor_minutes == backward.areas[0].floor_minutes
+
+
+async def test_a_breach_of_a_negative_figure_lowers_nothing_rather_than_raising_the_floor() -> None:
+    # Subtracting a negative would RAISE a 5h floor to 15h, so a concession whose whole meaning is
+    # to relax a hard constraint would tighten one. The column is nullable with no check constraint
+    # and nothing writes it yet, so the fold is where the absurd state stops.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(5))
+
+    inputs = await an_assembler(
+        areas=FakeAreas([fitness]),
+        adjustments=FakeAdjustments(
+            [
+                an_adjustment(
+                    kind=AdjustmentKind.BREACH_FLOOR.value,
+                    target_id=fitness.id,
+                    delta_minutes=-600,
+                )
+            ]
+        ),
+    ).assemble(WEEK, NOW)
+
+    assert inputs.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR
+    assert inputs.areas[0].floor_reservation_minutes == 5 * MINUTES_PER_HOUR
+
+
+async def test_a_reduction_naming_a_date_this_week_does_not_hold_is_dropped() -> None:
+    # A concession is week-scoped, so a foreign date names an occurrence another week's assembly
+    # owns: carried through, it would sit on the snapshot applying to nothing while the concession
+    # claimed to have been honoured.
+    routine = a_routine(duration_minutes=480, min_duration_minutes=360)
+
+    inputs = await an_assembler(
+        routines=FakeRoutines([routine]),
+        adjustments=FakeAdjustments(
+            [
+                an_adjustment(
+                    kind=AdjustmentKind.REDUCE_ROUTINE.value,
+                    target_id=routine.id,
+                    reductions={"2030-01-01": 60, date_occurrence_key(MONDAY): 60},
+                )
+            ]
+        ),
+    ).assemble(WEEK, NOW)
+
+    assert set(inputs.adjustments[0].reductions) == {MONDAY}
+    by_key = {entry.occurrence_key: entry for entry in inputs.frame}
+    assert by_key[date_occurrence_key(MONDAY)].interval.total_minutes() == 420
