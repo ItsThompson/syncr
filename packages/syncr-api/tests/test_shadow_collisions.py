@@ -211,6 +211,38 @@ def test_no_two_surviving_blocks_cover_the_same_minute() -> None:
     ]
 
 
+def test_a_leg_that_gives_way_no_longer_meets_its_commitment() -> None:
+    # What end-truncation costs, pinned rather than only described. The 11:00 commitment declares a
+    # two-hour abutting journey; an earlier commitment at 10:30 declares a half-hour one and keeps
+    # it. So the journey to the 11:00 commitment now ends at 10:00: the hour before that commitment
+    # is uncovered, and what survives arrives an hour early.
+    #
+    # This is the rule the settled records state, and it is asserted here so that changing which end
+    # a leg gives way at reds a test that says what the change costs, rather than nothing.
+    later = a_journey_only_type(lead=120, duration=120)
+    earlier = a_journey_only_type(lead=30, duration=30)
+    pair = [
+        TypedAnchor(
+            an_anchor(later, start=at(INTERVIEW_DAY, 11), minutes=60, title="Later"), later
+        ),
+        TypedAnchor(
+            an_anchor(earlier, start=at(INTERVIEW_DAY, 10, 30), minutes=30, title="Earlier"),
+            earlier,
+        ),
+    ]
+
+    shadows = regenerate(pair)
+
+    assert spans(shadows) == (
+        ("transit", "out", "Tue 2026-02-10 09:00", "Tue 2026-02-10 10:00"),
+        ("transit", "out", "Tue 2026-02-10 10:00", "Tue 2026-02-10 10:30"),
+    )
+    # The abutting leg no longer abuts: it ends an hour before the commitment it is a journey to.
+    later_leg = shadows.blocks[0]
+    assert later_leg.title == "Leave for Later"
+    assert later_leg.interval.end == at(INTERVIEW_DAY, 10)
+
+
 def test_every_origin_a_shadow_block_can_carry_has_a_precedence() -> None:
     # The table is bounded by what a block may BE rather than by a list of what it may not, so a
     # block whose origin has no precedence cannot reach the collision rule at all.

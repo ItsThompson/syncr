@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from syncr_api.anchors.records import AnchorTypeSpecification
     from syncr_api.anchors.shadow_products import ShadowSet
     from syncr_domain.intervals import Instant
+    from syncr_domain.zones import ZoneId
 
 TENANT = uuid4()
 SOURCE = uuid4()
@@ -43,14 +44,19 @@ EXAM_MONDAY = date(2026, 2, 9)
 SPRING_FORWARD = date(2026, 3, 29)
 
 
-def at(on: date, hour: int, minute: int = 0) -> Instant:
-    """The instant a wall time on this date names in the zone the records are drawn in."""
-    return to_instant(time(hour, minute), on, LONDON)
+def at(on: date, hour: int, minute: int = 0, *, zone: ZoneId = LONDON) -> Instant:
+    """The instant a wall time on this date names, in the zone the records are drawn in by default.
+
+    ``zone`` is a parameter because a lead crossing a daylight-saving transition is read here, and
+    the interesting transitions are not all in one zone: a 30-minute one and a midnight one both
+    change the answer in ways an hour-long one cannot show.
+    """
+    return to_instant(time(hour, minute), on, zone)
 
 
-def wall(instant: Instant) -> str:
+def wall(instant: Instant, *, zone: ZoneId = LONDON) -> str:
     """``instant`` as a reader of that week's grid sees it: local date and local time."""
-    return instant.astimezone(resolve_zone(LONDON)).strftime("%a %Y-%m-%d %H:%M")
+    return instant.astimezone(resolve_zone(zone)).strftime("%a %Y-%m-%d %H:%M")
 
 
 def a_type(specification: AnchorTypeSpecification) -> AnchorTypeRecord:

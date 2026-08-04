@@ -43,7 +43,7 @@ the same minutes is stated in ``test_shadow_collisions.py``, beside the module t
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
@@ -66,6 +66,7 @@ from syncr_api.anchors.shadows import (
     generate,
     regenerate,
 )
+from syncr_api.core.errors import ValidationFailed
 from syncr_domain.gaps import ForbiddenKind, ForbiddenScope
 from syncr_domain.identity import NO_OCCURRENCE, BindingError, Origin, TransitLeg, block_id
 from syncr_domain.intervals import Interval
@@ -77,6 +78,7 @@ from tests.anchor_specifications import (
     ATTRIBUTED_INTERVIEW,
     ATTRIBUTED_LECTURE,
     CAREER,
+    EXAM,
     INTERVIEW,
     NOTHING,
     STANDUP,
@@ -99,11 +101,32 @@ from tests.shadow_scenes import (
 )
 
 if TYPE_CHECKING:
+    from syncr_api.anchors.config import PostScope
     from syncr_api.anchors.records import AnchorTypeSpecification
 
 # Every origin a block can carry that an anchor does not cast. Named as the complement of what a
 # shadow IS, so an eighth origin joins this list without anybody remembering to add it.
 NOT_CAST_BY_AN_ANCHOR: Final = tuple(sorted(set(Origin) - DERIVED_ORIGINS, key=str))
+
+# The transitions a lead is read across, and the wall time a 14-hour one lands on. An hour-long
+# transition cannot show what a 30-minute one does, and neither shows what one falling at midnight
+# does, so all three zones are here in both directions.
+TRANSITIONS = [
+    pytest.param(LONDON, SPRING_FORWARD, "Sat 2026-03-28 18:30", id="london-hour-gap"),
+    pytest.param(LONDON, date(2026, 10, 25), "Sat 2026-10-24 20:30", id="london-hour-fold"),
+    pytest.param(
+        "Australia/Lord_Howe", date(2026, 10, 4), "Sat 2026-10-03 19:00", id="lord-howe-30m-gap"
+    ),
+    pytest.param(
+        "Australia/Lord_Howe", date(2026, 4, 5), "Sat 2026-04-04 20:00", id="lord-howe-30m-fold"
+    ),
+    pytest.param(
+        "America/Havana", date(2026, 3, 8), "Sat 2026-03-07 18:30", id="havana-midnight-gap"
+    ),
+    pytest.param(
+        "America/Havana", date(2026, 11, 1), "Sat 2026-10-31 20:30", id="havana-midnight-fold"
+    ),
+]
 
 
 # --------------------------------------------------------------------------------
@@ -160,6 +183,10 @@ def test_a_derived_block_names_the_commitment_it_belongs_to() -> None:
         OUTBOUND_TITLE.format(commitment=COMMITMENT),
     ]
     assert {block.anchor_id for block in shadows.blocks} == {anchor.id}
+    # The two readings of "which commitment" agree, because the binding is built from the same
+    # identifier: a reader holding a plan block finds the anchor at `binding.entity_id`, and a
+    # reader holding the buffer finds it at `anchor_id`.
+    assert {block.binding.entity_id for block in shadows.blocks} == {anchor.id}
 
 
 def test_a_dinner_at_eighteen_hundred_sits_legally_outside_the_recovery_window() -> None:
@@ -247,7 +274,7 @@ def test_a_commitment_that_starts_at_seven_minutes_past_keeps_its_own_time() -> 
 
 
 # --------------------------------------------------------------------------------
-# One rule decides block or band. Boundary X11: each branch, both directions.
+# One rule decides block or band: each branch, both directions.
 # --------------------------------------------------------------------------------
 
 
@@ -320,6 +347,31 @@ def test_a_window_names_the_reason_and_the_commitment_that_reserved_the_time() -
     assert {window.anchor_id for window in shadows.forbidden} == {anchor.id}
 
 
+def test_an_unattributed_return_leg_is_a_window_like_the_outbound_one() -> None:
+    # The rendered Exam declares both legs and names no Area for either, so it casts TWO
+    # `transit_unattributed` windows. They carry the same label and different spans, because a
+    # window explains why time is reserved rather than which journey reserved it: the leg's own
+    # identity belongs to a block, and this declaration casts none.
+    anchor_type = a_type(EXAM)
+    anchor = an_anchor(
+        anchor_type, start=at(EXAM_MONDAY, 9, 30), minutes=120, title="Compilers Exam"
+    )
+
+    shadows = generate(anchor, anchor_type)
+
+    assert spans(shadows) == (
+        ("prep_unattributed", "all", "Sun 2026-02-08 19:30", "Sun 2026-02-08 20:30"),
+        ("transit_unattributed", "all", "Mon 2026-02-09 08:45", "Mon 2026-02-09 09:15"),
+        ("transit_unattributed", "all", "Mon 2026-02-09 11:30", "Mon 2026-02-09 12:00"),
+        ("recovery", "areas", "Mon 2026-02-09 11:30", "Mon 2026-02-09 12:30"),
+    )
+    assert {window.label for window in shadows.forbidden} == {
+        "prep · Compilers Exam",
+        "transit · Compilers Exam",
+        "recovery · Compilers Exam",
+    }
+
+
 # --------------------------------------------------------------------------------
 # The zero-collapse rules, one test each, and the declaration that casts nothing.
 # --------------------------------------------------------------------------------
@@ -373,14 +425,16 @@ def test_a_zero_prep_duration_casts_no_prep_whatever_the_lead_says() -> None:
     [(75, FORBIDS_NOTHING), (0, FORBIDS_EVERYTHING)],
     ids=["scope-forbids-nothing", "zero-buffer"],
 )
-def test_a_recovery_window_needs_both_a_buffer_and_a_scope(buffer_minutes: int, scope: str) -> None:
+def test_a_recovery_window_needs_both_a_buffer_and_a_scope(
+    buffer_minutes: int, scope: PostScope
+) -> None:
     declaration = replace(
         NOTHING,
         transit_lead_minutes=30,
         transit_duration_minutes=30,
         transit_area_id=TRANSIT,
         post_buffer_minutes=buffer_minutes,
-        post_scope=scope,  # type: ignore[arg-type]  # the literal is the config alias
+        post_scope=scope,
     )
     _, shadows = an_interview_anchor(declaration)
 
@@ -406,7 +460,7 @@ def test_an_untyped_commitment_casts_no_shadow_at_all() -> None:
 
 
 def test_the_two_legs_of_one_commitment_derive_two_identities() -> None:
-    anchor_type = a_type(replace(ATTRIBUTED_LECTURE, return_transit_minutes=30))
+    anchor_type = a_type(ATTRIBUTED_LECTURE)
     anchor = an_anchor(anchor_type, start=at(INTERVIEW_DAY, 11), minutes=60)
     week = IsoWeek.containing(INTERVIEW_DAY)
 
@@ -482,11 +536,11 @@ def a_lecture_with_recovery() -> AnchorTypeSpecification:
     """The rendered Lecture, given a recovery window that forbids the Area its legs belong to.
 
     Forbidding ``Transit`` is what makes the exemption bite: a window that did not forbid the
-    leg's own Area would leave the journey home legal for a reason other than the exemption.
+    leg's own Area would leave the journey home legal for a reason other than the exemption. The
+    return leg is the fixture's own, since the rendered Lecture already declares one.
     """
     return replace(
         ATTRIBUTED_LECTURE,
-        return_transit_minutes=30,
         post_buffer_minutes=60,
         post_scope=FORBIDS_AREAS,
         forbidden_area_ids=(TRANSIT,),
@@ -555,19 +609,22 @@ def test_a_fourteen_hour_lead_puts_prep_in_the_previous_evening_and_the_previous
     assert prep_week.following() == IsoWeek.containing(EXAM_MONDAY)
 
 
-def test_a_lead_across_a_spring_forward_gap_is_elapsed_time_rather_than_wall_time() -> None:
-    # The transition is inside the lead, so 14 hours of elapsed time reaches back to 18:30 by the
-    # clock rather than 19:30. Stated rather than corrected: a lead is a duration, and the hour
-    # the clock skipped is an hour the person did not have.
+@pytest.mark.parametrize(("zone", "on", "expected"), TRANSITIONS)
+def test_a_lead_across_a_transition_is_elapsed_time_rather_than_wall_time(
+    zone: str, on: date, expected: str
+) -> None:
+    # The transition sits inside the lead, so 14 hours of ELAPSED time reaches back to a different
+    # wall time than 14 hours of clock subtraction would. Stated rather than corrected: a lead is a
+    # duration, and an hour the clock skipped is an hour the person did not have.
     anchor_type = a_type(ATTRIBUTED_EXAM)
     anchor = an_anchor(
-        anchor_type, start=at(SPRING_FORWARD, 9, 30), minutes=120, title="Compilers Exam"
+        anchor_type, start=at(on, 9, 30, zone=zone), minutes=120, title="Compilers Exam"
     )
 
     prep = generate(anchor, anchor_type).blocks[0]
 
     assert (anchor.interval.start - prep.interval.start) == timedelta(minutes=840)
-    assert wall(prep.interval.start) == "Sat 2026-03-28 18:30"
+    assert wall(prep.interval.start, zone=zone) == expected
 
 
 # --------------------------------------------------------------------------------
@@ -580,6 +637,48 @@ def test_regenerating_one_commitment_equals_generating_it() -> None:
     anchor = an_anchor(anchor_type, start=at(INTERVIEW_DAY, 16))
 
     assert regenerate([TypedAnchor(anchor, anchor_type)]) == generate(anchor, anchor_type)
+
+
+@pytest.mark.parametrize("specification", ATTRIBUTED_GEOMETRY, ids=lambda spec: spec.name)
+def test_one_commitments_own_blocks_never_cover_the_same_minute(
+    specification: AnchorTypeSpecification,
+) -> None:
+    # This is what makes the equality above hold rather than happen to hold: only the many-anchor
+    # path resolves collisions, so a regeneration of one commitment equals a generation of it
+    # because a declaration cannot collide with itself.
+    _, shadows = an_interview_anchor(specification)
+    blocks = shadows.blocks
+
+    assert blocks
+    assert not [
+        (one, other)
+        for index, one in enumerate(blocks)
+        for other in blocks[index + 1 :]
+        if one.interval.overlaps(other.interval)
+    ]
+
+
+def test_the_declaration_that_would_break_that_is_refused_at_the_boundary() -> None:
+    # Sixty minutes of prep starting sixty minutes out, against a journey leaving thirty minutes
+    # out: prep would still be running when the journey left, and one commitment would cast two
+    # overlapping blocks that only the many-anchor path resolves. What makes that unrepresentable is
+    # the boundary rule, said again as a check constraint on the table, so a relaxation of either
+    # reds this rather than silently changing what a regeneration produces.
+    self_overlapping = replace(
+        NOTHING,
+        prep_lead_minutes=60,
+        prep_duration_minutes=60,
+        prep_area_id=CAREER,
+        transit_lead_minutes=30,
+        transit_duration_minutes=30,
+        transit_area_id=TRANSIT,
+    )
+
+    with pytest.raises(ValidationFailed) as refused:
+        a_type(self_overlapping)
+
+    assert refused.value.errors is not None
+    assert [error.field for error in refused.value.errors] == ["prepLeadMinutes"]
 
 
 def test_a_commitment_that_moved_regenerates_rather_than_patches() -> None:
@@ -598,7 +697,7 @@ def test_a_commitment_that_moved_regenerates_rather_than_patches() -> None:
 
 def test_a_retyped_commitment_casts_what_the_new_type_declares() -> None:
     was = a_type(ATTRIBUTED_INTERVIEW)
-    now = a_type(replace(ATTRIBUTED_LECTURE, return_transit_minutes=30))
+    now = a_type(ATTRIBUTED_LECTURE)
     anchor = an_anchor(was, start=at(INTERVIEW_DAY, 16))
     retyped = replace(anchor, anchor_type_id=now.id)
 
