@@ -14,7 +14,7 @@ wrong figure is stated here beside the right one.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 
@@ -108,8 +108,17 @@ def test_the_span_holds_the_daylight_saving_transition(week: OffPlanWeek) -> Non
     # two wall times by exactly the hour that repeats.
     assert wall_minutes(week.off_plan_wall) == week.off_plan_wall_minutes
     assert week.off_plan_minutes - week.off_plan_wall_minutes == 60
-    transition = to_instant(week.off_plan_wall.start_at, week.transition_date, week.zone)
-    assert week.off_plan.start < transition < week.off_plan.end
+    # And the transition INSTANT is inside it, asserted against the real boundary rather than
+    # against some instant on the transition date. Local 01:00 names TWO instants that day, and
+    # `to_instant` resolves the earlier one (01:00 BST = 00:00 UTC); the clocks go back one hour
+    # later, when 02:00 BST becomes 01:00 GMT, which is 01:00 UTC. The hour either side is asserted
+    # too, so this locates the boundary rather than a wide window.
+    ambiguous_hour_first_reading = to_instant(time(1, 0), week.transition_date, week.zone)
+    transition = ambiguous_hour_first_reading + timedelta(hours=1)
+    assert ambiguous_hour_first_reading == datetime(2026, 10, 25, 0, 0, tzinfo=UTC)
+    assert transition == datetime(2026, 10, 25, 1, 0, tzinfo=UTC)
+    assert week.off_plan.start < transition - timedelta(hours=1)
+    assert transition + timedelta(hours=1) < week.off_plan.end
 
 
 def test_the_span_neither_starts_nor_ends_at_a_local_midnight(week: OffPlanWeek) -> None:
