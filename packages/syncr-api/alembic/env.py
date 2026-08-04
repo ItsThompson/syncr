@@ -18,9 +18,11 @@ from typing import TYPE_CHECKING
 from alembic import context
 
 import syncr_api.accounts.models as _accounts  # noqa: F401 - registers its tables
+import syncr_api.anchors.models as _anchors  # noqa: F401 - registers its tables
 import syncr_api.areas.models as _areas  # noqa: F401 - registers its tables
 import syncr_api.calendars.models as _calendars  # noqa: F401 - registers its tables
 import syncr_api.google_account.models as _google_account  # noqa: F401 - registers its tables
+import syncr_api.habits.models as _habits  # noqa: F401 - registers its tables
 import syncr_api.idempotency.models as _idempotency  # noqa: F401 - registers its tables
 import syncr_api.learned.models as _learned  # noqa: F401 - registers its tables
 import syncr_api.oauth.models as _oauth  # noqa: F401 - registers its tables
