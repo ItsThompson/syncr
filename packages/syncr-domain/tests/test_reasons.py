@@ -24,6 +24,8 @@ from typing import TYPE_CHECKING, get_args
 from uuid import uuid4
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from syncr_domain.habits import BindingSource
 from syncr_domain.intervals import Interval
@@ -59,6 +61,18 @@ APPROVED_REVISION = uuid4()
 def a_reason(*clauses: Clause) -> ReasonRecord:
     """One record per test, defaulting to the derivation case a materialized week uses."""
     return ReasonRecord(clauses or (Bound(DerivationSource.ROUTINE, "Sleep · 23:00 + 8h"),))
+
+
+# One clause of each kind, in the union's own order, so a generated combination can be built by
+# counting rather than by naming the kinds a second time.
+A_CLAUSE_OF_EACH_KIND: tuple[Clause, ...] = (
+    Blocked(WINDOW, "H2"),
+    Dominant("churn", 0.4),
+    Bound(BindingSource.QUEUE, "Tries"),
+    Floor(CAREER, 240, 120, 240),
+    Pinned(WINDOW, PINNED_ON),
+    InsteadOf(ELSEWHERE, 3.0),
+)
 
 
 class TestTheClauseVocabulary:
@@ -178,6 +192,26 @@ class TestTheRecordIsNeverEmptyAndNeverUnbounded:
     def test_a_record_with_no_clauses_is_not_a_reason(self) -> None:
         with pytest.raises(ReasonError, match="at least one clause"):
             ReasonRecord(())
+
+    @given(
+        counts=st.lists(st.integers(min_value=0, max_value=2), min_size=6, max_size=6).filter(any)
+    )
+    def test_any_record_inside_the_budget_is_a_reason(self, counts: list[int]) -> None:
+        """Over generated combinations, so the budget is a bound rather than one accepted shape."""
+        clauses = [
+            clause
+            for clause, count in zip(A_CLAUSE_OF_EACH_KIND, counts, strict=True)
+            for _ in range(min(count, CLAUSE_BUDGET[type(clause)]))
+        ]
+
+        assert len(ReasonRecord(tuple(clauses)).clauses) == len(clauses)
+
+    @given(kind=st.sampled_from(A_CLAUSE_OF_EACH_KIND))
+    def test_one_clause_past_the_budget_is_refused_whatever_the_kind(self, kind: Clause) -> None:
+        over = (kind,) * (CLAUSE_BUDGET[type(kind)] + 1)
+
+        with pytest.raises(ReasonError, match="bounded per clause kind"):
+            ReasonRecord(over)
 
     def test_two_rejected_windows_are_the_most_a_block_reports(self) -> None:
         two = (Blocked(WINDOW, "H2"), Blocked(ELSEWHERE, "H8"))

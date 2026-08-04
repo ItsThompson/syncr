@@ -80,6 +80,44 @@ def a_binding(kind: BindingKind) -> BindingRef:
             return BindingRef.for_anchor_transit(INTERVIEW, leg=TransitLeg.OUT)
 
 
+@st.composite
+def a_generated_binding(draw: st.DrawFn) -> BindingRef:
+    """A legal binding of any kind, built through the constructor its kind uses.
+
+    Entities are drawn from a small pool so a generated set produces collisions to detect: with
+    fresh UUIDs every time, "two bindings never share an id" would hold for a reason the
+    derivation does not have to be right about.
+    """
+    kind = draw(st.sampled_from(list(BindingKind)))
+    entity_id = draw(st.sampled_from((SLEEP, SHOWER_ENTRY, GYM, LEETCODE, INTERVIEW)))
+    match kind:
+        case BindingKind.ROUTINE | BindingKind.TEMPLATE_ENTRY:
+            on = MONDAY + timedelta(days=draw(st.integers(min_value=0, max_value=6)))
+            builder = (
+                BindingRef.for_routine
+                if kind is BindingKind.ROUTINE
+                else BindingRef.for_template_entry
+            )
+            return builder(entity_id, on=on)
+        case BindingKind.HABIT:
+            return BindingRef.for_habit(
+                entity_id, index=draw(st.integers(min_value=0, max_value=20))
+            )
+        case BindingKind.TASK:
+            return BindingRef.for_task(
+                entity_id,
+                split_index=draw(st.none() | st.integers(min_value=0, max_value=8)),
+            )
+        case BindingKind.ANCHOR:
+            return BindingRef.for_anchor(entity_id)
+        case BindingKind.ANCHOR_PREP:
+            return BindingRef.for_anchor_prep(entity_id)
+        case BindingKind.ANCHOR_TRANSIT:
+            return BindingRef.for_anchor_transit(
+                entity_id, leg=draw(st.sampled_from(list(TransitLeg)))
+            )
+
+
 class TestTheTwoVocabularies:
     def test_an_origin_names_one_of_seven_things_a_block_can_be(self) -> None:
         # The grid, the ledger, and the CLI all render one of these, so the set is closed.
@@ -296,6 +334,28 @@ class TestTheIdIsDerived:
         binding = BindingRef.for_habit(GYM, index=index)
 
         assert BindingRef(BindingKind.HABIT, GYM, binding.occurrence_key) == binding
+
+    @given(bindings=st.lists(a_generated_binding(), min_size=1, max_size=12))
+    def test_distinct_content_never_shares_an_id(self, bindings: list[BindingRef]) -> None:
+        """Over generated bindings of every kind, not only the habit case.
+
+        The property the classifier's pairing rests on: two blocks pair if and only if they hold
+        the same content instance. Every component of a binding reaches the digest, separated by
+        a character none of them can contain, so the joined text determines the components.
+        """
+        derived = {binding: block_id(WEEK, binding) for binding in bindings}
+
+        assert len(set(derived.values())) == len(set(bindings))
+
+    @given(binding=a_generated_binding(), weeks=st.integers(min_value=1, max_value=52))
+    def test_one_binding_in_two_weeks_is_two_ids(self, binding: BindingRef, weeks: int) -> None:
+        """A pin binds one week and an outcome is a fact about one week's block."""
+        assert block_id(IsoWeek(2026, weeks), binding) != block_id(IsoWeek(2027, weeks), binding)
+
+    @given(binding=a_generated_binding())
+    def test_deriving_an_id_twice_gives_one_answer(self, binding: BindingRef) -> None:
+        """Nothing about a derivation depends on when it ran."""
+        assert block_id(WEEK, binding) == block_id(WEEK, binding)
 
 
 class TestTheKeyRulesRefuseWhatWouldNameAnotherBlock:

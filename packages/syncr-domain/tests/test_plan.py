@@ -28,6 +28,8 @@ from typing import TYPE_CHECKING, NamedTuple
 from uuid import uuid4
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from syncr_domain.gaps import EmptySlotReason
 from syncr_domain.identity import BindingKind, BindingRef, Origin, TransitLeg, block_id
@@ -109,6 +111,14 @@ def a_week_of(bindings: Iterable[BindingRef]) -> PlanDocument:
             for binding in bindings
         )
     )
+
+
+@st.composite
+def a_week_and_a_permutation(draw: st.DrawFn) -> tuple[list[BindingRef], list[BindingRef]]:
+    """A week's bindings and the same bindings in a generated order."""
+    kinds = draw(st.lists(st.sampled_from(list(BindingKind)), min_size=1, max_size=7, unique=True))
+    bindings = [a_binding(kind) for kind in kinds]
+    return bindings, draw(st.permutations(bindings))
 
 
 class TestABlockDerivesRatherThanStores:
@@ -437,6 +447,15 @@ class TestWhatADiffSees:
         backwards = a_week_of(reversed(bindings))
 
         assert set(forwards.blocks_by_id()) == set(backwards.blocks_by_id())
+
+    @given(week=a_week_and_a_permutation())
+    def test_no_order_of_any_week_changes_its_ids(
+        self, week: tuple[list[BindingRef], list[BindingRef]]
+    ) -> None:
+        """Over generated weeks and generated orders, not only over the reverse of one week."""
+        bindings, permuted = week
+
+        assert set(a_week_of(bindings).blocks_by_id()) == set(a_week_of(permuted).blocks_by_id())
 
     def test_permuting_the_blocks_changes_no_diff(self) -> None:
         bindings = [a_binding(kind) for kind in BindingKind]
