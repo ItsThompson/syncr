@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Final, Protocol
 import httpx
 
 from syncr_api.calendars.config import CURSOR_MAX_LENGTH, FETCH_TIMEOUT_SECONDS, MAX_FEED_BYTES
+from syncr_api.core.http_reads import read_bounded_body
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -187,14 +188,8 @@ def _within_bounds(cursor: str) -> str | None:
 
 async def _bounded_body(response: httpx.Response) -> str | None:
     """The response body as text, or ``None`` when it exceeds the size bound."""
-    chunks: list[bytes] = []
-    read = 0
-    async for chunk in response.aiter_bytes():
-        read += len(chunk)
-        if read > MAX_FEED_BYTES:
-            return None
-        chunks.append(chunk)
-    return _decoded(b"".join(chunks))
+    raw = await read_bounded_body(response, max_bytes=MAX_FEED_BYTES)
+    return None if raw is None else _decoded(raw)
 
 
 def _decoded(raw: bytes) -> str:
