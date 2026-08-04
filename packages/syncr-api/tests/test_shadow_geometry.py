@@ -17,7 +17,11 @@ none is a forbidden window that forbids every Area; recovery is a window whateve
 Both directions of the rule are asserted over the same declarations.
 
 **A zero collapses its own product and nothing else.** Each of the four members is zeroed on its
-own, and the declaration with every member at zero casts nothing at all.
+own against a declaration that still casts something else, so a collapsed product reads as an
+absence rather than as an empty answer.
+
+**One anchor's two journeys are two blocks.** The occurrence key is asserted through the identity
+it produces, because deriving one identity between the two is the failure it exists to prevent.
 
 **An anchor's own blocks are exempt from its own recovery window.** Recovery is measured from the
 commitment's end and so is the journey home, so the two overlap by construction. The exemption is
@@ -27,27 +31,25 @@ asserted with a positive control: another commitment's window over the same span
 previous ISO week, and a lead crossing a daylight-saving gap lands where elapsed time puts it
 rather than where the wall clock would.
 
-**Two commitments close together do not both keep what they cast.** Transit is fitted before prep,
-the earlier-cast commitment keeps its block, and a truncation that would build a zero-length or
-sub-grid span drops the block instead of raising.
+**A shadow is derived, so regeneration is wholesale, and the pair it reads has to agree.**
+Regenerating one commitment equals generating it; a commitment that moved keeps none of the spans
+it cast before; and a commitment paired with a type it does not carry is refused rather than
+answered, because both ways of disagreeing cast one commitment's buffers around another's.
 
-**A shadow is derived, so regeneration is wholesale.** Regenerating one commitment equals
-generating it, and regenerating a commitment that moved holds only spans measured from where it
-moved to.
+**Two commitments close together are not here.** Which block gives way when their shadows cover
+the same minutes is stated in ``test_shadow_collisions.py``, beside the module that decides it.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date, time, timedelta
-from typing import Final
+from datetime import timedelta
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 import pytest
 
-from syncr_api.anchors import rules, shadow_collisions
 from syncr_api.anchors.config import FORBIDS_AREAS, FORBIDS_EVERYTHING, FORBIDS_NOTHING
-from syncr_api.anchors.records import AnchorRecord, AnchorTypeRecord, AnchorTypeSpecification
 from syncr_api.anchors.shadow_products import (
     DERIVED_ORIGINS,
     ShadowBlock,
@@ -66,125 +68,42 @@ from syncr_api.anchors.shadows import (
 )
 from syncr_domain.gaps import ForbiddenKind, ForbiddenScope
 from syncr_domain.identity import NO_OCCURRENCE, BindingError, Origin, TransitLeg, block_id
-from syncr_domain.intervals import Instant, Interval
-from syncr_domain.snap import SNAP_MINUTES
+from syncr_domain.intervals import Interval
 from syncr_domain.weeks import IsoWeek
-from syncr_domain.zones import resolve_zone, to_instant
+from syncr_domain.zones import resolve_zone
 from tests.anchor_specifications import (
     ATTRIBUTED_EXAM,
     ATTRIBUTED_GEOMETRY,
     ATTRIBUTED_INTERVIEW,
     ATTRIBUTED_LECTURE,
     CAREER,
-    DECLARED_AREAS,
     INTERVIEW,
     NOTHING,
     STANDUP,
     STUDY,
     TRANSIT,
 )
+from tests.shadow_scenes import (
+    COMMITMENT,
+    EXAM_MONDAY,
+    INTERVIEW_DAY,
+    LONDON,
+    SPRING_FORWARD,
+    a_type,
+    an_anchor,
+    an_interview_anchor,
+    at,
+    keys,
+    spans,
+    wall,
+)
 
-TENANT = uuid4()
-SOURCE = uuid4()
-LONDON = "Europe/London"
-COMMITMENT = "Kontron Placement Interview"
-
-# The interview `block-states.html` renders, in the zone the reference weeks are drawn in.
-INTERVIEW_DAY = date(2026, 2, 10)
-# The Monday a 14-hour lead reaches back out of. Its Sunday belongs to the previous ISO week.
-EXAM_MONDAY = date(2026, 2, 9)
-# 01:00 becomes 02:00 in Europe/London on this date, so a lead across it loses an hour of wall
-# time while keeping every minute of elapsed time.
-SPRING_FORWARD = date(2026, 3, 29)
-
-MINUTES_IN_AN_HOUR = 60
+if TYPE_CHECKING:
+    from syncr_api.anchors.records import AnchorTypeSpecification
 
 # Every origin a block can carry that an anchor does not cast. Named as the complement of what a
 # shadow IS, so an eighth origin joins this list without anybody remembering to add it.
 NOT_CAST_BY_AN_ANCHOR: Final = tuple(sorted(set(Origin) - DERIVED_ORIGINS, key=str))
-
-
-def at(on: date, hour: int, minute: int = 0) -> Instant:
-    """The instant a wall time on this date names in the zone the records are drawn in."""
-    return to_instant(time(hour, minute), on, LONDON)
-
-
-def wall(instant: Instant) -> str:
-    """``instant`` as a reader of that week's grid sees it: local date and local time."""
-    return instant.astimezone(resolve_zone(LONDON)).strftime("%a %Y-%m-%d %H:%M")
-
-
-def a_type(specification: AnchorTypeSpecification) -> AnchorTypeRecord:
-    """``specification`` as a stored row, refused here if the boundary would refuse it.
-
-    Every geometry below is therefore stated over a declaration a tenant could really hold. A
-    fixture the rules reject describes a shadow the product cannot cast, and a test reading one
-    asserts arithmetic against itself.
-    """
-    rules.validate(specification, declared_areas=DECLARED_AREAS, declared_sources=())
-    return AnchorTypeRecord(id=uuid4(), tenant_id=TENANT, rule_order=0, specification=specification)
-
-
-def an_anchor(
-    anchor_type: AnchorTypeRecord | None,
-    *,
-    start: Instant,
-    minutes: int = 45,
-    title: str = COMMITMENT,
-) -> AnchorRecord:
-    """One imported commitment carrying ``anchor_type``, or carrying none."""
-    return AnchorRecord(
-        id=uuid4(),
-        tenant_id=TENANT,
-        source_id=SOURCE,
-        external_uid=f"{title}@example.ac.uk",
-        series_uid=None,
-        title=title,
-        interval=Interval(start, start + timedelta(minutes=minutes)),
-        location=None,
-        anchor_type_id=None if anchor_type is None else anchor_type.id,
-        type_overridden=False,
-        possibly_stale=False,
-    )
-
-
-def spans(shadows: ShadowSet) -> tuple[tuple[str, str, str, str], ...]:
-    """Every member of ``shadows``, as the four things a reader of the grid can tell apart.
-
-    An inventory rather than a lookup: a claim about what a declaration does NOT cast is only
-    worth making against the whole of what it does.
-    """
-    blocks = tuple(
-        (
-            block.origin.value,
-            block.occurrence_key,
-            wall(block.interval.start),
-            wall(block.interval.end),
-        )
-        for block in shadows.blocks
-    )
-    windows = tuple(
-        (
-            window.kind.value,
-            window.scope.value,
-            wall(window.interval.start),
-            wall(window.interval.end),
-        )
-        for window in shadows.forbidden
-    )
-    return blocks + windows
-
-
-def keys(shadows: ShadowSet) -> tuple[tuple[str, str], ...]:
-    """Which products these blocks are, by origin and occurrence key."""
-    return tuple((block.origin.value, block.occurrence_key) for block in shadows.blocks)
-
-
-def an_interview_anchor(specification: AnchorTypeSpecification) -> tuple[AnchorRecord, ShadowSet]:
-    """The 16:00-16:45 commitment the records render, and the shadows ``specification`` casts."""
-    anchor_type = a_type(specification)
-    anchor = an_anchor(anchor_type, start=at(INTERVIEW_DAY, 16))
-    return anchor, generate(anchor, anchor_type)
 
 
 # --------------------------------------------------------------------------------
@@ -640,200 +559,6 @@ def test_a_lead_across_a_spring_forward_gap_is_elapsed_time_rather_than_wall_tim
 
 
 # --------------------------------------------------------------------------------
-# Two commitments close together.
-# --------------------------------------------------------------------------------
-
-
-def a_journey_only_type(*, lead: int, duration: int) -> AnchorTypeRecord:
-    """A declaration that casts one outbound leg and nothing else."""
-    return a_type(
-        replace(
-            NOTHING,
-            transit_lead_minutes=lead,
-            transit_duration_minutes=duration,
-            transit_area_id=TRANSIT,
-        )
-    )
-
-
-def a_prep_only_type(*, lead: int, duration: int) -> AnchorTypeRecord:
-    """A declaration that casts one prep block and nothing else."""
-    return a_type(
-        replace(
-            NOTHING, prep_lead_minutes=lead, prep_duration_minutes=duration, prep_area_id=CAREER
-        )
-    )
-
-
-def test_prep_gives_way_to_a_journey_even_when_prep_was_cast_first() -> None:
-    # The prep is cast by the EARLIER commitment, so cast order alone would keep it and drop the
-    # journey. Transit outranks prep because a journey that no longer meets its commitment is not
-    # a journey to it.
-    prepares = a_prep_only_type(lead=120, duration=120)
-    travels = a_journey_only_type(lead=60, duration=60)
-    pair = [
-        TypedAnchor(an_anchor(prepares, start=at(INTERVIEW_DAY, 11, 30), minutes=60), prepares),
-        TypedAnchor(an_anchor(travels, start=at(INTERVIEW_DAY, 12), minutes=60), travels),
-    ]
-
-    shadows = regenerate(pair)
-
-    assert spans(shadows) == (
-        ("prep", NO_OCCURRENCE, "Tue 2026-02-10 09:30", "Tue 2026-02-10 11:00"),
-        ("transit", "out", "Tue 2026-02-10 11:00", "Tue 2026-02-10 12:00"),
-    )
-
-
-def test_the_later_cast_journey_is_truncated_to_the_earlier_one() -> None:
-    earlier = a_journey_only_type(lead=120, duration=60)
-    later = a_journey_only_type(lead=210, duration=120)
-    pair = [
-        TypedAnchor(an_anchor(later, start=at(INTERVIEW_DAY, 13), minutes=60), later),
-        TypedAnchor(an_anchor(earlier, start=at(INTERVIEW_DAY, 12), minutes=60), earlier),
-    ]
-
-    shadows = regenerate(pair)
-
-    assert spans(shadows) == (
-        ("transit", "out", "Tue 2026-02-10 09:30", "Tue 2026-02-10 10:00"),
-        ("transit", "out", "Tue 2026-02-10 10:00", "Tue 2026-02-10 11:00"),
-    )
-
-
-def test_two_blocks_beginning_at_the_same_instant_drop_one_and_raise_nothing() -> None:
-    # A truncation to exactly the surviving block's start would ask for a zero-length interval,
-    # which the interval algebra refuses by construction. The block is dropped before any
-    # interval is built, so the collision answers rather than raises.
-    travels = a_journey_only_type(lead=120, duration=60)
-    prepares = a_prep_only_type(lead=360, duration=120)
-    pair = [
-        TypedAnchor(an_anchor(travels, start=at(INTERVIEW_DAY, 12), minutes=60), travels),
-        TypedAnchor(an_anchor(prepares, start=at(INTERVIEW_DAY, 16), minutes=60), prepares),
-    ]
-
-    shadows = regenerate(pair)
-
-    assert spans(shadows) == (("transit", "out", "Tue 2026-02-10 10:00", "Tue 2026-02-10 11:00"),)
-
-
-@pytest.mark.parametrize(
-    ("prep_lead", "prep_duration", "expected"),
-    [
-        (370, 40, ()),
-        (375, 45, (("prep", NO_OCCURRENCE, "Tue 2026-02-10 09:45", "Tue 2026-02-10 10:00"),)),
-    ],
-    ids=["ten-minutes-left-is-dropped", "one-grid-step-left-is-kept"],
-)
-def test_a_block_truncated_below_one_grid_step_is_dropped(
-    prep_lead: int, prep_duration: int, expected: tuple[tuple[str, str, str, str], ...]
-) -> None:
-    travels = a_journey_only_type(lead=120, duration=60)
-    prepares = a_prep_only_type(lead=prep_lead, duration=prep_duration)
-    pair = [
-        TypedAnchor(an_anchor(travels, start=at(INTERVIEW_DAY, 12), minutes=60), travels),
-        TypedAnchor(an_anchor(prepares, start=at(INTERVIEW_DAY, 16), minutes=60), prepares),
-    ]
-
-    shadows = regenerate(pair)
-    prep = tuple(span for span in spans(shadows) if span[0] == "prep")
-
-    assert prep == expected
-
-
-def test_a_short_block_that_collided_with_nothing_is_kept_whole() -> None:
-    # The grid step is the floor a TRUNCATION has to clear, not a minimum length for a buffer: a
-    # commitment and everything derived from it are exempt from the grid.
-    prepares = a_prep_only_type(lead=60, duration=SNAP_MINUTES - 10)
-    anchor = an_anchor(prepares, start=at(INTERVIEW_DAY, 12), minutes=60)
-
-    shadows = regenerate([TypedAnchor(anchor, prepares)])
-
-    assert spans(shadows) == (
-        ("prep", NO_OCCURRENCE, "Tue 2026-02-10 11:00", "Tue 2026-02-10 11:05"),
-    )
-
-
-def test_no_two_surviving_blocks_cover_the_same_minute() -> None:
-    # The property the truncation exists to hold, over four commitments whose leads deliberately
-    # reach across one another.
-    declarations = [
-        a_journey_only_type(lead=120, duration=60),
-        a_journey_only_type(lead=210, duration=120),
-        a_prep_only_type(lead=360, duration=180),
-        a_prep_only_type(lead=300, duration=90),
-    ]
-    hours = (12, 13, 16, 15)
-    anchors = [
-        TypedAnchor(an_anchor(declared, start=at(INTERVIEW_DAY, hour), minutes=60), declared)
-        for declared, hour in zip(declarations, hours, strict=True)
-    ]
-
-    blocks = regenerate(anchors).blocks
-
-    assert blocks
-    assert not [
-        (one, other)
-        for index, one in enumerate(blocks)
-        for other in blocks[index + 1 :]
-        if one.interval.overlaps(other.interval)
-    ]
-
-
-def test_two_windows_covering_the_same_minutes_are_both_kept_whole() -> None:
-    # Windows are not contested. Nothing is scheduled in one, so two commitments reserving the
-    # same time is a union rather than a collision, and each window still names its own
-    # commitment for the gutter.
-    quiet = a_type(replace(NOTHING, post_buffer_minutes=120, post_scope=FORBIDS_EVERYTHING))
-    pair = [
-        TypedAnchor(an_anchor(quiet, start=at(INTERVIEW_DAY, 16), minutes=60), quiet),
-        TypedAnchor(an_anchor(quiet, start=at(INTERVIEW_DAY, 17, 30), minutes=30), quiet),
-    ]
-
-    shadows = regenerate(pair)
-
-    assert spans(shadows) == (
-        ("recovery", "all", "Tue 2026-02-10 17:00", "Tue 2026-02-10 19:00"),
-        ("recovery", "all", "Tue 2026-02-10 18:00", "Tue 2026-02-10 20:00"),
-    )
-
-
-# --------------------------------------------------------------------------------
-# The spans a reader subtracts, unioned per scope.
-# --------------------------------------------------------------------------------
-
-
-def test_two_overlapping_absolute_windows_are_not_subtracted_twice() -> None:
-    quiet = a_type(replace(NOTHING, post_buffer_minutes=120, post_scope=FORBIDS_EVERYTHING))
-    pair = [
-        TypedAnchor(an_anchor(quiet, start=at(INTERVIEW_DAY, 16), minutes=60), quiet),
-        TypedAnchor(an_anchor(quiet, start=at(INTERVIEW_DAY, 17, 30), minutes=30), quiet),
-    ]
-
-    absolute = regenerate(pair).absolute_forbidden()
-
-    # 17:00 to 20:00 unioned. Summed, the two 120-minute windows would subtract 240.
-    assert len(absolute) == 1
-    assert absolute.total_minutes() == 3 * MINUTES_IN_AN_HOUR
-
-
-def test_a_window_scoped_to_named_areas_is_not_subtracted_from_the_denominator() -> None:
-    # Some Area can still claim that time, so it stays in the denominator and comes out of the
-    # per-Area read instead. Both halves are asserted, because the pair is the rule.
-    _, shadows = an_interview_anchor(ATTRIBUTED_INTERVIEW)
-
-    assert not shadows.absolute_forbidden()
-    assert shadows.forbidden_for(STUDY).total_minutes() == 75
-
-
-def test_an_unattributed_buffer_is_subtracted_like_a_window_that_forbids_everything() -> None:
-    _, shadows = an_interview_anchor(INTERVIEW)
-
-    # Prep and the leg have no Area to charge their minutes to, so no Area can claim those spans:
-    # 30 minutes each, and the areas-scoped recovery is not among them.
-    assert shadows.absolute_forbidden().total_minutes() == 60
-
-
-# --------------------------------------------------------------------------------
 # Regeneration is wholesale.
 # --------------------------------------------------------------------------------
 
@@ -908,13 +633,11 @@ def test_an_untyped_commitment_paired_with_a_type_is_refused() -> None:
 
 
 # --------------------------------------------------------------------------------
-# The two tables this file reads, against the inventory each is stated over.
+# The wording table, against the inventory it is stated over.
 # --------------------------------------------------------------------------------
 
 
 def test_every_forbidden_kind_has_a_reason_a_gutter_can_read() -> None:
+    # Bounded by the kinds a window may BE rather than by the three this file happens to build, so
+    # a fourth kind reds this rather than rendering a label nobody wrote.
     assert set(REASON_BY_KIND) == set(ForbiddenKind)
-
-
-def test_every_origin_a_shadow_block_can_carry_has_a_precedence() -> None:
-    assert set(shadow_collisions.PRECEDENCE_BY_ORIGIN) == DERIVED_ORIGINS
