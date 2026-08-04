@@ -231,6 +231,10 @@ class TestAWindowIsWallTimeOnTheGrid:
 
         assert refused.value.field is PreferenceField.WINDOWS
         assert "zone" in str(refused.value)
+        # The offending value is rendered as a time rather than as a Python repr. This message
+        # reaches a caller in a 422 on the read-back path, where the request validator has not
+        # already refused the offset.
+        assert "05:30:00+00:00" in str(refused.value)
 
     @pytest.mark.parametrize(
         "bound", [time(5, 30, 30), time(5, 30, 0, 250000)], ids=["seconds", "microseconds"]
@@ -365,6 +369,56 @@ class TestTheIdealDuration:
         narrow = LocalTimeWindow(start=time(5, 30), end=time(6, 0))
 
         assert a_preference(windows=(narrow,), preferred_duration_minutes=90) is not None
+
+
+class TestNoRefusalPutsAPythonReprOnTheWire:
+    """Every message this module raises reaches a caller in a 422, so none may carry type names.
+
+    Stated over every refusal that interpolates a value rather than over the one that leaked, so a
+    later bound added with ``{value!r}`` fails here rather than in a support ticket. A quoted STRING
+    is a different case and is fine: quoting a bad string is what a reader of it needs.
+    """
+
+    @staticmethod
+    def refusals() -> list[str]:
+        offenders = [
+            lambda: LocalTimeWindow(start=time(5, 30, tzinfo=UTC), end=time(7, 0)),
+            lambda: LocalTimeWindow(start=time(5, 30, 30), end=time(7, 0)),
+            lambda: LocalTimeWindow(start=time(5, 7), end=time(7, 0)),
+            lambda: LocalTimeWindow(start=time(23, 0), end=time(1, 0)),
+            lambda: a_preference(windows=(EARLY, LocalTimeWindow(time(6, 0), time(8, 0)))),
+            lambda: a_preference(
+                windows=tuple(
+                    LocalTimeWindow(start=time(hour, 0), end=time(hour, 30))
+                    for hour in range(MAX_WINDOWS + 1)
+                )
+            ),
+            lambda: a_preference(preferred_duration_minutes=10),
+            lambda: a_preference(preferred_duration_minutes=25),
+            lambda: a_preference(HABIT, max_per_day_minutes=180),
+            lambda: a_preference(AREA, max_per_day_minutes=14),
+        ]
+        found: list[str] = []
+        for offender in offenders:
+            with pytest.raises(PreferenceError) as refused:
+                offender()
+            found.append(str(refused.value))
+        return found
+
+    def test_every_refusal_was_collected(self) -> None:
+        # The control. Every assertion below iterates the collection, so on an empty one they
+        # would pass while proving nothing.
+        assert len(self.refusals()) == 10
+
+    def test_no_message_carries_a_python_type_name(self) -> None:
+        leaked = [message for message in self.refusals() if "datetime" in message]
+
+        assert leaked == []
+
+    def test_no_message_carries_a_keyword_argument(self) -> None:
+        leaked = [message for message in self.refusals() if "tzinfo" in message or "=" in message]
+
+        assert leaked == []
 
 
 class TestTheOwner:

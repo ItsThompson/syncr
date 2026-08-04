@@ -44,7 +44,7 @@ from itertools import pairwise
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.errors import DomainError
-from syncr_domain.snap import SNAP_MINUTES, is_wall_time_on_snap_grid
+from syncr_domain.snap import SNAP_MINUTES, is_a_snap_multiple, is_wall_time_on_snap_grid
 
 if TYPE_CHECKING:
     from syncr_domain.identifiers import AreaId, HabitId, TaskId
@@ -129,9 +129,10 @@ class LocalTimeWindow:
             if bound.tzinfo is not None:
                 raise PreferenceError(
                     PreferenceField.WINDOWS,
-                    f"a preferred window is wall time and names no zone, got {bound!r}. The zone "
-                    "comes from the date the window is resolved for, so an offset offered here "
-                    "would describe a different hour on every date it is read against",
+                    f"a preferred window is wall time and names no zone, got "
+                    f"{bound.isoformat()}. The zone comes from the date the window is resolved "
+                    "for, so an offset offered here would describe a different hour on every "
+                    "date it is read against",
                 )
             if bound.second or bound.microsecond:
                 raise PreferenceError(
@@ -141,15 +142,19 @@ class LocalTimeWindow:
                 )
             # The side this module takes on an open product question: a wall time the USER
             # chose owes the grid, because a placement does and a window is where the user
-            # asked for one. Tickets 1151 and 1161 hold the question for the whole product from
-            # opposite sides; if it resolves the other way, this call is the line that goes.
+            # asked for one. The rule rests on the PRD's own example being grid-aligned and on
+            # one rule holding wherever a user authors a wall time; the narrow window below is
+            # what makes it NECESSARY rather than what makes it sufficient. Tickets 1151 and
+            # 1161 hold the question for the whole product from opposite sides; if it resolves
+            # the other way, this call is the line that goes.
             if not is_wall_time_on_snap_grid(bound):
                 raise PreferenceError(
                     PreferenceField.WINDOWS,
                     f"a preferred window's bounds land on a quarter hour, got "
-                    f"{bound.isoformat()}. Every placement lands on the grid, so a window "
-                    f"narrower than a block would otherwise name a start no block may have. "
-                    f"Round it to the quarter hour the placement would take anyway",
+                    f"{bound.isoformat()}. Every placement lands on the grid, so a bound off it "
+                    f"names a time no block may start or end at, and a window narrower than a "
+                    f"block would name no legal placement at all. Round it to the quarter hour "
+                    f"the placement would take anyway",
                 )
         if self.start >= self.end:
             raise PreferenceError(
@@ -239,9 +244,8 @@ class Preference:
                 f"{MAX_PREFERRED_DURATION_MINUTES} minutes, got "
                 f"{self.preferred_duration_minutes}",
             )
-        if (
-            self.preferred_duration_minutes is not None
-            and self.preferred_duration_minutes % SNAP_MINUTES
+        if self.preferred_duration_minutes is not None and not is_a_snap_multiple(
+            self.preferred_duration_minutes
         ):
             raise PreferenceError(
                 PreferenceField.PREFERRED_DURATION,
