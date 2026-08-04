@@ -31,8 +31,9 @@ from starlette.requests import Request  # noqa: TC002
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
+from syncr_api.core.errors import DependencyUnavailable
 from syncr_api.google_account.config import TOKEN_TIMEOUT_SECONDS
-from syncr_api.google_account.crypto import TokenCipher
+from syncr_api.google_account.crypto import TokenCipher, is_published_key
 from syncr_api.google_account.oauth_client import GoogleOAuthClient
 from syncr_api.google_account.repository import GoogleCredentialRepository
 from syncr_api.google_account.service import GoogleConnectionService
@@ -45,6 +46,33 @@ if TYPE_CHECKING:
 
     from syncr_api.core.settings import ServiceSettings
     from syncr_domain.identifiers import TenantId
+
+# The one environment where the published key may encrypt a token. Compared here rather than read
+# off a settings predicate, because ``ServiceSettings`` deliberately carries the environment's NAME
+# and no predicate: one definition of "is development", in the class that produced the value.
+DEVELOPMENT = "development"
+
+
+PUBLISHED_KEY_DETAIL = (
+    "GOOGLE_TOKEN_ENCRYPTION_KEY is still the development default, which this repository "
+    "publishes, so a stored Google refresh token would be readable by anyone who can read the "
+    "source. Set a real key from the host secret file and restart. Every ICS feed still syncs, the "
+    "plan still solves, and any Google calendar already connected still reads."
+)
+
+
+def build_cipher(settings: ServiceSettings) -> TokenCipher:
+    """The cipher this deployment stores refresh tokens with, or a stated refusal.
+
+    The published-key rule lives HERE, at the composition that is about to hand a cipher to code
+    that encrypts, rather than in settings. Settings are constructed by every process, every test,
+    and ``alembic``, so a refusal there fails boots that never touch a token; a refusal here fails
+    exactly the requests that would store one, and says what still works.
+    """
+    key = settings.google_token_encryption_key.get_secret_value()
+    if is_published_key(key) and settings.environment.lower() != DEVELOPMENT:
+        raise DependencyUnavailable(PUBLISHED_KEY_DETAIL)
+    return TokenCipher(key)
 
 
 def create_google_client() -> httpx.AsyncClient:
@@ -90,7 +118,7 @@ def build_access_tokens(
     return GoogleAccessTokens(
         credentials=GoogleCredentialRepository(session, tenant_id),
         oauth=build_oauth_client(settings, client),
-        cipher=TokenCipher(settings.google_token_encryption_key.get_secret_value()),
+        cipher=build_cipher(settings),
         clock=utc_now,
     )
 
@@ -107,7 +135,7 @@ async def get_google_connection_service(
         credentials=GoogleCredentialRepository(transaction, principal.tenant_id),
         sources=CalendarSourceRepository(transaction, principal.tenant_id),
         oauth=build_oauth_client(settings, client),
-        cipher=TokenCipher(settings.google_token_encryption_key.get_secret_value()),
+        cipher=build_cipher(settings),
         client_id=settings.google_oauth_client_id,
         redirect_uri=settings.google_oauth_redirect_uri,
         state_secret=settings.session_signing_secret.get_secret_value(),

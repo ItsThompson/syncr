@@ -18,6 +18,7 @@ from __future__ import annotations
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from syncr_api.core.errors import DependencyUnavailable
 from syncr_api.core.settings import (
     API_SERVICE,
     DEV_GOOGLE_TOKEN_ENCRYPTION_KEY,
@@ -25,6 +26,7 @@ from syncr_api.core.settings import (
     build_service_settings,
 )
 from syncr_api.google_account.crypto import TokenCipher
+from syncr_api.google_account.injection import build_cipher
 
 CLIENT_ID = "581707053568-example.apps.googleusercontent.com"
 CALLBACK = "http://localhost:8000/api/v1/calendar-sources/google/callback"
@@ -55,9 +57,49 @@ def test_development_gets_a_token_key_that_works_so_a_fresh_clone_can_connect() 
     assert env().google_token_encryption_key.get_secret_value() == DEV_GOOGLE_TOKEN_ENCRYPTION_KEY
 
 
-def test_the_development_token_key_is_refused_where_a_google_client_exists() -> None:
-    with pytest.raises(ValidationError, match="still the development default"):
-        deployed(google_oauth_client_id=CLIENT_ID)
+def test_the_published_default_is_refused_where_a_token_would_be_stored() -> None:
+    # The rule is at the COMPOSITION that builds a cipher, not at settings: this class is built by
+    # every process, every test and `alembic`, against whatever the root env file holds, so a
+    # refusal here failed boots that store no token at all. Measured, and it is what broke a
+    # production-shaped boot for a whole wave.
+    settings = build_service_settings(
+        service=API_SERVICE, env=deployed(google_oauth_client_id=CLIENT_ID)
+    )
+
+    with pytest.raises(DependencyUnavailable, match="GOOGLE_TOKEN_ENCRYPTION_KEY"):
+        build_cipher(settings)
+
+
+def test_the_published_default_encrypts_in_development() -> None:
+    # A fresh clone connects Google without generating a key first, which is the whole reason a
+    # default exists.
+    settings = build_service_settings(
+        service=API_SERVICE, env=env(google_oauth_client_id=CLIENT_ID)
+    )
+
+    assert build_cipher(settings).decrypt(build_cipher(settings).encrypt("1//x")) == "1//x"
+
+
+def test_a_deployment_that_supplied_a_key_gets_a_cipher() -> None:
+    settings = build_service_settings(
+        service=API_SERVICE,
+        env=deployed(google_oauth_client_id=CLIENT_ID, google_token_encryption_key=DEPLOYMENT_KEY),
+    )
+
+    assert build_cipher(settings).encrypt("1//x")
+
+
+def test_settings_construct_in_every_environment_from_a_stock_checkout() -> None:
+    # The regression this pair of rules caused for seven concurrent agents: `EnvSettings()` has to
+    # be constructable whatever the environment says and whatever the root env file holds, because
+    # nothing it does stores a token.
+    for environment in ("development", "test", "staging", "production"):
+        settings = env(
+            environment=environment,
+            session_signing_secret=DEPLOYMENT_SECRET,
+            google_oauth_client_id=CLIENT_ID,
+        )
+        assert settings.environment == environment
 
 
 def test_the_development_token_key_is_a_key_that_can_actually_encrypt() -> None:
@@ -103,20 +145,22 @@ def test_a_token_key_that_cannot_encrypt_is_refused_by_name(unusable: str) -> No
     # consented in a browser: the flow would fail at the one point where retrying means consenting
     # again.
     with pytest.raises(ValidationError, match="GOOGLE_TOKEN_ENCRYPTION_KEY is not a Fernet key"):
-        env(google_oauth_client_id=CLIENT_ID, google_token_encryption_key=unusable)
+        env(google_token_encryption_key=unusable)
 
 
 def test_the_token_key_failure_names_how_to_generate_one() -> None:
     with pytest.raises(ValidationError) as refused:
-        env(google_oauth_client_id=CLIENT_ID, google_token_encryption_key="typo")
+        env(google_token_encryption_key="typo")
 
     assert "Fernet.generate_key" in str(refused.value)
 
 
-def test_an_unusable_token_key_is_ignored_where_no_client_reads_it() -> None:
-    # The check is gated on the client id for the same reason the default-refusal is: a deployment
-    # with no Google client never reads this value.
-    assert env(google_token_encryption_key="typo").google_oauth_client_id == ""
+def test_a_key_that_cannot_encrypt_is_refused_whether_or_not_a_client_exists() -> None:
+    # Not gated on a second variable, unlike the published-key rule that moved out of settings: a
+    # value that is not a key is wrong on its own terms, and the alternative is failing at the first
+    # token write, which is after the user has consented in a browser.
+    with pytest.raises(ValidationError, match="not a Fernet key"):
+        env(google_token_encryption_key="typo")
 
 
 def test_neither_google_secret_is_in_a_repr_or_a_dump() -> None:

@@ -21,7 +21,22 @@ from dataclasses import dataclass
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from syncr_api.core.settings import DEV_GOOGLE_TOKEN_ENCRYPTION_KEY
 from syncr_api.google_account.config import REFRESH_TOKEN_MAX_LENGTH
+
+
+def is_published_key(key: str) -> bool:
+    """Whether this key is the development default, which this repository publishes.
+
+    A refresh token encrypted under a key any reader of the repository holds is a refresh token in
+    the clear, and a refresh token is standing authority to read every calendar in the account and
+    to overwrite the one syncr owns.
+
+    Asked where a token is about to be encrypted rather than where settings are loaded. Settings are
+    constructed by every process, every test, and ``alembic``, against whatever the root env file
+    holds; refusing there would fail a boot that stores nothing, which is what it did.
+    """
+    return key == DEV_GOOGLE_TOKEN_ENCRYPTION_KEY
 
 
 class RefreshTokenTooLong(ValueError):

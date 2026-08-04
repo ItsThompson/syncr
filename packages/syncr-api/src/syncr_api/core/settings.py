@@ -73,14 +73,18 @@ DEV_OAUTH_KEY_ENCRYPTION_KEY = (
 # The key a stored Google refresh token is encrypted with at rest. Its own value rather than
 # the OAuth signing key's, because the two rotate on different schedules and for different
 # reasons: rotating the signing key retires a JWKS entry, and rotating this one costs the user
-# a reconnect. Same shape of rule as the pair above, and refused outside development whenever
-# a Google client is configured, because a refresh token encrypted under a key from this
-# repository is a refresh token in the clear.
+# a reconnect.
 #
 # A Fernet key is 32 bytes as URL-safe base64, so this one is the ASCII of its own purpose at
-# exactly that length. A development default that is not a usable key would fail the boot of every
-# development machine that configures a Google client, which is the check below doing its job
-# against the value this file supplies.
+# exactly that length: a development default that is not a usable key would fail at the first
+# token write rather than at load, which is after the user has consented in a browser.
+#
+# **Whether this published value may be USED is decided where a token is encrypted, not here.**
+# `syncr_api.google_account.crypto.is_published_key` is that check, and the composition that
+# builds a cipher refuses outside development. It is not a settings rule because the condition
+# that makes the key dangerous is another variable's value, and this class is constructed by
+# every process, every test, and `alembic`, against whatever the root env file happens to hold:
+# a cross-variable refusal here fails a boot that stores nothing.
 DEV_GOOGLE_TOKEN_ENCRYPTION_KEY = "ZGV2LW9ubHktZ29vZ2xlLXRva2VuLWVuY3J5cHQta2U="  # noqa: S105 # pragma: allowlist secret
 
 # How to produce a real key-encryption key, named in the failure message for the same
@@ -223,39 +227,15 @@ class EnvSettings(SyncrSettings):
         return self
 
     @model_validator(mode="after")
-    def _refuse_the_development_google_token_key_elsewhere(self) -> EnvSettings:
-        """Fail construction rather than store a refresh token under a published key.
-
-        Gated on a Google client being configured, for the same reason the signing-key rule is
-        gated on a key file: with no client there is no connect flow, so nothing is encrypted
-        with this value and refusing the boot would break a deployment that does not use Google.
-
-        A refresh token is the standing authority to write the user's calendar, so this is the
-        one secret whose compromise is silent: the plan keeps reaching the phone while somebody
-        else can rewrite it.
-        """
-        if self.is_dev or not self.google_oauth_client_id:
-            return self
-        if self.google_token_encryption_key.get_secret_value() == DEV_GOOGLE_TOKEN_ENCRYPTION_KEY:
-            message = (
-                "GOOGLE_TOKEN_ENCRYPTION_KEY is still the development default in "
-                f"environment={self.environment!r}, so every stored Google refresh token is "
-                f"effectively unencrypted. {_GENERATE_ENCRYPTION_KEY_HINT}"
-            )
-            raise ValueError(message)
-        return self
-
-    @model_validator(mode="after")
     def _refuse_a_google_token_key_that_cannot_encrypt(self) -> EnvSettings:
         """Fail construction rather than discover a truncated paste at the first connect.
 
-        Checked only where a client exists, so a deployment that does not use Google is not
-        asked for a key it never reads. Without this the value is carried as far as the first
-        token write, which is after the user has consented in a browser: the flow would fail
-        at the one point where retrying means consenting again.
+        Checked whenever a value is set at all, and NOT gated on any other variable: this class is
+        constructed by every process, every test, and ``alembic``, so a rule that read a second
+        variable would fail a boot for a value that boot never uses. A key that cannot encrypt is
+        different: it is wrong on its own terms, and the alternative is failing at the first token
+        write, which is after the user has consented in a browser.
         """
-        if not self.google_oauth_client_id:
-            return self
         try:
             Fernet(self.google_token_encryption_key.get_secret_value().encode("ascii"))
         except (ValueError, UnicodeEncodeError) as unusable:
