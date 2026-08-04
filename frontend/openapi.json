@@ -835,7 +835,7 @@
             "description": "How much placing the work outside a preferred window costs. Both values are objective costs rather than constraints, so neither can leave a block unscheduled; 'strong' costs an order of magnitude more to violate than 'soft'. There is no 'hard': a temporal rule with a conditional escape is not a hard rule. Required even when no window is declared, in which case nothing weighs it."
           },
           "windows": {
-            "description": "The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.",
+            "description": "The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list means this owner names no time of day, and on a habit's or a task's preference that is a statement rather than an omission, because a preference replaces its Area's windows wholly: it means this one thing has no preferred time even though the rest of its Area does. Required and not defaulted, so a forgotten key is refused rather than read as that statement: opting one habit out of its Area's windows is a placement decision and has to be made on purpose.",
             "items": {
               "$ref": "#/components/schemas/TimeWindowRequest"
             },
@@ -845,6 +845,7 @@
           }
         },
         "required": [
+          "windows",
           "strength"
         ],
         "title": "AreaPreferenceRequest",
@@ -1724,7 +1725,7 @@
             "description": "How much placing the work outside a preferred window costs. Both values are objective costs rather than constraints, so neither can leave a block unscheduled; 'strong' costs an order of magnitude more to violate than 'soft'. There is no 'hard': a temporal rule with a conditional escape is not a hard rule. Required even when no window is declared, in which case nothing weighs it."
           },
           "windows": {
-            "description": "The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.",
+            "description": "The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list means this owner names no time of day, and on a habit's or a task's preference that is a statement rather than an omission, because a preference replaces its Area's windows wholly: it means this one thing has no preferred time even though the rest of its Area does.",
             "items": {
               "$ref": "#/components/schemas/TimeWindowResponse"
             },
@@ -1789,7 +1790,7 @@
             "description": "How much placing the work outside a preferred window costs. Both values are objective costs rather than constraints, so neither can leave a block unscheduled; 'strong' costs an order of magnitude more to violate than 'soft'. There is no 'hard': a temporal rule with a conditional escape is not a hard rule. Required even when no window is declared, in which case nothing weighs it."
           },
           "windows": {
-            "description": "The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.",
+            "description": "The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list means this owner names no time of day, and on a habit's or a task's preference that is a statement rather than an omission, because a preference replaces its Area's windows wholly: it means this one thing has no preferred time even though the rest of its Area does.",
             "items": {
               "$ref": "#/components/schemas/TimeWindowResponse"
             },
@@ -2851,7 +2852,7 @@
             "description": "How much placing the work outside a preferred window costs. Both values are objective costs rather than constraints, so neither can leave a block unscheduled; 'strong' costs an order of magnitude more to violate than 'soft'. There is no 'hard': a temporal rule with a conditional escape is not a hard rule. Required even when no window is declared, in which case nothing weighs it."
           },
           "windows": {
-            "description": "The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.",
+            "description": "The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list means this owner names no time of day, and on a habit's or a task's preference that is a statement rather than an omission, because a preference replaces its Area's windows wholly: it means this one thing has no preferred time even though the rest of its Area does. Required and not defaulted, so a forgotten key is refused rather than read as that statement: opting one habit out of its Area's windows is a placement decision and has to be made on purpose.",
             "items": {
               "$ref": "#/components/schemas/TimeWindowRequest"
             },
@@ -2861,6 +2862,7 @@
           }
         },
         "required": [
+          "windows",
           "strength"
         ],
         "title": "OverridePreferenceRequest",

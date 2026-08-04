@@ -1606,9 +1606,9 @@ export interface components {
             strength: components["schemas"]["PreferenceStrength"];
             /**
              * Windows
-             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.
+             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list means this owner names no time of day, and on a habit's or a task's preference that is a statement rather than an omission, because a preference replaces its Area's windows wholly: it means this one thing has no preferred time even though the rest of its Area does. Required and not defaulted, so a forgotten key is refused rather than read as that statement: opting one habit out of its Area's windows is a placement decision and has to be made on purpose.
              */
-            windows?: components["schemas"]["TimeWindowRequest"][];
+            windows: components["schemas"]["TimeWindowRequest"][];
         };
         /**
          * AreaResponse
@@ -2090,7 +2090,7 @@ export interface components {
             strength: components["schemas"]["PreferenceStrength"];
             /**
              * Windows
-             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.
+             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list means this owner names no time of day, and on a habit's or a task's preference that is a statement rather than an omission, because a preference replaces its Area's windows wholly: it means this one thing has no preferred time even though the rest of its Area does.
              */
             windows: components["schemas"]["TimeWindowResponse"][];
         };
@@ -2128,7 +2128,7 @@ export interface components {
             strength: components["schemas"]["PreferenceStrength"];
             /**
              * Windows
-             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.
+             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list means this owner names no time of day, and on a habit's or a task's preference that is a statement rather than an omission, because a preference replaces its Area's windows wholly: it means this one thing has no preferred time even though the rest of its Area does.
              */
             windows: components["schemas"]["TimeWindowResponse"][];
         };
@@ -2636,9 +2636,9 @@ export interface components {
             strength: components["schemas"]["PreferenceStrength"];
             /**
              * Windows
-             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list is legal and on a habit's or a task's preference it is a statement rather than an omission, because a preference replaces its Area's windows wholly: no windows means this one thing has no preferred time even though the rest of its Area does.
+             * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list means this owner names no time of day, and on a habit's or a task's preference that is a statement rather than an omission, because a preference replaces its Area's windows wholly: it means this one thing has no preferred time even though the rest of its Area does. Required and not defaulted, so a forgotten key is refused rather than read as that statement: opting one habit out of its Area's windows is a placement decision and has to be made on purpose.
              */
-            windows?: components["schemas"]["TimeWindowRequest"][];
+            windows: components["schemas"]["TimeWindowRequest"][];
         };
         /**
          * PeriodSpan
