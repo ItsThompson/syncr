@@ -27,6 +27,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
+from syncr_api.areas.config import AREAS_PREFIX
 from syncr_api.budgets.config import BUDGET_PREFIX, PERIOD_PARAMETER
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
@@ -373,6 +374,67 @@ def test_a_retried_declaration_replays_rather_than_declaring_a_second_period(
     assert first.status_code == HTTPStatus.CREATED, first.text
     assert second.status_code == HTTPStatus.CREATED, second.text
     assert second.json() == first.json()
+    assert len(period_rows(live_database_url, owner.tenant_id)) == 1
+
+
+@pytest.mark.parametrize(
+    "span",
+    [
+        {"start": "2026-10-23T13:00:00", "end": "2026-10-26T09:00:00Z"},
+        {"start": "2026-10-23T13:00:00Z", "end": "2026-10-26T09:00:00"},
+        {"start": "2026-10-23", "end": "2026-10-26"},
+    ],
+    ids=["naive_start", "naive_end", "date_only"],
+)
+def test_a_bound_that_names_no_instant_is_refused(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    span: dict[str, str],
+) -> None:
+    # A wall time with no offset names no instant: 14:00 on the Friday the clocks change is two
+    # different moments depending on the zone, and a period stored from one would subtract the
+    # wrong hour from the denominator. Every bound reaches the domain through `Interval`, whose
+    # `as_instant` refuses a naive datetime, so the rejection is a stated 422 rather than a row
+    # holding an instant the caller did not mean. A date with no time is the same case.
+    answered = http.post(OFF_PLAN, json=span, headers=signed_in)
+
+    assert answered.status_code == ValidationFailed.status, answered.text
+    assert "names no instant" in answered.json()["detail"]
+    assert period_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_both_bounds_are_echoed_with_an_offset(http: TestClient, signed_in: dict[str, str]) -> None:
+    # The wire carries an offset in both directions. A response instant without one would be read
+    # in the reader's own zone, which is the same defect as accepting one without an offset.
+    _, created = declare(http, signed_in)
+
+    assert created["start"].endswith("Z")
+    assert created["end"].endswith("Z")
+    listed = http.get(OFF_PLAN, headers=signed_in).json()["periods"]
+    assert [period["start"].endswith("Z") for period in listed] == [True]
+
+
+def test_one_idempotency_key_is_scoped_to_the_route_that_used_it(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # A key is claimed per tenant, per ROUTE, so the same key on another resource is not a replay
+    # of this one: an agent that reuses a key across two calls gets both writes, and only the
+    # repeat of THIS route replays. Asserted here because a replay across resources would answer
+    # 201 with this period's body while the other resource was never written.
+    keyed = {**signed_in, IDEMPOTENCY_KEY_HEADER: str(uuid4())}
+
+    declared = http.post(OFF_PLAN, json=FRIDAY_TO_MONDAY, headers=keyed)
+    other_resource = http.post(AREAS_PREFIX, json={"name": "Fitness"}, headers=keyed)
+    repeated = http.post(OFF_PLAN, json=FRIDAY_TO_MONDAY, headers=keyed)
+
+    assert declared.status_code == HTTPStatus.CREATED, declared.text
+    # The Area was created rather than answered with the period's body.
+    assert other_resource.status_code == HTTPStatus.CREATED, other_resource.text
+    assert other_resource.json()["area"]["name"] == "Fitness"
+    # And the repeat of this route replays this route's own answer.
+    assert repeated.json() == declared.json()
     assert len(period_rows(live_database_url, owner.tenant_id)) == 1
 
 
