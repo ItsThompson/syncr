@@ -205,7 +205,7 @@ export function AnchorTypeEditor({ type, areas, write }: AnchorTypeEditorProps) 
 
       {/* The three-way choice is rendered as well as announced, because the words ARE the control: a reader
        * deciding what a recovery window forbids has to see the question. The kit's radio group takes its name
-       * as a string, so a screen reader hears it twice. Deferral 1240. */}
+       * as a string, so a screen reader hears it twice, which ticket 1240 closes. */}
       <p className="text-label tracking-label uppercase text-text-muted">{POST_SCOPE_QUESTION}</p>
       <Radio
         label={POST_SCOPE_QUESTION}

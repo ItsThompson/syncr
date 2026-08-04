@@ -76,7 +76,7 @@ export function EntryEditor({ areas, routines, habits, write }: EntryEditorProps
 
       {/* The question is rendered as well as announced. The kit's radio group takes its name as a string, so
        * a sighted reader gets no heading unless the words are also drawn; a screen reader hears them twice,
-       * which is the cost of a group that cannot be pointed at an existing label. Deferral 1240. */}
+       * which is the cost of a group that cannot be pointed at an existing label. Ticket 1240 closes it. */}
       <p className="text-label tracking-label uppercase text-text-muted">Kind</p>
       <Radio
         label="Kind"
