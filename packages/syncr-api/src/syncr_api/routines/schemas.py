@@ -52,18 +52,28 @@ _TARGET_TIME_DESCRIPTION = (
     "against the zone active on each day. Minute resolution, and an offset is refused."
 )
 _DURATION_DESCRIPTION = (
-    f"How long the routine runs, {MIN_DURATION_MINUTES} to {MAX_DURATION_MINUTES} minutes. "
-    "Required, because a routine is a span rather than a marker: without a duration there is "
-    "nothing to subtract from the day and discretionary time cannot be computed. The upper "
-    "bound is a day, because a routine materializes once per local date."
+    f"How long the routine runs, {MIN_DURATION_MINUTES} to {MAX_DURATION_MINUTES} minutes. A "
+    "routine is a span rather than a marker, so a creation without one is refused rather than "
+    "defaulted: with no duration there is nothing to subtract from the day and discretionary "
+    "time cannot be computed. The upper bound is the day the routine names."
 )
+_DURATION_ON_PATCH = f"{_DURATION_DESCRIPTION} Left out, the stored duration is unchanged."
 _MIN_DURATION_DESCRIPTION = (
     "The elastic floor: how far the routine may be compressed, at most its target duration. "
     "On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may "
     "propose spending and may never spend silently, and it lives nowhere else: there is no "
-    "settings field for it. Unstated on creation it equals the target duration, which makes "
-    "the routine inelastic, and a routine whose floor equals its target is never offered as a "
+    "settings field for it. A routine whose floor equals its target is never offered as a "
     "reduction."
+)
+# The same field means something different on each shape when it is left out, so the two
+# request descriptions say which, and the response carries neither clause.
+_MIN_DURATION_ON_CREATE = (
+    f"{_MIN_DURATION_DESCRIPTION} Left out, it equals the target duration, which makes the "
+    "routine inelastic."
+)
+_MIN_DURATION_ON_PATCH = (
+    f"{_MIN_DURATION_DESCRIPTION} Left out, the stored floor is unchanged. Lowering the "
+    "target below the stored floor is refused, so send both fields when both have to move."
 )
 _FLEX_BAND_DESCRIPTION = (
     f"How far a placement may SHIFT the routine from its target time, 0 to "
@@ -79,11 +89,12 @@ _NOT_NULLABLE_MESSAGE = (
 
 
 def _refuse_a_time_that_is_not_wall_time(value: time) -> time:
-    """Refuse a target time that names a zone or a second.
+    """Refuse a target time that names a zone or a second, at the boundary.
 
-    An offset would be dropped by the column and the frame would sit in the wrong hour with
-    nothing to say so. A second would survive, and every duration in this module is in minutes,
-    so the stored span would be a minute-count of an interval that does not start on a minute.
+    ``RoutineSpan`` refuses the same two shapes, so this is not the only line: what it adds is
+    a 422 naming the request's own field, where the span's refusal would arrive as one naming
+    the entity's. An offset would otherwise be dropped by the column and the frame would sit in
+    the wrong hour with nothing to say so.
     """
     if value.tzinfo is not None:
         raise ValueError(
@@ -149,7 +160,7 @@ class RoutineCreateRequest(WireModel):
         default=None,
         ge=MIN_DURATION_MINUTES,
         le=MAX_DURATION_MINUTES,
-        description=_MIN_DURATION_DESCRIPTION,
+        description=_MIN_DURATION_ON_CREATE,
     )
     flex_band_minutes: int = Field(
         default=0, ge=0, le=MAX_FLEX_BAND_MINUTES, description=_FLEX_BAND_DESCRIPTION
@@ -180,13 +191,13 @@ class RoutinePatchRequest(WireModel):
         default=None,
         ge=MIN_DURATION_MINUTES,
         le=MAX_DURATION_MINUTES,
-        description=_DURATION_DESCRIPTION,
+        description=_DURATION_ON_PATCH,
     )
     min_duration_minutes: int | None = Field(
         default=None,
         ge=MIN_DURATION_MINUTES,
         le=MAX_DURATION_MINUTES,
-        description=_MIN_DURATION_DESCRIPTION,
+        description=_MIN_DURATION_ON_PATCH,
     )
     flex_band_minutes: int | None = Field(
         default=None, ge=0, le=MAX_FLEX_BAND_MINUTES, description=_FLEX_BAND_DESCRIPTION

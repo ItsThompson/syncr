@@ -69,9 +69,11 @@ def upgrade() -> None:
         sa.Column("flex_band_minutes", sa.SmallInteger(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("tenant_id", sa.Uuid(), nullable=False),
-        # Without a duration there is nothing to subtract from the day. The upper bound is a day,
-        # because a routine materializes once per local date and a longer span would overlap its
-        # own next occurrence.
+        # Without a duration there is nothing to subtract from the day. The upper bound is the
+        # day the routine names, and it is a cap rather than a guarantee: it does not keep an
+        # occurrence clear of its own next one, and no cap can, because a 23-hour
+        # spring-forward day makes a 1440-minute span overlap the next date's. Frame overlap
+        # belongs to the week assembler.
         sa.CheckConstraint(
             "duration_minutes BETWEEN 1 AND 1440", name=op.f("ck_routines_duration_is_a_span")
         ),

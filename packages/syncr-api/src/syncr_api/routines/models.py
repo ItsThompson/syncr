@@ -53,8 +53,11 @@ class RoutineRow(Base, TenantScoped):
     __tablename__ = ROUTINES_TABLE
     __table_args__ = (
         # A routine is a span, not a marker: without a duration there is nothing to subtract
-        # from the day. The upper bound is a day, because a routine materializes once per local
-        # date and a longer span would overlap its own next occurrence.
+        # from the day. The upper bound is the day the routine names, and it is a cap rather
+        # than a guarantee: it does not keep an occurrence clear of its own next one, and no
+        # cap can, because a 23-hour spring-forward day makes a 1440-minute span overlap the
+        # next date's and a date a zone skips gives two dates one instant. The week assembler
+        # owns frame overlap.
         CheckConstraint(
             f"duration_minutes BETWEEN {MIN_DURATION_MINUTES} AND {MAX_DURATION_MINUTES}",
             name="duration_is_a_span",
