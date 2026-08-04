@@ -13,6 +13,7 @@ that pair is what makes "bump when the pattern covers it" a different rule from 
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, time
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -49,6 +50,7 @@ from syncr_domain.templates import BindingTarget, EntrySpan, TemplateEntryKind, 
 from syncr_domain.weeks import IsoWeek, Weekday
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from decimal import Decimal
 
     from syncr_api.templates.declarations import EntryContent
@@ -165,9 +167,8 @@ class FakeTemplateRepository(TemplateRepository):
                 )
 
     def _replace(
-        self, template_id: TemplateId, change: object
-    ) -> None:  # pragma: no cover - typed below
-        assert callable(change)
+        self, template_id: TemplateId, change: Callable[[TemplateRecord], TemplateRecord]
+    ) -> None:
         self.rows = [change(row) if row.id == template_id else row for row in self.rows]
 
 
@@ -527,14 +528,21 @@ async def test_a_slot_stores_its_area_and_no_binding(principal: Principal, wirin
     assert added.binding_ref is None
 
 
-async def test_a_slot_naming_an_area_this_tenant_does_not_have_is_refused(
-    principal: Principal, wiring: Wiring
+@pytest.mark.parametrize("kind", ["concrete", "slot"])
+async def test_an_entry_naming_an_area_this_tenant_does_not_have_is_refused(
+    principal: Principal, wiring: Wiring, kind: str
 ) -> None:
+    # Both kinds may name an Area: a slot must, and a concrete entry may for reporting. So both
+    # are checked, and testing one would leave the other's guard free to be deleted.
     day_type = await wiring.a_day_type(principal)
     shape = await wiring.a_shape(principal, day_type)
+    unknown = uuid4()
+    declaration = (
+        a_slot(unknown) if kind == "slot" else replace(a_concrete_entry(), area_id=unknown)
+    )
 
     with pytest.raises(ValidationFailed) as refused:
-        await wiring.template_service.add_entry(principal, shape.id, a_slot(uuid4()))
+        await wiring.template_service.add_entry(principal, shape.id, declaration)
 
     assert refused.value.errors is not None
     assert [error.field for error in refused.value.errors] == ["areaId"]

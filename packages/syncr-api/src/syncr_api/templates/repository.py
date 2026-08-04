@@ -22,6 +22,7 @@ No method commits. One request is one transaction, opened and committed by
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -180,10 +181,10 @@ class TemplateRepository(TenantScopedRepository):
         if template_id is not None:
             statement = statement.where(TemplateEntryRow.template_id == template_id)
         found = await self._session.scalars(statement)
-        by_shape: dict[TemplateId, tuple[TemplateEntryRecord, ...]] = {}
+        by_shape: defaultdict[TemplateId, list[TemplateEntryRecord]] = defaultdict(list)
         for row in found:
-            by_shape[row.template_id] = (*by_shape.get(row.template_id, ()), _as_entry(row))
-        return by_shape
+            by_shape[row.template_id].append(_as_entry(row))
+        return {template: tuple(entries) for template, entries in by_shape.items()}
 
 
 class WeekPatternRepository(TenantScopedRepository):

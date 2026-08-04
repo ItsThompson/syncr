@@ -22,7 +22,7 @@ a duration in minutes, with no date and no zone.
 materialize a block starting or ending between two of the grid's lines is refused where the
 user can still fix it rather than at solve time, where the entry is already fixed by
 derivation. :class:`syncr_domain.routines.RoutineSpan` declares the same pair and reads
-neither: whether the frame owes the grid is decided there, not here.
+neither. The two are checked differently today.
 """
 
 from __future__ import annotations

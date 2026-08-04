@@ -62,10 +62,12 @@ def require_a_declared_day_type(day_type_id: DayTypeId, existing: Sequence[DayTy
 
 
 def require_an_unused_day_type_name(name: str, existing: Sequence[DayTypeRecord]) -> None:
-    """Refuse a name another day type already holds.
+    """Refuse a name another day type already holds, compared exactly.
 
     The week pattern's seven rows and the template list both identify a day type by its name, so
-    two holding one name would leave the user choosing between two identical rows.
+    two holding the same one leaves the user choosing between identical rows. The comparison is
+    exact, so ``Weekday`` and ``weekday`` are two names: normalizing user text is a decision for
+    every named row in the product rather than for this one.
     """
     if any(day_type.name == name for day_type in existing):
         raise Conflict(

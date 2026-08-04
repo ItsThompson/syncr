@@ -608,6 +608,39 @@ def test_a_null_shape_name_is_refused_rather_than_read_as_no_change(
     assert http.get(f"{TEMPLATES}/{shape}", headers=signed_in).json()["name"] == "Weekday shape"
 
 
+@pytest.mark.parametrize(
+    ("body", "field"),
+    [
+        ({"targetTime": "06:45:00", "durationMinutes": 50}, "durationMinutes"),
+        ({"targetTime": "07:05:00"}, "targetTime"),
+        ({"targetTime": "07:00:00+01:00"}, "targetTime"),
+    ],
+    ids=[
+        "a duration that is not whole steps",
+        "a target time between two quarter hours",
+        "a target time carrying an offset the column cannot store",
+    ],
+)
+def test_a_patch_that_would_leave_a_span_unstorable_is_refused(
+    http: TestClient, signed_in: dict[str, str], body: dict[str, Any], field: str
+) -> None:
+    # The second write path. The merge rebuilds the span, so the same guard answers for a PATCH
+    # as for a POST, and the stored row is the assertion that it answered before the write.
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+    entry = http.post(
+        f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in
+    ).json()
+
+    refused = http.patch(f"{TEMPLATES}/{shape}/entries/{entry['id']}", json=body, headers=signed_in)
+
+    assert refused.status_code == ValidationFailed.status, refused.text
+    assert [error["field"] for error in refused.json()["errors"]] == [field]
+    stored = http.get(f"{TEMPLATES}/{shape}", headers=signed_in).json()["entries"][0]
+    assert stored["targetTime"] == A_CONCRETE_ENTRY["targetTime"]
+    assert stored["durationMinutes"] == A_CONCRETE_ENTRY["durationMinutes"]
+
+
 def test_removing_a_shape_removes_its_entries(
     http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
 ) -> None:
