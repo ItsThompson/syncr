@@ -1,0 +1,392 @@
+/* Layer 2: the charts.
+ *
+ * AREA INK ENCODES IDENTITY. COBALT ENCODES MAGNITUDE AND DIRECTION. That single rule assigns every chart in the
+ * product: a pie and a stacked bar carry Area ink, because composition is the reading; a deviation bar, a data
+ * bar and a bounded meter are cobalt only, because a magnitude is not an identity.
+ *
+ * THE RAMP'S TWO CHART CARRIERS ARE A WEDGE FILL AND A STACKED-BAR FILL, and both pay for the pigment with a
+ * hatch drawn in a lighter step of their own ink. The lightening formula is stated ONCE here, from the token
+ * layer's own `--hatch-mix`, because every wedge and every stacked segment in three reference sheets re-derived
+ * it inline and that is exactly how two sheets drift apart.
+ *
+ * A CHART SITS ON A PANEL OR ON THE PAGE, so every pair this file introduces is measured against BOTH paper
+ * surfaces in `__tests__/contrast.test.ts`, and that ledger is read back from this file: a rule here that paints
+ * with a token the ledger does not measure fails the test rather than reaching a review.
+ *
+ * NOTHING HERE ANIMATES, TRANSITIONS OR EASES, and there is no rule to remove to make that true: a chart redraws
+ * when a confirmed day is added, which is a discrete redraw of a number. */
+
+@import "../marks/marks.css";
+
+/* --- The frame every chart shares ------------------------------------------------------------------ */
+
+/* A chart is a figure with its caption above it, which is where the rendered sheets put the label too. */
+.chart {
+  margin: 0;
+  min-width: 0;
+}
+
+.chart__caption {
+  padding-bottom: 8px;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}
+
+/* AN EMPTY SERIES IS STATED, NOT LEFT BLANK. A caption over nothing is a chart that looks broken, and the same
+   argument the design language makes for drawing a forbidden window applies here: an absence and a fault render
+   identically unless the absence says so. It is static, like every other surface with nothing to show. */
+.chart__nothing {
+  color: var(--text-muted);
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
+}
+
+/* --- The thirteen inks and the six textures -------------------------------------------------------- */
+
+/* THE HATCH IS A LIGHTER STEP OF THE FILL'S OWN INK, stated once, and it arrives through `color`.
+
+   A texture in the token layer is a gradient drawing in `--hatch-ink`, which is `currentColor`: a custom property
+   containing a var() is substituted where it is DECLARED, so a per-element `--hatch-ink` cannot reach a gradient
+   declared at `:root` and `color` is the one value CSS resolves per element. Nothing here paints text, so the
+   property is free for the job, and every consumer of the texture and of the SVG stroke reads the same value. */
+.chart-ink {
+  color: color-mix(in srgb, var(--ai) var(--hatch-mix), var(--paper-raised));
+}
+
+.chart-ink--01 {
+  --ai: var(--area-01);
+}
+
+.chart-ink--02 {
+  --ai: var(--area-02);
+}
+
+.chart-ink--03 {
+  --ai: var(--area-03);
+}
+
+.chart-ink--04 {
+  --ai: var(--area-04);
+}
+
+.chart-ink--05 {
+  --ai: var(--area-05);
+}
+
+.chart-ink--06 {
+  --ai: var(--area-06);
+}
+
+.chart-ink--07 {
+  --ai: var(--area-07);
+}
+
+.chart-ink--08 {
+  --ai: var(--area-08);
+}
+
+.chart-ink--09 {
+  --ai: var(--area-09);
+}
+
+.chart-ink--10 {
+  --ai: var(--area-10);
+}
+
+.chart-ink--11 {
+  --ai: var(--area-11);
+}
+
+.chart-ink--12 {
+  --ai: var(--area-12);
+}
+
+/* Unallocated holds no Area, so it holds no step of the ramp and no texture. It is drawn at the ramp's own
+   weight in no hue, because it is frequently the largest wedge on the pie and being seen is the whole point. */
+.chart-ink--unallocated {
+  --ai: var(--unallocated);
+}
+
+.chart-hatch--fwd {
+  --hx: var(--hatch-fwd);
+}
+
+.chart-hatch--back {
+  --hx: var(--hatch-back);
+}
+
+.chart-hatch--vert {
+  --hx: var(--hatch-vert);
+}
+
+.chart-hatch--horz {
+  --hx: var(--hatch-horz);
+}
+
+.chart-hatch--cross {
+  --hx: var(--hatch-cross);
+}
+
+.chart-hatch--dot {
+  --hx: var(--hatch-dot);
+  --hxs: var(--hatch-dot-size);
+}
+
+/* The vacancy's texture, which is none. Written as a class rather than left unset so that a fill reading
+   `--hx` resolves it in every case and no element inherits a texture from an ancestor that had one. */
+.chart-hatch--none {
+  --hx: none;
+}
+
+/* A FILL ALWAYS CARRIES ITS INK, and a hatch is a second layer over it. Splitting the two is what keeps a
+   texture off the page: `background-image` alone would paint a hatch onto whatever surface was underneath. */
+.chart-fill {
+  background-color: var(--ai);
+}
+
+.chart-fill--hatched {
+  background-image: var(--hx);
+  background-size: var(--hxs, auto);
+}
+
+/* --- The pie ---------------------------------------------------------------------------------------- */
+
+/* No width or height here, deliberately: the component sets both in user units so one user unit is one CSS
+   pixel, which is what keeps the hatch at the pitch the token declares. A stylesheet that scaled the svg would
+   scale the texture with it. */
+.pie {
+  display: block;
+  overflow: visible;
+}
+
+/* The separator is the paper the chart sits on showing through, which is how two adjacent wedges stay two
+   wedges. It measures 5.35:1 or better against every step of the ramp. */
+.pie__wedge {
+  stroke: var(--paper-raised);
+  stroke-width: var(--hairline);
+}
+
+/* LABELS SIT OUTSIDE THE WEDGES. A wedge fill only has to clear 3:1 as an indicator and text on it would need
+   4.5:1, so no label is ever drawn on a fill. */
+.pie__label {
+  fill: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+}
+
+.pie__hatch-ground {
+  fill: var(--ai);
+}
+
+.pie__hatch-line {
+  fill: none;
+  stroke: var(--hatch-ink);
+}
+
+.pie__hatch-dot {
+  fill: var(--hatch-ink);
+}
+
+/* --- Stacked bars ----------------------------------------------------------------------------------- */
+
+.stacked__row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.stacked__label {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  font-variant-numeric: tabular-nums;
+}
+
+.stacked__track {
+  display: flex;
+  height: 26px;
+  border: var(--hairline) solid var(--rule-strong);
+}
+
+.stacked__segment {
+  border-right: var(--hairline) solid var(--paper-raised);
+}
+
+.stacked__segment:last-child {
+  border-right: 0;
+}
+
+/* --- The Area legend -------------------------------------------------------------------------------- */
+
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+
+.legend__entry {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 6px 10px;
+  border-right: var(--hairline) solid var(--rule);
+  border-bottom: var(--hairline) solid var(--rule);
+  font-size: var(--fs-chrome);
+}
+
+.legend__name {
+  min-width: 0;
+  color: var(--ink-deep);
+}
+
+.legend__figure {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Signed deviation bars, cobalt only ------------------------------------------------------------- */
+
+/* NO AREA INK ANYWHERE IN THIS COMPONENT, INCLUDING THE LABEL CELL. A chart row is a chart context end to end:
+   a chip beside a cobalt bar implies the bar could have been Area-coloured, which muddies the one rule this
+   component exists to demonstrate. The Area's name identifies the row, which is what a name is for. */
+.deviation__head,
+.deviation__row {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr) 96px;
+  gap: 11px;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.deviation__head {
+  border-bottom: var(--hairline) solid var(--rule-strong);
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}
+
+.deviation__row {
+  border-bottom: var(--hairline) dotted var(--rule);
+}
+
+.deviation__row:last-child {
+  border-bottom: 0;
+}
+
+.deviation__name {
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--fs-chrome);
+}
+
+.deviation__track {
+  position: relative;
+  height: 13px;
+  background: var(--paper-raised);
+  border-top: var(--hairline) solid var(--rule);
+  border-bottom: var(--hairline) solid var(--rule);
+}
+
+/* Zero is where direction is read from, so it is the deepest ink on the row. */
+.deviation__zero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  border-left: var(--hairline) solid var(--ink-deep);
+}
+
+/* DIRECTION IS SIDE AND SIGN, NEVER HUE. Both bars are the same cobalt, and which side of the zero rule a bar
+   extends from is the whole of the encoding, restated in the figure as a + or a minus. */
+.deviation__bar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  background: var(--ink);
+}
+
+.deviation__bar--under {
+  right: 50%;
+}
+
+.deviation__bar--over {
+  left: 50%;
+}
+
+.deviation__figure {
+  color: var(--ink);
+  font-size: var(--fs-chrome);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.deviation__against {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+}
+
+.deviation__axis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding-top: 3px;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  font-variant-numeric: tabular-nums;
+}
+
+.deviation__axis span:last-child {
+  text-align: right;
+}
+
+/* --- The ranked data bar ---------------------------------------------------------------------------- */
+
+/* A SINGLE FILL AT A PERCENTAGE WIDTH, because the magnitude is arbitrary. See the meter below for why this is
+   not drawn with block characters.
+
+   NAMED FOR WHAT IT DRAWS RATHER THAN FOR ITS COMPONENT. A class beginning `data-` is read as a state attribute
+   by the closed-vocabulary scan and by the channel model, both of which match a name rather than a syntax, so
+   `.data-bar` arrives as an invented state spending four channels. `ranked` is also the design language's own word
+   for this chart: a ranked bar carries an arbitrary magnitude. */
+.ranked-bar {
+  position: relative;
+  height: 11px;
+  background: var(--paper-raised);
+  border: var(--hairline) solid var(--rule);
+}
+
+.ranked-bar__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--ink);
+}
+
+/* --- The bounded meter ------------------------------------------------------------------------------ */
+
+/* BLOCK CHARACTERS, BECAUSE THE SCALE IS BOUNDED 0 TO 100%. A segmented run reads as a fraction of something
+   only when the something has a known end. The cells butt against each other, so the run carries no tracking:
+   any gap would read as a fourteenth state. */
+.meter {
+  display: inline-flex;
+  color: var(--ink);
+  font-size: var(--fs-data);
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.meter__cell {
+  display: inline-block;
+}
+
+/* The unfilled run is a track rather than a mark: at 1.71:1 it does not clear the indicator floor, which is why
+   a meter is never the only statement of progress. The row it sits in states the samples and the percentage. */
+.meter__cell--empty {
+  color: var(--rule);
+}
