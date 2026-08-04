@@ -10,6 +10,12 @@ convention ``RampReading.statement`` follows. A partially off-plan week needs no
 its denominator is smaller and its deviations are still meaningful, so the minute count alone
 says what happened.
 
+**The statement says nothing about what any Area's target is.** An earlier wording claimed every
+Area target was zero, and the same payload can contradict it: a target is a floor plus a share of
+what the floors leave, so an Area declaring a floor reports that floor whatever the denominator is.
+What is true of every Area is that there is no discretionary time to be allotted, and that is what
+the sentence says.
+
 The coverage test is ``the span minus the off-plan spans is empty``, not ``off-plan minutes equal
 the span's minutes``. Both counts truncate a sub-minute remainder, and they truncate
 independently: a span whose own length carries seconds reads as the same number of minutes as the
@@ -28,8 +34,8 @@ if TYPE_CHECKING:
     from syncr_domain.intervals import Interval
 
 WHOLE_WEEK_STATEMENT = (
-    "This week was declared off-plan from end to end, so it holds no discretionary time and "
-    "every Area target is zero. Nothing is missing from the plan."
+    "This week was declared off-plan from end to end, so it holds no discretionary time and no "
+    "Area can be allotted any of it. Nothing is missing from the plan."
 )
 
 

@@ -496,6 +496,10 @@ async def test_an_area_declaring_a_floor_still_reports_that_floor_in_an_off_plan
     assert [allocation.target_minutes for allocation in view.report.allocations] == [240]
     assert view.report.oversubscription_minutes == 240
     assert view.off_plan.statement is not None
+    # And the statement must not contradict the number beside it. It said "every Area target is
+    # zero" once, which this very payload disproves, so the false clause is asserted absent rather
+    # than trusted to stay deleted.
+    assert "target is zero" not in view.off_plan.statement
 
 
 async def test_a_partly_off_plan_week_reports_the_minutes_without_a_statement(
