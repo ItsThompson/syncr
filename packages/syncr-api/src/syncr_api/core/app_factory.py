@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, FastAPI
 
 from syncr_api.accounts.wiring import build_accounts_router
+from syncr_api.anchors.wiring import build_anchors_router
 from syncr_api.areas.wiring import build_areas_router
 from syncr_api.budgets.wiring import build_budget_router
 from syncr_api.calendars.wiring import build_calendars_router
@@ -28,6 +29,9 @@ from syncr_api.core.correlation import CorrelationMiddleware
 from syncr_api.core.error_handlers import PROBLEM_RESPONSES, build_exception_handlers
 from syncr_api.core.observability import create_metrics_router
 from syncr_api.oauth.wiring import build_oauth_router
+from syncr_api.offplan.wiring import build_off_plan_router
+from syncr_api.routines.wiring import build_routines_router
+from syncr_api.tasks.wiring import build_tasks_router
 from syncr_api.user_settings.wiring import build_settings_router
 from syncr_common.health import create_health_router
 from syncr_common.logging import get_logger
@@ -61,6 +65,10 @@ FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
     build_areas_router,
     build_budget_router,
     build_calendars_router,
+    build_tasks_router,
+    build_routines_router,
+    build_off_plan_router,
+    build_anchors_router,
 )
 
 # The one place the api's version is stated: the package metadata uv installs from
