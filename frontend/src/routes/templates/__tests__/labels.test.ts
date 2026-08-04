@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   POST_SCOPE_LABELS,
+  POST_SCOPE_QUESTION,
   WEEKDAY_KEYS,
   cadenceLabel,
   flexLabel,
@@ -59,10 +60,6 @@ describe("flexLabel", () => {
     [14, "no shift"],
   ])("reads a band of %i as no shift, because it permits none", (minutes, expected) => {
     expect(flexLabel(minutes)).toBe(expected);
-  });
-
-  it("does not read as `fixed`, which the entries table already uses for derivation", () => {
-    expect(flexLabel(0)).not.toContain("fixed");
   });
 
   it.each([
@@ -176,6 +173,15 @@ describe("the recovery scope's words", () => {
     expect(POST_SCOPE_LABELS.none).toBe("nothing");
     expect(POST_SCOPE_LABELS.all).toBe("everything");
     expect(POST_SCOPE_LABELS.areas).toBe("these Areas");
+  });
+
+  /* The question is derived from the three labels rather than restating them, so rewording a choice cannot leave
+   * the question naming a word the control no longer offers. */
+  it("asks the question in the words the three choices carry", () => {
+    for (const label of Object.values(POST_SCOPE_LABELS)) {
+      expect(POST_SCOPE_QUESTION).toContain(label);
+    }
+    expect(POST_SCOPE_QUESTION).toBe("forbids after: nothing, everything, or these Areas");
   });
 });
 

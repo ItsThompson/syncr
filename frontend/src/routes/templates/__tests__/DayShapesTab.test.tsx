@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { DayShapesTab } from "../tabs/DayShapesTab";
 import { withRouter } from "./render";
+import { step } from "./step";
 import { writeDouble } from "./writeDouble";
 import {
   AREA_CAREER,
@@ -65,9 +66,15 @@ describe("the day shapes list", () => {
   it("states each shape's entry count and the day type it shapes", () => {
     renderTab();
 
+    /* Read as the ROW's cells. A count asserted against the whole table passes on any `2` in it, including one in
+     * a name or in the footer's own sentence. */
     const list = screen.getByRole("table", { name: "Day shapes" });
-    expect(list).toHaveTextContent("Weekday");
-    expect(list).toHaveTextContent("2");
+    const row = within(list).getAllByRole("row")[1];
+    const cells = within(row)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent);
+
+    expect(cells).toEqual(["Weekday", "Weekday", "2"]);
   });
 
   it("says so when a shape names a day type this tenant no longer has", () => {
@@ -179,8 +186,8 @@ describe("declaring a concrete entry", () => {
     const { declaration } = renderTab();
 
     await choose("Entry", "Wake Up \u00B7 routine");
-    await userEvent.click(screen.getAllByRole("button", { name: "increase 15 minutes" })[0]);
-    await userEvent.click(screen.getAllByRole("button", { name: "increase 15 minutes" })[1]);
+    await step("Duration", "increase");
+    await step("Flex band", "increase");
     await userEvent.click(screen.getByRole("button", { name: "Declare entry" }));
 
     expect(declaration.bodies[0]).toMatchObject({ durationMinutes: 75, flexBandMinutes: 15 });

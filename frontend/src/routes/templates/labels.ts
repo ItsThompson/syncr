@@ -68,8 +68,11 @@ export const POST_SCOPE_LABELS = {
   areas: "these Areas",
 } as const;
 
-/** The whole three-way choice, as the form's own question. */
-export const POST_SCOPE_QUESTION = "forbids after: nothing, everything, or these Areas";
+/** The whole three-way choice, as the form's own question. Derived, so the question cannot name a word the
+ * control no longer offers. */
+export const POST_SCOPE_QUESTION =
+  `forbids after: ${POST_SCOPE_LABELS.none}, ${POST_SCOPE_LABELS.all}, ` +
+  `or ${POST_SCOPE_LABELS.areas}`;
 
 /**
  * Which commitments a type's rules match, as the rules table states it.
