@@ -1351,6 +1351,11 @@ def test_a_padded_rule_value_is_refused_without_the_conversion_complaining(padde
     # bound on significant digits only holds if the significant digits are what gets converted. It
     # was not, so four thousand leading zeros passed the bound and the conversion raised, and the
     # panel told a publisher to change syncr's interpreter setting.
+    #
+    # The raw length is bounded too, because dateutil converts this string as well and whether THAT
+    # succeeds depends on the interpreter's limit. Without it, one of these values meant 1 to syncr
+    # and meant a refusal to dateutil, so the same feed answered two ways depending on how the
+    # process was started. Which is why this module is also run at three settings of that limit.
     body = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:pad@example.org\r\n"
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"

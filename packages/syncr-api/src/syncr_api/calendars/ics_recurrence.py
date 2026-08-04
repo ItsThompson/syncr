@@ -299,13 +299,19 @@ def _signed(value: str) -> bool:
     either. Checking the wrong predicate left the conversion able to raise while the table beside it
     claimed the site was guarded here.
 
-    The length bound is the second half, and it is a bound on SIGNIFICANT digits, so it only holds
-    if the caller converts the significant digits too. ``_number`` does. Converting the original
-    string instead left four thousand leading zeros passing this and refusing there, which is the
-    same defect the duration bound was corrected for two rounds earlier.
+    **Both lengths are bounded, and for two different reasons.** The SIGNIFICANT digits are bounded
+    because that is the magnitude syncr will act on. The RAW length is bounded because this string
+    is also handed to dateutil, which converts it itself, and whether that succeeds depends on the
+    interpreter's digit limit rather than on anything syncr owns.
+
+    Bounding only the significant digits made ``INTERVAL=`` four thousand zeros then a one mean 1 to
+    syncr, and mean a refusal to dateutil at the default limit and 1 again with the limit disabled:
+    the same feed answered two ways depending on how the process was started.
     """
     stated = value.strip().removeprefix("+").removeprefix("-")
-    return stated.isdecimal() and len(stated.lstrip("0")) <= MAX_MAGNITUDE_DIGITS
+    if not stated.isdecimal() or len(stated) > MAX_MAGNITUDE_DIGITS:
+        return False
+    return len(stated.lstrip("0")) <= MAX_MAGNITUDE_DIGITS
 
 
 def _stated(value: str, *, width: int = MAX_MAGNITUDE_DIGITS) -> str:
