@@ -7,10 +7,9 @@ can reach another tenant's rows.
 
 Three collaborators come from other feature modules, and each is deliberate rather than
 convenient. The Areas repository is read because a slot names an Area and the Area has to be this
-tenant's. The settings repository is read for the home zone, because the week a shape edit first
-affects is decided by today's LOCAL date, and resolving that in a second place would let the two
-disagree. The week input version counter is plan storage's, because a day shape is a solve input
-and there is one serialization point for anything that invalidates a running solve.
+tenant's. ``BacklogWideBump`` carries plan storage's version counter and the settings read the home
+zone: a day shape is a solve input with no end date, so it needs the same four steps every such
+mutation needs, and there is one implementation of them.
 """
 
 from __future__ import annotations
@@ -34,16 +33,18 @@ from syncr_api.templates.repository import (
 )
 from syncr_api.templates.service import DayTypeService, TemplateService, WeekPatternService
 from syncr_api.user_settings.repository import SettingsRepository
-from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
+from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
 
 def _future_weeks(principal: PrincipalDep, transaction: TransactionDep) -> FutureWeeks:
     """The invalidation rule, wired for this request and scoped to this tenant."""
     return FutureWeeks(
         patterns=WeekPatternRepository(transaction, principal.tenant_id),
-        settings=SettingsRepository(transaction, principal.tenant_id),
-        versions=TrackedWeekInputVersions(
-            WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+        bump=BacklogWideBump(
+            versions=TrackedWeekInputVersions(
+                WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+            ),
+            settings=SettingsRepository(transaction, principal.tenant_id),
         ),
         clock=utc_now,
     )

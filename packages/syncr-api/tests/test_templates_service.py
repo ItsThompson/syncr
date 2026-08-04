@@ -44,7 +44,7 @@ from syncr_api.templates.service import DayTypeService, TemplateService, WeekPat
 from syncr_api.user_settings.config import ReviewCadence
 from syncr_api.user_settings.records import SettingsRecord
 from syncr_api.user_settings.repository import SettingsRepository
-from syncr_api.user_settings.solve_inputs import WeekRange
+from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.templates import BindingTarget, EntrySpan, TemplateEntryKind, WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
 
@@ -298,8 +298,9 @@ class Wiring:
         self.versions = versions
         weeks = FutureWeeks(
             patterns=self.patterns,
-            settings=FakeSettingsRepository(principal.tenant_id),
-            versions=versions,
+            bump=BacklogWideBump(
+                versions=versions, settings=FakeSettingsRepository(principal.tenant_id)
+            ),
             clock=lambda: NOW,
         )
         self.day_type_service = DayTypeService(day_types=self.day_types, clock=lambda: NOW)

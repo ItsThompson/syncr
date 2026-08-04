@@ -13,25 +13,20 @@ every mutation this package makes:
   is no week it does not describe.
 
 **Past weeks are never bumped.** An approved revision is immutable and keeps the inputs it was
-computed with, so the floor is the week holding today's local date in the home zone. Re-deriving
-a past week would rewrite history rather than the plan.
-
-The home zone is read here rather than resolved a second way, because which week holds "today"
-is a local question and two answers would let the boundary and the assembler disagree.
+computed with, so re-deriving a past week would rewrite history rather than the plan. Which weeks
+those are is ``user_settings.solve_inputs.BacklogWideBump``: every mutation with no end date needs
+the same four steps, and the floor is the week holding today's date in the HOME zone, so resolving
+it here as well would let two services disagree about which week is current.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from syncr_api.user_settings.solve_inputs import weeks_from
-from syncr_api.user_settings.zone_reading import local_date
-
 if TYPE_CHECKING:
     from syncr_api.core.clock import Clock
     from syncr_api.templates.repository import WeekPatternRepository
-    from syncr_api.user_settings.repository import SettingsRepository
-    from syncr_api.user_settings.solve_inputs import WeekInputVersions
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump
     from syncr_domain.identifiers import DayTypeId
 
 
@@ -39,21 +34,15 @@ class FutureWeeks:
     """The weeks a day-shape mutation invalidates: this one onwards, or none at all."""
 
     def __init__(
-        self,
-        patterns: WeekPatternRepository,
-        settings: SettingsRepository,
-        versions: WeekInputVersions,
-        clock: Clock,
+        self, patterns: WeekPatternRepository, bump: BacklogWideBump, clock: Clock
     ) -> None:
         self._patterns = patterns
-        self._settings = settings
-        self._versions = versions
+        self._bump = bump
         self._clock = clock
 
     async def invalidate(self) -> None:
         """Bump the input version of the current week and every week after it."""
-        settings = await self._settings.read()
-        await self._versions.bump(weeks_from(local_date(self._clock(), settings.home_zone)))
+        await self._bump.from_the_week_holding(self._clock())
 
     async def invalidate_if_mapped(self, day_type_id: DayTypeId) -> bool:
         """:meth:`invalidate`, but only when some weekday uses this day type.
