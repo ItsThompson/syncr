@@ -16,6 +16,11 @@ than inside the adapter keeps the adapter a pure function of a feed and a profil
 A tenant that has not designated a write target still reads anchors, so ingest cannot wait on a
 projection bound being configured.
 
+**The anchor reconciler's seam is composed here.** ``SourceSyncer`` reconciles anchors between the
+fetch and the sync-state write, and it takes the reconciler as a protocol it declares rather than
+as an import of the anchor package. This is the request-side composition of that seam; the worker's
+is in ``calendars/runner.py``.
+
 The HTTP client is per request rather than shared through application state. A request forces one
 source at a time, so pooling would buy one connection's worth of setup while making the client's
 lifecycle something the app has to own; the worker, which polls several feeds per tick, keeps one
@@ -34,6 +39,9 @@ from fastapi import Depends
 # these names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to
 # a NameError while the app is being constructed.
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
+from syncr_api.anchors.reconcile import AnchorReconciler
+from syncr_api.anchors.repository import AnchorRepository
+from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.calendars.config import HORIZON_DAYS_DEFAULT
 from syncr_api.calendars.feeds import HttpFeedFetcher, create_feed_client
 from syncr_api.calendars.ics_adapter import IcsAdapter
@@ -104,6 +112,10 @@ async def get_calendar_source_service(
             sources=sources,
             operations=OperationRepository(transaction, principal.tenant_id),
             adapter=adapter,
+            anchors=AnchorReconciler(
+                AnchorRepository(transaction, principal.tenant_id),
+                AnchorTypeRepository(transaction, principal.tenant_id),
+            ),
             clock=utc_now,
         ),
         versions=TrackedWeekInputVersions(

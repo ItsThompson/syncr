@@ -22,6 +22,7 @@ from uuid import uuid4
 
 import pytest
 
+from syncr_api.calendars.anchor_writing import AnchorDelta
 from syncr_api.calendars.config import ANCHOR_SOURCE, ICS, SYNC_INTERVAL
 from syncr_api.calendars.events import FetchOutcome
 from syncr_api.calendars.feeds import FeedAnswer, FeedBody, FeedUnreachable
@@ -134,8 +135,30 @@ def syncer(sources: FakeSources, fetcher: RecordedFetcher, clock: MovableClock) 
         sources=sources,  # type: ignore[arg-type]  # a fake over the two methods a pass calls
         operations=None,  # type: ignore[arg-type]  # a scheduled pass enqueues no operation
         adapter=adapter,
+        anchors=SilentAnchors(),
         clock=clock,
     )
+
+
+class SilentAnchors:
+    """An anchor writer that records nothing, for the tests about the SCHEDULE.
+
+    What this file asserts is when a poll happens, not what it writes. Which of the three anchor
+    paths one attempt takes is asserted in ``test_anchor_reconciliation.py``, against a writer
+    that records the call.
+    """
+
+    async def reconcile(self, source: object, outcome: object) -> AnchorDelta:
+        del source, outcome
+        return AnchorDelta()
+
+    async def confirm(self, source: object) -> AnchorDelta:
+        del source
+        return AnchorDelta()
+
+    async def mark_possibly_stale(self, source: object) -> AnchorDelta:
+        del source
+        return AnchorDelta()
 
 
 @pytest.fixture

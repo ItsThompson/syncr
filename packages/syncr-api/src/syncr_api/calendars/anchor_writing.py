@@ -24,12 +24,12 @@ event list, and removing on an empty list would clear every anchor of a feed tha
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from syncr_api.calendars.events import FetchOutcome
-    from syncr_api.calendars.records import CalendarSourceRecord
+    from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +46,23 @@ class AnchorDelta:
     removed: int = 0
     marked_stale: int = 0
     current: int = 0
+
+    def recorded_on(self, state: SyncStateRecord) -> SyncStateRecord:
+        """``state`` with this pass's own count of the rows the source contributes.
+
+        The adapter fills ``anchors_current`` with the count of EVENTS it parsed, which is the only
+        number it can answer. The two differ whenever two events reach one reconciliation key, and
+        the panel reports anchors, so the reconciler's count is what gets written.
+
+        Applied after every attempt rather than only after a successful parse. The count is read
+        from the table, so an unchanged or unreachable feed writes back the number the rows actually
+        hold instead of carrying forward one an earlier attempt recorded, and a count that drifted
+        for any reason is corrected by the next poll rather than persisting.
+
+        Only that one field moves: a rewritten state that dropped the error would make a failed
+        sync read as a success, which is the failure the sync-state rules exist to prevent.
+        """
+        return replace(state, anchors_current=self.current)
 
     def as_log_fields(self) -> dict[str, int]:
         """This tally as log fields, under names the redactor does not eat.

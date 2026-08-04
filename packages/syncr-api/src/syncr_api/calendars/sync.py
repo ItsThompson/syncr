@@ -19,9 +19,15 @@ an operation's lifecycle does not: **ticket 28 owns the claim, the terminal tran
 reaper, and the retention sweep.** Until it lands, this creates the row through the repository
 and completes it in the same transaction. It must not grow into a second operation lifecycle.
 
-**Anchors are not written here.** This ticket produces ``RawEvent`` lists; the reconciler that
-turns them into anchor rows arrives with the anchors table. So the events are returned to the
-caller and counted, and nothing downstream of them exists yet.
+**Anchors are reconciled here, between the fetch and the sync-state write.** The reconciler is
+injected as a protocol declared in :mod:`syncr_api.calendars.anchor_writing`, so this package does
+not depend on the anchor package. WHICH of the three attempts happened is decided here, from the
+two bits the adapter already returns, so the reconciler is told rather than left to guess.
+
+That distinction matters more than it looks. An unchanged feed and an unreachable feed both carry
+an empty event list, so removing anchors on an empty list would clear every commitment of a
+healthy feed that answered 304. ``FetchOutcome.reparsed`` distinguishes those two, and
+``last_error`` distinguishes a failure from both.
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ from syncr_common.metrics import measured
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from syncr_api.calendars.anchor_writing import AnchorDelta, AnchorWriter
     from syncr_api.calendars.ics_adapter import IcsAdapter
     from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
     from syncr_api.calendars.repository import CalendarSourceRepository
@@ -97,26 +104,45 @@ class SourceSyncer:
         sources: CalendarSourceRepository,
         operations: OperationRepository,
         adapter: IcsAdapter,
+        anchors: AnchorWriter,
         clock: Clock,
     ) -> None:
         self._sources = sources
         self._operations = operations
         self._adapter = adapter
+        self._anchors = anchors
         self._clock = clock
 
     @measured("calendars")
     async def sync(self, source: CalendarSourceRecord) -> SyncResult:
-        """One attempt on one source, with its sync state written either way.
+        """One attempt on one source: its anchors reconciled, and its state written either way.
 
         Returns the state as well as the outcome, so a caller reports what the attempt did without
-        reading the row back. An excluded source is not fetched, and its state is handed back
-        untouched: the last attempt on it still describes the last time syncr actually read it.
+        reading the row back. An excluded source is not fetched, no anchor of it is touched, and
+        its state is handed back untouched: the last attempt on it still describes the last time
+        syncr actually read it.
         """
         if not source.included:
             return FetchOutcome(), source.sync_state
         outcome, state = await self._adapter.fetch(source)
-        await self._sources.save_sync_state(source.id, state)
+        delta = await self._reconciled(source, outcome, state)
+        await self._sources.save_sync_state(source.id, delta.recorded_on(state))
         return outcome, state
+
+    async def _reconciled(
+        self, source: CalendarSourceRecord, outcome: FetchOutcome, state: SyncStateRecord
+    ) -> AnchorDelta:
+        """What this attempt did to the source's anchors, chosen by which attempt it was.
+
+        The order of the checks is the invariant. A failed attempt is answered first, so nothing on
+        the removal path is reachable from one, and only a read that actually reparsed the feed
+        removes an anchor.
+        """
+        if state.last_error is not None:
+            return await self._anchors.mark_possibly_stale(source)
+        if not outcome.reparsed:
+            return await self._anchors.confirm(source)
+        return await self._anchors.reconcile(source, outcome)
 
     async def sync_now(self, source: CalendarSourceRecord) -> OperationRecord:
         """Sync one source and answer with the operation that did it.

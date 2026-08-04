@@ -18,7 +18,9 @@ the user is in on that date, and the horizon is the write target's, so both are 
 rather than the deployment's.
 
 **One transaction per tenant.** A publisher that hangs must not hold every other tenant's sync
-state uncommitted behind it, and a tenant whose feed failed still has its attempt recorded.
+state uncommitted behind it, and a tenant whose feed failed still has its attempt recorded. The
+anchor reconciliation a pass performs is inside that same transaction, so a tenant's anchors and
+its sync state either both land or neither does.
 """
 
 from __future__ import annotations
@@ -26,6 +28,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from syncr_api.accounts.repository import TenantRepository
+from syncr_api.anchors.reconcile import AnchorReconciler
+from syncr_api.anchors.repository import AnchorRepository
+from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.calendars.feeds import HttpFeedFetcher, create_feed_client
 from syncr_api.calendars.ics_adapter import IcsAdapter
 from syncr_api.calendars.injection import read_ingest_horizon
@@ -125,6 +130,9 @@ class CalendarSyncRunner:
             sources=sources,
             operations=OperationRepository(session, tenant_id),
             adapter=adapter,
+            anchors=AnchorReconciler(
+                AnchorRepository(session, tenant_id), AnchorTypeRepository(session, tenant_id)
+            ),
             clock=self._clock,
         )
         return await syncer.sync_due(now=now)
