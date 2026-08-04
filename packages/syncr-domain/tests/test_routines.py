@@ -87,8 +87,8 @@ def test_a_routine_without_a_duration_is_refused(duration: int) -> None:
 
 
 def test_a_routine_longer_than_a_day_is_refused() -> None:
-    # A routine materializes once per local date, so a longer span would overlap its own
-    # next occurrence.
+    # A routine names a time of day, so its span is capped at the day it names. The cap does not
+    # keep an occurrence clear of its own next one, and the test below measures why not.
     RoutineSpan(SLEEP_TARGET, MAX_DURATION_MINUTES, MAX_DURATION_MINUTES, 0)
 
     with pytest.raises(RoutineError) as refused:
