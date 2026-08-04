@@ -21,3 +21,4 @@ type OperationId = UUID
 type AreaId = UUID
 type ProjectId = UUID
 type PreferenceId = UUID
+type TaskId = UUID
