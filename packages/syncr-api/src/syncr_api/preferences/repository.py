@@ -63,6 +63,18 @@ class PreferenceRepository(TenantScopedRepository):
         )
         return _as_record(found) if found is not None else None
 
+    async def list_all(self) -> tuple[PreferenceRecord, ...]:
+        """Every preference this tenant has declared, in declaration order.
+
+        One read rather than one per owner, because the week assembler resolves the chain of
+        every Area, habit, and task in the week: addressed per owner, that is a query per entity
+        on the path of every live verdict.
+        """
+        found = await self._session.scalars(
+            self.scoped_select(PreferenceRow).order_by(PreferenceRow.created_at, PreferenceRow.id)
+        )
+        return tuple(_as_record(row) for row in found)
+
     async def create(self, preference: Preference, *, created_at: datetime) -> PreferenceRecord:
         """Persist one preference from the entity the caller already validated.
 
