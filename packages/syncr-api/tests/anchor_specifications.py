@@ -17,6 +17,11 @@ None of these carries a REAL Area, because an Area identifier only exists once a
 declared one. The placeholders below stand in for the three the records name, and
 :data:`DECLARED_AREAS` is the set a unit test passes to the rules as "the Areas this tenant
 holds". A suite with a real tenant calls :func:`with_areas` to swap in identifiers it created.
+
+Each declaration comes in two forms. The one the records render names no Area for its prep or its
+legs, and an ``ATTRIBUTED_`` form names the ones ``block-states.html`` draws on those blocks. A
+buffer with an Area is a block and a buffer without one is a forbidden window, so a suite reading
+geometry wants both.
 """
 
 from __future__ import annotations
@@ -132,3 +137,18 @@ def with_areas(
         transit_area_id=transit,
         forbidden_area_ids=tuple(forbidden),
     )
+
+
+# The same three declarations with the Areas `block-states.html` renders on the blocks they cast:
+# prep in the Area the commitment belongs to, and both legs in `Transit`. The forms above name no
+# Area anywhere, so the same declarations cast forbidden WINDOWS instead of blocks. Both forms are
+# needed because they are the two directions of one rule, and the recovery scope is untouched by
+# either: the Areas a window forbids are not an Area a buffer belongs to.
+ATTRIBUTED_INTERVIEW: Final = with_areas(
+    INTERVIEW, prep=CAREER, transit=TRANSIT, forbidden=INTERVIEW.forbidden_area_ids
+)
+ATTRIBUTED_EXAM: Final = with_areas(
+    EXAM, prep=STUDY, transit=TRANSIT, forbidden=EXAM.forbidden_area_ids
+)
+ATTRIBUTED_LECTURE: Final = with_areas(LECTURE, transit=TRANSIT)
+ATTRIBUTED_GEOMETRY: Final = (ATTRIBUTED_INTERVIEW, ATTRIBUTED_EXAM, ATTRIBUTED_LECTURE)
