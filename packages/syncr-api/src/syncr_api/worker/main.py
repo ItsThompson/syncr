@@ -116,7 +116,6 @@ async def run_iteration(context: WorkerContext, runners: Sequence[Runner]) -> in
             RUNNER_FAILURES.labels(runner=name).inc()
             _log.exception("worker.runner.failed", runner=name)
     return failures
-    return failures
 
 
 async def _wait_for_tick(stop: asyncio.Event, tick_seconds: float) -> None:

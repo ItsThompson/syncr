@@ -387,8 +387,19 @@ async def test_the_deadline_covers_the_whole_read_rather_than_one_request() -> N
     # The defect this shape exists to avoid: a host that answers every page slowly passes any
     # per-request timeout while the read runs forever. Every page here answers well inside a
     # plausible per-request timeout, and the read is still stopped, which is the distinction.
-    deadline = 0.2
-    per_page = deadline / 8
+    #
+    # The margin between the two is 100x rather than a few multiples, deliberately. This is the one
+    # assertion in the file that depends on WALL CLOCK: it claims several pages arrived before the
+    # deadline, and on a contended machine a narrow margin makes that claim fail for load rather
+    # than for behaviour. A whole-member run of this suite was measured between 201 and 294 seconds
+    # on the same tree, so the contention is real and the margin has to absorb it.
+    #
+    # The page bound sets the other side of the window: 40 pages have to outlast the deadline or the
+    # read ends by the wrong bound and the test passes for the wrong reason, which is exactly what a
+    # smaller per-page wait produced when this was first widened. So the wait is a twentieth of the
+    # deadline, and forty of them are twice it.
+    deadline = 0.5
+    per_page = deadline / 20
 
     class _Slow:
         def __init__(self) -> None:
@@ -413,6 +424,10 @@ async def test_the_deadline_covers_the_whole_read_rather_than_one_request() -> N
     # Several pages arrived, each of them promptly, and the read still ended: bounded by the
     # deadline rather than by the page bound.
     assert 1 < transport.calls < MAX_PAGES
+    # And the two properties that make this test about the WHOLE read rather than one slow request:
+    # no single request came close to the deadline, and the page bound could not have ended it.
+    assert per_page * 10 < deadline
+    assert per_page * MAX_PAGES > deadline
 
 
 async def test_the_deadline_also_bounds_a_read_that_hangs_on_its_first_request() -> None:

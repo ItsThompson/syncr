@@ -32,6 +32,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from prometheus_client import Counter
+
 from syncr_api.accounts.repository import TenantRepository
 from syncr_api.anchors.reconcile import AnchorReconciler
 from syncr_api.anchors.repository import AnchorRepository
@@ -45,7 +47,7 @@ from syncr_api.solving.repository import OperationRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_api.user_settings.zone_reading import as_domain, zone_profile
 from syncr_common.logging import get_logger
-from syncr_common.metrics import measured
+from syncr_common.metrics import REGISTRY, measured
 
 if TYPE_CHECKING:
     from datetime import datetime, timedelta
@@ -58,6 +60,16 @@ if TYPE_CHECKING:
     from syncr_domain.identifiers import TenantId
 
 _log = get_logger("syncr.calendars")
+
+# A tenant whose pass raised. Counted rather than only logged, because the tick reports a tally and
+# a contained fault answers with an empty one: without this, a tenant failing every tick would leave
+# every counter at zero while the duty reported healthy. `measured` cannot see it either, since the
+# whole point of the boundary is that the decorated call no longer raises.
+TENANT_POLL_FAILURES = Counter(
+    "syncr_calendar_tenant_poll_failures_total",
+    "Calendar sync passes that raised for one tenant and were contained.",
+    registry=REGISTRY,
+)
 
 
 class CalendarSyncRunner:
@@ -102,14 +114,13 @@ class CalendarSyncRunner:
         *,
         now: datetime,
     ) -> SyncPass:
-        """One pass over every tenant, each in its own transaction."""
+        """One pass over every tenant, each in its own transaction and its own failure boundary."""
         async with context.database.sessionmaker() as reader:
             tenants = await TenantRepository(reader).list_ids()
 
         total = SyncPass()
         for tenant_id in tenants:
-            async with context.database.sessionmaker() as session, session.begin():
-                tally = await self._poll_tenant(context, session, feeds, google, tenant_id, now=now)
+            tally = await self._polled_tenant(context, feeds, google, tenant_id, now=now)
             total = SyncPass(
                 attempted=total.attempted + tally.attempted,
                 succeeded=total.succeeded + tally.succeeded,
@@ -119,6 +130,29 @@ class CalendarSyncRunner:
         if total.attempted:
             _log.info("calendars.poll.completed", **total.as_log_fields())
         return total
+
+    async def _polled_tenant(
+        self,
+        context: WorkerContext,
+        feeds: httpx.AsyncClient,
+        google: httpx.AsyncClient,
+        tenant_id: TenantId,
+        *,
+        now: datetime,
+    ) -> SyncPass:
+        """One tenant's pass, in its own transaction, with its own faults contained.
+
+        Answers with an empty tally on a fault rather than re-raising, so the tenants after this
+        one are still polled. The failure is counted and named HERE rather than left to the worker
+        loop's handler, which isolates one DUTY and would therefore drop every remaining tenant.
+        """
+        try:
+            async with context.database.sessionmaker() as session, session.begin():
+                return await self._poll_tenant(context, session, feeds, google, tenant_id, now=now)
+        except Exception:  # noqa: BLE001 - one tenant's fault must not stop the others
+            TENANT_POLL_FAILURES.inc()
+            _log.exception("calendars.poll.tenant_failed", tenant_id=str(tenant_id))
+            return SyncPass()
 
     async def _poll_tenant(
         self,

@@ -28,7 +28,7 @@ from syncr_api.calendars.events import FetchOutcome
 from syncr_api.calendars.feeds import FeedAnswer, FeedBody, FeedUnreachable
 from syncr_api.calendars.ics_adapter import IcsAdapter
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
-from syncr_api.calendars.runner import CalendarSyncRunner
+from syncr_api.calendars.runner import TENANT_POLL_FAILURES, CalendarSyncRunner
 from syncr_api.calendars.sync import SourceSyncer, SyncPass
 from syncr_api.worker.main import RUNNERS, WorkerContext, run_iteration
 from syncr_common.logging import is_sensitive_key
@@ -177,6 +177,107 @@ def context(sessions: CountingSessions, settings: object) -> WorkerContext:
         sessionmaker = sessions
 
     return WorkerContext(settings=settings, database=_Database())  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------------
+# One tenant's fault is one tenant's
+# --------------------------------------------------------------------------------
+
+
+class _ThreeTenants:
+    """A session factory that enumerates three tenants and fails inside the second's pass.
+
+    The failure is raised where a real one would be: a settings read, an anchor write, or a bug,
+    all of which happen INSIDE the per-tenant transaction. An adapter's own failures never reach
+    here, because an adapter records a provider's behaviour on the source instead of raising.
+    """
+
+    def __init__(self, tenants: list[object]) -> None:
+        self.tenants = tenants
+        self.polled: list[object] = []
+
+    def __call__(self) -> _ThreeTenants:
+        return self
+
+    async def __aenter__(self) -> _ThreeTenants:
+        return self
+
+    async def __aexit__(self, *_exit: object) -> None:
+        return None
+
+    def begin(self) -> _ThreeTenants:
+        return self
+
+    async def scalars(self, _statement: object) -> list[object]:
+        return self.tenants
+
+
+async def test_one_tenants_fault_does_not_drop_the_tenants_after_it(
+    settings: object, clock: MovableClock
+) -> None:
+    # With one process serving every tenant, an exception unwinding the loop would make one
+    # tenant's bug every tenant's outage: the pass for every tenant after it would not run, and
+    # nothing on any panel would say so.
+    faulty = uuid4()
+    tenants = [uuid4(), faulty, uuid4()]
+    sessions = _ThreeTenants(list(tenants))
+
+    class _Database:
+        sessionmaker = sessions
+
+    context = WorkerContext(settings=settings, database=_Database())  # type: ignore[arg-type]
+    runner = CalendarSyncRunner(interval=SYNC_INTERVAL, clock=clock)
+    attempted: list[object] = []
+
+    async def one_tenant(
+        _context: object,
+        _session: object,
+        _feeds: object,
+        _google: object,
+        tenant_id: object,
+        *,
+        now: object,
+    ) -> SyncPass:
+        del now
+        attempted.append(tenant_id)
+        if tenant_id == faulty:
+            message = "a settings read that could not reach the database"
+            raise RuntimeError(message)
+        return SyncPass(attempted=1, succeeded=1)
+
+    runner._poll_tenant = one_tenant  # type: ignore[assignment,method-assign]  # the seam
+
+    tally = await runner.poll(context, None, None, now=clock())  # type: ignore[arg-type]
+
+    # Every tenant was attempted, and the two healthy ones are in the tally.
+    assert attempted == tenants
+    assert tally.attempted == 2
+    assert tally.succeeded == 2
+
+
+async def test_a_contained_fault_is_counted_rather_than_only_logged(
+    settings: object, clock: MovableClock
+) -> None:
+    # A tenant failing every tick would otherwise leave every counter at zero while the duty
+    # reported healthy, because the boundary is what stops the call raising at all.
+    sessions = _ThreeTenants([uuid4()])
+
+    class _Database:
+        sessionmaker = sessions
+
+    context = WorkerContext(settings=settings, database=_Database())  # type: ignore[arg-type]
+    runner = CalendarSyncRunner(interval=SYNC_INTERVAL, clock=clock)
+
+    async def always_fails(*_args: object, **_kwargs: object) -> SyncPass:
+        message = "an anchor write that violated a constraint"
+        raise RuntimeError(message)
+
+    runner._poll_tenant = always_fails  # type: ignore[method-assign]  # the seam
+    before = TENANT_POLL_FAILURES._value.get()
+
+    await runner.poll(context, None, None, now=clock())  # type: ignore[arg-type]
+
+    assert TENANT_POLL_FAILURES._value.get() == before + 1
 
 
 # --------------------------------------------------------------------------------
