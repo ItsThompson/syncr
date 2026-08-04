@@ -7,7 +7,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from syncr_domain.weeks import IsoWeek, IsoWeekError, Weekday, week_span
+from syncr_domain.weeks import (
+    IsoWeek,
+    IsoWeekError,
+    Weekday,
+    active_zone_by_date,
+    week_span,
+)
 from syncr_domain.zones import TravelOverride, ZoneProfile
 
 LONDON = "Europe/London"
@@ -222,3 +228,40 @@ class TestWeekSpan:
         span = week_span(IsoWeek(2026, week), ZoneProfile(zone))
 
         assert span.total_minutes() == minutes
+
+
+class TestTheZoneEachDayResolves:
+    """A week is not one zone, so every shape carrying its wall-time resolutions carries seven."""
+
+    def test_it_answers_for_each_of_the_weeks_seven_dates(self) -> None:
+        resolved = active_zone_by_date(IsoWeek(2026, 7), HOME)
+
+        assert list(resolved) == list(IsoWeek(2026, 7).dates())
+        assert set(resolved.values()) == {LONDON}
+
+    def test_a_mid_week_travel_override_gives_the_week_two_zones(self) -> None:
+        # Thursday to Sunday abroad: the days either side of the boundary resolve their wall times
+        # against different offsets, which is the case a single zone per week reads wrongly.
+        profile = ZoneProfile(
+            LONDON,
+            (TravelOverride(date(2026, 2, 12), date(2026, 2, 15), TOKYO),),
+        )
+
+        resolved = active_zone_by_date(IsoWeek(2026, 7), profile)
+
+        assert resolved[date(2026, 2, 11)] == LONDON
+        assert resolved[date(2026, 2, 12)] == TOKYO
+        assert resolved[date(2026, 2, 15)] == TOKYO
+
+    def test_a_span_that_names_the_travel_zone_still_resolves_the_home_days_at_home(self) -> None:
+        # The span's two Mondays and the days inside it are separate questions, so an override
+        # covering the Monday must not change what Wednesday resolves.
+        profile = ZoneProfile(
+            LONDON,
+            (TravelOverride(date(2026, 2, 9), date(2026, 2, 10), TOKYO),),
+        )
+
+        resolved = active_zone_by_date(IsoWeek(2026, 7), profile)
+
+        assert resolved[date(2026, 2, 9)] == TOKYO
+        assert resolved[date(2026, 2, 11)] == LONDON

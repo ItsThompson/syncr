@@ -31,7 +31,7 @@ from syncr_domain.intervals import Interval
 from syncr_domain.zones import active_zone, to_instant
 
 if TYPE_CHECKING:
-    from syncr_domain.zones import Date, ZoneProfile
+    from syncr_domain.zones import Date, ZoneId, ZoneProfile
 
 LOCAL_MIDNIGHT: Final = time(0, 0)
 
@@ -127,3 +127,16 @@ def week_span(iso_week: IsoWeek, profile: ZoneProfile) -> Interval:
         to_instant(LOCAL_MIDNIGHT, monday, active_zone(profile, monday)),
         to_instant(LOCAL_MIDNIGHT, next_monday, active_zone(profile, next_monday)),
     )
+
+
+def active_zone_by_date(iso_week: IsoWeek, profile: ZoneProfile) -> dict[Date, ZoneId]:
+    """The zone active on each of the week's seven dates.
+
+    A week is not one zone. A travel override taken mid-week makes the days either side of it
+    resolve their wall times against different offsets, so every shape that carries a week's
+    wall-time resolutions carries this mapping rather than a single zone.
+
+    Stated here, beside the span, because the two are the same question asked twice: the span
+    resolves the two Mondays that bound the week and this resolves the days inside it.
+    """
+    return {on: active_zone(profile, on) for on in iso_week.dates()}

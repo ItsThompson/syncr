@@ -89,6 +89,35 @@ class RevisionReason(StrEnum):
     HORIZON_ADVANCED = "horizon_advanced"
 
 
+class AdjustmentKind(StrEnum):
+    """The four concessions an approved tradeoff can persist for one week.
+
+    Here rather than beside the storage table for the same reason ``RevisionReason`` is: the
+    week assembler folds a concession into a solve input and a reason clause cites one, so
+    both readers are stated over a pure vocabulary and the column's tuple is derived from it.
+
+    Each kind names what its approval modifies, and three of the four modify TWO resolved
+    quantities rather than one, because the solver's reading and the probe's reading of one
+    concession are separate fields:
+
+    | Kind | What an approval modifies |
+    |---|---|
+    | ``drop_item`` | the task leaves eligibility, AND every demand naming it goes |
+    | ``reduce_routine`` | that routine's effective duration on each named date |
+    | ``breach_floor`` | that Area's floor minutes AND its floor reservation |
+    | ``accept_partial`` | the task's deadline on its eligibility AND its demands |
+
+    A kind that modified only one of a pair would leave the concession half applied: the
+    panel would go quiet while the objective still strained against the excused deadline, or
+    the breach would not close the shortfall it was offered for.
+    """
+
+    DROP_ITEM = "drop_item"
+    REDUCE_ROUTINE = "reduce_routine"
+    BREACH_FLOOR = "breach_floor"
+    ACCEPT_PARTIAL = "accept_partial"
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Block:
     """One thing that happens in the week, and why it is where it is.
@@ -181,7 +210,7 @@ class PlanDocument:
         object.__setattr__(self, "forbidden_windows", tuple(self.forbidden_windows))
         object.__setattr__(self, "empty_slots", tuple(self.empty_slots))
         object.__setattr__(self, "adjustments", tuple(self.adjustments))
-        _require_a_zone_for_every_day(self.iso_week, self.zone_by_date)
+        require_a_zone_for_every_day(self.iso_week, self.zone_by_date)
         _require_blocks_of_this_week(self.iso_week, self.blocks)
         _require_figures_that_count_minutes(
             self.discretionary_minutes, self.unallocated_minutes, self.oversubscription_minutes
@@ -268,12 +297,16 @@ def _require_a_chunk_count_matching_the_chunk(
         )
 
 
-def _require_a_zone_for_every_day(iso_week: IsoWeek, zone_by_date: Mapping[Date, ZoneId]) -> None:
+def require_a_zone_for_every_day(iso_week: IsoWeek, zone_by_date: Mapping[Date, ZoneId]) -> None:
     """Exactly the week's seven dates, no more and no fewer.
 
     A missing day is a day whose wall times resolve against nothing, which is how a travel
     override taken mid-week silently reads the wrong offset. A foreign date is a day this
     document does not describe.
+
+    Public, because a plan document is not the only shape that carries the mapping: a solve
+    input carries the same one for the same reason, and a second statement of the rule is
+    how the two would come to accept different sets.
     """
     dates = set(iso_week.dates())
     missing = [str(day) for day in iso_week.dates() if day not in zone_by_date]
