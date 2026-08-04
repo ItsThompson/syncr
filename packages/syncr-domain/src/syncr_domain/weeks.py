@@ -95,6 +95,18 @@ class IsoWeek:
     def monday(self) -> Date:
         return date.fromisocalendar(self.year, self.week, _MONDAY)
 
+    def dates(self) -> tuple[Date, ...]:
+        """The seven local dates this week covers, Monday first.
+
+        A week is seven dates whatever its length in minutes, so this is the one place a
+        per-date collection is checked for covering the week. ``week_span`` answers the other
+        question, how long the week is, and that one needs a zone profile while this does not.
+        """
+        return tuple(
+            date.fromisocalendar(self.year, self.week, weekday)
+            for weekday in range(_MONDAY, _MONDAY + len(Weekday))
+        )
+
     def following(self) -> IsoWeek:
         return IsoWeek.containing(self.monday() + timedelta(days=7))
 

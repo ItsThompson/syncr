@@ -27,3 +27,5 @@ type TemplateId = UUID
 type TemplateEntryId = UUID
 type OffPlanPeriodId = UUID
 type TaskId = UUID
+type AnchorId = UUID
+type WeekAdjustmentId = UUID

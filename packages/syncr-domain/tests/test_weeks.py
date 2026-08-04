@@ -56,6 +56,35 @@ class TestIsoWeekIdentity:
         assert IsoWeek(2026, 13).monday() == date(2026, 3, 23)
         assert IsoWeek(2026, 13).monday().isoweekday() == 1
 
+    def test_a_week_is_seven_dates_from_its_monday(self) -> None:
+        assert IsoWeek(2026, 13).dates() == (
+            date(2026, 3, 23),
+            date(2026, 3, 24),
+            date(2026, 3, 25),
+            date(2026, 3, 26),
+            date(2026, 3, 27),
+            date(2026, 3, 28),
+            date(2026, 3, 29),
+        )
+
+    def test_the_transition_week_still_holds_seven_dates(self) -> None:
+        """A week is seven dates whatever its length in minutes.
+
+        The spring-forward week is 167 hours and the fall-back week is 169, and a per-date
+        collection covers seven days in both. That is why this needs no zone: how long a week
+        is, is ``week_span``'s question and it does need one.
+        """
+        for iso_week in (IsoWeek(2026, 13), IsoWeek(2026, 43)):
+            assert len(iso_week.dates()) == len(Weekday)
+
+    def test_the_dates_run_monday_to_sunday(self) -> None:
+        assert [day.isoweekday() for day in IsoWeek(2026, 7).dates()] == [1, 2, 3, 4, 5, 6, 7]
+
+    def test_the_dates_of_consecutive_weeks_abut(self) -> None:
+        week = IsoWeek(2026, 52)
+
+        assert week.dates()[-1] + timedelta(days=1) == week.following().dates()[0]
+
     @pytest.mark.parametrize(
         ("on", "expected"),
         [
