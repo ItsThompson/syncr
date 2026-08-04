@@ -24,6 +24,11 @@ raise happened BEFORE the sync state was written, so anyone able to put an event
 calendar could silently and durably stop that user's sync with one byte, leaving nothing on the
 panel built to report it.
 
+**And the trigger is not only a publisher breaking the format.** ``feeds._decoded`` falls back to
+``latin-1``, which maps every byte and cannot fail, so a merely mis-encoded feed manufactures NUL
+and C1 controls with no RFC violation at all. One stray byte in a Latin-1 timetable export reaches
+the same column.
+
 The digested form keeps a readable prefix, because the stored value is what a support question
 is asked about. Two feeds could in principle produce one digested key by publishing UIDs that
 share the prefix and collide on 32 hex characters of SHA-256; that is not a case a publisher
@@ -60,13 +65,34 @@ def is_control(character: str) -> bool:
     """Whether ``character`` is a control character.
 
     Unicode's own category rather than a hand-written range, so it covers C0, DEL and C1 with one
-    test. Only NUL is fatal to a Postgres text column, but the rest render as nothing a person can
-    read, and a label is for reading.
+    test. 65 characters are ``Cc``, ten of which are also whitespace. Only NUL is fatal to a
+    Postgres text column, but the rest render as nothing a person can read, and a label is for
+    reading.
 
-    RFC 5545 forbids these in a TEXT value, so a feed carrying one is already wrong. That is why
-    they are dropped rather than trusted, and it is not a reason to trust the feed.
+    ``Cc`` is not quite every class Postgres cannot store: an unpaired surrogate is ``Cs`` and
+    raises at encode. It cannot arrive from a decoded feed body, because ``feeds._decoded`` uses
+    strict ``utf-8-sig`` and then ``latin-1``, and neither produces a surrogate. Stated rather than
+    guarded against, so a later caller feeding this JSON knows where the boundary is.
+
+    RFC 5545 forbids a control character in a TEXT value, so a feed carrying one is already wrong.
+    That is not the only way to get one: ``feeds._decoded`` falls back to ``latin-1``, which maps
+    every byte, so a merely MIS-ENCODED feed manufactures NUL and C1 controls with no RFC violation
+    and no hostile intent.
     """
     return unicodedata.category(character) == "Cc"
+
+
+def carries_a_dropped_character(value: str | None) -> bool:
+    """Whether scrubbing ``value`` would remove something.
+
+    Asked so a reconciliation can COUNT what it altered. Dropping a byte silently changes a
+    publisher's data, and a user looking at ``CompSciLecture`` on the grid, or at a match rule that
+    stopped matching, needs something to go on. Whitespace controls are excluded because those are
+    folded rather than dropped, which changes no word.
+    """
+    if value is None:
+        return False
+    return any(is_control(character) and not character.isspace() for character in value)
 
 
 def scrubbed_text(value: str) -> str:
@@ -94,11 +120,18 @@ def scrubbed_text(value: str) -> str:
 def reconciliation_key(uid: str, *, limit: int = EXTERNAL_UID_MAX_LENGTH) -> str:
     """``uid`` as the stored half of the reconciliation key, fitted to the column.
 
-    Scrubbed of control characters first, because a UID reaches the same kind of column a title
-    does and Postgres refuses the insert rather than the byte. Two UIDs differing ONLY by a control
-    character therefore collapse to one key. That is the same trade the digest makes and it is the
-    right way round: a feed carrying a NUL inside an identifier already violates RFC 5545, and a
-    merged anchor is recoverable where a sync that cannot run is not.
+    Scrubbed first, because a UID reaches the same kind of column a title does and Postgres refuses
+    the insert rather than the byte. The scrub both drops control characters AND collapses
+    whitespace, so two UIDs merge to one key when they differ only by a control character **or only
+    by whitespace**: ``'abc'`` and ``'abc '`` are one key, and so are ``'a b'`` and ``'a\\tb'``.
+    Both were two keys before the scrub existed. That is the same trade the digest makes and it is
+    the right way round: a feed whose two commitments differ only in whitespace is not a real feed,
+    and a merged anchor is recoverable where a sync that cannot run is not.
+
+    The merge is length-dependent, in the safer direction. The digest is taken over the ORIGINAL
+    value, so two OVERSIZED UIDs differing only by a control character keep two keys while their
+    short equivalents merge. Deliberate: a duplicate anchor is cheaper than a merged one, so where
+    the two readings differ the bounded path takes the more cautious one.
 
     Returned unchanged when it already fits, which is every real feed. Past the limit the tail
     is replaced by a digest of the WHOLE value, so two long UIDs sharing a prefix stay two

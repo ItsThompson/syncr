@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_api.anchors.identity import (
+    carries_a_dropped_character,
     reconciliation_key,
     series_key,
     stored_location,
@@ -83,9 +84,11 @@ class AnchorReconciler:
 
         created = 0
         updated = 0
+        scrubbed = 0
         for key, event in incoming.items():
             existing = by_key.get(key)
             assignment = self._assign(source.id, event, types=types, overrides=overrides)
+            scrubbed += _lost_a_character(event)
             if existing is None:
                 await self._create(source.id, key, event, assignment)
                 created += 1
@@ -98,6 +101,7 @@ class AnchorReconciler:
             created=created,
             updated=updated,
             removed=removed,
+            scrubbed=scrubbed,
             current=await self._anchors.count_for_source(source.id),
         )
         _log.info(
@@ -212,12 +216,32 @@ class AnchorReconciler:
         return moved
 
 
+def _lost_a_character(event: RawEvent) -> int:
+    """1 when any of this event's stored values lost a control character, else 0.
+
+    Per event rather than per value, so a feed whose every component carries one bad byte reports
+    the number of commitments affected rather than four times that.
+    """
+    return int(
+        any(
+            carries_a_dropped_character(value)
+            for value in (event.uid, event.series_uid, event.title, event.location)
+        )
+    )
+
+
 def _keyed(events: Sequence[RawEvent]) -> Mapping[str, RawEvent]:
     """The incoming events by reconciliation key, last one winning.
 
-    The parser already resolves a duplicate UID within one feed by ``SEQUENCE``, so two events
-    reaching one key here means two long UIDs that the digest could not tell apart, which needs a
-    SHA-256 collision. Taking the last makes the outcome a function of the parser's order rather
-    than of which insert raised on the unique index.
+    Two events reach one key for either of two reachable reasons: a SHA-256 collision between two
+    oversized UIDs, or two UIDs the SCRUB made equal, which needs no collision at all. The second is
+    reachable whenever two UIDs differ only by a control character or only by whitespace, and it
+    became reachable when the scrub was added.
+
+    So the resolution here is FEED ORDER, not the parser's ``SEQUENCE`` rule. The parser resolves a
+    duplicate UID within one feed by ``SEQUENCE`` before this is reached; it cannot resolve two UIDs
+    that were distinct to it and equal here. Last-one-wins is still the right choice, because it
+    makes the outcome a function of the parser's ordering rather than of which insert happened to
+    raise on the unique index.
     """
     return {reconciliation_key(event.uid): event for event in events}

@@ -53,6 +53,7 @@ if TYPE_CHECKING:
 
     from syncr_api.accounts.records import UserRecord
     from syncr_api.anchors.records import AnchorRecord, AnchorTypeRecord
+    from syncr_api.calendars.anchor_writing import AnchorDelta
     from syncr_api.calendars.records import CalendarSourceId, CalendarSourceRecord
     from syncr_domain.identifiers import AreaId, TenantId
 
@@ -176,7 +177,7 @@ async def reconcile(
     tenant_id: TenantId,
     source: CalendarSourceRecord,
     outcome: FetchOutcome,
-) -> object:
+) -> AnchorDelta:
     async with sessions() as session, session.begin():
         reconciler = AnchorReconciler(
             AnchorRepository(session, tenant_id), AnchorTypeRepository(session, tenant_id)
@@ -279,7 +280,7 @@ async def test_a_commitment_that_moved_is_updated_rather_than_replaced(
     assert after.id == original.id
     assert after.interval == moved.interval
     assert after.title == "Lecture, room changed"
-    assert (delta.created, delta.updated, delta.removed) == (0, 1, 0)  # type: ignore[attr-defined]
+    assert (delta.created, delta.updated, delta.removed) == (0, 1, 0)
 
 
 # --------------------------------------------------------------------------------
@@ -304,7 +305,7 @@ async def test_a_successful_read_removes_what_the_feed_stopped_publishing(
     assert [anchor.external_uid for anchor in await held(sessions, tenant_id, source.id)] == [
         "kept@example.ac.uk"
     ]
-    assert delta.removed == 1  # type: ignore[attr-defined]
+    assert delta.removed == 1
 
 
 async def test_a_feed_that_now_publishes_nothing_removes_everything_it_had(
@@ -406,8 +407,8 @@ async def test_a_steady_feed_reports_nothing_updated(
 
     second = await reconcile(sessions, tenant_id, source, outcome)
 
-    assert (second.created, second.updated, second.removed) == (0, 0, 0)  # type: ignore[attr-defined]
-    assert second.current == 2  # type: ignore[attr-defined]
+    assert (second.created, second.updated, second.removed) == (0, 0, 0)
+    assert second.current == 2
 
 
 async def test_clearing_possibly_stale_counts_as_an_update(
@@ -424,7 +425,7 @@ async def test_clearing_possibly_stale_counts_as_an_update(
 
     after = await reconcile(sessions, tenant_id, source, outcome)
 
-    assert after.updated == 1  # type: ignore[attr-defined]
+    assert after.updated == 1
     assert (await held(sessions, tenant_id, source.id))[0].possibly_stale is False
 
 
@@ -446,7 +447,7 @@ async def test_a_moved_commitment_counts_as_one_update(
         ),
     )
 
-    assert moved.updated == 1  # type: ignore[attr-defined]
+    assert moved.updated == 1
 
 
 # --------------------------------------------------------------------------------
@@ -556,7 +557,7 @@ async def test_a_control_character_from_a_publisher_reconciles_rather_than_raisi
     delta = await reconcile(sessions, tenant_id, source, a_read(hostile))
 
     anchors = await held(sessions, tenant_id, source.id)
-    assert delta.created == 1  # type: ignore[attr-defined]
+    assert delta.created == 1
     assert len(anchors) == 1
     stored = anchors[0]
     for value in (stored.external_uid, stored.series_uid, stored.title, stored.location):
@@ -578,8 +579,64 @@ async def test_a_control_character_bearing_feed_still_reconciles_on_the_second_p
     await reconcile(sessions, tenant_id, source, outcome)
     second = await reconcile(sessions, tenant_id, source, outcome)
 
-    assert (second.created, second.removed) == (0, 0)  # type: ignore[attr-defined]
+    assert (second.created, second.removed) == (0, 0)
     assert len(await held(sessions, tenant_id, source.id)) == 1
+
+
+async def test_a_scrubbed_commitment_is_counted_so_the_drop_is_not_silent(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    # Dropping a byte silently alters a publisher's data. A user looking at `SystemsLecture` on the
+    # grid, or at a match rule that stopped matching, needs something to go on, and so does whoever
+    # answers the support question. Counted per commitment rather than per value, so a feed whose
+    # every field carries a bad byte reports the number of commitments rather than four times it.
+    delta = await reconcile(
+        sessions,
+        tenant_id,
+        source,
+        a_read(
+            an_event("clean@example", title="Systems Lecture"),
+            an_event(
+                "dirty\x00@example",
+                title="Maths\x00Lecture",
+                location="Room\x00 3",
+                start=MONDAY_0900 + HOUR,
+            ),
+        ),
+    )
+
+    assert delta.scrubbed == 1
+    assert delta.created == 2
+    assert "anchors_scrubbed" in delta.as_log_fields()
+
+
+async def test_a_clean_feed_counts_nothing_scrubbed(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    # The control. Without it, the count could report every commitment and still look right in the
+    # test above.
+    delta = await reconcile(sessions, tenant_id, source, a_read(an_event("clean@example")))
+
+    assert delta.scrubbed == 0
+
+
+async def test_a_folded_summary_is_not_counted_as_scrubbed(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    # A whitespace control is folded, not dropped, so it changes no word and must not be reported as
+    # data loss. Counting it would make the number useless on any feed that folds a long SUMMARY.
+    delta = await reconcile(
+        sessions, tenant_id, source, a_read(an_event("f@example", title="Computer\r\n\tScience"))
+    )
+
+    assert delta.scrubbed == 0
+    assert (await held(sessions, tenant_id, source.id))[0].title == "Computer Science"
 
 
 # --------------------------------------------------------------------------------

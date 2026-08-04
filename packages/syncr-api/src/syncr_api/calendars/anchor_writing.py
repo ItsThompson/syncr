@@ -45,6 +45,12 @@ class AnchorDelta:
     updated: int = 0
     removed: int = 0
     marked_stale: int = 0
+    # Commitments whose published text lost a character on the way in. Dropping a control character
+    # silently alters a publisher's data, so the count is what a support question has to go on: a
+    # title reading `CompSciLecture`, or a match rule that stopped matching because the stored title
+    # lost a separator, is otherwise unexplainable. A count rather than a log line per value, which
+    # a badly encoded feed would make thousands of.
+    scrubbed: int = 0
     current: int = 0
 
     def recorded_on(self, state: SyncStateRecord) -> SyncStateRecord:
@@ -75,6 +81,7 @@ class AnchorDelta:
             "anchors_updated": self.updated,
             "anchors_removed": self.removed,
             "anchors_marked_stale": self.marked_stale,
+            "anchors_scrubbed": self.scrubbed,
             "anchors_current": self.current,
         }
 
