@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { AnchorTypesTab } from "../tabs/AnchorTypesTab";
 import { withRouter } from "./render";
+import { step } from "./step";
 import { writeDouble } from "./writeDouble";
 import {
   AREA_CAREER,
@@ -140,21 +141,25 @@ describe("reordering the rules", () => {
 });
 
 describe("editing a type's geometry", () => {
-  it("exposes every member the ticket names", () => {
+  /* EACH MEMBER IS FOUND AS A CONTROL, NOT AS A WORD. `getByText` finds the label and says nothing about whether
+   * anything is there to operate: replacing a stepper with a bare `<p>` of the same words leaves this green while
+   * the editor has lost a member. The role is part of the claim too, because which control a member takes is what
+   * makes it editable: a lead is a stepped figure and an Area is a choice from a list.
+   *
+   * Exact-string names disambiguate `Prep` from `Prep lead` and `Prep Area`, so no pattern is needed. */
+  it.each([
+    ["Prep lead", "spinbutton"],
+    ["Prep", "spinbutton"],
+    ["Prep Area", "combobox"],
+    ["Transit lead", "spinbutton"],
+    ["Transit out", "spinbutton"],
+    ["Transit back", "spinbutton"],
+    ["Transit Area", "combobox"],
+    ["Post buffer", "spinbutton"],
+  ] as const)("offers %s as a control a reader can operate", (label, role) => {
     renderTab();
 
-    for (const label of [
-      "Prep lead",
-      "Prep",
-      "Prep Area",
-      "Transit lead",
-      "Transit out",
-      "Transit back",
-      "Transit Area",
-      "Post buffer",
-    ]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
-    }
+    expect(screen.getByRole(role, { name: label })).toBeInTheDocument();
   });
 
   it("reads the recovery scope as the three-way choice, in the reader's words", () => {
@@ -206,7 +211,7 @@ describe("editing a type's geometry", () => {
   it("carries a stepped prep lead into the body", async () => {
     const { edit } = renderTab();
 
-    await userEvent.click(screen.getAllByRole("button", { name: "increase 15 minutes" })[0]);
+    await step("Prep lead", "increase");
     await userEvent.click(screen.getByRole("button", { name: "Save the anchor type" }));
 
     expect(edit.bodies[0].prepLeadMinutes).toBe(375);
@@ -239,7 +244,7 @@ describe("editing a type's geometry", () => {
   it("carries a decremented lead into the body, so a step is a real change", async () => {
     const { edit } = renderTab();
 
-    await userEvent.click(screen.getAllByRole("button", { name: "decrease 15 minutes" })[0]);
+    await step("Prep lead", "decrease");
     await userEvent.click(screen.getByRole("button", { name: "Save the anchor type" }));
 
     expect(edit.bodies[0].prepLeadMinutes).toBe(345);
@@ -248,10 +253,8 @@ describe("editing a type's geometry", () => {
   it("carries a stepped outbound journey and return leg into the body", async () => {
     const { edit } = renderTab();
 
-    /* The rows in order: prep lead, prep, transit lead, transit out, transit back, post buffer. */
-    const raise = screen.getAllByRole("button", { name: "increase 15 minutes" });
-    await userEvent.click(raise[3]);
-    await userEvent.click(raise[4]);
+    await step("Transit out", "increase");
+    await step("Transit back", "increase");
     await userEvent.click(screen.getByRole("button", { name: "Save the anchor type" }));
 
     expect(edit.bodies[0]).toMatchObject({
@@ -263,9 +266,8 @@ describe("editing a type's geometry", () => {
   it("carries a stepped transit lead and post buffer into the body", async () => {
     const { edit } = renderTab();
 
-    const raise = screen.getAllByRole("button", { name: "increase 15 minutes" });
-    await userEvent.click(raise[2]);
-    await userEvent.click(raise[5]);
+    await step("Transit lead", "increase");
+    await step("Post buffer", "increase");
     await userEvent.click(screen.getByRole("button", { name: "Save the anchor type" }));
 
     expect(edit.bodies[0]).toMatchObject({ transitLeadMinutes: 45, postBufferMinutes: 90 });

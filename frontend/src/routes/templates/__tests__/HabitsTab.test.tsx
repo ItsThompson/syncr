@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { HabitsTab } from "../tabs/HabitsTab";
 import { withRouter } from "./render";
+import { step } from "./step";
 import { writeDouble } from "./writeDouble";
 import {
   HABIT_ANKI,
@@ -60,14 +61,40 @@ const derivations = () => screen.getByRole("region", { name: "Derived, and read-
 const CURSOR_STATEMENT = buildHabit().cursor?.statement ?? "";
 const DEBT_STATEMENT = buildHabit().debt.statement;
 
-/* What a control for either derivation would be called.
+/* THE CONTROLS THIS TAB OFFERS, ENUMERATED, RATHER THAN THE ONES IT MAY NOT.
  *
- * TWO PATTERNS, AND THE DEBT ONE NAMES THE FIGURE RATHER THAN THE WORD. The debt CAP is a settable member with a
- * legitimate control on this form, so `debt` on its own would match it and the test would fail against correct
- * code. What is derived is the outstanding count, the misses behind it and what was forgiven at the cap, so those
- * are the words a control for it would carry. */
-const CURSOR_NAMES = /cursor|variant|rotation/i;
-const DEBT_FIGURE_NAMES = /outstanding|owed|missed|misses|forgiven/i;
+ * A pattern is bounded by its vocabulary, and that bound is reachable: `Reset the debt` sets a derivation without
+ * using a word a pattern could safely forbid, because `debt` on its own also matches the legitimate `Debt cap`,
+ * and `Advance to Chest & Back` sets the cursor by naming the content rather than the member. Both are plausible
+ * wordings and both pass a word list.
+ *
+ * An inventory reds on ANY control this tab does not already offer, whatever it is called, which is the claim the
+ * ticket actually makes: these controls and no others. Adding one legitimately means adding it here,
+ * deliberately, on a form whose whole point is what it does not offer.
+ *
+ * The names are the ACCESSIBLE names, computed rather than guessed: the required mark is part of the label, and
+ * the computation joins the label's text nodes without a separator, so `Title` with a required mark is `Title*`.
+ * The list is the inventory for the DEFAULT render, where the selected habit's cadence is a weekly count; a daily
+ * habit offers no count box, which `hides the count box for a daily cadence` owns. */
+const CONTROL_INVENTORY = [
+  ["textbox", ["Title*", "Times a week*", "Debt cap*"]],
+  ["combobox", ["Cadence", "On miss"]],
+  ["spinbutton", ["Least", "Most"]],
+  ["radio", []],
+  ["checkbox", []],
+  [
+    "button",
+    [
+      "Gym",
+      "Anki",
+      "decrease 15 minutes",
+      "decrease 15 minutes",
+      "increase 15 minutes",
+      "increase 15 minutes",
+      "Save the habit",
+    ],
+  ],
+] as const;
 
 /** How many times a sentence appears inside a surface, which is what catches a restatement. */
 function occurrencesIn(surface: HTMLElement, sentence: string): number {
@@ -164,24 +191,27 @@ describe("the two derivations are readings and not controls", () => {
     expect(occurrencesIn(derivations(), "no control to set it")).toBe(1);
   });
 
-  /* THE ABSENCE IS ASSERTED BY ACCESSIBLE NAME, which is the only query that sees every control shape this form
-   * uses. An Input, a Select, a NumberStepper and a TimeInput are all named by the `<label htmlFor>` a FormRow
-   * mints: they carry no `aria-label` and no text of their own, so a name derived from those two attributes is
-   * blind to exactly the shape a regression would take.
+  /* THE ABSENCE IS ASSERTED AS AN INVENTORY, which is the only form that does not depend on guessing what a
+   * control for a derived value would be called. Every name is queried by ROLE and NAME, because the accessible
+   * name is the channel a reader perceives and the one channel every control shape here reaches: an Input, a
+   * Select, a NumberStepper and a TimeInput are named by the label a FormRow mints, and carry no aria-label and
+   * no text of their own.
    *
-   * Both positive halves stay. Without them this passes on a tab that renders no cursor at all. */
-  it.each(["textbox", "combobox", "spinbutton", "radio", "checkbox", "button"] as const)(
-    "offers no %s that sets either derivation, anywhere on the tab",
-    (role) => {
+   * Both positive halves stay. Without them this passes on a tab that renders no derivation at all. */
+  it.each(CONTROL_INVENTORY)(
+    "offers exactly the %s controls this tab is meant to have, and none for either derivation",
+    (role, names) => {
       renderTab();
 
-      /* Both positive halves. The sentence is asserted as CONTENT rather than as an element's exact text, so
-       * this sweep stays about the absence: whether the panel restates the sentence is one test's job, above. */
       expect(derivations()).toHaveTextContent(CURSOR_STATEMENT);
       expect(habitTable()).toHaveTextContent("Legs \u00B7 derived");
 
-      expect(screen.queryAllByRole(role, { name: CURSOR_NAMES })).toEqual([]);
-      expect(screen.queryAllByRole(role, { name: DEBT_FIGURE_NAMES })).toEqual([]);
+      expect(screen.queryAllByRole(role)).toHaveLength(names.length);
+      for (const name of new Set(names)) {
+        expect(screen.queryAllByRole(role, { name })).toHaveLength(
+          names.filter((each) => each === name).length,
+        );
+      }
     },
   );
 
@@ -243,7 +273,7 @@ describe("editing a habit", () => {
   it("carries a stepped duration into the body, which is what makes it elastic", async () => {
     const { edit } = renderTab();
 
-    await userEvent.click(screen.getAllByRole("button", { name: "increase 15 minutes" })[1]);
+    await step("Most", "increase");
     await userEvent.click(screen.getByRole("button", { name: "Save the habit" }));
 
     expect(edit.bodies[0]).toMatchObject({ minDurationMinutes: 60, maxDurationMinutes: 75 });
