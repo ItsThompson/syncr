@@ -957,7 +957,7 @@ def test_a_refused_interval_is_named_by_size_rather_than_quoted_whole() -> None:
 
     assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
     detail = outcome.rejected[0].detail
-    assert "5000 characters" in detail
+    assert "5000-character" in detail
     assert "9999" not in detail
     assert len(detail) < 200
 
@@ -1457,3 +1457,79 @@ def test_a_feed_cut_short_does_not_blame_a_recurrence_it_does_not_have() -> None
 
     assert [item.kind for item in outcome.rejected] == [READ_BUDGET_SPENT, READ_BUDGET_SPENT]
     assert all("recurrence" not in item.detail for item in outcome.rejected)
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        # A position padded past what any guard's predicate would read. The predicate that judged
+        # readability was consumed as a REFUSAL by one caller and as a FILTER by two others, so
+        # tightening it made these skip the value they were meant to judge instead of refusing it.
+        "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=000000000002",
+        "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=+000000000002",
+        "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=-000000000002",
+        "FREQ=MINUTELY;BYSECOND=0;BYSETPOS=000000000002",
+        "FREQ=SECONDLY;BYSETPOS=000000000002",
+        # And a padded SET MEMBER, which inflated the room the position is judged against.
+        "FREQ=HOURLY;BYMINUTE=30,000000000030;BYSETPOS=2",
+    ],
+)
+def test_a_padded_rule_member_cannot_walk_past_the_guard_that_reads_it(rule: str) -> None:
+    # Each of these stalled for between a minute and days in one dateutil call, which is past what
+    # MAX_PARSE_SECONDS can see: that bound is checked BETWEEN components, so one component overruns
+    # it by however long the call takes.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:pad2@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+
+
+@pytest.mark.parametrize(
+    ("padded", "plain"),
+    [
+        # Padding is not an error. RFC 5545's digit grammar permits it, and a publisher who writes
+        # it means the number, so a padded rule has to answer exactly as its plain spelling does
+        # while the shapes above are refused.
+        ("FREQ=DAILY;INTERVAL=000000000001", "FREQ=DAILY;INTERVAL=1"),
+        ("FREQ=DAILY;COUNT=000000000003", "FREQ=DAILY;COUNT=3"),
+        ("FREQ=HOURLY;BYMINUTE=00,030;BYSETPOS=2", "FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2"),
+    ],
+)
+def test_a_padded_value_a_publisher_means_is_still_read(padded: str, plain: str) -> None:
+    def events_of(rule: str) -> list[datetime]:
+        body = (
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:pad3@example.org\r\n"
+            "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
+            f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        )
+        outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+        assert outcome.rejected == ()
+        return [event.interval.start for event in outcome.events]
+
+    assert events_of(padded) == events_of(plain) != []
+
+
+@pytest.mark.parametrize("part", ["INTERVAL", "COUNT", "BYSETPOS", "BYSECOND", "BYMONTHDAY"])
+def test_every_rule_property_is_bounded_for_length_not_just_the_guarded_ones(part: str) -> None:
+    # The bound is a pass over the rule rather than a predicate inside one guard, because dateutil
+    # reads properties syncr has no opinion on: COUNT was unbounded while INTERVAL was refused, and
+    # both are converted by the same library under the same interpreter limit.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:pad4@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:FREQ=DAILY;{part}={'0' * 4302}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    detail = outcome.rejected[0].detail
+    assert f"{part}" in detail
+    assert "4302-character" in detail
+    assert "set_int_max_str_digits" not in detail

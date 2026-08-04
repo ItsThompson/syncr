@@ -71,6 +71,18 @@ _EXPANDING_PARTS: Final = {
 _RULE_SEPARATOR: Final = ";"
 _WALL_FORMAT: Final = "%Y%m%dT%H%M%S"
 
+# The longest a single comma-separated member of a rule part may be. Every legitimate member is a
+# number, a signed number, or a weekday with an ordinal, so this is far beyond any real one, and it
+# is small enough that no conversion of it can depend on the interpreter's digit limit: Python's own
+# floor for that limit is 640.
+#
+# It exists because a rule value is converted TWICE, once here and once by dateutil, and only one of
+# those is syncr's to bound. Without it, a value padded past the interpreter's limit meant one thing
+# to syncr and was refused by dateutil, so the same feed answered two ways depending on how the
+# process was started. Bounding it as a PART of the rule rather than inside a predicate is what
+# makes it hold for every property, including the ones no guard reads.
+MAX_RULE_ITEM_CHARS: Final = 32
+
 # How much of a refused rule the message quotes. A rule is worth quoting, because the property that
 # broke is in it; a rule the publisher padded to eight thousand characters is not, and a detail is
 # stored and served rather than logged and dropped.
@@ -195,11 +207,44 @@ def _parsed_rule(rule_text: str, start: IcsTime) -> rruleset:
 def _require_expandable(rule_text: str) -> None:
     """Refuse a rule dateutil cannot expand in bounded time or bounded steps, naming the property.
 
-    Two shapes, both of which defeat a bound on how many occurrences a rule YIELDS, because neither
-    yields at all.
+    Three shapes. Two of them defeat a bound on how many occurrences a rule YIELDS, because neither
+    yields at all. The third is a value so long that whether it converts at all depends on how the
+    process was started.
     """
+    _require_readable_members(rule_text)
     _require_positive_interval(rule_text)
     _require_selectable_setpos(rule_text)
+
+
+def _require_readable_members(rule_text: str) -> None:
+    """Refuse a rule part whose member is longer than any real one, before anything converts it.
+
+    Applied to EVERY part rather than to the two a guard happens to read. The bound's purpose is
+    that syncr and dateutil agree about a value, and dateutil reads parts syncr has no opinion on,
+    so a bound living inside one guard's predicate left `COUNT` unbounded while `INTERVAL` was
+    refused.
+
+    An earlier version of this bound lived in ``_signed``, which is consumed as a REFUSAL by one
+    caller and as a FILTER by two others. Tightening it there refused a padded interval and, at the
+    same time, made two guards silently skip the value they were meant to judge: a padded
+    ``BYSETPOS`` became no position at all, and a padded set member became a distinct member. Both
+    walked. A bound that fails open at some call sites and closed at others is not a bound, which is
+    why this one is its own pass over the text.
+    """
+    for part in rule_text.split(_RULE_SEPARATOR):
+        key, separator, value = part.partition("=")
+        if not separator:
+            continue
+        for item in value.split(","):
+            stated = item.strip()
+            if len(stated) <= MAX_RULE_ITEM_CHARS:
+                continue
+            message = (
+                f"the recurrence rule states a {len(stated)}-character value for "
+                f"{key.strip().upper() or 'a property'}, and syncr reads at most "
+                f"{MAX_RULE_ITEM_CHARS} characters per value"
+            )
+            raise UnparseableRecurrence(message)
 
 
 def _require_selectable_setpos(rule_text: str) -> None:
@@ -265,17 +310,19 @@ def _members(value: str | None) -> int:
     Distinct by VALUE rather than by spelling, because that is what dateutil holds: it stores each
     list as a set of integers. ``0,0`` names one minute and ``30,030`` names one minute, and
     counting them as two put a position past the real set on the safe side of this guard.
+
+    A member syncr cannot read is not counted, which is the conservative direction: an unreadable
+    member cannot be one dateutil selects either, so counting it would only ever inflate the room.
     """
     if value is None:
         return 1
-    named = {_canonical(item) for item in value.split(",") if item.strip()}
+    named = {_canonical(item) for item in value.split(",") if item.strip() and _signed(item)}
     return max(len(named), 1)
 
 
 def _canonical(item: str) -> str:
-    """One ``BY`` list member as the value it means, so two spellings of it count once."""
-    stated = item.strip()
-    return str(_number(stated)) if _signed(stated) else stated
+    """One readable ``BY`` list member as the value it means, so two spellings of it count once."""
+    return str(_number(item))
 
 
 def _number(value: str) -> int:
@@ -299,19 +346,13 @@ def _signed(value: str) -> bool:
     either. Checking the wrong predicate left the conversion able to raise while the table beside it
     claimed the site was guarded here.
 
-    **Both lengths are bounded, and for two different reasons.** The SIGNIFICANT digits are bounded
-    because that is the magnitude syncr will act on. The RAW length is bounded because this string
-    is also handed to dateutil, which converts it itself, and whether that succeeds depends on the
-    interpreter's digit limit rather than on anything syncr owns.
-
-    Bounding only the significant digits made ``INTERVAL=`` four thousand zeros then a one mean 1 to
-    syncr, and mean a refusal to dateutil at the default limit and 1 again with the limit disabled:
-    the same feed answered two ways depending on how the process was started.
+    The bound is on SIGNIFICANT digits, and it holds because ``_number`` converts the significant
+    digits. The RAW length is bounded too, but not here: see ``_require_readable_members``, which is
+    a pass over the whole rule rather than a predicate. This function is consumed as a refusal by
+    one caller and as a filter by two, so a bound placed here fails open at two of the three.
     """
     stated = value.strip().removeprefix("+").removeprefix("-")
-    if not stated.isdecimal() or len(stated) > MAX_MAGNITUDE_DIGITS:
-        return False
-    return len(stated.lstrip("0")) <= MAX_MAGNITUDE_DIGITS
+    return stated.isdecimal() and len(stated.lstrip("0")) <= MAX_MAGNITUDE_DIGITS
 
 
 def _stated(value: str, *, width: int = MAX_MAGNITUDE_DIGITS) -> str:

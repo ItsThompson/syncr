@@ -384,6 +384,22 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         "DURATION:PT1H",
         "RRULE:FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,5",
     ),
+    # A position and a set member padded past what any guard's predicate reads. Nothing else in the
+    # corpus crosses a rule value with padding, which is how a predicate that fails open at two of
+    # its three call sites shipped: the same shapes above, spelled with leading zeros, stalled
+    # again.
+    "a padded setpos past its period": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=HOURLY;BYMINUTE=0;BYSETPOS=000000000002",
+    ),
+    "a padded set member inflating the room": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=HOURLY;BYMINUTE=30,000000000030;BYSETPOS=2",
+    ),
+    "a rule value past the readable width": (
+        "DURATION:PT1H",
+        f"RRULE:FREQ=DAILY;COUNT={PADDED_PAST_INT_CONVERSION}",
+    ),
     "a count past the conversion limit": (
         "DURATION:PT1H",
         f"RRULE:FREQ=DAILY;COUNT={PAST_INT_CONVERSION}",
