@@ -5,7 +5,7 @@ occurrence due
       │
       ├── confirmed complete ─────────────▶ rotation cursor advances
       │
-      └── skipped ────────────────────────▶ miss_policy decides
+      └── confirmed skipped ──────────────▶ miss_policy decides
                                               │
               ┌───────────────────────────────┼───────────────────────────┐
               ▼                               ▼                           ▼
@@ -20,6 +20,16 @@ occurrence due
                                                      habit is raised in the
                                                      weekly session
 ```
+
+**Only a CONFIRMED skip is a miss, and an unconfirmed day is neither a miss nor a completion.**
+That is a narrowing, and it is stated here because it is a product behavior rather than a detail: a
+user who stops confirming days accrues no debt and raises no ``escalate`` habit, so the two
+policies that exist to chase the user go quiet for exactly the user who disengaged. The reasons are
+that an unconfirmed day is excluded from reviews and from learning everywhere else, and that the
+default state of an unconfirmed block is ``presumed``, so charging an unconfirmed row would charge
+every day the user actually did along with the ones they did not. Confirming the day later settles
+it in whichever direction the user chooses, which is what makes the narrowing safe rather than
+lossy.
 
 **The cap is a ceiling, not a decay curve.** Unbounded accumulation would make the backlog
 useless, and hitting the cap reuses the chronic-skip surface the weekly session already has

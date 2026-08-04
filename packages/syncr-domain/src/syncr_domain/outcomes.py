@@ -35,6 +35,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
+from syncr_domain.intervals import as_instant
+
 if TYPE_CHECKING:
     from syncr_domain.identifiers import HabitId
     from syncr_domain.intervals import Instant
@@ -64,10 +66,15 @@ COMPLETION_STATES: Final = frozenset(OutcomeState) - {MISS_STATE}
 class HabitOutcome:
     """One recorded outcome of one habit occurrence.
 
-    ``occurrence_key`` is the occurrence's index within its week, assigned by the week
-    assembler in expansion order and carried on the outcome's binding. Neither derivation
-    reads it: it is here because it is what identifies WHICH occurrence a correction
-    corrected, and a projection that dropped it could not be built from a binding.
+    ``occurrence_key`` is the occurrence's index within its week, assigned by the week assembler in
+    expansion order and carried on the outcome's binding. Neither derivation reads it: it is here
+    because it identifies WHICH occurrence a correction corrected, and because it is what the
+    at-most-one-row-per-occurrence precondition on ``HabitOutcomeReader.read`` is stated over. A
+    projection that dropped it could not be built from a binding either.
+
+    Both instants are normalized on construction, so a naive datetime is refused rather than
+    compared against a wall clock later. Two of those comparing without error is how a
+    transition-week defect becomes invisible, which is the reason ``as_instant`` exists.
     """
 
     habit_id: HabitId
@@ -75,6 +82,11 @@ class HabitOutcome:
     state: OutcomeState
     occurred_at: Instant
     confirmed_at: Instant | None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "occurred_at", as_instant(self.occurred_at))
+        if self.confirmed_at is not None:
+            object.__setattr__(self, "confirmed_at", as_instant(self.confirmed_at))
 
     @property
     def is_confirmed(self) -> bool:

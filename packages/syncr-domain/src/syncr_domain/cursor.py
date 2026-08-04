@@ -66,6 +66,11 @@ def derive_cursor(habit: Habit, outcomes: Sequence[HabitOutcome]) -> int:
     missing Tuesday must not skip a muscle group. An unconfirmed day does not advance either,
     because the user has not yet said what happened.
 
+    **There is no ``as_of`` here, and the asymmetry with ``outstanding_debt`` is deliberate.** Debt
+    is charged by an occurrence coming due, so it has to know which ones have; a cursor is moved by
+    a confirmation, and confirming a day the user has not lived is not a thing the product offers.
+    Taking an instant would cost this function its purity argument for a case that cannot arise.
+
     Raises :class:`NoRotationCursor` for any other binding source. A fixed habit repeats one
     content and a queue habit draws from the backlog, so neither has an index to hold, and
     answering zero would be a cursor that reads as meaningful.
@@ -138,6 +143,14 @@ def _statement(variant: str, previous: str | None) -> str:
         return (
             f"On {variant}, the first variant: no completion has been confirmed yet. Derived "
             "from the outcome log, so there is no control to set it."
+        )
+    if previous == variant:
+        # A one-variant rotation, or one that repeats a variant adjacently. Naming the previous
+        # variant as the cause would read as "On Legs because Legs was confirmed complete", which
+        # states a loop rather than an advance.
+        return (
+            f"On {variant} again: the rotation returns to it. Derived from the outcome log, so "
+            "there is no control to set it."
         )
     return (
         f"On {variant} because {previous} was confirmed complete. Derived from the outcome "

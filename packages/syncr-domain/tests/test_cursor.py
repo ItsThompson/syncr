@@ -36,6 +36,7 @@ from syncr_domain.habits import (
     MissPolicy,
     TimesPerWeek,
 )
+from syncr_domain.intervals import IntervalError
 from syncr_domain.outcomes import COMPLETION_STATES, MISS_STATE, HabitOutcome, OutcomeState
 from syncr_domain.zones import to_instant
 
@@ -156,6 +157,64 @@ def test_another_habit_s_outcomes_do_not_move_this_habit_s_cursor() -> None:
     assert derive_cursor(someone_else, mixed) == 1
 
 
+def test_two_rows_for_one_occurrence_advance_the_cursor_twice() -> None:
+    """The precondition the reader owes, pinned as behaviour rather than left to a docstring.
+
+    A count cannot tell a duplicate from a second occurrence, so a log delivering one occurrence
+    twice moves the cursor twice. This is not a defect in the derivation: it is why the reader that
+    supplies the log owes at most one row per occurrence, and it is asserted so that a later change
+    which starts de-duplicating here fails this test and has to update that contract with it.
+    """
+    habit = rotating()
+    once = [outcome(habit.id, OutcomeState.COMPLETED, index=0)]
+    twice = [*once, outcome(habit.id, OutcomeState.COMPLETED, index=0)]
+
+    assert derive_cursor(habit, once) == 1
+    assert derive_cursor(habit, twice) == 2
+
+
+def test_a_correction_replacing_a_row_advances_once_where_two_rows_would_advance_twice() -> None:
+    """The same shape read the other way: a correction REPLACES, it does not accumulate."""
+    habit = rotating()
+    corrected = [outcome(habit.id, OutcomeState.COMPLETED, index=0)]
+    accumulated = [outcome(habit.id, MISS_STATE, index=0), *corrected]
+
+    assert derive_cursor(habit, corrected) == 1
+    # A miss counts nothing, so this pair happens to agree; the point is that the reader must
+    # deliver the corrected row INSTEAD OF the original rather than beside it.
+    assert derive_cursor(habit, accumulated) == 1
+
+
+def test_an_outcome_carrying_a_naive_datetime_is_refused_where_it_is_built() -> None:
+    """Two naive datetimes compare without error, which is how a zone defect becomes invisible.
+
+    Normalized through the same guard an ``Interval`` uses, so a reader composing rows from a
+    driver that hands back naive values learns it at construction rather than as a comparison
+    against a wall clock two layers down.
+    """
+    habit = rotating()
+
+    with pytest.raises(IntervalError, match="names no instant"):
+        HabitOutcome(
+            habit_id=habit.id,
+            occurrence_key="00",
+            state=OutcomeState.COMPLETED,
+            occurred_at=datetime(2026, 8, 3, 6, 0),  # noqa: DTZ001 - the value under test
+            confirmed_at=None,
+        )
+
+
+def test_an_outcome_s_instants_are_normalized_to_utc_on_construction() -> None:
+    """An aware datetime in any zone names one instant, and that is what the row holds."""
+    habit = rotating()
+    in_auckland = to_instant(MONDAY.time(), MONDAY.date(), "Pacific/Auckland")
+
+    recorded = outcome(habit.id, OutcomeState.COMPLETED, at=in_auckland)
+
+    assert recorded.occurred_at.utcoffset() == timedelta(0)
+    assert recorded.occurred_at == in_auckland
+
+
 def test_correcting_a_past_confirmation_re_derives_the_cursor_with_no_further_action() -> None:
     """The user fixes the day on Today; nothing else is called.
 
@@ -255,6 +314,26 @@ def test_a_full_cycle_reads_as_back_at_the_start_because_the_last_variant_was_co
 
     assert reading is not None
     assert (reading.index, reading.previous_variant) == (0, "Cardio")
+    assert "On Shoulder & Arms because Cardio was confirmed complete" in reading.statement
+
+
+def test_a_one_variant_rotation_states_a_return_rather_than_naming_itself_as_the_cause() -> None:
+    """``On Legs because Legs was confirmed complete`` states a loop rather than an advance.
+
+    A one-variant rotation is legal and the entity supports it, so the sentence it produces has to
+    read as one. The same branch covers a list that repeats a variant adjacently.
+    """
+    one = rotating(variants=("Full body",))
+    reading = cursor_reading(one, log(one, OutcomeState.COMPLETED))
+
+    assert reading is not None
+    assert (reading.index, reading.variant, reading.previous_variant) == (
+        0,
+        "Full body",
+        "Full body",
+    )
+    assert "On Full body again: the rotation returns to it" in reading.statement
+    assert "because" not in reading.statement
 
 
 # --------------------------------------------------------------------------------

@@ -14,7 +14,8 @@ one instant it reads is ``as_of``, and the clip that reads it is asserted at its
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
+from itertools import pairwise
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -249,6 +250,44 @@ def test_escalate_raises_nothing_when_the_log_holds_no_miss() -> None:
     assert not reading(target, []).raised_in_weekly_session
 
 
+def test_an_escalate_raise_is_about_the_log_the_caller_slices_and_nothing_else() -> None:
+    """The current contract, pinned so passing the whole log is a choice rather than an accident.
+
+    ``escalate`` raises the habit while the outcomes it is given hold a miss, and `as_of` cannot
+    express "the week that just happened" because the clip is one-sided. So the scope is the
+    caller's: a weekly session reviewing one week passes that week's outcomes and the habit is
+    raised once, and reviewing the next week it is not. Passed the WHOLE log the same habit is
+    raised forever after a single miss, which is a nag rather than an escalation.
+
+    This test exists so that whoever gives the reading its first real caller sees the contract as an
+    assertion rather than as a sentence in a docstring.
+    """
+    target = habit(miss_policy=MissPolicy.ESCALATE)
+    missed_week = misses(target, 2)
+    a_clean_week_later = [
+        outcome(
+            target.id,
+            OutcomeState.COMPLETED,
+            index=index,
+            at=MONDAY + timedelta(days=7 + index),
+        )
+        for index in range(2)
+    ]
+
+    assert reading(target, missed_week).raised_in_weekly_session
+    assert not reading(target, a_clean_week_later).raised_in_weekly_session
+    # The whole log, which is what the assembler passes and what a session must not:
+    assert reading(target, [*missed_week, *a_clean_week_later]).raised_in_weekly_session
+
+
+def test_a_miss_far_in_the_past_still_raises_an_escalate_habit_over_the_whole_log() -> None:
+    """The consequence of the above, stated as its own case: nothing here ages a miss out."""
+    target = habit(miss_policy=MissPolicy.ESCALATE)
+    long_ago = [outcome(target.id, MISS_STATE, at=MONDAY - timedelta(days=400))]
+
+    assert reading(target, long_ago).raised_in_weekly_session
+
+
 def test_the_three_policies_answer_one_log_differently() -> None:
     """Side by side, because a policy that silently behaved like another would still pass alone."""
     rows_by_policy = {
@@ -310,23 +349,56 @@ def test_the_clip_reads_the_scheduled_instant_rather_than_the_confirmation() -> 
 
 
 @pytest.mark.parametrize("week", DST_WEEKS, ids=lambda week: week.label)
-def test_a_daylight_saving_transition_does_not_change_the_debt(week: DstWeek) -> None:
-    """A cap measured in elapsed days would move here; one counted in occurrences cannot."""
-    target = habit()
-    ordinary = misses(target, 5)
-    on_the_transition = [
-        HabitOutcome(
-            habit_id=row.habit_id,
-            occurrence_key=row.occurrence_key,
-            state=row.state,
-            occurred_at=row.occurred_at + (week.span.start - ordinary[0].occurred_at),
-            confirmed_at=None
-            if row.confirmed_at is None
-            else row.confirmed_at + (week.span.start - ordinary[0].occurred_at),
-        )
-        for row in ordinary
+def test_the_clip_charges_the_same_occurrences_across_a_daylight_saving_transition(
+    week: DstWeek,
+) -> None:
+    """Seven occurrences at the same LOCAL time each day, on a week whose offset changes.
+
+    Their absolute spacing is therefore NOT uniform: one gap is 23 or 25 hours, which the test
+    asserts before relying on it. A clip that measured elapsed days from the first occurrence would
+    miscount across that gap. The clip compares absolute instants, so charging each day's local noon
+    in turn charges exactly the occurrences that had come due, for every day of the week.
+
+    This is the case that gives the DST claim force. A `DebtReading` carries no instant fields, so a
+    version of this test that only compared two readings would be satisfied by any pure count.
+    """
+    target = habit(debt_cap_periods=MAX_DEBT_CAP_PERIODS)
+    monday = week.iso_week.monday()
+    days = [monday + timedelta(days=index) for index in range(7)]
+    every_morning = [
+        outcome(target.id, MISS_STATE, index=index, at=to_instant(time(6, 0), day, week.zone))
+        for index, day in enumerate(days)
     ]
 
+    gaps = {later.occurred_at - earlier.occurred_at for earlier, later in pairwise(every_morning)}
+    assert len(gaps) == 2, (
+        f"this week's offset must change inside it for the case to say anything, got {gaps}"
+    )
+    assert timedelta(days=1) in gaps
+
+    for index, day in enumerate(days):
+        noon = to_instant(time(12, 0), day, week.zone)
+        assert outstanding_debt(target, every_morning, noon) == index + 1
+
+
+@pytest.mark.parametrize("week", DST_WEEKS, ids=lambda week: week.label)
+def test_a_daylight_saving_transition_does_not_change_the_debt(week: DstWeek) -> None:
+    """The same log translated onto a transition week reads identically. A cap counted in
+    occurrences cannot move; one measured in elapsed days would."""
+    target = habit()
+    ordinary = misses(target, 5)
+    offset = week.span.start - ordinary[0].occurred_at
+    on_the_transition = [
+        outcome(
+            target.id,
+            MISS_STATE,
+            index=index,
+            at=MONDAY + timedelta(days=index) + offset,
+        )
+        for index in range(5)
+    ]
+
+    assert {row.occurred_at for row in on_the_transition} != {row.occurred_at for row in ordinary}
     assert reading(target, on_the_transition) == reading(target, ordinary)
 
 
