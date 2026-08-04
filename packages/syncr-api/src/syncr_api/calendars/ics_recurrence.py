@@ -336,8 +336,11 @@ def _require_selectable_setpos(rule_text: str) -> None:
 
     Which parts count as room is per-frequency and is the whole difficulty: see
     ``_EXPANDING_PARTS``. The position is compared against that size rather than the shape being
-    refused outright, so ``FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2`` still expands its 303
-    occurrences: it selects the second of two, which dateutil answers in milliseconds.
+    refused outright, so ``FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2`` still expands: it selects the
+    second of two, which dateutil answers in milliseconds. How MANY events that is depends on the
+    horizon and the series' duration, so the count is asserted in a test rather than quoted here:
+    three drafts of this docstring quoted three different numbers for it, each measured from a
+    different fixture and none of them checked.
 
     Two subtleties, each of which let a walking rule through once:
 
@@ -357,8 +360,15 @@ def _require_selectable_setpos(rule_text: str) -> None:
     rule may state 366 of them, which measured 160 seconds in one call. It is bounded here now.
 
     The general problem, a foreign expander spending unbounded time inside one call, is NOT closed
-    by this. The worst LEGAL shape measured is 22 seconds, from a rule whose parts can never all be
-    satisfied at once, and it is recorded as a known issue.
+    by this. The worst shape measured is a fully LEGAL rule whose parts can never all be satisfied
+    at once: ``FREQ=SECONDLY;BYMONTH=2;BYMONTHDAY=30;BYHOUR=2`` did not return in five minutes here
+    and was measured at 1,290 seconds by an independent pass. Every value in it is inside the range
+    its property allows, so no check above can help, and eight further legal shapes exceed 200
+    seconds.
+
+    A partial impossibility check (February has no thirtieth) would close that one combination and
+    leave the others, which is the shape of claim this module has already been wrong about four
+    times. It is recorded as a known issue with its measurement instead.
     """
     parts = dict(
         part.partition("=")[::2] for part in rule_text.upper().split(_RULE_SEPARATOR) if "=" in part

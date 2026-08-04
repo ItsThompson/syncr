@@ -1313,23 +1313,25 @@ def test_an_rdate_in_its_own_zone_is_resolved_in_that_zone() -> None:
 
 
 @pytest.mark.parametrize(
-    ("rule", "refused"),
+    ("rule", "events"),
     [
         # dateutil holds each BY list as a set of integers, so these name one member, not two or
-        # three, and a position past one member selects nothing.
-        ("FREQ=HOURLY;BYMINUTE=0,0;BYSETPOS=2", True),
-        ("FREQ=MINUTELY;BYSECOND=0,00;BYSETPOS=2", True),
-        ("FREQ=HOURLY;BYMINUTE=30,030;BYSETPOS=2", True),
-        ("FREQ=MINUTELY;BYSECOND=0,0,0;BYSETPOS=3", True),
-        ("FREQ=HOURLY;BYMINUTE=0,0,30;BYSETPOS=3", True),
+        # three, and a position past one member selects nothing. `None` means refused.
+        ("FREQ=HOURLY;BYMINUTE=0,0;BYSETPOS=2", None),
+        ("FREQ=MINUTELY;BYSECOND=0,00;BYSETPOS=2", None),
+        ("FREQ=HOURLY;BYMINUTE=30,030;BYSETPOS=2", None),
+        ("FREQ=MINUTELY;BYSECOND=0,0,0;BYSETPOS=3", None),
+        ("FREQ=HOURLY;BYMINUTE=0,0,30;BYSETPOS=3", None),
         # A list where SOME member lands is legitimate: dateutil skips the ones that do not and
         # yields for the rest, so refusing on the largest member lost a whole live series.
-        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,5", False),
-        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,2,3,4", False),
-        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=-1,-5", False),
+        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,5", 302),
+        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,2,3,4", 604),
+        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=-1,-5", 302),
     ],
 )
-def test_a_setpos_is_read_against_the_values_dateutil_will_hold(rule: str, refused: bool) -> None:
+def test_a_setpos_is_read_against_the_values_dateutil_will_hold(
+    rule: str, events: int | None
+) -> None:
     # Two ways to get the room wrong, and each let a rule walk to year 9999 inside one call or lost
     # a rule that works. The room is the count of DISTINCT VALUES, because that is what dateutil
     # stores; the reach is the SMALLEST position, because one member landing makes the rule yield.
@@ -1341,12 +1343,14 @@ def test_a_setpos_is_read_against_the_values_dateutil_will_hold(rule: str, refus
 
     outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
 
-    if refused:
+    if events is None:
         assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
         assert "produces nothing" in outcome.rejected[0].detail
     else:
         assert outcome.rejected == ()
-        assert outcome.events != ()
+        # The exact count, not "not empty": the guard's docstring used to quote a number for one of
+        # these shapes, three drafts quoted three different ones, and none was asserted anywhere.
+        assert len(outcome.events) == events
 
 
 @pytest.mark.parametrize("padded", ["0" * 4302, "0" * 4301 + "1"])
