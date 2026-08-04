@@ -37,9 +37,17 @@ from syncr_api.calendars.config import (
     NEVER_SYNCED,
     WRITE_TARGET,
 )
+from syncr_api.calendars.events import RemoteCalendar
+from syncr_api.calendars.google_client import CalendarsAnswer, CalendarsRead, GoogleReadFailed
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 from syncr_api.calendars.service import CalendarSourceService, NewSource, SourceChange
-from syncr_api.core.errors import Conflict, Forbidden, NotFound, ValidationFailed
+from syncr_api.core.errors import (
+    Conflict,
+    DependencyUnavailable,
+    Forbidden,
+    NotFound,
+    ValidationFailed,
+)
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES, Scope
 from syncr_api.solving.config import CALENDAR_SYNC, PENDING, SUCCEEDED
@@ -54,6 +62,13 @@ if TYPE_CHECKING:
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 
 TIMETABLE = "https://example.ac.uk/timetable.ics"
+REMOTE_CALENDAR = RemoteCalendar(
+    calendar_id="primary",
+    display_name="Personal",
+    time_zone="Europe/London",
+    writable=True,
+    primary=True,
+)
 PLAN = "https://example.ac.uk/plan.ics"
 
 TENANT = uuid4()
@@ -70,6 +85,9 @@ REQUIRED_SCOPES: dict[str, Scope] = {
     "designate_write_target": Scope.ADMIN,
     "set_horizon": Scope.ADMIN,
     "sync_source": Scope.ADMIN,
+    # Listing an account's calendars is the calendar catalogue, which is what the admin scope is
+    # described as granting, and it is reached only during setup.
+    "list_remote_calendars": Scope.ADMIN,
     "remove_source": Scope.ADMIN,
 }
 
@@ -175,9 +193,15 @@ class FakeSources:
 
 @dataclass
 class FakeSyncer:
-    """Records which sources were synced, and answers with a completed operation."""
+    """Records which sources were synced, and answers with a completed operation.
+
+    ``providers`` is what this deployment can read, and the service states its rule over it: a real
+    syncer answers with the keys of the adapter map it was composed with, so a provider with no
+    adapter is refused before a sync is attempted rather than fetched by the wrong one.
+    """
 
     synced: list[CalendarSourceId] = field(default_factory=list)
+    providers: frozenset[str] = field(default_factory=lambda: frozenset({ICS}))
 
     async def sync_now(self, source: CalendarSourceRecord) -> OperationRecord:
         self.synced.append(source.id)
@@ -212,10 +236,29 @@ class RecordingVersions:
 
 
 @dataclass
+class FakeRemoteCalendars:
+    """The calendars an account holds, or the failure a read answers with.
+
+    A fake over one method, because what the service decides is which rule applies and what a
+    failure becomes on the wire: the reader itself is a provider boundary.
+    """
+
+    answer: CalendarsAnswer = field(
+        default_factory=lambda: CalendarsRead(calendars=(REMOTE_CALENDAR,), attempts=1)
+    )
+    asked: int = 0
+
+    async def list_calendars(self) -> CalendarsAnswer:
+        self.asked += 1
+        return self.answer
+
+
+@dataclass
 class Wiring:
     sources: FakeSources
     syncer: FakeSyncer
     versions: RecordingVersions
+    remote_calendars: FakeRemoteCalendars
     service: CalendarSourceService
 
 
@@ -224,15 +267,18 @@ def wiring() -> Wiring:
     sources = FakeSources()
     syncer = FakeSyncer()
     versions = RecordingVersions()
+    remote_calendars = FakeRemoteCalendars()
     return Wiring(
         sources=sources,
         syncer=syncer,
         versions=versions,
+        remote_calendars=remote_calendars,
         service=CalendarSourceService(
             sources=sources,  # type: ignore[arg-type]  # a fake over the repository's surface
             syncer=syncer,  # type: ignore[arg-type]
             versions=versions,
             clock=lambda: NOW,
+            remote_calendars=remote_calendars,
         ),
     )
 
@@ -246,6 +292,7 @@ async def call(service: CalendarSourceService, name: str, principal: Principal) 
         "change_source": (uuid4(), SourceChange(included=False)),
         "designate_write_target": (uuid4(),),
         "sync_source": (uuid4(),),
+        "list_remote_calendars": (uuid4(),),
         "remove_source": (uuid4(),),
     }
     if name == "set_horizon":
@@ -504,10 +551,13 @@ async def test_a_forced_sync_delegates_and_answers_with_a_terminal_operation(
     assert operation.status != PENDING
 
 
-async def test_a_forced_sync_on_a_provider_syncr_does_not_read_is_refused(wiring: Wiring) -> None:
-    # Without the guard the calendarId is handed to the ICS adapter as a URL, the fetch fails, and
-    # the source is recorded as failing with a transport message: the panel then says the user's
-    # calendar is broken when the truth is that syncr does not read Google yet.
+async def test_a_forced_sync_on_a_provider_this_deployment_cannot_read_is_refused(
+    wiring: Wiring,
+) -> None:
+    # The live case is a deployment with no Google credentials, which composes no Google adapter.
+    # Without the guard the calendarId reaches whatever adapter is present, is fetched as a URL,
+    # fails, and the source is recorded as failing with a transport message: the panel then says
+    # the user's calendar is broken when the truth is that this deployment cannot read it.
     held = wiring.sources.hold(record(provider=GOOGLE, external_id="abc@group.calendar"))
 
     with pytest.raises(ValidationFailed) as raised:
@@ -518,6 +568,62 @@ async def test_a_forced_sync_on_a_provider_syncr_does_not_read_is_refused(wiring
     # Nothing was fetched and nothing was written, so the source does not read as failing.
     assert wiring.syncer.synced == []
     assert wiring.sources.rows[held.id].state == NEVER_SYNCED
+
+
+async def test_a_forced_sync_on_a_google_source_is_allowed_where_google_is_readable(
+    wiring: Wiring,
+) -> None:
+    # The other direction, and the reason the rule reads the adapter map rather than a constant: on
+    # a deployment that CAN read Google, the same source syncs.
+    wiring.syncer.providers = frozenset({ICS, GOOGLE})
+    held = wiring.sources.hold(record(provider=GOOGLE, external_id="abc@group.calendar"))
+
+    operation = await wiring.service.sync_source(OWNER, held.id)
+
+    assert wiring.syncer.synced == [held.id]
+    assert operation.status == SUCCEEDED
+
+
+# --------------------------------------------------------------------------------
+# The account's calendars, for selection during setup
+# --------------------------------------------------------------------------------
+
+
+async def test_the_remote_calendars_of_a_google_source_are_listed(wiring: Wiring) -> None:
+    held = wiring.sources.hold(record(provider=GOOGLE, external_id="primary"))
+
+    found = await wiring.service.list_remote_calendars(OWNER, held.id)
+
+    assert found == (REMOTE_CALENDAR,)
+    assert wiring.remote_calendars.asked == 1
+
+
+async def test_listing_the_calendars_of_an_ics_source_is_refused_with_a_reason(
+    wiring: Wiring,
+) -> None:
+    # A feed is one calendar at one address, so there is no list to choose from, and asking the
+    # provider would be asking the wrong question rather than getting an empty answer.
+    held = wiring.sources.hold(record())
+
+    with pytest.raises(ValidationFailed, match="list of calendars"):
+        await wiring.service.list_remote_calendars(OWNER, held.id)
+
+    assert wiring.remote_calendars.asked == 0
+
+
+async def test_a_failed_remote_read_is_a_dependency_failure_rather_than_an_empty_list(
+    wiring: Wiring,
+) -> None:
+    # An empty list means "this account has no calendars", which would send the user looking for a
+    # problem in Google's interface rather than reading what went wrong.
+    wiring.remote_calendars.answer = GoogleReadFailed(reason="Google answered 503", attempts=4)
+    held = wiring.sources.hold(record(provider=GOOGLE, external_id="primary"))
+
+    with pytest.raises(DependencyUnavailable) as refused:
+        await wiring.service.list_remote_calendars(OWNER, held.id)
+
+    assert "Google answered 503" in refused.value.detail
+    assert "still syncs" in refused.value.detail
 
 
 async def test_removing_a_source_removes_it(wiring: Wiring) -> None:

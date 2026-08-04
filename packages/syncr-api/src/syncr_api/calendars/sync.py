@@ -24,6 +24,12 @@ injected as a protocol declared in :mod:`syncr_api.calendars.anchor_writing`, so
 not depend on the anchor package. WHICH of the three attempts happened is decided here, from the
 two bits the adapter already returns, so the reconciler is told rather than left to guess.
 
+**Which adapter reads a source is decided by its provider, from a map the caller composed.** The
+syncer holds one adapter per provider rather than one adapter: a feed and a Google calendar fail
+differently and are read differently, and every rule above them (the sync-state write, the anchor
+reconciliation, the due-ness check) is the same for both. Adding a provider is an entry in that map
+and a module beside the two that exist.
+
 That distinction matters more than it looks. An unchanged feed and an unreachable feed both carry
 an empty event list, so removing anchors on an empty list would clear every commitment of a
 healthy feed that answered 304. ``FetchOutcome.reparsed`` distinguishes those two, and
@@ -35,17 +41,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from syncr_api.calendars.config import ICS, SYNC_INTERVAL
+from syncr_api.calendars.config import SYNC_INTERVAL
 from syncr_api.calendars.events import FetchOutcome
 from syncr_api.solving.config import CALENDAR_SYNC
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
 
+    from syncr_api.calendars.adapters import CalendarAdapter
     from syncr_api.calendars.anchor_writing import AnchorDelta, AnchorWriter
-    from syncr_api.calendars.ics_adapter import IcsAdapter
+    from syncr_api.calendars.config import CalendarProvider
     from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
     from syncr_api.calendars.repository import CalendarSourceRepository
     from syncr_api.core.clock import Clock
@@ -94,24 +102,29 @@ class SyncPass:
 class SourceSyncer:
     """One sync pass over one tenant's calendar sources.
 
-    The adapter is injected rather than selected here, because which adapter reads which provider
-    is a wiring decision: a syncer built with an ICS adapter syncs ICS sources, and the Google
-    one arrives as another entry in the map its caller passes.
+    The adapters are injected rather than selected here, because which adapter reads which provider
+    is a wiring decision: the map a caller passes is what this deployment can read, and a provider
+    absent from it is refused by the service before a sync is attempted.
     """
 
     def __init__(
         self,
         sources: CalendarSourceRepository,
         operations: OperationRepository,
-        adapter: IcsAdapter,
+        adapters: Mapping[CalendarProvider, CalendarAdapter],
         anchors: AnchorWriter,
         clock: Clock,
     ) -> None:
         self._sources = sources
         self._operations = operations
-        self._adapter = adapter
+        self._adapters = adapters
         self._anchors = anchors
         self._clock = clock
+
+    @property
+    def providers(self) -> frozenset[CalendarProvider]:
+        """The providers this pass can read, which is what the service's rule is stated over."""
+        return frozenset(self._adapters)
 
     @measured("calendars")
     async def sync(self, source: CalendarSourceRecord) -> SyncResult:
@@ -124,7 +137,10 @@ class SourceSyncer:
         """
         if not source.included:
             return FetchOutcome(), source.sync_state
-        outcome, state = await self._adapter.fetch(source)
+        # Keyed rather than searched: the service refuses a provider this pass cannot read before
+        # calling, and the runner iterates the map's own keys, so a miss here is a wiring fault
+        # rather than a runtime condition.
+        outcome, state = await self._adapters[source.provider].fetch(source)
         delta = await self._reconciled(source, outcome, state)
         await self._sources.save_sync_state(source.id, delta.recorded_on(state))
         return outcome, state
@@ -171,18 +187,23 @@ class SourceSyncer:
 
     @measured("calendars")
     async def sync_due(self, *, now: datetime) -> SyncPass:
-        """Every included anchor source of this tenant whose poll interval has elapsed.
+        """Every included anchor source whose poll interval has elapsed, across every provider.
 
         Due-ness is read off the source rather than kept in the runner, so a restart does not
-        reset every feed's schedule and a source added mid-interval is polled on the next tick
+        reset every source's schedule and a source added mid-interval is polled on the next tick
         rather than waiting out an interval it was not present for.
+
+        The providers come from the adapter map, so a deployment that cannot read one does not
+        enumerate its sources: an unreadable provider's sources keep the state they had rather
+        than collecting an attempt nothing could have made.
         """
         pass_tally = SyncPass()
-        for source in await self._sources.included_for(ICS):
-            if not _is_due(source, now=now):
-                continue
-            outcome, state = await self.sync(source)
-            pass_tally = pass_tally.plus(outcome, failed=state.last_error is not None)
+        for provider in sorted(self._adapters):
+            for source in await self._sources.included_for(provider):
+                if not _is_due(source, now=now):
+                    continue
+                outcome, state = await self.sync(source)
+                pass_tally = pass_tally.plus(outcome, failed=state.last_error is not None)
         if pass_tally.attempted:
             _log.info("calendars.sync.polled", **pass_tally.as_log_fields())
         return pass_tally

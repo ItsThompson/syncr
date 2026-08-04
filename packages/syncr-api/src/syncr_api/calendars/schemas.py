@@ -33,6 +33,7 @@ from syncr_api.calendars.config import (
     EXTERNAL_ID_MAX_LENGTH,
     HORIZON_DAYS_MAX,
     HORIZON_DAYS_MIN,
+    WRITE_TARGET,
     CalendarProvider,
     CalendarRole,
     RejectionKind,
@@ -41,6 +42,7 @@ from syncr_api.calendars.config import (
 from syncr_api.core.schemas import WireModel
 
 if TYPE_CHECKING:
+    from syncr_api.calendars.events import RemoteCalendar
     from syncr_api.calendars.records import CalendarSourceRecord
 
 _STATE_DESCRIPTION = (
@@ -56,6 +58,23 @@ _HORIZON_DESCRIPTION = (
     "How many days ahead the plan is projected onto the write target. Null on an anchor source, "
     "which is read over whatever span the week being assembled needs."
 )
+_ATTEMPTS_DESCRIPTION = (
+    "How many calls the last attempt made. More than one means the provider rate-limited the read "
+    "and syncr backed off, which is a different story from a slow feed."
+)
+_RESYNC_DESCRIPTION = (
+    "Why the last successful read was a full one while an incremental cursor was held. Null when "
+    "the read was incremental, or when there was no cursor to be incremental against."
+)
+
+# What the write-target read model states, verbatim, because the destructive behaviour has to be
+# stated plainly wherever the role is shown rather than only in the copy of one screen.
+DESTRUCTIVE_RECONCILIATION = (
+    "syncr owns this calendar and reconciles it destructively: over the projection horizon it "
+    "removes anything it did not put there, so an event you add or drag in a calendar client is "
+    "overwritten on the next write. Edit the plan in syncr, not here."
+)
+RECONCILIATION_KIND = "destructive"
 
 
 class RejectedEventResponse(WireModel):
@@ -89,6 +108,38 @@ class SyncStateResponse(WireModel):
     events_read: int
     rejected_count: int
     rejections: list[RejectedEventResponse]
+    attempts: int = Field(default=0, description=_ATTEMPTS_DESCRIPTION)
+    resync_reason: str | None = Field(default=None, description=_RESYNC_DESCRIPTION)
+
+
+class WriteTargetResponse(WireModel):
+    """What the one calendar syncr writes to is, and what syncr does to it.
+
+    Present only on the source holding the role. It exists so the destructive behaviour is part of
+    the READ MODEL rather than copy on one screen: whatever renders the write target renders this,
+    and a second surface cannot forget to say it.
+    """
+
+    calendar_name: str = Field(description="The calendar syncr writes the plan to.")
+    horizon_days: int = Field(
+        description="How many days ahead the plan is written, and past which nothing is removed."
+    )
+    reconciliation: str = Field(
+        description="How syncr makes the calendar match the plan. Always 'destructive'."
+    )
+    statement: str = Field(description="The destructive behaviour, in words a reader can act on.")
+
+    @classmethod
+    def of(cls, record: CalendarSourceRecord) -> Self | None:
+        """The write-target reading of a source, or ``None`` when it does not hold the role."""
+        if record.role != WRITE_TARGET or record.horizon_days is None:
+            return None
+        return cls(
+            calendar_name=record.display_name,
+            horizon_days=record.horizon_days,
+            reconciliation=RECONCILIATION_KIND,
+            statement=DESTRUCTIVE_RECONCILIATION,
+        )
 
 
 class CalendarSourceResponse(WireModel):
@@ -104,6 +155,13 @@ class CalendarSourceResponse(WireModel):
     state: SourceState = Field(description=_STATE_DESCRIPTION)
     anchor_count: int = Field(description=_ANCHOR_COUNT_DESCRIPTION)
     sync_state: SyncStateResponse
+    write_target: WriteTargetResponse | None = Field(
+        default=None,
+        description=(
+            "Present only on the source holding the write-target role: what syncr writes to, how "
+            "far ahead, and that it reconciles destructively."
+        ),
+    )
 
     @classmethod
     def of(cls, record: CalendarSourceRecord) -> Self:
@@ -125,6 +183,8 @@ class CalendarSourceResponse(WireModel):
                 last_error=state.last_error,
                 events_read=state.events_read,
                 rejected_count=state.rejected_count,
+                attempts=state.attempts,
+                resync_reason=state.resync_reason,
                 rejections=[
                     RejectedEventResponse(
                         kind=rejected.kind,
@@ -136,7 +196,41 @@ class CalendarSourceResponse(WireModel):
                     for rejected in state.rejections
                 ],
             ),
+            write_target=WriteTargetResponse.of(record),
         )
+
+
+class RemoteCalendarResponse(WireModel):
+    """One calendar an account holds, as the setup surface lists it for selection."""
+
+    calendar_id: str = Field(
+        description="The provider's own identifier. This becomes the source's externalId."
+    )
+    display_name: str
+    time_zone: str | None = None
+    writable: bool = Field(
+        description=(
+            "Whether this account may write to the calendar. Only a writable calendar can be the "
+            "write target, because syncr reconciles that one destructively."
+        )
+    )
+    primary: bool
+
+    @classmethod
+    def of(cls, calendar: RemoteCalendar) -> Self:
+        return cls(
+            calendar_id=calendar.calendar_id,
+            display_name=calendar.display_name,
+            time_zone=calendar.time_zone,
+            writable=calendar.writable,
+            primary=calendar.primary,
+        )
+
+
+class RemoteCalendarsResponse(WireModel):
+    """Every calendar the connected account holds, for selection during setup."""
+
+    calendars: list[RemoteCalendarResponse]
 
 
 class CalendarSourcesResponse(WireModel):

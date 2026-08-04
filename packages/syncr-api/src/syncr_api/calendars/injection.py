@@ -35,6 +35,10 @@ from typing import TYPE_CHECKING, Annotated
 import httpx
 from fastapi import Depends
 
+# FastAPI evaluates a dependency's annotations at runtime, so the request type stays a runtime
+# import: the settings this deployment was built with are read off the application.
+from starlette.requests import Request  # noqa: TC002
+
 # FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and
 # these names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to
 # a NameError while the app is being constructed.
@@ -42,13 +46,18 @@ from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: T
 from syncr_api.anchors.reconcile import AnchorReconciler
 from syncr_api.anchors.repository import AnchorRepository
 from syncr_api.anchors.type_repository import AnchorTypeRepository
-from syncr_api.calendars.config import HORIZON_DAYS_DEFAULT
+from syncr_api.calendars.config import GOOGLE, HORIZON_DAYS_DEFAULT, ICS
 from syncr_api.calendars.feeds import HttpFeedFetcher, create_feed_client
+from syncr_api.calendars.google_adapter import GoogleAdapter
+from syncr_api.calendars.google_client import GoogleCalendarClient
+from syncr_api.calendars.google_transport import HttpxGoogleTransport, create_google_read_client
 from syncr_api.calendars.ics_adapter import IcsAdapter
+from syncr_api.calendars.remote_calendars import UnconfiguredCalendarReader
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.calendars.service import CalendarSourceService
 from syncr_api.calendars.sync import SourceSyncer
 from syncr_api.core.clock import utc_now
+from syncr_api.google_account.injection import build_access_tokens
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
@@ -57,12 +66,17 @@ from syncr_api.user_settings.zone_reading import as_domain, zone_profile
 from syncr_domain.intervals import Interval
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Mapping
     from datetime import datetime
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from syncr_api.calendars.adapters import CalendarAdapter
+    from syncr_api.calendars.config import CalendarProvider
+    from syncr_api.calendars.remote_calendars import RemoteCalendarReader
     from syncr_api.core.principal import Principal
+    from syncr_api.core.settings import ServiceSettings
+    from syncr_domain.identifiers import TenantId
     from syncr_domain.zones import ZoneProfile
 
 
@@ -73,6 +87,51 @@ async def get_feed_client() -> AsyncIterator[httpx.AsyncClient]:
 
 
 type FeedClientDep = Annotated[httpx.AsyncClient, Depends(get_feed_client)]
+
+
+async def get_google_read_client() -> AsyncIterator[httpx.AsyncClient]:
+    """One HTTP client for Google's API for the life of one request, closed when it ends.
+
+    Separate from the feed client because the two answer to different bounds: a feed read is capped
+    at a size and a whole-read timeout of its own, and a Google page read is capped at another.
+    """
+    async with create_google_read_client() as client:
+        yield client
+
+
+type GoogleReadClientDep = Annotated[httpx.AsyncClient, Depends(get_google_read_client)]
+
+
+def build_adapters(
+    settings: ServiceSettings,
+    session: AsyncSession,
+    tenant_id: TenantId,
+    *,
+    feeds: httpx.AsyncClient,
+    google: httpx.AsyncClient,
+    profile: ZoneProfile,
+    horizon: Interval,
+) -> tuple[Mapping[CalendarProvider, CalendarAdapter], RemoteCalendarReader]:
+    """The adapters this deployment can read with, and the reader that lists an account.
+
+    **A deployment with no Google client gets no Google adapter**, which is what makes the service's
+    rule true rather than nominal: a forced sync on a Google source is refused with a stated reason
+    instead of recording a transport failure against a calendar that is fine.
+
+    The ICS adapter is always present. ICS needs no credential from anybody, which is the whole
+    reason it is the strategic ingest path.
+    """
+    ics = IcsAdapter(
+        fetcher=HttpFeedFetcher(feeds), profile=profile, horizon=horizon, clock=utc_now
+    )
+    if not settings.google_oauth_client_id:
+        return {ICS: ics}, UnconfiguredCalendarReader()
+    client = GoogleCalendarClient(
+        transport=HttpxGoogleTransport(google),
+        tokens=build_access_tokens(settings, session, tenant_id, google),
+    )
+    adapter = GoogleAdapter(client=client, profile=profile, horizon=horizon, clock=utc_now)
+    return {ICS: ics, GOOGLE: adapter}, adapter
 
 
 async def read_zone_profile(session: AsyncSession, principal: Principal) -> ZoneProfile:
@@ -95,23 +154,31 @@ async def read_ingest_horizon(sources: CalendarSourceRepository, *, now: datetim
 
 
 async def get_calendar_source_service(
-    principal: PrincipalDep, transaction: TransactionDep, client: FeedClientDep
+    request: Request,
+    principal: PrincipalDep,
+    transaction: TransactionDep,
+    client: FeedClientDep,
+    google: GoogleReadClientDep,
 ) -> CalendarSourceService:
     """The calendar-source service, wired for this request and scoped to this tenant."""
+    settings: ServiceSettings = request.app.state.settings
     sources = CalendarSourceRepository(transaction, principal.tenant_id)
     now = utc_now()
-    adapter = IcsAdapter(
-        fetcher=HttpFeedFetcher(client),
+    adapters, remote_calendars = build_adapters(
+        settings,
+        transaction,
+        principal.tenant_id,
+        feeds=client,
+        google=google,
         profile=await read_zone_profile(transaction, principal),
         horizon=await read_ingest_horizon(sources, now=now),
-        clock=utc_now,
     )
     return CalendarSourceService(
         sources=sources,
         syncer=SourceSyncer(
             sources=sources,
             operations=OperationRepository(transaction, principal.tenant_id),
-            adapter=adapter,
+            adapters=adapters,
             anchors=AnchorReconciler(
                 AnchorRepository(transaction, principal.tenant_id),
                 AnchorTypeRepository(transaction, principal.tenant_id),
@@ -122,6 +189,7 @@ async def get_calendar_source_service(
             WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
         ),
         clock=utc_now,
+        remote_calendars=remote_calendars,
     )
 
 

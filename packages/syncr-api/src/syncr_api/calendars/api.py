@@ -22,6 +22,7 @@ from syncr_api.accounts.injection import PrincipalDep
 from syncr_api.calendars.config import (
     SOURCE_HORIZON_PATH,
     SOURCE_PATH,
+    SOURCE_REMOTE_CALENDARS_PATH,
     SOURCE_ROLE_PATH,
     SOURCE_SYNC_PATH,
 )
@@ -32,6 +33,8 @@ from syncr_api.calendars.schemas import (
     CalendarSourceResponse,
     CalendarSourcesResponse,
     HorizonPatchRequest,
+    RemoteCalendarResponse,
+    RemoteCalendarsResponse,
 )
 from syncr_api.calendars.service import NewSource, SourceChange
 from syncr_api.idempotency.injection import IdempotencyGuardDep
@@ -143,3 +146,17 @@ async def set_projection_horizon(
     """Set how many days ahead the plan is projected. 422 on an anchor source."""
     changed = await service.set_horizon(principal, source_id, horizon_days=body.horizon_days)
     return CalendarSourceResponse.of(changed)
+
+
+@router.get(
+    SOURCE_REMOTE_CALENDARS_PATH,
+    summary="The account's calendars, for selection during setup. Google only",
+)
+async def list_remote_calendars(
+    source_id: UUID, principal: PrincipalDep, service: CalendarSourceServiceDep
+) -> RemoteCalendarsResponse:
+    """Every calendar the account behind this source holds. 422 on an ICS source."""
+    found = await service.list_remote_calendars(principal, source_id)
+    return RemoteCalendarsResponse(
+        calendars=[RemoteCalendarResponse.of(calendar) for calendar in found]
+    )

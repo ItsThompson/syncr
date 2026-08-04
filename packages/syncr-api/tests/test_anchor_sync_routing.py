@@ -126,7 +126,9 @@ def syncer(
     return SourceSyncer(
         sources=sources,  # type: ignore[arg-type]  # a fake over the one method a pass calls
         operations=None,  # type: ignore[arg-type]  # a scheduled pass enqueues no operation
-        adapter=adapter,  # type: ignore[arg-type]  # a stub over the one method a pass calls
+        # One adapter per provider, keyed by the provider a source names. A stub over the one
+        # method a pass calls.
+        adapters={ICS: adapter},
         anchors=anchors,
         clock=lambda: NOW,
     )

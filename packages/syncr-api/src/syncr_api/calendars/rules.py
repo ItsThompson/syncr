@@ -17,10 +17,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from syncr_api.calendars.config import HORIZON_DAYS_MAX, HORIZON_DAYS_MIN, ICS, WRITE_TARGET
+from syncr_api.calendars.config import GOOGLE, HORIZON_DAYS_MAX, HORIZON_DAYS_MIN, WRITE_TARGET
 from syncr_api.core.errors import Conflict, ValidationFailed
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
+    from syncr_api.calendars.config import CalendarProvider
     from syncr_api.calendars.records import CalendarSourceRecord
 
 
@@ -88,18 +91,36 @@ def require_a_projectable_horizon(horizon_days: int) -> None:
     )
 
 
-def require_a_readable_provider(source: CalendarSourceRecord) -> None:
-    """Reject a sync on a provider syncr does not read yet.
+def require_a_readable_provider(
+    source: CalendarSourceRecord, *, readable: Collection[CalendarProvider]
+) -> None:
+    """Reject a sync on a provider this deployment cannot read.
 
-    A Google source can be created today, and its external identifier is a calendarId rather than
-    an address. Handed to the ICS adapter it is fetched as a URL, fails, and the source is recorded
-    as failing with a transport message: the panel then tells the user their calendar is broken
-    when the truth is that syncr does not read that provider yet.
+    The readable set is the syncer's own adapter map rather than a constant, so the rule states what
+    this process can actually do. A Google source on a deployment with no Google credentials is the
+    live case: handed to no adapter it would answer nothing, and handed to the wrong one it would be
+    fetched as a URL and recorded as a transport failure, so the panel would tell the user their
+    calendar is broken when the truth is that this deployment cannot read it yet.
     """
-    if source.provider == ICS:
+    if source.provider in readable:
         return
     raise ValidationFailed(
-        f"{source.display_name!r} is a {source.provider} calendar, and syncr reads ICS feeds "
-        "today. Nothing was changed and nothing about this source is wrong: it will sync when the "
-        f"{source.provider} integration lands. Every ICS source still syncs."
+        f"{source.display_name!r} is a {source.provider} calendar, and this deployment is not "
+        "configured to read one. Nothing was changed and nothing about this source is wrong. "
+        f"Every {', '.join(sorted(readable))} source still syncs."
+    )
+
+
+def require_a_google_source(source: CalendarSourceRecord) -> None:
+    """Reject a Google-only read on a source of another provider.
+
+    Listing an account's calendars is a question about an OAuth account, and an ICS feed has none:
+    a feed is one calendar at one address, so there is no list to choose from.
+    """
+    if source.provider == GOOGLE:
+        return
+    raise ValidationFailed(
+        f"{source.display_name!r} is a {source.provider} source, and only a Google account holds a "
+        "list of calendars to choose from: a feed is one calendar at one address. Nothing was "
+        "changed; this source still contributes its anchors."
     )

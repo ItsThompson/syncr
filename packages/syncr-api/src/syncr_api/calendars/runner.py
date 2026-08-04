@@ -17,6 +17,11 @@ out an interval it was not present for. The runner's own interval only decides h
 the user is in on that date, and the horizon is the write target's, so both are the tenant's
 rather than the deployment's.
 
+**Which providers a tick can read comes from the deployment.** The adapter map is composed from this
+process's settings, so a worker with no Google credentials polls feeds and enumerates no Google
+source at all, rather than attempting a read nothing could satisfy and recording a failure against a
+calendar that is fine.
+
 **One transaction per tenant.** A publisher that hangs must not hold every other tenant's sync
 state uncommitted behind it, and a tenant whose feed failed still has its attempt recorded. The
 anchor reconciliation a pass performs is inside that same transaction, so a tenant's anchors and
@@ -31,9 +36,9 @@ from syncr_api.accounts.repository import TenantRepository
 from syncr_api.anchors.reconcile import AnchorReconciler
 from syncr_api.anchors.repository import AnchorRepository
 from syncr_api.anchors.type_repository import AnchorTypeRepository
-from syncr_api.calendars.feeds import HttpFeedFetcher, create_feed_client
-from syncr_api.calendars.ics_adapter import IcsAdapter
-from syncr_api.calendars.injection import read_ingest_horizon
+from syncr_api.calendars.feeds import create_feed_client
+from syncr_api.calendars.google_transport import create_google_read_client
+from syncr_api.calendars.injection import build_adapters, read_ingest_horizon
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.calendars.sync import SourceSyncer, SyncPass
 from syncr_api.solving.repository import OperationRepository
@@ -83,13 +88,19 @@ class CalendarSyncRunner:
             self._next_due_at = self._next_due_at or now + self._interval
             return
         self._next_due_at = now + self._interval
-        # One client for the whole tick, so several feeds on one host reuse a connection.
-        async with create_feed_client() as client:
-            await self.poll(context, client, now=now)
+        # One client per transport for the whole tick, so several feeds on one host reuse a
+        # connection and every Google read shares one pool.
+        async with create_feed_client() as feeds, create_google_read_client() as google:
+            await self.poll(context, feeds, google, now=now)
 
     @measured("calendar_sync")
     async def poll(
-        self, context: WorkerContext, client: httpx.AsyncClient, *, now: datetime
+        self,
+        context: WorkerContext,
+        feeds: httpx.AsyncClient,
+        google: httpx.AsyncClient,
+        *,
+        now: datetime,
     ) -> SyncPass:
         """One pass over every tenant, each in its own transaction."""
         async with context.database.sessionmaker() as reader:
@@ -98,7 +109,7 @@ class CalendarSyncRunner:
         total = SyncPass()
         for tenant_id in tenants:
             async with context.database.sessionmaker() as session, session.begin():
-                tally = await self._poll_tenant(session, client, tenant_id, now=now)
+                tally = await self._poll_tenant(context, session, feeds, google, tenant_id, now=now)
             total = SyncPass(
                 attempted=total.attempted + tally.attempted,
                 succeeded=total.succeeded + tally.succeeded,
@@ -111,8 +122,10 @@ class CalendarSyncRunner:
 
     async def _poll_tenant(
         self,
+        context: WorkerContext,
         session: AsyncSession,
-        client: httpx.AsyncClient,
+        feeds: httpx.AsyncClient,
+        google: httpx.AsyncClient,
         tenant_id: TenantId,
         *,
         now: datetime,
@@ -120,16 +133,19 @@ class CalendarSyncRunner:
         sources = CalendarSourceRepository(session, tenant_id)
         settings = await SettingsRepository(session, tenant_id).read()
         overrides = await TravelOverrideRepository(session, tenant_id).list_all()
-        adapter = IcsAdapter(
-            fetcher=HttpFeedFetcher(client),
+        adapters, _remote_calendars = build_adapters(
+            context.settings,
+            session,
+            tenant_id,
+            feeds=feeds,
+            google=google,
             profile=zone_profile(settings.home_zone, as_domain(overrides)),
             horizon=await read_ingest_horizon(sources, now=now),
-            clock=self._clock,
         )
         syncer = SourceSyncer(
             sources=sources,
             operations=OperationRepository(session, tenant_id),
-            adapter=adapter,
+            adapters=adapters,
             anchors=AnchorReconciler(
                 AnchorRepository(session, tenant_id), AnchorTypeRepository(session, tenant_id)
             ),

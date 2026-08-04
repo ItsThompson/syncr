@@ -28,6 +28,7 @@ from syncr_api.calendars.wiring import build_calendars_router
 from syncr_api.core.correlation import CorrelationMiddleware
 from syncr_api.core.error_handlers import PROBLEM_RESPONSES, build_exception_handlers
 from syncr_api.core.observability import create_metrics_router
+from syncr_api.google_account.wiring import build_google_account_router
 from syncr_api.habits.wiring import build_habits_router
 from syncr_api.oauth.wiring import build_oauth_router
 from syncr_api.offplan.wiring import build_off_plan_router
@@ -73,6 +74,7 @@ FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
     build_anchors_router,
     build_templates_router,
     build_habits_router,
+    build_google_account_router,
 )
 
 # The one place the api's version is stated: the package metadata uv installs from

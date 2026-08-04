@@ -134,7 +134,7 @@ def syncer(sources: FakeSources, fetcher: RecordedFetcher, clock: MovableClock) 
     return SourceSyncer(
         sources=sources,  # type: ignore[arg-type]  # a fake over the two methods a pass calls
         operations=None,  # type: ignore[arg-type]  # a scheduled pass enqueues no operation
-        adapter=adapter,
+        adapters={ICS: adapter},
         anchors=SilentAnchors(),
         clock=clock,
     )

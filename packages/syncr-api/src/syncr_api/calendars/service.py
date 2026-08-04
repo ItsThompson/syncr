@@ -34,7 +34,9 @@ from syncr_api.calendars.config import (
     SOURCE_RESOURCE,
     WRITE_TARGET,
 )
+from syncr_api.calendars.google_client import CalendarsRead
 from syncr_api.calendars.rules import (
+    require_a_google_source,
     require_a_projectable_horizon,
     require_a_readable_provider,
     require_no_anchor_history,
@@ -42,7 +44,7 @@ from syncr_api.calendars.rules import (
     require_the_write_target,
 )
 from syncr_api.calendars.urls import normalize_feed_url
-from syncr_api.core.errors import Conflict, NotFound
+from syncr_api.core.errors import Conflict, DependencyUnavailable, NotFound
 from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.user_settings.solve_inputs import weeks_covering
@@ -51,7 +53,9 @@ from syncr_common.metrics import measured
 
 if TYPE_CHECKING:
     from syncr_api.calendars.config import CalendarProvider
+    from syncr_api.calendars.events import RemoteCalendar
     from syncr_api.calendars.records import CalendarSourceId, CalendarSourceRecord
+    from syncr_api.calendars.remote_calendars import RemoteCalendarReader
     from syncr_api.calendars.repository import CalendarSourceRepository
     from syncr_api.calendars.sync import SourceSyncer
     from syncr_api.core.clock import Clock
@@ -93,11 +97,13 @@ class CalendarSourceService:
         syncer: SourceSyncer,
         versions: WeekInputVersions,
         clock: Clock,
+        remote_calendars: RemoteCalendarReader,
     ) -> None:
         self._sources = sources
         self._syncer = syncer
         self._versions = versions
         self._clock = clock
+        self._remote_calendars = remote_calendars
 
     @measured("calendars")
     async def list_sources(self, principal: Principal) -> tuple[CalendarSourceRecord, ...]:
@@ -220,8 +226,32 @@ class CalendarSourceService:
         """Force one source to sync now, and answer with the operation that did it."""
         require_scope(principal, Scope.ADMIN)
         found = await self._found(principal, source_id)
-        require_a_readable_provider(found)
+        require_a_readable_provider(found, readable=self._syncer.providers)
         return await self._syncer.sync_now(found)
+
+    @measured("calendars")
+    async def list_remote_calendars(
+        self, principal: Principal, source_id: CalendarSourceId
+    ) -> tuple[RemoteCalendar, ...]:
+        """The calendars the account behind this source holds, for selection during setup.
+
+        Addressed through a source rather than through the account, because a source is the thing
+        the caller already has an identifier for, and one Google source implies the one account
+        this tenant connected.
+
+        A read that fails is a 503 rather than an empty list: an empty list means "this account has
+        no calendars", which would send the user looking for a problem in Google's interface.
+        """
+        require_scope(principal, Scope.ADMIN)
+        found = await self._found(principal, source_id)
+        require_a_google_source(found)
+        answer = await self._remote_calendars.list_calendars()
+        if isinstance(answer, CalendarsRead):
+            return answer.calendars
+        raise DependencyUnavailable(
+            f"{answer.reason}. Nothing was changed: every calendar syncr already reads still "
+            "syncs, and the plan still solves."
+        )
 
     @measured("calendars")
     async def remove_source(self, principal: Principal, source_id: CalendarSourceId) -> None:
