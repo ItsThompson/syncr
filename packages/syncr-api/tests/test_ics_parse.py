@@ -1533,3 +1533,65 @@ def test_every_rule_property_is_bounded_for_length_not_just_the_guarded_ones(par
     assert f"{part}" in detail
     assert "4302-character" in detail
     assert "set_int_max_str_digits" not in detail
+
+
+@pytest.mark.parametrize(
+    ("kept", "expected"),
+    [
+        # The gap wall is expanded FIRST, so this is the direction a used-once check on "already
+        # applied" happens to answer.
+        ("20260329T013000", "Moved from the gap hour"),
+        # And this is the direction it missed: the replacement belongs to an occurrence expanded
+        # LATER, so the gap occurrence reached the index first and took it. One component was then
+        # placed twice, on two identities, and the master's own occurrence was deleted.
+        ("20260329T023000", "Moved from the hour after"),
+    ],
+)
+def test_a_replacement_belongs_to_the_occurrence_naming_its_wall_whichever_expands_first(
+    kept: str, expected: str
+) -> None:
+    dropped = "20260329T023000" if kept == "20260329T013000" else "20260329T013000"
+    body = "\r\n".join(line for line in SPRING_FORWARD_GAP.split("\r\n") if dropped not in line)
+    # Drop the whole component whose RECURRENCE-ID was removed, leaving one override.
+    body = body.replace(
+        "BEGIN:VEVENT\r\nUID:gap@example.org\r\nSUMMARY:Moved from the gap hour\r\n"
+        "DTSTART;TZID=Europe/London:20260329T190000\r\n"
+        "DTEND;TZID=Europe/London:20260329T195500\r\nEND:VEVENT\r\n",
+        "",
+    ).replace(
+        "BEGIN:VEVENT\r\nUID:gap@example.org\r\nSUMMARY:Moved from the hour after\r\n"
+        "DTSTART;TZID=Europe/London:20260329T200000\r\n"
+        "DTEND;TZID=Europe/London:20260329T205500\r\nEND:VEVENT\r\n",
+        "",
+    )
+
+    outcome = parse_feed(body, horizon=_TRANSITION, profile=HOME)
+
+    moved = [event for event in outcome.events if event.title == expected]
+    assert len(moved) == 1
+    assert len(outcome.events) == 4
+    assert len({event.uid for event in outcome.events}) == 4
+    assert outcome.overrides_applied == 1
+
+
+def test_a_cancellation_suppresses_one_occurrence_when_two_share_its_instant() -> None:
+    # The same direction on the cancellation path: a tombstone naming the LATER of two occurrences
+    # that share an instant suppressed both of them, so an hour the feed still asserts disappeared.
+    body = SPRING_FORWARD_GAP.replace(
+        "BEGIN:VEVENT\r\nUID:gap@example.org\r\nSUMMARY:Moved from the gap hour\r\n"
+        "RECURRENCE-ID;TZID=Europe/London:20260329T013000\r\n"
+        "DTSTART;TZID=Europe/London:20260329T190000\r\n"
+        "DTEND;TZID=Europe/London:20260329T195500\r\nEND:VEVENT\r\n",
+        "",
+    ).replace(
+        "SUMMARY:Moved from the hour after\r\n",
+        "STATUS:CANCELLED\r\nSUMMARY:Cancelled the hour after\r\n",
+    )
+
+    outcome = parse_feed(body, horizon=_TRANSITION, profile=HOME)
+
+    assert sorted(event.interval.start for event in outcome.events) == [
+        utc(2026, 3, 29, 0, 30),
+        utc(2026, 3, 29, 1, 30),
+        utc(2026, 3, 29, 2, 30),
+    ]

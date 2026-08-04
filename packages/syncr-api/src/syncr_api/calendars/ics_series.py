@@ -280,8 +280,13 @@ def expand(
     recurring = master.recurrence.recurring
     built: list[RawEvent] = []
     applied: set[OccurrenceKey] = set()
-    for wall in occurrences(master.start, master.recurrence, window=window, profile=profile):
-        key = _named_by(series, master, wall, applied=applied, profile=profile)
+    produced = occurrences(master.start, master.recurrence, window=window, profile=profile)
+    # Every wall this master yields, so a cross-form lookup can tell a replacement that belongs to
+    # ANOTHER occurrence of this same series from one that belongs to this occurrence written
+    # differently.
+    walls = frozenset(produced)
+    for wall in produced:
+        key = _named_by(series, master, wall, applied=applied, walls=walls, profile=profile)
         if key in series.tombstones:
             applied.add(key)
             continue
@@ -313,6 +318,7 @@ def _named_by(
     wall: datetime,
     *,
     applied: set[OccurrenceKey],
+    walls: frozenset[datetime],
     profile: ZoneProfile,
 ) -> OccurrenceKey:
     """The replacement key this occurrence answers to, in the publisher's spelling or the other one.
@@ -321,17 +327,24 @@ def _named_by(
     first. RFC 5545 also permits the UTC form, which names the same occurrence with different text,
     so a miss falls back to the instant the occurrence lands on.
 
-    **A replacement found that way is only used once.** Two occurrences can share one instant,
-    because a wall time inside a spring-forward gap resolves onto the same instant as the real wall
-    time an hour later. The replacement belongs to the occurrence whose own wall it names; offering
-    it to the other one placed the same component twice, on two identities, for one commitment.
+    **A cross-form match is refused when the replacement's own wall is one this series produces.**
+    Two occurrences can share an instant, because a wall time inside a spring-forward gap resolves
+    onto the same instant as the real wall time after it, and a gap of a whole day exists too: Samoa
+    skipped 30 December 2011 entirely. A replacement naming a wall the series DOES produce belongs
+    to that occurrence, whichever of the two is expanded first.
+
+    Checking ``applied`` alone was not enough, and the direction it missed was the reachable one.
+    The gap wall always sorts BEFORE the real wall that shares its instant, so the gap occurrence
+    reached the index first, took a replacement written for the later occurrence, and then the later
+    occurrence matched its own key exactly: one component placed twice, on two identities, and the
+    master's own occurrence deleted. A cancellation the same way suppressed two occurrences.
     """
     exact = (master.uid, wall)
     if exact in series.overrides or exact in series.tombstones:
         return exact
     instant = resolve(master.start, profile, wall=wall)
     other = series.same_instant.get((master.uid, instant))
-    if other is None or other in applied or other[1] == wall:
+    if other is None or other in applied or other[1] in walls:
         return exact
     return other
 
