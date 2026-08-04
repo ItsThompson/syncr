@@ -34,7 +34,7 @@ from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import PROBLEM_JSON_MEDIA_TYPE, Conflict, NotFound, ValidationFailed
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
-from syncr_api.offplan.config import OFF_PLAN_PREFIX
+from syncr_api.offplan.config import LABEL_MAX_LENGTH, OFF_PLAN_PREFIX
 from syncr_api.offplan.models import OffPlanPeriodRow
 from syncr_api.offplan.reading import WHOLE_WEEK_STATEMENT
 from syncr_api.user_settings.config import SETTINGS_PREFIX
@@ -436,6 +436,69 @@ def test_one_idempotency_key_is_scoped_to_the_route_that_used_it(
     # And the repeat of this route replays this route's own answer.
     assert repeated.json() == declared.json()
     assert len(period_rows(live_database_url, owner.tenant_id)) == 1
+
+
+def test_a_label_that_names_nothing_is_refused(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # The field is nullable, so `null` already says "this span has no name": an empty string would
+    # be a second spelling of it, and every comparable name in the product refuses it.
+    status, problem = declare(http, signed_in, label="")
+
+    assert status == ValidationFailed.status, problem
+    assert period_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_a_label_cannot_be_emptied_by_a_patch_either(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # `null` clears it and `""` is refused, so the two intentions stay one apiece on both requests.
+    _, created = declare(http, signed_in, label="Italy")
+
+    answered = http.patch(f"{OFF_PLAN}/{created['id']}", json={"label": ""}, headers=signed_in)
+
+    assert answered.status_code == ValidationFailed.status, answered.text
+    assert [row.label for row in period_rows(live_database_url, owner.tenant_id)] == ["Italy"]
+
+
+def test_a_label_at_the_length_bound_is_accepted_and_one_past_it_is_not(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    # Both ends of the bound, so the refusal above is a bound rather than a rejection of a label.
+    at_the_bound = "x" * LABEL_MAX_LENGTH
+
+    accepted, body = declare(http, signed_in, label=at_the_bound)
+    refused, _ = declare(http, signed_in, label="x" * (LABEL_MAX_LENGTH + 1))
+
+    assert accepted == HTTPStatus.CREATED
+    assert body["label"] == at_the_bound
+    assert refused == ValidationFailed.status
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="a label carrying a control byte reaches the driver, which refuses the byte at flush, "
+    "so a caller error answers 500 with no actionable reason and an unexpected-error line lands "
+    "in the log. Measured: 500, nothing stored. The fix is the shared user-text type, not a "
+    "validator per module. Tracked as ticket 1135, which removes this marker.",
+)
+def test_a_label_carrying_a_control_byte_is_refused_rather_than_faulting(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    """A NUL byte in a label is a caller error and must read as one.
+
+    Asserts the CORRECT behavior and is expected to fail, rather than pinning the defect as though
+    it were the contract. Under ``strict=True`` an xfail that starts passing is itself a failure, so
+    the shared fix forces this marker to be deleted rather than leaving a test that quietly agrees
+    with whatever the code does.
+
+    Nothing is lost today, because the transaction rolls back, which is why this is the status and
+    the log line rather than a data defect.
+    """
+    status, problem = declare(http, signed_in, label="Italy\x00")
+
+    assert status == ValidationFailed.status, problem
+    assert period_rows(live_database_url, owner.tenant_id) == []
 
 
 # --------------------------------------------------------------------------------

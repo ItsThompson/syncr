@@ -24,3 +24,7 @@ OFF_PLAN_RESOURCE: Final = "off-plan period"
 
 # Read in a gutter label beside the span, which is tight.
 LABEL_MAX_LENGTH: Final = 60
+# A span with no name says so with null, so the empty string is refused rather than stored as a
+# second spelling of it. This is the bound five sibling schemas already carry on a user-authored
+# name; what a whitespace-only value should become is one shared decision and is not made here.
+LABEL_MIN_LENGTH: Final = 1

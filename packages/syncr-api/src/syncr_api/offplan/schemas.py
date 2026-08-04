@@ -20,6 +20,14 @@ one declaration, and it is one record even though two ISO weeks each hold part o
 
 The patch request forbids an unknown field, so a caller sending ``keepframe`` or ``interval``
 gets a stated 422 rather than a value quietly dropped.
+
+**An empty ``label`` is refused, and a whitespace-only one is not.** The field is nullable, so
+``null`` already says "this span has no name" and ``""`` would be a second spelling of it: every
+comparable user-authored name in the product refuses the empty string the same way, the nearest
+sibling being ``calendars.CalendarSourcePatchRequest.display_name``, which is also nullable and
+optional. Whether a whitespace-only value should be stripped, refused, or read as ``null`` is a
+different question, and it is deliberately not answered here: it is one policy for every text field
+on the wire, and ticket 1135 owns deciding it once in ``core/schemas.py``.
 """
 
 from __future__ import annotations
@@ -30,7 +38,7 @@ from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 from pydantic import ConfigDict, Field, field_validator
 
 from syncr_api.core.schemas import WireModel
-from syncr_api.offplan.config import LABEL_MAX_LENGTH
+from syncr_api.offplan.config import LABEL_MAX_LENGTH, LABEL_MIN_LENGTH
 from syncr_domain.snap import SNAP_MINUTES
 
 _START_DESCRIPTION = (
@@ -49,7 +57,8 @@ _KEEP_FRAME_DESCRIPTION = (
     "at-home reading. Editable after the period is declared."
 )
 _LABEL_DESCRIPTION = (
-    "What to call the span, rendered in the gutter beside it. Null when it carries no name."
+    "What to call the span, rendered in the gutter beside it. Null when it carries no name; an "
+    "empty string is refused, because null is how a span with no name is said."
 )
 
 _NOT_NULLABLE_MESSAGE = (
@@ -88,7 +97,10 @@ class OffPlanCreateRequest(WireModel):
     end: datetime = Field(description=_END_DESCRIPTION)
     keep_frame: bool = Field(default=False, description=_KEEP_FRAME_DESCRIPTION)
     label: str | None = Field(
-        default=None, max_length=LABEL_MAX_LENGTH, description=_LABEL_DESCRIPTION
+        default=None,
+        min_length=LABEL_MIN_LENGTH,
+        max_length=LABEL_MAX_LENGTH,
+        description=_LABEL_DESCRIPTION,
     )
 
 
@@ -105,7 +117,10 @@ class OffPlanPatchRequest(WireModel):
     end: datetime | None = Field(default=None, description=_END_DESCRIPTION)
     keep_frame: bool | None = Field(default=None, description=_KEEP_FRAME_DESCRIPTION)
     label: str | None = Field(
-        default=None, max_length=LABEL_MAX_LENGTH, description=_LABEL_DESCRIPTION
+        default=None,
+        min_length=LABEL_MIN_LENGTH,
+        max_length=LABEL_MAX_LENGTH,
+        description=_LABEL_DESCRIPTION,
     )
 
     @field_validator("start", "end", "keep_frame")
