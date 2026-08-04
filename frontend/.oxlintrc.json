@@ -126,6 +126,18 @@
       }
     },
     {
+      // A CHART IS A GRAPHIC ASSEMBLED FROM ELEMENTS, WHICH IS THE ONE CASE `prefer-tag-over-role` IS WRONG
+      // ABOUT. Its advice is to replace the role with the tag that carries it natively, and neither tag can
+      // carry these: an `<img>` needs a `src` and cannot hold twelve hatched wedges, and a `<meter>` renders
+      // the user agent's own gauge instead of its children, so a meter drawn with block characters would not
+      // be drawn at all -- and a gauge is the progress bar this design language does not have. `role="img"`
+      // on an inline `<svg>` is the recommended pattern rather than a workaround.
+      "files": ["src/ui/domain/charts/**"],
+      "rules": {
+        "jsx-a11y/prefer-tag-over-role": "off"
+      }
+    },
+    {
       // The committed checks read files one at a time on purpose: findings come out in a stable
       // order and memory stays bounded whatever the tree's size.
       "files": ["scripts/**"],
