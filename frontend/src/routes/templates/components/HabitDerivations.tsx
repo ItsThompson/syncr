@@ -1,12 +1,13 @@
 /* The two derivations, in the place a control for them would have been.
  *
- * A DERIVATION IS RENDERED WITH ITS PROVENANCE OR NOT AT ALL. The cursor's own sentence says why it is where it
- * is: a variant became next because the one before it was confirmed complete, so the cursor is a projection of
- * the outcome log rather than a field. Rendering the value without the sentence would make it look like state
- * somebody set.
+ * EACH IS THE API'S OWN SENTENCE, RENDERED AS IT ARRIVES. The cursor's statement already names the variant, says
+ * what put the cursor there, and says there is no control that sets it; the debt's states the figure against its
+ * cap. Both are documented as the words an interface renders beside the value, so prefixing the variant or
+ * appending a sentence of this screen's own would say each of those things twice.
  *
- * A HABIT THAT DOES NOT ROTATE HAS NO CURSOR, and this says so in words. A fixed habit repeats one content and
- * a queue habit draws it from the backlog, so there is no rotation to be at a position in. */
+ * A HABIT THAT DOES NOT ROTATE HAS NO CURSOR, and this says so in words. There is no api sentence to defer to in
+ * that case, because there is no cursor to have sent one: a fixed habit repeats one content and a queue habit
+ * draws it from the backlog, so there is no rotation to be at a position in. */
 
 import type { Habit } from "../../../api/hooks/useHabits";
 
@@ -22,7 +23,7 @@ export function HabitDerivations({ habit }: HabitDerivationsProps) {
         <dd className="text-sm text-ink">
           {habit.cursor === null
             ? `A ${habit.bindingSource} habit has no rotation, so it has no cursor. There is no control that sets one.`
-            : `${habit.cursor.variant} \u00B7 ${habit.cursor.statement} There is no control that sets one: correct the day on Today and this re-derives.`}
+            : habit.cursor.statement}
         </dd>
       </div>
       <div className="flex flex-col gap-1">

@@ -56,6 +56,24 @@ const rowFor = (title: string) =>
 
 const derivations = () => screen.getByRole("region", { name: "Derived, and read-only" });
 
+/* The api's own sentences, so a test cannot pass against wording only this screen would produce. */
+const CURSOR_STATEMENT = buildHabit().cursor?.statement ?? "";
+const DEBT_STATEMENT = buildHabit().debt.statement;
+
+/* What a control for either derivation would be called.
+ *
+ * TWO PATTERNS, AND THE DEBT ONE NAMES THE FIGURE RATHER THAN THE WORD. The debt CAP is a settable member with a
+ * legitimate control on this form, so `debt` on its own would match it and the test would fail against correct
+ * code. What is derived is the outstanding count, the misses behind it and what was forgiven at the cap, so those
+ * are the words a control for it would carry. */
+const CURSOR_NAMES = /cursor|variant|rotation/i;
+const DEBT_FIGURE_NAMES = /outstanding|owed|missed|misses|forgiven/i;
+
+/** How many times a sentence appears inside a surface, which is what catches a restatement. */
+function occurrencesIn(surface: HTMLElement, sentence: string): number {
+  return (surface.textContent ?? "").split(sentence).length - 1;
+}
+
 describe("the habits table", () => {
   it("renders every column the ticket names", () => {
     renderTab();
@@ -112,9 +130,7 @@ describe("the habits table", () => {
     renderTab();
 
     expect(rowFor("Gym")).not.toHaveTextContent("was confirmed complete");
-    expect(derivations()).toHaveTextContent(
-      "Legs is next because Chest & Back was confirmed complete.",
-    );
+    expect(derivations()).toHaveTextContent(CURSOR_STATEMENT);
   });
 
   /* A fixed habit repeats one content, so there is no rotation to be at a position in. */
@@ -136,41 +152,40 @@ describe("the habits table", () => {
   });
 });
 
-describe("the cursor is a reading and not a control", () => {
-  it("renders the cursor and its provenance beside the form", () => {
+describe("the two derivations are readings and not controls", () => {
+  it("renders the cursor's own sentence, and does not restate it", () => {
     renderTab();
 
-    expect(derivations()).toHaveTextContent("Legs is next because Chest & Back was confirmed");
-    expect(derivations()).toHaveTextContent("There is no control that sets one");
+    /* The api's statement already names the variant and already says there is no control. Rendering it as it
+     * arrives is the whole contract of the field, so the panel holds it once and adds nothing. */
+    expect(derivations()).toHaveTextContent(CURSOR_STATEMENT);
+    expect(occurrencesIn(derivations(), "On Legs")).toBe(1);
+    expect(occurrencesIn(derivations(), "no control to set it")).toBe(1);
   });
 
-  /* Both halves: the cursor IS on the screen, and not one control anywhere on the tab is named for it. Without
-   * the first half this passes on a tab that renders no cursor at all. */
-  it("offers no control that sets it, anywhere on the tab", () => {
-    renderTab();
+  /* THE ABSENCE IS ASSERTED BY ACCESSIBLE NAME, which is the only query that sees every control shape this form
+   * uses. An Input, a Select, a NumberStepper and a TimeInput are all named by the `<label htmlFor>` a FormRow
+   * mints: they carry no `aria-label` and no text of their own, so a name derived from those two attributes is
+   * blind to exactly the shape a regression would take.
+   *
+   * Both positive halves stay. Without them this passes on a tab that renders no cursor at all. */
+  it.each(["textbox", "combobox", "spinbutton", "radio", "checkbox", "button"] as const)(
+    "offers no %s that sets either derivation, anywhere on the tab",
+    (role) => {
+      renderTab();
 
-    expect(within(derivations()).getByText(/Legs is next because/)).toBeInTheDocument();
-    expect(habitTable()).toHaveTextContent("Legs \u00B7 derived");
+      expect(within(derivations()).getByText(CURSOR_STATEMENT)).toBeInTheDocument();
+      expect(habitTable()).toHaveTextContent("Legs \u00B7 derived");
 
-    const controls = [
-      ...screen.queryAllByRole("textbox"),
-      ...screen.queryAllByRole("combobox"),
-      ...screen.queryAllByRole("spinbutton"),
-      ...screen.queryAllByRole("radio"),
-      ...screen.queryAllByRole("checkbox"),
-      ...screen.queryAllByRole("button"),
-    ];
-    const named = controls.map(
-      (control) => control.getAttribute("aria-label") ?? control.textContent ?? "",
-    );
-
-    expect(named.filter((name) => /cursor|variant|rotation/i.test(name))).toEqual([]);
-  });
+      expect(screen.queryAllByRole(role, { name: CURSOR_NAMES })).toEqual([]);
+      expect(screen.queryAllByRole(role, { name: DEBT_FIGURE_NAMES })).toEqual([]);
+    },
+  );
 
   it("states the debt in the api's own words rather than restating the arithmetic", () => {
     renderTab();
 
-    expect(derivations()).toHaveTextContent("Two occurrences are owed, against a cap of eight.");
+    expect(derivations()).toHaveTextContent(DEBT_STATEMENT);
   });
 
   it("says a fixed habit has no cursor, rather than rendering an empty reading", () => {

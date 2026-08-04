@@ -49,7 +49,15 @@ export function buildArea(overrides: Partial<Area> = {}): Area {
 }
 
 export function buildRamp(overrides: Partial<Ramp> = {}): Ramp {
-  return { pigmentCount: 12, pigmentsInUse: 2, areasSharingAPigment: 0, ...overrides };
+  /* `statement` is `string | null` on the wire and null is what the api sends until two Areas share a step, so
+   * the default is the null: a fixture that omitted it would make a surface's own null handling a no-op. */
+  return {
+    pigmentCount: 12,
+    pigmentsInUse: 2,
+    areasSharingAPigment: 0,
+    statement: null,
+    ...overrides,
+  };
 }
 
 export function buildAreas(overrides: Partial<Areas> = {}): Areas {
@@ -122,6 +130,15 @@ export function buildRoutine(overrides: Partial<Routine> = {}): Routine {
   };
 }
 
+/* The two derivation sentences are the api's OWN, copied from `syncr_domain/cursor.py` and
+ * `syncr_domain/debt.py`. A fixture that invented them would let this screen restate what the api already said
+ * with nothing to notice it: the wording is the thing being rendered, so it is not a fixture's to choose. */
+const CURSOR_STATEMENT =
+  "On Legs because Chest & Back was confirmed complete. Derived from the outcome log, so there is " +
+  "no control to set it: correct the day on Today and this re-derives.";
+
+const DEBT_STATEMENT = "2 of 8 owed.";
+
 export function buildHabit(overrides: Partial<Habit> = {}): Habit {
   return {
     id: HABIT_GYM,
@@ -140,7 +157,7 @@ export function buildHabit(overrides: Partial<Habit> = {}): Habit {
       confirmedCompletions: 3,
       previousVariant: "Chest & Back",
       advancedAt: "2026-08-01T18:00:00+00:00",
-      statement: "Legs is next because Chest & Back was confirmed complete.",
+      statement: CURSOR_STATEMENT,
     },
     debt: {
       outstanding: 2,
@@ -148,7 +165,7 @@ export function buildHabit(overrides: Partial<Habit> = {}): Habit {
       misses: 2,
       forgivenAtCap: 0,
       raisedInWeeklySession: false,
-      statement: "Two occurrences are owed, against a cap of eight.",
+      statement: DEBT_STATEMENT,
     },
     ...overrides,
   };
