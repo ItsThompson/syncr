@@ -25,6 +25,7 @@ cost this repository one incident: a NUL, a C1 control, and a whitespace-only st
 from __future__ import annotations
 
 from datetime import date, timedelta
+from hashlib import sha256
 from itertools import permutations
 from uuid import UUID, uuid4
 
@@ -32,9 +33,11 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from syncr_domain.habits import MAX_DEBT_CAP_PERIODS, MAX_TIMES_PER_WEEK
 from syncr_domain.identity import (
     BLOCK_ID_LENGTH,
     INDEX_DIGITS,
+    MAX_OCCURRENCES_PER_WEEK,
     NO_OCCURRENCE,
     TASK_OCCURRENCE_KEY,
     BindingError,
@@ -59,6 +62,15 @@ SHOWER_ENTRY = uuid4()
 GYM = uuid4()
 LEETCODE = uuid4()
 INTERVIEW = uuid4()
+
+
+def sha256_of(text: str) -> str:
+    """The digest the derivation would produce for this joined text, spelled out by hand.
+
+    Written here rather than imported so the test states the text it expects rather than asking
+    the implementation what text it used.
+    """
+    return sha256(text.encode("utf-8")).hexdigest()
 
 
 def a_binding(kind: BindingKind) -> BindingRef:
@@ -501,17 +513,104 @@ class TestTheOrdinalsACadenceProduces:
     def test_a_cadence_of_none_produces_no_keys(self) -> None:
         assert habit_occurrence_keys(0) == ()
 
-    def test_a_negative_count_is_not_a_cadence(self) -> None:
+    @pytest.mark.parametrize(
+        "count",
+        [-1, MAX_OCCURRENCES_PER_WEEK + 1, 10**6],
+        ids=["negative", "one past the ceiling", "a million"],
+    )
+    def test_a_count_no_week_could_place_is_not_a_cadence(self, count: int) -> None:
+        """Unbounded, ``habit_occurrence_keys(10**6)`` allocated a million keys on request."""
         with pytest.raises(BindingError, match="cannot occur"):
-            habit_occurrence_keys(-1)
+            habit_occurrence_keys(count)
 
-    def test_a_negative_index_is_not_an_occurrence(self) -> None:
-        with pytest.raises(BindingError, match="counts from zero"):
-            index_occurrence_key(-1)
+    @pytest.mark.parametrize(
+        "index",
+        [-1, MAX_OCCURRENCES_PER_WEEK, 10**15],
+        ids=["negative", "the ceiling itself", "absurd"],
+    )
+    def test_an_index_no_week_could_hold_is_not_an_occurrence(self, index: int) -> None:
+        """The ceiling is exclusive, because the index is zero-based and the count is not."""
+        with pytest.raises(BindingError, match="occurrence index runs from"):
+            index_occurrence_key(index)
+
+    def test_the_ceiling_is_one_occurrence_a_minute_of_a_nominal_week(self) -> None:
+        assert MAX_OCCURRENCES_PER_WEEK == 7 * 24 * 60
+        assert index_occurrence_key(MAX_OCCURRENCES_PER_WEEK - 1) == "10079"
+        assert len(habit_occurrence_keys(MAX_OCCURRENCES_PER_WEEK)) == MAX_OCCURRENCES_PER_WEEK
+
+    def test_the_ceiling_refuses_nothing_a_habit_and_its_debt_can_reach(self) -> None:
+        """Why the bound is not ``MAX_TIMES_PER_WEEK``, which would refuse a legal state.
+
+        Debt adds made-up occurrences on top of the cadence, so a week holds the cadence plus
+        what the cap allows. At the largest cadence and the largest cap that is 8,904
+        occurrences, every one of which needs a key, and 168 would have refused 8,736 of them.
+        """
+        largest = MAX_TIMES_PER_WEEK * (1 + MAX_DEBT_CAP_PERIODS)
+
+        assert largest > MAX_TIMES_PER_WEEK
+        assert largest <= MAX_OCCURRENCES_PER_WEEK
+        assert index_occurrence_key(largest - 1) == str(largest - 1)
 
     def test_a_date_key_is_the_local_date_and_carries_no_zone(self) -> None:
         """The date is the one the block materializes on, resolved before this is called."""
         assert date_occurrence_key(date(2026, 3, 29)) == "2026-03-29"
+
+
+class TestWhatNamesAnEntity:
+    """An identifier reaches the digest as text, so its form is the identity's form.
+
+    Without this, one entity spelled four ways takes four identities and arbitrary prose takes a
+    fifth. mypy refuses all five in the tree, and every one of them constructs at runtime, which
+    is what a stored document rebuilt by a deserializer would do.
+    """
+
+    @pytest.mark.parametrize("kind", list(BindingKind), ids=[kind.value for kind in BindingKind])
+    def test_an_identifier_is_what_a_binding_names_its_entity_by(self, kind: BindingKind) -> None:
+        assert a_binding(kind).entity_id is not None
+
+    @pytest.mark.parametrize(
+        "spelling",
+        [
+            str(GYM),
+            str(GYM).upper(),
+            f"{{{GYM}}}",
+            GYM.hex,
+            "Gym · Legs\x85",
+            "",
+            None,
+            42,
+        ],
+        ids=[
+            "the canonical text",
+            "the upper-case text",
+            "the braced text",
+            "the bare hex",
+            "a block label",
+            "nothing",
+            "no identifier at all",
+            "a number",
+        ],
+    )
+    def test_text_that_looks_like_an_identifier_is_not_one(self, spelling: object) -> None:
+        """Refused rather than parsed: parsing text into an identifier is a boundary's job."""
+        with pytest.raises(BindingError, match="names its entity by identifier"):
+            BindingRef(BindingKind.HABIT, spelling, "00")  # type: ignore[arg-type]
+
+    def test_a_binding_built_through_a_constructor_is_checked_too(self) -> None:
+        """The seven constructors take the identifier from their caller, so they check it here."""
+        with pytest.raises(BindingError, match="names its entity by identifier"):
+            BindingRef.for_anchor_transit(str(INTERVIEW), leg=TransitLeg.OUT)  # type: ignore[arg-type]
+
+    def test_two_spellings_of_one_entity_would_have_been_two_identities(self) -> None:
+        """The measurement that makes the guard worth two lines rather than a comment.
+
+        The upper-case text and the canonical text name one entity to a person and derive
+        different digests, because the identifier reaches the text an id is taken over.
+        """
+        canonical = block_id(WEEK, BindingRef.for_habit(GYM, index=0))
+
+        assert canonical != sha256_of(f"{WEEK}\x1fhabit\x1f{str(GYM).upper()}\x1f00\x1f")
+        assert canonical == sha256_of(f"{WEEK}\x1fhabit\x1f{GYM}\x1f00\x1f")
 
 
 class TestWhatASplitIndexBelongsTo:

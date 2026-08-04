@@ -31,10 +31,12 @@ third ``Shower`` would silently move to a different day.
 
 **Nothing here reads text a person or a publisher wrote.** Every component comes from a
 closed vocabulary this module owns: a kind, a UUID, and a key that is a local date, a
-zero-padded index, a fixed literal, or one of two transit legs. No title, no label, and no
-external UID reaches an id, so a re-titled anchor and a renamed habit keep the identity
-they had. Bounding and scrubbing text is a boundary concern with its own home in the api,
-and a second definition of a text class here would diverge from it.
+zero-padded index, a fixed literal, or one of two transit legs. Each is checked on
+construction, including the identifier, because an identifier reaches the id as text and one
+entity spelled two ways would take two identities. No title, no label, and no external UID
+reaches an id, so a re-titled anchor and a renamed habit keep the identity they had. Bounding
+and scrubbing text is a boundary concern with its own home in the api, and a second definition
+of a text class here would diverge from it.
 
 A key is compared for equality and nothing else. That is why one opaque string serves every
 kind rather than a union of typed discriminators, and it is why the two-digit padding is not
@@ -48,12 +50,12 @@ from datetime import date
 from enum import StrEnum
 from hashlib import sha256
 from typing import TYPE_CHECKING, Final, assert_never
+from uuid import UUID
 
 from syncr_domain.errors import DomainError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from uuid import UUID
 
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import Date
@@ -66,10 +68,11 @@ type BlockId = str
 # collision risk for nothing: the value is never read by a person.
 BLOCK_ID_LENGTH: Final = 64
 
-# Separates the components of the text an id is taken over. A unit separator cannot appear
-# in any component -- a kind and a leg are closed vocabularies, a UUID and a week identifier
-# have fixed shapes, and a key is one of four validated forms -- so the joined text
-# determines the components it was built from.
+# Separates the components of the text an id is taken over. Injectivity is structural rather
+# than a property of the separator: the join has exactly five fields, four of them validated to
+# closed forms, and reading the text as a different tuple needs two adjacent flexible fields to
+# trade a boundary. Only the identifier is flexible, and it is refused unless it is a UUID, so a
+# component carrying the separator changes the separator COUNT and cannot shift a boundary.
 _COMPONENT_SEPARATOR: Final = "\x1f"
 
 # `task` takes one demand per week and `split_index` distinguishes its chunks, so the key
@@ -82,6 +85,14 @@ NO_OCCURRENCE: Final = ""
 # How wide a habit's occurrence index is padded. Two digits is the spelling the interface
 # and the fixtures use; a third digit appears past 99 and no reader is ordered by it.
 INDEX_DIGITS: Final = 2
+
+# One occurrence a minute over a nominal week, which is the ceiling no week can reach: a block
+# runs for at least one step of the fifteen-minute grid, so a week holds at most 672 of them.
+# The bound is deliberately NOT `habits.MAX_TIMES_PER_WEEK`, which is 168 and would refuse a
+# state the entity can hold: debt adds made-up occurrences on top of the cadence, and a habit
+# at that cadence with the largest debt cap owes 168 x 52 more, so 8,904 indexes are
+# representable. This bound refuses none of them and refuses every absurd one.
+MAX_OCCURRENCES_PER_WEEK: Final = 7 * 24 * 60
 
 
 class BindingError(DomainError):
@@ -179,10 +190,11 @@ def index_occurrence_key(index: int) -> str:
 
     Zero-based, and assigned by the week assembler in expansion order.
     """
-    if index < 0:
+    if not 0 <= index < MAX_OCCURRENCES_PER_WEEK:
         raise BindingError(
-            f"an occurrence index counts from zero and this one is {index}: a habit's key "
-            "is the position the assembler expanded it into, not an offset from anything"
+            f"an occurrence index runs from 0 to {MAX_OCCURRENCES_PER_WEEK - 1} and this one is "
+            f"{index}: a habit's key is the position the assembler expanded it into, and a week "
+            "holds no more positions than it holds minutes"
         )
     return f"{index:0{INDEX_DIGITS}d}"
 
@@ -196,8 +208,12 @@ def habit_occurrence_keys(count: int) -> tuple[str, ...]:
     keyed ``00`` to ``03`` become 3 keyed ``00`` to ``02``, and an outcome recorded against
     ``01`` still names the same occurrence.
     """
-    if count < 0:
-        raise BindingError(f"a habit cannot occur {count} times in a week")
+    if not 0 <= count <= MAX_OCCURRENCES_PER_WEEK:
+        raise BindingError(
+            f"a habit cannot occur {count} times in a week: a count runs from 0 to "
+            f"{MAX_OCCURRENCES_PER_WEEK}, which is already more occurrences than a week has "
+            "grid steps to place them on"
+        )
     return tuple(index_occurrence_key(index) for index in range(count))
 
 
@@ -209,9 +225,9 @@ class BindingRef:
     identifier or a discriminator the assembler derives the same way every time.
 
     The seven named constructors are the derivation: each one takes what its kind needs and
-    spells the key itself, so a caller never writes a key. The constructor validates the
-    pair anyway, because a binding also arrives rebuilt from a stored document, and a key
-    that does not match its kind would silently identify nothing.
+    spells the key itself, so a caller never writes a key. The constructor validates every
+    component anyway, because a binding also arrives rebuilt from a stored document, and a
+    component that does not hold its stated form would silently identify nothing.
     """
 
     kind: BindingKind
@@ -220,6 +236,7 @@ class BindingRef:
     split_index: int | None = None
 
     def __post_init__(self) -> None:
+        _require_an_entity_identifier(self.entity_id)
         _require_a_key_matching_the_kind(self.kind, self.occurrence_key)
         _require_a_split_only_a_task_can_have(self.kind, self.split_index)
 
@@ -280,9 +297,12 @@ def block_id(iso_week: IsoWeek, binding: BindingRef) -> BlockId:
     The same content instance in the same week always yields the same id, so a re-solve of
     unchanged inputs produces matching ids and two documents pair on them with no lookup.
 
-    The digest is taken over the components joined by a separator none of them can contain,
-    so distinct identities cannot produce one text. Two identities colliding on 256 bits of
-    SHA-256 is not a case any input reaches.
+    The digest is taken over the five components joined by a separator, and reading that text as
+    another tuple would need two adjacent components to trade a boundary. Four of the five hold
+    closed forms and the fifth is refused unless it is an identifier, so no trade is
+    representable: a component carrying the separator changes how many separators the text holds
+    rather than where they fall. Two identities colliding on 256 bits of SHA-256 is not a case
+    any input reaches.
     """
     return sha256(_identity_text(iso_week, binding).encode("utf-8")).hexdigest()
 
@@ -297,6 +317,27 @@ def _identity_text(iso_week: IsoWeek, binding: BindingRef) -> str:
             "" if binding.split_index is None else str(binding.split_index),
         )
     )
+
+
+def _require_an_entity_identifier(entity_id: object) -> None:
+    """The one component whose form the annotation alone would not enforce.
+
+    An identifier reaches the digest as ``str(entity_id)``, so text that merely looks like an
+    identifier derives an id of its own: one entity spelled four ways -- the canonical form, the
+    upper-case form, the braced form, and the bare hex -- would take four identities, and
+    arbitrary prose would take a fifth. Refused rather than parsed, because parsing text into an
+    identifier is what a boundary does: a caller reading a stored document builds the ``UUID``
+    and this refuses whatever failed to become one.
+
+    That keeps the module's claim true rather than merely typed: every component of an identity
+    is a closed form, so no text a person or a publisher wrote can reach one.
+    """
+    if not isinstance(entity_id, UUID):
+        raise BindingError(
+            f"a binding names its entity by identifier and {entity_id!r} is not one: the "
+            "identifier reaches the id as text, so a second spelling of one entity would take a "
+            "second identity. Parse it into a UUID where it arrives"
+        )
 
 
 def _require_a_key_matching_the_kind(kind: BindingKind, key: str) -> None:
