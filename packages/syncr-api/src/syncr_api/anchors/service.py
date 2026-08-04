@@ -17,9 +17,10 @@ occurrence with no series is retyped alone, which is the same rule with a series
 
 **Every anchor-type mutation invalidates a solve.** A type declares the prep, transit, and
 recovery every anchor of it casts, so creating, editing, removing, or reordering one regenerates
-shadows, which are solve inputs. The bump runs from the current week onwards: a type governs
-every week the user has not yet lived, and a past week's approved revision keeps the inputs it
-was computed with.
+shadows, which are solve inputs. Which weeks those are lives in
+``user_settings.solve_inputs.BacklogWideBump``: the current week onwards, floored at today's LOCAL
+date in the home zone, because a type governs every week the user has not yet lived and a past
+week's approved revision keeps the inputs it was computed with.
 
 **A retype bumps the same range, and that is an over-approximation stated rather than hidden.**
 The narrow answer would be the weeks the retyped occurrences and their shadows fall in, which
@@ -43,8 +44,6 @@ from syncr_api.anchors.views import AnchorPage, Retyped, anchor_view, anchor_vie
 from syncr_api.core.errors import FieldError, NotFound, ValidationFailed
 from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
-from syncr_api.user_settings.solve_inputs import weeks_from
-from syncr_api.user_settings.zone_reading import local_date
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
@@ -67,8 +66,7 @@ if TYPE_CHECKING:
     from syncr_api.calendars.repository import CalendarSourceRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
-    from syncr_api.user_settings.repository import SettingsRepository
-    from syncr_api.user_settings.solve_inputs import WeekInputVersions
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump
     from syncr_domain.intervals import Interval
 
 _log = get_logger("syncr.anchors")
@@ -82,15 +80,13 @@ class AnchorService:
         anchors: AnchorRepository,
         types: AnchorTypeRepository,
         sources: CalendarSourceRepository,
-        settings: SettingsRepository,
-        versions: WeekInputVersions,
+        bump: BacklogWideBump,
         clock: Clock,
     ) -> None:
         self._anchors = anchors
         self._types = types
         self._sources = sources
-        self._settings = settings
-        self._versions = versions
+        self._bump = bump
         self._clock = clock
 
     @measured("anchors")
@@ -148,8 +144,7 @@ class AnchorService:
             on_a_series=found.series_uid is not None,
             occurrences_retyped=moved,
         )
-        settings = await self._settings.read()
-        await self._versions.bump(weeks_from(local_date(now, settings.home_zone)))
+        await self._bump.from_the_week_holding(now)
         return Retyped(
             view=await self._viewed(await self._found(principal, anchor_id)),
             occurrences_retyped=moved,
@@ -210,8 +205,7 @@ class AnchorTypeService:
         areas: AreaRepository,
         sources: CalendarSourceRepository,
         evaluator: RuleEvaluator,
-        settings: SettingsRepository,
-        versions: WeekInputVersions,
+        bump: BacklogWideBump,
         clock: Clock,
     ) -> None:
         self._types = types
@@ -219,8 +213,7 @@ class AnchorTypeService:
         self._areas = areas
         self._sources = sources
         self._evaluator = evaluator
-        self._settings = settings
-        self._versions = versions
+        self._bump = bump
         self._clock = clock
 
     @measured("anchors")
@@ -375,5 +368,4 @@ class AnchorTypeService:
         superseded either way.
         """
         await self._evaluator.re_evaluate()
-        settings = await self._settings.read()
-        await self._versions.bump(weeks_from(local_date(now, settings.home_zone)))
+        await self._bump.from_the_week_holding(now)

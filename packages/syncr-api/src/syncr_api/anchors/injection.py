@@ -8,10 +8,12 @@ another tenant's rows.
 Four collaborators come from other feature modules, and each is deliberate rather than
 convenient. The calendar-source repository names the source on an anchor's detail panel and
 confirms a match rule points at a calendar that exists. The Area repository confirms that a prep
-Area, a transit Area, and every forbidden Area were declared. The settings repository is read for
-the home zone, because the week a rule change first affects is decided by today's LOCAL date. The
-week input version counter is plan storage's, because a shadow is a solve input and there is one
-serialization point for anything that invalidates a running solve.
+Area, a transit Area, and every forbidden Area were declared. The week input version counter is
+plan storage's, because a shadow is a solve input and there is one serialization point for
+anything that invalidates a running solve. The settings repository is read for the home zone,
+because the week a rule change first affects is decided by today's LOCAL date, and resolving that
+in a second place would let the two disagree. The last two reach both services inside
+``BacklogWideBump``, which is the one implementation of those four steps.
 """
 
 from __future__ import annotations
@@ -33,7 +35,21 @@ from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.user_settings.repository import SettingsRepository
-from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
+from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
+
+
+def _backlog_wide_bump(transaction: TransactionDep, principal: PrincipalDep) -> BacklogWideBump:
+    """The open-ended bump both services perform, built once for this request.
+
+    Both of them invalidate the same range for the same reason: a rule-set edit and a retype each
+    change what a commitment casts, and a shadow is a solve input.
+    """
+    return BacklogWideBump(
+        versions=TrackedWeekInputVersions(
+            WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+        ),
+        settings=SettingsRepository(transaction, principal.tenant_id),
+    )
 
 
 def get_anchor_service(principal: PrincipalDep, transaction: TransactionDep) -> AnchorService:
@@ -42,10 +58,7 @@ def get_anchor_service(principal: PrincipalDep, transaction: TransactionDep) -> 
         anchors=AnchorRepository(transaction, principal.tenant_id),
         types=AnchorTypeRepository(transaction, principal.tenant_id),
         sources=CalendarSourceRepository(transaction, principal.tenant_id),
-        settings=SettingsRepository(transaction, principal.tenant_id),
-        versions=TrackedWeekInputVersions(
-            WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
-        ),
+        bump=_backlog_wide_bump(transaction, principal),
         clock=utc_now,
     )
 
@@ -62,10 +75,7 @@ def get_anchor_type_service(
         areas=AreaRepository(transaction, principal.tenant_id),
         sources=CalendarSourceRepository(transaction, principal.tenant_id),
         evaluator=RuleEvaluator(anchors, types),
-        settings=SettingsRepository(transaction, principal.tenant_id),
-        versions=TrackedWeekInputVersions(
-            WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
-        ),
+        bump=_backlog_wide_bump(transaction, principal),
         clock=utc_now,
     )
 
