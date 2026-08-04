@@ -6,12 +6,15 @@ running solve for such a week read a denominator that no longer holds, and its c
 write is what the bump makes fail.
 
 **The range is the weeks the span TOUCHES, with no floor at the current week.** That differs
-from a budget or a zone change deliberately: those govern every week from now on, so their
-range is open-ended and has to be floored to avoid re-deriving a past week that keeps the
-inputs its approved revision was computed with. An off-plan span names a bounded set of weeks
-instead, and a past week inside it genuinely reports a different denominator than it did
-before the span was declared. Only weeks with a version row are bumped in any case, so a past
-week nothing has planned is never touched.
+from a budget or a zone change deliberately. Those have no end date: they govern every week
+from now on, so their range is open-ended, it has to be floored at the current week to avoid
+re-deriving a past week that keeps the inputs its approved revision was computed with, and the
+four steps that build such a range have one implementation every mutation of that shape shares.
+An off-plan span is the other shape, bounded at both ends like a travel override's dates: it
+names a bounded set of weeks, and a past week inside it genuinely reports a different
+denominator than it did before the span was declared, so flooring it would leave that week
+reporting a figure nothing invalidated. Only weeks with a version row are bumped in any case,
+so a past week nothing has planned is never touched.
 
 **The last week is the week holding the last instant the span COVERS, not the week holding
 ``end``.** The bounds are half-open, so a period ending at a Monday's local midnight ends
