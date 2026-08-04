@@ -79,6 +79,12 @@
   --glyph-notice-info: "\25CB";
   --glyph-notice-attention: "\25B2";
 
+  /* The bounded meter's cell. A meter is drawn as a run of these because its scale has a known end, so a
+     segmented run reads as a fraction of something; an arbitrary magnitude is a percentage-width fill instead.
+     U+2588 FULL BLOCK, which is the only character in the system that is a shape rather than a mark: the run's
+     cells butt against each other and any lighter block would read as a second state. */
+  --glyph-meter-cell: "\2588";
+
   /* The bracketed form, stated once. Key hints take exactly this shape, `[ j ]`, and so does the
      accordion's disclosure, so there is one bracketed-glyph form in the system rather than two. A
      bordered key cap is never used: a border plus brackets at 10px is redundant. */
@@ -187,6 +193,10 @@
 
 .glyph--notice-attention {
   --glyph: var(--glyph-notice-attention);
+}
+
+.glyph--meter-cell {
+  --glyph: var(--glyph-meter-cell);
 }
 
 /* DISCLOSURE IS THE ONE GLYPH DRIVEN BY A STATE, so this is the kit's assignment of the glyph-slot

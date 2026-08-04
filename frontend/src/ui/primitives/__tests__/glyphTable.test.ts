@@ -83,6 +83,7 @@ describe("the glyph table", () => {
       "caret",
       "check",
       "cross",
+      "meter-cell",
       "minus",
       "month-next",
       "month-previous",
