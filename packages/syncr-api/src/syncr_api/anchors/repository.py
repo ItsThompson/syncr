@@ -15,6 +15,12 @@ contribute thousands of anchors inside a year, and an offset page shifts under a
 inserts a row before the cursor, which would silently skip an anchor. The key is
 ``(starts_at, id)``, which the span index leads with.
 
+:meth:`overlapping` answers the same question with no page at all, and the difference is the
+caller. A page limit reports what fits and says nothing about the rest, so a week assembly
+reading one page would silently lose the occupancy of whatever fell past it, which is the one
+failure that read exists to prevent. What bounds it instead is the span, which the caller
+widens by a reach two bounded columns cap.
+
 :meth:`retype_series` is what makes a retype persist on the series. It writes by ``series_uid``
 rather than by identifier, so one call types every occurrence of a daily standup, including the
 ones the user is not looking at.
@@ -77,6 +83,21 @@ class AnchorRepository(TenantScopedRepository):
                 )
             )
         found = await self._session.scalars(statement)
+        return tuple(as_anchor_record(row) for row in found)
+
+    async def overlapping(self, span: Interval) -> tuple[AnchorRecord, ...]:
+        """Every anchor of this tenant's overlapping ``span``, earliest first. No page.
+
+        Overlapping on the same reading as :meth:`in_span`: a commitment that began before the
+        span occupies time inside it. Unpaged because the caller is an assembly rather than an
+        interface, and an assembly that read one page would report time as free that a page
+        boundary happened to hide.
+        """
+        found = await self._session.scalars(
+            self.scoped_select(Anchor)
+            .where(Anchor.starts_at < span.end, Anchor.ends_at > span.start)
+            .order_by(Anchor.starts_at, Anchor.id)
+        )
         return tuple(as_anchor_record(row) for row in found)
 
     async def find(self, anchor_id: AnchorId) -> AnchorRecord | None:

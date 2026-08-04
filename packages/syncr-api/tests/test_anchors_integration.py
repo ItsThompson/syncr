@@ -11,7 +11,9 @@ or a real statement makes:
 - removing an anchor type leaves its commitments as opaque busy time rather than removing them;
 - a successful read removes what the feed stopped publishing, and a failed one does not;
 - a retype reaches every occurrence of a series, including ones a later sync creates;
-- and reordering rules re-evaluates the anchors a rule may still type, and only those.
+- reordering rules re-evaluates the anchors a rule may still type, and only those;
+- and the assembly's unpaged span read and the interface's paged one answer with the same
+  commitments, asserted over the pairs at each edge of the span.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from syncr_api.anchors.config import (
+    ANCHOR_PAGE_LIMIT_MAX,
     ANCHORS_TABLE,
     FORBIDS_AREAS,
     FORBIDS_EVERYTHING,
@@ -1108,6 +1111,80 @@ async def test_the_page_cursor_walks_the_whole_span_once(
 
     assert sorted(walked) == sorted(event.uid for event in events)
     assert len(walked) == len(set(walked))
+
+
+async def test_an_unpaged_span_read_answers_with_every_commitment_inside_it(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    # The assembly's read. More commitments than the interface's largest page, because what this
+    # asserts is that no page boundary decides what a week believes is occupied.
+    events = [
+        an_event(f"p{index}@example", start=MONDAY_0900 + timedelta(minutes=index), minutes=5)
+        for index in range(ANCHOR_PAGE_LIMIT_MAX + 3)
+    ]
+    await reconcile(sessions, tenant_id, source, a_read(*events))
+
+    async with sessions() as session:
+        found = await AnchorRepository(session, tenant_id).overlapping(
+            Interval(MONDAY_0900, MONDAY_0900 + timedelta(days=1))
+        )
+
+    assert len(found) == len(events)
+    assert [anchor.external_uid for anchor in found] == [event.uid for event in events]
+
+
+async def test_the_unpaged_read_and_the_paged_one_agree_at_every_boundary(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    # Two statements of one predicate, crossed against each other over the pairs that decide it:
+    # a commitment that abuts each edge, straddles each edge, is contained, and contains the span.
+    # The two reads serve different callers and must not disagree about what a span holds.
+    span = Interval(MONDAY_0900, MONDAY_0900 + timedelta(hours=2))
+    placements = {
+        "ends-at-start": (MONDAY_0900 - timedelta(hours=1), 60),
+        "ends-one-minute-in": (MONDAY_0900 - timedelta(hours=1), 61),
+        "starts-at-start": (MONDAY_0900, 30),
+        "contained": (MONDAY_0900 + timedelta(minutes=30), 30),
+        "straddles-the-end": (MONDAY_0900 + timedelta(minutes=90), 60),
+        "starts-at-end": (MONDAY_0900 + timedelta(hours=2), 60),
+        "starts-one-minute-before-the-end": (MONDAY_0900 + timedelta(minutes=119), 60),
+        "covers-the-whole-span": (MONDAY_0900 - timedelta(hours=1), 240),
+        "wholly-before": (MONDAY_0900 - timedelta(days=1), 60),
+        "wholly-after": (MONDAY_0900 + timedelta(days=1), 60),
+        "one-minute-long-at-the-start": (MONDAY_0900, 1),
+    }
+    await reconcile(
+        sessions,
+        tenant_id,
+        source,
+        a_read(
+            *(
+                an_event(f"{name}@example", start=start, minutes=minutes)
+                for name, (start, minutes) in placements.items()
+            )
+        ),
+    )
+
+    async with sessions() as session:
+        anchors = AnchorRepository(session, tenant_id)
+        unpaged = await anchors.overlapping(span)
+        paged = await anchors.in_span(span, limit=len(placements))
+
+    inside = {anchor.external_uid for anchor in unpaged}
+    assert inside == {anchor.external_uid for anchor in paged}
+    assert inside == {
+        "ends-one-minute-in@example",
+        "starts-at-start@example",
+        "contained@example",
+        "straddles-the-end@example",
+        "starts-one-minute-before-the-end@example",
+        "covers-the-whole-span@example",
+        "one-minute-long-at-the-start@example",
+    }
 
 
 def test_the_anchor_type_specification_names_every_column_the_ticket_requires() -> None:
