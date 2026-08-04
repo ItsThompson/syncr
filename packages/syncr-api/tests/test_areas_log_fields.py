@@ -36,6 +36,7 @@ PACKAGES = (
     "google_account",
     "habits",
     "offplan",
+    "preferences",
     "routines",
     "tasks",
     "templates",
