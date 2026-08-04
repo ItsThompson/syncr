@@ -20,6 +20,11 @@ made against the MERGED pair rather than against the fields one request happened
 **A capture needs a title and an Area.** Everything else has a default, and each default is
 stated in its own description, so the two-field capture is visible in the document rather than
 only in this module.
+
+**Every minute field is strict.** Pydantic's lax mode reads `true` as 1 and `"30"` as 30, so a
+client sending a boolean where a duration belongs would store a one-minute task rather than be told
+it sent the wrong kind of value. The JSON schema type is `integer` either way, so this narrows what
+is accepted without changing the contract.
 """
 
 from __future__ import annotations
@@ -75,7 +80,9 @@ _MIN_CHUNK_DESCRIPTION = (
     f"The smallest placement a splittable task may be divided into, {MIN_CHUNK_MINUTES_MIN} to "
     f"{MIN_CHUNK_MINUTES_MAX} minutes. Defaults to {DEFAULT_MIN_CHUNK_MINUTES}, one grid step, "
     "clamped down to the estimate when the estimate is smaller. A value above the estimate is "
-    "refused with a stated reason, because no placement could satisfy both."
+    "refused with a stated reason, because no placement could satisfy both. Stored but unread on "
+    "an atomic task, whose only placement is the whole estimate: it is kept rather than forced to "
+    "the estimate so that making the task splittable again restores the minimum the user chose."
 )
 _SPLITTABLE_DESCRIPTION = (
     f"Whether the solver may divide this task across several placements. Defaults to "
@@ -166,6 +173,7 @@ class TaskCreateRequest(WireModel):
         default=DEFAULT_ESTIMATE_MINUTES,
         ge=ESTIMATE_MINUTES_MIN,
         le=ESTIMATE_MINUTES_MAX,
+        strict=True,
         description=_ESTIMATE_DESCRIPTION,
     )
     deadline: datetime | None = Field(default=None, description=_DEADLINE_DESCRIPTION)
@@ -178,6 +186,7 @@ class TaskCreateRequest(WireModel):
         default=None,
         ge=MIN_CHUNK_MINUTES_MIN,
         le=MIN_CHUNK_MINUTES_MAX,
+        strict=True,
         description=_MIN_CHUNK_DESCRIPTION,
     )
     splittable: bool = Field(default=DEFAULT_SPLITTABLE, description=_SPLITTABLE_DESCRIPTION)
@@ -205,6 +214,7 @@ class TaskPatchRequest(WireModel):
         default=None,
         ge=ESTIMATE_MINUTES_MIN,
         le=ESTIMATE_MINUTES_MAX,
+        strict=True,
         description=_ESTIMATE_DESCRIPTION,
     )
     deadline: datetime | None = Field(default=None, description=_DEADLINE_DESCRIPTION)
@@ -213,6 +223,7 @@ class TaskPatchRequest(WireModel):
         default=None,
         ge=MIN_CHUNK_MINUTES_MIN,
         le=MIN_CHUNK_MINUTES_MAX,
+        strict=True,
         description=_MIN_CHUNK_DESCRIPTION,
     )
     splittable: bool | None = Field(default=None, description=_SPLITTABLE_DESCRIPTION)
