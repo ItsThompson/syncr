@@ -103,27 +103,28 @@ def typed_anchors(
 ) -> tuple[TypedAnchor, ...]:
     """Each anchor paired with the type it carries, in the order the anchors were read.
 
-    An anchor carrying a type this read did not see is paired with none, and the count is
-    reported: the pair the generator is given has to agree, and a type created between two
-    statements of one transaction is a race rather than a state worth failing an assembly for.
+    An anchor carrying a type this read did not see is paired with none through
+    :meth:`TypedAnchor.untyped`, and the count is reported: the pair the generator is given has to
+    agree, and a type created between two statements of one transaction is a race rather than a
+    state worth failing an assembly for.
     """
     by_id: Mapping[AnchorTypeId, AnchorTypeRecord] = {row.id: row for row in types}
     paired: list[TypedAnchor] = []
-    unknown = 0
+    unread = 0
     for anchor in anchors:
         carried = anchor.anchor_type_id
         found = None if carried is None else by_id.get(carried)
         if carried is not None and found is None:
-            unknown += 1
-            paired.append(TypedAnchor(replace(anchor, anchor_type_id=None), None))
+            unread += 1
+            paired.append(TypedAnchor.untyped(anchor))
             continue
         paired.append(TypedAnchor(anchor, found))
-    if unknown:
+    if unread:
         _log.warning(
             "plans.assembly.anchor_type_unread",
-            anchors=unknown,
-            types=len(by_id),
-            read=len(anchors),
+            anchors_with_an_unread_type=unread,
+            anchors_read=len(anchors),
+            types_read=len(by_id),
         )
     return tuple(paired)
 

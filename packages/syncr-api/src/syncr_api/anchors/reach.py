@@ -86,7 +86,14 @@ class ShadowReach:
         )
 
     def envelope(self, anchor: Interval) -> Interval:
-        """The span every product of a commitment at ``anchor`` falls inside."""
+        """The span every product of a commitment at ``anchor`` falls inside.
+
+        The executable form of the bound this module's docstring derives, and the suite's own
+        subject: every declaration's real generated shadows are checked against it, member by
+        member, which is what makes the derivation a measurement rather than a claim. Nothing in
+        production asks it, because production asks :func:`casting_span`, which is the same bound
+        read from the other side.
+        """
         return Interval(
             anchor.start - timedelta(minutes=self.before_minutes),
             anchor.end + timedelta(minutes=self.after_minutes),

@@ -47,7 +47,7 @@ wording; what the document stores is this.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import TYPE_CHECKING, Final
 
@@ -98,6 +98,21 @@ class TypedAnchor:
 
     anchor: AnchorRecord
     anchor_type: AnchorTypeRecord | None
+
+    @classmethod
+    def untyped(cls, anchor: AnchorRecord) -> TypedAnchor:
+        """``anchor`` as a commitment that casts nothing, whatever type its row names.
+
+        The identifier is cleared as well as the type, because the pair has to AGREE: this module
+        refuses an anchor paired with a type that is not the one it carries, and a caller that
+        could not READ the type is stating that this commitment casts nothing rather than that its
+        row carries nothing. Stated here rather than at the call site so that rewriting a stored
+        field reads as the decision it is.
+
+        The one caller is the week assembler, for an anchor carrying a type its own read did not
+        return, which is what a type created between two statements of one transaction produces.
+        """
+        return cls(replace(anchor, anchor_type_id=None), None)
 
 
 def generate(anchor: AnchorRecord, anchor_type: AnchorTypeRecord | None) -> ShadowSet:
