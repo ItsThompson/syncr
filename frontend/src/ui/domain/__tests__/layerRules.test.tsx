@@ -47,8 +47,22 @@ const NOTICE: Notice = {
  * degrading, and the sidebar's rows are real links by design. */
 const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   AreaChip: () => <domain.AreaChip name="Career" pigment="01" />,
+  AreaLegend: () => (
+    <domain.AreaLegend
+      label="Share of discretionary time"
+      entries={[{ id: "career", label: "Career", pigment: "01", figure: "14.2h" }]}
+    />
+  ),
   CommandPalette: () => (
     <domain.CommandPalette actions={[]} onSelect={vi.fn<(id: string) => void>()} />
+  ),
+  DataBar: () => <domain.DataBar value={3.5} max={6} label="3.5h, 58% of the leader" />,
+  DeviationBar: () => (
+    <domain.DeviationBar
+      caption="Scheduled against target"
+      format={(magnitude) => `${magnitude.toFixed(1)}h`}
+      rows={[{ id: "career", label: "Career", actual: 27.3, target: 30 }]}
+    />
   ),
   EmptyState: () => <domain.EmptyState title="Nothing yet" detail="Press n to capture one." />,
   ErrorState: () => <domain.ErrorState title="Not read" detail="Your plan is unchanged." />,
@@ -56,15 +70,36 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   HelpOverlay: () => <domain.HelpOverlay />,
   KeyHint: () => <domain.KeyHint keys="j" />,
   LedgerRow: () => <domain.LedgerRow timeRange="10:00-10:30" duration="30m" title="Clean" />,
+  MaturityMeter: () => (
+    <domain.MaturityMeter value={14} bound={15} label="durationMultiplier unlock progress" />
+  ),
   NoticeCard: () => <domain.NoticeCard notice={{ ...NOTICE, volume: "inline" }} />,
   NoticeMark: () => <domain.NoticeMark pigment="amber" />,
   NoticePanel: () => <domain.NoticePanel notice={NOTICE} />,
   NoticeStrip: () => <domain.NoticeStrip notice={{ ...NOTICE, volume: "banner" }} />,
   PendingState: () => <domain.PendingState title="Solving" detail="The last plan is on screen." />,
+  PieChart: () => (
+    <domain.PieChart
+      caption="Share of the 33.7h scheduled"
+      slices={[{ id: "career", label: "Career", pigment: "01", minutes: 820 }]}
+    />
+  ),
   Plate: () => <domain.Plate name="astrolabe" />,
   ShellLayout: () => <domain.ShellLayout />,
   SidebarNav: () => <domain.SidebarNav screens={SCREENS} currentPath="/week" />,
   SidebarNavItem: () => <domain.SidebarNavItem screen={SCREENS[0]} isCurrent />,
+  StackedBars: () => (
+    <domain.StackedBars
+      caption="Composition by week"
+      bars={[
+        {
+          id: "w06",
+          label: "W06",
+          segments: [{ id: "career", label: "Career", pigment: "01", minutes: 820 }],
+        },
+      ]}
+    />
+  ),
   StatusSurface: () => <domain.StatusSurface kind="empty" title="Nothing yet" detail="Press n." />,
   Table: () => (
     <domain.Table
@@ -75,6 +110,11 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
     />
   ),
   TopBar: () => <domain.TopBar />,
+  WedgePatterns: () => (
+    <svg>
+      <domain.WedgePatterns idPrefix="mount" pigments={["01", "unallocated"]} />
+    </svg>
+  ),
   WizardSteps: () => (
     <domain.WizardSteps
       steps={[{ id: "areas", label: "Declare your Areas", status: "current" }]}

@@ -39,6 +39,30 @@ export function contrastRatio(one: string, two: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+function channelsOf(hex: string): [number, number, number] {
+  const digits = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (digits === null) throw new Error(`${hex} is not a six-digit hex colour`);
+  const value = Number.parseInt(digits[1], 16);
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
+}
+
+/**
+ * The literal `color-mix(in srgb, one P%, two)` resolves to.
+ *
+ * Needed because a token chain resolves to a hex and a mix does not: the hatch on a chart fill is
+ * `color-mix(in srgb, var(--ai) var(--hatch-mix), var(--paper-raised))`, so its ratio against the fill it sits on
+ * cannot be computed from token values alone. Mixing in the sRGB space is a per-channel interpolation of the
+ * gamma-encoded values, which is what CSS Color 5 specifies for that colour space.
+ */
+export function mixInSrgb(one: string, two: string, percent: number): string {
+  const left = channelsOf(one);
+  const right = channelsOf(two);
+  const blended = left.map((value, index) =>
+    Math.round((value * percent + right[index] * (100 - percent)) / 100),
+  );
+  return `#${blended.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
 /** The ratio between two token names, each resolved through the layer to a literal. */
 export async function ratioBetween(foreground: string, background: string): Promise<number> {
   const tokens = await declaredTokens();

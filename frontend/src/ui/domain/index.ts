@@ -8,6 +8,7 @@
  *
  *   shell     the top bar, the paper sidebar, the keyboard map, the command palette and the help overlay
  *   marks     the small marks a row carries: an Area chip, a key hint, and the block glyph slot
+ *   charts    the five charts, the Area legend, and the two bounded-progress forms
  *   notices   the three volumes, which are position, and the four pigments, which are kind
  *   status    the three surfaces with nothing to show, none of which spins
  *   table     28px rows, data-sized cells, tabular figures, a sortable header and a footer count
@@ -15,9 +16,10 @@
  *   wizard    first run's numbered steps, with a caret on the current one and no progress bar
  *   plate     the dithered illustration plates, which are never behind data
  *
- * The charts are NOT here, and neither is the week grid: `domain/week-grid/` and the chart family arrive with the
- * tickets that own them, and each will add its own line to this barrel. */
+ * The week grid is NOT here: `domain/week-grid/` arrives with the ticket that owns it, and it will add its own
+ * line to this barrel. */
 
+export * from "./charts";
 export * from "./ledger";
 export * from "./marks";
 export * from "./notices";
