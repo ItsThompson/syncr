@@ -43,6 +43,7 @@ from syncr_api.tasks.schemas import TaskCreateRequest
 from syncr_domain.tasks import (
     DEFAULT_ESTIMATE_MINUTES,
     DEFAULT_MIN_CHUNK_MINUTES,
+    Priority,
     TaskStatus,
     is_eligible_for_solving,
     remaining_minutes,
@@ -221,10 +222,12 @@ def record_progress(database_url: str, tenant_id: TenantId, minutes: int) -> Non
 
 
 def this_week() -> str:
-    """The ISO week the bump floors at, resolved the way the service resolves it.
+    """The ISO week the bump floors at.
 
-    Taken from the clock rather than pinned, because the service reads the real clock through its
-    injected one in the deployed wiring and these tests drive the deployed wiring.
+    Computed from the UTC date, which agrees with the service only because a freshly provisioned
+    tenant's home zone is ``UTC``: the service floors on today's LOCAL date in that home zone, and
+    these tests never change it. If that default ever moves off UTC, resolve the zone here the way
+    the service does rather than leaving these tests to fail inside a one-hour window.
     """
     today = datetime.now(tz=UTC).date()
     year, week, _ = today.isocalendar()
@@ -373,6 +376,8 @@ def test_capture_refuses_the_fields_only_an_ending_or_an_outcome_may_set(
         {"title": "Leetcode", "estimateMinutes": 10081},
         {"title": "Leetcode", "minChunkMinutes": 0},
         {"title": "Leetcode", "priority": "critical"},
+        {"title": "Leetcode", "estimateMinutes": True},
+        {"title": "Leetcode", "minChunkMinutes": True},
     ],
     ids=[
         "an empty title",
@@ -381,6 +386,8 @@ def test_capture_refuses_the_fields_only_an_ending_or_an_outcome_may_set(
         "an estimate no week could hold",
         "a chunk of no minutes",
         "a priority outside the vocabulary",
+        "a boolean where an estimate belongs",
+        "a boolean where a chunk belongs",
     ],
 )
 def test_a_value_outside_its_declared_bounds_is_refused_rather_than_stored(
@@ -823,6 +830,67 @@ def test_every_unsafe_method_accepts_an_idempotency_key(
     assert requests[method]().json() == response.json()
 
 
+@pytest.mark.xfail(
+    reason="the fingerprint hashes body bytes only and keys the route by handler name, so two "
+    "tasks addressed by path under one key collide and the second request replays the first "
+    "task's response without touching the task it named. A silent lost write, shared by every "
+    "path-addressed unsafe route in the application. Tracked as ticket 1134, which removes this "
+    "marker.",
+    strict=True,
+)
+@pytest.mark.parametrize("method", ["delete", "complete", "patch"])
+def test_one_key_across_two_tasks_does_not_silently_skip_the_second(
+    http: TestClient,
+    signed_in: dict[str, str],
+    area: str,
+    owner: UserRecord,
+    live_database_url: str,
+    method: str,
+) -> None:
+    """One key, two tasks: the second request must not be answered from the first task's row.
+
+    Asserts the CORRECT behavior and is expected to fail, rather than pinning the defect as though
+    it were the contract. Under ``strict=True`` an xfail that starts passing is itself a failure, so
+    fixing the fingerprint forces this marker to be deleted rather than leaving a test that quietly
+    agrees with whatever the code does.
+
+    Two fixes are legitimate and they are observably different, so both branches are accepted: one
+    that folds the request path into the fingerprint makes the second request a reused key, which is
+    the 422 the guard already documents, and one that gives each addressed resource its own key
+    namespace applies it. What must not happen either way is a 200 carrying the FIRST task's row.
+
+    ``DELETE`` and ``complete`` carry no body at all, so their fingerprints collide unconditionally.
+    ``PATCH`` collides whenever two requests carry the same body, which a batch of identical edits
+    does.
+    """
+    first = capture(http, signed_in, areaId=area, title="first")
+    second = capture(http, signed_in, areaId=area, title="second")
+    headers = {**signed_in, IDEMPOTENCY_KEY_HEADER: uuid4().hex}
+    send = {
+        "delete": lambda task: http.delete(f"{TASKS}/{task['id']}", headers=headers),
+        "complete": lambda task: http.post(f"{TASKS}/{task['id']}/complete", headers=headers),
+        "patch": lambda task: http.patch(
+            f"{TASKS}/{task['id']}", json={"priority": "urgent"}, headers=headers
+        ),
+    }
+    landed = {
+        "delete": lambda row: row.status is TaskStatus.DROPPED,
+        "complete": lambda row: row.status is TaskStatus.COMPLETED,
+        "patch": lambda row: row.priority is Priority.URGENT,
+    }
+
+    send[method](first)
+    answered = send[method](second)
+
+    stored = {row.title: row for row in task_rows(live_database_url, owner.tenant_id)}
+    if answered.status_code == HTTPStatus.OK:
+        assert answered.json()["id"] == second["id"]
+        assert landed[method](stored["second"])
+    else:
+        assert answered.status_code == ValidationFailed.status, answered.text
+        assert not landed[method](stored["second"])
+
+
 def test_the_week_input_version_is_bumped_by_every_mutating_route(
     http: TestClient,
     signed_in: dict[str, str],
@@ -867,6 +935,52 @@ def test_a_read_and_a_refused_mutation_bump_nothing(
         headers=signed_in,
     )
 
+    assert version_rows(live_database_url, owner.tenant_id)[week] == 1
+
+
+def test_a_patch_that_states_nothing_bumps_nothing(
+    http: TestClient,
+    signed_in: dict[str, str],
+    area: str,
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # An empty body changes no column, so it changes no solve input, and invalidating a running
+    # solve would cost it its work for nothing.
+    created = capture(http, signed_in, areaId=area, title="Leetcode")
+    week = this_week()
+    track_week(live_database_url, owner.tenant_id, week)
+
+    answered = http.patch(f"{TASKS}/{created['id']}", json={}, headers=signed_in)
+
+    assert answered.status_code == HTTPStatus.OK, answered.text
+    assert answered.json() == created
+    assert version_rows(live_database_url, owner.tenant_id)[week] == 1
+
+
+def test_changing_a_task_no_solve_can_see_bumps_nothing(
+    http: TestClient,
+    signed_in: dict[str, str],
+    area: str,
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # An ended task is not collected by the assembler, so correcting what a report says about one
+    # invalidates nothing. Editing it is still allowed and still answers with the changed task.
+    created = capture(http, signed_in, areaId=area, title="Leetcode")
+    assert (
+        http.post(f"{TASKS}/{created['id']}/complete", headers=signed_in).status_code
+        == HTTPStatus.OK
+    )
+    week = this_week()
+    track_week(live_database_url, owner.tenant_id, week)
+
+    corrected = http.patch(
+        f"{TASKS}/{created['id']}", json={"estimateMinutes": 120}, headers=signed_in
+    )
+
+    assert corrected.status_code == HTTPStatus.OK, corrected.text
+    assert corrected.json()["estimateMinutes"] == 120
     assert version_rows(live_database_url, owner.tenant_id)[week] == 1
 
 

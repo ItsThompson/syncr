@@ -570,8 +570,8 @@ async def test_an_omitted_field_is_left_alone_and_an_explicit_null_clears_a_dead
 async def test_changing_a_task_bumps_the_current_week_onwards(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    # Every task edit is a solve-input change: the assembler reads the title, the estimate, the
-    # physics, and the deadline, so there is no field here the solver cannot see.
+    # Every field on an ELIGIBLE task is a solve-input change: the assembler reads the title, the
+    # estimate, the physics, and the deadline, so there is no field on one the solver cannot see.
     area = an_area(principal.tenant_id)
     stored = a_task(principal.tenant_id, area.id)
     service, _ = build(principal, versions, areas=[area], tasks=[stored])
@@ -581,15 +581,108 @@ async def test_changing_a_task_bumps_the_current_week_onwards(
     assert versions.bumped == [WeekRange(first=WEEK_31, last=None)]
 
 
-async def test_a_change_cannot_move_a_task_between_areas(
+async def test_a_change_that_states_nothing_bumps_nothing(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    # The Area is not a member of `TaskChange` at all, so this asserts the shape rather than a
-    # rejection: there is no field a request could send. The wire half is asserted over HTTP,
-    # where an unknown field is a stated 422.
-    assert "area_id" not in set(no_change().__slots__)
-    assert "status" not in set(no_change().__slots__)
-    assert "recorded_minutes" not in set(no_change().__slots__)
+    # An empty PATCH body leaves the record identical, so there is nothing for a solve to re-read
+    # and invalidating a running one would cost it its work for nothing.
+    area = an_area(principal.tenant_id)
+    stored = a_task(principal.tenant_id, area.id)
+    service, _ = build(principal, versions, areas=[area], tasks=[stored])
+
+    unchanged = await service.update(principal, stored.id, no_change())
+
+    assert unchanged == stored
+    assert versions.bumped == []
+
+
+async def test_changing_a_task_no_solve_can_see_bumps_nothing(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # An ended task is not collected by the assembler, so correcting what a report says about one
+    # invalidates nothing. Asserted with the editability it depends on, because the two are one
+    # action: a correction to an ended task is allowed AND is not a solve-input change.
+    area = an_area(principal.tenant_id)
+    stored = a_task(principal.tenant_id, area.id, status=TaskStatus.COMPLETED, completed_at=NOW)
+    service, _ = build(principal, versions, areas=[area], tasks=[stored])
+
+    corrected = await service.update(principal, stored.id, no_change(estimate_minutes=120))
+
+    assert corrected.estimate_minutes == 120
+    assert corrected.status is TaskStatus.COMPLETED
+    assert corrected.completed_at == NOW
+    assert versions.bumped == []
+
+
+async def test_a_change_that_creates_eligibility_bumps(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # The case that makes the gate ask about BOTH sides. This task is open and ineligible, because
+    # its recorded time has caught up with its estimate; raising the estimate puts it back in the
+    # backlog, which is a solve-input change even though the side it started on was ineligible.
+    area = an_area(principal.tenant_id)
+    stored = a_task(principal.tenant_id, area.id, estimate_minutes=60, recorded_minutes=60)
+    service, _ = build(principal, versions, areas=[area], tasks=[stored])
+    assert stored.is_eligible_for_solving() is False
+
+    revived = await service.update(principal, stored.id, no_change(estimate_minutes=120))
+
+    assert revived.is_eligible_for_solving() is True
+    assert versions.bumped == [WeekRange(first=WEEK_31, last=None)]
+
+
+async def test_a_change_that_ends_eligibility_bumps(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # The other side of the same rule: the task leaves the backlog, which the assembler has to see.
+    area = an_area(principal.tenant_id)
+    stored = a_task(principal.tenant_id, area.id, estimate_minutes=120, recorded_minutes=60)
+    service, _ = build(principal, versions, areas=[area], tasks=[stored])
+
+    spent = await service.update(principal, stored.id, no_change(estimate_minutes=60))
+
+    assert spent.is_eligible_for_solving() is False
+    assert versions.bumped == [WeekRange(first=WEEK_31, last=None)]
+
+
+async def test_ending_a_task_no_solve_could_see_bumps_nothing(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # An open task whose recorded time has already caught up is not in the assembler's backlog, so
+    # taking it out of one it was not in invalidates nothing. The write still happens.
+    area = an_area(principal.tenant_id)
+    stored = a_task(principal.tenant_id, area.id, estimate_minutes=60, recorded_minutes=60)
+    service, tasks = build(principal, versions, areas=[area], tasks=[stored])
+
+    completed = await service.complete(principal, stored.id)
+
+    assert completed.status is TaskStatus.COMPLETED
+    assert tasks.writes == 1
+    assert versions.bumped == []
+
+
+async def test_a_change_cannot_reach_the_area_the_status_or_the_recorded_time(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # None of the three is a member of `TaskChange`, so `applied_to` carries them through by
+    # construction rather than by remembering to. The wire half, where sending one is a stated 422,
+    # is asserted over HTTP.
+    area = an_area(principal.tenant_id)
+    stored = a_task(
+        principal.tenant_id,
+        area.id,
+        status=TaskStatus.COMPLETED,
+        completed_at=NOW,
+        recorded_minutes=45,
+    )
+    service, _ = build(principal, versions, areas=[area], tasks=[stored])
+
+    changed = await service.update(principal, stored.id, no_change(title="renamed"))
+
+    assert changed.area_id == stored.area_id
+    assert changed.status is TaskStatus.COMPLETED
+    assert changed.completed_at == NOW
+    assert changed.recorded_minutes == 45
 
 
 async def test_changing_a_task_that_does_not_exist_is_a_404(
@@ -778,15 +871,18 @@ async def test_dropping_a_completed_task_is_a_conflict_and_changes_nothing(
 async def test_an_ended_task_is_still_editable_because_a_report_can_be_corrected(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
+    # The editability itself, asserted where the endings are, because a reader looking at the two
+    # terminal statuses is who asks whether one of them freezes the row. What it costs in inputs is
+    # asserted with the bump, above.
     area = an_area(principal.tenant_id)
-    stored = a_task(principal.tenant_id, area.id, status=TaskStatus.COMPLETED, completed_at=NOW)
-    service, _ = build(principal, versions, areas=[area], tasks=[stored])
+    stored = a_task(principal.tenant_id, area.id, status=TaskStatus.DROPPED)
+    service, tasks = build(principal, versions, areas=[area], tasks=[stored])
 
-    corrected = await service.update(principal, stored.id, no_change(estimate_minutes=120))
+    corrected = await service.update(principal, stored.id, no_change(title="a better title"))
 
-    assert corrected.estimate_minutes == 120
-    assert corrected.status is TaskStatus.COMPLETED
-    assert corrected.completed_at == NOW
+    assert corrected.title == "a better title"
+    assert corrected.status is TaskStatus.DROPPED
+    assert tasks.writes == 1
 
 
 # --------------------------------------------------------------------------------
