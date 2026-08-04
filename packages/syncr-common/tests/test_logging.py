@@ -97,10 +97,13 @@ def test_location_never_reaches_the_line(emit: Emit, level: str) -> None:
     assert ANCHOR_LOCATION not in json.dumps(line)
 
 
-@pytest.mark.parametrize("key", ["name", "area_name", "summary", "description", "notes"])
+@pytest.mark.parametrize(
+    "key", ["name", "area_name", "summary", "description", "notes", "label", "period_label"]
+)
 def test_other_user_authored_content_never_reaches_the_line(emit: Emit, key: str) -> None:
     # Areas, Projects, Habits, Routines, Templates and AnchorTypes all carry
-    # user-authored names, and `area_name="Job search"` discloses what a title does.
+    # user-authored names, and `area_name="Job search"` discloses what a title does. An
+    # off-plan period's label is the same kind of value: "Italy" discloses a location.
     line = emit("info", "areas.budget.computed", **{key: "Job search"}, area_id="a-1")
 
     assert line[key] == REDACTED

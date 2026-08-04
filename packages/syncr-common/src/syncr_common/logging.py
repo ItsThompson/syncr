@@ -81,7 +81,11 @@ _CALLSITE = structlog.processors.CallsiteParameterAdder(
 # discloses exactly what a block title does. The cost is accepted deliberately: a
 # genuinely benign `event_name` or `metric_name` is redacted too, so log the
 # identifier instead, which is what every diagnostic question actually needs.
-_CONTENT_KEYS = frozenset({"title", "location", "name", "summary", "description", "notes"})
+#
+# `label` is here for the same reason and one of its own: an off-plan period's label is
+# the user's own words, and `period_label="Italy"` discloses where they are as plainly
+# as an anchor location does.
+_CONTENT_KEYS = frozenset({"title", "location", "name", "summary", "description", "notes", "label"})
 
 # Substrings that mark a key as secret-bearing. Matched anywhere in the key, so
 # `refresh_token`, `oauth_client_secret`, and `db_password` are all covered.
