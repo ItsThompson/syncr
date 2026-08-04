@@ -14,9 +14,23 @@
  *
  * DIRECTION IS SIDE AND SIGN, NEVER HUE. Both bars are the same cobalt. */
 
+import { cva } from "class-variance-authority";
+
 import { plotDeviations, MINUS_SIGN } from "./deviation";
 import type { DeviationRow, FigureFormat } from "./series";
 import "./charts.css";
+
+/* DIRECTION IS SIDE AND SIGN, NEVER HUE, so the side is a variant of one bar rather than two bars. Written as a
+ * variant map because a variant is a named design decision, which is the kit's own rule. */
+const bar = cva("deviation__bar", {
+  variants: {
+    side: {
+      under: "deviation__bar--under",
+      over: "deviation__bar--over",
+      on: "",
+    },
+  },
+});
 
 export interface DeviationBarProps {
   readonly rows: readonly DeviationRow[];
@@ -47,14 +61,7 @@ export function DeviationBar({ rows, caption, format }: DeviationBarProps) {
               <span className="deviation__name">{row.label}</span>
               <span className="deviation__track">
                 {side === "on" ? null : (
-                  <span
-                    className={
-                      side === "under"
-                        ? "deviation__bar deviation__bar--under"
-                        : "deviation__bar deviation__bar--over"
-                    }
-                    style={{ width: `${width}%` }}
-                  />
+                  <span className={bar({ side })} style={{ width: `${width}%` }} />
                 )}
                 <span className="deviation__zero" />
               </span>

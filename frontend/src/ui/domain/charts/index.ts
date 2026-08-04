@@ -32,7 +32,7 @@ export { DataBar, type DataBarProps } from "./DataBar";
 export { DeviationBar, type DeviationBarProps } from "./DeviationBar";
 export { MaturityMeter, type MaturityMeterProps } from "./MaturityMeter";
 export { PieChart, type PieChartProps } from "./PieChart";
-export { StackedBars, type StackedBar, type StackedBarsProps } from "./StackedBars";
+export { StackedBars, type StackedBarsProps } from "./StackedBars";
 export { WedgePatterns, patternId, type WedgePatternsProps } from "./WedgePatterns";
 
 export { AREA_HATCHES, HATCH_GEOMETRY, HATCH_NAMES, hatchFor, type HatchName } from "./hatch";
@@ -45,4 +45,5 @@ export {
   type ChartPigment,
   type DeviationRow,
   type FigureFormat,
+  type StackedBar,
 } from "./series";

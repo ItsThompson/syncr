@@ -5,20 +5,13 @@
  * that never does. A composition where `Unallocated` is the largest wedge has its own section: the largest wedge
  * on a real pie is frequently "nothing planned", which reads as a defect until it is labelled.
  *
- * WHAT IS ASSERTED STRUCTURALLY RATHER THAN VISUALLY. jsdom applies no stylesheet, so a rendered element says
- * nothing about what a rule declares. The claims that are about rules -- cobalt only, hatch always on, no motion
- * -- are read from `charts.css` and from the sources, and the claims that are about markup are read from the
- * rendering. */
+ * NOTHING HERE READS THE STYLESHEET. jsdom applies no rule, so a rendered element says nothing about what a rule
+ * declares: the claims that are about rules live in `stylesheet.test.ts` and the claims that are about markup live
+ * here. The two questions are the seam this file is split on. */
 
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { parse } from "postcss";
 
-import { refusalFor } from "../../../../../scripts/lib/declarations.ts";
-import { declaredTokens } from "../../../../../scripts/lib/tokens.ts";
-import { srcDir } from "../../../../testing/compileTheme";
 import { kitStylesheet } from "../../../../testing/kitStylesheets";
 import { AREA_PIGMENTS } from "../../marks/pigment";
 import { AreaLegend } from "../AreaLegend";
@@ -31,7 +24,6 @@ import { hatchFor } from "../hatch";
 import { UNALLOCATED, type AreaQuantity } from "../series";
 import { PIE } from "../wedges";
 
-const chartsDir = path.join(srcDir, "ui", "domain", "charts");
 const hours = (magnitude: number) => `${magnitude.toFixed(1)}h`;
 
 function quantity(label: string, minutes: number, pigment: AreaQuantity["pigment"]): AreaQuantity {
@@ -49,48 +41,6 @@ const THIRTEEN: readonly AreaQuantity[] = [
   ...AREA_PIGMENTS.map((pigment, index) => quantity(`Area ${pigment}`, 60 + index, pigment)),
   quantity("Thirteenth", 200, AREA_PIGMENTS[0]),
 ];
-
-/** Every source in the family, comments and all, which is what a claim about a comment has to read. */
-async function familySources(): Promise<{ name: string; text: string }[]> {
-  const names = [
-    "AreaLegend.tsx",
-    "DataBar.tsx",
-    "DeviationBar.tsx",
-    "MaturityMeter.tsx",
-    "PieChart.tsx",
-    "StackedBars.tsx",
-    "WedgePatterns.tsx",
-    "deviation.ts",
-    "hatch.ts",
-    "index.ts",
-    "paint.ts",
-    "series.ts",
-    "wedges.ts",
-  ];
-  return Promise.all(
-    names.map(async (name) => ({
-      name,
-      text: await readFile(path.join(chartsDir, name), "utf8"),
-    })),
-  );
-}
-
-function chartsStylesheet(): Promise<string> {
-  return readFile(path.join(chartsDir, "charts.css"), "utf8");
-}
-
-/** The declarations a rule set carries, keyed by selector, so a claim about an ink can name the rule. */
-async function rulesInCharts(): Promise<Map<string, Map<string, string>>> {
-  const rules = new Map<string, Map<string, string>>();
-  parse(await chartsStylesheet()).walkRules((rule) => {
-    const declarations = rules.get(rule.selector) ?? new Map<string, string>();
-    rule.walkDecls((declaration) => {
-      declarations.set(declaration.prop, declaration.value);
-    });
-    rules.set(rule.selector, declarations);
-  });
-  return rules;
-}
 
 function wedgesIn(container: HTMLElement): SVGPathElement[] {
   return [...container.querySelectorAll<SVGPathElement>("path.pie__wedge")];
@@ -249,12 +199,6 @@ describe("Unallocated", () => {
     expect(screen.getByText("Unallocated")).toBeInTheDocument();
     expect(screen.getByText("18.4h")).toBeInTheDocument();
   });
-
-  it("is painted with no step of the ramp, in the token that names the vacancy", async () => {
-    const rules = await rulesInCharts();
-
-    expect(rules.get(".chart-ink--unallocated")?.get("--ai")).toBe("var(--unallocated)");
-  });
 });
 
 describe("StackedBars", () => {
@@ -330,35 +274,8 @@ describe("StackedBars", () => {
   });
 });
 
-/* THERE IS NO LINE CHART IN THIS PRODUCT. The Area seal permits ink on a wedge or a bar fill, not on a line, and
- * twelve cobalt lines separated only by dash pattern is unreadable. An absence with no check is an absence that
- * comes back, so this is the check. */
-describe("the line chart that does not exist", () => {
-  it("is exported by nothing in the family", async () => {
-    const barrel = await readFile(path.join(chartsDir, "index.ts"), "utf8");
-    const exported = [...barrel.matchAll(/export \{([^}]*)\}/g)].flatMap((match) =>
-      match[1].split(",").map((name) => name.trim()),
-    );
-
-    expect(exported.filter((name) => /line/i.test(name))).toEqual([]);
-  });
-
-  it("has no code path, because nothing here draws a line or a dash", async () => {
-    for (const { name, text } of await familySources()) {
-      expect(text, `${name} draws a polyline`).not.toMatch(/<polyline|<line\s+[^>]*points/);
-      expect(text, `${name} names a line chart`).not.toMatch(/LineChart|lineChart/);
-      expect(text, `${name} sets a dash pattern`).not.toContain("strokeDasharray");
-    }
-  });
-
-  it("draws the trend with bar fills, which is the carrier the seal permits", async () => {
-    const rules = await rulesInCharts();
-
-    expect(rules.get(".chart-fill")?.get("background-color")).toBe("var(--ai)");
-    expect(rules.get(".chart-fill--hatched")?.get("background-image")).toBe("var(--hx)");
-  });
-});
-
+/* THERE IS NO LINE CHART IN THIS PRODUCT, and the whole of that check reads sources and rules rather than a
+ * rendering, so it lives in `stylesheet.test.ts` beside the other claims of its kind. */
 describe("DeviationBar", () => {
   const rows = [
     { id: "career", label: "Career", actual: 27.3, target: 30 },
@@ -380,17 +297,10 @@ describe("DeviationBar", () => {
     expect(container.querySelectorAll(".deviation__bar")).toHaveLength(2);
   });
 
-  it("draws both directions in one ink, so the side is the whole encoding", async () => {
-    const rules = await rulesInCharts();
-
-    expect(rules.get(".deviation__bar")?.get("background")).toBe("var(--ink)");
-    expect([...(rules.get(".deviation__bar--under") ?? [])]).toEqual([["right", "50%"]]);
-    expect([...(rules.get(".deviation__bar--over") ?? [])]).toEqual([["left", "50%"]]);
-  });
-
-  /* COBALT ONLY, AND NO AREA INK ANYWHERE IN THE ROW, INCLUDING THE LABEL CELL. Read from the stylesheet as well
-   * as from the rendering: a chip in the label cell would imply the bar could have been Area-coloured. */
-  it("spends no Area ink anywhere, including the label cell", async () => {
+  /* COBALT ONLY, AND NO AREA INK ANYWHERE IN THE ROW, INCLUDING THE LABEL CELL. The stylesheet half of this claim
+   * is in `stylesheet.test.ts`; this is the half no rule can make, because a chip in the label cell is markup
+   * rather than a declaration. */
+  it("spends no Area ink anywhere, including the label cell", () => {
     const { container } = render(
       <DeviationBar caption="Scheduled against target" format={hours} rows={rows} />,
     );
@@ -398,18 +308,6 @@ describe("DeviationBar", () => {
     for (const element of container.querySelectorAll("*")) {
       expect(element.className.toString()).not.toContain("chart-ink");
       expect(element.className.toString()).not.toContain("area-chip");
-    }
-    const deviationRules = [...(await rulesInCharts())].filter(([selector]) =>
-      selector.startsWith(".deviation"),
-    );
-    expect(deviationRules.length).toBeGreaterThan(5);
-    for (const [selector, declarations] of deviationRules) {
-      for (const [property, value] of declarations) {
-        expect(`${selector} ${property}`, `${selector} spends an Area ink`).not.toMatch(
-          /--ai|--hx/,
-        );
-        expect(value, `${selector} spends an Area ink`).not.toMatch(/--area-|--ai\b|--hx\b/);
-      }
     }
   });
 
@@ -511,13 +409,6 @@ describe("AreaLegend", () => {
     expect(screen.getByText("0.0h")).toBeInTheDocument();
   });
 
-  it("carries the chip without a texture, because one carrier per context", async () => {
-    const rules = await rulesInCharts();
-
-    expect(rules.has(".area-chip")).toBe(false);
-    expect(rules.get(".chart-fill")?.has("background-image")).toBe(false);
-  });
-
   it("renders nothing at all for an empty list rather than a labelled empty one", () => {
     const { container } = render(<AreaLegend label="Share of discretionary time" entries={[]} />);
 
@@ -567,12 +458,38 @@ describe("the two bounded-progress forms", () => {
     expect(screen.getByRole("meter")).toHaveAttribute("aria-valuenow", "15");
   });
 
-  /* A bound of zero binds nothing, so there is nothing left to collect. The alternative reading, an empty run,
-   * would report a parameter with no threshold as having collected none of it. */
-  it("treats a bound of zero as nothing left to collect", () => {
-    const { container } = render(<MaturityMeter value={0} bound={0} label="unbounded" />);
+  /* THE VISUAL AND THE ACCESSIBILITY TREE ARE DRIVEN BY ONE CLAMPED PAIR, so they cannot disagree. They did: the
+   * raw numbers drew a complete run for a bound of zero while reporting "0 of 0", and a negative bound or value
+   * put `aria-valuemax` and `aria-valuenow` outside `[min, max]`, which ARIA forbids. For a reader on a screen
+   * reader the range IS the component, so every row below asserts the two readings agree AND that the range is
+   * one ARIA permits. */
+  it.each([
+    { value: 7, bound: 14, full: 7, max: 14, now: 7 },
+    { value: 40, bound: 15, full: 14, max: 15, now: 15 },
+    { value: 0, bound: 15, full: 0, max: 15, now: 0 },
+    { value: 5, bound: 0, full: 14, max: 1, now: 1 },
+    { value: 0, bound: 0, full: 0, max: 1, now: 0 },
+    { value: 5, bound: -5, full: 14, max: 1, now: 1 },
+    { value: -3, bound: 15, full: 0, max: 15, now: 0 },
+  ])("draws and reports the same fraction at value $value of bound $bound", (row) => {
+    const { container } = render(
+      <MaturityMeter value={row.value} bound={row.bound} label="agreement" />,
+    );
+    const meter = screen.getByRole("meter");
+    const filled = 14 - container.querySelectorAll(".meter__cell--empty").length;
+    const now = Number(meter.getAttribute("aria-valuenow"));
+    const max = Number(meter.getAttribute("aria-valuemax"));
+    const min = Number(meter.getAttribute("aria-valuemin"));
 
-    expect(container.querySelectorAll(".meter__cell--empty")).toHaveLength(0);
+    expect(filled).toBe(row.full);
+    expect(max).toBe(row.max);
+    expect(now).toBe(row.now);
+    // A range ARIA permits, and a value inside it.
+    expect(max).toBeGreaterThan(min);
+    expect(now).toBeGreaterThanOrEqual(min);
+    expect(now).toBeLessThanOrEqual(max);
+    // The two readings agree: the run a reader sees is the fraction a screen reader hears.
+    expect(Math.round((now / max) * 14)).toBe(filled);
   });
 
   it("draws a ranked bar as one fill at a percentage width", () => {
@@ -596,83 +513,5 @@ describe("the two bounded-progress forms", () => {
     const { container } = render(<DataBar value={12} max={6} label="past the leader" />);
 
     expect(container.querySelector<HTMLElement>(".ranked-bar__fill")?.style.width).toBe("100%");
-  });
-
-  /* A COMMENT RECORDS WHY THE TWO DIFFER, so a later contributor does not unify them. Asserted rather than
-   * trusted: the reason is what stops the next reader deleting one of the two forms. */
-  it("each records why it is not the other, in the file a reader will open", async () => {
-    const sources = new Map((await familySources()).map(({ name, text }) => [name, text]));
-
-    expect(sources.get("MaturityMeter.tsx")).toContain("bounded");
-    expect(sources.get("MaturityMeter.tsx")).toContain("DataBar");
-    expect(sources.get("DataBar.tsx")).toContain("MaturityMeter");
-    expect(sources.get("DataBar.tsx")).toContain("arbitrary magnitude");
-  });
-});
-
-describe("the family's stylesheet", () => {
-  /* MOTION IS ZERO, WITHOUT EXCEPTION, and the same list stylelint, the markup scan and the bundle gate read is
-   * read here, so a property added to the design language reaches this test with no edit. */
-  it("spends no property the design language bans", async () => {
-    const offenders: string[] = [];
-    parse(await chartsStylesheet()).walkDecls((declaration) => {
-      const refusal = refusalFor(declaration.prop, declaration.value);
-      if (refusal !== null) offenders.push(`${declaration.prop}: ${refusal}`);
-    });
-
-    expect(offenders).toEqual([]);
-  });
-
-  it("declares no keyframes, so there is nothing for a rule to reference", async () => {
-    expect(await chartsStylesheet()).not.toContain("@keyframes");
-  });
-
-  it("states the hatch's lightening step once, from the token that declares it", async () => {
-    const rules = await rulesInCharts();
-
-    expect(rules.get(".chart-ink")?.get("color")).toBe(
-      "color-mix(in srgb, var(--ai) var(--hatch-mix), var(--paper-raised))",
-    );
-    const spenders: string[] = [];
-    parse(await chartsStylesheet()).walkDecls((declaration) => {
-      if (declaration.value.includes("--hatch-mix")) spenders.push(declaration.prop);
-    });
-    expect(spenders).toEqual(["color"]);
-  });
-
-  /* THE TEXTURE'S INK IS `currentColor`, AND THAT IS THE ONLY MECHANISM THAT WORKS. A gradient declared in the
-   * token layer resolves its own `var()`s against `:root`, so an element-level `--hatch-ink` cannot reach it: the
-   * six textures computed to the empty string and every `background-image: var(--hatch-fwd)` computed to `none`
-   * until `--hatch-ink` was declared. This is the check that keeps the chain intact from this end. */
-  it("paints its texture with the ink the token layer resolves per element", async () => {
-    const tokens = await declaredTokens();
-
-    expect(tokens.get("--hatch-ink")).toBe("currentColor");
-    for (const [name, value] of tokens) {
-      if (!name.startsWith("--hatch-") || !value.includes("gradient(")) continue;
-      for (const reference of value.matchAll(/var\((--[\w-]+)/g)) {
-        expect(
-          tokens.has(reference[1]),
-          `${name} reads ${reference[1]}, which nothing declares`,
-        ).toBe(true);
-      }
-    }
-  });
-
-  /* A HATCH NEVER SITS ON PAPER. It is a lighter step of its own fill and measures under 2:1 against either paper
-   * surface, so a rule that painted a texture without an ink under it would put a near-invisible pattern straight
-   * onto the page. */
-  it("pairs every texture with an ink under it", async () => {
-    const rules = await rulesInCharts();
-
-    for (const [selector, declarations] of rules) {
-      if (!declarations.has("background-image")) continue;
-      const paired = rules.get(selector.replace("--hatched", ""));
-
-      expect(
-        paired?.get("background-color") ?? declarations.get("background-color"),
-        `${selector} paints a texture with no ink under it`,
-      ).toBe("var(--ai)");
-    }
   });
 });

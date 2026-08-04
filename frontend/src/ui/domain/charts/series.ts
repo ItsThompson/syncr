@@ -65,3 +65,11 @@ export interface DeviationRow {
 
 /** Turns a magnitude into the figure a row reads, in whatever unit the screen is showing. */
 export type FigureFormat = (magnitude: number) => string;
+
+/** One week's bar: its label and the categories that make up its composition. */
+export interface StackedBar {
+  readonly id: string;
+  /** Which week, as the caller reads it: `W06`, `Mon 10 Feb`. */
+  readonly label: string;
+  readonly segments: readonly AreaQuantity[];
+}

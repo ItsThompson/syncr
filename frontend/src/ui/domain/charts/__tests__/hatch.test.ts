@@ -126,8 +126,9 @@ describe("the geometry the pie's patterns are drawn with", () => {
   });
 
   it("holds a geometry for every pattern the token layer declares, and no other", async () => {
-    /* A pattern is a hatch token whose value is a gradient. `--hatch-ink` is caller-provided and `--hatch-mix` is
-     * the lightening step, so naming them by hand here would be a list to keep in step with the token file. */
+    /* A pattern is a hatch token whose value is a gradient. `--hatch-ink` is the ink they all draw in and
+     * `--hatch-mix` is the lightening step: neither is a pattern, so naming them by hand here would be a list
+     * to keep in step with the token file. */
     const declared = [...(await tokenValues())]
       .filter(([name, value]) => name.startsWith("--hatch-") && value.includes("gradient("))
       .map(([name]) => name.replace("--hatch-", ""))

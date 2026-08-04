@@ -14,6 +14,8 @@
  * `role="meter"` IS THE SEMANTIC, and the cells are decorative. A run of fourteen identical characters says
  * nothing to a screen reader, so the value, the bound and the label carry the reading instead. */
 
+import { cva } from "class-variance-authority";
+
 import "../../primitives/glyphs.css";
 import "./charts.css";
 
@@ -25,6 +27,18 @@ import "./charts.css";
  */
 const CELLS = 14;
 
+/* A filled cell and an unfilled one are one variant with two values, which is what a variant map is for: the
+ * kit's rule is that a variant is a named design decision, and the class lists stay where the markup scan
+ * reads them. */
+const cellClass = cva("glyph glyph--meter-cell meter__cell", {
+  variants: {
+    run: {
+      full: "",
+      empty: "meter__cell--empty",
+    },
+  },
+});
+
 export interface MaturityMeterProps {
   /** How much has been collected: confirmed samples, so far. */
   readonly value: number;
@@ -35,11 +49,18 @@ export interface MaturityMeterProps {
 }
 
 export function MaturityMeter({ value, bound, label }: MaturityMeterProps) {
-  /* A bound of zero or less binds nothing, so there is nothing left to collect and the run is complete. Every
-   * threshold in the product is a documented positive count, so this is a caller's error rather than a state:
-   * what it must not be is a division by zero drawing an empty run for a parameter that is ready. */
-  const reached = bound <= 0 ? 1 : Math.min(Math.max(value / bound, 0), 1);
-  const full = Math.round(reached * CELLS);
+  /* ONE CLAMPED PAIR DRIVES BOTH CHANNELS, so the run a reader sees and the range a screen reader hears
+   * cannot disagree. They did: passing the raw numbers through drew a complete run for a bound of zero while
+   * reporting "0 of 0", and a negative bound or value put `aria-valuemax` and `aria-valuenow` outside
+   * `[min, max]`, which ARIA forbids. For a reader on a screen reader the range IS the component, so the two
+   * halves disagreeing is the whole component lying to one of its two audiences.
+   *
+   * A meter needs a bound that binds, and 1 is the smallest range ARIA can express: a non-positive bound is a
+   * caller's error, and clamping it is what keeps the range valid rather than degenerate. Every threshold in
+   * the product is a documented positive count, so no product path reaches either clamp. */
+  const bounded = Math.max(bound, 1);
+  const reached = Math.min(Math.max(value, 0), bounded);
+  const full = Math.round((reached / bounded) * CELLS);
 
   return (
     <span
@@ -47,17 +68,13 @@ export function MaturityMeter({ value, bound, label }: MaturityMeterProps) {
       role="meter"
       aria-label={label}
       aria-valuemin={0}
-      aria-valuemax={bound}
-      aria-valuenow={Math.min(value, bound)}
+      aria-valuemax={bounded}
+      aria-valuenow={reached}
     >
       {Array.from({ length: CELLS }, (_, cell) => (
         <span
           key={cell}
-          className={
-            cell < full
-              ? "glyph glyph--meter-cell meter__cell"
-              : "glyph glyph--meter-cell meter__cell meter__cell--empty"
-          }
+          className={cellClass({ run: cell < full ? "full" : "empty" })}
           aria-hidden="true"
         />
       ))}

@@ -11,6 +11,16 @@ import { PIE, layOutPie } from "../wedges";
 import { UNALLOCATED, type AreaQuantity } from "../series";
 import { AREA_PIGMENTS } from "../../marks/pigment";
 
+/**
+ * The smallest gap two labels may sit at, as a literal.
+ *
+ * NOT `PIE.labelPitch`. Reading the constant the implementation spaces by makes the assertion self-referential:
+ * setting that constant to 0 disables the whole spread and a test that derives its expectation from it goes on
+ * passing, which is exactly what a reviewer measured. 12 is the figure the constant's own doc states its reason
+ * against, a glyph box at --fs-eyebrow being a little under 12px tall, so the two agree without sharing a source.
+ */
+const MIN_GAP = 12;
+
 function slice(id: string, minutes: number, overrides: Partial<AreaQuantity> = {}): AreaQuantity {
   return { id, label: id, pigment: "01", minutes, ...overrides };
 }
@@ -173,9 +183,15 @@ describe("where a wedge's label sits", () => {
         .map((wedge) => wedge.labelAt.y)
         .toSorted((one, two) => one - two);
       for (let index = 1; index < column.length; index += 1) {
-        expect(column[index] - column[index - 1]).toBeGreaterThanOrEqual(PIE.labelPitch);
+        expect(column[index] - column[index - 1]).toBeGreaterThanOrEqual(MIN_GAP);
       }
     }
+  });
+
+  /* The pitch itself, pinned to the same literal. Without this the assertion above and the implementation share
+   * one oracle: `PIE.labelPitch: 0` turns the spread off and leaves every gap legal. */
+  it("is spaced by a pitch that clears a glyph box, which is what the spread is for", () => {
+    expect(PIE.labelPitch).toBeGreaterThanOrEqual(MIN_GAP);
   });
 
   it("stays inside the box the gutter reserves for it, even at thirteen", () => {

@@ -154,6 +154,13 @@ const LEDGER: readonly LedgerRow[] = [
       "the design language bans this step on a control for the same 2.65:1 and sanctions it here",
   },
   {
+    foreground: "--rule-strong",
+    background: "--paper",
+    ratio: "2.45",
+    floor: null,
+    carries: "the same two edges with the chart on the page rather than in a panel",
+  },
+  {
     foreground: "--rule",
     background: "--paper-raised",
     ratio: "1.71",
@@ -278,9 +285,24 @@ describe("a hatch on the fill it is drawn on", () => {
 });
 
 describe("the ledger's own coverage", () => {
-  /* A PAIR WITHOUT A RATIO FAILS THE COMPONENT TEST. The sheet is read back and every token it paints with has to
-   * appear above, so the next rule added to `charts.css` arrives with its measurement or it arrives red. */
-  it("measures every token the family paints with", async () => {
+  /* A PAIR WITHOUT A RATIO FAILS THE COMPONENT TEST, and the unit is the PAIR rather than the token. Keying on the
+   * token alone let a new pair of an already-listed token pass: `color: var(--rule-strong)` on the caption, at
+   * 2.45:1 against a 4.5 floor, was measured passing every case in this file. A chart sits inside a panel on the
+   * Areas screen and on the page elsewhere, so both papers are surfaces every ink it paints with can land on, and
+   * that is what makes "every surface it can reach" checkable rather than a promise. */
+  const SURFACES = ["--paper-raised", "--paper"] as const;
+
+  /** Every pair the ledger and the ramp table together measure, keyed foreground against background. */
+  function measuredPairs(): Set<string> {
+    const pairs = new Set(LEDGER.map((row) => `${row.foreground} on ${row.background}`));
+    for (const step of AREA_PIGMENTS) {
+      for (const surface of SURFACES) pairs.add(`--area-${step} on ${surface}`);
+    }
+    return pairs;
+  }
+
+  /** Every colour token the sheet paints with, and the rule each was found in. */
+  async function paintedTokens(): Promise<Map<string, string>> {
     const PAINTS = new Set([
       "background",
       "background-color",
@@ -293,38 +315,99 @@ describe("the ledger's own coverage", () => {
       "border-right",
       "border-left",
       "--ai",
-      "--hatch-ink",
     ]);
-    /* The sheet's own indirections: `--ai` is measured above as the ramp and the vacancy, `--hatch-ink` as the
-     * mix, and `--hx` and `--hxs` are a gradient and a tile size rather than colours. Everything else is judged
-     * by whether it RESOLVES to a colour, so a hairline width in a border shorthand is not read as a pair. */
+    /* The sheet's own indirections: `--ai` is measured as the ramp and the vacancy, `--hatch-ink` is the texture's
+     * ink and is `currentColor` rather than a colour of its own, and `--hx` and `--hxs` are a gradient and a tile
+     * size. Everything else is judged by whether it RESOLVES to a colour, so a hairline width in a border
+     * shorthand is not read as a pair. */
     const SHEET_LOCAL = new Set(["--ai", "--hatch-ink", "--hx", "--hxs"]);
-    const measured = new Set(
-      LEDGER.flatMap((row) => [row.foreground, row.background]).concat(
-        AREA_PIGMENTS.map((step) => `--area-${step}`),
-      ),
-    );
     const tokens = await declaredTokens();
-    const isColour = (name: string) => {
-      const value = tokens.get(name);
-      return value !== undefined && /^#[0-9a-f]{6}$/i.test(resolveToken(tokens, name));
-    };
+    const painted = new Map<string, string>();
 
-    const unmeasured = new Set<string>();
-    parse(await kitStylesheet(CHARTS, domainDir)).walkDecls((declaration) => {
-      if (!PAINTS.has(declaration.prop)) return;
-      for (const reference of declaration.value.matchAll(/var\((--[\w-]+)/g)) {
-        if (SHEET_LOCAL.has(reference[1])) continue;
-        if (!isColour(reference[1])) continue;
-        if (measured.has(reference[1])) continue;
-        unmeasured.add(`${declaration.prop}: ${reference[1]}`);
-      }
+    parse(await kitStylesheet(CHARTS, domainDir)).walkRules((rule) => {
+      rule.walkDecls((declaration) => {
+        if (!PAINTS.has(declaration.prop)) return;
+        for (const reference of declaration.value.matchAll(/var\((--[\w-]+)/g)) {
+          if (SHEET_LOCAL.has(reference[1])) continue;
+          const value = tokens.get(reference[1]);
+          if (value === undefined) continue;
+          if (!/^#[0-9a-f]{6}$/i.test(resolveToken(tokens, reference[1]))) continue;
+          painted.set(reference[1], `${rule.selector} { ${declaration.prop} }`);
+        }
+      });
     });
+    return painted;
+  }
 
-    expect([...unmeasured]).toEqual([]);
+  it("measures every token the family paints with, against both papers", async () => {
+    const measured = measuredPairs();
+    const unmeasured: string[] = [];
+
+    for (const [token, where] of await paintedTokens()) {
+      /* A paper is a surface rather than a mark on one, so it is measured against the OTHER paper and against the
+       * inks it separates rather than against itself. */
+      const surfaces = SURFACES.filter((surface) => surface !== token);
+      for (const surface of surfaces) {
+        if (measured.has(`${token} on ${surface}`)) continue;
+        unmeasured.push(`${token} on ${surface}, painted by ${where}`);
+      }
+    }
+
+    expect(unmeasured).toEqual([]);
   });
 
-  it("reads a sheet that paints, so the check above cannot pass on an empty scan", async () => {
+  /* AN INK SET AS PROSE CLEARS THE TEXT FLOOR ON BOTH PAPERS. The pair being measured is not enough on its own: a
+   * recorded 2.45:1 is correct for a container edge and wrong for a caption, so the ROLE the sheet puts the ink in
+   * is what decides which floor applies. */
+  it("clears the text floor with every ink it sets as prose", async () => {
+    /* The two rules that set `color` for something that is not prose, each with the reason. Anything else that
+     * sets an ink as text has to clear 4.5:1 on both papers. */
+    const NOT_PROSE: Readonly<Record<string, string>> = {
+      ".chart-ink":
+        "the texture's ink, delivered to a gradient through currentColor. Nothing carrying it holds text",
+      ".meter__cell--empty":
+        "the unfilled run, a track drawn as a character. Recorded at 1.71:1 with its reason",
+    };
+    const inks = new Map<string, string>();
+
+    parse(await kitStylesheet(CHARTS, domainDir)).walkRules((rule) => {
+      if (rule.selector in NOT_PROSE) return;
+      rule.walkDecls((declaration) => {
+        if (declaration.prop !== "color") return;
+        for (const reference of declaration.value.matchAll(/var\((--[\w-]+)/g)) {
+          inks.set(reference[1], rule.selector);
+        }
+      });
+    });
+
+    expect(inks.size).toBeGreaterThan(2);
+    const ratios = await Promise.all(
+      [...inks].flatMap(([ink, selector]) =>
+        SURFACES.map(async (surface) => ({
+          where: `${selector} { color: var(${ink}) } on ${surface}`,
+          ratio: await ratioOf(ink, surface),
+        })),
+      ),
+    );
+    for (const { where, ratio } of ratios) {
+      expect(ratio, `${where} measures ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    }
+  });
+
+  it("names no rule in its not-prose list that the sheet does not declare", async () => {
+    const declared = new Set<string>();
+    parse(await kitStylesheet(CHARTS, domainDir)).walkRules((rule) => {
+      declared.add(rule.selector);
+    });
+
+    for (const selector of [".chart-ink", ".meter__cell--empty"]) {
+      expect(declared.has(selector), `${selector} is exempt from a rule it no longer has`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("reads a sheet that paints, so the checks above cannot pass on an empty scan", async () => {
     let painted = 0;
     parse(await kitStylesheet(CHARTS, domainDir)).walkDecls((declaration) => {
       if (/^(?:background|color|fill|stroke|border)/.test(declaration.prop)) painted += 1;

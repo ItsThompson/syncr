@@ -160,20 +160,18 @@
      Six patterns is the honest ceiling: past that they stop separating at wedge scale, so a
      pattern repeats only between hues that are far apart.
 
-     THE INK ARRIVES THROUGH `color`, AND IT HAS TO. An earlier version of this block named
-     --hatch-ink as caller-provided and left it undeclared, on the reasoning that a default here
-     would silently paint a hatch wherever a caller forgot one. That reasoning was sound and the
-     mechanism does not exist: a custom property containing a var() is substituted where it is
-     DECLARED, so each gradient below resolved --hatch-ink against :root, found nothing, and
-     computed to the guaranteed-invalid value that then inherited everywhere. Measured in Chrome
-     against these files alone: every one of the six resolved to the empty string and
-     `background-image: var(--hatch-fwd)` computed to `none`. All three uses were unusable and
-     nothing caught it, because no component consumed a texture until the charts did.
+     THE INK ARRIVES THROUGH `color`, AND IT HAS TO. A custom property whose value contains a
+     var() is substituted where it is DECLARED, so every gradient below resolves --hatch-ink
+     against :root and nothing an element declares for itself can reach it. Undeclared, each of
+     the six therefore computes to the guaranteed-invalid value, which inherits: measured in
+     Chrome against these files alone, all six resolved to the empty string and
+     `background-image: var(--hatch-fwd)` computed to `none`.
 
-     `currentColor` is the value CSS resolves per element rather than per declaration, so it is
-     what actually delivers a caller's ink: the element painting the texture sets its own `color`,
-     and a caller who forgets paints its text colour rather than nothing. An element-level
-     --hatch-ink cannot reach these declarations and never could. */
+     `currentColor` is the one value CSS resolves per element rather than per declaration, so it
+     is what delivers a caller's ink: the element painting the texture sets its own `color`, and a
+     caller who forgets paints its text colour rather than nothing. An element-level --hatch-ink is
+     ignored here, which is why there is no annotation excusing it from the dangling-reference
+     gate: that suppression is what kept this invisible. */
   --hatch-ink: currentColor;
   --hatch-fwd:  repeating-linear-gradient(45deg,  var(--hatch-ink) 0 1px, transparent 1px 5px);
   --hatch-back: repeating-linear-gradient(135deg, var(--hatch-ink) 0 1px, transparent 1px 5px);

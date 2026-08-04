@@ -19,19 +19,12 @@
  * figure; a trend has no such column, so the shares reach a screen reader from the bar itself or not at all. */
 
 import { chartPaint } from "./paint";
-import type { AreaQuantity } from "./series";
+import type { AreaQuantity, StackedBar } from "./series";
 import "./charts.css";
 
 const PERCENT = 100;
 /** Two decimals, so a segment's width cannot round a whole bar past 100%. */
 const PLACES = 2;
-
-export interface StackedBar {
-  readonly id: string;
-  /** Which week, as the caller reads it: `W06`, `Mon 10 Feb`. */
-  readonly label: string;
-  readonly segments: readonly AreaQuantity[];
-}
 
 export interface StackedBarsProps {
   readonly bars: readonly StackedBar[];
@@ -42,7 +35,11 @@ function drawableSegments(bar: StackedBar): readonly AreaQuantity[] {
   return bar.segments.filter((segment) => segment.minutes > 0);
 }
 
-/** What a screen reader hears in place of the bar: the week, then each category and its whole-percent share. */
+/** What a screen reader hears in place of the bar: the week, then each category and its whole-percent share.
+ *
+ * EACH SHARE IS ROUNDED ON ITS OWN, so a spoken list can sum to 99% or 101%. That is deliberate: a reader hears
+ * the shares one at a time rather than adding them, and redistributing a remainder would make an Area's spoken
+ * share disagree with the same Area's figure in the legend beside it, which is the worse of the two. */
 function spokenComposition(
   bar: StackedBar,
   segments: readonly AreaQuantity[],

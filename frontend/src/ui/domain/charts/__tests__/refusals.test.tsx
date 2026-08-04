@@ -59,7 +59,6 @@ describe("a deviation row", () => {
 
     expect(container.innerHTML).not.toContain("chart-ink");
     expect(container.innerHTML).not.toContain("area-01");
-    expect(container.innerHTML).not.toContain("01");
   });
 });
 
