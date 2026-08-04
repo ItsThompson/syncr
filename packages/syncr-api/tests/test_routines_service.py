@@ -36,7 +36,7 @@ from syncr_api.user_settings.records import SettingsRecord
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.schemas import SettingsPatchRequest, SettingsResponse
 from syncr_api.user_settings.service import SettingsChange
-from syncr_api.user_settings.solve_inputs import WeekRange
+from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
@@ -164,8 +164,9 @@ def build(
     routines = FakeRoutineRepository(principal.tenant_id)
     service = RoutineService(
         routines=routines,
-        settings=FakeSettingsRepository(principal.tenant_id),
-        versions=versions,
+        bump=BacklogWideBump(
+            versions=versions, settings=FakeSettingsRepository(principal.tenant_id)
+        ),
         clock=lambda: NOW,
     )
     return service, routines

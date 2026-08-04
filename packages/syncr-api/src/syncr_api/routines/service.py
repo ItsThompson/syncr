@@ -6,7 +6,11 @@ Three rules live here rather than anywhere else.
 subtracted from total time before any Area gets a share, so declaring, changing, or removing one
 changes how much discretionary time exists. The bump runs from the current week onwards. Past
 weeks are not touched: an approved revision is immutable and keeps the inputs it was computed
-with.
+with. The four steps that resolve which weeks those are live in
+``user_settings.solve_inputs.BacklogWideBump``, because every mutation with no end date needs the
+same ones, and the step that can disagree is the floor: it is the week holding today's date in
+the HOME zone, so a second copy resolving it anywhere else would move the floor by up to a day
+around a date change and one mutation would silently leave a running solve valid.
 
 A title-only change bumps as well, and that is deliberate. It is a wider rule than the Area
 service's, which leaves a rename alone, and the reason is that the frame's materialized blocks
@@ -42,21 +46,16 @@ from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.routines.config import ROUTINE_RESOURCE
 from syncr_api.routines.rules import stated_rejection
-from syncr_api.user_settings.solve_inputs import weeks_from
-from syncr_api.user_settings.zone_reading import local_date
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
     from syncr_api.routines.declarations import RoutineChange, RoutineDeclaration
     from syncr_api.routines.records import RoutineId, RoutineRecord
     from syncr_api.routines.repository import RoutineRepository
-    from syncr_api.user_settings.repository import SettingsRepository
-    from syncr_api.user_settings.solve_inputs import WeekInputVersions
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump
 
 _log = get_logger("syncr.routines")
 
@@ -67,13 +66,11 @@ class RoutineService:
     def __init__(
         self,
         routines: RoutineRepository,
-        settings: SettingsRepository,
-        versions: WeekInputVersions,
+        bump: BacklogWideBump,
         clock: Clock,
     ) -> None:
         self._routines = routines
-        self._settings = settings
-        self._versions = versions
+        self._bump = bump
         self._clock = clock
 
     @measured("routines")
@@ -116,7 +113,7 @@ class RoutineService:
             routine_id=str(created.id),
             elastic=span.is_elastic,
         )
-        await self._bump_from_this_week(now)
+        await self._bump.from_the_week_holding(now)
         return created
 
     @measured("routines")
@@ -150,7 +147,7 @@ class RoutineService:
             routine_id=str(routine_id),
             elastic=span.is_elastic,
         )
-        await self._bump_from_this_week(now)
+        await self._bump.from_the_week_holding(now)
         return merged
 
     @measured("routines")
@@ -166,7 +163,7 @@ class RoutineService:
             tenant_id=str(principal.tenant_id),
             routine_id=str(routine_id),
         )
-        await self._bump_from_this_week(now)
+        await self._bump.from_the_week_holding(now)
 
     async def _require_routine(self, principal: Principal, routine_id: RoutineId) -> RoutineRecord:
         found = await self._routines.find(routine_id)
@@ -174,13 +171,3 @@ class RoutineService:
             raise NotFound(f"No {ROUTINE_RESOURCE} matches that identifier.")
         authorize_tenant(principal, found.tenant_id, resource=ROUTINE_RESOURCE)
         return found
-
-    async def _bump_from_this_week(self, now: datetime) -> None:
-        """Invalidate the current week's inputs and every week after it.
-
-        The frame governs every week the user has not yet lived, so the range has no end. The
-        floor is the week holding today's local date in the home zone, because a past week's
-        approved revision is immutable and keeps the inputs it was computed with.
-        """
-        settings = await self._settings.read()
-        await self._versions.bump(weeks_from(local_date(now, settings.home_zone)))
