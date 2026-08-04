@@ -21,6 +21,12 @@ materializing five days out of seven.
 **The assembly writes nothing.** A read that bumped a version or created a row would invalidate
 the running solve it was asked on behalf of. The version and the row counts are compared before
 and after.
+
+**The widened anchor read finds a commitment the week does not contain.** The span an assembly
+reads is derived from the anchor types a tenant stored, and the anchors it returns come back
+through a real keyset-ordered statement, so this is where the derived span and the SQL predicate
+meet. A commitment in the following week casting prep into this one is the case a page boundary or
+a wrong direction would silently lose.
 """
 
 from __future__ import annotations
@@ -34,7 +40,11 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import func, select
 
+from syncr_api.anchors.repository import AnchorRepository
+from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.areas.repository import AreaRepository
+from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
+from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.habits.repository import HabitRepository
 from syncr_api.learned.repository import WeightSetRepository
@@ -73,6 +83,7 @@ from syncr_domain.preferences import (
 from syncr_domain.tasks import Priority
 from syncr_domain.templates import BindingTarget, EntrySpan, WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
+from tests.anchor_specifications import EXAM, with_areas
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -81,6 +92,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
     from syncr_api.accounts.records import UserRecord
+    from syncr_api.anchors.records import AnchorTypeSpecification
     from syncr_domain.identifiers import (
         AreaId,
         HabitId,
@@ -273,6 +285,59 @@ async def declare_a_week(
         slot=slot.id,
         shower=shower.id,
     )
+
+
+async def declare_a_commitment(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    *,
+    prep_area_id: AreaId,
+    transit_area_id: AreaId,
+    start: datetime,
+    minutes: int = 120,
+    title: str = "Analysis Exam",
+) -> None:
+    """One stored calendar source, one stored anchor type, and one commitment carrying it.
+
+    Written through the real repositories for the same reason the week is: the type's geometry
+    passes the table's own check constraints, and the anchor comes back through the statement the
+    assembly really issues.
+    """
+    async with sessions() as session, session.begin():
+        source = await CalendarSourceRepository(session, tenant_id).create(
+            provider=ICS,
+            role=ANCHOR_SOURCE,
+            display_name="University timetable",
+            external_id=f"https://example.ac.uk/{tenant_id}.ics",
+            included=True,
+            horizon_days=None,
+            created_at=NOW,
+        )
+        anchor_type = await AnchorTypeRepository(session, tenant_id).create(
+            rule_order=0,
+            specification=_an_exam_declaration(prep_area_id, transit_area_id),
+            created_at=NOW,
+        )
+        await AnchorRepository(session, tenant_id).create(
+            source_id=source.id,
+            external_uid=f"{title}@example.ac.uk",
+            series_uid=None,
+            title=title,
+            interval=Interval(start, start + timedelta(minutes=minutes)),
+            location="Exam Hall",
+            anchor_type_id=anchor_type.id,
+            type_overridden=False,
+        )
+
+
+def _an_exam_declaration(prep_area_id: AreaId, transit_area_id: AreaId) -> AnchorTypeSpecification:
+    """The settled ``Exam`` row, with this tenant's own Areas on the blocks it casts.
+
+    Its fourteen-hour prep lead is what puts prep the evening before a morning exam, which is the
+    whole reason the anchor read is widened past the week's own end. Both Areas are named, so this
+    declaration casts three blocks and one window and a test can tell the rule apart from itself.
+    """
+    return with_areas(EXAM, prep=prep_area_id, transit=transit_area_id, forbidden=[prep_area_id])
 
 
 async def assemble(
@@ -479,6 +544,148 @@ async def test_two_assemblies_of_one_stored_week_against_one_instant_are_equal(
 
     assert first == second
     assert first.seed == second.seed
+
+
+async def test_a_commitment_in_the_following_week_casts_its_prep_into_this_one(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # The widened read, against a real statement. The exam is at 09:30 on the Monday that STARTS
+    # the declared week, and its fourteen-hour prep lead puts prep at 19:30 the evening before,
+    # which is the last evening of the week before it. A read that stopped at that week's own end
+    # would return no rows at all and the evening would silently read as free.
+    declared = await declare_a_week(sessions, owner.tenant_id)
+    exam_starts = datetime(2026, 2, 9, 9, 30, tzinfo=UTC)
+    await declare_a_commitment(
+        sessions,
+        owner.tenant_id,
+        prep_area_id=declared.career,
+        transit_area_id=declared.fitness,
+        start=exam_starts,
+    )
+
+    inputs = await assemble(sessions, owner.tenant_id, week=WEEK.preceding())
+
+    assert [(block.interval, block.area_id) for block in inputs.shadow_blocks] == [
+        (
+            Interval(
+                datetime(2026, 2, 8, 19, 30, tzinfo=UTC), datetime(2026, 2, 8, 20, 30, tzinfo=UTC)
+            ),
+            declared.career,
+        )
+    ]
+    # The commitment itself is the following week's occupancy, so this week states what it cast
+    # and not the commitment. Its outbound leg leaves at 08:45 on the Monday, which is that week's
+    # too, and so is its recovery.
+    assert inputs.anchors == ()
+    assert inputs.forbidden_windows == ()
+
+
+async def test_a_commitment_inside_the_week_is_hard_occupancy_and_casts_its_own_buffers(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    declared = await declare_a_week(sessions, owner.tenant_id)
+    exam_starts = datetime(2026, 2, 11, 14, 0, tzinfo=UTC)
+    await declare_a_commitment(
+        sessions,
+        owner.tenant_id,
+        prep_area_id=declared.career,
+        transit_area_id=declared.fitness,
+        start=exam_starts,
+    )
+
+    inputs = await assemble(sessions, owner.tenant_id)
+
+    assert [(anchor.interval, anchor.title) for anchor in inputs.anchors] == [
+        (Interval(exam_starts, exam_starts + timedelta(minutes=120)), "Analysis Exam")
+    ]
+    # Prep at 00:00 from a fourteen-hour lead, the outbound leg 45 minutes before the exam, and
+    # the journey home from its end. The recovery window runs from that same end, beside the
+    # journey rather than after it.
+    assert [block.interval.start for block in inputs.shadow_blocks] == [
+        datetime(2026, 2, 11, 0, 0, tzinfo=UTC),
+        datetime(2026, 2, 11, 13, 15, tzinfo=UTC),
+        datetime(2026, 2, 11, 16, 0, tzinfo=UTC),
+    ]
+    assert [window.kind.value for window in inputs.forbidden_windows] == ["recovery"]
+    assert inputs.forbidden_windows[0].interval == Interval(
+        datetime(2026, 2, 11, 16, 0, tzinfo=UTC), datetime(2026, 2, 11, 17, 0, tzinfo=UTC)
+    )
+    assert inputs.forbidden_windows[0].forbidden_area_ids == (declared.career,)
+
+
+async def test_an_assembly_reads_only_its_own_tenants_commitments(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord, other_owner: UserRecord
+) -> None:
+    # Two more statements that have to carry the tenant predicate, and a fault in either is
+    # invisible to a fake: another tenant's anchor types would widen this tenant's read, and
+    # another tenant's commitments would occupy this tenant's week.
+    mine = await declare_a_week(sessions, owner.tenant_id)
+    theirs = await declare_a_week(sessions, other_owner.tenant_id)
+    await declare_a_commitment(
+        sessions,
+        owner.tenant_id,
+        prep_area_id=mine.career,
+        transit_area_id=mine.fitness,
+        start=datetime(2026, 2, 11, 14, 0, tzinfo=UTC),
+        title="My Exam",
+    )
+    await declare_a_commitment(
+        sessions,
+        other_owner.tenant_id,
+        prep_area_id=theirs.career,
+        transit_area_id=theirs.fitness,
+        start=datetime(2026, 2, 12, 14, 0, tzinfo=UTC),
+        title="Their Exam",
+    )
+
+    inputs = await assemble(sessions, owner.tenant_id)
+
+    assert [anchor.title for anchor in inputs.anchors] == ["My Exam"]
+    assert {block.area_id for block in inputs.shadow_blocks} == {mine.career, mine.fitness}
+
+
+async def test_the_night_this_week_inherits_is_what_the_week_before_resolved(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # Two stored weeks, one Sleep declaration, and the equality that makes them one answer. The
+    # week before has no off-plan span, so its Sunday night is resolved, owned there whole, and
+    # this week states the seven hours it runs into.
+    await declare_a_week(sessions, owner.tenant_id)
+
+    before = await assemble(sessions, owner.tenant_id, week=WEEK.preceding())
+    inputs = await assemble(sessions, owner.tenant_id)
+
+    crossing = [
+        entry.interval.clipped_to(inputs.span)
+        for entry in before.frame
+        if entry.interval.overlaps(inputs.span)
+    ]
+    assert inputs.frame_overhang == tuple(crossing)
+    assert inputs.frame_overhang[0] == Interval(
+        inputs.span.start, datetime(2026, 2, 9, 7, 0, tzinfo=UTC)
+    )
+    # The occurrence itself belongs to the week its start falls in, at the routine's own duration,
+    # and it is not a second occurrence of this week's frame.
+    assert before.frame[-1].interval.total_minutes() == 8 * MINUTES_PER_HOUR
+    assert date_occurrence_key(WEEK.preceding().dates()[-1]) not in {
+        entry.occurrence_key for entry in inputs.frame
+    }
+
+
+async def test_a_night_its_own_week_suppressed_is_inherited_by_nobody(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # The stored off-plan span runs from Friday 14:00 to the following Tuesday 09:00, so this
+    # week's own Sunday night never materializes. The week after therefore inherits nothing:
+    # judged against ITS OWN periods instead, the same night would be occupied in one week and
+    # suspended in the other.
+    await declare_a_week(sessions, owner.tenant_id)
+
+    owning = await assemble(sessions, owner.tenant_id)
+    following = await assemble(sessions, owner.tenant_id, week=WEEK.following())
+
+    assert len(owning.frame) == 4
+    assert following.frame_overhang == ()
 
 
 async def _week_state(
