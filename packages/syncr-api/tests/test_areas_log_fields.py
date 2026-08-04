@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 # The packages this rule is stated over. Each logs an identifier for a row whose name, title, or
 # location is the user's own words, so each has the same way of getting this wrong. Append a package
 # here when it starts logging; the rule then reads every module of it without further editing.
-PACKAGES = ("areas", "budgets", "calendars")
+PACKAGES = ("areas", "budgets", "calendars", "offplan", "tasks")
 
 # structlog's own levels. A call to any of them binds fields.
 LOG_METHODS = frozenset({"debug", "info", "warning", "error", "critical", "exception"})
