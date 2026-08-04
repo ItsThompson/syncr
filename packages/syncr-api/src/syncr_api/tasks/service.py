@@ -17,10 +17,16 @@ named its Area has to be the task's Area (X2), which is a comparison a request s
 because it can see neither row. ``syncr_domain.projects.require_matching_area`` is the one
 statement of that rule.
 
-**A task is a solve input, so every mutation bumps the week input version** from the current week
+**A task is a solve input, so a mutation bumps the week input version** from the current week
 onwards. A task belongs to no week: it is backlog content the assembler may place in any week the
 user has not yet lived, which is exactly the range ``BacklogWideBump`` covers. Past weeks are not
 touched, because an approved revision is immutable and keeps the inputs it was computed with.
+
+**A mutation a solve cannot see bumps nothing**, which is the same gate ``AreaService.update``
+applies for the same reason: invalidating a running solve costs it its work, so it is done only
+when a solve would read the change. For an Area the exempt thing is a FIELD, the name; for a task
+it is the ROW, because an ineligible task is not collected at all.
+:func:`~syncr_api.tasks.records.changes_a_solve_input` is the one statement of it.
 
 **Ending a task twice the same way writes nothing and bumps nothing.** A retried completion is
 answered with the stored task, its instant unmoved, because nothing about the inputs changed and a
@@ -51,6 +57,7 @@ from syncr_api.core.errors import NotFound, ValidationFailed
 from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.tasks.config import TASK_RESOURCE
+from syncr_api.tasks.records import changes_a_solve_input
 from syncr_api.tasks.rules import PROJECT_FIELD, stated_rejection, unknown_project
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
@@ -174,7 +181,7 @@ class TaskService:
 
         An ended task is still editable. Correcting the estimate on a task completed yesterday is
         a correction to what a report says, not a reopening, and the status is not a member of
-        this change.
+        this change. It bumps nothing, because no solve reads an ended task.
         """
         require_scope(principal, Scope.PLAN_WRITE)
         now = self._clock()
@@ -203,8 +210,10 @@ class TaskService:
             task_id=str(task_id),
             estimate_minutes=merged.estimate_minutes,
             remaining_minutes=merged.remaining_minutes(),
+            solve_input_changed=changes_a_solve_input(current, merged),
         )
-        await self._bump.from_the_week_holding(now)
+        if changes_a_solve_input(current, merged):
+            await self._bump.from_the_week_holding(now)
         return merged
 
     @measured("tasks")
@@ -232,6 +241,11 @@ class TaskService:
         the state the task is already in, so nothing is written and nothing is bumped. The
         instant does not move either, which is what keeps a completion's place in a report
         stable.
+
+        Ending a task a solve could not see bumps nothing, for the same reason a change to one
+        does not: an open task whose recorded time has already caught up with its estimate is not
+        collected by the assembler, so taking it out of a backlog it was not in invalidates
+        nothing.
         """
         now = self._clock()
         current = await self._require_task(principal, task_id)
@@ -248,15 +262,18 @@ class TaskService:
 
         at = now if ending is TaskStatus.COMPLETED else None
         await self._tasks.end(task_id, ending=ending, at=at)
+        ended = replace(current, status=ending, completed_at=at)
         _log.info(
             "tasks.task.ended",
             tenant_id=str(principal.tenant_id),
             task_id=str(task_id),
             status=ending.value,
             recorded_minutes=current.recorded_minutes,
+            solve_input_changed=changes_a_solve_input(current, ended),
         )
-        await self._bump.from_the_week_holding(now)
-        return replace(current, status=ending, completed_at=at)
+        if changes_a_solve_input(current, ended):
+            await self._bump.from_the_week_holding(now)
+        return ended
 
     async def _require_task(self, principal: Principal, task_id: TaskId) -> TaskRecord:
         found = await self._tasks.find(task_id)

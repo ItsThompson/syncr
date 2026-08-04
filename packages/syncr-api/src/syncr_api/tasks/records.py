@@ -10,6 +10,9 @@ appear in a response by sharing a name with a field.
 The two derived figures are METHODS on the record rather than columns, and both delegate to
 ``syncr_domain.tasks``. Remaining work is a difference and eligibility is a predicate over it,
 so storing either would be storing a value that can disagree with the row it was derived from.
+
+:func:`changes_a_solve_input` is stated over two records rather than over a change, because the
+answer depends on the row and not only on which fields a request named.
 """
 
 from __future__ import annotations
@@ -65,3 +68,25 @@ class TaskRecord:
         return is_eligible_for_solving(
             status=self.status, remaining_minutes=self.remaining_minutes()
         )
+
+
+def changes_a_solve_input(before: TaskRecord, after: TaskRecord) -> bool:
+    """Whether moving from ``before`` to ``after`` changes something a solve reads.
+
+    An ELIGIBLE task has every one of its fields read by the week assembler, so there is no field
+    on one that a solve cannot see and no equivalent of an Area's rename to exempt. What can be
+    exempt is the ROW: an ineligible task is not collected at all, so a change leaving it
+    ineligible on both sides changes nothing a solve reads, and bumping for one would supersede a
+    running solve over work it was never going to place.
+
+    Eligibility is asked on BOTH sides, because a change can create it or end it. Raising the
+    estimate on a task whose recorded time had caught up makes it eligible again, and lowering the
+    estimate under the recorded time ends its eligibility; each of those changes a solve input
+    even though one side of it is ineligible.
+
+    A change that states nothing answers ``False`` at the first line, which is what stops an empty
+    ``PATCH`` body from invalidating a running solve.
+    """
+    if before == after:
+        return False
+    return before.is_eligible_for_solving() or after.is_eligible_for_solving()
