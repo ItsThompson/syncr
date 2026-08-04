@@ -29,6 +29,7 @@ import syncr_api.plans.models as _plans  # noqa: F401 - registers its tables
 import syncr_api.routines.models as _routines  # noqa: F401 - registers its tables
 import syncr_api.solving.models as _solving  # noqa: F401 - registers its tables
 import syncr_api.tasks.models as _tasks  # noqa: F401 - registers its tables
+import syncr_api.templates.models as _templates  # noqa: F401 - registers its tables
 import syncr_api.user_settings.models as _user_settings  # noqa: F401 - registers its tables
 from syncr_api.core.db import create_db_engine
 from syncr_api.core.orm import Base

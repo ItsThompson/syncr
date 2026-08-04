@@ -32,6 +32,7 @@ from syncr_api.oauth.wiring import build_oauth_router
 from syncr_api.offplan.wiring import build_off_plan_router
 from syncr_api.routines.wiring import build_routines_router
 from syncr_api.tasks.wiring import build_tasks_router
+from syncr_api.templates.wiring import build_templates_router
 from syncr_api.user_settings.wiring import build_settings_router
 from syncr_common.health import create_health_router
 from syncr_common.logging import get_logger
@@ -69,6 +70,7 @@ FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
     build_routines_router,
     build_off_plan_router,
     build_anchors_router,
+    build_templates_router,
 )
 
 # The one place the api's version is stated: the package metadata uv installs from
