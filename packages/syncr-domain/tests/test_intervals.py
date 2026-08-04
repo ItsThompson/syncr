@@ -172,6 +172,59 @@ class TestIntersect:
         assert not IntervalSet([between(9, 10)]).intersect(IntervalSet([between(10, 11)]))
 
 
+# The eight ways one interval can sit against another, named as the reader of a failure sees
+# them. Both abutting cases are here because the convention is half-open, and the two containment
+# cases are here because a clip has to answer them in opposite directions.
+OVERLAP_CASES = (
+    ("wholly before", between(5, 7)),
+    ("ends where the bound starts", between(7, 9)),
+    ("straddles the start", between(8, 10)),
+    ("contained", between(10, 11)),
+    ("equal to the bound", between(9, 17)),
+    ("covers the bound", between(6, 20)),
+    ("straddles the end", between(16, 20)),
+    ("starts where the bound ends", between(17, 19)),
+)
+BOUND = between(9, 17)
+
+
+class TestClippingOneInterval:
+    @pytest.mark.parametrize(
+        ("label", "interval"), OVERLAP_CASES, ids=[case[0] for case in OVERLAP_CASES]
+    )
+    def test_the_clip_and_the_sets_clip_answer_the_same(
+        self, label: str, interval: Interval
+    ) -> None:
+        # Two implementations of one convention: this one compares two pairs of bounds, and the
+        # set's walks many members. Crossed over every way two intervals can sit against each
+        # other, so neither can drift into a different reading of an abutting bound.
+        clipped = interval.clipped_to(BOUND)
+        expected = IntervalSet([interval]).clip(BOUND)
+
+        assert IntervalSet([clipped] if clipped is not None else []) == expected, label
+
+    @pytest.mark.parametrize(
+        ("label", "interval"), OVERLAP_CASES, ids=[case[0] for case in OVERLAP_CASES]
+    )
+    def test_a_clip_holds_no_minute_outside_the_bound(self, label: str, interval: Interval) -> None:
+        clipped = interval.clipped_to(BOUND)
+
+        if clipped is not None:
+            assert BOUND.start <= clipped.start < clipped.end <= BOUND.end, label
+
+    def test_an_abutting_interval_clips_to_nothing_rather_than_to_an_empty_span(self) -> None:
+        # Half-open bounds, so neither abutting case shares a minute with the bound. There is no
+        # empty interval to return, because the algebra refuses one by construction.
+        assert between(7, 9).clipped_to(BOUND) is None
+        assert between(17, 19).clipped_to(BOUND) is None
+
+    def test_an_interval_inside_the_bound_is_returned_whole(self) -> None:
+        assert between(10, 11).clipped_to(BOUND) == between(10, 11)
+
+    def test_an_interval_covering_the_bound_clips_to_the_bound(self) -> None:
+        assert between(6, 20).clipped_to(BOUND) == BOUND
+
+
 class TestClip:
     def test_it_trims_the_members_crossing_the_bound(self) -> None:
         occupied = IntervalSet([between(8, 10), between(11, 12), between(16, 20)])

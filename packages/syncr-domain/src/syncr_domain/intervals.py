@@ -93,6 +93,21 @@ class Interval:
     def overlaps(self, other: Interval) -> bool:
         return self.start < other.end and other.start < self.end
 
+    def clipped_to(self, bound: Interval) -> Interval | None:
+        """The part of this interval inside ``bound``, or ``None`` when it holds none.
+
+        The single-member form of :meth:`IntervalSet.clip`, and the two are crossed against each
+        other in the suite rather than one being written in terms of the other, because the set's
+        is a merge walk over many members and this is a comparison of two pairs.
+
+        ``None`` rather than an empty interval, because there is no such value: an interval
+        abutting the bound covers no minute of it, and the algebra refuses a zero-length span by
+        construction. So the bounds are compared before one is built.
+        """
+        start = max(self.start, bound.start)
+        end = min(self.end, bound.end)
+        return Interval(start, end) if start < end else None
+
 
 def _merge(ordered: Sequence[Interval]) -> tuple[Interval, ...]:
     """Merge a start-ordered sequence into disjoint, non-adjacent members.
