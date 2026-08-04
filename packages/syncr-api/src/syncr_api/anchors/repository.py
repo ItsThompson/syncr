@@ -18,8 +18,9 @@ inserts a row before the cursor, which would silently skip an anchor. The key is
 :meth:`overlapping` answers the same question with no page at all, and the difference is the
 caller. A page limit reports what fits and says nothing about the rest, so a week assembly
 reading one page would silently lose the occupancy of whatever fell past it, which is the one
-failure that read exists to prevent. What bounds it instead is the span, which the caller
-widens by a reach two bounded columns cap.
+failure that read exists to prevent. What bounds it instead is the span, and the bound is checked
+rather than argued: the widest span an assembly can ask for is derived from the two minute bounds
+an anchor type's columns carry, so a caller asking for more than that is not assembling a week.
 
 :meth:`retype_series` is what makes a retype persist on the series. It writes by ``series_uid``
 rather than by identifier, so one call types every occurrence of a daily standup, including the
@@ -39,6 +40,7 @@ from uuid import uuid4
 
 from sqlalchemy import func, or_
 
+from syncr_api.anchors.config import ASSEMBLY_READ_MINUTES_MAX
 from syncr_api.anchors.models import Anchor
 from syncr_api.anchors.records import AnchorRecord
 from syncr_api.core.repository import TenantScopedRepository
@@ -51,6 +53,16 @@ if TYPE_CHECKING:
     from syncr_api.anchors.records import AnchorTypeId
     from syncr_api.calendars.records import CalendarSourceId
     from syncr_domain.identifiers import AnchorId
+
+
+class SpanTooWideForOneRead(ValueError):
+    """A caller asked the unpaged read for a span no assembly of a week could need.
+
+    Not part of the error vocabulary a service raises, for the same reason a plan write's two
+    rejections are not: the only caller derives its span from a week and two capped columns, so a
+    span past the bound is a defect in the caller rather than something a request can correct. It
+    renders as the generic 500 the catch-all handler produces, and the fault is logged there.
+    """
 
 
 class AnchorRepository(TenantScopedRepository):
@@ -92,7 +104,13 @@ class AnchorRepository(TenantScopedRepository):
         span occupies time inside it. Unpaged because the caller is an assembly rather than an
         interface, and an assembly that read one page would report time as free that a page
         boundary happened to hide.
+
+        Bounded by the widest span one assembly can ask for, which is a week plus the reach two
+        capped columns permit. The bound is here rather than in the caller because it is what makes
+        the read safe to reach for: without it the next caller that finds paging inconvenient gets
+        an unbounded scan of a table a feed can fill.
         """
+        _require_a_span_one_assembly_could_need(span)
         found = await self._session.scalars(
             self.scoped_select(Anchor)
             .where(Anchor.starts_at < span.end, Anchor.ends_at > span.start)
@@ -276,6 +294,23 @@ class AnchorRepository(TenantScopedRepository):
             .where(Anchor.anchor_type_id == anchor_type_id)
             .values(anchor_type_id=None, type_overridden=False)
         )
+
+
+def _require_a_span_one_assembly_could_need(span: Interval) -> None:
+    """Refuse a span wider than the widest week an assembly can widen its read to.
+
+    The figure is derived from the lead and duration bounds an anchor type's columns carry, so it
+    moves with them rather than being a number chosen here.
+    """
+    asked = span.total_minutes()
+    if asked <= ASSEMBLY_READ_MINUTES_MAX:
+        return
+    raise SpanTooWideForOneRead(
+        f"an unpaged anchor read covers at most {ASSEMBLY_READ_MINUTES_MAX} minutes and this one "
+        f"asked for {asked}: that is wider than a week widened by the largest lead and the largest "
+        "buffer any anchor type may declare, so it is not one week's assembly. Read it in weeks, "
+        "or page it"
+    )
 
 
 def as_anchor_record(row: Anchor) -> AnchorRecord:

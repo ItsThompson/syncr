@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from syncr_api.anchors.config import (
+    ASSEMBLY_READ_MINUTES_MAX,
     DURATION_MINUTES_MAX,
     FORBIDS_EVERYTHING,
     FORBIDS_NOTHING,
@@ -234,3 +235,25 @@ def test_the_read_is_bounded_by_the_two_column_bounds_rather_than_by_a_declarati
 
     assert read.end - week.end == timedelta(minutes=LEAD_MINUTES_MAX)
     assert week.start - read.start == timedelta(minutes=DURATION_MINUTES_MAX)
+
+
+def test_the_widest_read_a_week_can_ask_for_is_inside_the_bound_the_repository_enforces() -> None:
+    # The two halves of one guard, crossed: the repository refuses a span wider than
+    # `ASSEMBLY_READ_MINUTES_MAX`, and this is the widest span an assembly can produce. A week
+    # itself is not 168 hours either, so the case is built over a travel week that resolves its two
+    # Mondays 26 hours apart, which is the widest a zone pair permits.
+    widest = replace(
+        NOTHING,
+        prep_lead_minutes=LEAD_MINUTES_MAX,
+        prep_duration_minutes=DURATION_MINUTES_MAX,
+        transit_lead_minutes=LEAD_MINUTES_MAX,
+        transit_duration_minutes=DURATION_MINUTES_MAX,
+        return_transit_minutes=DURATION_MINUTES_MAX,
+        post_buffer_minutes=DURATION_MINUTES_MAX,
+        post_scope=FORBIDS_EVERYTHING,
+    )
+    longest_week = Interval(at(EXAM_MONDAY, 0), at(EXAM_MONDAY, 0) + timedelta(days=7, hours=26))
+
+    read = casting_span(longest_week, (widest,))
+
+    assert read.total_minutes() <= ASSEMBLY_READ_MINUTES_MAX

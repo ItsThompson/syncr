@@ -29,7 +29,9 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from syncr_api.anchors.config import (
     ANCHOR_PAGE_LIMIT_MAX,
+    ANCHOR_SPAN_DAYS_MAX,
     ANCHORS_TABLE,
+    ASSEMBLY_READ_MINUTES_MAX,
     FORBIDS_AREAS,
     FORBIDS_EVERYTHING,
     FORBIDS_NOTHING,
@@ -38,7 +40,7 @@ from syncr_api.anchors.evaluation import RuleEvaluator
 from syncr_api.anchors.identity import reconciliation_key
 from syncr_api.anchors.reconcile import AnchorReconciler
 from syncr_api.anchors.records import AnchorTypeSpecification
-from syncr_api.anchors.repository import AnchorRepository
+from syncr_api.anchors.repository import AnchorRepository, SpanTooWideForOneRead
 from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
@@ -1185,6 +1187,27 @@ async def test_the_unpaged_read_and_the_paged_one_agree_at_every_boundary(
         "covers-the-whole-span@example",
         "one-minute-long-at-the-start@example",
     }
+
+
+async def test_an_unpaged_read_wider_than_one_assembled_week_is_refused(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    # The unpaged read is bounded here rather than by its caller, because the bound is what makes
+    # it safe to reach for: a year of commitments is a paged question, and a caller that finds
+    # paging inconvenient would otherwise get an unbounded scan.
+    await reconcile(sessions, tenant_id, source, a_read(an_event("y@example")))
+    a_year = Interval(MONDAY_0900, MONDAY_0900 + timedelta(days=ANCHOR_SPAN_DAYS_MAX))
+
+    async with sessions() as session:
+        anchors = AnchorRepository(session, tenant_id)
+        with pytest.raises(SpanTooWideForOneRead):
+            await anchors.overlapping(a_year)
+        # The widest span one assembly can ask for is accepted, which is what stops the bound
+        # refusing a real week: `test_shadow_reach.py` holds the other half of this pair.
+        widest = Interval(MONDAY_0900, MONDAY_0900 + timedelta(minutes=ASSEMBLY_READ_MINUTES_MAX))
+        assert await anchors.overlapping(widest) != ()
 
 
 def test_the_anchor_type_specification_names_every_column_the_ticket_requires() -> None:

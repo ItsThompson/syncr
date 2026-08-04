@@ -15,10 +15,12 @@ match does not, so the interface has to be able to tell them apart.
 
 The minute bounds are ceilings on publisher-independent, user-authored values, and each has a
 different reason. A LEAD is bounded at a week because the week assembler widens its anchor
-read by the largest lead any type declares, so an unbounded lead is an unbounded
-read. A DURATION is bounded at a day because a buffer longer than a day is a period the user
-should be declaring off-plan rather than as an anchor's shadow. The largest lead any settled
-record uses is 14 hours, so both bounds have a wide margin over the real values.
+read FORWARDS by the largest lead any type declares, so an unbounded lead is an unbounded
+read. A lead casts backwards and the read that catches it therefore reaches ahead of the week:
+:mod:`syncr_api.anchors.reach` derives that. A DURATION is bounded at a day because a buffer
+longer than a day is a period the user should be declaring off-plan rather than as an anchor's
+shadow. The largest lead any settled record uses is 14 hours, so both bounds have a wide margin
+over the real values.
 
 The text bounds are the other kind: every one of them is a publisher-controlled value that
 reaches a column with a width. They are enforced where a feed's event becomes an anchor row,
@@ -107,6 +109,13 @@ MATCH_TITLE_MAX_LENGTH: Final = 200
 LEAD_MINUTES_MAX: Final = 7 * 24 * 60
 DURATION_MINUTES_MAX: Final = 24 * 60
 MINUTES_MIN: Final = 0
+
+# How wide the week assembly's own unpaged read may be, derived from the two bounds above rather
+# than chosen so that a change to either reaches it. One week, plus two days of slack for a travel
+# override that resolves the week's two Mondays in zones up to 26 hours apart, plus the largest
+# lead a type may declare after the week and the largest duration one may declare before it. A
+# caller asking for more than this is not assembling a week, and the unpaged read is not for it.
+ASSEMBLY_READ_MINUTES_MAX: Final = (7 + 2) * 24 * 60 + LEAD_MINUTES_MAX + DURATION_MINUTES_MAX
 
 # How many types one tenant may declare, and how many Areas one recovery window may name.
 # Both are hand-authored lists, so both bounds are far above what a person writes; what they
