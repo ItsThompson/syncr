@@ -328,10 +328,15 @@ def _require_selectable_setpos(rule_text: str) -> None:
       a legitimate rule that produces the first member of every period. Comparing the largest member
       lost the whole series.
 
-    A daily or longer frequency is left to dateutil. The same shape produces nothing there too, but
-    it terminates, in two seconds at the worst frequency measured, because the periods are large
-    enough to reach the year dateutil stops at. The general problem, a foreign expander spending
-    unbounded time inside one call, is NOT closed by this and is recorded as a known issue.
+    A WEEKLY or coarser frequency is left to dateutil, and that is a measurement rather than an
+    assumption: a position past a weekly set costs 0.54 seconds, a monthly one 0.23, a yearly one
+    0.10, because the periods are large enough to reach the year dateutil stops at quickly. DAILY
+    was left out on the same reasoning and the reasoning was wrong: two seconds per position, and a
+    rule may state 366 of them, which measured 160 seconds in one call. It is bounded here now.
+
+    The general problem, a foreign expander spending unbounded time inside one call, is NOT closed
+    by this. The worst LEGAL shape measured is 22 seconds, from a rule whose parts can never all be
+    satisfied at once, and it is recorded as a known issue.
     """
     parts = dict(
         part.partition("=")[::2] for part in rule_text.upper().split(_RULE_SEPARATOR) if "=" in part
