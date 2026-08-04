@@ -47,7 +47,7 @@ carry it.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 from syncr_api.anchors.shadow_products import ShadowSet
 from syncr_api.anchors.shadows import TypedAnchor, regenerate
@@ -80,8 +80,6 @@ class CalendarOccupancy:
     shadow_blocks: tuple[ShadowBlock, ...] = ()
     forbidden_windows: tuple[ForbiddenWindow, ...] = ()
 
-    EMPTY: ClassVar[CalendarOccupancy]
-
     def anchor_spans(self) -> IntervalSet:
         """The time the commitments themselves occupy, unioned.
 
@@ -98,9 +96,6 @@ class CalendarOccupancy:
         filtering a scope here, so which window kinds leave the denominator has one statement.
         """
         return ShadowSet(forbidden=self.forbidden_windows).absolute_forbidden()
-
-
-CalendarOccupancy.EMPTY = CalendarOccupancy()
 
 
 def typed_anchors(
@@ -138,9 +133,17 @@ def calendar_occupancy(
 ) -> CalendarOccupancy:
     """Everything ``loaded`` occupies inside ``span``, and everything its types cast there.
 
-    ``loaded`` covers a wider span than ``span``, because a commitment outside the week can cast
-    a product inside it. Collisions are resolved over the whole loaded set rather than over the
-    week's own members, so which block gives way does not depend on where the week's edge falls.
+    ``loaded`` covers a wider span than ``span``, because a commitment outside the week can cast a
+    product inside it. Collisions are resolved over the whole loaded set rather than over the
+    week's own members, so a commitment the week does not contain still takes precedence over one
+    it does.
+
+    **What that does not buy is an answer independent of the week's edge.** The loaded set holds
+    every commitment that can cast INSIDE the week, which is not every commitment that can cast
+    over one of those products: a journey home ending before the read begins truncates a prep block
+    in the week that reads both and not in the week that reads only the prep. The consequence is two
+    derived blocks covering the same minutes, which is a state the grid draws, and it is measured in
+    the suite rather than argued. Ticket 1262 carries the rule.
     """
     cast = regenerate(loaded)
     return CalendarOccupancy(
