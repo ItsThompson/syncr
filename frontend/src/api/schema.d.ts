@@ -52,6 +52,138 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/anchor-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every anchor type, in evaluation order
+         * @description The types, in the order rules evaluate. The first match wins.
+         */
+        get: operations["list_anchor_types_api_v1_anchor_types_get"];
+        put?: never;
+        /**
+         * Declare an anchor type at the end of the order
+         * @description Declare a type. It is appended, so it cannot silently outrank rules already ordered.
+         */
+        post: operations["declare_anchor_type_api_v1_anchor_types_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/anchor-types/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder the rules. Re-evaluates existing commitments
+         * @description Rewrite the whole evaluation order, and re-match every commitment a rule may still type.
+         */
+        put: operations["reorder_anchor_types_api_v1_anchor_types_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/anchor-types/{anchor_type_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One anchor type and the shadow it declares
+         * @description One type of this tenant's.
+         */
+        get: operations["read_anchor_type_api_v1_anchor_types__anchor_type_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove an anchor type. Its commitments return to rule matching
+         * @description Remove a type. Every commitment holding it is released back to the rules.
+         */
+        delete: operations["remove_anchor_type_api_v1_anchor_types__anchor_type_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a match rule or a shadow member
+         * @description Apply a partial update. An omitted field is left alone; an explicit null clears one.
+         */
+        patch: operations["update_anchor_type_api_v1_anchor_types__anchor_type_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/anchors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Commitments in a span. Read-only
+         * @description The commitments overlapping the span, earliest first, one page at a time.
+         */
+        get: operations["list_anchors_api_v1_anchors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/anchors/{anchor_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One commitment, with its source named
+         * @description One commitment. The payload names its source and states that it is read-only.
+         */
+        get: operations["read_anchor_api_v1_anchors__anchor_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/anchors/{anchor_id}/type": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Retype a commitment. Persists on the series
+         * @description Retype one occurrence. The choice persists on its series and survives a rule change.
+         */
+        put: operations["retype_anchor_api_v1_anchors__anchor_id__type_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/areas": {
         parameters: {
             query?: never;
@@ -232,6 +364,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/day-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every day type
+         * @description The day types, in the order they were declared.
+         */
+        get: operations["list_day_types_api_v1_day_types_get"];
+        put?: never;
+        /**
+         * Declare a day type
+         * @description Declare a kind of day. The week pattern is what puts weekdays onto it.
+         */
+        post: operations["declare_day_type_api_v1_day_types_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/habits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every habit, with its cursor and its debt
+         * @description The habits, in the order they were declared. Both derived figures travel with each.
+         */
+        get: operations["list_habits_api_v1_habits_get"];
+        put?: never;
+        /**
+         * Declare a habit inside an Area
+         * @description Declare a habit. Cadence lives here; a preferred time does not.
+         */
+        post: operations["declare_habit_api_v1_habits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/habits/{habit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One habit, with its cursor read-only and its provenance
+         * @description One habit of this tenant's.
+         */
+        get: operations["read_habit_api_v1_habits__habit_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove a habit. Its recorded outcomes stay, because they are facts
+         * @description Remove a habit. Future occurrences stop; weeks that already happened read as they did.
+         */
+        delete: operations["remove_habit_api_v1_habits__habit_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a cadence, duration, policy, source, or variants
+         * @description Apply a partial update. Future occurrences change; recorded past ones do not.
+         */
+        patch: operations["change_habit_api_v1_habits__habit_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/off-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every declared off-plan period
+         * @description The periods, earliest first.
+         */
+        get: operations["list_off_plan_periods_api_v1_off_plan_get"];
+        put?: never;
+        /**
+         * Declare a span off-plan. 409 on an overlap
+         * @description Declare a span off. Any length, and not restricted to whole days or weeks.
+         */
+        post: operations["declare_off_plan_period_api_v1_off_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/off-plan/{period_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One off-plan period
+         * @description One period of this tenant's.
+         */
+        get: operations["read_off_plan_period_api_v1_off_plan__period_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove a period, so its span is on plan again
+         * @description Remove one period. Every week it touched has its inputs invalidated.
+         */
+        delete: operations["remove_off_plan_period_api_v1_off_plan__period_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Move a bound, rename a span, or change keepFrame
+         * @description Apply a partial update. An omitted field is left alone; an explicit null clears a label.
+         */
+        patch: operations["update_off_plan_period_api_v1_off_plan__period_id__patch"];
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -278,6 +538,58 @@ export interface paths {
          * @description Apply a partial update. Completing a Project is a status change and nothing else.
          */
         patch: operations["update_project_api_v1_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/routines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every routine, in the order the day runs
+         * @description The circadian frame: the spans the rest of the week is placed around.
+         */
+        get: operations["list_routines_api_v1_routines_get"];
+        put?: never;
+        /**
+         * Declare a routine
+         * @description Declare a routine. An unstated floor equals the target, which makes it inelastic.
+         */
+        post: operations["declare_routine_api_v1_routines_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routines/{routine_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One routine
+         * @description One routine of this tenant's.
+         */
+        get: operations["read_routine_api_v1_routines__routine_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove a routine, giving its span back to discretionary time
+         * @description Remove a routine. The frame shrinks, so the denominator grows.
+         */
+        delete: operations["remove_routine_api_v1_routines__routine_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a target time, a span, the floor, or the band
+         * @description Apply a partial update. This is where the sleep floor is set.
+         */
+        patch: operations["update_routine_api_v1_routines__routine_id__patch"];
         trace?: never;
     };
     "/api/v1/settings": {
@@ -343,6 +655,198 @@ export interface paths {
          * @description Remove an override, so the home zone governs its dates again.
          */
         delete: operations["remove_travel_override_api_v1_settings_travel_overrides__override_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The backlog, with the counts its header states
+         * @description The tasks either filter selects, oldest first, and how many are open.
+         */
+        get: operations["list_tasks_api_v1_tasks_get"];
+        put?: never;
+        /**
+         * Capture a task. A title and an Area
+         * @description Capture a task. Everything but the title and the Area has a documented default.
+         */
+        post: operations["capture_task_api_v1_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One task, with its remaining work
+         * @description One task of this tenant's.
+         */
+        get: operations["read_task_api_v1_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Drop a task. The row survives, out of eligibility
+         * @description Drop a task, answering with what it now is rather than with an empty 204.
+         */
+        delete: operations["drop_task_api_v1_tasks__task_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a title, a deadline, or the physics
+         * @description Apply a partial update. An omitted field is left alone; an explicit null clears one.
+         */
+        patch: operations["update_task_api_v1_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete a task. Recorded time is left intact
+         * @description Complete a task. It leaves solver eligibility immediately and keeps its recorded time.
+         */
+        post: operations["complete_task_api_v1_tasks__task_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every day shape, with its entry count
+         * @description The shapes, oldest first, each stating how many entries it holds.
+         */
+        get: operations["list_templates_api_v1_templates_get"];
+        put?: never;
+        /**
+         * Declare a day shape
+         * @description Declare the shape of a day type. It starts with no entries.
+         */
+        post: operations["declare_template_api_v1_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One day shape and its entries
+         * @description One shape of this tenant's, with its entries in the order the day runs.
+         */
+        get: operations["read_template_api_v1_templates__template_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove a day shape and its entries
+         * @description Remove a shape. Its entries go with it.
+         */
+        delete: operations["remove_template_api_v1_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a day shape
+         * @description Apply a partial update. An omitted field is left alone.
+         */
+        patch: operations["update_template_api_v1_templates__template_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/templates/{template_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a concrete entry or a slot to a day shape
+         * @description Add one entry. A concrete entry names its content; a slot names an Area.
+         */
+        post: operations["add_template_entry_api_v1_templates__template_id__entries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/templates/{template_id}/entries/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove one entry from a day shape
+         * @description Remove one entry of a shape.
+         */
+        delete: operations["remove_template_entry_api_v1_templates__template_id__entries__entry_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Move or resize one entry
+         * @description Apply a partial update to an entry's span. What it holds is declared once.
+         */
+        patch: operations["change_template_entry_api_v1_templates__template_id__entries__entry_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/week-pattern": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which day type each weekday uses
+         * @description The pattern, or a 404 when none has been declared yet.
+         */
+        get: operations["read_week_pattern_api_v1_week_pattern_get"];
+        /**
+         * Replace the whole mapping. All seven weekdays required
+         * @description Replace the mapping. Future weeks re-materialize; approved past weeks do not.
+         */
+        put: operations["replace_week_pattern_api_v1_week_pattern_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -554,6 +1058,285 @@ export interface components {
             provider: components["schemas"]["CalendarProvider"];
         };
         /**
+         * AnchorResponse
+         * @description One imported commitment. Read-only in syncr, and it says so.
+         *
+         *     No location field, deliberately. See the module docstring.
+         */
+        AnchorResponse: {
+            /** Anchortypeid */
+            anchorTypeId: string | null;
+            /**
+             * Anchortypename
+             * @description The matched or overridden type's name, or null when nothing typed it.
+             */
+            anchorTypeName: string | null;
+            casts: components["schemas"]["ShadowDeclarationResponse"];
+            /**
+             * Endsat
+             * Format: date-time
+             */
+            endsAt: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Possiblystale
+             * @description True when this commitment's source has been unreachable since it was last confirmed. It is retained rather than removed: a failed sync is not evidence that a commitment was cancelled.
+             */
+            possiblyStale: boolean;
+            /**
+             * Readonly
+             * @description Always true. syncr never edits or deletes an imported commitment.
+             */
+            readOnly: boolean;
+            /**
+             * Readonlystatement
+             * @description What read-only means here, naming the source that does own this commitment.
+             */
+            readOnlyStatement: string;
+            /**
+             * Seriesuid
+             * @description The recurring series this occurrence belongs to, or null for a one-off. Retyping an occurrence of a series persists on the whole series.
+             */
+            seriesUid: string | null;
+            /**
+             * Sourceid
+             * Format: uuid
+             * @description The calendar source this commitment was imported from.
+             */
+            sourceId: string;
+            /**
+             * Sourcename
+             * @description That source's name, as the detail panel states it.
+             */
+            sourceName: string;
+            /**
+             * Startsat
+             * Format: date-time
+             * @description Absolute, and NOT snapped to the quarter hour: an imported commitment is a fact and keeps its real time, even at :07.
+             */
+            startsAt: string;
+            /** Title */
+            title: string;
+            /** @description Where this commitment's type came from. `unmatched` means no rule matched it, so it is opaque busy time with no shadow of any kind. `rule` means a match rule chose it, and a rule change may replace it. `override` means you chose it, and no rule change will replace it. */
+            typeSource: components["schemas"]["AnchorTypeSource"];
+        };
+        /**
+         * AnchorTypeCreateRequest
+         * @description A type to declare. It is appended to the end of the evaluation order.
+         *
+         *     Every geometry member defaults to zero, so the smallest legal request is a name: a type that
+         *     casts nothing at all is legitimate, and it is how a `Standup` is declared.
+         */
+        AnchorTypeCreateRequest: {
+            /**
+             * Forbiddenareaids
+             * @description The Areas a recovery window forbids. Non-empty when postScope is `areas` and empty otherwise.
+             */
+            forbiddenAreaIds?: string[];
+            /** Matchsourceid */
+            matchSourceId?: string | null;
+            /** Matchtitlecontains */
+            matchTitleContains?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Postbufferminutes
+             * @default 0
+             */
+            postBufferMinutes: number;
+            /**
+             * @description The recovery window's scope, read as "forbids after: nothing / everything / these Areas". `areas` requires a non-empty forbiddenAreaIds and the other two require an empty one, so the three-way choice is explicit rather than encoded in whether a list happens to be empty.
+             * @default none
+             */
+            postScope: components["schemas"]["PostScope"];
+            /** Prepareaid */
+            prepAreaId?: string | null;
+            /**
+             * Prepdurationminutes
+             * @default 0
+             */
+            prepDurationMinutes: number;
+            /**
+             * Prepleadminutes
+             * @description How long before the commitment prep STARTS, so a short block can sit hours ahead of it. When prep has a duration this must be at least that duration plus the transit lead, or prep would still be running when the outbound leg left.
+             * @default 0
+             */
+            prepLeadMinutes: number;
+            /**
+             * Returntransitminutes
+             * @description The return journey, from the commitment's end. Zero means no return leg, which is not implied by the outbound duration: an interview has one leg and a lecture day two.
+             * @default 0
+             */
+            returnTransitMinutes: number;
+            /** Transitareaid */
+            transitAreaId?: string | null;
+            /**
+             * Transitdurationminutes
+             * @default 0
+             */
+            transitDurationMinutes: number;
+            /**
+             * Transitleadminutes
+             * @description How long before the commitment the outbound leg starts. Null means it abuts: leave exactly late enough to arrive on time. A larger lead arrives early and leaves a deliberate gap. Must be at least transitDurationMinutes, because a shorter lead would still be travelling when the commitment started.
+             */
+            transitLeadMinutes?: number | null;
+        };
+        /**
+         * AnchorTypePatchRequest
+         * @description A partial update. An omitted field is left alone; an explicit null clears a nullable one.
+         *
+         *     The distinction is the point. ``transitLeadMinutes: null`` restores the abutting default, and
+         *     omitting it keeps whatever lead is stored. ``name``, the durations, ``postScope``, and
+         *     ``forbiddenAreaIds`` are not nullable and reject null.
+         *
+         *     ``ruleOrder`` is not a member of this shape and an unknown field is rejected, so sending one
+         *     is a stated 422.
+         */
+        AnchorTypePatchRequest: {
+            /**
+             * Forbiddenareaids
+             * @description The Areas a recovery window forbids. Non-empty when postScope is `areas` and empty otherwise.
+             */
+            forbiddenAreaIds?: string[] | null;
+            /** Matchsourceid */
+            matchSourceId?: string | null;
+            /** Matchtitlecontains */
+            matchTitleContains?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Postbufferminutes */
+            postBufferMinutes?: number | null;
+            /** @description The recovery window's scope, read as "forbids after: nothing / everything / these Areas". `areas` requires a non-empty forbiddenAreaIds and the other two require an empty one, so the three-way choice is explicit rather than encoded in whether a list happens to be empty. */
+            postScope?: components["schemas"]["PostScope"] | null;
+            /** Prepareaid */
+            prepAreaId?: string | null;
+            /** Prepdurationminutes */
+            prepDurationMinutes?: number | null;
+            /** Prepleadminutes */
+            prepLeadMinutes?: number | null;
+            /** Returntransitminutes */
+            returnTransitMinutes?: number | null;
+            /** Transitareaid */
+            transitAreaId?: string | null;
+            /** Transitdurationminutes */
+            transitDurationMinutes?: number | null;
+            /**
+             * Transitleadminutes
+             * @description How long before the commitment the outbound leg starts. Null means it abuts: leave exactly late enough to arrive on time. A larger lead arrives early and leaves a deliberate gap. Must be at least transitDurationMinutes, because a shorter lead would still be travelling when the commitment started.
+             */
+            transitLeadMinutes?: number | null;
+        };
+        /**
+         * AnchorTypeResponse
+         * @description One declared class of commitment, and the shadow every commitment of it casts.
+         */
+        AnchorTypeResponse: {
+            casts: components["schemas"]["ShadowDeclarationResponse"];
+            /**
+             * Forbiddenareaids
+             * @description The Areas a recovery window forbids. Non-empty when postScope is `areas` and empty otherwise.
+             */
+            forbiddenAreaIds: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Matchsourceid
+             * @description Matches only commitments from this calendar source. Null matches any source.
+             */
+            matchSourceId: string | null;
+            /**
+             * Matchtitlecontains
+             * @description Matches when the commitment's title contains this, ignoring case. Null matches any title.
+             */
+            matchTitleContains: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Postbufferminutes
+             * @description The recovery window, measured from the commitment's END and never from the end of a return leg. Zero means no window.
+             */
+            postBufferMinutes: number;
+            /** @description The recovery window's scope, read as "forbids after: nothing / everything / these Areas". `areas` requires a non-empty forbiddenAreaIds and the other two require an empty one, so the three-way choice is explicit rather than encoded in whether a list happens to be empty. */
+            postScope: components["schemas"]["PostScope"];
+            /**
+             * Prepareaid
+             * @description The Area a prep block belongs to. Null makes prep a forbidden window rather than a block, because a buffer with no Area has no budget to consume.
+             */
+            prepAreaId: string | null;
+            /**
+             * Prepdurationminutes
+             * @description How long prep lasts. Zero means no prep, whatever the lead says.
+             */
+            prepDurationMinutes: number;
+            /**
+             * Prepleadminutes
+             * @description How long before the commitment prep STARTS, so a short block can sit hours ahead of it. When prep has a duration this must be at least that duration plus the transit lead, or prep would still be running when the outbound leg left.
+             */
+            prepLeadMinutes: number;
+            /**
+             * Returntransitminutes
+             * @description The return journey, from the commitment's end. Zero means no return leg, which is not implied by the outbound duration: an interview has one leg and a lecture day two.
+             */
+            returnTransitMinutes: number;
+            /**
+             * Ruleorder
+             * @description Evaluation position. Rules evaluate in this order and the FIRST match wins.
+             */
+            ruleOrder: number;
+            /**
+             * Transitareaid
+             * @description The Area a transit block belongs to, typically a dedicated Transit Area. Null makes transit a forbidden window rather than a block.
+             */
+            transitAreaId: string | null;
+            /**
+             * Transitdurationminutes
+             * @description The outbound journey. Zero means no outbound leg, whatever the lead says.
+             */
+            transitDurationMinutes: number;
+            /**
+             * Transitleadminutes
+             * @description How long before the commitment the outbound leg starts. Null means it abuts: leave exactly late enough to arrive on time. A larger lead arrives early and leaves a deliberate gap. Must be at least transitDurationMinutes, because a shorter lead would still be travelling when the commitment started.
+             */
+            transitLeadMinutes: number | null;
+        };
+        /** @enum {string} */
+        AnchorTypeSource: "unmatched" | "rule" | "override";
+        /**
+         * AnchorTypesResponse
+         * @description Every type a tenant declares, in evaluation order.
+         *
+         *     A wrapper rather than a bare array. The collection is bounded by how many classes of
+         *     commitment a person distinguishes, so it is not paginated.
+         */
+        AnchorTypesResponse: {
+            /** Anchortypes */
+            anchorTypes: components["schemas"]["AnchorTypeResponse"][];
+        };
+        /**
+         * AnchorsResponse
+         * @description One page of commitments in a span, earliest first.
+         *
+         *     Cursor-paginated rather than offset-paginated. A feed may legitimately contribute thousands
+         *     of commitments inside a year, and an offset page shifts under a sync that inserts a row
+         *     before the cursor, which would silently skip one.
+         */
+        AnchorsResponse: {
+            /** Anchors */
+            anchors: components["schemas"]["AnchorResponse"][];
+            /**
+             * Nextcursor
+             * @description Pass back as `cursor` to read the next page. Null when this is the last page. A page holds up to `limit` commitments, 200 by default and 500 at most.
+             */
+            nextCursor?: string | null;
+        };
+        /**
          * AreaBudgetReading
          * @description One Area's row of the report.
          *
@@ -693,6 +1476,39 @@ export interface components {
             areas: components["schemas"]["AreaResponse"][];
             ramp: components["schemas"]["RampReading"];
         };
+        /**
+         * BacklogHeader
+         * @description The two counts the backlog's header band states.
+         */
+        BacklogHeader: {
+            /**
+             * Atriskcount
+             * @description How many open tasks the current verdict reports a deadline shortfall for. Always zero until the feasibility probe exists, because the count comes from the verdict's shortfalls rather than from a comparison made here.
+             */
+            atRiskCount: number;
+            /**
+             * Opencount
+             * @description How many tasks are open. Unaffected by the status filter, because a count of open tasks that reported zero while the table showed completed ones would not be one. Narrowed by the area filter, which narrows the whole screen.
+             */
+            openCount: number;
+        };
+        /**
+         * BindingSource
+         * @description Where an occurrence's content comes from.
+         * @enum {string}
+         */
+        BindingSource: "fixed" | "rotation" | "queue";
+        /**
+         * BindingTarget
+         * @description Which table a concrete entry's binding names.
+         *
+         *     A concrete entry points at a routine or at a habit, and the two live in separate tables
+         *     with no shared parent, so the identifier alone does not say which to read. Without this a
+         *     reader would have to probe both, and two rows sharing an identifier would resolve to
+         *     whichever table it looked in first.
+         * @enum {string}
+         */
+        BindingTarget: "routine" | "habit";
         /** Body_decide_oauth_authorize_decision_post */
         Body_decide_oauth_authorize_decision_post: {
             /**
@@ -776,6 +1592,16 @@ export interface components {
              */
             discretionaryMinutes: number;
             /**
+             * Offplanminutes
+             * @description How many of the period's minutes were declared off-plan, clipped to the period. Already subtracted from discretionaryMinutes, through the interval union, so this is what explains the denominator rather than something to subtract again.
+             */
+            offPlanMinutes: number;
+            /**
+             * Offplanstatement
+             * @description Why every figure above is zero, stated when the period was off-plan from end to end. Null otherwise, including when part of the period was off-plan: a partially off-plan week has a smaller denominator and meaningful deviations, so it needs no statement.
+             */
+            offPlanStatement?: string | null;
+            /**
              * Oversubscriptionminutes
              * @description How far the Area targets exceed discretionary time. Zero when they fit. A separate quantity from unallocatedMinutes, and never rendered as a negative one.
              */
@@ -791,6 +1617,45 @@ export interface components {
              * @description Discretionary minutes covered by NO block carrying an Area. Never negative, and not zero merely because the shares sum to 100.
              */
             unallocatedMinutes: number;
+        };
+        /**
+         * CadenceKind
+         * @description Which of the three cadences a stored row holds. The persistence discriminator.
+         * @enum {string}
+         */
+        CadenceKind: "times_per_week" | "daily" | "every_approx_days";
+        /**
+         * CadenceRequest
+         * @description A cadence to declare: a kind, and the one number that kind uses.
+         *
+         *     A single shape with two optional numbers rather than three shapes, because a discriminated
+         *     union would generate three TypeScript types for one concept. The number the kind does not use
+         *     is refused, so a body carrying both cannot resolve to whichever the kind happens to name.
+         */
+        CadenceRequest: {
+            /**
+             * Approxdays
+             * @description Roughly how many days apart occurrences fall. Required for every_approx_days, refused for the other two. An interval of one day is daily, which is the one spelling of it.
+             */
+            approxDays?: number | null;
+            /** @description times_per_week takes a count, every_approx_days takes an interval in days, and daily takes neither. Cadence lives on a habit and never on a template. */
+            kind: components["schemas"]["CadenceKind"];
+            /**
+             * Timesperweek
+             * @description How many occurrences a week holds. Required for times_per_week, refused for the other two.
+             */
+            timesPerWeek?: number | null;
+        };
+        /**
+         * CadenceResponse
+         * @description The cadence a habit holds, in the same shape a request declares one in.
+         */
+        CadenceResponse: {
+            /** Approxdays */
+            approxDays: number | null;
+            kind: components["schemas"]["CadenceKind"];
+            /** Timesperweek */
+            timesPerWeek: number | null;
         };
         /** @enum {string} */
         CalendarProvider: "google" | "ics";
@@ -860,6 +1725,184 @@ export interface components {
             ok: boolean;
         };
         /**
+         * ConcreteEntryRequest
+         * @description A specific routine or habit at a target time. It cannot omit its binding.
+         */
+        ConcreteEntryRequest: {
+            /**
+             * Areaid
+             * @description Optional, and a statement about reporting rather than about content: the routine or habit this entry names already says what happens.
+             */
+            areaId?: string | null;
+            /**
+             * Bindingref
+             * Format: uuid
+             * @description The routine or habit this entry names.
+             */
+            bindingRef: string;
+            /** @description Which table bindingRef names. A routine and a habit are separate tables, so the identifier alone does not say which to read. */
+            bindingTarget: components["schemas"]["BindingTarget"];
+            /**
+             * Durationminutes
+             * @description How long the entry runs, in minutes: 15 to 1440, in whole 15-minute steps so the block it materializes ends on the grid.
+             */
+            durationMinutes: number;
+            /**
+             * Flexbandminutes
+             * @description How far a placement may SHIFT the entry either way, in minutes, up to 720. It never shrinks it: the shape declares the span. A band below 15 permits no shift, because every placement lands on the grid.
+             * @default 0
+             */
+            flexBandMinutes: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "concrete";
+            /**
+             * Targettime
+             * Format: time
+             * @description Wall time, no zone: 07:00 means 07:00 wherever the user is, resolved against the zone active on the date it materializes for. Lands on a 15-minute step of the grid, because the entry is fixed by derivation and nothing moves it onto the grid later.
+             */
+            targetTime: string;
+        };
+        /**
+         * CursorResponse
+         * @description Where a rotation habit's cursor sits, and what it rests on. Read-only, always.
+         *
+         *     Derived from the append-only outcome log rather than stored, so there is no route that sets
+         *     it and no field on any request that could. A wrong cursor means a wrong confirmation: the
+         *     user fixes the day on Today and this re-derives with no further action.
+         */
+        CursorResponse: {
+            /**
+             * Advancedat
+             * @description When the most recent confirmed completion was confirmed, or null.
+             */
+            advancedAt: string | null;
+            /**
+             * Confirmedcompletions
+             * @description How many confirmed completions the outcome log holds for this habit. The cursor is this count modulo the variant count, which is why a skip does not advance it.
+             */
+            confirmedCompletions: number;
+            /**
+             * Index
+             * @description The index into variants this habit's next occurrence binds.
+             */
+            index: number;
+            /**
+             * Previousvariant
+             * @description The variant whose confirmed completion put the cursor here, or null before the first one.
+             */
+            previousVariant: string | null;
+            /**
+             * Statement
+             * @description Why the cursor is where it is, in the words an interface renders beside it.
+             */
+            statement: string;
+            /**
+             * Variant
+             * @description The content at that index.
+             */
+            variant: string;
+        };
+        /**
+         * DayTypeCreateRequest
+         * @description A kind of day to declare. A name is the whole declaration.
+         */
+        DayTypeCreateRequest: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * DayTypeResponse
+         * @description One kind of day: ``Weekday``, ``Uni day``, ``Weekend``.
+         */
+        DayTypeResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Name
+             * @description Unique within the tenant, because the week pattern names a day type by it.
+             */
+            name: string;
+        };
+        /**
+         * DayTypesResponse
+         * @description Every day type a tenant has declared, in the order they were declared.
+         *
+         *     A wrapper rather than a bare array. The collection is bounded by how many kinds of day a
+         *     person has, so it is not paginated, and an object leaves room for a later field.
+         */
+        DayTypesResponse: {
+            /** Daytypes */
+            dayTypes: components["schemas"]["DayTypeResponse"][];
+        };
+        /**
+         * DebtResponse
+         * @description What this habit's misses amount to under its policy. Derived, so also read-only.
+         */
+        DebtResponse: {
+            /**
+             * Cap
+             * @description The ceiling: debtCapPeriods times the occurrences one cadence period holds.
+             */
+            cap: number;
+            /**
+             * Forgivenatcap
+             * @description Misses that arrived while debt was already at the cap. Each was forgiven rather than added.
+             */
+            forgivenAtCap: number;
+            /**
+             * Misses
+             * @description Confirmed skips the outcome log holds for this habit.
+             */
+            misses: number;
+            /**
+             * Outstanding
+             * @description Missed occurrences not yet made up, which the week assembler adds to a week as made-up occurrences. Always zero for forgive and for escalate: only debt accumulates.
+             */
+            outstanding: number;
+            /**
+             * Raisedinweeklysession
+             * @description Whether this habit is raised in the next weekly session, through the same field chronic skips use. True when a miss was forgiven at the cap, and true for an escalate habit with any miss.
+             */
+            raisedInWeeklySession: boolean;
+            /**
+             * Statement
+             * @description The figure in the words an interface renders.
+             */
+            statement: string;
+        };
+        /**
+         * EntryPatchRequest
+         * @description A partial update to an entry's span. An omitted field is left alone.
+         *
+         *     The kind, the binding, and the Area are not members of this shape and an unknown field is
+         *     rejected. A materialized entry's identity is the entry itself, keyed by its identifier and
+         *     the local date, so rebinding one in place would leave stored outcomes, pins, and edit events
+         *     attributing one identity to content it no longer holds. Remove the entry and declare another.
+         */
+        EntryPatchRequest: {
+            /**
+             * Durationminutes
+             * @description How long the entry runs, in minutes: 15 to 1440, in whole 15-minute steps so the block it materializes ends on the grid.
+             */
+            durationMinutes?: number | null;
+            /**
+             * Flexbandminutes
+             * @description How far a placement may SHIFT the entry either way, in minutes, up to 720. It never shrinks it: the shape declares the span. A band below 15 permits no shift, because every placement lands on the grid.
+             */
+            flexBandMinutes?: number | null;
+            /**
+             * Targettime
+             * @description Wall time, no zone: 07:00 means 07:00 wherever the user is, resolved against the zone active on the date it materializes for. Lands on a 15-minute step of the grid, because the entry is fixed by derivation and nothing moves it onto the grid later.
+             */
+            targetTime?: string | null;
+        };
+        /**
          * FieldError
          * @description One field-level validation failure. Present on 422 responses only.
          */
@@ -868,6 +1911,118 @@ export interface components {
             field: string;
             /** Message */
             message: string;
+        };
+        /**
+         * HabitCreateRequest
+         * @description A habit to declare, inside an Area that already exists.
+         *
+         *     No cursor field and no preferred-time field, and an unknown field is rejected, so a body
+         *     carrying either is a stated 422 rather than a value quietly dropped.
+         */
+        HabitCreateRequest: {
+            /**
+             * Areaid
+             * Format: uuid
+             */
+            areaId: string;
+            /** @default fixed */
+            bindingSource: components["schemas"]["BindingSource"];
+            cadence: components["schemas"]["CadenceRequest"];
+            /**
+             * @description The ceiling on outstanding debt, in cadence periods. Two by default, which is two weeks' worth for a count-per-week habit and two days' worth for a daily one. A miss arriving at the cap is forgiven rather than added, and raises the habit in the weekly session.
+             * @default 2
+             */
+            debtCapPeriods: components["schemas"]["_DebtCap"];
+            /** @description The ceiling of one occurrence, in minutes. Equal to the floor means the duration is fixed: this span or nothing. Omit it for a fixed duration, which sets it equal to the floor. */
+            maxDurationMinutes?: components["schemas"]["_Duration"] | null;
+            /** @description The floor of one occurrence, in minutes. It is also the whole duration when there is no ceiling above it. A multiple of 15, between 15 and 1440, because a block's start and end both land on the quarter hour. */
+            minDurationMinutes: components["schemas"]["_Duration"];
+            /** @default forgive */
+            missPolicy: components["schemas"]["MissPolicy"];
+            title: components["schemas"]["_Title"];
+            /** @description The ordered content a rotation cycles through. Non-empty exactly when bindingSource is 'rotation', and empty for every other source: a 'fixed' habit repeats one content and a 'queue' habit draws it from the backlog. */
+            variants?: components["schemas"]["_Variants"];
+        };
+        /**
+         * HabitPatchRequest
+         * @description A partial update. An omitted field is left alone, and an explicit null is refused.
+         *
+         *     Nothing on a habit is nullable, so there is no third case to express: ``null`` on any field
+         *     here is a stated 422 rather than a value read as "no change".
+         *
+         *     ``areaId`` is not a member of this shape, and neither is ``cursor`` nor any preferred time.
+         *     An unknown field is rejected, so sending one is a stated 422.
+         */
+        HabitPatchRequest: {
+            bindingSource?: components["schemas"]["BindingSource"] | null;
+            cadence?: components["schemas"]["CadenceRequest"] | null;
+            /** @description The ceiling on outstanding debt, in cadence periods. Two by default, which is two weeks' worth for a count-per-week habit and two days' worth for a daily one. A miss arriving at the cap is forgiven rather than added, and raises the habit in the weekly session. */
+            debtCapPeriods?: components["schemas"]["_DebtCap"] | null;
+            /** @description The ceiling of one occurrence, in minutes. Equal to the floor means the duration is fixed: this span or nothing. */
+            maxDurationMinutes?: components["schemas"]["_Duration"] | null;
+            /** @description The floor of one occurrence, in minutes. It is also the whole duration when there is no ceiling above it. A multiple of 15, between 15 and 1440, because a block's start and end both land on the quarter hour. */
+            minDurationMinutes?: components["schemas"]["_Duration"] | null;
+            missPolicy?: components["schemas"]["MissPolicy"] | null;
+            title?: components["schemas"]["_Title"] | null;
+            /** @description The ordered content a rotation cycles through. Non-empty exactly when bindingSource is 'rotation', and empty for every other source: a 'fixed' habit repeats one content and a 'queue' habit draws it from the backlog. */
+            variants?: components["schemas"]["_Variants"] | null;
+        };
+        /**
+         * HabitResponse
+         * @description One habit, with both derivations rendered beside it and neither settable.
+         */
+        HabitResponse: {
+            /**
+             * Areaid
+             * Format: uuid
+             * @description The one Area this habit's occurrences count toward. Declared once: moving it would re-attribute hours that have already been reported.
+             */
+            areaId: string;
+            bindingSource: components["schemas"]["BindingSource"];
+            cadence: components["schemas"]["CadenceResponse"];
+            /** @description Read-only, with its provenance. Null for a habit that does not rotate: a fixed habit displays no cursor at all. There is no route that sets one. */
+            cursor: components["schemas"]["CursorResponse"] | null;
+            /** @description Derived from the outcome log. Read-only. */
+            debt: components["schemas"]["DebtResponse"];
+            /**
+             * Debtcapperiods
+             * @description The ceiling on outstanding debt, in cadence periods. Two by default, which is two weeks' worth for a count-per-week habit and two days' worth for a daily one. A miss arriving at the cap is forgiven rather than added, and raises the habit in the weekly session.
+             */
+            debtCapPeriods: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Maxdurationminutes
+             * @description The ceiling of one occurrence, in minutes. Equal to the floor means the duration is fixed: this span or nothing.
+             */
+            maxDurationMinutes: number;
+            /**
+             * Mindurationminutes
+             * @description The floor of one occurrence, in minutes. It is also the whole duration when there is no ceiling above it. A multiple of 15, between 15 and 1440, because a block's start and end both land on the quarter hour.
+             */
+            minDurationMinutes: number;
+            missPolicy: components["schemas"]["MissPolicy"];
+            /** Title */
+            title: string;
+            /**
+             * Variants
+             * @description The ordered content a rotation cycles through. Non-empty exactly when bindingSource is 'rotation', and empty for every other source: a 'fixed' habit repeats one content and a 'queue' habit draws it from the backlog.
+             */
+            variants: string[];
+        };
+        /**
+         * HabitsResponse
+         * @description Every habit a tenant has declared, in the order they were declared.
+         *
+         *     A wrapper rather than a bare array. The collection is bounded by how many recurring
+         *     intentions a person holds, so it is not paginated, and an object leaves room beside it.
+         */
+        HabitsResponse: {
+            /** Habits */
+            habits: components["schemas"]["HabitResponse"][];
         };
         /**
          * HorizonPatchRequest
@@ -911,6 +2066,115 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * MissPolicy
+         * @description What a missed occurrence does. See :mod:`syncr_domain.debt`.
+         * @enum {string}
+         */
+        MissPolicy: "forgive" | "debt" | "escalate";
+        /**
+         * OffPlanCreateRequest
+         * @description A span to declare off.
+         */
+        OffPlanCreateRequest: {
+            /**
+             * End
+             * Format: date-time
+             * @description When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start.
+             */
+            end: string;
+            /**
+             * Keepframe
+             * @description Whether routines still materialize inside the span. False, the default, means no routine materializes inside it: the frame goes with everything else, which is the holiday-abroad reading. True means routines materialize and nothing else does, which is the quiet-week-at-home reading. Editable after the period is declared.
+             * @default false
+             */
+            keepFrame: boolean;
+            /**
+             * Label
+             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name.
+             */
+            label?: string | null;
+            /**
+             * Start
+             * Format: date-time
+             * @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary.
+             */
+            start: string;
+        };
+        /**
+         * OffPlanPatchRequest
+         * @description A partial update. An omitted field is left alone; an explicit null clears the label.
+         *
+         *     Either bound may be moved on its own: the one that moves is checked against the stored
+         *     other, so shortening a holiday by a day is one field rather than a redeclaration.
+         */
+        OffPlanPatchRequest: {
+            /**
+             * End
+             * @description When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start.
+             */
+            end?: string | null;
+            /**
+             * Keepframe
+             * @description Whether routines still materialize inside the span. False, the default, means no routine materializes inside it: the frame goes with everything else, which is the holiday-abroad reading. True means routines materialize and nothing else does, which is the quiet-week-at-home reading. Editable after the period is declared.
+             */
+            keepFrame?: boolean | null;
+            /**
+             * Label
+             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name.
+             */
+            label?: string | null;
+            /**
+             * Start
+             * @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary.
+             */
+            start?: string | null;
+        };
+        /**
+         * OffPlanPeriodResponse
+         * @description One declared span of time off.
+         */
+        OffPlanPeriodResponse: {
+            /**
+             * End
+             * Format: date-time
+             * @description When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start.
+             */
+            end: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Keepframe
+             * @description Whether routines still materialize inside the span. False, the default, means no routine materializes inside it: the frame goes with everything else, which is the holiday-abroad reading. True means routines materialize and nothing else does, which is the quiet-week-at-home reading. Editable after the period is declared.
+             */
+            keepFrame: boolean;
+            /**
+             * Label
+             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name.
+             */
+            label: string | null;
+            /**
+             * Start
+             * Format: date-time
+             * @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary.
+             */
+            start: string;
+        };
+        /**
+         * OffPlanPeriodsResponse
+         * @description Every off-plan period a tenant has declared, earliest first.
+         *
+         *     A wrapper rather than a bare array, matching the Areas collection: the number of periods a
+         *     person declares is bounded by the number of holidays they take, so it is not paginated, and
+         *     an object leaves room for a reading beside the list.
+         */
+        OffPlanPeriodsResponse: {
+            /** Periods */
+            periods: components["schemas"]["OffPlanPeriodResponse"][];
         };
         /**
          * OperationError
@@ -1005,6 +2269,14 @@ export interface components {
              */
             start: string;
         };
+        /** @enum {string} */
+        PostScope: "none" | "all" | "areas";
+        /**
+         * Priority
+         * @description How much the objective prefers placing this task over another in the same Area.
+         * @enum {string}
+         */
+        Priority: "low" | "normal" | "high" | "urgent";
         /**
          * Problem
          * @description RFC 9457 problem details. Optional members are omitted from the wire.
@@ -1162,6 +2434,46 @@ export interface components {
         /** @enum {string} */
         RejectionKind: "missing-duration" | "unknown-zone" | "malformed-value" | "unparseable-recurrence" | "read-budget-spent";
         /**
+         * ReorderAnchorTypesRequest
+         * @description The whole evaluation order: every type the tenant holds, exactly once.
+         *
+         *     A partial order would leave the unnamed types at positions the caller could not see, and
+         *     first-match semantics make that a silent change to what every one of them matches.
+         */
+        ReorderAnchorTypesRequest: {
+            /**
+             * Anchortypeids
+             * @description Every anchor type, in the order rules should evaluate. The first match wins.
+             */
+            anchorTypeIds: string[];
+        };
+        /**
+         * RetypeAnchorRequest
+         * @description The type one occurrence was retyped to. Null means "not any of my types".
+         */
+        RetypeAnchorRequest: {
+            /**
+             * Anchortypeid
+             * @description The type to apply, or null to leave this commitment as opaque busy time. Either way the choice persists on the series and survives a rule change.
+             */
+            anchorTypeId?: string | null;
+        };
+        /**
+         * RetypedAnchorResponse
+         * @description The retyped occurrence, and how many occurrences of its series moved with it.
+         *
+         *     The count is how progress is reported in this product: retyping one daily standup answers
+         *     with 250, which is what says the correction reached the series rather than the occurrence.
+         */
+        RetypedAnchorResponse: {
+            anchor: components["schemas"]["AnchorResponse"];
+            /**
+             * Occurrencesretyped
+             * @description How many occurrences of this series were retyped, this one included.
+             */
+            occurrencesRetyped: number;
+        };
+        /**
          * ReviewCadence
          * @description Whether the pie review waits to be asked, or is offered on a schedule.
          *
@@ -1170,6 +2482,125 @@ export interface components {
          * @enum {string}
          */
         ReviewCadence: "on_demand" | "quarterly";
+        /**
+         * RoutineCreateRequest
+         * @description A routine to declare.
+         *
+         *     ``minDurationMinutes`` may be left out, in which case it equals the target duration and the
+         *     routine is inelastic. ``flexBandMinutes`` may be left out, in which case the routine is
+         *     pinned to its target time.
+         */
+        RoutineCreateRequest: {
+            /**
+             * Durationminutes
+             * @description How long the routine runs, 1 to 1440 minutes. Required, because a routine is a span rather than a marker: without a duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is a day, because a routine materializes once per local date.
+             */
+            durationMinutes: number;
+            /**
+             * Flexbandminutes
+             * @description How far a placement may SHIFT the routine from its target time, 0 to 720 minutes. Never how far it may shrink it: nothing resizes a routine, and its effective duration is derived per week rather than stored. 0 pins it to the target time.
+             * @default 0
+             */
+            flexBandMinutes: number;
+            /**
+             * Mindurationminutes
+             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. Unstated on creation it equals the target duration, which makes the routine inelastic, and a routine whose floor equals its target is never offered as a reduction.
+             */
+            minDurationMinutes?: number | null;
+            /** @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused. */
+            targetTime: components["schemas"]["WallTime"];
+            /**
+             * Title
+             * @description What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real.
+             */
+            title: string;
+        };
+        /**
+         * RoutinePatchRequest
+         * @description A partial update. An omitted field is left alone.
+         *
+         *     This is where the sleep floor is set. Nothing on a routine is nullable, so an explicit null
+         *     is refused on every field rather than read as no change: the two intentions would otherwise
+         *     be indistinguishable, and clearing a duration is not a thing a routine survives.
+         *
+         *     ``areaId`` is not a member of this shape and an unknown field is rejected, so sending one is
+         *     a stated 422.
+         */
+        RoutinePatchRequest: {
+            /**
+             * Durationminutes
+             * @description How long the routine runs, 1 to 1440 minutes. Required, because a routine is a span rather than a marker: without a duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is a day, because a routine materializes once per local date.
+             */
+            durationMinutes?: number | null;
+            /**
+             * Flexbandminutes
+             * @description How far a placement may SHIFT the routine from its target time, 0 to 720 minutes. Never how far it may shrink it: nothing resizes a routine, and its effective duration is derived per week rather than stored. 0 pins it to the target time.
+             */
+            flexBandMinutes?: number | null;
+            /**
+             * Mindurationminutes
+             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. Unstated on creation it equals the target duration, which makes the routine inelastic, and a routine whose floor equals its target is never offered as a reduction.
+             */
+            minDurationMinutes?: number | null;
+            /** @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused. */
+            targetTime?: components["schemas"]["WallTime"] | null;
+            /**
+             * Title
+             * @description What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real.
+             */
+            title?: string | null;
+        };
+        /**
+         * RoutineResponse
+         * @description One routine: where it targets, how long it runs, and how far it may give.
+         *
+         *     No Area and no pigment, and the absence is the contract rather than an omission.
+         */
+        RoutineResponse: {
+            /**
+             * Durationminutes
+             * @description How long the routine runs, 1 to 1440 minutes. Required, because a routine is a span rather than a marker: without a duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is a day, because a routine materializes once per local date.
+             */
+            durationMinutes: number;
+            /**
+             * Flexbandminutes
+             * @description How far a placement may SHIFT the routine from its target time, 0 to 720 minutes. Never how far it may shrink it: nothing resizes a routine, and its effective duration is derived per week rather than stored. 0 pins it to the target time.
+             */
+            flexBandMinutes: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Mindurationminutes
+             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. Unstated on creation it equals the target duration, which makes the routine inelastic, and a routine whose floor equals its target is never offered as a reduction.
+             */
+            minDurationMinutes: number;
+            /**
+             * Targettime
+             * Format: time
+             * @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused.
+             */
+            targetTime: string;
+            /**
+             * Title
+             * @description What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real.
+             */
+            title: string;
+        };
+        /**
+         * RoutinesResponse
+         * @description Every routine a tenant has declared, in the order the day runs.
+         *
+         *     A wrapper rather than a bare array. The collection is bounded by how many fixed points a
+         *     person's day has, so it is not paginated, and an object leaves room for a later field
+         *     without changing the shape of what is already there.
+         */
+        RoutinesResponse: {
+            /** Routines */
+            routines: components["schemas"]["RoutineResponse"][];
+        };
         /**
          * SessionResponse
          * @description The current principal, and when this session stops working.
@@ -1271,6 +2702,71 @@ export interface components {
              */
             visibleHours: number;
         };
+        /**
+         * ShadowDeclarationResponse
+         * @description Which products a commitment's type declares, before any geometry is computed.
+         *
+         *     Every member false is an untyped commitment: opaque busy time with no shadow of any kind.
+         */
+        ShadowDeclarationResponse: {
+            /**
+             * Outboundtransit
+             * @description Whether an outbound journey is declared.
+             */
+            outboundTransit: boolean;
+            /**
+             * Prep
+             * @description Whether a prep buffer is declared.
+             */
+            prep: boolean;
+            /**
+             * Recovery
+             * @description Whether a recovery window is declared.
+             */
+            recovery: boolean;
+            /**
+             * Returntransit
+             * @description Whether a return journey is declared.
+             */
+            returnTransit: boolean;
+        };
+        /**
+         * SlotEntryRequest
+         * @description An Area and a duration, with the content bound at solve time.
+         *
+         *     It has nowhere to put a binding: ``bindingRef`` is not a member and an unknown field is
+         *     rejected, so a slot claiming specific content is a stated 422.
+         */
+        SlotEntryRequest: {
+            /**
+             * Areaid
+             * Format: uuid
+             * @description The Area this slot reserves time for. The solver binds a task or a habit occurrence in that Area at solve time, and the bound content's own name is what appears on the block.
+             */
+            areaId: string;
+            /**
+             * Durationminutes
+             * @description How long the entry runs, in minutes: 15 to 1440, in whole 15-minute steps so the block it materializes ends on the grid.
+             */
+            durationMinutes: number;
+            /**
+             * Flexbandminutes
+             * @description How far a placement may SHIFT the entry either way, in minutes, up to 720. It never shrinks it: the shape declares the span. A band below 15 permits no shift, because every placement lands on the grid.
+             * @default 0
+             */
+            flexBandMinutes: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "slot";
+            /**
+             * Targettime
+             * Format: time
+             * @description Wall time, no zone: 07:00 means 07:00 wherever the user is, resolved against the zone active on the date it materializes for. Lands on a 15-minute step of the grid, because the entry is fixed by derivation and nothing moves it onto the grid later.
+             */
+            targetTime: string;
+        };
         /** @enum {string} */
         SourceState: "never-synced" | "excluded" | "error" | "ok";
         /**
@@ -1297,6 +2793,325 @@ export interface components {
             rejectedCount: number;
             /** Rejections */
             rejections: components["schemas"]["RejectedEventResponse"][];
+        };
+        /**
+         * TaskCreateRequest
+         * @description A task to capture. A title and an Area are required; everything else has a default.
+         */
+        TaskCreateRequest: {
+            /**
+             * Areaid
+             * Format: uuid
+             * @description The one Area this task's time counts toward. Required on capture, and declared once: the hours already recorded against a task were attributed to this Area, so moving it would rewrite reported history.
+             */
+            areaId: string;
+            /**
+             * Deadline
+             * @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.
+             */
+            deadline?: string | null;
+            /**
+             * Estimateminutes
+             * @description Total work in minutes, 1 to 10080. Defaults to 30, which is two grid steps: the smallest estimate the default minimum chunk can divide. Never reduced by recording time against the task; remaining work is the difference.
+             * @default 30
+             */
+            estimateMinutes: number;
+            /**
+             * Minchunkminutes
+             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both.
+             */
+            minChunkMinutes?: number | null;
+            /**
+             * @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'.
+             * @default normal
+             */
+            priority: components["schemas"]["Priority"];
+            /**
+             * Projectid
+             * @description The time-boxed push this task belongs to, or null for none. Its Area has to be this task's Area, because a project sits in exactly one Area and an hour is attributable to one.
+             */
+            projectId?: string | null;
+            /**
+             * Splittable
+             * @description Whether the solver may divide this task across several placements. Defaults to true; false means atomic, so it is placed as one block of the whole estimate or not placed.
+             * @default true
+             */
+            splittable: boolean;
+            /**
+             * Title
+             * @description What the work is, in the user's own words. Required on capture.
+             */
+            title: string;
+        };
+        /**
+         * TaskPatchRequest
+         * @description A partial update. An omitted field is left alone; an explicit null clears one.
+         *
+         *     Only ``projectId`` and ``deadline`` are nullable, and clearing either is a real intention: a
+         *     task can leave a project and a deadline can be removed. The rest refuse null.
+         *
+         *     ``status``, ``recordedMinutes``, and ``areaId`` are not members of this shape and an unknown
+         *     field is rejected, so sending one is a stated 422. A task ends through ``POST
+         *     .../complete`` or ``DELETE``, each of which records what it owes; recorded minutes come from
+         *     confirmed outcomes; and an Area is declared once.
+         */
+        TaskPatchRequest: {
+            /**
+             * Deadline
+             * @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.
+             */
+            deadline?: string | null;
+            /**
+             * Estimateminutes
+             * @description Total work in minutes, 1 to 10080. Defaults to 30, which is two grid steps: the smallest estimate the default minimum chunk can divide. Never reduced by recording time against the task; remaining work is the difference.
+             */
+            estimateMinutes?: number | null;
+            /**
+             * Minchunkminutes
+             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both.
+             */
+            minChunkMinutes?: number | null;
+            /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
+            priority?: components["schemas"]["Priority"] | null;
+            /**
+             * Projectid
+             * @description The time-boxed push this task belongs to, or null for none. Its Area has to be this task's Area, because a project sits in exactly one Area and an hour is attributable to one.
+             */
+            projectId?: string | null;
+            /**
+             * Splittable
+             * @description Whether the solver may divide this task across several placements. Defaults to true; false means atomic, so it is placed as one block of the whole estimate or not placed.
+             */
+            splittable?: boolean | null;
+            /**
+             * Title
+             * @description What the work is, in the user's own words. Required on capture.
+             */
+            title?: string | null;
+        };
+        /**
+         * TaskResponse
+         * @description One task, with the two figures the backlog renders that no column holds.
+         */
+        TaskResponse: {
+            /**
+             * Areaid
+             * Format: uuid
+             * @description The one Area this task's time counts toward. Required on capture, and declared once: the hours already recorded against a task were attributed to this Area, so moving it would rewrite reported history.
+             */
+            areaId: string;
+            /**
+             * Completedat
+             * @description When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read.
+             */
+            completedAt: string | null;
+            /**
+             * Deadline
+             * @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.
+             */
+            deadline: string | null;
+            /**
+             * Eligibleforsolving
+             * @description Whether the next solve may place this task: open, with work left. A captured task is eligible immediately.
+             */
+            eligibleForSolving: boolean;
+            /**
+             * Estimateminutes
+             * @description Total work in minutes, 1 to 10080. Defaults to 30, which is two grid steps: the smallest estimate the default minimum chunk can divide. Never reduced by recording time against the task; remaining work is the difference.
+             */
+            estimateMinutes: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Minchunkminutes
+             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both.
+             */
+            minChunkMinutes: number;
+            /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
+            priority: components["schemas"]["Priority"];
+            /**
+             * Projectid
+             * @description The time-boxed push this task belongs to, or null for none. Its Area has to be this task's Area, because a project sits in exactly one Area and an hour is attributable to one.
+             */
+            projectId: string | null;
+            /**
+             * Recordedminutes
+             * @description Minutes confirmed against this task. Accumulated from outcomes, left intact by completing, so the time spent survives in reports.
+             */
+            recordedMinutes: number;
+            /**
+             * Remainingminutes
+             * @description Work left: the estimate less what was recorded, never negative. Recording more than was estimated reports zero rather than a negative figure.
+             */
+            remainingMinutes: number;
+            /**
+             * Splittable
+             * @description Whether the solver may divide this task across several placements. Defaults to true; false means atomic, so it is placed as one block of the whole estimate or not placed.
+             */
+            splittable: boolean;
+            status: components["schemas"]["TaskStatus"];
+            /**
+             * Title
+             * @description What the work is, in the user's own words. Required on capture.
+             */
+            title: string;
+        };
+        /**
+         * TaskStatus
+         * @description Where a task is. Two of the three are endings, and neither is reversible in P0.
+         * @enum {string}
+         */
+        TaskStatus: "open" | "completed" | "dropped";
+        /**
+         * TasksResponse
+         * @description The backlog: its header counts, and the tasks the filters selected.
+         *
+         *     A wrapper rather than a bare array, so the header counts travel with the rows they describe
+         *     and a caller cannot render a count derived from a filtered page. Not paginated: a personal
+         *     backlog is bounded by what one person can hold, and `13-http-api.md` reserves cursors for the
+         *     collections that grow without a ceiling.
+         */
+        TasksResponse: {
+            header: components["schemas"]["BacklogHeader"];
+            /** Tasks */
+            tasks: components["schemas"]["TaskResponse"][];
+        };
+        /**
+         * TemplateCreateRequest
+         * @description A day shape to declare, for a day type that has none yet.
+         *
+         *     It carries no entries. A shape is declared and then filled in, so one request does one thing
+         *     and a rejected entry does not take a whole shape with it.
+         */
+        TemplateCreateRequest: {
+            /**
+             * Daytypeid
+             * Format: uuid
+             * @description The kind of day this shape describes. One shape per day type: materializing a date resolves its weekday to a day type and the day type to one shape.
+             */
+            dayTypeId: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * TemplateEntryKind
+         * @description Whether an entry names its content or leaves it to be bound at solve time.
+         * @enum {string}
+         */
+        TemplateEntryKind: "concrete" | "slot";
+        /**
+         * TemplateEntryResponse
+         * @description One part of a day shape.
+         *
+         *     It carries no pin field and no glyph, because a template entry is fixed by DERIVATION rather
+         *     than pinned: its time comes from the shape, so the solver may not move it, no ``Pin`` row
+         *     exists for it, and it is not a training label. Fixed by derivation is not "never moved": an
+         *     anchor landing on a materialized entry raises a conflict, and the user may still move one by
+         *     editing this shape or by pinning that single occurrence.
+         */
+        TemplateEntryResponse: {
+            /**
+             * Areaid
+             * @description The Area this slot reserves time for. The solver binds a task or a habit occurrence in that Area at solve time, and the bound content's own name is what appears on the block.
+             */
+            areaId: string | null;
+            /**
+             * Bindingref
+             * @description The routine or habit a concrete entry names. Null on a slot, which binds its content at solve time.
+             */
+            bindingRef: string | null;
+            /** @description Which table bindingRef names. A routine and a habit are separate tables, so the identifier alone does not say which to read. */
+            bindingTarget: components["schemas"]["BindingTarget"] | null;
+            /**
+             * Durationminutes
+             * @description How long the entry runs, in minutes: 15 to 1440, in whole 15-minute steps so the block it materializes ends on the grid.
+             */
+            durationMinutes: number;
+            /**
+             * Flexbandminutes
+             * @description How far a placement may SHIFT the entry either way, in minutes, up to 720. It never shrinks it: the shape declares the span. A band below 15 permits no shift, because every placement lands on the grid.
+             */
+            flexBandMinutes: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["TemplateEntryKind"];
+            /**
+             * Targettime
+             * Format: time
+             * @description Wall time, no zone: 07:00 means 07:00 wherever the user is, resolved against the zone active on the date it materializes for. Lands on a 15-minute step of the grid, because the entry is fixed by derivation and nothing moves it onto the grid later.
+             */
+            targetTime: string;
+        };
+        /**
+         * TemplatePatchRequest
+         * @description A partial update. An omitted field is left alone.
+         *
+         *     ``dayTypeId`` is not a member of this shape and an unknown field is rejected, so sending one
+         *     is a stated 422. A shape IS the shape of its day type and there is one per day type, so
+         *     moving it is indistinguishable from declaring a shape for the other day type.
+         */
+        TemplatePatchRequest: {
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * TemplateResponse
+         * @description One day shape and its entries, in the order the day runs.
+         */
+        TemplateResponse: {
+            /**
+             * Daytypeid
+             * Format: uuid
+             * @description The kind of day this shape describes. One shape per day type: materializing a date resolves its weekday to a day type and the day type to one shape.
+             */
+            dayTypeId: string;
+            /** Entries */
+            entries: components["schemas"]["TemplateEntryResponse"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * TemplateSummary
+         * @description One day shape as the list states it: named, bound to a day type, and counted.
+         */
+        TemplateSummary: {
+            /**
+             * Daytypeid
+             * Format: uuid
+             * @description The kind of day this shape describes. One shape per day type: materializing a date resolves its weekday to a day type and the day type to one shape.
+             */
+            dayTypeId: string;
+            /**
+             * Entrycount
+             * @description How many entries this shape holds. The list states the count rather than the entries; read one shape to get them.
+             */
+            entryCount: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * TemplatesResponse
+         * @description Every day shape a tenant has declared, oldest first, each with its entry count.
+         */
+        TemplatesResponse: {
+            /** Templates */
+            templates: components["schemas"]["TemplateSummary"][];
         };
         /**
          * TravelOverrideRequest
@@ -1361,7 +3176,113 @@ export interface components {
             /** Overrides */
             overrides: components["schemas"]["TravelOverrideResponse"][];
         };
+        /** Format: time */
+        WallTime: string;
+        /**
+         * WeekPatternRequest
+         * @description The whole mapping to declare. Every weekday is required, which rejects a partial one.
+         *
+         *     ``PUT`` rather than ``PATCH``, because a pattern is replaced whole. There is no per-weekday
+         *     merge rule to express: a day with no day type would materialize nothing at all, so a request
+         *     naming three weekdays would have to mean something about the other four.
+         */
+        WeekPatternRequest: {
+            /**
+             * Friday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            friday: string;
+            /**
+             * Monday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            monday: string;
+            /**
+             * Saturday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            saturday: string;
+            /**
+             * Sunday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            sunday: string;
+            /**
+             * Thursday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            thursday: string;
+            /**
+             * Tuesday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            tuesday: string;
+            /**
+             * Wednesday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            wednesday: string;
+        };
+        /**
+         * WeekPatternResponse
+         * @description The declared pattern. Every weekday names a day type.
+         */
+        WeekPatternResponse: {
+            /**
+             * Friday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            friday: string;
+            /**
+             * Monday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            monday: string;
+            /**
+             * Saturday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            saturday: string;
+            /**
+             * Sunday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            sunday: string;
+            /**
+             * Thursday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            thursday: string;
+            /**
+             * Tuesday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            tuesday: string;
+            /**
+             * Wednesday
+             * Format: uuid
+             * @description The day type this weekday uses.
+             */
+            wednesday: string;
+        };
         WireDecimal: number;
+        _DebtCap: number;
+        _Duration: number;
+        _Title: string;
+        _Variants: string[];
     };
     responses: never;
     parameters: never;
@@ -1494,6 +3415,705 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_anchor_types_api_v1_anchor_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnchorTypesResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    declare_anchor_type_api_v1_anchor_types_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnchorTypeCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnchorTypeResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reorder_anchor_types_api_v1_anchor_types_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderAnchorTypesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnchorTypesResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_anchor_type_api_v1_anchor_types__anchor_type_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                anchor_type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnchorTypeResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_anchor_type_api_v1_anchor_types__anchor_type_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                anchor_type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_anchor_type_api_v1_anchor_types__anchor_type_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                anchor_type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnchorTypePatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnchorTypeResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_anchors_api_v1_anchors_get: {
+        parameters: {
+            query: {
+                /** @description The start of the span, included. */
+                from: string;
+                /** @description The end of the span, excluded. */
+                to: string;
+                /** @description The `nextCursor` a previous page handed back. */
+                cursor?: string | null;
+                /** @description How many commitments one page holds. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnchorsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_anchor_api_v1_anchors__anchor_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                anchor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnchorResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    retype_anchor_api_v1_anchors__anchor_id__type_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                anchor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetypeAnchorRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetypedAnchorResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2430,6 +5050,924 @@ export interface operations {
             };
         };
     };
+    list_day_types_api_v1_day_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayTypesResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    declare_day_type_api_v1_day_types_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DayTypeCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayTypeResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_habits_api_v1_habits_get: {
+        parameters: {
+            query?: {
+                areaId?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    declare_habit_api_v1_habits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HabitCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_habit_api_v1_habits__habit_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                habit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_habit_api_v1_habits__habit_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                habit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    change_habit_api_v1_habits__habit_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                habit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HabitPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_off_plan_periods_api_v1_off_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffPlanPeriodsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    declare_off_plan_period_api_v1_off_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OffPlanCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffPlanPeriodResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_off_plan_period_api_v1_off_plan__period_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffPlanPeriodResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_off_plan_period_api_v1_off_plan__period_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_off_plan_period_api_v1_off_plan__period_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OffPlanPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffPlanPeriodResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_projects_api_v1_projects_get: {
         parameters: {
             query?: {
@@ -2713,6 +6251,343 @@ export interface operations {
             };
             /** @description Conflict with the current state */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_routines_api_v1_routines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutinesResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    declare_routine_api_v1_routines_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutineCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutineResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_routine_api_v1_routines__routine_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                routine_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutineResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_routine_api_v1_routines__routine_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                routine_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_routine_api_v1_routines__routine_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                routine_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutinePatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutineResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3028,6 +6903,1239 @@ export interface operations {
             };
             /** @description Authentication required */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_tasks_api_v1_tasks_get: {
+        parameters: {
+            query?: {
+                areaId?: string | null;
+                status?: components["schemas"]["TaskStatus"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TasksResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    capture_task_api_v1_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_task_api_v1_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    drop_task_api_v1_tasks__task_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_task_api_v1_tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    complete_task_api_v1_tasks__task_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_templates_api_v1_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplatesResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    declare_template_api_v1_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_template_api_v1_templates__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_template_api_v1_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_template_api_v1_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplatePatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    add_template_entry_api_v1_templates__template_id__entries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConcreteEntryRequest"] | components["schemas"]["SlotEntryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateEntryResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_template_entry_api_v1_templates__template_id__entries__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    change_template_entry_api_v1_templates__template_id__entries__entry_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateEntryResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_week_pattern_api_v1_week_pattern_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekPatternResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    replace_week_pattern_api_v1_week_pattern_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeekPatternRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekPatternResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
