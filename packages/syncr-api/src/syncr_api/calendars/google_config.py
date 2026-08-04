@@ -1,0 +1,79 @@
+"""The bounds and the endpoints of the Google read path.
+
+Every value here answers something Google chooses the size of. A page is as large as the API
+returns, a calendar is as large as the account made it, a sync token is as long as Google mints
+it, and a rate limit is as long as Google decides to hold syncr off. None of those is a number
+syncr can trust, so each has a bound, and each bound is checked where the value is read or stored.
+
+Two of these exist because of what ticket 11 cost. **The read deadline covers the WHOLE read**, not
+one request: a per-operation timeout against a host that answers each page slowly bounds nothing,
+which is how an eighty-second read passed a fifteen-second timeout on the ICS path. And **the sync
+token is bounded before it is stored**, because an oversize write does not fail one source, it
+rolls back the transaction the whole tenant's sync pass is in.
+"""
+
+from __future__ import annotations
+
+from typing import Final
+from urllib.parse import quote
+
+# The Calendar API's own base. Pinned rather than discovered, like the OAuth endpoints.
+CALENDAR_API_BASE: Final = "https://www.googleapis.com/calendar/v3"
+CALENDAR_LIST_URL: Final = f"{CALENDAR_API_BASE}/users/me/calendarList"
+
+
+def events_url(calendar_id: str) -> str:
+    """The events collection of one calendar, with the identifier escaped.
+
+    A calendarId is an email-shaped opaque string the provider chose, and it reaches a URL path.
+    Quoting it is what stops one with a slash addressing a different collection.
+    """
+    return f"{CALENDAR_API_BASE}/calendars/{quote(calendar_id, safe='')}/events"
+
+
+# How many events one page asks for. Google's own default is 250 and its ceiling is 2,500. The
+# larger the page, the fewer round trips a full read costs and the more memory one page holds;
+# 250 is the documented default and a term's timetable is a handful of pages at it.
+EVENTS_PAGE_SIZE: Final = 250
+# How many calendars one page of the calendar list asks for. An account has tens, not thousands.
+CALENDAR_LIST_PAGE_SIZE: Final = 250
+
+# How many pages one read may take. A full read of a busy calendar over a fortnight is one or two
+# pages; an incremental read is usually one. This bound exists because a paginating loop over a
+# token the server keeps returning is an infinite loop, and a provider bug should cost one source
+# a stated failure rather than a worker tick that never ends.
+MAX_PAGES: Final = 40
+
+# How long ONE read of one calendar may take, including every page and every backoff wait. The
+# deadline is around the whole loop rather than per request: the failure mode it exists for is a
+# host that answers every page slowly, which no per-request timeout can see.
+READ_DEADLINE_SECONDS: Final = 60.0
+# How long one HTTP request may take. Inside the deadline above, so a single hung request cannot
+# consume the whole budget and leave nothing for the pages after it.
+REQUEST_TIMEOUT_SECONDS: Final = 20.0
+# How much of one page's body is read. A 250-event page is a few hundred kilobytes; this is the
+# bound that stops a page larger than the API documents exhausting the process.
+MAX_PAGE_BYTES: Final = 8 * 1024 * 1024
+
+# How many times a rate-limited or transiently-failed request is retried before the read gives up.
+# Bounded rather than persistent: the worker polls again on its own interval, so a read that backs
+# off forever would hold a tick to do work the next tick would redo.
+MAX_ATTEMPTS: Final = 4
+# The first backoff wait, doubling per attempt: 1s, 2s, 4s. Google's own guidance.
+BACKOFF_BASE_SECONDS: Final = 1.0
+# The ceiling on one wait. Well inside the read deadline, so the retries fit the budget rather
+# than being cut off by it.
+MAX_BACKOFF_SECONDS: Final = 8.0
+# The most jitter added to a wait. Google's guidance is a random value up to a second, which is
+# what stops a fleet of clients retrying in synchronised waves.
+MAX_JITTER_SECONDS: Final = 1.0
+# The longest `Retry-After` syncr will honour. A provider asking for ten minutes is asking for
+# longer than a poll interval, so the read ends and the next tick starts fresh instead.
+MAX_HONOURED_RETRY_AFTER_SECONDS: Final = 30.0
+
+# Google's error codes for a rate limit, as it names them in the error body. The STATUS is not
+# enough: a 403 is also what an insufficient scope answers, and telling a user their calendar is
+# rate limited when their grant is too narrow sends them to the wrong repair.
+RATE_LIMIT_REASONS: Final = frozenset(
+    {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}
+)

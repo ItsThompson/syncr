@@ -83,6 +83,21 @@ class CalendarSourceRepository(TenantScopedRepository):
         )
         return _as_record(found) if found is not None else None
 
+    async def list_for(self, provider: CalendarProvider) -> tuple[CalendarSourceRecord, ...]:
+        """Every source of one provider, included or not, oldest first.
+
+        Wider than :meth:`included_for` on purpose. The Google consent surface states which
+        calendars will be read, and "none of the three you configured is included" is an answer
+        it has to be able to give: a list filtered to the included ones could not distinguish
+        that from an account syncr has never seen.
+        """
+        found = await self._session.scalars(
+            self.scoped_select(CalendarSource)
+            .where(CalendarSource.provider == provider)
+            .order_by(CalendarSource.created_at, CalendarSource.id)
+        )
+        return tuple(_as_record(row) for row in found)
+
     async def included_for(self, provider: CalendarProvider) -> tuple[CalendarSourceRecord, ...]:
         """This tenant's included anchor sources of one provider, oldest first.
 
@@ -187,6 +202,8 @@ class CalendarSourceRepository(TenantScopedRepository):
                 events_read=state.events_read,
                 anchors_current=state.anchors_current,
                 rejections=_as_rows(state.rejections),
+                attempts=state.attempts,
+                resync_reason=state.resync_reason,
             )
         )
 
@@ -241,5 +258,7 @@ def _as_record(row: CalendarSource) -> CalendarSourceRecord:
             # Copied out of the row rather than aliased: a mapped JSONB value is the mapper's
             # own mutable object, and handing it out would let a caller change the row.
             rejections=_from_rows(row.rejections),
+            attempts=row.attempts,
+            resync_reason=row.resync_reason,
         ),
     )

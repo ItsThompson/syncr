@@ -18,7 +18,9 @@ neither fully working nor fully broken, so the rejections are recorded next to a
 ``last_success_at`` rather than as an error.
 
 **An unchanged feed is a success that changed nothing.** ``304`` means the last parse still
-stands, so the counts and the rejections carry forward untouched and only the attempt moves.
+stands, so the counts and the rejections carry forward untouched and only the attempt moves. A
+provider that answers "nothing changed since your cursor" is the same case by a different
+mechanism, and it takes the same constructor: what the source holds is what the last read found.
 
 **A failure's message names the surviving capability.** A notice that says only what broke
 leaves the user unable to decide what to do next, so the retained anchors are stated in the
@@ -44,7 +46,14 @@ RETAINED_NOTICE = (
 )
 
 
-def recorded_success(outcome: FetchOutcome, *, at: datetime, cursor: str | None) -> SyncStateRecord:
+def recorded_success(
+    outcome: FetchOutcome,
+    *,
+    at: datetime,
+    cursor: str | None,
+    attempts: int = 1,
+    resync_reason: str | None = None,
+) -> SyncStateRecord:
     """The state after an attempt that read the feed, whatever it rejected.
 
     Nothing carries forward from the previous state, because this parse replaced it wholesale:
@@ -63,11 +72,13 @@ def recorded_success(outcome: FetchOutcome, *, at: datetime, cursor: str | None)
         events_read=outcome.events_read,
         anchors_current=len(outcome.events),
         rejections=outcome.rejected,
+        attempts=attempts,
+        resync_reason=resync_reason,
     )
 
 
 def recorded_unchanged(
-    previous: SyncStateRecord, *, at: datetime, cursor: str | None
+    previous: SyncStateRecord, *, at: datetime, cursor: str | None, attempts: int = 1
 ) -> SyncStateRecord:
     """The state after a ``304``: a successful attempt that reparsed nothing.
 
@@ -75,16 +86,25 @@ def recorded_unchanged(
     still current. Zeroing them would report a source that answered correctly as one holding
     no occupancy at all.
     """
-    return replace(previous, last_success_at=at, last_attempt_at=at, last_error=None, cursor=cursor)
+    return replace(
+        previous,
+        last_success_at=at,
+        last_attempt_at=at,
+        last_error=None,
+        cursor=cursor,
+        attempts=attempts,
+    )
 
 
-def recorded_failure(previous: SyncStateRecord, *, at: datetime, reason: str) -> SyncStateRecord:
+def recorded_failure(
+    previous: SyncStateRecord, *, at: datetime, reason: str, attempts: int = 1
+) -> SyncStateRecord:
     """The state after an attempt that could not read the feed.
 
     ``last_success_at``, the counts, the rejections, and the cursor are all kept: none of them
     became untrue because a poll failed, and the panel states when the feed last succeeded.
     """
-    return replace(previous, last_attempt_at=at, last_error=_stated(reason))
+    return replace(previous, last_attempt_at=at, last_error=_stated(reason), attempts=attempts)
 
 
 def _stated(reason: str) -> str:

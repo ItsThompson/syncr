@@ -92,6 +92,12 @@ class CalendarSource(Base, TenantScoped):
     events_read: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     anchors_current: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     rejections: Mapped[list[RejectionRow] | None] = mapped_column(NULLABLE_JSONB, nullable=True)
+    # How many calls the last attempt made. More than one means a provider rate-limited the read
+    # and it backed off, which is a different story from a slow feed and is reported as such.
+    attempts: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
+    # Why the last successful read was a full one while a cursor was held. Null when the read was
+    # incremental, or when there was no cursor to be incremental against.
+    resync_reason: Mapped[str | None] = mapped_column(String(LAST_ERROR_MAX_LENGTH), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -110,6 +116,7 @@ class CalendarSource(Base, TenantScoped):
         CheckConstraint(
             "events_read >= 0 AND anchors_current >= 0", name="counts_are_not_negative"
         ),
+        CheckConstraint("attempts >= 0", name="attempts_are_not_negative"),
         # One source per feed per tenant. Adding the same URL twice would double every anchor
         # it contributes. A unique INDEX rather than a unique CONSTRAINT, matching the
         # convention plan storage set: the metadata's `uq` naming rule derives a name from the

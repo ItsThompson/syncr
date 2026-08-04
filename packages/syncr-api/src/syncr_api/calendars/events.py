@@ -56,6 +56,26 @@ class RawEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class RemoteCalendar:
+    """One calendar an account holds, as the setup surface lists it for selection.
+
+    ``calendar_id`` is the provider's own opaque identifier and becomes a source's
+    ``external_id``, which is why it is carried rather than derived from the title: two calendars
+    can share a title and neither can share an identifier.
+
+    ``writable`` decides whether a calendar can be the write target at all. syncr reconciles the
+    target destructively, so a calendar the account can only read is not a candidate, and knowing
+    that at selection time beats a 403 on the first projection.
+    """
+
+    calendar_id: str
+    display_name: str
+    time_zone: str | None
+    writable: bool
+    primary: bool
+
+
+@dataclass(frozen=True, slots=True)
 class RejectedComponent:
     """One component that produced no event, and enough to say why on a panel.
 

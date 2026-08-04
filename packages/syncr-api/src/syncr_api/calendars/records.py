@@ -12,6 +12,11 @@ feed this product exists to make impossible.
 events were rejected and why is rendered from a READ of the source, not from the response to
 a sync, so a rejection has to survive the attempt that produced it.
 
+``attempts`` and ``resync_reason`` are there because a provider's own behaviour is part of what
+the panel reports. A rate-limited read backs off and retries, and the attempt count is what makes
+that visible instead of looking like a slow feed; a provider that invalidates an incremental cursor
+forces a full read, and the reason it did is worth more than the silent cost.
+
 ``state`` is derived rather than stored. Storing it would let a row disagree with the fields
 it summarizes, and every combination that produces it is already in the row.
 """
@@ -55,6 +60,15 @@ class SyncStateRecord:
     events_read: int = 0
     anchors_current: int = 0
     rejections: tuple[RejectedComponent, ...] = ()
+    # How many calls the last attempt made. One for a read that worked first time; more when a
+    # provider rate-limited it and the read backed off and retried. Exposed on the source because
+    # a count that changes is how this product reports progress, and a read that took four calls is
+    # a different story from one that took one.
+    attempts: int = 0
+    # Why the last successful read was a FULL one rather than incremental, when it was not simply
+    # the first. A provider that invalidates a sync token silently costs a full read every poll,
+    # and a panel that could not say so would report a healthy source doing hidden work.
+    resync_reason: str | None = None
 
     @property
     def rejected_count(self) -> int:

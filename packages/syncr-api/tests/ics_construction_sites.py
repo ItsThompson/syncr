@@ -222,6 +222,57 @@ SITES: Final[tuple[Site, ...]] = (
         reads="a horizon the request schema already bounded",
         guard=NOT_A_FEED_VALUE,
     ),
+    # The Google read path. A provider's values reach the same class of constructor a feed's do, so
+    # they are declared in the same table: what changes is which parser gates them.
+    Site(
+        module="day_spans",
+        function="module scope",
+        constructor="timedelta",
+        reads="nothing: it is the one-day constant",
+        guard=NOT_A_FEED_VALUE,
+    ),
+    Site(
+        module="day_spans",
+        function="module scope",
+        constructor="time",
+        reads="nothing: it is local midnight",
+        guard=NOT_A_FEED_VALUE,
+    ),
+    Site(
+        module="google_values",
+        function="read_instant",
+        constructor="fromisoformat",
+        reads="an RFC 3339 date-time Google stated",
+        guard=GUARDED_HERE,
+    ),
+    Site(
+        module="google_values",
+        function="read_date",
+        constructor="fromisoformat",
+        reads="an RFC 3339 full-date Google stated",
+        guard=GUARDED_HERE,
+    ),
+    Site(
+        module="google_backoff",
+        function="stated_retry_after",
+        constructor="float",
+        reads="the Retry-After header Google sent",
+        guard=GUARDED_HERE,
+    ),
+    Site(
+        module="google_backoff",
+        function="wait_before",
+        constructor="float",
+        reads="nothing: it is the doubling this schedule computed",
+        guard=NOT_A_FEED_VALUE,
+    ),
+    Site(
+        module="google_backoff",
+        function="_jitter",
+        constructor="float",
+        reads="nothing: it is syncr's own random draw",
+        guard=NOT_A_FEED_VALUE,
+    ),
 )
 
 

@@ -32,8 +32,17 @@ SOURCE_PATH: Final = "/{source_id}"
 SOURCE_SYNC_PATH: Final = "/{source_id}/sync"
 SOURCE_ROLE_PATH: Final = "/{source_id}/role"
 SOURCE_HORIZON_PATH: Final = "/{source_id}/horizon"
+SOURCE_REMOTE_CALENDARS_PATH: Final = "/{source_id}/remote-calendars"
 
 SOURCE_RESOURCE: Final = "calendar source"
+
+# What a Google rejection names as the thing that failed. ICS reports the component's own name
+# (`VEVENT`); an API answers items, so the panel says what one is in the provider's own terms.
+GOOGLE_COMPONENT: Final = "event"
+
+# What a rejection's line is when the provider states none. ICS attributes a rejection to the line
+# the component began on; an API answers JSON, where there is no line for a reader to look at.
+UNKNOWN_LINE: Final = 0
 
 type CalendarProvider = Literal["google", "ics"]
 GOOGLE: Final[CalendarProvider] = "google"

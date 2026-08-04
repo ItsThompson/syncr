@@ -32,7 +32,12 @@ from functools import partial
 from time import monotonic
 from typing import TYPE_CHECKING
 
-from syncr_api.calendars.config import DETAIL_MAX_LENGTH, MAX_EVENTS_PER_FEED, MAX_PARSE_SECONDS
+from syncr_api.calendars.config import (
+    DETAIL_MAX_LENGTH,
+    MAX_EVENTS_PER_FEED,
+    MAX_PARSE_SECONDS,
+    UNKNOWN_LINE,
+)
 from syncr_api.calendars.events import FetchOutcome, RejectedComponent
 from syncr_api.calendars.ics_components import read_component
 from syncr_api.calendars.ics_errors import (
@@ -61,7 +66,6 @@ if TYPE_CHECKING:
 _REPORTABLE = (IcsRejection, *UNREPRESENTABLE)
 
 # The line a feed-level rejection reports when the lexer gave up before naming one.
-_UNKNOWN_LINE = 0
 
 _FEED_COMPONENT = "VCALENDAR"
 
@@ -247,7 +251,7 @@ def _feed_rejection(error: IcsRejection) -> RejectedComponent:
     kind: RejectionKind = error.kind
     return RejectedComponent(
         kind=kind,
-        line=error.line or _UNKNOWN_LINE,
+        line=error.line or UNKNOWN_LINE,
         component=_FEED_COMPONENT,
         detail=_detail(error),
     )
