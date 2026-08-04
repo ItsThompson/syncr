@@ -1288,8 +1288,7 @@ def test_a_cancelled_occurrence_is_suppressed_in_either_form(recurrence_id: str)
 @pytest.mark.xfail(
     strict=True,
     reason="an RDATE's own TZID does not travel into the candidate generator, so it resolves in "
-    "the series' zone: measured five hours out. Fixing it threads the zone profile through "
-    "expansion, which is deliberately deferred rather than done alongside these repairs.",
+    "the series' zone: measured five hours out. Tracked as ticket 64, which removes this marker.",
 )
 def test_an_rdate_in_its_own_zone_is_resolved_in_that_zone() -> None:
     # A KNOWN DEFECT, written as the test that will turn green when it is fixed rather than left as
