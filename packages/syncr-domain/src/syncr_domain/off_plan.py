@@ -128,8 +128,12 @@ def require_disjoint(periods: Sequence[OffPlanPeriod]) -> None:
     against the others by leaving its stored self out of the sequence.
 
     Adjacent pairs of the start-ordered sequence are the only ones compared, and that is
-    complete rather than a shortcut: if any later period overlaps an earlier one, it
-    overlaps every period between them too, so the first such pair is adjacent.
+    complete rather than a shortcut, by the contrapositive: if NO adjacent pair overlaps then
+    ``end[i] <= start[i + 1]`` for every ``i``, and starts are non-decreasing, so
+    ``end[i] <= start[j]`` for every ``j > i`` and no pair overlaps at all. It is NOT true
+    that an overlapping pair is always adjacent, which is the tempting reason to give:
+    ``[0h, 100h)``, ``[1h, 2h)``, ``[50h, 60h)`` sorts in that order, and the third overlaps
+    the first without overlapping the second.
     """
     ordered = sorted(periods, key=lambda period: period.interval)
     for earlier, later in pairwise(ordered):

@@ -196,14 +196,31 @@ def test_the_rejection_names_both_offending_spans() -> None:
 
 
 def test_a_long_period_holding_several_short_ones_is_refused() -> None:
-    # The claim the adjacent-pairs walk rests on: an overlapping pair that is not adjacent in
-    # start order cannot exist, because the containing period also overlaps everything
-    # between. A walk that compared only literally neighbouring declarations would miss this.
+    # A containing period against three periods inside it. The walk compares adjacent pairs of the
+    # SORTED sequence, so what this exercises is the sort: the container sorts first and is compared
+    # against the earliest period inside it. A walk over declaration order, or one that compared
+    # only literally neighbouring declarations, would answer differently on a shuffled input.
     holiday = period(Interval(at(0, day=0), at(0, day=5)))
     inside = [period(between(9, 10, day=day)) for day in (1, 2, 3)]
 
     with pytest.raises(OverlappingOffPlanError):
         require_disjoint([holiday, *inside])
+
+
+def test_an_overlapping_pair_is_not_always_adjacent_and_is_still_refused() -> None:
+    # The tempting justification for the adjacent-pairs walk is that an overlapping pair is always
+    # adjacent once sorted. It is false, and this is the counterexample: sorted by start, the third
+    # period overlaps the FIRST and not the second. The walk is complete for a different reason,
+    # stated on `require_disjoint`, and the reason matters because a maintainer trusting the false
+    # one could "optimize" the walk into something that misses this.
+    containing = period(Interval(at(0), at(0, day=4)))
+    early = period(between(1, 2))
+    late = period(between(2, 3, day=2))
+
+    assert late.overlaps(containing) is True
+    assert late.overlaps(early) is False
+    with pytest.raises(OverlappingOffPlanError):
+        require_disjoint([containing, early, late])
 
 
 @given(st.lists(off_plan_periods(), max_size=6))
