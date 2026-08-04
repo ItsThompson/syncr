@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import inspect
 from datetime import UTC, time
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
@@ -44,6 +45,9 @@ from syncr_domain.preferences import (
     preference_in_effect,
 )
 from syncr_domain.snap import SNAP_MINUTES
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 AREA = PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=uuid4())
 HABIT = PreferenceOwner(kind=PreferenceOwnerKind.HABIT, id=uuid4())
@@ -381,7 +385,7 @@ class TestNoRefusalPutsAPythonReprOnTheWire:
 
     @staticmethod
     def refusals() -> list[str]:
-        offenders = [
+        offenders: list[Callable[[], object]] = [
             lambda: LocalTimeWindow(start=time(5, 30, tzinfo=UTC), end=time(7, 0)),
             lambda: LocalTimeWindow(start=time(5, 30, 30), end=time(7, 0)),
             lambda: LocalTimeWindow(start=time(5, 7), end=time(7, 0)),
