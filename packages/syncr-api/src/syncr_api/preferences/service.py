@@ -20,7 +20,9 @@ preference_in_effect`, which returns one of them entire rather than merging two.
 replacement that stores what was already stored, and a removal of a preference nothing declared,
 invalidate no solve: there is nothing new for one to re-read. The range is OPEN-ENDED, because a
 preference has no end date and governs every week the user has not yet lived, so it is
-``BacklogWideBump``'s range rather than a bounded one.
+``BacklogWideBump``'s range rather than a bounded one. A stored row this service cannot read counts
+as a change, because nothing is equal to it, and that is also what keeps a replacement able to
+repair one.
 
 **Nothing here writes a cap onto an override, and there is no argument list that could.** A
 declaration built from an override's request shape names ``None``, the entity refuses anything
@@ -51,7 +53,7 @@ from syncr_api.preferences.config import PREFERENCE_RESOURCE
 from syncr_api.preferences.rules import stated_rejection, unknown_owner
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
-from syncr_domain.preferences import preference_in_effect
+from syncr_domain.preferences import PreferenceError, preference_in_effect
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -127,11 +129,13 @@ class PreferenceService:
         now = self._clock()
         resolved = await self._require_owner(principal, kind, owner_id)
         stored = await self._preferences.find(resolved.owner)
+        # Read OUTSIDE the context below, deliberately. See the helper: a stored row this service
+        # cannot read must not refuse a replacement that would repair it.
+        was = _the_preference_being_replaced(stored)
         with stated_rejection():
             # Building the entity IS the validation: the cap's owner rule and every bound are
             # applied here rather than restated.
             declared = declaration.as_preference(resolved.owner)
-            was = stored.as_preference() if stored is not None else None
         if stored is None:
             await self._preferences.create(declared, created_at=now)
         else:
@@ -148,6 +152,9 @@ class PreferenceService:
             has_preferred_duration=declared.preferred_duration_minutes is not None,
             has_max_per_day=declared.max_per_day_minutes is not None,
             created=stored is None,
+            # So an operator can see that a row nothing could read was overwritten, which is the
+            # one case where a replacement discards a value rather than superseding it.
+            repaired_unreadable=stored is not None and was is None,
         )
         await self._invalidate_if_changed(was=was, now_is=declared, at=now)
         return await self._read(resolved)
@@ -225,3 +232,23 @@ class PreferenceService:
 
 def _as_entity(record: PreferenceRecord | None) -> Preference | None:
     return record.as_preference() if record is not None else None
+
+
+def _the_preference_being_replaced(stored: PreferenceRecord | None) -> Preference | None:
+    """The row a replacement is about to overwrite, or ``None`` when nothing readable is there.
+
+    This value exists only to answer whether the replacement changes anything, so a row this
+    service cannot read is reported as absent: nothing is equal to it, which is what the gate
+    needs, and a replacement carrying a valid body then goes through.
+
+    Reading it inside the context that maps a domain refusal to a 422 would mean an unreadable
+    STORED row refused a request that had nothing wrong with it, leaving removal as the only way
+    to clear it. A row can only get into that state by being written around the application, but
+    a repair path that a broken row can close is a worse failure than the broken row.
+    """
+    if stored is None:
+        return None
+    try:
+        return stored.as_preference()
+    except PreferenceError:
+        return None
