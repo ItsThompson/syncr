@@ -1,0 +1,208 @@
+"""``SolveInputs`` itself: what it carries, what it refuses, and what it cannot be asked.
+
+The struct is the shared vocabulary of the solver, the probe, the materializer, and the
+failure-reproduction runbook, so three of these tests are stated over its field inventory rather
+than over a behaviour. That is deliberate: the defect this struct has had three times is a field
+being read as two quantities, and the shape of the fix is always a pair. A test bounded by the
+inventory fails when a pair is merged, which is the moment the defect is introduced rather than the
+moment a verdict is wrong.
+
+The rest is arithmetic that has to be reproducible: the seed a solve draws from, and the two
+refusals that keep an assembly comparable to another assembly of the same instant.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
+from uuid import uuid4
+from zoneinfo import ZoneInfo
+
+import pytest
+
+from syncr_domain.intervals import Interval, IntervalError
+from syncr_domain.plan import PlanError
+from syncr_domain.weeks import IsoWeek
+from syncr_solver.inputs import (
+    AreaBudget,
+    ChurnBaseline,
+    DeadlineDemand,
+    EligibleTask,
+    EntryBinding,
+    FrameEntry,
+    HabitOccurrence,
+    MaterializedEntry,
+    ResolvedPreference,
+    SolveInputs,
+)
+
+if TYPE_CHECKING:
+    from syncr_domain.zones import Date, ZoneId
+
+WEEK = IsoWeek(2026, 7)
+LONDON = "Europe/London"
+MONDAY_MIDNIGHT = datetime(2026, 2, 9, tzinfo=UTC)
+NOW = datetime(2026, 2, 11, 9, 0, tzinfo=UTC)
+
+# Where the probe's demand is computed from. Neither figure appears anywhere on this struct, which
+# is what makes that quantity impossible to derive inside a projection of it.
+FIGURES_A_PROJECTION_CANNOT_SEE = frozenset({"estimate_minutes", "recorded_minutes"})
+
+MEMBER_TYPES = (
+    FrameEntry,
+    MaterializedEntry,
+    EntryBinding,
+    HabitOccurrence,
+    EligibleTask,
+    DeadlineDemand,
+    AreaBudget,
+    ResolvedPreference,
+    ChurnBaseline,
+)
+
+
+def zones(*, week: IsoWeek = WEEK, zone: ZoneId = LONDON) -> dict[Date, ZoneId]:
+    return dict.fromkeys(week.dates(), zone)
+
+
+def inputs(**overrides: object) -> SolveInputs:
+    stated: dict[str, object] = {
+        "iso_week": WEEK,
+        "span": Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(days=7)),
+        "now": NOW,
+        "zone_by_date": zones(),
+        "input_version": 3,
+    }
+    stated.update(overrides)
+    return SolveInputs(**stated)  # type: ignore[arg-type]
+
+
+def test_the_struct_carries_every_field_a_solve_and_a_probe_read() -> None:
+    # An equality rather than a containment, so a field that goes away has to go from the readers
+    # that name it, and the two quantity pairs cannot be merged into one field each without
+    # failing here.
+    assert {field.name for field in dataclasses.fields(SolveInputs)} == {
+        "iso_week",
+        "span",
+        "now",
+        "zone_by_date",
+        "input_version",
+        "frame",
+        "anchors",
+        "shadow_blocks",
+        "forbidden_windows",
+        "off_plan",
+        "template_entries",
+        "habit_occurrences",
+        "eligible_tasks",
+        "areas",
+        "preferences",
+        "pins",
+        "deadline_demands",
+        "adjustments",
+        "live_plan",
+        "churn_baseline",
+    }
+
+
+def test_no_member_type_carries_an_estimate_or_a_recorded_figure() -> None:
+    # The claim that the probe's demand is not derivable from this struct, asserted rather than
+    # stated: computing it needs a task's estimate and its recorded minutes, so if either ever
+    # appears here, a later reader will derive the quantity in the projection and the two
+    # consumers will disagree again.
+    carried = {field.name for member in MEMBER_TYPES for field in dataclasses.fields(member)} | {
+        field.name for field in dataclasses.fields(SolveInputs)
+    }
+
+    assert carried & FIGURES_A_PROJECTION_CANNOT_SEE == set()
+
+
+def test_a_resolved_preference_carries_no_daily_cap() -> None:
+    # The cap travels on the Area budget, which is what structurally prevents an override relaxing
+    # a hard constraint: there is no field here that could carry one.
+    assert "max_per_day_minutes" not in {
+        field.name for field in dataclasses.fields(ResolvedPreference)
+    }
+    assert "max_per_day_minutes" in {field.name for field in dataclasses.fields(AreaBudget)}
+
+
+def test_the_seed_is_derived_rather_than_supplied() -> None:
+    # A value that can be supplied can be supplied wrongly, which is the same reason a block's id
+    # is a property rather than a field.
+    assert "seed" not in {field.name for field in dataclasses.fields(SolveInputs)}
+    assert isinstance(inputs().seed, int)
+
+
+def test_the_same_week_at_the_same_version_seeds_the_same_solve() -> None:
+    assert inputs().seed == inputs().seed
+
+
+def test_two_weeks_at_one_version_do_not_share_a_seed() -> None:
+    # Without the week in the digest, every week a tenant has just created would solve from one
+    # seed, so a tie broken by it would break the same way in each.
+    following = WEEK.following()
+
+    assert inputs().seed != inputs(iso_week=following, zone_by_date=zones(week=following)).seed
+
+
+def test_a_bumped_version_seeds_a_different_solve() -> None:
+    assert inputs().seed != inputs(input_version=4).seed
+
+
+def test_the_instant_an_assembly_was_built_against_is_normalized_to_utc() -> None:
+    # Two assemblies of one instant have to be equal, and a local reading of it would compare
+    # equal to itself and unequal to the same instant expressed in another zone.
+    local = NOW.astimezone(ZoneInfo(LONDON))
+
+    assert inputs(now=local) == inputs(now=NOW)
+
+
+def test_an_instant_carrying_no_zone_names_no_instant_and_is_refused() -> None:
+    with pytest.raises(IntervalError):
+        inputs(now=datetime(2026, 2, 11, 9, 0))  # noqa: DTZ001
+
+
+def test_a_day_with_no_zone_resolves_its_wall_times_against_nothing_and_is_refused() -> None:
+    partial = zones()
+    partial.pop(WEEK.monday())
+
+    with pytest.raises(PlanError):
+        inputs(zone_by_date=partial)
+
+
+def test_a_zone_for_a_day_the_week_does_not_hold_is_refused() -> None:
+    foreign = zones()
+    foreign[WEEK.following().monday()] = LONDON
+
+    with pytest.raises(PlanError):
+        inputs(zone_by_date=foreign)
+
+
+def test_a_week_that_has_never_been_approved_states_that_rather_than_naming_a_revision() -> None:
+    baseline = ChurnBaseline.never_approved()
+
+    assert baseline.reason == ChurnBaseline.NEVER_APPROVED
+    assert baseline.revision_id is None
+    assert baseline.approved_at is None
+
+
+def test_an_approved_baseline_names_the_revision_and_when_it_was_approved() -> None:
+    identifier = uuid4()
+    baseline = ChurnBaseline.approved(identifier, NOW)
+
+    assert baseline.reason == ChurnBaseline.APPROVED_REVISION
+    assert baseline.revision_id == identifier
+    assert baseline.approved_at == NOW
+
+
+def test_an_assembly_defaults_to_a_week_holding_nothing() -> None:
+    # The honest reading of a week nothing has planned: every collection is empty and the churn
+    # baseline says there is no approved revision, rather than any of them being absent.
+    empty = inputs()
+
+    assert empty.frame == ()
+    assert empty.eligible_tasks == ()
+    assert empty.deadline_demands == ()
+    assert empty.live_plan is None
+    assert empty.churn_baseline.reason == ChurnBaseline.NEVER_APPROVED
