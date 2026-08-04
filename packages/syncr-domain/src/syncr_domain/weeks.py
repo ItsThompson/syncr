@@ -110,6 +110,14 @@ class IsoWeek:
     def following(self) -> IsoWeek:
         return IsoWeek.containing(self.monday() + timedelta(days=7))
 
+    def preceding(self) -> IsoWeek:
+        """The week before this one, derived through the calendar rather than by subtracting one.
+
+        ``2027-W01`` precedes into ``2026-W53`` and ``2026-W01`` into ``2025-W52``, so the week
+        number alone does not decide the answer and neither does the ISO year.
+        """
+        return IsoWeek.containing(self.monday() - timedelta(days=7))
+
     def __str__(self) -> str:
         return f"{self.year}-W{self.week:02d}"
 

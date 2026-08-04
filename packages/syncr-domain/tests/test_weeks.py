@@ -111,6 +111,21 @@ class TestIsoWeekIdentity:
     def test_following_rolls_into_the_next_iso_year(self) -> None:
         assert IsoWeek(2026, 53).following() == IsoWeek(2027, 1)
 
+    def test_preceding_steps_back_one_week(self) -> None:
+        assert IsoWeek(2026, 14).preceding() == IsoWeek(2026, 13)
+
+    def test_preceding_rolls_into_the_previous_iso_year_at_its_own_length(self) -> None:
+        # 2026 is a 53-week ISO year and 2025 is a 52-week one, so neither the week number nor
+        # the year decides this on its own: the assembler reads the preceding week to carry a
+        # Sunday-night occurrence's overhang, and the first week of a year is the case that
+        # would silently read a week that does not exist.
+        assert IsoWeek(2027, 1).preceding() == IsoWeek(2026, 53)
+        assert IsoWeek(2026, 1).preceding() == IsoWeek(2025, 52)
+
+    def test_a_week_steps_back_to_itself_through_the_week_after_it(self) -> None:
+        for iso_week in (IsoWeek(2026, 1), IsoWeek(2026, 13), IsoWeek(2026, 53)):
+            assert iso_week.following().preceding() == iso_week
+
     def test_it_orders_chronologically(self) -> None:
         assert sorted([IsoWeek(2027, 1), IsoWeek(2026, 13), IsoWeek(2026, 7)]) == [
             IsoWeek(2026, 7),
