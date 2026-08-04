@@ -15,10 +15,12 @@ in one pass, and an occurrence of a series the user has already retyped inherits
 instead. Doing it in a second pass would leave a window in which an anchor existed with no type,
 and any reader in that window would see opaque busy time where a shadow belongs.
 
-**A series override is read before anything is written.** The overrides a tenant holds are read
-off the occurrences that carry them, so they have to be read while those occurrences still
-exist: as the horizon rolls forward, old occurrences of a daily standup drop out of every feed
-and new ones arrive, and reading first is what carries the override across that turnover.
+**A series override is read before the removal, and that is the narrow ordering that matters.**
+The overrides a tenant holds are read off the occurrences carrying them, so they must be read while
+those occurrences still exist. ``remove_absent`` is what destroys them: as the horizon rolls
+forward, every old occurrence of a daily standup drops out of the feed and new ones arrive, and
+reading before the removal is what carries the override across that turnover. Re-reading mid-loop
+would also work; reading after the removal would not.
 """
 
 from __future__ import annotations
@@ -88,8 +90,8 @@ class AnchorReconciler:
                 await self._create(source.id, key, event, assignment)
                 created += 1
                 continue
-            await self._update(existing, event, assignment)
-            updated += 1
+            if await self._update(existing, event, assignment):
+                updated += 1
 
         removed = await self._anchors.remove_absent(source.id, keeping=set(incoming))
         delta = AnchorDelta(
@@ -172,25 +174,42 @@ class AnchorReconciler:
 
     async def _update(
         self, existing: AnchorRecord, event: RawEvent, assignment: _Assignment
-    ) -> None:
-        """Replace the fact, and keep the user's override if the anchor already carried one.
+    ) -> bool:
+        """Replace the fact, and answer whether anything actually moved.
 
-        An override on the anchor itself outranks the rules AND outranks the series lookup, so a
-        retyped occurrence keeps its type when its title changes into something another rule
-        would match. A rule match is recomputed, because the title it was derived from may have
-        moved.
+        Keeps the user's override if the anchor already carried one, so a retyped occurrence keeps
+        its type when its title changes into something another rule would match. A rule match is
+        recomputed, because the title it was derived from may have moved.
+
+        The write is unconditional but the COUNT is not. A steady feed republishes every event on
+        every poll, so counting each one as updated would report a number equal to the whole set
+        forever and say nothing about what changed. `possibly_stale` is part of the comparison
+        because clearing it IS a change: an anchor a failed sync marked stale becomes unstale here.
         """
         if existing.type_overridden:
             assignment = _Assignment(anchor_type_id=existing.anchor_type_id, overridden=True)
+        title = stored_title(event.title)
+        series = series_key(event.series_uid)
+        location = stored_location(event.location)
+        moved = (
+            existing.title != title
+            or existing.series_uid != series
+            or existing.interval != event.interval
+            or existing.location != location
+            or existing.anchor_type_id != assignment.anchor_type_id
+            or existing.type_overridden != assignment.overridden
+            or existing.possibly_stale
+        )
         await self._anchors.update_fact(
             existing.id,
-            series_uid=series_key(event.series_uid),
-            title=stored_title(event.title),
+            series_uid=series,
+            title=title,
             interval=event.interval,
-            location=stored_location(event.location),
+            location=location,
             anchor_type_id=assignment.anchor_type_id,
             type_overridden=assignment.overridden,
         )
+        return moved
 
 
 def _keyed(events: Sequence[RawEvent]) -> Mapping[str, RawEvent]:

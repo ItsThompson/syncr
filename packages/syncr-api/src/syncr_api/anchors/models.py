@@ -29,6 +29,13 @@ shadow declaration because the user removed a feed, and ``SET NULL`` would silen
 rule from "anchors from this calendar" to "anchors from every calendar". With no constraint the
 identifier simply stops matching anything, because every anchor of a removed source is removed
 with it. The service confirms the source exists when the rule is written.
+
+The two Area columns DO use ``SET NULL``, which is the behavior the paragraph above rejects, and the
+asymmetry is worth naming. Dropping the Area off a prep or transit buffer turns a BLOCK into a
+forbidden window: a different product with a different budget consequence, not a widened rule. That
+is a smaller and more visible change than silently matching every calendar, and it is unreachable in
+P0 because no route removes an Area. If a later epic adds one, this is the decision to revisit, and
+``test_an_areas_removal_leaves_the_type_and_its_own_areas_alone`` pins exactly what it does today.
 """
 
 from __future__ import annotations

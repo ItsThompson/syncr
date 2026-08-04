@@ -23,6 +23,7 @@ from uuid import UUID, uuid4
 from syncr_api.anchors.models import AnchorType
 from syncr_api.anchors.records import AnchorTypeRecord, AnchorTypeSpecification
 from syncr_api.core.repository import TenantScopedRepository
+from syncr_common.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -33,6 +34,8 @@ if TYPE_CHECKING:
     from syncr_api.anchors.config import PostScope
     from syncr_api.anchors.records import AnchorTypeId
     from syncr_domain.identifiers import AreaId
+
+_log = get_logger("syncr.anchors")
 
 
 class AnchorTypeRepository(TenantScopedRepository):
@@ -163,11 +166,18 @@ def _as_area_ids(stored: Sequence[str] | None) -> tuple[AreaId, ...]:
     constraint bounds its shape rather than its members, so refusing to READ a tenant's anchor
     types because one stored member is malformed would be the wrong trade: the rules still
     evaluate and the type is still editable.
+
+    The drop is LOGGED, because its consequence is otherwise undiagnosable. A dropped member can
+    leave a stored ``scope=areas`` type whose list reads empty, and a later ``PATCH`` on an
+    unrelated field then answers 422 on ``forbiddenAreaIds``, a field the caller never sent.
     """
     resolved: list[AreaId] = []
+    dropped = 0
     for member in stored or ():
         try:
             resolved.append(UUID(member))
         except (AttributeError, TypeError, ValueError):
-            continue
+            dropped += 1
+    if dropped:
+        _log.warning("anchors.type.forbidden_area_dropped", dropped=dropped, kept=len(resolved))
     return tuple(resolved)

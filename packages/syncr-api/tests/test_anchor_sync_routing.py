@@ -263,3 +263,57 @@ async def test_an_excluded_source_touches_no_anchor_and_writes_no_state() -> Non
     assert sources.saved == []
     assert result.events == ()
     assert returned_state.last_attempt_at == EARLIER
+
+
+# --------------------------------------------------------------------------------
+# What happens when the WRITER fails, rather than the feed.
+#
+# This path was untested, and that is what let a publisher's NUL byte abort a whole tenant's tick
+# silently: the raise came from inside `_reconciled`, before `save_sync_state`, so `last_error` was
+# never written and the panel kept showing the last success. The scrub in `anchors.identity` closed
+# the feed-shaped cause. What is pinned here is the contract for every OTHER cause.
+# --------------------------------------------------------------------------------
+
+
+class FailingAnchors:
+    """An anchor writer whose reconcile fails the way a database fault would."""
+
+    def __init__(self) -> None:
+        self.attempted = 0
+
+    async def reconcile(self, source: CalendarSourceRecord, outcome: FetchOutcome) -> AnchorDelta:
+        del source, outcome
+        self.attempted += 1
+        message = "the database went away mid-pass"
+        raise RuntimeError(message)
+
+    async def confirm(self, source: CalendarSourceRecord) -> AnchorDelta:
+        del source
+        return AnchorDelta()
+
+    async def mark_possibly_stale(self, source: CalendarSourceRecord) -> AnchorDelta:
+        del source
+        return AnchorDelta()
+
+
+async def test_a_failing_anchor_writer_propagates_and_records_no_partial_state() -> None:
+    # Deliberate, and stated rather than incidental. A writer that fails is syncr's fault, not the
+    # publisher's: the feed was read successfully. Writing `last_error` here would blame the feed
+    # for a defect on our side, and the panel would tell the user to go and check a calendar
+    # provider that did nothing wrong.
+    #
+    # So it propagates. The runner's per-tenant transaction rolls back, the tick is recorded
+    # against the runner's own failure metric, and the next tick retries from the state the last
+    # successful pass left. Nothing is half-written: a tenant's anchors and the sync state that
+    # counts them land together or not at all.
+    anchors = FailingAnchors()
+    sources = RecordingSources()
+    outcome, state = a_read(events=3)
+
+    with pytest.raises(RuntimeError, match="went away"):
+        await syncer(StubAdapter(outcome, state), anchors, sources).sync(a_source())  # type: ignore[arg-type]
+
+    assert anchors.attempted == 1
+    # The invariant that matters: no PARTIAL state. A state written before the anchors it counts
+    # would claim a successful sync of rows that were then rolled back.
+    assert sources.saved == []

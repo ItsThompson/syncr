@@ -146,7 +146,11 @@ class AnchorService:
             "anchors.anchor.retyped",
             tenant_id=str(principal.tenant_id),
             anchor_id=str(anchor_id),
-            anchor_type_id=str(assignment.anchor_type_id),
+            # Not `str(...)`: clearing a type is a supported action, and `"None"` in a structured
+            # field is a string a query for null will never match.
+            anchor_type_id=(
+                None if assignment.anchor_type_id is None else str(assignment.anchor_type_id)
+            ),
             on_a_series=found.series_uid is not None,
             occurrences_retyped=moved,
         )
