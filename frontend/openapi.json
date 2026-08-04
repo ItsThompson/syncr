@@ -1346,6 +1346,17 @@
           },
           "syncState": {
             "$ref": "#/components/schemas/SyncStateResponse"
+          },
+          "writeTarget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WriteTargetResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only on the source holding the write-target role: what syncr writes to, how far ahead, and that it reconciles destructively."
           }
         },
         "required": [
@@ -1629,6 +1640,25 @@
         "title": "DebtResponse",
         "type": "object"
       },
+      "DisclosedCalendarResponse": {
+        "description": "One Google calendar already configured as a source, and whether it is read.",
+        "properties": {
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "included": {
+            "title": "Included",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "displayName",
+          "included"
+        ],
+        "title": "DisclosedCalendarResponse",
+        "type": "object"
+      },
       "EntryPatchRequest": {
         "additionalProperties": false,
         "description": "A partial update to an entry's span. An omitted field is left alone.\n\nThe kind, the binding, and the Area are not members of this shape and an unknown field is\nrejected. A materialized entry's identity is the entry itself, keyed by its identifier and\nthe local date, so rebinding one in place would leave stored outcomes, pins, and edit events\nattributing one identity to content it no longer holds. Remove the entry and declare another.",
@@ -1695,6 +1725,106 @@
           "message"
         ],
         "title": "FieldError",
+        "type": "object"
+      },
+      "GoogleConnectionResponse": {
+        "description": "The state of the one Google account this tenant connected.",
+        "properties": {
+          "configured": {
+            "description": "Whether this deployment has a Google OAuth client at all. False means no connect is possible until an operator sets the credentials; ICS sources are unaffected.",
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "connectedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connectedat"
+          },
+          "grantedScopes": {
+            "description": "What Google says it granted, which can be narrower than what syncr asked for.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Grantedscopes",
+            "type": "array"
+          },
+          "lastRefreshAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastrefreshat"
+          },
+          "notices": {
+            "description": "Every notice this connection's state raises. Write-target expiry raises two, a banner and a panel on Settings, because it is the loudest non-blocking condition in the product.",
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "title": "Notices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "configured",
+          "connected",
+          "grantedScopes",
+          "notices"
+        ],
+        "title": "GoogleConnectionResponse",
+        "type": "object"
+      },
+      "GoogleConsentResponse": {
+        "description": "Everything the consent surface states, plus the URL that starts the flow.",
+        "properties": {
+          "authorizationUrl": {
+            "description": "Google's consent URL for this deployment. Opening it is what starts the flow; it carries a signed state bound to this tenant and expires.",
+            "title": "Authorizationurl",
+            "type": "string"
+          },
+          "calendarsRead": {
+            "description": "The Google calendars already configured as sources. Empty on a first connect, because syncr has not seen the account yet.",
+            "items": {
+              "$ref": "#/components/schemas/DisclosedCalendarResponse"
+            },
+            "title": "Calendarsread",
+            "type": "array"
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeDisclosureResponse"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "statement": {
+            "description": "Which calendars syncr will read, stated for the account as it is now.",
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorizationUrl",
+          "scopes",
+          "calendarsRead",
+          "statement"
+        ],
+        "title": "GoogleConsentResponse",
         "type": "object"
       },
       "HabitCreateRequest": {
@@ -2026,6 +2156,178 @@
           "escalate"
         ],
         "title": "MissPolicy",
+        "type": "string"
+      },
+      "Notice": {
+        "description": "One degradation, at one volume, naming what survives it.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoticeAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isWholeProductDown": {
+            "default": false,
+            "title": "Iswholeproductdown",
+            "type": "boolean"
+          },
+          "pigment": {
+            "$ref": "#/components/schemas/NoticePigment"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoticeScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO instant: how long the condition has held, if it is known.",
+            "title": "Since"
+          },
+          "stillWorks": {
+            "description": "The capabilities that remain. Never empty unless the whole product is down, because a notice that says only what broke leaves the reader unable to act.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Stillworks",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unavailable": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unavailable",
+            "type": "array"
+          },
+          "volume": {
+            "$ref": "#/components/schemas/NoticeVolume"
+          }
+        },
+        "required": [
+          "id",
+          "volume",
+          "pigment",
+          "title",
+          "detail",
+          "stillWorks"
+        ],
+        "title": "Notice",
+        "type": "object"
+      },
+      "NoticeAction": {
+        "description": "The single repair a notice offers.",
+        "properties": {
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "href"
+        ],
+        "title": "NoticeAction",
+        "type": "object"
+      },
+      "NoticePigment": {
+        "enum": [
+          "info",
+          "amber",
+          "oxide",
+          "verdigris"
+        ],
+        "type": "string"
+      },
+      "NoticeScope": {
+        "description": "What the notice is about, where it is about one thing.",
+        "properties": {
+          "blockId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blockid"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "screen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Screen"
+          },
+          "sourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceid"
+          }
+        },
+        "title": "NoticeScope",
+        "type": "object"
+      },
+      "NoticeVolume": {
+        "enum": [
+          "inline",
+          "panel",
+          "banner"
+        ],
         "type": "string"
       },
       "OffPlanCreateRequest": {
@@ -2737,6 +3039,65 @@
         ],
         "type": "string"
       },
+      "RemoteCalendarResponse": {
+        "description": "One calendar an account holds, as the setup surface lists it for selection.",
+        "properties": {
+          "calendarId": {
+            "description": "The provider's own identifier. This becomes the source's externalId.",
+            "title": "Calendarid",
+            "type": "string"
+          },
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "primary": {
+            "title": "Primary",
+            "type": "boolean"
+          },
+          "timeZone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "writable": {
+            "description": "Whether this account may write to the calendar. Only a writable calendar can be the write target, because syncr reconciles that one destructively.",
+            "title": "Writable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "calendarId",
+          "displayName",
+          "writable",
+          "primary"
+        ],
+        "title": "RemoteCalendarResponse",
+        "type": "object"
+      },
+      "RemoteCalendarsResponse": {
+        "description": "Every calendar the connected account holds, for selection during setup.",
+        "properties": {
+          "calendars": {
+            "items": {
+              "$ref": "#/components/schemas/RemoteCalendarResponse"
+            },
+            "title": "Calendars",
+            "type": "array"
+          }
+        },
+        "required": [
+          "calendars"
+        ],
+        "title": "RemoteCalendarsResponse",
+        "type": "object"
+      },
       "ReorderAnchorTypesRequest": {
         "additionalProperties": false,
         "description": "The whole evaluation order: every type the tenant holds, exactly once.\n\nA partial order would leave the unnamed types at positions the caller could not see, and\nfirst-match semantics make that a silent change to what every one of them matches.",
@@ -2811,7 +3172,7 @@
         "description": "A routine to declare.\n\n``minDurationMinutes`` may be left out, in which case it equals the target duration and the\nroutine is inelastic. ``flexBandMinutes`` may be left out, in which case the routine is\npinned to its target time.",
         "properties": {
           "durationMinutes": {
-            "description": "How long the routine runs, 1 to 1440 minutes. Required, because a routine is a span rather than a marker: without a duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is a day, because a routine materializes once per local date.",
+            "description": "How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
             "maximum": 1440.0,
             "minimum": 1.0,
             "title": "Durationminutes",
@@ -2836,7 +3197,7 @@
                 "type": "null"
               }
             ],
-            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. Unstated on creation it equals the target duration, which makes the routine inelastic, and a routine whose floor equals its target is never offered as a reduction.",
+            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, it equals the target duration, which makes the routine inelastic.",
             "title": "Mindurationminutes"
           },
           "targetTime": {
@@ -2874,7 +3235,7 @@
                 "type": "null"
               }
             ],
-            "description": "How long the routine runs, 1 to 1440 minutes. Required, because a routine is a span rather than a marker: without a duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is a day, because a routine materializes once per local date.",
+            "description": "How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.",
             "title": "Durationminutes"
           },
           "flexBandMinutes": {
@@ -2902,7 +3263,7 @@
                 "type": "null"
               }
             ],
-            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. Unstated on creation it equals the target duration, which makes the routine inelastic, and a routine whose floor equals its target is never offered as a reduction.",
+            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, the stored floor is unchanged. Lowering the target below the stored floor is refused, so send both fields when both have to move.",
             "title": "Mindurationminutes"
           },
           "targetTime": {
@@ -2938,7 +3299,7 @@
         "description": "One routine: where it targets, how long it runs, and how far it may give.\n\nNo Area and no pigment, and the absence is the contract rather than an omission.",
         "properties": {
           "durationMinutes": {
-            "description": "How long the routine runs, 1 to 1440 minutes. Required, because a routine is a span rather than a marker: without a duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is a day, because a routine materializes once per local date.",
+            "description": "How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
             "title": "Durationminutes",
             "type": "integer"
           },
@@ -2953,7 +3314,7 @@
             "type": "string"
           },
           "minDurationMinutes": {
-            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. Unstated on creation it equals the target duration, which makes the routine inelastic, and a routine whose floor equals its target is never offered as a reduction.",
+            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction.",
             "title": "Mindurationminutes",
             "type": "integer"
           },
@@ -2995,6 +3356,26 @@
           "routines"
         ],
         "title": "RoutinesResponse",
+        "type": "object"
+      },
+      "ScopeDisclosureResponse": {
+        "description": "One scope syncr requests, and what granting it lets syncr do.",
+        "properties": {
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "statement": {
+            "description": "What this scope lets syncr do, in the user's terms rather than Google's.",
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "statement"
+        ],
+        "title": "ScopeDisclosureResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -3244,6 +3625,12 @@
       "SyncStateResponse": {
         "description": "What the last attempt on a source did, successful or not.\n\nBoth instants are exposed because staleness is the difference between them: a recent attempt\nwith an older success is a source that is failing, and that is not the same as a source\nnobody has polled.",
         "properties": {
+          "attempts": {
+            "default": 0,
+            "description": "How many calls the last attempt made. More than one means the provider rate-limited the read and syncr backed off, which is a different story from a slow feed.",
+            "title": "Attempts",
+            "type": "integer"
+          },
           "eventsRead": {
             "title": "Eventsread",
             "type": "integer"
@@ -3294,6 +3681,18 @@
             },
             "title": "Rejections",
             "type": "array"
+          },
+          "resyncReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the last successful read was a full one while an incremental cursor was held. Null when the read was incremental, or when there was no cursor to be incremental against.",
+            "title": "Resyncreason"
           }
         },
         "required": [
@@ -3346,7 +3745,7 @@
                 "type": "null"
               }
             ],
-            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both.",
+            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes"
           },
           "priority": {
@@ -3430,7 +3829,7 @@
                 "type": "null"
               }
             ],
-            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both.",
+            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes"
           },
           "priority": {
@@ -3538,7 +3937,7 @@
             "type": "string"
           },
           "minChunkMinutes": {
-            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both.",
+            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes",
             "type": "integer"
           },
@@ -4053,6 +4452,39 @@
       },
       "WireDecimal": {
         "type": "number"
+      },
+      "WriteTargetResponse": {
+        "description": "What the one calendar syncr writes to is, and what syncr does to it.\n\nPresent only on the source holding the role. It exists so the destructive behaviour is part of\nthe READ MODEL rather than copy on one screen: whatever renders the write target renders this,\nand a second surface cannot forget to say it.",
+        "properties": {
+          "calendarName": {
+            "description": "The calendar syncr writes the plan to.",
+            "title": "Calendarname",
+            "type": "string"
+          },
+          "horizonDays": {
+            "description": "How many days ahead the plan is written, and past which nothing is removed.",
+            "title": "Horizondays",
+            "type": "integer"
+          },
+          "reconciliation": {
+            "description": "How syncr makes the calendar match the plan. Always 'destructive'.",
+            "title": "Reconciliation",
+            "type": "string"
+          },
+          "statement": {
+            "description": "The destructive behaviour, in words a reader can act on.",
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "calendarName",
+          "horizonDays",
+          "reconciliation",
+          "statement"
+        ],
+        "title": "WriteTargetResponse",
+        "type": "object"
       },
       "_DebtCap": {
         "maximum": 52.0,
@@ -5730,6 +6162,265 @@
         ]
       }
     },
+    "/api/v1/calendar-sources/google/callback": {
+      "get": {
+        "description": "Finish the connect and send the browser to Settings with how it ended.",
+        "operationId": "complete_google_connect_api_v1_calendar_sources_google_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Dependency unavailable"
+          }
+        },
+        "summary": "Where Google returns from consent. Redirects to Settings with the outcome",
+        "tags": [
+          "google-account"
+        ]
+      }
+    },
+    "/api/v1/calendar-sources/google/connect": {
+      "post": {
+        "description": "The consent surface: the scopes, which calendars are read, and the URL to open.",
+        "operationId": "begin_google_connect_api_v1_calendar_sources_google_connect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleConsentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Dependency unavailable"
+          }
+        },
+        "summary": "Start a Google connect. Names the scopes and what is read",
+        "tags": [
+          "google-account"
+        ]
+      }
+    },
+    "/api/v1/calendar-sources/google/connection": {
+      "get": {
+        "description": "The account's state, including the write-target expiry notice when it applies.",
+        "operationId": "read_google_connection_api_v1_calendar_sources_google_connection_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleConnectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Dependency unavailable"
+          }
+        },
+        "summary": "Whether Google is connected, and every notice it raises",
+        "tags": [
+          "google-account"
+        ]
+      }
+    },
     "/api/v1/calendar-sources/{source_id}": {
       "delete": {
         "description": "Remove a source. Its anchors go with it.",
@@ -6070,6 +6761,90 @@
           }
         },
         "summary": "Set the projection horizon. Write-target only",
+        "tags": [
+          "calendars"
+        ]
+      }
+    },
+    "/api/v1/calendar-sources/{source_id}/remote-calendars": {
+      "get": {
+        "description": "Every calendar the account behind this source holds. 422 on an ICS source.",
+        "operationId": "list_remote_calendars_api_v1_calendar_sources__source_id__remote_calendars_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteCalendarsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "The account's calendars, for selection during setup. Google only",
         "tags": [
           "calendars"
         ]

@@ -276,6 +276,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar-sources/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where Google returns from consent. Redirects to Settings with the outcome
+         * @description Finish the connect and send the browser to Settings with how it ended.
+         */
+        get: operations["complete_google_connect_api_v1_calendar_sources_google_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar-sources/google/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a Google connect. Names the scopes and what is read
+         * @description The consent surface: the scopes, which calendars are read, and the URL to open.
+         */
+        post: operations["begin_google_connect_api_v1_calendar_sources_google_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar-sources/google/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether Google is connected, and every notice it raises
+         * @description The account's state, including the write-target expiry notice when it applies.
+         */
+        get: operations["read_google_connection_api_v1_calendar_sources_google_connection_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar-sources/{source_id}": {
         parameters: {
             query?: never;
@@ -322,6 +382,26 @@ export interface paths {
          * @description Set how many days ahead the plan is projected. 422 on an anchor source.
          */
         patch: operations["set_projection_horizon_api_v1_calendar_sources__source_id__horizon_patch"];
+        trace?: never;
+    };
+    "/api/v1/calendar-sources/{source_id}/remote-calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The account's calendars, for selection during setup. Google only
+         * @description Every calendar the account behind this source holds. 422 on an ICS source.
+         */
+        get: operations["list_remote_calendars_api_v1_calendar_sources__source_id__remote_calendars_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/calendar-sources/{source_id}/role": {
@@ -1702,6 +1782,8 @@ export interface components {
             /** @description What this source's panel reports. 'excluded' is not an error: the user asked for zero anchors from it. 'error' means the last attempt could not read it, and the anchors it already contributed are retained. */
             state: components["schemas"]["SourceState"];
             syncState: components["schemas"]["SyncStateResponse"];
+            /** @description Present only on the source holding the write-target role: what syncr writes to, how far ahead, and that it reconciles destructively. */
+            writeTarget?: components["schemas"]["WriteTargetResponse"] | null;
         };
         /**
          * CalendarSourcesResponse
@@ -1877,6 +1959,16 @@ export interface components {
             statement: string;
         };
         /**
+         * DisclosedCalendarResponse
+         * @description One Google calendar already configured as a source, and whether it is read.
+         */
+        DisclosedCalendarResponse: {
+            /** Displayname */
+            displayName: string;
+            /** Included */
+            included: boolean;
+        };
+        /**
          * EntryPatchRequest
          * @description A partial update to an entry's span. An omitted field is left alone.
          *
@@ -1911,6 +2003,56 @@ export interface components {
             field: string;
             /** Message */
             message: string;
+        };
+        /**
+         * GoogleConnectionResponse
+         * @description The state of the one Google account this tenant connected.
+         */
+        GoogleConnectionResponse: {
+            /**
+             * Configured
+             * @description Whether this deployment has a Google OAuth client at all. False means no connect is possible until an operator sets the credentials; ICS sources are unaffected.
+             */
+            configured: boolean;
+            /** Connected */
+            connected: boolean;
+            /** Connectedat */
+            connectedAt?: string | null;
+            /**
+             * Grantedscopes
+             * @description What Google says it granted, which can be narrower than what syncr asked for.
+             */
+            grantedScopes: string[];
+            /** Lastrefreshat */
+            lastRefreshAt?: string | null;
+            /**
+             * Notices
+             * @description Every notice this connection's state raises. Write-target expiry raises two, a banner and a panel on Settings, because it is the loudest non-blocking condition in the product.
+             */
+            notices: components["schemas"]["Notice"][];
+        };
+        /**
+         * GoogleConsentResponse
+         * @description Everything the consent surface states, plus the URL that starts the flow.
+         */
+        GoogleConsentResponse: {
+            /**
+             * Authorizationurl
+             * @description Google's consent URL for this deployment. Opening it is what starts the flow; it carries a signed state bound to this tenant and expires.
+             */
+            authorizationUrl: string;
+            /**
+             * Calendarsread
+             * @description The Google calendars already configured as sources. Empty on a first connect, because syncr has not seen the account yet.
+             */
+            calendarsRead: components["schemas"]["DisclosedCalendarResponse"][];
+            /** Scopes */
+            scopes: components["schemas"]["ScopeDisclosureResponse"][];
+            /**
+             * Statement
+             * @description Which calendars syncr will read, stated for the account as it is now.
+             */
+            statement: string;
         };
         /**
          * HabitCreateRequest
@@ -2073,6 +2215,67 @@ export interface components {
          * @enum {string}
          */
         MissPolicy: "forgive" | "debt" | "escalate";
+        /**
+         * Notice
+         * @description One degradation, at one volume, naming what survives it.
+         */
+        Notice: {
+            action?: components["schemas"]["NoticeAction"] | null;
+            /** Detail */
+            detail: string;
+            /** Id */
+            id: string;
+            /**
+             * Iswholeproductdown
+             * @default false
+             */
+            isWholeProductDown: boolean;
+            pigment: components["schemas"]["NoticePigment"];
+            scope?: components["schemas"]["NoticeScope"] | null;
+            /**
+             * Since
+             * @description ISO instant: how long the condition has held, if it is known.
+             */
+            since?: string | null;
+            /**
+             * Stillworks
+             * @description The capabilities that remain. Never empty unless the whole product is down, because a notice that says only what broke leaves the reader unable to act.
+             */
+            stillWorks: string[];
+            /** Title */
+            title: string;
+            /** Unavailable */
+            unavailable?: string[];
+            volume: components["schemas"]["NoticeVolume"];
+        };
+        /**
+         * NoticeAction
+         * @description The single repair a notice offers.
+         */
+        NoticeAction: {
+            /** Href */
+            href: string;
+            /** Label */
+            label: string;
+        };
+        /** @enum {string} */
+        NoticePigment: "info" | "amber" | "oxide" | "verdigris";
+        /**
+         * NoticeScope
+         * @description What the notice is about, where it is about one thing.
+         */
+        NoticeScope: {
+            /** Blockid */
+            blockId?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Screen */
+            screen?: string | null;
+            /** Sourceid */
+            sourceId?: string | null;
+        };
+        /** @enum {string} */
+        NoticeVolume: "inline" | "panel" | "banner";
         /**
          * OffPlanCreateRequest
          * @description A span to declare off.
@@ -2434,6 +2637,36 @@ export interface components {
         /** @enum {string} */
         RejectionKind: "missing-duration" | "unknown-zone" | "malformed-value" | "unparseable-recurrence" | "read-budget-spent";
         /**
+         * RemoteCalendarResponse
+         * @description One calendar an account holds, as the setup surface lists it for selection.
+         */
+        RemoteCalendarResponse: {
+            /**
+             * Calendarid
+             * @description The provider's own identifier. This becomes the source's externalId.
+             */
+            calendarId: string;
+            /** Displayname */
+            displayName: string;
+            /** Primary */
+            primary: boolean;
+            /** Timezone */
+            timeZone?: string | null;
+            /**
+             * Writable
+             * @description Whether this account may write to the calendar. Only a writable calendar can be the write target, because syncr reconciles that one destructively.
+             */
+            writable: boolean;
+        };
+        /**
+         * RemoteCalendarsResponse
+         * @description Every calendar the connected account holds, for selection during setup.
+         */
+        RemoteCalendarsResponse: {
+            /** Calendars */
+            calendars: components["schemas"]["RemoteCalendarResponse"][];
+        };
+        /**
          * ReorderAnchorTypesRequest
          * @description The whole evaluation order: every type the tenant holds, exactly once.
          *
@@ -2493,7 +2726,7 @@ export interface components {
         RoutineCreateRequest: {
             /**
              * Durationminutes
-             * @description How long the routine runs, 1 to 1440 minutes. Required, because a routine is a span rather than a marker: without a duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is a day, because a routine materializes once per local date.
+             * @description How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.
              */
             durationMinutes: number;
             /**
@@ -2504,7 +2737,7 @@ export interface components {
             flexBandMinutes: number;
             /**
              * Mindurationminutes
-             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. Unstated on creation it equals the target duration, which makes the routine inelastic, and a routine whose floor equals its target is never offered as a reduction.
+             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, it equals the target duration, which makes the routine inelastic.
              */
             minDurationMinutes?: number | null;
             /** @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused. */
@@ -2529,7 +2762,7 @@ export interface components {
         RoutinePatchRequest: {
             /**
              * Durationminutes
-             * @description How long the routine runs, 1 to 1440 minutes. Required, because a routine is a span rather than a marker: without a duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is a day, because a routine materializes once per local date.
+             * @description How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.
              */
             durationMinutes?: number | null;
             /**
@@ -2539,7 +2772,7 @@ export interface components {
             flexBandMinutes?: number | null;
             /**
              * Mindurationminutes
-             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. Unstated on creation it equals the target duration, which makes the routine inelastic, and a routine whose floor equals its target is never offered as a reduction.
+             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, the stored floor is unchanged. Lowering the target below the stored floor is refused, so send both fields when both have to move.
              */
             minDurationMinutes?: number | null;
             /** @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused. */
@@ -2559,7 +2792,7 @@ export interface components {
         RoutineResponse: {
             /**
              * Durationminutes
-             * @description How long the routine runs, 1 to 1440 minutes. Required, because a routine is a span rather than a marker: without a duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is a day, because a routine materializes once per local date.
+             * @description How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.
              */
             durationMinutes: number;
             /**
@@ -2574,7 +2807,7 @@ export interface components {
             id: string;
             /**
              * Mindurationminutes
-             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. Unstated on creation it equals the target duration, which makes the routine inelastic, and a routine whose floor equals its target is never offered as a reduction.
+             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction.
              */
             minDurationMinutes: number;
             /**
@@ -2600,6 +2833,19 @@ export interface components {
         RoutinesResponse: {
             /** Routines */
             routines: components["schemas"]["RoutineResponse"][];
+        };
+        /**
+         * ScopeDisclosureResponse
+         * @description One scope syncr requests, and what granting it lets syncr do.
+         */
+        ScopeDisclosureResponse: {
+            /** Scope */
+            scope: string;
+            /**
+             * Statement
+             * @description What this scope lets syncr do, in the user's terms rather than Google's.
+             */
+            statement: string;
         };
         /**
          * SessionResponse
@@ -2778,6 +3024,12 @@ export interface components {
          *     nobody has polled.
          */
         SyncStateResponse: {
+            /**
+             * Attempts
+             * @description How many calls the last attempt made. More than one means the provider rate-limited the read and syncr backed off, which is a different story from a slow feed.
+             * @default 0
+             */
+            attempts: number;
             /** Eventsread */
             eventsRead: number;
             /** Lastattemptat */
@@ -2793,6 +3045,11 @@ export interface components {
             rejectedCount: number;
             /** Rejections */
             rejections: components["schemas"]["RejectedEventResponse"][];
+            /**
+             * Resyncreason
+             * @description Why the last successful read was a full one while an incremental cursor was held. Null when the read was incremental, or when there was no cursor to be incremental against.
+             */
+            resyncReason?: string | null;
         };
         /**
          * TaskCreateRequest
@@ -2818,7 +3075,7 @@ export interface components {
             estimateMinutes: number;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both.
+             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes?: number | null;
             /**
@@ -2868,7 +3125,7 @@ export interface components {
             estimateMinutes?: number | null;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both.
+             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes?: number | null;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
@@ -2927,7 +3184,7 @@ export interface components {
             id: string;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both.
+             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes: number;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
@@ -3279,6 +3536,36 @@ export interface components {
             wednesday: string;
         };
         WireDecimal: number;
+        /**
+         * WriteTargetResponse
+         * @description What the one calendar syncr writes to is, and what syncr does to it.
+         *
+         *     Present only on the source holding the role. It exists so the destructive behaviour is part of
+         *     the READ MODEL rather than copy on one screen: whatever renders the write target renders this,
+         *     and a second surface cannot forget to say it.
+         */
+        WriteTargetResponse: {
+            /**
+             * Calendarname
+             * @description The calendar syncr writes the plan to.
+             */
+            calendarName: string;
+            /**
+             * Horizondays
+             * @description How many days ahead the plan is written, and past which nothing is removed.
+             */
+            horizonDays: number;
+            /**
+             * Reconciliation
+             * @description How syncr makes the calendar match the plan. Always 'destructive'.
+             */
+            reconciliation: string;
+            /**
+             * Statement
+             * @description The destructive behaviour, in words a reader can act on.
+             */
+            statement: string;
+        };
         _DebtCap: number;
         _Duration: number;
         _Title: string;
@@ -4642,6 +4929,203 @@ export interface operations {
             };
         };
     };
+    complete_google_connect_api_v1_calendar_sources_google_callback_get: {
+        parameters: {
+            query?: {
+                code?: string | null;
+                state?: string | null;
+                error?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Dependency unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    begin_google_connect_api_v1_calendar_sources_google_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleConsentResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Dependency unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_google_connection_api_v1_calendar_sources_google_connection_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleConnectionResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Dependency unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     read_calendar_source_api_v1_calendar_sources__source_id__get: {
         parameters: {
             query?: never;
@@ -4867,6 +5351,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalendarSourceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_remote_calendars_api_v1_calendar_sources__source_id__remote_calendars_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteCalendarsResponse"];
                 };
             };
             /** @description Authentication required */
