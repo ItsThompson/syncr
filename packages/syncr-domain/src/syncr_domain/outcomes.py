@@ -35,6 +35,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
+from syncr_domain.errors import DomainError
+from syncr_domain.identity import index_occurrence_key
 from syncr_domain.intervals import as_instant
 
 if TYPE_CHECKING:
@@ -72,6 +74,11 @@ class HabitOutcome:
     at-most-one-row-per-occurrence precondition on ``HabitOutcomeReader.read`` is stated over. A
     projection that dropped it could not be built from a binding either.
 
+    The key is checked against the one derivation of it rather than described a second time, so a
+    row spelling an index some other way is refused here instead of silently matching no block.
+    Nothing compares an outcome to a block yet, which is exactly why the two spellings have to be
+    held together now: the first comparison would otherwise never fire and report nothing.
+
     Both instants are normalized on construction, so a naive datetime is refused rather than
     compared against a wall clock later. Two of those comparing without error is how a
     transition-week defect becomes invisible, which is the reason ``as_instant`` exists.
@@ -84,6 +91,7 @@ class HabitOutcome:
     confirmed_at: Instant | None
 
     def __post_init__(self) -> None:
+        _require_an_occurrence_key(self.occurrence_key)
         object.__setattr__(self, "occurred_at", as_instant(self.occurred_at))
         if self.confirmed_at is not None:
             object.__setattr__(self, "confirmed_at", as_instant(self.confirmed_at))
@@ -102,3 +110,31 @@ class HabitOutcome:
     def is_confirmed_miss(self) -> bool:
         """Whether this row says the content was not done, on a day the user confirmed."""
         return self.is_confirmed and self.state is MISS_STATE
+
+
+class OutcomeError(DomainError):
+    """An outcome names an occurrence no habit key could name."""
+
+
+def _require_an_occurrence_key(occurrence_key: str) -> None:
+    """Refuse a key the one derivation of a habit occurrence key would not produce.
+
+    Checked by re-deriving rather than by describing the shape again: an index is padded in
+    exactly one place, :func:`syncr_domain.identity.index_occurrence_key`, and a second
+    description here is what would let the two drift. ``'\u0662'`` is the case that makes this
+    worth a guard: ``int()`` reads it as 2, so a hand-written check accepts a key no block can
+    hold, and the match between an outcome and a block then never fires.
+    """
+    try:
+        index = int(occurrence_key)
+    except ValueError as error:
+        raise OutcomeError(_not_an_occurrence(occurrence_key)) from error
+    if index < 0 or index_occurrence_key(index) != occurrence_key:
+        raise OutcomeError(_not_an_occurrence(occurrence_key))
+
+
+def _not_an_occurrence(occurrence_key: str) -> str:
+    return (
+        f"an outcome names a habit occurrence by its zero-padded index and {occurrence_key!r} is "
+        "not one: a block carrying that key cannot exist, so the row would match nothing"
+    )

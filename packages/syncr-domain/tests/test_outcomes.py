@@ -13,14 +13,17 @@ from uuid import uuid4
 
 import pytest
 
+from syncr_domain.identity import BindingRef, index_occurrence_key
 from syncr_domain.outcomes import (
     COMPLETION_STATES,
     MISS_STATE,
     HabitOutcome,
+    OutcomeError,
     OutcomeState,
 )
 
 AT = datetime(2026, 8, 3, 6, 0, tzinfo=UTC)
+HABIT = uuid4()
 
 
 def outcome(state: OutcomeState, *, confirmed: bool = True) -> HabitOutcome:
@@ -30,6 +33,16 @@ def outcome(state: OutcomeState, *, confirmed: bool = True) -> HabitOutcome:
         state=state,
         occurred_at=AT,
         confirmed_at=AT + timedelta(hours=12) if confirmed else None,
+    )
+
+
+def outcome_keyed(occurrence_key: str) -> HabitOutcome:
+    return HabitOutcome(
+        habit_id=HABIT,
+        occurrence_key=occurrence_key,
+        state=OutcomeState.COMPLETED,
+        occurred_at=AT,
+        confirmed_at=AT,
     )
 
 
@@ -89,3 +102,50 @@ def test_a_presumed_row_reads_as_a_completion_only_once_the_day_is_confirmed() -
     """`presumed` is the default and it teaches nothing until the user confirms the day."""
     assert not outcome(OutcomeState.PRESUMED, confirmed=False).is_confirmed_completion
     assert outcome(OutcomeState.PRESUMED).is_confirmed_completion
+
+
+class TestTheOccurrenceKeyIsTheOneKeyABlockCouldCarry:
+    """One derivation of a habit occurrence key exists, and this row is checked against it.
+
+    This is a real defect class rather than tidiness: an outcome is matched to a block by its
+    binding, so a key no block can carry means the match never fires and reports nothing. Nothing
+    performs that match yet, which is why the two spellings are held together now rather than
+    after the first silent miss.
+    """
+
+    @pytest.mark.parametrize("index", [0, 1, 12, 200])
+    def test_the_derivation_of_a_key_is_what_a_row_may_hold(self, index: int) -> None:
+        row = outcome_keyed(index_occurrence_key(index))
+
+        assert row.occurrence_key == index_occurrence_key(index)
+
+    @pytest.mark.parametrize(
+        "key",
+        ["2", "٢", "1_0", " 2", "-1", "", "2026-02-09", "out"],
+        ids=[
+            "an unpadded index",
+            "an Arabic-Indic digit",
+            "an underscore separator",
+            "a leading space",
+            "a negative index",
+            "no key at all",
+            "a date",
+            "a transit leg",
+        ],
+    )
+    def test_a_key_no_block_could_carry_is_refused(self, key: str) -> None:
+        """``int('٢')`` is 2, so a check that only parsed would accept a key nothing produces."""
+        with pytest.raises(OutcomeError, match="zero-padded index"):
+            outcome_keyed(key)
+
+    def test_the_two_statements_of_the_key_cannot_disagree(self) -> None:
+        """The pair the reconciliation with the cursor's precondition rests on.
+
+        A row's key and a block's key are now checked by the same derivation, so a key one
+        accepts and the other refuses is not representable.
+        """
+        for index in range(200):
+            derived = index_occurrence_key(index)
+
+            assert outcome_keyed(derived).occurrence_key == derived
+            assert BindingRef.for_habit(HABIT, index=index).occurrence_key == derived

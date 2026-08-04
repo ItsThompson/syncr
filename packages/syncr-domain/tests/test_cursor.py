@@ -36,6 +36,7 @@ from syncr_domain.habits import (
     MissPolicy,
     TimesPerWeek,
 )
+from syncr_domain.identity import index_occurrence_key
 from syncr_domain.intervals import IntervalError
 from syncr_domain.outcomes import COMPLETION_STATES, MISS_STATE, HabitOutcome, OutcomeState
 from syncr_domain.zones import to_instant
@@ -72,7 +73,7 @@ def outcome(
 ) -> HabitOutcome:
     return HabitOutcome(
         habit_id=habit_id,
-        occurrence_key=f"{index:02d}",
+        occurrence_key=index_occurrence_key(index),
         state=state,
         occurred_at=at,
         confirmed_at=at + timedelta(hours=12) if confirmed else None,

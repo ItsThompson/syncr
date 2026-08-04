@@ -40,6 +40,7 @@ from syncr_api.user_settings.records import SettingsRecord
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
+from syncr_domain.identity import index_occurrence_key
 from syncr_domain.outcomes import MISS_STATE, HabitOutcome, OutcomeState
 from syncr_domain.weeks import IsoWeek
 
@@ -186,7 +187,7 @@ def outcome(
     at = NOW - timedelta(days=days_before)
     return HabitOutcome(
         habit_id=habit_id,
-        occurrence_key=f"{index:02d}",
+        occurrence_key=index_occurrence_key(index),
         state=state,
         occurred_at=at,
         confirmed_at=at + timedelta(hours=12) if confirmed else None,
