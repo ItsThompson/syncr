@@ -54,6 +54,7 @@ from syncr_domain.identity import NO_OCCURRENCE, BindingKind, TransitLeg, date_o
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.routines import MAX_DURATION_MINUTES
+from syncr_solver.inputs import WeekAdjustment
 from tests.anchor_specifications import (
     ATTRIBUTED_EXAM,
     ATTRIBUTED_INTERVIEW,
@@ -280,10 +281,14 @@ async def test_a_shadow_crossing_the_weeks_edge_is_clipped_to_the_week_being_ass
     ).assemble(WEEK, NOW)
 
     leaving = next(
-        block for block in before.shadow_blocks if block.binding.occurrence_key == TransitLeg.OUT
+        block
+        for block in before.shadow_blocks
+        if block.binding.occurrence_key == TransitLeg.OUT.value
     )
     arriving = next(
-        block for block in after.shadow_blocks if block.binding.occurrence_key == TransitLeg.OUT
+        block
+        for block in after.shadow_blocks
+        if block.binding.occurrence_key == TransitLeg.OUT.value
     )
     assert leaving.interval.total_minutes() == 10
     assert arriving.interval.total_minutes() == 20
@@ -302,7 +307,9 @@ async def test_a_shadow_abutting_the_weeks_end_holds_no_minute_of_it_and_is_drop
 
     inputs = await assemble_before(types=[lecture_type], anchors=[lecture])
 
-    assert [block.binding.occurrence_key for block in inputs.shadow_blocks] == [TransitLeg.OUT]
+    assert [block.binding.occurrence_key for block in inputs.shadow_blocks] == [
+        TransitLeg.OUT.value
+    ]
     assert inputs.shadow_blocks[0].interval == Interval(on_sunday(22, 30), on_sunday(23, 0))
     assert inputs.anchors[0].interval.end == inputs.span.end
 
@@ -453,7 +460,10 @@ async def test_a_commitment_whose_type_this_read_did_not_see_is_busy_time_rather
         for line in (json.loads(line) for line in captured_log.getvalue().splitlines() if line)
         if line["event"] == "plans.assembly.anchor_type_unread"
     ]
-    assert [(line["anchors"], line["types"], line["read"]) for line in reported] == [(1, 0, 1)]
+    assert [
+        (line["anchors_with_an_unread_type"], line["anchors_read"], line["types_read"])
+        for line in reported
+    ] == [(1, 1, 0)]
 
 
 async def test_a_collision_the_read_does_not_cover_is_not_resolved_in_this_week() -> None:
@@ -638,6 +648,33 @@ async def test_a_reduction_approved_for_the_week_before_shortens_the_night_this_
     ).assemble(WEEK, NOW)
 
     assert inputs.frame_overhang[0].total_minutes() == 6 * MINUTES_PER_HOUR
+
+
+async def test_a_candidate_concession_cannot_shorten_the_night_this_week_inherits() -> None:
+    # A candidate is a decision about the week being ASSEMBLED, and the inherited occurrence belongs
+    # to the week before it, so a tradeoff request must not report time freed in a week its
+    # concession is not about. Nothing but the argument protects this: the candidate is appended to
+    # the concession list verbatim rather than filtered by the week's own dates, so a candidate
+    # reduction keyed to the preceding week's Sunday would shorten the inherited night if it were
+    # folded there.
+    sleep = a_routine(
+        target_time=time(23, 0), duration_minutes=8 * MINUTES_PER_HOUR, min_duration_minutes=300
+    )
+    candidate = WeekAdjustment(
+        adjustment_id=uuid4(),
+        kind=AdjustmentKind.REDUCE_ROUTINE,
+        target_id=sleep.id,
+        reductions={SUNDAY: 60},
+    )
+
+    inputs = await an_assembler(
+        settings=FakeSettings(LONDON), routines=FakeRoutines([sleep])
+    ).assemble(WEEK, NOW, candidate)
+
+    assert inputs.frame_overhang[0].total_minutes() == 7 * MINUTES_PER_HOUR
+    # The candidate still reaches the week it IS about, so this is not a test about a concession
+    # being dropped: it is folded here and nowhere else.
+    assert [entry.adjustment_id for entry in inputs.adjustments] == [candidate.adjustment_id]
 
 
 async def test_a_period_the_week_before_declared_suppresses_the_night_it_would_have_carried() -> (
