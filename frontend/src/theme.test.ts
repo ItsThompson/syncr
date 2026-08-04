@@ -27,6 +27,10 @@ const NON_COLOR_TOKENS = new Set([
   "--hatch-dot",
   "--hatch-dot-size",
   "--hatch-mix",
+  /* The texture's ink is `currentColor`, so it is a colour the ELEMENT supplies rather than one the layer
+   * names. A `bg-hatch-ink` utility would compile to `background-color: currentColor`, which is nothing a
+   * component should be able to write. */
+  "--hatch-ink",
 ]);
 
 let themeSource = "";
