@@ -27,6 +27,14 @@ resizes a routine: a span arrives at the solver already resolved, and the frame 
 the search space rather than competing inside it. The effective duration of one
 occurrence, and its clamp to the minimum, are the week assembler's (ticket 25).
 
+## A target time is wall time, at minute resolution
+
+The target names a time of day and nothing else. A value carrying an offset is refused, and
+so is one carrying seconds: an offset would be dropped by any store whose column has no
+zone, leaving the frame an hour out with nothing to say so, and every duration here is a
+count of minutes, so a span starting mid-minute could not be one of them. The rule is on the
+span rather than only at an HTTP boundary, so it holds for every writer.
+
 ## A duration is elapsed minutes, so a transition does not change it
 
 :meth:`RoutineSpan.occurrence_on` resolves the target time against the zone active on
@@ -68,8 +76,14 @@ if TYPE_CHECKING:
 
 # A routine is a span, so its shortest legal duration is one minute of it.
 MIN_DURATION_MINUTES: Final = 1
-# A routine materializes once per local date, so a span longer than a day would overlap its
-# own next occurrence.
+# A routine names a time of day, so its span is capped at the day it names. The cap does NOT
+# keep an occurrence clear of its own next one: a spring-forward local day is 23 hours, so on
+# `Europe/London` 2026-03-28 a 1440-minute span overlaps the next date's occurrence by an hour
+# and 1381 minutes already overlaps by a minute. No positive cap can deliver that property
+# either, because a date the zone skips entirely gives two dates the same instant: on
+# `Pacific/Apia` the 2011-12-30 and 2011-12-31 occurrences of one routine are the same
+# interval at any duration. Self-overlap is therefore a layout question, and the week
+# assembler owns it.
 MAX_DURATION_MINUTES: Final = 24 * 60
 # A band moves the target either way, so half a day is the point past which the target time
 # says nothing about when the routine happens.
@@ -84,6 +98,7 @@ class SpanField(StrEnum):
     somewhere else that a fourth field would have to be added to.
     """
 
+    TARGET_TIME = "target_time"
     DURATION = "duration_minutes"
     MINIMUM = "min_duration_minutes"
     FLEX_BAND = "flex_band_minutes"
@@ -112,6 +127,19 @@ class RoutineSpan:
     flex_band_minutes: int
 
     def __post_init__(self) -> None:
+        if self.target_time.tzinfo is not None:
+            raise RoutineError(
+                SpanField.TARGET_TIME,
+                f"a target time is wall time and names no zone, got {self.target_time!r}. "
+                "The zone comes from the day the routine materializes on",
+            )
+        if self.target_time.second or self.target_time.microsecond:
+            raise RoutineError(
+                SpanField.TARGET_TIME,
+                f"a target time is minute-resolution, got {self.target_time!r}. Every "
+                "duration here is a count of minutes, so a span starting mid-minute could "
+                "not be one of them",
+            )
         if not MIN_DURATION_MINUTES <= self.duration_minutes <= MAX_DURATION_MINUTES:
             raise RoutineError(
                 SpanField.DURATION,

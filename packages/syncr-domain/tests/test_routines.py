@@ -43,9 +43,13 @@ TOKYO = "Asia/Tokyo"
 # Samoa moved west of the date line and skipped 2011-12-30 entirely: a local date with no
 # instants at all.
 APIA = "Pacific/Apia"
+# Lord Howe Island shifts by thirty minutes rather than an hour, so it is where a rule that
+# assumed an hour-long gap would show.
+LORD_HOWE = "Australia/Lord_Howe"
 
 SPRING_FORWARD = date(2026, 3, 29)  # 01:00 GMT jumps to 02:00 BST
 FALL_BACK = date(2026, 10, 25)  # 02:00 BST repeats as 01:00 GMT
+LORD_HOWE_SPRING_FORWARD = date(2026, 10, 4)  # 02:00 jumps to 02:30
 
 SLEEP_TARGET = time(23, 0)
 SLEEP_MINUTES = 8 * 60
@@ -206,12 +210,34 @@ def test_the_offset_is_read_for_the_date_rather_than_taken_as_fixed() -> None:
 
 
 def test_a_target_time_carrying_a_zone_is_refused() -> None:
-    # A wall time names no zone. One that carries an offset would be stored as a wall time
-    # with the offset dropped, which is a frame silently placed in the wrong hour.
-    zoned = RoutineSpan(time(5, 0, tzinfo=UTC), 30, 30, 0)
+    # A wall time names no zone. One that carries an offset would be stored as a wall time with
+    # the offset dropped, which is a frame silently placed in the wrong hour. Refused where the
+    # span is built, so no writer can get one in, and refused as a RoutineError rather than
+    # late inside `occurrence_on`, where only a ZoneError would name it.
+    with pytest.raises(RoutineError, match="names no zone") as refused:
+        RoutineSpan(time(5, 0, tzinfo=UTC), 30, 30, 0)
 
-    with pytest.raises(ZoneError, match="carries a zone"):
-        zoned.occurrence_on(date(2026, 2, 10), LONDON)
+    assert refused.value.field is SpanField.TARGET_TIME
+
+
+@pytest.mark.parametrize(
+    "target",
+    [time(5, 0, 30), time(5, 0, 0, 250000), time(5, 0, 30, 1)],
+    ids=["a second", "a microsecond", "both"],
+)
+def test_a_target_time_below_minute_resolution_is_refused(target: time) -> None:
+    # Every duration here is a count of minutes, so a span starting mid-minute could not be one
+    # of them: `total_minutes` truncates, and the frame would be short by the remainder.
+    with pytest.raises(RoutineError, match="minute-resolution") as refused:
+        RoutineSpan(target, 30, 30, 0)
+
+    assert refused.value.field is SpanField.TARGET_TIME
+
+
+def test_a_target_time_on_any_whole_minute_is_accepted() -> None:
+    # The control for both refusals: they must distinguish rather than refuse a time.
+    for target in (time(0, 0), time(5, 7), time(23, 59)):
+        assert RoutineSpan(target, 30, 30, 0).target_time == target
 
 
 def test_a_datetime_is_not_a_date_to_resolve_against() -> None:
@@ -269,6 +295,37 @@ def test_a_night_containing_a_fall_back_keeps_its_eight_hours() -> None:
     assert local(night.end, LONDON).time() != time(7, 0)
 
 
+def test_the_duration_cap_does_not_keep_an_occurrence_clear_of_its_own_next_one() -> None:
+    # The cap is a cap on the day a routine names, and nothing more. A spring-forward local day
+    # is 23 hours, so the longest legal span overlaps the next date's occurrence, and no smaller
+    # positive cap fixes it: a date the zone skips gives two dates one interval at any duration.
+    # Frame overlap belongs to the layout stage rather than to a bound here, and these are the
+    # figures it has to answer for.
+    eve = date(2026, 3, 28)
+    tomorrow = eve + timedelta(days=1)
+
+    longest = RoutineSpan(SLEEP_TARGET, MAX_DURATION_MINUTES, 1, 0)
+    assert longest.occurrence_on(eve, LONDON).overlaps(longest.occurrence_on(tomorrow, LONDON))
+    assert longest.occurrence_on(eve, LONDON).end - longest.occurrence_on(
+        tomorrow, LONDON
+    ).start == timedelta(hours=1)
+
+    # One minute over the local day is enough, and one minute under is not: 23 hours is the
+    # boundary, not 24.
+    over = RoutineSpan(SLEEP_TARGET, 23 * 60 + 1, 1, 0)
+    abutting = RoutineSpan(SLEEP_TARGET, 23 * 60, 1, 0)
+    assert over.occurrence_on(eve, LONDON).overlaps(over.occurrence_on(tomorrow, LONDON))
+    assert not abutting.occurrence_on(eve, LONDON).overlaps(
+        abutting.occurrence_on(tomorrow, LONDON)
+    )
+
+    # And on the date Samoa skipped, the two dates are one interval however short the routine is.
+    minimal = RoutineSpan(time(5, 0), MIN_DURATION_MINUTES, 1, 0)
+    assert minimal.occurrence_on(date(2011, 12, 30), APIA) == minimal.occurrence_on(
+        date(2011, 12, 31), APIA
+    )
+
+
 def test_a_target_time_inside_a_spring_forward_gap_shifts_forward() -> None:
     # 01:30 does not exist on 2026-03-29: 01:00 GMT jumps straight to 02:00 BST. The
     # routine takes the instant 01:30 would have been, which reads as 02:30 local, so the
@@ -289,6 +346,17 @@ def test_two_target_times_straddling_a_gap_resolve_to_one_instant() -> None:
     after = RoutineSpan(time(2, 30), 60, 60, 0).occurrence_on(SPRING_FORWARD, LONDON)
 
     assert inside.start == after.start
+
+
+def test_a_gap_of_half_an_hour_collides_the_same_way_a_whole_hour_does() -> None:
+    # The collision is a property of the gap, not of an hour. Lord Howe Island shifts by thirty
+    # minutes, so 02:00 lands on 02:30 and meets the routine that targets 02:30, which is the
+    # same one-instant collision an hour-long gap produces.
+    inside = RoutineSpan(time(2, 0), 60, 60, 0).occurrence_on(LORD_HOWE_SPRING_FORWARD, LORD_HOWE)
+    after = RoutineSpan(time(2, 30), 60, 60, 0).occurrence_on(LORD_HOWE_SPRING_FORWARD, LORD_HOWE)
+
+    assert inside.start == after.start
+    assert local(inside.start, LORD_HOWE).time() == time(2, 30)
 
 
 def test_a_target_time_that_happens_twice_takes_the_first_occurrence() -> None:
