@@ -1,0 +1,310 @@
+/* The day shapes tab: the list, the entries, and the form that declares one.
+ *
+ * The form's contract is the body it submits, so that is what these assert. The pairing rule is asserted from
+ * both sides: a concrete entry cannot be declared without a binding, and a slot's body carries no binding at
+ * all even though the same control changed nothing else. */
+
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+
+import { DayShapesTab } from "../tabs/DayShapesTab";
+import { withRouter } from "./render";
+import { writeDouble } from "./writeDouble";
+import {
+  AREA_CAREER,
+  ROUTINE_WAKE,
+  SHAPE_WEEKDAY,
+  buildAreas,
+  buildDayType,
+  buildEntry,
+  buildHabit,
+  buildRoutine,
+  buildShape,
+  buildShapeSummary,
+} from "./fixtures";
+import type { EntryBody } from "../../../api/hooks/useTemplates";
+import type { Problem } from "../../../contract";
+
+const problem: Problem = {
+  type: "syncr:validation-failed",
+  title: "Validation failed",
+  status: 422,
+  detail: "A target time off the quarter hour is not a placement. Nothing was changed.",
+  errors: [{ field: "targetTime", message: "must land on a 15-minute step of the grid" }],
+};
+
+function renderTab(overrides: Partial<Parameters<typeof DayShapesTab>[0]> = {}) {
+  const declaration = writeDouble<EntryBody>();
+  const result = render(
+    withRouter(
+      <DayShapesTab
+        shapes={{ status: "ready", data: [buildShapeSummary()] }}
+        dayTypes={{ status: "ready", data: [buildDayType()] }}
+        areas={{ status: "ready", data: buildAreas() }}
+        routines={{ status: "ready", data: [buildRoutine()] }}
+        habits={{ status: "ready", data: [buildHabit()] }}
+        shape={{ status: "ready", data: buildShape() }}
+        selectedId={SHAPE_WEEKDAY}
+        onSelect={() => {}}
+        entryWrite={declaration.write}
+        {...overrides}
+      />,
+    ),
+  );
+  return { declaration, ...result };
+}
+
+/** Chooses an option from a select named by its row's label. */
+async function choose(label: string, option: string) {
+  await userEvent.click(screen.getByRole("combobox", { name: new RegExp(label) }));
+  await userEvent.click(screen.getByRole("option", { name: option }));
+}
+
+describe("the day shapes list", () => {
+  it("states each shape's entry count and the day type it shapes", () => {
+    renderTab();
+
+    const list = screen.getByRole("table", { name: "Day shapes" });
+    expect(list).toHaveTextContent("Weekday");
+    expect(list).toHaveTextContent("2");
+  });
+
+  it("says so when a shape names a day type this tenant no longer has", () => {
+    renderTab({ dayTypes: { status: "ready", data: [] } });
+
+    expect(screen.getByRole("table", { name: "Day shapes" })).toHaveTextContent(
+      "a day type you no longer have",
+    );
+  });
+
+  it("reports the selected shape to its caller", async () => {
+    const chosen: string[] = [];
+    renderTab({ onSelect: (id) => chosen.push(id) });
+
+    await userEvent.click(screen.getByRole("button", { name: "Weekday" }));
+
+    expect(chosen).toEqual([SHAPE_WEEKDAY]);
+  });
+});
+
+describe("the selected shape's entries", () => {
+  it("renders the sheet's columns in the sheet's order", () => {
+    renderTab();
+
+    const table = screen.getByRole("table", { name: /entries this day shape holds/ });
+    const headers = within(table)
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent);
+
+    expect(headers).toEqual(["Target", "Kind", "Entry", "Area", "Duration", "Flex"]);
+  });
+
+  it("names the routine a concrete entry binds, and the Area of a slot", () => {
+    renderTab();
+
+    const table = screen.getByRole("table", { name: /entries this day shape holds/ });
+    expect(table).toHaveTextContent("Wake Up");
+    expect(table).toHaveTextContent("Career");
+  });
+
+  it("says a slot's content is bound at plan time rather than leaving the cell empty", () => {
+    renderTab();
+
+    expect(screen.getByRole("table", { name: /entries/ })).toHaveTextContent("bound at plan time");
+  });
+
+  it("reads a concrete entry with no Area as the frame, because a routine carries no Area", () => {
+    renderTab();
+
+    expect(screen.getByRole("table", { name: /entries/ })).toHaveTextContent("frame");
+  });
+
+  /* The api does not check that a binding names a row that exists, so this cell is reachable. An identifier or
+   * an empty cell would both read as a rendering fault rather than as the missing row it is. */
+  it("says so when an entry binds content this tenant no longer has", () => {
+    renderTab({ routines: { status: "ready", data: [] } });
+
+    expect(screen.getByRole("table", { name: /entries/ })).toHaveTextContent(
+      "content you no longer have",
+    );
+  });
+
+  it("renders a flex band under one step as fixed, because it permits no shift", () => {
+    const shape = buildShape({ entries: [buildEntry({ flexBandMinutes: 5 })] });
+    renderTab({ shape: { status: "ready", data: shape } });
+
+    /* Read as a CELL, not as the table's text: the footer's own sentence carries the word `fixed`, so an
+     * assertion against the table passes whatever the cell says. */
+    const table = screen.getByRole("table", { name: /entries/ });
+    expect(within(table).getByText("fixed")).toBeInTheDocument();
+  });
+});
+
+describe("declaring a concrete entry", () => {
+  it("submits the binding it names and no Area", async () => {
+    const { declaration } = renderTab();
+
+    await choose("Entry", "Wake Up \u00B7 routine");
+    await userEvent.click(screen.getByRole("button", { name: "Declare entry" }));
+
+    expect(declaration.bodies).toEqual([
+      {
+        kind: "concrete",
+        targetTime: "07:00",
+        durationMinutes: 60,
+        flexBandMinutes: 0,
+        bindingTarget: "routine",
+        bindingRef: ROUTINE_WAKE,
+      },
+    ]);
+  });
+
+  it("carries a stepped duration and flex band into the body", async () => {
+    const { declaration } = renderTab();
+
+    await choose("Entry", "Wake Up \u00B7 routine");
+    await userEvent.click(screen.getAllByRole("button", { name: "increase 15 minutes" })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: "increase 15 minutes" })[1]);
+    await userEvent.click(screen.getByRole("button", { name: "Declare entry" }));
+
+    expect(declaration.bodies[0]).toMatchObject({ durationMinutes: 75, flexBandMinutes: 15 });
+  });
+
+  it("snaps a typed target time to the quarter hour on commit", async () => {
+    const { declaration } = renderTab();
+
+    await choose("Entry", "Wake Up \u00B7 routine");
+    const target = screen.getByLabelText(/Target/);
+    await userEvent.clear(target);
+    await userEvent.type(target, "07:07");
+    await userEvent.tab();
+    await userEvent.click(screen.getByRole("button", { name: "Declare entry" }));
+
+    expect(declaration.bodies[0].targetTime).toBe("07:00");
+  });
+
+  it("offers habits as well as routines, because a concrete entry may name either", async () => {
+    renderTab();
+
+    await userEvent.click(screen.getByRole("combobox", { name: /Entry/ }));
+
+    expect(screen.getByRole("option", { name: "Gym \u00B7 habit" })).toBeInTheDocument();
+  });
+
+  /* The form states the rule rather than discovering it: with no binding chosen there is no body to send, so the
+   * control is inert and the row says which member to choose. */
+  it("cannot be submitted with no binding, and names the member to choose", async () => {
+    const { declaration } = renderTab();
+    const declare = screen.getByRole("button", { name: "Declare entry" });
+
+    expect(declare).toBeDisabled();
+    await userEvent.click(declare);
+
+    expect(declaration.bodies).toEqual([]);
+    expect(screen.getByText(/names the routine or habit that happens/)).toBeInTheDocument();
+  });
+
+  it("offers no Area control at all, so an Area-only body cannot be assembled", () => {
+    renderTab();
+
+    expect(screen.queryByRole("combobox", { name: /Area/ })).not.toBeInTheDocument();
+  });
+
+  /* The words are the control: a group named only by an `aria-label` gives a sighted reader no question. */
+  it("draws the kind question as well as announcing it", () => {
+    renderTab();
+
+    expect(screen.getAllByText("Kind").filter((element) => element.tagName === "P")).toHaveLength(
+      1,
+    );
+  });
+});
+
+describe("declaring a slot", () => {
+  it("submits the Area it reserves and no binding", async () => {
+    const { declaration } = renderTab();
+
+    await userEvent.click(screen.getByRole("radio", { name: /^slot/ }));
+    await choose("Area", "Career");
+    await userEvent.click(screen.getByRole("button", { name: "Declare entry" }));
+
+    expect(declaration.bodies).toEqual([
+      {
+        kind: "slot",
+        targetTime: "07:00",
+        durationMinutes: 60,
+        flexBandMinutes: 0,
+        areaId: AREA_CAREER,
+      },
+    ]);
+  });
+
+  it("offers no binding control, because a slot has nowhere to put one", async () => {
+    renderTab();
+
+    await userEvent.click(screen.getByRole("radio", { name: /^slot/ }));
+
+    expect(screen.queryByRole("combobox", { name: /Entry/ })).not.toBeInTheDocument();
+  });
+
+  it("cannot be submitted with no Area, and names the member to choose", async () => {
+    const { declaration } = renderTab();
+
+    await userEvent.click(screen.getByRole("radio", { name: /^slot/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Declare entry" }));
+
+    expect(declaration.bodies).toEqual([]);
+    expect(screen.getByText(/reserves time for one Area/)).toBeInTheDocument();
+  });
+});
+
+describe("a refused declaration", () => {
+  it("renders the api's sentence and the member it named", () => {
+    const declaration = writeDouble<EntryBody>(problem);
+    renderTab({ entryWrite: declaration.write });
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "targetTime must land on a 15-minute step",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Nothing was changed");
+    expect(screen.getByText("must land on a 15-minute step of the grid")).toBeInTheDocument();
+  });
+
+  it("says what still works, so a refusal is not read as an outage", () => {
+    const declaration = writeDouble<EntryBody>(problem);
+    renderTab({ entryWrite: declaration.write });
+
+    expect(screen.getByRole("status")).toHaveTextContent("every entry this shape already holds");
+  });
+});
+
+describe("the tab's three static states", () => {
+  it("states what is outstanding while a read is in flight, rather than a bare surface", () => {
+    renderTab({ shapes: { status: "loading" } });
+
+    const pending = screen.getByRole("status");
+    expect(pending).toHaveTextContent("Reading your day shapes");
+    expect(pending).toHaveTextContent("The list, the selected shape's entries");
+  });
+
+  it("names the read that failed and keeps the api's own sentence", () => {
+    renderTab({ areas: { status: "error", problem } });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("The Areas could not be read");
+    expect(screen.getByRole("alert")).toHaveTextContent("A target time off the quarter hour");
+  });
+
+  it("points a tenant with no shape at setup, which is where the first one is built", () => {
+    renderTab({ shapes: { status: "ready", data: [] } });
+
+    expect(screen.getByText("No day shape is declared")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to setup" })).toHaveAttribute("href", "/setup");
+  });
+
+  it("says so when a shape is selected that has no entries yet", () => {
+    renderTab({ shape: { status: "ready", data: buildShape({ entries: [] }) } });
+
+    expect(screen.getByRole("table", { name: /entries/ })).toHaveTextContent("0 entries");
+  });
+});
