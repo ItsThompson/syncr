@@ -11,10 +11,12 @@ import { describe, expect, it } from "vitest";
 import type { RequestHandler } from "msw";
 
 import { apiServer } from "../../../testing/apiServer";
-import { jsonHandler, readyz } from "../../../testing/apiStub";
+import { jsonHandler, readyz, recordingHandler } from "../../../testing/apiStub";
 import { renderAt } from "../../../testing/renderRoute";
 import {
   SHAPE_WEEKDAY,
+  TYPE_INTERVIEW,
+  TYPE_LECTURE,
   buildAnchor,
   buildAnchorType,
   buildAreas,
@@ -154,5 +156,42 @@ describe("the templates route", () => {
 
     const table = await screen.findByRole("table", { name: "The declared week pattern" });
     expect(table).toHaveTextContent("none mapped yet");
+  });
+
+  /* The one path only the route can be asked for: a move is computed against the order the rules arrived in,
+   * and the whole order is what goes over the wire, because a partial one would move rules the caller cannot
+   * see. */
+  it("sends the whole evaluation order when a rule is moved", async () => {
+    const order = recordingHandler("put", "/api/v1/anchor-types/order", {
+      status: 200,
+      body: { anchorTypes: [buildLectureType(), buildAnchorType()] },
+    });
+    apiServer.use(order.handler, ...screenHandlers());
+    renderAt("/templates");
+    const strip = await screen.findByRole("tablist", { name: "Templates" });
+
+    await userEvent.click(within(strip).getByRole("tab", { name: /Anchor types/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "evaluate Lecture earlier" }));
+
+    await waitFor(() =>
+      expect(order.bodies).toEqual([{ anchorTypeIds: [TYPE_LECTURE, TYPE_INTERVIEW] }]),
+    );
+  });
+
+  it("sends the same order when a rule is moved the other way, from the other row", async () => {
+    const order = recordingHandler("put", "/api/v1/anchor-types/order", {
+      status: 200,
+      body: { anchorTypes: [buildLectureType(), buildAnchorType()] },
+    });
+    apiServer.use(order.handler, ...screenHandlers());
+    renderAt("/templates");
+    const strip = await screen.findByRole("tablist", { name: "Templates" });
+
+    await userEvent.click(within(strip).getByRole("tab", { name: /Anchor types/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "evaluate Interview later" }));
+
+    await waitFor(() =>
+      expect(order.bodies).toEqual([{ anchorTypeIds: [TYPE_LECTURE, TYPE_INTERVIEW] }]),
+    );
   });
 });
