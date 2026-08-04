@@ -16,8 +16,8 @@ time with no shadow of any kind, and that has to be something a reader can ask r
 something a reader infers from a null type identifier.
 
 **No geometry is here.** Nothing in this module computes a span. What a prep block's interval
-IS belongs to the shadow generator, which reads a specification and an anchor's interval; what
-this module answers is what the type DECLARES.
+IS belongs to :mod:`syncr_api.anchors.shadows`, which reads a specification and an anchor's
+interval; what this module answers is what the type DECLARES.
 """
 
 from __future__ import annotations

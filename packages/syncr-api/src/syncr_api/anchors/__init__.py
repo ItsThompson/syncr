@@ -38,10 +38,12 @@ leg, a return leg, a recovery buffer, and what that recovery forbids. Rules eval
 the first match wins; a user's retype outranks every rule and persists on the series, so a daily
 standup is typed once rather than 250 times.
 
-**No geometry is in this package.** Nothing here computes a span. What a prep block's interval IS
-belongs to the shadow generator, which reads a specification and an anchor's interval. What this
-package owns is the declaration, the boundary rules the declaration has to satisfy, and the
-reconciliation that decides which anchors exist and which type each one carries.
+**Geometry is one module, and it is the only one.** ``shadows.py`` computes the spans, reading a
+specification and an anchor's interval and nothing else. No other module here computes one: what
+they own is the declaration, the boundary rules the declaration has to satisfy, and the
+reconciliation that decides which anchors exist and which type each one carries. The spans it
+produces are unclipped, because which of them fall inside a week is a question only the caller
+holding that week's span can answer.
 
 Import layout, so a reader knows where to look:
 
@@ -53,6 +55,9 @@ Import layout, so a reader knows where to look:
 | ``identity.py`` | bounding a publisher's values without merging two commitments |
 | ``matching.py`` | first match wins, and the series override that outranks it |
 | ``rules.py`` | what a declaration must satisfy, and the reason each rejection states |
+| ``shadows.py`` | the arithmetic: one anchor plus its type into blocks and windows |
+| ``shadow_products.py`` | what that arithmetic produces, and the questions asked of it |
+| ``shadow_collisions.py`` | which block survives when two commitments cast over each other |
 | ``repository.py`` | scoped persistence for anchors, and the only writer of a fact |
 | ``type_repository.py`` | scoped persistence for types, and rule order's lock |
 | ``reconcile.py`` | one feed's events into the anchors a tenant holds |
@@ -62,5 +67,7 @@ Import layout, so a reader knows where to look:
 | ``queries.py`` | reading a bounded span and an opaque page cursor |
 | ``schemas.py`` | the wire shapes |
 | ``service.py`` | authorization, ordering, and the solve-input bump |
+| ``injection.py`` | the dependencies a route resolves per request |
+| ``wiring.py`` | the router the application mounts |
 | ``api.py`` | the seven routes |
 """
