@@ -9,10 +9,21 @@ server checks.
 
 from __future__ import annotations
 
+import asyncio
+from typing import TYPE_CHECKING
+
 import httpx
 import pytest
 
-from syncr_api.calendars.config import FETCH_TIMEOUT_SECONDS, MAX_FEED_BYTES
+from syncr_api.calendars import feeds
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+from syncr_api.calendars.config import (
+    CURSOR_MAX_LENGTH,
+    FETCH_TIMEOUT_SECONDS,
+    MAX_FEED_BYTES,
+)
 from syncr_api.calendars.feeds import (
     USER_AGENT,
     FeedBody,
@@ -283,3 +294,79 @@ def test_an_address_longer_than_the_column_is_rejected_rather_than_truncated() -
     # Truncating would store an address that fetches something else, or nothing.
     with pytest.raises(ValidationFailed):
         normalize_feed_url(f"https://example.ac.uk/{'x' * 3000}.ics")
+
+
+# --------------------------------------------------------------------------------
+# The cursor a publisher's header can make too long for the column
+# --------------------------------------------------------------------------------
+
+
+def test_an_etag_the_column_cannot_hold_is_dropped_rather_than_stored() -> None:
+    # Stored, it raised at the flush, and the flush covers the WHOLE tenant's sync pass: every
+    # sibling source in that transaction loses the state it had already earned, the duty fails every
+    # tick, and nothing surfaces because the failure belongs to no single source. A CDN emits long
+    # ETags, so this is a publisher's header rather than a hostile one.
+    oversize = '"' + "a" * CURSOR_MAX_LENGTH + '"'
+
+    assert cursor_from({"ETag": oversize}) is None
+
+
+def test_a_last_modified_the_column_cannot_hold_is_dropped_too() -> None:
+    # The same bound on the other validator, so the guard is a property of the cursor rather than of
+    # the header that happened to be measured.
+    assert cursor_from({"Last-Modified": "M" * CURSOR_MAX_LENGTH}) is None
+
+
+def test_a_cursor_at_the_column_width_is_still_stored() -> None:
+    # The boundary is inclusive, so a validator the column can hold is not thrown away: dropping it
+    # costs an unconditional re-read on every poll.
+    exact = "a" * (CURSOR_MAX_LENGTH - len("etag:"))
+
+    assert cursor_from({"ETag": exact}) == f"etag:{exact}"
+    assert len(cursor_from({"ETag": exact}) or "") == CURSOR_MAX_LENGTH
+
+
+async def test_an_oversize_etag_still_yields_a_readable_feed() -> None:
+    # The body is still read and the events still parse: the oversize validator costs the CURSOR,
+    # not the feed. Without this the whole answer was lost at the write.
+    oversize = '"' + "a" * CURSOR_MAX_LENGTH + '"'
+    reader, client = fetcher(responding(headers={"ETag": oversize}))
+
+    async with client:
+        answer = await reader.get(FEED_URL, cursor=None)
+
+    assert isinstance(answer, FeedBody)
+    assert answer.cursor is None
+    assert answer.body.startswith("BEGIN:VCALENDAR")
+
+
+async def test_a_publisher_that_trickles_is_cut_off_at_the_stated_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # httpx's timeout is PER OPERATION, so a chunk every few seconds resets the read clock and the
+    # total read is bounded only by the size cap: measured against the real bound, an 80-second read
+    # against 15 seconds, with the worker tick and its transaction held for all of it.
+    #
+    # The bound is patched DOWN rather than the trickle made longer, because a test that proves a
+    # 15-second deadline by waiting 15 seconds is a test nobody runs.
+    monkeypatch.setattr(feeds, "FETCH_TIMEOUT_SECONDS", 0.2)
+
+    class Trickle(httpx.AsyncBaseTransport):
+        """A publisher that answers, then sends one byte at a time for far longer than the bound."""
+
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            async def body() -> AsyncIterator[bytes]:
+                for _ in range(100):
+                    await asyncio.sleep(0.05)
+                    yield b"X"
+
+            return httpx.Response(200, content=body())
+
+    client = httpx.AsyncClient(transport=Trickle(), timeout=30.0)
+    reader = HttpFeedFetcher(client)
+
+    async with client:
+        answer = await reader.get(FEED_URL, cursor=None)
+
+    assert isinstance(answer, FeedUnreachable)
+    assert "did not answer" in answer.reason

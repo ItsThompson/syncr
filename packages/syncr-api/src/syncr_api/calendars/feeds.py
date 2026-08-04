@@ -25,13 +25,14 @@ timetable over one accented room name, so the fallback is taken and the events a
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Final, Protocol
 
 import httpx
 
-from syncr_api.calendars.config import FETCH_TIMEOUT_SECONDS, MAX_FEED_BYTES
+from syncr_api.calendars.config import CURSOR_MAX_LENGTH, FETCH_TIMEOUT_SECONDS, MAX_FEED_BYTES
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -97,8 +98,13 @@ class HttpFeedFetcher:
 
     async def get(self, url: str, *, cursor: str | None) -> FeedAnswer:
         try:
-            return await self._read(url, cursor)
-        except httpx.TimeoutException:
+            # The client's timeout is PER OPERATION, so a publisher that trickles resets the read
+            # clock on every chunk and the total read is bounded only by the size cap: measured, an
+            # 80-second read against a 15-second timeout. This deadline covers the whole exchange,
+            # which is what the docstring above claims and what a worker tick needs.
+            async with asyncio.timeout(FETCH_TIMEOUT_SECONDS):
+                return await self._read(url, cursor)
+        except (httpx.TimeoutException, TimeoutError):
             return FeedUnreachable(f"the feed did not answer within {FETCH_TIMEOUT_SECONDS:.0f}s")
         except (httpx.HTTPError, httpx.InvalidURL) as error:
             # InvalidURL is NOT an HTTPError, so it is named separately. No value stored today
@@ -152,14 +158,31 @@ def cursor_from(headers: Mapping[str, str]) -> str | None:
 
     ``ETag`` is preferred: it is exact, while ``Last-Modified`` has one-second resolution and
     a feed edited twice in one second would answer ``304`` for a change it had made.
+
+    **An oversize validator is dropped rather than stored.** The column holds
+    ``CURSOR_MAX_LENGTH`` characters, and a longer one raised at the flush, which rolls back the
+    WHOLE tenant's sync pass: every sibling source in that transaction loses the sync state it had
+    already earned, the duty fails on every tick, and nothing surfaces because the failure is not
+    attributable to a source. A CDN emits long ETags, so this is a publisher's header rather than a
+    hostile one.
+
+    Dropping it costs one unconditional re-read of one feed on the next poll, which is the same cost
+    as a publisher that sends no validator at all. That is the cheapest correct answer available
+    here: the alternative, truncating, would send a validator the publisher never issued and invite
+    a ``304`` for a change it had made.
     """
     etag = headers.get(_ETAG_HEADER)
     if etag:
-        return f"{_ETAG_PREFIX}{etag}"
+        return _within_bounds(f"{_ETAG_PREFIX}{etag}")
     modified = headers.get(_MODIFIED_HEADER)
     if modified:
-        return f"{_MODIFIED_PREFIX}{modified}"
+        return _within_bounds(f"{_MODIFIED_PREFIX}{modified}")
     return None
+
+
+def _within_bounds(cursor: str) -> str | None:
+    """``cursor`` if the column can hold it, otherwise nothing at all."""
+    return cursor if len(cursor) <= CURSOR_MAX_LENGTH else None
 
 
 async def _bounded_body(response: httpx.Response) -> str | None:
