@@ -15,10 +15,12 @@ answer is a delta: "these entries changed, everything else is as you last saw it
 reconciler as though it were the calendar would delete every anchor the provider did not happen to
 mention, and applying it as a delta is a second reconciliation path with its own removal rule. So an
 incremental read that reports nothing changed is answered exactly as an ICS ``304`` is, and one that
-reports any change is followed by a full read of the horizon, whose events ARE the calendar. What
-the token buys is the poll that costs one small request instead of a fortnight of events, which is
-the saving Google's own guide describes; what it costs is one extra request on a poll that found a
-change. The three attempt kinds the syncer already distinguishes stay three.
+reports any change is followed by a full read of the horizon, whose events ARE the calendar. The
+detector stops on the first page that carries an entry, because ``bool(events)`` is the whole
+question it asks: a delta of ten thousand entries costs one page rather than forty. What the token
+buys is the poll that costs one small request instead of a fortnight of events, which is the saving
+Google's own guide describes; what it costs is one extra request on a poll that found a change. The
+three attempt kinds the syncer already distinguishes stay three.
 
 **The horizon is applied here, not at the provider.** Google refuses ``timeMin`` beside a sync
 token, so the detector read sees the whole calendar and the full read that follows is windowed. A
@@ -161,7 +163,15 @@ class GoogleAdapter:
         so on the source.
         """
         answer = await self._client.list_events(
-            source.external_id, sync_token=held, window=self._horizon
+            source.external_id,
+            sync_token=held,
+            window=self._horizon,
+            # The detector asks WHETHER anything changed, so it stops on the first page that carries
+            # an entry. A delta bigger than the page bound is then a change rather than a read
+            # that fails on a bound while keeping the cursor that produced it, which stranded the
+            # source: the next poll re-paged the same delta, and the provider's own token expiry
+            # was the only escape.
+            stop_at_first_change=True,
         )
         if isinstance(answer, GoogleReadFailed):
             return self._failed(source, answer, at=at, identity=identity)

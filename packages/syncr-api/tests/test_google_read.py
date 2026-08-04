@@ -176,6 +176,71 @@ async def test_a_read_that_never_stops_paginating_is_cut_off_and_says_so() -> No
 
 
 # --------------------------------------------------------------------------------------
+# The detector read
+# --------------------------------------------------------------------------------------
+
+
+async def test_a_detector_read_stops_at_the_first_page_that_carries_a_change() -> None:
+    # The caller only needs to know THAT something changed, so paging the rest is work nobody reads.
+    reader, transport = client(
+        [ok(events_page(event("changed"), page_token="more")), ok(events_page(event("also")))]
+    )
+
+    answer = await reader.list_events(
+        CALENDAR_ID, sync_token=SYNC_TOKEN, window=WINDOW, stop_at_first_change=True
+    )
+
+    assert isinstance(answer, EventsRead)
+    assert len(transport.calls) == 1
+    assert [one.id for one in answer.events] == ["changed"]
+
+
+async def test_a_detector_read_of_a_quiet_calendar_still_pages_to_its_token() -> None:
+    # An empty page carries no change to stop on, so the token on the last page is still collected:
+    # that token is what the next quiet poll spends.
+    reader, transport = client(
+        [ok(events_page(page_token="more")), ok(events_page(sync_token=SYNC_TOKEN))]
+    )
+
+    answer = await reader.list_events(
+        CALENDAR_ID, sync_token=SYNC_TOKEN, window=WINDOW, stop_at_first_change=True
+    )
+
+    assert isinstance(answer, EventsRead)
+    assert answer.events == ()
+    assert answer.sync_token == SYNC_TOKEN
+    assert len(transport.calls) == 2
+
+
+async def test_a_delta_larger_than_the_page_bound_is_a_change_rather_than_a_failure() -> None:
+    # THE bite for the stranding: without stopping early, a delta over 40 pages failed on the page
+    # bound, `recorded_failure` retained the cursor, and every later poll re-paged the same delta
+    # with the provider's own token expiry as the only escape.
+    reader, transport = client([ok(events_page(event("one-of-many"), page_token="always-another"))])
+
+    answer = await reader.list_events(
+        CALENDAR_ID, sync_token=SYNC_TOKEN, window=WINDOW, stop_at_first_change=True
+    )
+
+    assert isinstance(answer, EventsRead)
+    assert len(transport.calls) == 1
+
+
+async def test_a_full_read_pages_to_the_end_even_when_the_first_page_carries_events() -> None:
+    # The flag is the detector's, not the reader's: a full read whose first page had events and
+    # stopped there would report a calendar as holding one page of it.
+    reader, transport = client(
+        [ok(events_page(event("one"), page_token="more")), ok(events_page(event("two")))]
+    )
+
+    answer = await reader.list_events(CALENDAR_ID, sync_token=None, window=WINDOW)
+
+    assert isinstance(answer, EventsRead)
+    assert [one.id for one in answer.events] == ["one", "two"]
+    assert len(transport.calls) == 2
+
+
+# --------------------------------------------------------------------------------------
 # The sync token
 # --------------------------------------------------------------------------------------
 
@@ -347,6 +412,47 @@ def test_a_retry_after_of_zero_is_read_as_zero_rather_than_as_absent() -> None:
     assert stated_retry_after({"Retry-After": "0"}) == 0.0
 
 
+async def test_a_rate_limit_on_a_later_page_gets_the_same_retries_as_the_first() -> None:
+    # The budget is per REQUEST. Shared with pagination, a rate limit on page four got zero retries
+    # while page one got four, which is not what either docstring described.
+    waits: list[float] = []
+    reader, _transport = client(
+        [
+            ok(events_page(event("p1"), page_token="p2")),
+            ok(events_page(event("p2"), page_token="p3")),
+            ok(events_page(event("p3"), page_token="p4")),
+            failed(429, error_body("rateLimitExceeded", code=429)),
+            failed(429, error_body("rateLimitExceeded", code=429)),
+            ok(events_page(event("p4"))),
+        ],
+        waits=waits,
+    )
+
+    answer = await reader.list_events(CALENDAR_ID, sync_token=None, window=WINDOW)
+
+    assert isinstance(answer, EventsRead)
+    assert [one.id for one in answer.events] == ["p1", "p2", "p3", "p4"]
+    # Three pages, two refusals, two waits, and the read still completed.
+    assert len(waits) == 2
+
+
+async def test_the_attempt_count_still_reports_every_call_the_read_made() -> None:
+    # The per-request budget must not shrink what the SOURCE reports: a read that took six calls is
+    # a different story from one that took one, and that is what reaches the panel.
+    reader, _transport = client(
+        [
+            ok(events_page(event("p1"), page_token="p2")),
+            failed(503),
+            ok(events_page(event("p2"))),
+        ]
+    )
+
+    answer = await reader.list_events(CALENDAR_ID, sync_token=None, window=WINDOW)
+
+    assert isinstance(answer, EventsRead)
+    assert answer.attempts == 3
+
+
 @pytest.mark.parametrize("status", [500, 502, 503, 504])
 async def test_a_server_error_is_retried(status: int) -> None:
     reader, _ = client([failed(status), ok(events_page(event()))])
@@ -388,7 +494,7 @@ async def test_the_deadline_covers_the_whole_read_rather_than_one_request() -> N
     # per-request timeout while the read runs forever. Every page here answers well inside a
     # plausible per-request timeout, and the read is still stopped, which is the distinction.
     #
-    # The margin between the two is 100x rather than a few multiples, deliberately. This is the one
+    # The margin between the two is 20x rather than a few multiples, deliberately. This is the one
     # assertion in the file that depends on WALL CLOCK: it claims several pages arrived before the
     # deadline, and on a contended machine a narrow margin makes that claim fail for load rather
     # than for behaviour. A whole-member run of this suite was measured between 201 and 294 seconds

@@ -19,6 +19,7 @@ module writes carries a title or a token.
 from __future__ import annotations
 
 import io
+import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -74,6 +75,17 @@ NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 EARLIER = NOW - timedelta(hours=6)
 HORIZON = Interval(NOW, NOW + timedelta(days=14))
 NEXT_TOKEN = "CNEXT-token"  # pragma: allowlist secret
+
+
+def one_line(stream: io.StringIO, event: str) -> dict[str, object]:
+    """The one rendered line carrying ``event``, as the fields it bound."""
+    found = [
+        json.loads(line)
+        for line in stream.getvalue().splitlines()
+        if line.startswith("{") and json.loads(line).get("event") == event
+    ]
+    assert len(found) == 1, f"expected exactly one {event!r} line, got {len(found)}"
+    return dict(found[0])
 
 
 @pytest.fixture
@@ -310,6 +322,27 @@ async def test_a_poll_that_finds_a_change_reads_the_calendar_in_full() -> None:
     assert state.attempts == 2
 
 
+async def test_a_change_bigger_than_the_page_bound_is_read_fully_rather_than_stranding() -> None:
+    # The detector stops on the first page that carries an entry, so a delta of any size costs one
+    # page and becomes a full read. Before that, such a delta failed on the page bound with the
+    # cursor retained, and every later poll re-paged it: the source could only escape when Google
+    # expired the token itself.
+    google, transport = adapter(
+        [
+            ok(events_page(event("one-of-many"), page_token="always-another")),
+            ok(events_page(event("a"), event("b"))),
+        ]
+    )
+
+    outcome, state = await google.fetch(source(sync_state=synced()))
+
+    assert len(transport.calls) == 2
+    assert outcome.reparsed is True
+    assert state.last_error is None
+    assert state.resync_reason == CHANGES_DETECTED
+    assert state.cursor == f"{CURSOR_PREFIX}{SYNC_TOKEN}"
+
+
 async def test_an_invalidated_token_falls_back_to_a_full_read_and_records_why() -> None:
     google, transport = adapter(
         [failed(410, error_body("fullSyncRequired", code=410)), ok(events_page(event("a")))]
@@ -518,13 +551,44 @@ async def test_no_title_and_no_token_reaches_a_log_line(rendered_lines: io.Strin
 async def test_a_failed_read_logs_counts_rather_than_a_provider_message(
     rendered_lines: io.StringIO,
 ) -> None:
+    # The rule this test is named for was defended by nothing: adding `provider_message=reason` to
+    # the failure line left it passing. So the KEY SET is asserted exactly. Any field added to that
+    # line fails here, whether it carries a provider's prose, a title, or a token, and the assertion
+    # cannot be satisfied by a line that merely mentions the right words.
     google, _ = adapter([failed(429, error_body("rateLimitExceeded", code=429))])
 
     await google.fetch(source(sync_state=synced()))
 
+    line = one_line(rendered_lines, "calendars.google.unreachable")
+    assert set(line) == {
+        "event",
+        "level",
+        "timestamp",
+        "service",
+        "source_id",
+        "tenant_id",
+        "attempt_count",
+        "rate_limited",
+        "anchors_retained",
+    }
+
+
+async def test_no_provider_authored_text_reaches_the_failure_line(
+    rendered_lines: io.StringIO,
+) -> None:
+    # `GoogleReadFailed.reason` interpolates a provider-controlled string on some paths, and it is
+    # the sentence the PANEL renders rather than one a log line should carry. Both the reason syncr
+    # composed and the prose Google sent are asserted absent.
+    prose = "PROVIDER-PROSE-DO-NOT-LOG"
+    google, _ = adapter([failed(403, error_body("insufficientPermissions", message=prose))])
+
+    _outcome, state = await google.fetch(source(sync_state=synced()))
+
     written = rendered_lines.getvalue()
-    assert "calendars.google.unreachable" in written
-    assert "anchors_retained" in written
+    assert prose not in written
+    assert state.last_error is not None
+    # The panel's own sentence is not a log field either: the line carries identifiers and counts.
+    assert "refused access to this calendar" not in written
 
 
 async def test_an_excluded_source_is_not_this_modules_decision() -> None:

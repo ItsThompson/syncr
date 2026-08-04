@@ -53,6 +53,21 @@ EVENTS_READ_SCOPE: Final = "https://www.googleapis.com/auth/calendar.events.read
 EVENTS_OWNED_SCOPE: Final = "https://www.googleapis.com/auth/calendar.events.owned"
 REQUESTED_SCOPES: Final = (CALENDAR_LIST_SCOPE, EVENTS_READ_SCOPE, EVENTS_OWNED_SCOPE)
 
+# How Google separates scopes, in the request and in the answer, and how syncr stores them. One
+# definition, because three modules read the same string for the same reason.
+SCOPE_SEPARATOR: Final = " "
+
+# What a deployment is told when it may not store a new authorization: the encryption key is the
+# one this repository publishes and the environment is not development. Stated here beside the other
+# copy a surface renders, and it names only what survives, which is everything but connecting.
+PUBLISHED_KEY_DETAIL: Final = (
+    "GOOGLE_TOKEN_ENCRYPTION_KEY is still the development default, which this repository "
+    "publishes, so a Google authorization stored under it would be readable by anyone who can "
+    "read the source. Nothing was connected. Set a real key from the host secret file and restart, "
+    "then connect again. Every ICS feed still syncs, the plan still solves, and a Google account "
+    "connected under a real key still reads."
+)
+
 # What each scope lets syncr do, in the user's terms rather than Google's. The consent surface
 # renders these beside the scope strings, because "calendar.events.owned" tells a reader
 # nothing about a destructive reconciliation.

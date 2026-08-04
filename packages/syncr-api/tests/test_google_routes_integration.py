@@ -695,6 +695,81 @@ def test_provider_text_carrying_a_nul_byte_does_not_disable_the_sync(
     assert read["anchorCount"] == 1
 
 
+def test_the_published_key_refuses_only_the_connect_and_leaves_every_read_working(
+    live_database_url: str, owner: UserRecord, google: FakeGoogle
+) -> None:
+    """The blast radius of the published-key refusal, at the routes rather than at a unit.
+
+    An operator lands in this state by copying `.env.example`, which ships the published key, and
+    setting a client id from the runbook. The earlier shape refused to build a cipher at all, so
+    every calendar-source route answered 503 and the worker's whole poll died each tick, while the
+    message said feeds still synced. What must be refused is connecting, and nothing else.
+    """
+    published = build_service_settings(
+        service=API_SERVICE,
+        env=EnvSettings(
+            _env_file=None,
+            environment="production",
+            session_signing_secret=SIGNING_SECRET,
+            google_oauth_client_id=CLIENT_ID,
+            google_oauth_client_secret=CLIENT_SECRET,
+            google_oauth_redirect_uri=REDIRECT_URI,
+        ),
+    )
+    database = create_database(live_database_url)
+    app = create_app(published, lifespan=create_db_lifespan(database.engine))
+    app.state.db = database
+
+    async def faked() -> AsyncIterator[httpx.AsyncClient]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(google.handle)) as client:
+            yield client
+
+    app.dependency_overrides[get_google_client] = faked
+    app.dependency_overrides[get_google_read_client] = faked
+    app.dependency_overrides[get_feed_client] = faked
+
+    with TestClient(app, raise_server_exceptions=False) as http:
+        login = http.post(
+            f"{AUTH_PREFIX}/login",
+            json={"email": owner.email, "password": PASSWORD},
+            headers={"Origin": BROWSER_ORIGIN},
+        )
+        token = login.headers["set-cookie"].split(f"{SESSION_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
+        headers = {"Cookie": f"{SESSION_COOKIE_NAME}={token}", "Origin": BROWSER_ORIGIN}
+
+        listed = http.get(SOURCES, headers=headers)
+        added = http.post(
+            SOURCES,
+            json={
+                "provider": ICS,
+                "displayName": "University timetable",
+                "externalId": "https://example.ac.uk/timetable.ics",
+            },
+            headers=headers,
+        )
+        connection = http.get(f"{SOURCES}{CONNECTION_PATH}", headers=headers)
+        refused = http.get(
+            f"{SOURCES}{CALLBACK_PATH}",
+            params={
+                "code": "4/code",
+                "state": issue_state(
+                    tenant_id=owner.tenant_id, secret=SIGNING_SECRET, at=datetime.now(UTC)
+                ),
+            },
+            headers=headers,
+            follow_redirects=False,
+        )
+
+    # Every read and every ICS write the message promises still work.
+    assert listed.status_code == HTTPStatus.OK, listed.text
+    assert added.status_code == HTTPStatus.CREATED, added.text
+    assert connection.status_code == HTTPStatus.OK
+    # And the one act that would store an authorization under the published key is refused by name.
+    assert refused.status_code == HTTPStatus.SERVICE_UNAVAILABLE
+    assert "GOOGLE_TOKEN_ENCRYPTION_KEY" in refused.json()["detail"]
+    assert "Every ICS feed still syncs" in refused.json()["detail"]
+
+
 def test_no_response_carries_a_token_or_a_ciphertext(
     http: TestClient, signed_in: dict[str, str], owner: UserRecord
 ) -> None:

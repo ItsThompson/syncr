@@ -18,7 +18,6 @@ from __future__ import annotations
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from syncr_api.core.errors import DependencyUnavailable
 from syncr_api.core.settings import (
     API_SERVICE,
     DEV_GOOGLE_TOKEN_ENCRYPTION_KEY,
@@ -26,7 +25,7 @@ from syncr_api.core.settings import (
     build_service_settings,
 )
 from syncr_api.google_account.crypto import TokenCipher
-from syncr_api.google_account.injection import build_cipher
+from syncr_api.google_account.injection import build_cipher, may_store_tokens
 
 CLIENT_ID = "581707053568-example.apps.googleusercontent.com"
 CALLBACK = "http://localhost:8000/api/v1/calendar-sources/google/callback"
@@ -57,35 +56,38 @@ def test_development_gets_a_token_key_that_works_so_a_fresh_clone_can_connect() 
     assert env().google_token_encryption_key.get_secret_value() == DEV_GOOGLE_TOKEN_ENCRYPTION_KEY
 
 
-def test_the_published_default_is_refused_where_a_token_would_be_stored() -> None:
-    # The rule is at the COMPOSITION that builds a cipher, not at settings: this class is built by
-    # every process, every test and `alembic`, against whatever the root env file holds, so a
-    # refusal here failed boots that store no token at all. Measured, and it is what broke a
-    # production-shaped boot for a whole wave.
+def test_a_deployment_under_the_published_key_may_not_store_an_authorization() -> None:
+    # The rule is at the composition, not at settings: this class is built by every process, every
+    # test and `alembic`, against whatever the root env file holds, so a refusal there failed boots
+    # that store no token at all. Measured, and it is what broke a production-shaped boot for a
+    # whole wave.
     settings = build_service_settings(
         service=API_SERVICE, env=deployed(google_oauth_client_id=CLIENT_ID)
     )
 
-    with pytest.raises(DependencyUnavailable, match="GOOGLE_TOKEN_ENCRYPTION_KEY"):
-        build_cipher(settings)
+    assert may_store_tokens(settings) is False
+    # And the cipher still EXISTS, because reading an authorization stored under a real key must not
+    # be taken down with the ability to write a new one.
+    assert build_cipher(settings).encrypt("1//x")
 
 
-def test_the_published_default_encrypts_in_development() -> None:
-    # A fresh clone connects Google without generating a key first, which is the whole reason a
-    # default exists.
+def test_a_deployment_in_development_may_store_under_the_published_key() -> None:
+    # A fresh clone connects Google without generating a key first, which is why a default exists.
     settings = build_service_settings(
         service=API_SERVICE, env=env(google_oauth_client_id=CLIENT_ID)
     )
 
+    assert may_store_tokens(settings) is True
     assert build_cipher(settings).decrypt(build_cipher(settings).encrypt("1//x")) == "1//x"
 
 
-def test_a_deployment_that_supplied_a_key_gets_a_cipher() -> None:
+def test_a_deployment_that_supplied_a_key_may_store_anywhere() -> None:
     settings = build_service_settings(
         service=API_SERVICE,
         env=deployed(google_oauth_client_id=CLIENT_ID, google_token_encryption_key=DEPLOYMENT_KEY),
     )
 
+    assert may_store_tokens(settings) is True
     assert build_cipher(settings).encrypt("1//x")
 
 

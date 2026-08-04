@@ -214,10 +214,15 @@ async def test_an_incremental_read_after_a_full_one_reports_no_change(
     first = await live_client.list_events(development.calendar_id, sync_token=None, window=window)
     assert isinstance(first, EventsRead), first
     second = await live_client.list_events(
-        development.calendar_id, sync_token=first.sync_token, window=window
+        development.calendar_id,
+        sync_token=first.sync_token,
+        window=window,
+        stop_at_first_change=True,
     )
 
     assert isinstance(second, EventsRead), second
-    assert second.incremental is True
+    # The two claims that are about GOOGLE rather than about the call just made: it reported no
+    # change, and it issued a token for the next poll to spend. An `incremental` flag was asserted
+    # here too and was a tautology, since its value was "a token was sent" and the test sent one.
     assert second.events == ()
     assert second.sync_token

@@ -33,6 +33,7 @@ from syncr_api.core.http_reads import read_bounded_body
 from syncr_api.google_account.config import (
     DEFAULT_ACCESS_TOKEN_LIFETIME,
     MAX_TOKEN_RESPONSE_BYTES,
+    SCOPE_SEPARATOR,
     TOKEN_ENDPOINT,
     TOKEN_TIMEOUT_SECONDS,
 )
@@ -46,8 +47,6 @@ INVALID_GRANT: Final = "invalid_grant"
 
 _AUTHORIZATION_CODE_GRANT: Final = "authorization_code"
 _REFRESH_TOKEN_GRANT: Final = "refresh_token"  # noqa: S105 - a grant type, not a credential
-
-SCOPE_SEPARATOR: Final = " "
 
 
 class TokenPayload(BaseModel):

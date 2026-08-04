@@ -39,9 +39,10 @@ EVENTS_PAGE_SIZE: Final = 250
 CALENDAR_LIST_PAGE_SIZE: Final = 250
 
 # How many pages one read may take. A full read of a busy calendar over a fortnight is one or two
-# pages; an incremental read is usually one. This bound exists because a paginating loop over a
-# token the server keeps returning is an infinite loop, and a provider bug should cost one source
-# a stated failure rather than a worker tick that never ends.
+# pages, and a detector read is one by construction, since it stops on the first page carrying an
+# entry. This bound exists because a paginating loop over a token the server keeps returning is an
+# infinite loop, and a provider bug should cost one source a stated failure rather than a worker
+# tick that never ends.
 MAX_PAGES: Final = 40
 
 # How long ONE read of one calendar may take, including every page and every backoff wait. The
@@ -55,9 +56,12 @@ REQUEST_TIMEOUT_SECONDS: Final = 20.0
 # bound that stops a page larger than the API documents exhausting the process.
 MAX_PAGE_BYTES: Final = 8 * 1024 * 1024
 
-# How many times a rate-limited or transiently-failed request is retried before the read gives up.
-# Bounded rather than persistent: the worker polls again on its own interval, so a read that backs
-# off forever would hold a tick to do work the next tick would redo.
+# How many times ONE REQUEST that was rate limited or transiently refused is retried before the read
+# gives up. Per request rather than per read: a rate limit on page four is the same condition as one
+# on page one, and a budget shared with pagination gave the later page none. Bounded rather than
+# persistent, because the worker polls again on its own interval, so a read that backed off forever
+# would hold a tick to do work the next tick redoes. The aggregate bound across pages and waits is
+# READ_DEADLINE_SECONDS.
 MAX_ATTEMPTS: Final = 4
 # The first backoff wait, doubling per attempt: 1s, 2s, 4s. Google's own guidance.
 BACKOFF_BASE_SECONDS: Final = 1.0

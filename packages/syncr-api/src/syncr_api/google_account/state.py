@@ -101,10 +101,14 @@ def _within_lifetime(tenant: str, issued: str, *, now: datetime) -> StateVerdict
         # Unreachable through a signed state, because this process wrote both fields. Answered
         # rather than raised so a malformed value cannot become a 500 on the callback.
         return StateRejected("the connect flow could not be read, so nothing was connected")
-    if int(now.timestamp()) - issued_at > STATE_LIFETIME.total_seconds():
+    age = int(now.timestamp()) - issued_at
+    # Bounded in both directions. A future-dated state is unreachable through one this deployment
+    # signed, but the comparison is symmetric for one comparison's cost, and a clock that moved
+    # backwards across a restart is the reachable way to get one.
+    if age > STATE_LIFETIME.total_seconds() or age < -STATE_LIFETIME.total_seconds():
         minutes = int(STATE_LIFETIME.total_seconds() // 60)
         return StateRejected(
-            f"the connect flow was started more than {minutes} minutes ago. Start it again; "
+            f"the connect flow was not started within the last {minutes} minutes. Start it again; "
             "nothing was connected and every calendar syncr already reads still works"
         )
     return StateAccepted(tenant_id=tenant_id)

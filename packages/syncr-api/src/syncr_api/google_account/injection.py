@@ -31,7 +31,6 @@ from starlette.requests import Request  # noqa: TC002
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
-from syncr_api.core.errors import DependencyUnavailable
 from syncr_api.google_account.config import TOKEN_TIMEOUT_SECONDS
 from syncr_api.google_account.crypto import TokenCipher, is_published_key
 from syncr_api.google_account.oauth_client import GoogleOAuthClient
@@ -53,26 +52,30 @@ if TYPE_CHECKING:
 DEVELOPMENT = "development"
 
 
-PUBLISHED_KEY_DETAIL = (
-    "GOOGLE_TOKEN_ENCRYPTION_KEY is still the development default, which this repository "
-    "publishes, so a stored Google refresh token would be readable by anyone who can read the "
-    "source. Set a real key from the host secret file and restart. Every ICS feed still syncs, the "
-    "plan still solves, and any Google calendar already connected still reads."
-)
+def may_store_tokens(settings: ServiceSettings) -> bool:
+    """Whether this deployment may write a new Google authorization to its database.
+
+    The judgment lives at composition because it reads two things the service should not: the key
+    itself, and which environment this is. What the service receives is the answer.
+
+    **It gates STORING and nothing else.** An earlier shape refused to build a cipher at all, which
+    put the refusal on the dependency path of every calendar-source route and of the worker's whole
+    poll: reading a feed, listing sources and polling every tenant's ICS calendars all answered 503,
+    while the message said they still worked. Decrypting an authorization that is already stored is
+    unaffected, so an account connected under a real key keeps reading if the key is later replaced
+    by the published one, which is what the message now promises.
+    """
+    key = settings.google_token_encryption_key.get_secret_value()
+    return not is_published_key(key) or settings.environment.lower() == DEVELOPMENT
 
 
 def build_cipher(settings: ServiceSettings) -> TokenCipher:
-    """The cipher this deployment stores refresh tokens with, or a stated refusal.
+    """The cipher this deployment reads and writes stored authorizations with.
 
-    The published-key rule lives HERE, at the composition that is about to hand a cipher to code
-    that encrypts, rather than in settings. Settings are constructed by every process, every test,
-    and ``alembic``, so a refusal there fails boots that never touch a token; a refusal here fails
-    exactly the requests that would store one, and says what still works.
+    Whether a NEW one may be written is :func:`may_store_tokens`, checked by the service at the one
+    point that writes: a cipher that refused to exist would take reading down with writing.
     """
-    key = settings.google_token_encryption_key.get_secret_value()
-    if is_published_key(key) and settings.environment.lower() != DEVELOPMENT:
-        raise DependencyUnavailable(PUBLISHED_KEY_DETAIL)
-    return TokenCipher(key)
+    return TokenCipher(settings.google_token_encryption_key.get_secret_value())
 
 
 def create_google_client() -> httpx.AsyncClient:
@@ -136,6 +139,7 @@ async def get_google_connection_service(
         sources=CalendarSourceRepository(transaction, principal.tenant_id),
         oauth=build_oauth_client(settings, client),
         cipher=build_cipher(settings),
+        may_store_tokens=may_store_tokens(settings),
         client_id=settings.google_oauth_client_id,
         redirect_uri=settings.google_oauth_redirect_uri,
         state_secret=settings.session_signing_secret.get_secret_value(),

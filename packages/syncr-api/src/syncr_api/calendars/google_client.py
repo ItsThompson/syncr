@@ -81,12 +81,16 @@ class CalendarsRead:
 
 @dataclass(frozen=True, slots=True)
 class EventsRead:
-    """One calendar's events, the token to send next time, and the calls it took."""
+    """One calendar's events, the token to send next time, and the calls it took.
+
+    ``sync_token`` is ``None`` when a read returned before its last page, which only a detector read
+    does: the token lives on the last page, and a caller that stops early goes on to read fully and
+    stores that read's token instead.
+    """
 
     events: tuple[GoogleEventPayload, ...]
     sync_token: str | None
     attempts: int
-    incremental: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,13 +170,32 @@ class GoogleCalendarClient:
             return self._out_of_time(tally)
 
     async def list_events(
-        self, calendar_id: str, *, sync_token: str | None, window: Interval
+        self,
+        calendar_id: str,
+        *,
+        sync_token: str | None,
+        window: Interval,
+        stop_at_first_change: bool = False,
     ) -> EventsAnswer:
-        """One calendar's events: incrementally when a sync token is held, fully otherwise."""
+        """One calendar's events: incrementally when a sync token is held, fully otherwise.
+
+        ``stop_at_first_change`` answers the only question a detector read asks, which is WHETHER
+        anything changed. It returns on the first page that carries an entry, so a delta of ten
+        thousand entries costs one page rather than forty, and a delta larger than the page bound is
+        no longer a read that fails: it is a read that reports a change. Without it such a delta
+        failed on the bound, `recorded_failure` retained the cursor, and the next poll re-paged the
+        same delta forever, with the provider's own token expiry as the only escape.
+        """
         tally = _Tally()
         try:
             async with asyncio.timeout(self._deadline):
-                return await self._all_events(calendar_id, sync_token, window, tally)
+                return await self._all_events(
+                    calendar_id,
+                    sync_token,
+                    window,
+                    tally,
+                    stop_at_first_change=stop_at_first_change,
+                )
         except TimeoutError:
             return self._out_of_time(tally)
 
@@ -205,7 +228,13 @@ class GoogleCalendarClient:
         return self._unbounded_pages("calendar list", tally)
 
     async def _all_events(
-        self, calendar_id: str, sync_token: str | None, window: Interval, tally: _Tally
+        self,
+        calendar_id: str,
+        sync_token: str | None,
+        window: Interval,
+        tally: _Tally,
+        *,
+        stop_at_first_change: bool = False,
     ) -> EventsAnswer:
         found: list[GoogleEventPayload] = []
         page_token: str | None = None
@@ -221,12 +250,14 @@ class GoogleCalendarClient:
                 return self._unreadable(invalid, tally)
             found.extend(page.items)
             page_token = page.next_page_token
-            if page_token is None:
+            if page_token is None or (stop_at_first_change and found):
                 return EventsRead(
                     events=tuple(found),
+                    # None when this returned mid-pagination, which only a detector read does. The
+                    # caller reads a full calendar next and stores THAT read's token, so there is no
+                    # cursor to lose.
                     sync_token=page.next_sync_token,
                     attempts=tally.attempts,
-                    incremental=sync_token is not None,
                 )
         return self._unbounded_pages("events read", tally)
 
@@ -242,22 +273,29 @@ class GoogleCalendarClient:
 
         The token is asked for on every attempt rather than once per read, so a retry after a long
         backoff runs on a token that is still valid.
+
+        **The retry budget is per REQUEST, not per read.** ``tally`` counts every call the read
+        made, because that is what the source reports; the budget is a local count, because a rate
+        limit on page four is the same condition as one on page one and deserves the same four
+        attempts. One budget shared across pagination gave a later page zero retries, which is not
+        what either docstring described. The aggregate bound is the whole-read deadline, which every
+        wait counts against.
         """
+        made = 0
         while True:
             access = await self._tokens.current()
             if not isinstance(access, GoogleAccess):
                 return GoogleReadFailed(reason=access.reason, attempts=tally.attempts)
             tally.attempts += 1
+            made += 1
             outcome = await self._attempt(url, params, access.token, tally, sent_sync_token)
             if not isinstance(outcome, _Retryable):
                 return outcome
-            if not self._backoff.has_another_attempt(tally.attempts):
+            if not self._backoff.has_another_attempt(made):
                 return GoogleReadFailed(
                     reason=outcome.reason, attempts=tally.attempts, rate_limited=outcome.limited
                 )
-            await self._sleep(
-                self._backoff.wait_before(tally.attempts, retry_after=outcome.retry_after)
-            )
+            await self._sleep(self._backoff.wait_before(made, retry_after=outcome.retry_after))
 
     async def _attempt(
         self,

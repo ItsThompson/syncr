@@ -23,14 +23,13 @@ from uuid import uuid4
 from sqlalchemy import func
 
 from syncr_api.core.repository import TenantScopedRepository
+from syncr_api.google_account.config import SCOPE_SEPARATOR
 from syncr_api.google_account.models import GoogleCredential
 from syncr_api.google_account.records import GoogleCredentialRecord
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import datetime
-
-SCOPE_SEPARATOR = " "
 
 
 class GoogleCredentialRepository(TenantScopedRepository):

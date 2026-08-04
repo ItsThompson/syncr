@@ -6,9 +6,12 @@ retrying in synchronised waves.
 
 Three properties are worth stating because each is a decision rather than the obvious reading:
 
-**The retries are bounded and small.** The worker polls again on its own interval, so a read that
-kept backing off would hold a tick open doing work the next tick redoes. Four attempts covers a
-burst; a sustained rate limit is a condition to report rather than to outwait.
+**The retries are bounded, small, and per REQUEST.** The worker polls again on its own interval, so
+a read that kept backing off would hold a tick open doing work the next tick redoes. Four attempts
+covers a burst on ONE request; a sustained rate limit is a condition to report rather than to
+outwait. The budget is per request rather than per read because a rate limit on page four is the
+same condition as one on page one, and the aggregate bound across every page and every wait is the
+read's own deadline.
 
 **A provider's ``Retry-After`` wins, up to a ceiling.** Google knows when its window resets and
 syncr does not, so an explicit wait is honoured. A wait longer than the ceiling is not: an answer
@@ -47,7 +50,11 @@ class BackoffPolicy:
     random: Random = field(default_factory=Random)
 
     def has_another_attempt(self, attempts: int) -> bool:
-        """Whether a read that has made ``attempts`` calls may make one more."""
+        """Whether a request that has been made ``attempts`` times may be made once more.
+
+        ``attempts`` counts calls to ONE request, not calls in a read. A read that paginates spends
+        its own budget per page and is bounded overall by its deadline.
+        """
         return attempts < MAX_ATTEMPTS
 
     def wait_before(self, attempts: int, *, retry_after: float | None = None) -> float:

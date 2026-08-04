@@ -25,7 +25,12 @@ from syncr_api.calendars.config import GOOGLE
 from syncr_api.core.errors import DependencyUnavailable, ValidationFailed
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
-from syncr_api.google_account.config import REQUESTED_SCOPES
+from syncr_api.google_account.config import (
+    GRANTED_SCOPES_MAX_LENGTH,
+    PUBLISHED_KEY_DETAIL,
+    REQUESTED_SCOPES,
+    SCOPE_SEPARATOR,
+)
 from syncr_api.google_account.connect import GoogleConsent, consent_surface
 from syncr_api.google_account.crypto import RefreshTokenTooLong
 from syncr_api.google_account.notices import write_target_expiry_notices
@@ -94,6 +99,7 @@ class GoogleConnectionService:
         redirect_uri: str,
         state_secret: str,
         clock: Clock,
+        may_store_tokens: bool = True,
     ) -> None:
         self._credentials = credentials
         self._sources = sources
@@ -103,6 +109,11 @@ class GoogleConnectionService:
         self._redirect_uri = redirect_uri
         self._state_secret = state_secret
         self._clock = clock
+        # Whether this deployment may write a NEW authorization: false when the encryption key is
+        # the one this repository publishes and the environment is not development. Received as an
+        # answer rather than computed, because reading the key and the environment is the
+        # composition's job.
+        self._may_store_tokens = may_store_tokens
 
     @measured("google_account")
     async def begin_connect(self, principal: Principal) -> GoogleConsent:
@@ -227,7 +238,23 @@ class GoogleConnectionService:
         A grant whose response stated no scopes is recorded as the requested set: Google omits the
         field rather than granting nothing, and an empty list would make the surface report an
         account that can do nothing while it reads calendars perfectly well.
+
+        Two values are bounded here rather than at the column, because both are the provider's to
+        size and a column refusal is a 500 whose log line renders the whole failing statement,
+        ciphertext included. The refresh token is bounded by the cipher; the scope string is bounded
+        here beside it.
         """
+        if not self._may_store_tokens:
+            # Refused at the one point that WRITES a new authorization, so reading a feed, listing
+            # sources and polling a calendar are all unaffected and the message's promises are true.
+            raise DependencyUnavailable(PUBLISHED_KEY_DETAIL)
+        joined = SCOPE_SEPARATOR.join(granted or REQUESTED_SCOPES)
+        if len(joined) > GRANTED_SCOPES_MAX_LENGTH:
+            raise ValidationFailed(
+                f"Google granted a scope list of {len(joined)} characters, and syncr stores up to "
+                f"{GRANTED_SCOPES_MAX_LENGTH}. Nothing was connected, and every calendar syncr "
+                "already reads still works."
+            )
         try:
             encrypted = self._cipher.encrypt(refresh_token)
         except RefreshTokenTooLong as oversize:

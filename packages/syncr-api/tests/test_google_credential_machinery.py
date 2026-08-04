@@ -164,6 +164,14 @@ def test_a_state_older_than_its_lifetime_is_refused_with_what_to_do() -> None:
     assert "still works" in verdict.reason
 
 
+def test_a_state_dated_in_the_future_is_refused_too() -> None:
+    # Unreachable through a state this deployment signed, and one comparison's cost: a clock that
+    # moved backwards across a restart is the reachable way to hold one.
+    state = issue_state(tenant_id=TENANT, secret=SIGNING_SECRET, at=NOW + STATE_LIFETIME * 2)
+
+    assert isinstance(read_state(state, secret=SIGNING_SECRET, now=NOW), StateRejected)
+
+
 def test_a_state_at_the_edge_of_its_lifetime_is_still_accepted() -> None:
     state = issue_state(tenant_id=TENANT, secret=SIGNING_SECRET, at=NOW)
 

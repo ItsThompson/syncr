@@ -32,6 +32,7 @@ from syncr_api.google_account.config import (
     OFFLINE_ACCESS,
     REQUESTED_SCOPES,
     RESPONSE_TYPE_CODE,
+    SCOPE_SEPARATOR,
     SCOPE_STATEMENTS,
 )
 
@@ -39,8 +40,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from syncr_api.calendars.records import CalendarSourceRecord
-
-SCOPE_SEPARATOR = " "
 
 
 @dataclass(frozen=True, slots=True)

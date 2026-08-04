@@ -183,6 +183,7 @@ def service(
     handler: object = None,
     client_id: str = CLIENT_ID,
     clock: Clock | None = None,
+    may_store_tokens: bool = True,
 ) -> GoogleConnectionService:
     return GoogleConnectionService(
         credentials=credentials or FakeCredentials(),  # type: ignore[arg-type]
@@ -198,6 +199,7 @@ def service(
         redirect_uri=REDIRECT_URI,
         state_secret=SIGNING_SECRET,
         clock=clock or Clock(),
+        may_store_tokens=may_store_tokens,
     )
 
 
@@ -428,6 +430,67 @@ async def test_a_refresh_token_too_wide_for_the_column_is_refused_before_the_wri
         ).complete_connect(OWNER, code="4/code", state=state_for(), error=None)
 
     assert credentials.connects == 0
+
+
+async def test_a_deployment_that_may_not_store_refuses_the_connect_and_names_what_lives() -> None:
+    # The refusal is at the one act that WRITES an authorization. An earlier shape refused to build
+    # a cipher at all, which put it on the dependency path of every calendar-source route and of the
+    # worker's whole poll: reading a feed answered 503 while the message said feeds still synced.
+    credentials = FakeCredentials()
+
+    with pytest.raises(DependencyUnavailable) as refused:
+        await service(credentials=credentials, may_store_tokens=False).complete_connect(
+            OWNER, code="4/code", state=state_for(), error=None
+        )
+
+    assert "GOOGLE_TOKEN_ENCRYPTION_KEY" in refused.value.detail
+    assert "Every ICS feed still syncs" in refused.value.detail
+    assert credentials.connects == 0
+
+
+async def test_a_deployment_that_may_not_store_still_reads_its_connection() -> None:
+    # The surviving capability the message names, asserted rather than promised: what is refused is
+    # writing a new authorization, and every read still answers.
+    connection = await service(
+        credentials=FakeCredentials(row=credential()), may_store_tokens=False
+    ).describe_connection(READ_ONLY)
+
+    assert connection.connected is True
+    assert connection.configured is True
+
+
+async def test_a_deployment_that_may_not_store_still_states_its_consent_surface() -> None:
+    surface = await service(may_store_tokens=False).begin_connect(OWNER)
+
+    assert surface.authorization_url
+    assert len(surface.scopes) == 3
+
+
+async def test_a_scope_list_too_wide_for_the_column_is_refused_before_the_write() -> None:
+    # The provider chose the size of this value, and the column is 1,024 characters. Unbounded, it
+    # reached the driver as a 500 whose log line rendered the whole failing INSERT, ciphertext
+    # included. The refresh token's own bound is the control for what right looks like.
+    oversize = " ".join(f"https://www.googleapis.com/auth/scope-{index}" for index in range(60))
+    credentials = FakeCredentials()
+
+    with pytest.raises(ValidationFailed, match="scope list of"):
+        await service(
+            credentials=credentials, handler=lambda _r: token_answer(scope=oversize)
+        ).complete_connect(OWNER, code="4/code", state=state_for(), error=None)
+
+    assert credentials.connects == 0
+
+
+async def test_the_scope_bound_states_the_size_rather_than_quoting_the_value() -> None:
+    oversize = " ".join(f"https://www.googleapis.com/auth/scope-{index}" for index in range(60))
+
+    with pytest.raises(ValidationFailed) as refused:
+        await service(handler=lambda _r: token_answer(scope=oversize)).complete_connect(
+            OWNER, code="4/code", state=state_for(), error=None
+        )
+
+    assert oversize not in refused.value.detail
+    assert "still works" in refused.value.detail
 
 
 # --------------------------------------------------------------------------------------
