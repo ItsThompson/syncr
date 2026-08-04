@@ -275,9 +275,9 @@ def _require_a_zone_for_every_day(iso_week: IsoWeek, zone_by_date: Mapping[Date,
     override taken mid-week silently reads the wrong offset. A foreign date is a day this
     document does not describe.
     """
-    dates = iso_week.dates()
-    missing = [str(day) for day in dates if day not in zone_by_date]
-    foreign = sorted(str(day) for day in zone_by_date if day not in set(dates))
+    dates = set(iso_week.dates())
+    missing = [str(day) for day in iso_week.dates() if day not in zone_by_date]
+    foreign = sorted(str(day) for day in zone_by_date if day not in dates)
     stated = ", ".join(filter(None, (_named("leaves out", missing), _named("names", foreign))))
     if stated:
         raise PlanError(
