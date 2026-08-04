@@ -33,12 +33,16 @@ Sunday-evening prep whatever week is being assembled. Which of them fall inside 
 far back the anchors have to be read for none to be missed, are questions only the caller
 holding the week's span can answer.
 
-A title has to come from somewhere the declaration holds. Prep and the outbound leg name the
-commitment they belong to, which is what ``docs/design/scratch/block-states.html`` renders for
-prep, and the return leg names the journey itself. The rendered ``Leave for Uni`` names a
-destination nothing in the declaration carries: transit is declared per anchor type rather than
-derived from a location, so the commitment's own name is the closest thing to a destination that
-exists here.
+Two of the strings this module composes are the records' own and two are not, which is worth stating
+rather than leaving for a reader to compare. ``Prep for {commitment}`` and ``Go Home`` are what
+``docs/design/scratch/block-states.html`` renders. The outbound leg's rendered ``Leave for Uni``
+names a **destination nothing in the product carries**: transit is declared per anchor type rather
+than derived from a location, so the leg names the commitment it is a journey to instead. And the
+recovery band's rendered ``no deep work · recovery`` states a **consequence of the scope** rather
+than the commitment: which Areas count as deep work is not something a declaration says, and a
+window's label has to survive being read months later, so the stored label names the reason and the
+commitment that reserved the time. What a surface draws beside the band is that surface's own
+wording; what the document stores is this.
 """
 
 from __future__ import annotations
@@ -138,7 +142,12 @@ def regenerate(anchors: Sequence[TypedAnchor]) -> ShadowSet:
     Wholesale by construction: it reads no previous set, so an anchor that moved, an anchor that
     was retyped, and a type that was edited are all answered by generating again rather than by
     patching what a previous generation produced. One anchor's regeneration is therefore equal
-    to generating that anchor on its own.
+    to generating that anchor on its own, and that equality is a consequence of a boundary rule
+    rather than of this function: only this path resolves collisions, and a declaration whose own
+    prep ran into its own outbound leg is refused where it is written, by
+    :func:`syncr_api.anchors.rules.require_prep_clear_of_transit` and by the check constraint that
+    says it again on the table. Relax either and one commitment could collide with itself, which
+    :func:`generate` would answer and this function would resolve.
 
     Windows are contributed whole, because nothing is scheduled in one: two commitments
     reserving overlapping time is a union rather than a contest, and the union is taken where

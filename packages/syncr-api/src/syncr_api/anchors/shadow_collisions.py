@@ -10,14 +10,25 @@ it, where a prep lead is a preference about how far ahead to prepare. So prep is
 transit rather than the other way round, and within each kind the earlier-cast commitment keeps
 what it cast.
 
-**A block gives way by ending earlier, never by starting later.** Truncating the front would
-move a journey off the commitment it meets, and dividing one into two pieces would give one
-buffer two identities. So the block that gives way ends where the block it collided with begins,
-and it is dropped outright when that leaves nothing a surface could draw.
+**A block gives way by losing its end, never by moving its start.** A start is the one instant a
+declaration actually names: prep starts at its lead, a leg starts at its lead, and a return leg
+starts at the commitment's end. Moving a start forward would put a buffer at a time nothing
+declared, and dividing a block into the pieces either side of an obstacle would give one buffer two
+identities, since identity is derived from the binding. So the block that gives way ends where the
+block it collided with begins, and it is dropped outright when that leaves nothing a surface could
+draw.
 
-Only blocks are contested. A forbidden window holds no content and reserves time for nothing to
-be placed in, so two of them covering the same minutes is a union rather than a contest, and the
-union is taken where the spans are read.
+**What that costs, stated rather than implied: a leg that gives way no longer meets its
+commitment.** A journey meets its commitment at its END, so end-truncation is exactly what breaks
+the adjacency this module protects in the prep-versus-transit ordering. An abutting 09:00-11:00 leg
+that gives way at 10:00 leaves 10:00 to 11:00 uncovered and arrives an hour early, and the fragment
+is kept rather than dropped. That is the rule the settled records state, so it is what this module
+implements. Whether such a leg should instead give way at its front, or be dropped whole, is a
+question about the rule rather than about this code, and it is one this module does not answer.
+
+Only blocks are contested. A forbidden window holds no content and reserves time for nothing to be
+placed in, so two of them covering the same minutes is a union rather than a contest, and the union
+is taken where the spans are read.
 """
 
 from __future__ import annotations
@@ -47,6 +58,9 @@ def without_collisions(
     ``in_cast_order`` is one commitment's blocks per member, ordered by the commitment that cast
     them. Blocks are then fitted in precedence order: transit before prep, and within each the
     earlier-cast commitment before the later one.
+
+    Returned in that same **precedence** order, which is not the order they run in: the set that
+    holds them normalizes to interval order, so no caller depends on this one.
     """
     kept: list[ShadowBlock] = []
     candidates = [(cast, block) for cast, blocks in enumerate(in_cast_order) for block in blocks]

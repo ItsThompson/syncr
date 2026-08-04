@@ -38,12 +38,14 @@ leg, a return leg, a recovery buffer, and what that recovery forbids. Rules eval
 the first match wins; a user's retype outranks every rule and persists on the series, so a daily
 standup is typed once rather than 250 times.
 
-**Geometry is one module, and it is the only one.** ``shadows.py`` computes the spans, reading a
-specification and an anchor's interval and nothing else. No other module here computes one: what
-they own is the declaration, the boundary rules the declaration has to satisfy, and the
-reconciliation that decides which anchors exist and which type each one carries. The spans it
-produces are unclipped, because which of them fall inside a week is a question only the caller
-holding that week's span can answer.
+**Where a span comes from, and where it does not.** ``shadows.py`` DERIVES every span, from an
+anchor's own interval and the two leads and four durations its type declares.
+``shadow_collisions.py`` NARROWS one that an earlier-kept block already covers, and
+``shadow_products.py`` UNIONS them into the interval sets a reader subtracts. Those three are the
+only modules here that produce a span at all: the rest own the declaration, the boundary rules the
+declaration has to satisfy, and the reconciliation that decides which anchors exist and which type
+each one carries. Every span the three produce is unclipped, because which of them fall inside a
+week is a question only the caller holding that week's span can answer.
 
 Import layout, so a reader knows where to look:
 
