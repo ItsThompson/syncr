@@ -1,4 +1,4 @@
-"""Which weeks a zone change invalidates, and who is told about it.
+"""Which weeks a mutation invalidates, and who is told about it.
 
 A home-zone change or a travel override changes what ``week_span`` and ``active_zone``
 answer, so it changes the inputs a solve reads. The week input version is the single
@@ -14,6 +14,12 @@ The range a travel override affects reaches one day BEFORE its first date, becau
 week's span ends at the following Monday's local midnight: an override beginning on a
 Monday moves the end of the week before it. Taking the day before covers that without a
 special case, and changes nothing when the range starts on any other weekday.
+
+``BacklogWideBump`` is here rather than in the feature modules that use it because the same
+four steps serve every mutation whose effect has no end date: an Area budget, a task, a habit,
+a routine, a template. Each of them governs every week the user has not yet lived, so each
+needs today's LOCAL date resolved in the home zone, and resolving that in five places would
+let five services disagree about which week the floor is.
 """
 
 from __future__ import annotations
@@ -22,14 +28,16 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Protocol
 
+from syncr_api.user_settings.zone_reading import local_date
 from syncr_common.logging import get_logger
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
-    from datetime import date
+    from datetime import date, datetime
 
     from syncr_api.core.clock import Clock
     from syncr_api.plans.versions import WeekInputVersionRepository
+    from syncr_api.user_settings.repository import SettingsRepository
 
 _ONE_DAY = timedelta(days=1)
 
@@ -122,3 +130,25 @@ def weeks_covering(start_date: date, end_date: date, *, today: date) -> WeekRang
     if last < current:
         return None
     return WeekRange(first=max(current, IsoWeek.containing(start_date - _ONE_DAY)), last=last)
+
+
+class BacklogWideBump:
+    """Invalidates the current week's inputs and every week after it.
+
+    For a mutation whose effect has no end date: a budget, a task, a habit, a routine, a
+    template. The range has no end because such a change governs every week the user has not yet
+    lived, and its floor is the week holding today's local date in the HOME zone, because a past
+    week's approved revision is immutable and keeps the inputs it was computed with.
+
+    A collaborator rather than a function so a service takes one dependency instead of two and a
+    service test can record what would have been bumped without a settings row.
+    """
+
+    def __init__(self, versions: WeekInputVersions, settings: SettingsRepository) -> None:
+        self._versions = versions
+        self._settings = settings
+
+    async def from_the_week_holding(self, now: datetime) -> None:
+        """Bump every tracked week from the one holding ``now``'s local date onwards."""
+        settings = await self._settings.read()
+        await self._versions.bump(weeks_from(local_date(now, settings.home_zone)))

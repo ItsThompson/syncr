@@ -9,10 +9,12 @@ The principal comes from ``accounts.injection``, which carries the origin check 
 module adds no second way to resolve one.
 
 Two collaborators come from other feature modules, and both are deliberate rather than
-convenient. The settings repository is read for the home zone, because the week a budget change
-first affects is decided by today's LOCAL date, and resolving that in a second place would let
-the two disagree. The week input version counter is plan storage's, because a budget is a solve
-input and there is one serialization point for anything that invalidates a running solve.
+convenient. The week input version counter is plan storage's, because a budget is a solve input
+and there is one serialization point for anything that invalidates a running solve. The settings
+repository is read for the home zone, because the week a budget change first affects is decided
+by today's LOCAL date, and resolving that in a second place would let the two disagree. Both
+reach the service inside ``BacklogWideBump``, which is the one implementation of those four
+steps.
 """
 
 from __future__ import annotations
@@ -30,16 +32,18 @@ from syncr_api.areas.service import AreaService, ProjectService
 from syncr_api.core.clock import utc_now
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.user_settings.repository import SettingsRepository
-from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
+from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
 
 def get_area_service(principal: PrincipalDep, transaction: TransactionDep) -> AreaService:
     """The Area service, wired for this request and scoped to this tenant."""
     return AreaService(
         areas=AreaRepository(transaction, principal.tenant_id),
-        settings=SettingsRepository(transaction, principal.tenant_id),
-        versions=TrackedWeekInputVersions(
-            WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+        bump=BacklogWideBump(
+            versions=TrackedWeekInputVersions(
+                WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+            ),
+            settings=SettingsRepository(transaction, principal.tenant_id),
         ),
         clock=utc_now,
     )

@@ -36,7 +36,7 @@ from syncr_api.core.scopes import ALL_SCOPES, Scope
 from syncr_api.user_settings.config import ReviewCadence
 from syncr_api.user_settings.records import SettingsRecord
 from syncr_api.user_settings.repository import SettingsRepository
-from syncr_api.user_settings.solve_inputs import WeekRange
+from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.pigments import PIGMENT_COUNT, PIGMENT_DEAL_ORDER
 from syncr_domain.projects import ProjectStatus
 from syncr_domain.weeks import IsoWeek
@@ -228,8 +228,9 @@ def build_areas(
     areas = FakeAreaRepository(principal.tenant_id, stored)
     service = AreaService(
         areas=areas,
-        settings=FakeSettingsRepository(principal.tenant_id),
-        versions=versions,
+        bump=BacklogWideBump(
+            versions=versions, settings=FakeSettingsRepository(principal.tenant_id)
+        ),
         clock=lambda: NOW,
     )
     return service, areas
