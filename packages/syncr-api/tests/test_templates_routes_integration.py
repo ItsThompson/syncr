@@ -522,8 +522,13 @@ def test_a_patch_cannot_rebind_an_entry(http: TestClient, signed_in: dict[str, s
     [
         ({"targetTime": "07:05:00", "durationMinutes": 15}, "targetTime"),
         ({"targetTime": "07:00:00", "durationMinutes": 50}, "durationMinutes"),
+        ({"targetTime": "07:00:00+01:00", "durationMinutes": 15}, "targetTime"),
     ],
-    ids=["a target time between two quarter hours", "a duration that is not whole steps"],
+    ids=[
+        "a target time between two quarter hours",
+        "a duration that is not whole steps",
+        "a target time carrying an offset the column cannot store",
+    ],
 )
 def test_a_span_off_the_grid_is_refused_and_names_its_field(
     http: TestClient,

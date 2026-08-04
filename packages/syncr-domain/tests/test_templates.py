@@ -11,7 +11,7 @@ the pattern covers this day type" would be indistinguishable from "bump always".
 
 from __future__ import annotations
 
-from datetime import time
+from datetime import UTC, time
 from uuid import UUID, uuid4
 
 import pytest
@@ -137,6 +137,17 @@ class TestTheEntrySpan:
 
         assert refused.value.field == EntryField.TARGET_TIME
         assert "quarter hour" in str(refused.value)
+
+    def test_a_target_time_carrying_a_zone_is_refused(self) -> None:
+        # A target time is wall time: 07:00 means 07:00 wherever the user is. The column that
+        # stores one holds no offset, so an offset offered here would be dropped by the write
+        # rather than honored, and the entry would materialize at a different instant than the
+        # caller asked for.
+        with pytest.raises(TemplateEntryError) as refused:
+            EntrySpan(target_time=time(7, 0, tzinfo=UTC), duration_minutes=30, flex_band_minutes=0)
+
+        assert refused.value.field == EntryField.TARGET_TIME
+        assert "names no zone" in str(refused.value)
 
     @pytest.mark.parametrize("duration", [20, 50, 1425 + 15 + 5])
     def test_a_duration_that_is_not_whole_steps_is_refused(self, duration: int) -> None:

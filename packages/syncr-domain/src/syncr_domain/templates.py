@@ -21,7 +21,9 @@ into a block whose start is the target time on a date and whose end is that star
 duration, and both of those have to land on a quarter hour. The entry is fixed by derivation,
 so the solver may not move it onto the grid: an off-grid declaration would make the week
 infeasible for a reason the user never sees. :class:`EntrySpan` is therefore where the grid is
-checked, at the point where a span is first expressible.
+checked, at the point where a span is first expressible. It is also where a target time carrying
+a zone is refused: the zone comes from the date the entry materializes for, and a stored target
+time holds no offset, so an offset offered here would be dropped rather than honored.
 
 :class:`WeekPattern` is the one place the seven-weekday rule lives. It is a constructor
 precondition rather than a validation step, so a partial mapping is not a pattern that fails a
@@ -46,8 +48,10 @@ if TYPE_CHECKING:
 
 # One step of the grid. An entry shorter than a step could not both start and end on it.
 MIN_DURATION_MINUTES: Final = SNAP_MINUTES
-# An entry names a time of day, so a span longer than a day would reach past the date it was
-# materialized for and overlap its own next occurrence.
+# An entry names a time of day, so a nominal day is the ceiling: past it a span stops describing
+# part of a day at all. It is NOT a no-overlap guarantee. Whether one occurrence reaches its own
+# next one depends on the local day's real length, which only the week assembler knows: a
+# spring-forward day is 23 hours, so a span of a nominal day ends an hour inside the next one.
 MAX_DURATION_MINUTES: Final = 24 * 60
 # The band shifts the entry either way, so half a day is the point past which the target time
 # says nothing about when the entry happens.
@@ -116,6 +120,14 @@ class EntrySpan:
     flex_band_minutes: int
 
     def __post_init__(self) -> None:
+        if self.target_time.tzinfo is not None:
+            raise TemplateEntryError(
+                EntryField.TARGET_TIME,
+                f"a target time is wall time and names no zone, got {self.target_time!r}. The "
+                "zone comes from the date the entry materializes for, and the column that stores "
+                "a target time holds no offset, so one sent here would be dropped rather than "
+                "honored",
+            )
         if not is_wall_time_on_snap_grid(self.target_time):
             raise TemplateEntryError(
                 EntryField.TARGET_TIME,
@@ -127,8 +139,8 @@ class EntrySpan:
             raise TemplateEntryError(
                 EntryField.DURATION,
                 f"an entry runs for {MIN_DURATION_MINUTES} to {MAX_DURATION_MINUTES} minutes, "
-                f"got {self.duration_minutes}. An entry names a time of day, so a span longer "
-                "than a day would overlap its own next occurrence",
+                f"got {self.duration_minutes}. An entry names a time of day, so a span past a "
+                "nominal day stops describing part of one",
             )
         if not is_a_snap_multiple(self.duration_minutes):
             raise TemplateEntryError(
