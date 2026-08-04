@@ -16,11 +16,13 @@ snap target for the user's own placements rather than a claim about every block.
 The interval algebra therefore never snaps on its own: an unsnapped interval is
 legal, and a producer that owes the grid applies :func:`snap_to_grid` itself.
 
-Two of the three predicates below take no instant, because a DECLARATION carries none. A
-template entry and a routine state a wall time and a duration in minutes, with no date and
-no zone, and materializing one produces a block whose start and end have to land on the
-grid. Checking the declaration is what keeps that rejection at the boundary, where the
-user can still fix it, rather than at solve time where the block is already fixed.
+The last two predicates take no instant, because a DECLARATION carries none: a wall time and
+a duration in minutes, with no date and no zone.
+:class:`syncr_domain.templates.EntrySpan` reads both, so a template entry that would
+materialize a block starting or ending between two of the grid's lines is refused where the
+user can still fix it rather than at solve time, where the entry is already fixed by
+derivation. :class:`syncr_domain.routines.RoutineSpan` declares the same pair and reads
+neither: whether the frame owes the grid is decided there, not here.
 """
 
 from __future__ import annotations
