@@ -23,9 +23,10 @@ leg and a recovery window both start at the same instant and overlap by construc
 exemption that makes the journey home legal is stated on the set that holds both.
 
 **A buffer is not snapped to the grid.** An imported commitment keeps its real time, even at
-``:07``, and a buffer derived from one is computed from that real time. The grid's step appears
-here for one purpose only: it is the shortest block a surface can draw, so it is the floor
-below which a truncated block is dropped rather than a target anything is moved to.
+``:07``, and a buffer derived from one is computed from that real time, seconds included. The
+grid's step has exactly one part to play in this geometry, and it is not here: it is the shortest
+block a surface can draw, so :mod:`syncr_api.anchors.shadow_collisions` uses it as the floor
+below which a truncated block is dropped rather than as a target anything is moved to.
 
 **Clipping is not here.** These spans are unclipped, so a Monday-morning commitment casts its
 Sunday-evening prep whatever week is being assembled. Which of them fall inside a week, and how
@@ -60,9 +61,9 @@ if TYPE_CHECKING:
     from syncr_domain.identifiers import AnchorId, AreaId
     from syncr_domain.intervals import Instant
 
-# What a buffer is called once it is a block. The commitment's own name is the only thing a
-# declaration holds that names where the journey goes; the return leg needs no name at all,
-# because home is where every one of them ends.
+# What a buffer is called once it is a block. Neither the declaration nor the commitment names a
+# destination, so the outbound leg names the commitment it is a journey to; the return leg needs no
+# name at all, because home is where every one of them ends.
 PREP_TITLE: Final = "Prep for {commitment}"
 OUTBOUND_TITLE: Final = "Leave for {commitment}"
 RETURN_TITLE: Final = "Go Home"

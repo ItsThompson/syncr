@@ -15,8 +15,9 @@ move a journey off the commitment it meets, and dividing one into two pieces wou
 buffer two identities. So the block that gives way ends where the block it collided with begins,
 and it is dropped outright when that leaves nothing a surface could draw.
 
-Only blocks are contested. A forbidden window reserves time for nothing, so two of them
-overlapping is a union rather than a contest, and the union is taken where the spans are read.
+Only blocks are contested. A forbidden window holds no content and reserves time for nothing to
+be placed in, so two of them covering the same minutes is a union rather than a contest, and the
+union is taken where the spans are read.
 """
 
 from __future__ import annotations
