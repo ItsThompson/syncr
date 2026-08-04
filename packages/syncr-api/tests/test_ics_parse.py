@@ -1657,6 +1657,20 @@ def test_a_separator_in_a_set_member_reads_as_the_number_dateutil_reads() -> Non
         "FREQ=SECONDLY;BYHOUR=24",
         "FREQ=DAILY;BYYEARDAY=400",
         "FREQ=DAILY;BYWEEKNO=54",
+        # RFC 5545 gives a signed form to four properties and not to these, so comparing a magnitude
+        # admitted the negative of an unsigned one. BYMONTH=-1 is two characters, and -1 is the
+        # CORRECT idiom on the four that do count backwards, so copying it across is one slip.
+        "FREQ=SECONDLY;BYMONTH=-1;BYHOUR=2",
+        "FREQ=SECONDLY;BYHOUR=-1",
+        "FREQ=SECONDLY;BYMINUTE=-1",
+        # Zero is outside every one of these ranges, and dateutil accepts BYMONTHDAY=0.
+        "FREQ=MONTHLY;BYMONTHDAY=0",
+        "FREQ=DAILY;BYWEEKNO=0",
+        # A magnitude wider than the eleven significant digits syncr will ACT on. Routing the range
+        # check through that predicate made it skip exactly the values most obviously out of range.
+        "FREQ=SECONDLY;BYMONTHDAY=999999999999;BYHOUR=2",
+        "FREQ=SECONDLY;BYYEARDAY=999999999999;BYHOUR=2",
+        "FREQ=SECONDLY;BYWEEKNO=0000000000999999999999;BYHOUR=2",
         # And a position past every set a daily period can hold, stated 365 times: two seconds each,
         # measured at 160 seconds in one call, at the frequency the guard used to leave alone.
         "FREQ=DAILY;BYSETPOS=2",
@@ -1700,3 +1714,37 @@ def test_a_rule_inside_every_range_is_still_expanded(rule: str, events: int) -> 
 
     assert outcome.rejected == ()
     assert len(outcome.events) == events
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        # Every value inside the range its property allows, including the signed forms on the four
+        # properties RFC 5545 gives one to. None of these may be refused.
+        "FREQ=MONTHLY;BYMONTHDAY=-1",
+        "FREQ=MONTHLY;BYMONTHDAY=-31",
+        "FREQ=MONTHLY;BYMONTHDAY=1,-1",
+        "FREQ=YEARLY;BYYEARDAY=-366",
+        "FREQ=YEARLY;BYWEEKNO=-53",
+        "FREQ=YEARLY;BYWEEKNO=1,53",
+        "FREQ=MONTHLY;BYSETPOS=-1;BYDAY=MO,TU,WE,TH,FR",
+        "FREQ=WEEKLY;BYSETPOS=-1;BYDAY=MO,FR",
+        "FREQ=DAILY;BYHOUR=0,23",
+        "FREQ=DAILY;BYMINUTE=0,59",
+        "FREQ=YEARLY;BYMONTH=1,12",
+        "FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29",
+        "FREQ=DAILY;BYHOUR=8,9,10,11,12,13,14,15,16,17;BYSETPOS=10",
+    ],
+)
+def test_a_signed_form_the_standard_allows_is_not_refused(rule: str) -> None:
+    # The accepting side of the range check, and the reason it is a table of intervals rather than a
+    # magnitude: -1 means "the last one" on four properties and means nothing on the other four.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:signed@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.rejected == ()

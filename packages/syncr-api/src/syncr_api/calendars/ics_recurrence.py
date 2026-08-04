@@ -76,21 +76,33 @@ _EXPANDING_PARTS: Final = {
     "MINUTELY": (_BYSECOND,),
     "SECONDLY": (),
 }
-# The range RFC 5545 section 3.3.10 gives each numeric rule part, read as a magnitude so the signed
-# forms are covered by one entry. BYSECOND reaches 60 for a leap second. BYDAY is absent on purpose:
-# it carries weekday codes rather than plain numbers, and dateutil does validate that one.
+# The values RFC 5545 section 3.3.10 allows each numeric rule part, as the closed intervals the
+# standard actually gives, one entry per interval.
 #
-# These exist because a value outside its range can never match, so the rule yields nothing while
-# the expander walks looking for it, inside a single call no bound of syncr's can interrupt.
-_RULE_RANGES: Final = {
-    "BYMONTH": (1, 12),
-    "BYMONTHDAY": (1, 31),
-    "BYYEARDAY": (1, 366),
-    "BYWEEKNO": (1, 53),
-    "BYHOUR": (0, 23),
-    "BYMINUTE": (0, 59),
-    "BYSECOND": (0, 60),
-    "BYSETPOS": (1, 366),
+# **Only four of these have a signed form.** BYMONTHDAY, BYYEARDAY, BYWEEKNO and BYSETPOS count
+# backwards from the end of their period, so -1 is the correct idiom on all four. BYMONTH, BYHOUR,
+# BYMINUTE and BYSECOND are unsigned. An earlier version of this table compared the MAGNITUDE, on
+# the stated premise that "the signed forms are covered by one entry": that premise was false for
+# half the table, and it admitted BYMONTH=-1, which no month matches and which is one slip from the
+# -1 that is right on the other four. Measured, that rule did not return in three minutes.
+#
+# Zero is excluded from the signed properties because the standard excludes it and dateutil does
+# not: BYMONTHDAY=0 is accepted there and can never match.
+#
+# BYSECOND reaches 60 because the standard allows a leap second. dateutil is stricter and refuses it
+# with its own message, so syncr does not add a second refusal for a value the standard permits.
+#
+# BYDAY is absent on purpose: it carries weekday codes rather than plain numbers, and dateutil
+# validates that one itself.
+_RULE_RANGES: Final[dict[str, tuple[tuple[int, int], ...]]] = {
+    "BYMONTH": ((1, 12),),
+    "BYMONTHDAY": ((-31, -1), (1, 31)),
+    "BYYEARDAY": ((-366, -1), (1, 366)),
+    "BYWEEKNO": ((-53, -1), (1, 53)),
+    "BYHOUR": ((0, 23),),
+    "BYMINUTE": ((0, 59),),
+    "BYSECOND": ((0, 60),),
+    "BYSETPOS": ((-366, -1), (1, 366)),
 }
 _RULE_SEPARATOR: Final = ";"
 _WALL_FORMAT: Final = "%Y%m%dT%H%M%S"
@@ -273,28 +285,38 @@ def _require_readable_members(rule_text: str) -> None:
 
 
 def _require_value_in_range(name: str, stated: str) -> None:
-    """Refuse a numeric rule member outside the range RFC 5545 gives that property.
+    """Refuse a numeric rule member outside the values RFC 5545 gives that property.
 
-    dateutil does not check these, and a value outside the range can never match anything, so the
-    rule yields nothing while the expander walks looking for it. Measured:
+    dateutil does not check most of these, and a value outside the range can never match anything,
+    so the rule yields nothing while the expander walks looking for it. Measured:
     ``FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2`` did not return in twenty minutes, and no bound syncr
     owns can see it, because the work is inside one call.
 
     A month has at most 31 days, so 53 is not a publisher being unusual: it is a mistake, and
-    refusing it by name is more useful than a rule that quietly produces nothing. Only the purely
-    numeric properties are checked here. ``BYDAY`` carries weekday codes with optional ordinals and
-    is left to dateutil, which does validate that one.
+    refusing it by name is more useful than a rule that quietly produces nothing.
+
+    **The conversion here is not ``_signed``.** That predicate answers "is this a magnitude syncr
+    will ACT on", which is a narrower question: it refuses anything past eleven significant digits,
+    and reading its ``False`` as "not a number, skip" made this check fail open for exactly the
+    values most obviously out of range. ``BYMONTHDAY=999999999999`` skipped the check and did not
+    return in five minutes. The length is already bounded by the caller, so a bare conversion here
+    cannot depend on the interpreter's digit limit.
     """
-    limits = _RULE_RANGES.get(name)
-    if limits is None or not _signed(stated):
+    intervals = _RULE_RANGES.get(name)
+    if intervals is None:
         return
-    low, high = limits
-    magnitude = abs(_number(stated))
-    if low <= magnitude <= high:
+    try:
+        value = int(stated)
+    except ValueError:
+        # Not a number at all. dateutil's own validation answers that, and this function has no
+        # opinion on a weekday code or a malformed value.
         return
+    if any(low <= value <= high for low, high in intervals):
+        return
+    allowed = " or ".join(f"{low} to {high}" for low, high in intervals)
     message = (
         f"the recurrence rule states {name}={stated}, and RFC 5545 allows "
-        f"{low} to {high} there, so the rule can never match"
+        f"{allowed} there, so the rule can never match"
     )
     raise UnparseableRecurrence(message)
 

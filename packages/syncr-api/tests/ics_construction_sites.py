@@ -161,6 +161,13 @@ SITES: Final[tuple[Site, ...]] = (
     ),
     Site(
         module="ics_recurrence",
+        function="_require_value_in_range",
+        constructor="int",
+        reads="a numeric rule member, to compare against the range its property allows",
+        guard=GUARDED_HERE,
+    ),
+    Site(
+        module="ics_recurrence",
         function="_signed",
         constructor="int",
         reads="a rule value, to decide whether it is a number at all",
