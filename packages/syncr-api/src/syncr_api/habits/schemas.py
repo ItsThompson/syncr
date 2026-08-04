@@ -33,6 +33,7 @@ from pydantic import ConfigDict, Field, field_validator
 from syncr_api.core.schemas import WireModel
 from syncr_api.habits.config import HABIT_TITLE_MAX_LENGTH
 from syncr_domain.habits import (
+    DEFAULT_DEBT_CAP_PERIODS,
     MAX_APPROX_DAYS,
     MAX_DEBT_CAP_PERIODS,
     MAX_DURATION_MINUTES,
@@ -68,9 +69,10 @@ _MAX_DURATION_DESCRIPTION = (
     "this span or nothing."
 )
 _DEBT_CAP_DESCRIPTION = (
-    "The ceiling on outstanding debt, in cadence periods. Two by default, which is two weeks' "
-    "worth for a count-per-week habit and two days' worth for a daily one. A miss arriving at "
-    "the cap is forgiven rather than added, and raises the habit in the weekly session."
+    "The ceiling on outstanding debt, in cadence periods. One period is a week for a "
+    "count-per-week habit, a day for a daily one, and the stated interval for an approximate "
+    "one, so the cap is that many periods' worth of occurrences. A miss arriving at the cap is "
+    "forgiven rather than added, and raises the habit in the weekly session."
 )
 
 
@@ -143,8 +145,11 @@ class DebtResponse(WireModel):
     """What this habit's misses amount to under its policy. Derived, so also read-only."""
 
     outstanding: int = Field(
-        description="Missed occurrences not yet made up, which the week assembler adds to a week "
-        "as made-up occurrences. Always zero for forgive and for escalate: only debt accumulates."
+        description="Confirmed skips of this habit's occurrences, clamped to the cap, which the "
+        "week assembler adds to a week as made-up occurrences. It falls only when the log stops "
+        "recording an occurrence as missed, which is what correcting the day on Today does: "
+        "performing a make-up does not currently reduce it. Always zero for forgive and for "
+        "escalate, because only debt accumulates."
     )
     cap: int = Field(
         description="The ceiling: debtCapPeriods times the occurrences one cadence period holds."
@@ -225,7 +230,9 @@ class HabitCreateRequest(WireModel):
     miss_policy: MissPolicy = MissPolicy.FORGIVE
     binding_source: BindingSource = BindingSource.FIXED
     variants: _Variants = Field(default_factory=list, description=_VARIANTS_DESCRIPTION)
-    debt_cap_periods: _DebtCap = Field(default=2, description=_DEBT_CAP_DESCRIPTION)
+    debt_cap_periods: _DebtCap = Field(
+        default=DEFAULT_DEBT_CAP_PERIODS, description=_DEBT_CAP_DESCRIPTION
+    )
 
 
 class HabitPatchRequest(WireModel):

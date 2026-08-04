@@ -589,8 +589,10 @@ async def test_a_patch_whose_merged_duration_runs_backwards_is_refused(fixture: 
 async def test_no_service_method_can_write_a_cursor_or_a_debt_figure(fixture: Fixture) -> None:
     """Asserted against the repository's own surface, inherited members included.
 
-    "No API path sets the cursor" holds because there is nothing below the service that could
-    store one. A writer added to the repository fails here rather than being reviewed.
+    "No API path sets the cursor" holds because there is nothing below the service that could store
+    one: no column, no repository method, no request field. That shape is what carries the property.
+    This is a name-based heuristic on top of it, so a writer called `store_derived_figures` would
+    pass, and it earns its place by failing the obvious addition rather than by being airtight.
     """
     surface = {name for name in dir(HabitRepository) if not name.startswith("_")}
 

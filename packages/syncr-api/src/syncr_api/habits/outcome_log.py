@@ -40,6 +40,24 @@ class HabitOutcomeReader(Protocol):
     async def read(self, habit_ids: Sequence[HabitId]) -> tuple[HabitOutcome, ...]:
         """Every recorded outcome whose binding names one of ``habit_ids``.
 
+        **At most one row per ``(habit_id, occurrence_key)``.** Both derivations are counts over the
+        rows they are given, so a second row for one occurrence is counted twice: two completions of
+        occurrence ``"00"`` put the cursor one variant ahead, and one miss delivered three times is
+        charged three times until the cap clamps it. Neither derivation can defend the invariant,
+        because a count cannot tell a duplicate from a second occurrence. That is what
+        ``HabitOutcome.occurrence_key`` is carried for: it is read by neither derivation and it is
+        the thing this precondition is stated over.
+
+        This is not hypothetical. ``block_outcomes`` is keyed by ``(block_id, revision_id)``, so one
+        occurrence legitimately holds a row under each revision that placed it, and a reader taking
+        every row would deliver exactly the shape above. Whichever rule resolves that, the latest
+        revision or the newest confirmation, belongs in the reader rather than in the derivations.
+
+        Every instant a row carries has to be a real instant. ``HabitOutcome`` normalizes through
+        ``syncr_domain.intervals.as_instant`` on construction and refuses a naive datetime, so a
+        reader composing rows from a driver that hands back naive values learns it here rather than
+        as a comparison against a wall clock two layers down.
+
         One call for a list of habits rather than one per habit, so rendering a collection is a
         single read. The order is not part of the contract: both derivations are counts, and a
         count does not depend on the order it is taken in.
