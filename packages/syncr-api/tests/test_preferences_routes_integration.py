@@ -328,6 +328,20 @@ def test_windows_come_back_earliest_first_whatever_order_they_were_sent(
     ]
 
 
+def test_the_areas_default_preference_id_stays_null_after_a_preference_is_set(
+    http: TestClient, signed_in: dict[str, str], owned: Owned
+) -> None:
+    # The Area response's own field says "always null, nothing writes this column", and this is what
+    # keeps that claim true. A preference names its own owner, so the relation lives on the
+    # preference and a second home for it on the Area would be a value that can disagree.
+    put(http, signed_in, owned.area, **GYM_WINDOWS)
+
+    area = http.get(f"{AREAS_PREFIX}/{owned.area_id}", headers=signed_in)
+
+    assert area.status_code == HTTPStatus.OK, area.text
+    assert area.json()["defaultPreferenceId"] is None
+
+
 # --------------------------------------------------------------------------------
 # X13: a daily cap is an Area's alone
 # --------------------------------------------------------------------------------

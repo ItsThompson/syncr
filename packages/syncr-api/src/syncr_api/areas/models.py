@@ -16,9 +16,10 @@ The unique index on ``(tenant_id, name)`` is load-bearing rather than tidy. Past
 the pigment ramp repeats and identity rests on the hatch and the Area's name, so two Areas
 holding one name would leave nothing to tell them apart.
 
-``default_preference_id`` carries no foreign key. Preferences are created by a later
-revision, and the column has to exist from the first one that creates ``areas`` because the
-Area is where a preference's owner is declared.
+``default_preference_id`` carries no foreign key and nothing writes it. A preference names its
+own owner, so the ``preferences`` table is where the relation lives and this column is a second
+home for it that no reader needs: an Area's preference is addressed by the Area itself, under
+``/areas/{id}/preference``. Whether the column is filled or dropped is ticket 1210.
 """
 
 from __future__ import annotations
