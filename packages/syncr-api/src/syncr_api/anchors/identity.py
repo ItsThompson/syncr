@@ -13,6 +13,17 @@ every sync, each one displacing whatever the other had displaced. A digest keeps
 inputs distinct while fitting the column, and it is stable across runs, which is what
 reconciliation needs: the same UID has to produce the same key next week.
 
+**A control character is DROPPED here, and REFUSED on the user-authored path.** Both paths ask the
+same question, so :func:`is_control` is the one definition of the class, and the two treatments
+differ because the two sources do. A user who typed a NUL can be told to remove it, and
+``schemas`` states that rejection. A publisher cannot be told anything: the byte arrives on a
+calendar the user subscribes to, and refusing the event would drop real occupancy over something
+the user did not do and cannot fix. Worse, ``str.split()`` and ``str.strip()`` do not remove a NUL,
+so before this the byte reached a ``VARCHAR`` column and Postgres refused the whole insert. That
+raise happened BEFORE the sync state was written, so anyone able to put an event on a subscribed
+calendar could silently and durably stop that user's sync with one byte, leaving nothing on the
+panel built to report it.
+
 The digested form keeps a readable prefix, because the stored value is what a support question
 is asked about. Two feeds could in principle produce one digested key by publishing UIDs that
 share the prefix and collide on 32 hex characters of SHA-256; that is not a case a publisher
@@ -22,6 +33,7 @@ would drop real occupancy over a long identifier that is not the publisher's fau
 
 from __future__ import annotations
 
+import unicodedata
 from hashlib import sha256
 from typing import Final
 
@@ -44,18 +56,68 @@ DIGEST_SEPARATOR: Final = "~"
 UNTITLED: Final = "Untitled commitment"
 
 
+def is_control(character: str) -> bool:
+    """Whether ``character`` is a control character.
+
+    Unicode's own category rather than a hand-written range, so it covers C0, DEL and C1 with one
+    test. Only NUL is fatal to a Postgres text column, but the rest render as nothing a person can
+    read, and a label is for reading.
+
+    RFC 5545 forbids these in a TEXT value, so a feed carrying one is already wrong. That is why
+    they are dropped rather than trusted, and it is not a reason to trust the feed.
+    """
+    return unicodedata.category(character) == "Cc"
+
+
+def scrubbed_text(value: str) -> str:
+    """Publisher text with control characters dropped, then collapsed.
+
+    A WHITESPACE control character is kept for the collapse to fold, so ``Two\\r\\n\\tlines`` reads
+    as ``Two lines`` rather than ``Twolines``: a tab is a separator, and deleting it would join two
+    words the publisher meant to keep apart. Only a control character that is not whitespace is
+    dropped, which is the class Postgres refuses and the class nobody can read.
+
+    Dropped rather than refused: see the module docstring. The caller cannot tell the publisher
+    anything, and refusing the event would lose occupancy the user really has.
+
+    **Not folded into :func:`collapsed_text`.** The user-authored path calls that one and then has
+    to SEE a control character in order to reject it, so stripping inside the shared helper would
+    make that rejection unreachable while its tests stayed green.
+    """
+    return collapsed_text(
+        "".join(
+            character for character in value if character.isspace() or not is_control(character)
+        )
+    )
+
+
 def reconciliation_key(uid: str, *, limit: int = EXTERNAL_UID_MAX_LENGTH) -> str:
     """``uid`` as the stored half of the reconciliation key, fitted to the column.
+
+    Scrubbed of control characters first, because a UID reaches the same kind of column a title
+    does and Postgres refuses the insert rather than the byte. Two UIDs differing ONLY by a control
+    character therefore collapse to one key. That is the same trade the digest makes and it is the
+    right way round: a feed carrying a NUL inside an identifier already violates RFC 5545, and a
+    merged anchor is recoverable where a sync that cannot run is not.
 
     Returned unchanged when it already fits, which is every real feed. Past the limit the tail
     is replaced by a digest of the WHOLE value, so two long UIDs sharing a prefix stay two
     keys.
     """
-    if len(uid) <= limit:
-        return uid
+    scrubbed = scrubbed_text(uid)
+    # A UID of nothing but control characters would otherwise store the empty string, and two such
+    # components would then be one anchor. The digest of the original is stable and non-empty.
+    if not scrubbed:
+        return _digest(uid)
+    if len(scrubbed) <= limit:
+        return scrubbed
     kept = limit - DIGEST_LENGTH - len(DIGEST_SEPARATOR)
-    digest = sha256(uid.encode("utf-8")).hexdigest()[:DIGEST_LENGTH]
-    return f"{uid[:kept]}{DIGEST_SEPARATOR}{digest}"
+    return f"{scrubbed[:kept]}{DIGEST_SEPARATOR}{_digest(uid)}"
+
+
+def _digest(value: str) -> str:
+    """The stable short digest the bounded and the all-control cases both key on."""
+    return sha256(value.encode("utf-8")).hexdigest()[:DIGEST_LENGTH]
 
 
 def series_key(series_uid: str | None) -> str | None:
@@ -85,7 +147,7 @@ def stored_title(title: str, *, limit: int = ANCHOR_TITLE_MAX_LENGTH) -> str:
     a match rule is evaluated against the STORED title, so a substring past the limit does not
     match. That is stated rather than hidden, and no real SUMMARY is near the limit.
     """
-    trimmed = collapsed_text(title)
+    trimmed = scrubbed_text(title)
     return trimmed[:limit] if trimmed else UNTITLED
 
 
@@ -93,5 +155,5 @@ def stored_location(location: str | None, *, limit: int = ANCHOR_LOCATION_MAX_LE
     """``location`` as the row holds it, or ``None``. Nothing reads it; the column has a width."""
     if location is None:
         return None
-    trimmed = collapsed_text(location)
+    trimmed = scrubbed_text(location)
     return trimmed[:limit] or None

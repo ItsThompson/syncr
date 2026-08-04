@@ -32,7 +32,6 @@ matches: a request naming one position would be stating a fraction of the change
 
 from __future__ import annotations
 
-import unicodedata
 from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
@@ -55,7 +54,7 @@ from syncr_api.anchors.config import (
     AnchorTypeSource,
     PostScope,
 )
-from syncr_api.anchors.identity import collapsed_text
+from syncr_api.anchors.identity import collapsed_text, is_control
 from syncr_api.core.schemas import WireModel
 
 _TYPE_SOURCE_DESCRIPTION = (
@@ -107,13 +106,19 @@ def _readable(value: str | None) -> str | None:
     this refuses is text that would be stored and then read by a person: `'   '` renders as a row
     with no label, and a NUL byte reaches a ``VARCHAR`` column and raises where the caller deserves
     a stated 422.
+
+    :func:`~syncr_api.anchors.identity.is_control` is shared with the ingest boundary, so the two
+    paths agree on what a control character IS and differ only in what they do about one. Here it is
+    refused, because the person who typed it can remove it; a publisher's is dropped, because nobody
+    can tell the publisher anything. Calling ``collapsed_text`` rather than ``scrubbed_text`` is
+    load-bearing: scrubbing first would make this rejection unreachable.
     """
     if value is None:
         return None
     collapsed = collapsed_text(value)
     if not collapsed:
         raise ValueError(_BLANK_MESSAGE)
-    if any(unicodedata.category(character) == "Cc" for character in collapsed):
+    if any(is_control(character) for character in collapsed):
         raise ValueError(_CONTROL_MESSAGE)
     return collapsed
 

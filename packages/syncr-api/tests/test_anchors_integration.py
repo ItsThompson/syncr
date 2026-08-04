@@ -62,6 +62,7 @@ NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 MONDAY_0900 = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 
 RECONCILIATION_KEY_INDEX = "uq_anchors_tenant_id_source_id_external_uid"
+HOUR = timedelta(hours=1)
 
 TIMETABLE = "https://example.ac.uk/timetable.ics"
 ASSESSMENTS = "https://example.ac.uk/assessments.ics"
@@ -392,6 +393,62 @@ async def test_removing_a_source_removes_the_occupancy_it_contributed(
     assert len(await held(sessions, tenant_id, assessments.id)) == 1
 
 
+async def test_a_steady_feed_reports_nothing_updated(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    # `updated` has to mean CHANGED, not republished. A steady feed sends the same events every
+    # fifteen minutes, so counting each one would report a number equal to the whole set forever and
+    # say nothing at all about what moved.
+    outcome = a_read(an_event("a@example"), an_event("b@example", start=MONDAY_0900 + HOUR))
+    await reconcile(sessions, tenant_id, source, outcome)
+
+    second = await reconcile(sessions, tenant_id, source, outcome)
+
+    assert (second.created, second.updated, second.removed) == (0, 0, 0)  # type: ignore[attr-defined]
+    assert second.current == 2  # type: ignore[attr-defined]
+
+
+async def test_clearing_possibly_stale_counts_as_an_update(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    # The other side of the count. An anchor a failed sync marked stale becomes unstale on the next
+    # successful read, and that IS a change even though the published fact is identical.
+    outcome = a_read(an_event("a@example"))
+    await reconcile(sessions, tenant_id, source, outcome)
+    async with sessions() as session, session.begin():
+        await AnchorRepository(session, tenant_id).set_possibly_stale(source.id, stale=True)
+
+    after = await reconcile(sessions, tenant_id, source, outcome)
+
+    assert after.updated == 1  # type: ignore[attr-defined]
+    assert (await held(sessions, tenant_id, source.id))[0].possibly_stale is False
+
+
+async def test_a_moved_commitment_counts_as_one_update(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    outcome = a_read(an_event("a@example"), an_event("b@example", start=MONDAY_0900 + HOUR))
+    await reconcile(sessions, tenant_id, source, outcome)
+
+    moved = await reconcile(
+        sessions,
+        tenant_id,
+        source,
+        a_read(
+            an_event("a@example", start=MONDAY_0900 + timedelta(hours=3)),
+            an_event("b@example", start=MONDAY_0900 + HOUR),
+        ),
+    )
+
+    assert moved.updated == 1  # type: ignore[attr-defined]
+
+
 # --------------------------------------------------------------------------------
 # The facts an anchor keeps: its real time, and a whole all-day span.
 # --------------------------------------------------------------------------------
@@ -477,6 +534,52 @@ async def test_an_oversized_published_uid_still_reconciles_to_one_anchor(
     anchors = await held(sessions, tenant_id, source.id)
     assert len(anchors) == 1
     assert anchors[0].external_uid == reconciliation_key(huge)
+
+
+async def test_a_control_character_from_a_publisher_reconciles_rather_than_raising(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    # THE must-fix, end to end against real Postgres. `str.split()` does not remove a NUL, so before
+    # the scrub this reached the VARCHAR column and asyncpg raised CharacterNotInRepertoireError out
+    # of the flush. In a sync pass that raise happened BEFORE the sync state was written, so a third
+    # party who can put an event on a subscribed calendar could stop the user's sync with one byte
+    # and leave nothing on the panel built to report it.
+    hostile = an_event(
+        "lecture\x00@example.ac.uk",
+        title="Computer Science\x00Lecture",
+        series_uid="series\x00@example.ac.uk",
+        location="Lecture\x00Theatre 3",
+    )
+
+    delta = await reconcile(sessions, tenant_id, source, a_read(hostile))
+
+    anchors = await held(sessions, tenant_id, source.id)
+    assert delta.created == 1  # type: ignore[attr-defined]
+    assert len(anchors) == 1
+    stored = anchors[0]
+    for value in (stored.external_uid, stored.series_uid, stored.title, stored.location):
+        assert value is not None
+        assert "\x00" not in value
+    assert "Computer Science" in stored.title
+
+
+async def test_a_control_character_bearing_feed_still_reconciles_on_the_second_pass(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    # The scrub has to be stable, or the second sync creates a second anchor for one commitment and
+    # the unique index refuses it. Asserted separately, because a scrub using a random or positional
+    # fallback would pass the test above and fail here.
+    outcome = a_read(an_event("l\x00@example", title="Systems\x00Lecture"))
+
+    await reconcile(sessions, tenant_id, source, outcome)
+    second = await reconcile(sessions, tenant_id, source, outcome)
+
+    assert (second.created, second.removed) == (0, 0)  # type: ignore[attr-defined]
+    assert len(await held(sessions, tenant_id, source.id)) == 1
 
 
 # --------------------------------------------------------------------------------

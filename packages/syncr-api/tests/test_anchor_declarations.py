@@ -45,7 +45,10 @@ from syncr_api.anchors.config import (
 )
 from syncr_api.anchors.identity import (
     UNTITLED,
+    collapsed_text,
+    is_control,
     reconciliation_key,
+    scrubbed_text,
     series_key,
     stored_location,
     stored_title,
@@ -604,6 +607,97 @@ def test_a_series_uid_is_bounded_through_the_same_function() -> None:
 )
 def test_a_title_is_trimmed_and_never_empty(published: str, stored: str) -> None:
     assert stored_title(published) == stored
+
+
+# --------------------------------------------------------------------------------
+# A publisher's control character is DROPPED, where a user's is refused.
+#
+# `str.split()` and `str.strip()` do not remove a NUL, so before this the byte reached a VARCHAR
+# column and Postgres refused the insert. In a sync pass that raise happened BEFORE the sync state
+# was written, so anyone able to put an event on a subscribed calendar could stop that user's sync
+# with one byte and leave nothing on the panel built to report it.
+# --------------------------------------------------------------------------------
+
+
+def test_split_and_strip_do_not_remove_a_control_character() -> None:
+    # The reason a separate scrub exists at all. Without this, a reader assumes collapsing handles
+    # it, which is what made the defect invisible.
+    nul = "a\x00b"
+
+    assert nul.split() == [nul]
+    assert nul.strip() == nul
+    assert collapsed_text(nul) == nul
+
+
+@pytest.mark.parametrize(
+    "character",
+    ["\x00", "\x01", "\x0b", "\x1f", "\x7f", "\x85"],
+    ids=["nul", "soh", "vtab", "unit-separator", "del", "c1-next-line"],
+)
+def test_a_control_character_is_recognised_wherever_it_comes_from(character: str) -> None:
+    # One predicate, so the two paths cannot disagree about what a control character IS while
+    # differing about what to do with one.
+    assert is_control(character)
+
+
+def test_a_whitespace_control_character_separates_rather_than_vanishing() -> None:
+    # A tab and a newline are control characters too, so a scrub that deleted every one of them
+    # would read `Two\r\n\tlines` as `Twolines` and join two words the publisher kept apart.
+    assert stored_title("Two\r\n\tlines") == "Two lines"
+    assert scrubbed_text("a \x00 b") == "a b"
+
+
+@pytest.mark.parametrize(
+    "published",
+    ["Computer Science\x00Lecture", "\x00Computer Science Lecture", "Computer Science Lecture\x7f"],
+    ids=["inside", "leading", "trailing"],
+)
+def test_a_published_title_loses_a_control_character_rather_than_raising(published: str) -> None:
+    stored = stored_title(published)
+
+    assert not any(is_control(character) for character in stored)
+    assert "Computer Science" in stored
+
+
+def test_a_published_location_loses_a_control_character() -> None:
+    stored = stored_location("Lecture\x00Theatre 3")
+
+    assert stored == "LectureTheatre 3"
+
+
+def test_a_title_of_nothing_but_control_characters_reads_as_untitled() -> None:
+    assert stored_title("\x00\x01\x7f") == UNTITLED
+
+
+def test_a_location_of_nothing_but_control_characters_is_absent() -> None:
+    assert stored_location("\x00\x01") is None
+
+
+def test_a_reconciliation_key_loses_a_control_character_and_stays_stable() -> None:
+    # A UID reaches the same kind of column, so it needs the same scrub. Stability is what
+    # reconciliation needs: this week's read has to match last week's row.
+    key = reconciliation_key("lecture\x00@example.ac.uk")
+
+    assert not any(is_control(character) for character in key)
+    assert key == reconciliation_key("lecture\x00@example.ac.uk")
+
+
+def test_a_uid_of_nothing_but_control_characters_still_gets_a_key() -> None:
+    # It must not store the empty string: two such components would then be one anchor.
+    first = reconciliation_key("\x00\x01")
+    second = reconciliation_key("\x00\x02")
+
+    assert first
+    assert second
+    assert first != second
+
+
+def test_the_user_authored_path_still_refuses_what_the_publisher_path_drops() -> None:
+    # The trap the review named. Folding the scrub into the shared collapse would make this
+    # rejection unreachable while its own tests stayed green, so it is asserted next to the drop.
+    assert stored_title("Lecture\x00") == "Lecture"
+    with pytest.raises(PydanticValidationError, match="control character"):
+        AnchorTypeCreateRequest(name="Lecture\x00")
 
 
 def test_an_oversized_title_is_cut_rather_than_digested() -> None:
