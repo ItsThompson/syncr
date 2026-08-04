@@ -14,8 +14,8 @@ are the same column value with different authority: an override survives a rule 
 match does not, so the interface has to be able to tell them apart.
 
 The minute bounds are ceilings on publisher-independent, user-authored values, and each has a
-different reason. A LEAD is bounded at a week because the week assembler expands its anchor
-read backwards by the largest lead any type declares, so an unbounded lead is an unbounded
+different reason. A LEAD is bounded at a week because the week assembler widens its anchor
+read by the largest lead any type declares, so an unbounded lead is an unbounded
 read. A DURATION is bounded at a day because a buffer longer than a day is a period the user
 should be declaring off-plan rather than as an anchor's shadow. The largest lead any settled
 record uses is 14 hours, so both bounds have a wide margin over the real values.
@@ -117,7 +117,8 @@ FORBIDDEN_AREAS_MAX: Final = 100
 # The span one anchor read may cover, and how many rows one page holds. The span is bounded
 # because a read of "every anchor ever" is not a question the interface asks: the week view
 # reads a week, and the Settings panel reads a horizon. The page is bounded because a feed may
-# legitimately contribute thousands of anchors inside a year.
+# legitimately contribute thousands of anchors inside a year. Neither bounds the week assembly's
+# own read, which is bounded by its week plus the reach the two minute bounds above cap.
 ANCHOR_SPAN_DAYS_MAX: Final = 366
 ANCHOR_PAGE_LIMIT_DEFAULT: Final = 200
 ANCHOR_PAGE_LIMIT_MAX: Final = 500
