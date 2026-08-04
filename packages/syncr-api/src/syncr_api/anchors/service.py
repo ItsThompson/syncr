@@ -15,12 +15,18 @@ commitment RESERVES around itself rather than the commitment.
 statement about the meeting, so a daily standup is typed once rather than 250 times. An
 occurrence with no series is retyped alone, which is the same rule with a series of one.
 
-**Every anchor-type mutation invalidates a solve.** A type declares the prep, transit, and
-recovery every anchor of it casts, so creating, editing, removing, or reordering one regenerates
-shadows, which are solve inputs. Which weeks those are lives in
-``user_settings.solve_inputs.BacklogWideBump``: the current week onwards, floored at today's LOCAL
-date in the home zone, because a type governs every week the user has not yet lived and a past
-week's approved revision keeps the inputs it was computed with.
+**Every anchor-type mutation invalidates a solve, and the range is genuinely the open-ended one.**
+A type declares the prep, transit, and recovery every anchor of it casts, so creating, editing,
+removing, or reordering one regenerates shadows, which are solve inputs. That governs every week
+the user has not yet lived and no week before it, which is exactly
+``user_settings.solve_inputs.BacklogWideBump``: open at the far end, floored at today's LOCAL date
+in the home zone.
+
+The floor is right here for the reason it is wrong for an off-plan span. Off-plan's range is
+bounded at both ends and deliberately unfloored, because a past week inside a declared span reports
+a different denominator and flooring would leave that week serving a figure nothing invalidated. A
+shadow is not a denominator restatement: a past week's approved revision is immutable and keeps the
+inputs it was computed with, so re-deriving it would rewrite history rather than the plan.
 
 **A retype bumps the same range, and that is an over-approximation stated rather than hidden.**
 The narrow answer would be the weeks the retyped occurrences and their shadows fall in, which
@@ -366,6 +372,10 @@ class AnchorTypeService:
         One method because the two always happen together: a rule-set edit changes which anchors
         are typed AND what each of them casts, and a solve that read the old answer has to be
         superseded either way.
+
+        The range is the open-ended one, floored at the current week. A rule set governs every week
+        the user has not yet lived, and nothing before it: unlike an off-plan span, a shadow does
+        not restate a past week's denominator.
         """
         await self._evaluator.re_evaluate()
         await self._bump.from_the_week_holding(now)

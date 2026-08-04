@@ -68,6 +68,16 @@ def series_key(series_uid: str | None) -> str | None:
     return None if series_uid is None else reconciliation_key(series_uid)
 
 
+def collapsed_text(value: str) -> str:
+    """``value`` with every run of whitespace reduced to one space, and trimmed.
+
+    One definition, because both a publisher's title and a user's authored name want it: a tab or
+    a newline inside a label is not a label, and two spaces and one space are the same name for
+    the purpose of telling two anchor types apart.
+    """
+    return " ".join(value.split())
+
+
 def stored_title(title: str, *, limit: int = ANCHOR_TITLE_MAX_LENGTH) -> str:
     """``title`` as the row holds it: trimmed, never empty, and cut to the column.
 
@@ -75,7 +85,7 @@ def stored_title(title: str, *, limit: int = ANCHOR_TITLE_MAX_LENGTH) -> str:
     a match rule is evaluated against the STORED title, so a substring past the limit does not
     match. That is stated rather than hidden, and no real SUMMARY is near the limit.
     """
-    trimmed = " ".join(title.split())
+    trimmed = collapsed_text(title)
     return trimmed[:limit] if trimmed else UNTITLED
 
 
@@ -83,5 +93,5 @@ def stored_location(location: str | None, *, limit: int = ANCHOR_LOCATION_MAX_LE
     """``location`` as the row holds it, or ``None``. Nothing reads it; the column has a width."""
     if location is None:
         return None
-    trimmed = " ".join(location.split())
+    trimmed = collapsed_text(location)
     return trimmed[:limit] or None

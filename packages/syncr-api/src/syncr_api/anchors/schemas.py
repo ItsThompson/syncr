@@ -19,6 +19,12 @@ infer that from the absence of an edit route.
 ``forbiddenAreaIds`` travel together and the descriptions state the biconditional, so the
 generated client sees the rule rather than discovering it from a 422.
 
+**Every free-text field is collapsed and refuses a control character.** A name that is only
+whitespace passes a minimum length and then leaves a rules table row with no label, and a name
+carrying a NUL byte reaches a `VARCHAR` column and fails as a fault rather than as a stated
+rejection. Both are refused here. A whitespace-only match substring is refused for a third reason:
+it is contained in almost every title, so it would be a silent catch-all rule.
+
 There is no ``ruleOrder`` on either request shape. Position is set by appending on create and
 rewritten wholly by the reorder route, because moving one rule changes what every rule after it
 matches: a request naming one position would be stating a fraction of the change it was making.
@@ -26,6 +32,7 @@ matches: a request naming one position would be stating a fraction of the change
 
 from __future__ import annotations
 
+import unicodedata
 from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
@@ -48,6 +55,7 @@ from syncr_api.anchors.config import (
     AnchorTypeSource,
     PostScope,
 )
+from syncr_api.anchors.identity import collapsed_text
 from syncr_api.core.schemas import WireModel
 
 _TYPE_SOURCE_DESCRIPTION = (
@@ -88,6 +96,26 @@ _NOT_NULLABLE_MESSAGE = (
     "this field cannot be cleared, so null is refused rather than read as no change. "
     "Leave it out to keep the stored value."
 )
+_BLANK_MESSAGE = "must hold something other than whitespace"
+_CONTROL_MESSAGE = "must not contain a control character"
+
+
+def _readable(value: str | None) -> str | None:
+    """``value`` collapsed to single spaces, refusing blank text and control characters.
+
+    ``None`` passes through, because a nullable field's null is decided by its own validator. What
+    this refuses is text that would be stored and then read by a person: `'   '` renders as a row
+    with no label, and a NUL byte reaches a ``VARCHAR`` column and raises where the caller deserves
+    a stated 422.
+    """
+    if value is None:
+        return None
+    collapsed = collapsed_text(value)
+    if not collapsed:
+        raise ValueError(_BLANK_MESSAGE)
+    if any(unicodedata.category(character) == "Cc" for character in collapsed):
+        raise ValueError(_CONTROL_MESSAGE)
+    return collapsed
 
 
 class ShadowDeclarationResponse(WireModel):
@@ -273,6 +301,8 @@ class AnchorTypeCreateRequest(WireModel):
         description=_FORBIDDEN_AREAS_DESCRIPTION,
     )
 
+    _read_free_text = field_validator("name", "match_title_contains")(_readable)
+
 
 class AnchorTypePatchRequest(WireModel):
     """A partial update. An omitted field is left alone; an explicit null clears a nullable one.
@@ -335,6 +365,8 @@ class AnchorTypePatchRequest(WireModel):
         if value is None:
             raise ValueError(_NOT_NULLABLE_MESSAGE)
         return value
+
+    _read_free_text = field_validator("name", "match_title_contains")(_readable)
 
 
 class ReorderAnchorTypesRequest(WireModel):

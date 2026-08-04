@@ -24,10 +24,11 @@ from __future__ import annotations
 
 from base64 import urlsafe_b64encode
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 
 from syncr_api.anchors import matching, rules
 from syncr_api.anchors.config import (
@@ -56,6 +57,7 @@ from syncr_api.anchors.records import (
     AnchorTypeSpecification,
     ShadowDeclaration,
 )
+from syncr_api.anchors.schemas import AnchorTypeCreateRequest, AnchorTypePatchRequest
 from syncr_api.core.errors import Conflict, ValidationFailed
 from syncr_domain.intervals import Interval
 from tests.anchor_specifications import (
@@ -690,3 +692,90 @@ def test_every_malformed_cursor_is_one_stated_rejection(cursor: str) -> None:
         decode_cursor(cursor)
 
     assert [error.field for error in raised.value.errors or []] == ["cursor"]
+
+
+# --------------------------------------------------------------------------------
+# The wire boundary: what a caller can send that must not become a fault.
+#
+# All three of these are a class a reviewer reproduced elsewhere in the tree. Each one is checked
+# here because it reaches THIS ticket's own parameters and shapes: an instant on the span, and free
+# text on an anchor type. The shared fix for an instant inside a request BODY, and for echoing an
+# offset back on a response, belongs to the ticket that adds a shared instant type; what is
+# asserted here is that this module's own boundary states a rejection rather than raising.
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "field"),
+    [
+        (START.replace(tzinfo=None), START + timedelta(days=1), "from"),
+        (START, (START + timedelta(days=1)).replace(tzinfo=None), "to"),
+        (START.replace(tzinfo=None), (START + timedelta(days=1)).replace(tzinfo=None), "from"),
+    ],
+    ids=["from-has-no-offset", "to-has-no-offset", "neither-has-one"],
+)
+def test_a_span_bound_with_no_utc_offset_is_a_stated_rejection(
+    start: datetime, end: datetime, field: str
+) -> None:
+    # `13-http-api.md` requires an instant to carry an offset always. The interval algebra refuses
+    # a naive datetime by raising a domain error nothing maps, so without this the route answers
+    # 500 to a wall time. The first offending bound is named, so a caller fixes one thing.
+    with pytest.raises(ValidationFailed) as raised:
+        read_span(start, end)
+
+    assert [error.field for error in raised.value.errors or []] == [field]
+    assert "offset" in raised.value.detail
+
+
+def test_a_span_bound_in_any_offset_is_read_as_the_instant_it_names() -> None:
+    # Not UTC-only: an offset is what makes a wall time an instant, and the algebra normalizes.
+    eastern = timezone(timedelta(hours=-5))
+    span = read_span(START.astimezone(eastern), (START + timedelta(days=1)).astimezone(eastern))
+
+    assert span == Interval(START, START + timedelta(days=1))
+
+
+@pytest.mark.parametrize(
+    "blank", ["   ", "\t", "\n", " \r\n "], ids=["spaces", "tab", "newline", "mixed"]
+)
+def test_a_whitespace_only_anchor_type_name_is_refused(blank: str) -> None:
+    # A name that is only whitespace passes a minimum length and then leaves a rules table row with
+    # no label. The matched type is shown ON an anchor, so a blank name is a row nothing identifies.
+    with pytest.raises(PydanticValidationError, match="whitespace"):
+        AnchorTypeCreateRequest(name=blank)
+
+
+@pytest.mark.parametrize("field", ["name", "match_title_contains"], ids=["name", "match-substring"])
+def test_a_control_character_in_free_text_is_refused_rather_than_raising(field: str) -> None:
+    # A NUL byte reaches a VARCHAR column and fails inside the driver, which is a 500 for a request
+    # the caller could have been told about.
+    with pytest.raises(PydanticValidationError, match="control character"):
+        AnchorTypeCreateRequest(**{"name": "Lecture", field: "Lecture\x00Theatre"})
+
+
+def test_a_whitespace_only_match_substring_is_refused() -> None:
+    # A third reason beyond the other two: a single space is contained in almost every title, so a
+    # rule matching on one is a silent catch-all that outranks every rule after it.
+    with pytest.raises(PydanticValidationError, match="whitespace"):
+        AnchorTypeCreateRequest(name="Lecture", match_title_contains="   ")
+
+
+def test_free_text_a_person_authored_is_collapsed_rather_than_refused() -> None:
+    # The other half: ordinary text with incidental double spacing is accepted and normalized, so
+    # two names differing only in spacing cannot both exist and read as two types.
+    body = AnchorTypeCreateRequest(
+        name="  Placement   Interview ", match_title_contains=" Interview "
+    )
+
+    assert body.name == "Placement Interview"
+    assert body.match_title_contains == "Interview"
+
+
+def test_a_patch_holds_the_same_free_text_boundary_as_a_create() -> None:
+    # The rule has to be on both shapes or the edit route is the way around it.
+    with pytest.raises(PydanticValidationError, match="whitespace"):
+        AnchorTypePatchRequest(name="   ")
+    with pytest.raises(PydanticValidationError, match="control character"):
+        AnchorTypePatchRequest(match_title_contains="Lecture\x00")
+
+    assert AnchorTypePatchRequest(name=" Exam  Day ").name == "Exam Day"

@@ -5,6 +5,13 @@ interval algebra refuses a reversed or zero-length span by raising a domain erro
 maps a domain error to a status, so a route that built an ``Interval`` straight from two query
 parameters would answer 500 to `?from=X&to=X`.
 
+**A span bound states its offset.** `13-http-api.md` requires an instant to carry one always, and
+the interval algebra refuses a naive datetime by raising a domain error nothing maps, so a route
+that built an ``Interval`` straight from two query parameters would answer 500 to a bound written
+without one. Refused here instead, naming the parameter. This covers this route's own PARAMETERS
+only: an instant inside a request body is the shared wire boundary's concern, and folding both into
+one place belongs with the ticket that adds a shared instant type.
+
 **The span is bounded.** A read of "every commitment ever" is not a question the interface asks:
 the week view reads a week and the Settings panel reads a projection horizon. Bounding it is what
 keeps one request's row count a function of a bound syncr owns rather than of how many years of
@@ -62,6 +69,16 @@ def read_span(start: datetime, end: datetime) -> Interval:
     empty page: a caller asking for a zero-width window has made a mistake, and an empty list
     would read as "you have nothing on".
     """
+    for field, bound in (("from", start), ("to", end)):
+        if bound.tzinfo is None or bound.tzinfo.utcoffset(bound) is None:
+            raise _rejected(
+                f"`{field}` carries no UTC offset, so it names no instant and no commitments were "
+                "returned. Nothing was changed. Send an offset: `2026-02-09T09:00:00Z` or "
+                "`2026-02-09T09:00:00+00:00`. A wall time without one means a different moment in "
+                "every zone, and the span decides which commitments a week holds.",
+                field=field,
+                message="must carry a UTC offset",
+            )
     if end <= start:
         raise _rejected(
             "A commitment span needs `to` after `from`, and this one ended at or before it. "
