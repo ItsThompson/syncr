@@ -39,6 +39,7 @@ from syncr_domain.weeks import IsoWeek
 from tests.plan_values import (
     CAREER,
     INTERVIEW,
+    ORIGINS_WITHOUT_AN_AREA,
     WEEK,
     a_binding,
     a_block,
@@ -62,7 +63,6 @@ LEETCODE = uuid4()
 
 MORNING = between(6, 7.5)
 AFTERNOON = between(13, 14.5)
-PINNED_ON = date(2026, 2, 8)
 
 ORIGINS_WITH_AN_AREA = [
     Origin.TEMPLATE_ENTRY,
@@ -106,7 +106,7 @@ def a_week_of(bindings: Iterable[BindingRef]) -> PlanDocument:
             a_block(
                 binding=binding,
                 interval=MORNING,
-                area_id=None if binding.origin in {Origin.FRAME, Origin.ANCHOR} else CAREER,
+                area_id=None if binding.origin in ORIGINS_WITHOUT_AN_AREA else CAREER,
             )
             for binding in bindings
         )
@@ -306,7 +306,8 @@ class TestWhatAChunkStates:
     def test_the_last_chunk_is_one_below_the_count(self) -> None:
         block = a_block(binding=BindingRef.for_task(LEETCODE, split_index=2), split_count=3)
 
-        assert block.split_index == MIN_SPLIT_COUNT
+        assert block.split_count == 3
+        assert block.split_index == block.split_count - 1
 
 
 class TestWhatADocumentHolds:
@@ -516,6 +517,51 @@ class TestWhatADiffSees:
         outbound_only = a_week_of([out])
 
         assert diff(both, outbound_only).removed == frozenset({binding_id(back)})
+
+
+class TestTheBuildersThemselves:
+    """A shared builder that drops what a caller passed is how a test asserts about nothing.
+
+    `a_block`, `a_document`, `a_window` and `a_slot` merge overrides into the real constructor, so
+    a typo raises `TypeError` there already. `a_binding` dispatches per kind, so it has to refuse
+    what its branch did not forward.
+    """
+
+    @pytest.mark.parametrize(
+        ("kind", "override"),
+        [
+            (BindingKind.HABIT, {"on": date(2026, 2, 12)}),
+            (BindingKind.ROUTINE, {"index": 3}),
+            (BindingKind.ANCHOR, {"leg": TransitLeg.BACK}),
+            (BindingKind.TASK, {"on": date(2026, 2, 12)}),
+        ],
+        ids=[
+            "a date on a habit",
+            "an index on a routine",
+            "a leg on an anchor",
+            "a date on a task",
+        ],
+    )
+    def test_a_binding_refuses_an_override_its_kind_does_not_take(
+        self, kind: BindingKind, override: dict[str, object]
+    ) -> None:
+        with pytest.raises(TypeError, match="takes no"):
+            a_binding(kind, **override)
+
+    @pytest.mark.parametrize(
+        ("kind", "override", "expected"),
+        [
+            (BindingKind.ROUTINE, {"on": date(2026, 2, 12)}, "2026-02-12"),
+            (BindingKind.TEMPLATE_ENTRY, {"on": date(2026, 2, 12)}, "2026-02-12"),
+            (BindingKind.HABIT, {"index": 3}, "03"),
+            (BindingKind.ANCHOR_TRANSIT, {"leg": TransitLeg.BACK}, "back"),
+        ],
+        ids=["a routine's date", "an entry's date", "a habit's index", "a transit leg"],
+    )
+    def test_the_override_each_kind_does_take_reaches_the_key(
+        self, kind: BindingKind, override: dict[str, object], expected: str
+    ) -> None:
+        assert a_binding(kind, **override).occurrence_key == expected
 
 
 class TestWhyARevisionExists:

@@ -30,6 +30,8 @@ from syncr_domain.reasons import Bound, DerivationSource, ReasonRecord
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from syncr_domain.zones import Date, ZoneId
 
 WEEK = IsoWeek(2026, 7)
@@ -53,8 +55,20 @@ def between(start_hour: float, end_hour: float, *, day: int = 0) -> Interval:
 
 
 def a_binding(kind: BindingKind = BindingKind.HABIT, **overrides: Any) -> BindingRef:
-    """One legal binding per kind, so a per-origin rule can be asserted over all seven."""
+    """One legal binding per kind, so a per-origin rule can be asserted over all seven.
+
+    Each kind takes different overrides, because each named constructor does, and an override no
+    branch forwards is refused rather than dropped: a test reading "a habit on Thursday" would
+    otherwise assert about Monday and pass.
+    """
     entity_id = overrides.pop("entity_id", uuid4())
+    binding = _a_binding_of(kind, entity_id, overrides)
+    if overrides:
+        raise TypeError(f"a {kind.value!r} binding takes no {', '.join(sorted(overrides))}")
+    return binding
+
+
+def _a_binding_of(kind: BindingKind, entity_id: UUID, overrides: dict[str, Any]) -> BindingRef:
     match kind:
         case BindingKind.ROUTINE:
             return BindingRef.for_routine(entity_id, on=overrides.pop("on", MONDAY))
@@ -63,7 +77,7 @@ def a_binding(kind: BindingKind = BindingKind.HABIT, **overrides: Any) -> Bindin
         case BindingKind.HABIT:
             return BindingRef.for_habit(entity_id, index=overrides.pop("index", 0))
         case BindingKind.TASK:
-            return BindingRef.for_task(entity_id, **overrides)
+            return BindingRef.for_task(entity_id, split_index=overrides.pop("split_index", None))
         case BindingKind.ANCHOR:
             return BindingRef.for_anchor(entity_id)
         case BindingKind.ANCHOR_PREP:
