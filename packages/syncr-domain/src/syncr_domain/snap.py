@@ -15,6 +15,12 @@ snap target for the user's own placements rather than a claim about every block.
 
 The interval algebra therefore never snaps on its own: an unsnapped interval is
 legal, and a producer that owes the grid applies :func:`snap_to_grid` itself.
+
+Two of the three predicates below take no instant, because a DECLARATION carries none. A
+template entry and a routine state a wall time and a duration in minutes, with no date and
+no zone, and materializing one produces a block whose start and end have to land on the
+grid. Checking the declaration is what keeps that rejection at the boundary, where the
+user can still fix it, rather than at solve time where the block is already fixed.
 """
 
 from __future__ import annotations
@@ -25,6 +31,8 @@ from typing import TYPE_CHECKING, Final
 from syncr_domain.intervals import as_instant
 
 if TYPE_CHECKING:
+    from datetime import time
+
     from syncr_domain.intervals import Instant
 
 SNAP_MINUTES: Final = 15
@@ -52,3 +60,22 @@ def snap_to_grid(moment: Instant) -> Instant:
     hour = instant.replace(minute=0, second=0, microsecond=0)
     steps = (instant - hour + _HALF_SNAP) // SNAP
     return hour + steps * SNAP
+
+
+def is_wall_time_on_snap_grid(at: time) -> bool:
+    """Whether a declared time of day lands on a quarter hour.
+
+    A wall time carries no date and no zone, so it names no instant and cannot be read by
+    :func:`is_on_snap_grid`. It needs its own reading because a target time is declared as wall
+    time: ``Wake 05:00`` means 05:00 wherever the user is.
+    """
+    return at.minute % SNAP_MINUTES == 0 and at.second == 0 and at.microsecond == 0
+
+
+def is_a_snap_multiple(minutes: int) -> bool:
+    """Whether a duration in minutes moves a start to another point on the grid.
+
+    A start on the grid plus a duration that is a multiple of the step gives an end on the
+    grid, which is what a declared duration owes the block it will materialize into.
+    """
+    return minutes % SNAP_MINUTES == 0

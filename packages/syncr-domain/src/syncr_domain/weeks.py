@@ -6,6 +6,10 @@ Monday if the user travels mid-week. Because every downstream figure derives fro
 ``span.total_minutes()``, a transition week needs no special case anywhere: a
 spring-forward week simply has one hour less discretionary time than the week before it.
 
+The weekday vocabulary is here as well. A weekday is a position inside a week rather than a
+template concern, and the week pattern that maps all seven of them is not its only reader:
+materializing a day asks which weekday its date is.
+
 Most weeks are 167, 168, or 169 hours, and none of those three is a rule. A zone whose
 transition is not an hour gives something else: ``Antarctica/Troll`` shifts two hours, so
 its 2026 weeks are 166 and 170, and ``Australia/Lord_Howe`` shifts thirty minutes, so its
@@ -19,6 +23,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date, time, timedelta
+from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.errors import DomainError
@@ -37,6 +42,25 @@ _MONDAY: Final = 1
 
 class IsoWeekError(DomainError):
     """The value names no ISO week."""
+
+
+class Weekday(StrEnum):
+    """One day of the week, named rather than numbered.
+
+    Declared in ISO order, Monday first, so iterating the enum IS that order and nothing
+    restates it. Named rather than numbered because the wire and the week-pattern editor both
+    read one, and because Monday is ``0`` in ``date.weekday()`` and ``1`` in
+    ``date.isoweekday()``: a stored number would be right against one of them and wrong
+    against the other.
+    """
+
+    MONDAY = "monday"
+    TUESDAY = "tuesday"
+    WEDNESDAY = "wednesday"
+    THURSDAY = "thursday"
+    FRIDAY = "friday"
+    SATURDAY = "saturday"
+    SUNDAY = "sunday"
 
 
 @dataclass(frozen=True, order=True)

@@ -1,15 +1,22 @@
-"""The fifteen-minute snap and its two exemptions."""
+"""The fifteen-minute snap, its two exemptions, and the two readings a declaration needs."""
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import time, timedelta
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from syncr_domain.intervals import Instant, Interval
-from syncr_domain.snap import SNAP, SNAP_MINUTES, is_on_snap_grid, snap_to_grid
+from syncr_domain.snap import (
+    SNAP,
+    SNAP_MINUTES,
+    is_a_snap_multiple,
+    is_on_snap_grid,
+    is_wall_time_on_snap_grid,
+    snap_to_grid,
+)
 from tests.instants import MONDAY, at
 
 # Every producer that owes the grid a quarter hour, with an off-grid instant each
@@ -99,3 +106,39 @@ def test_snapping_always_reaches_the_grid_and_is_idempotent(offset_seconds: int)
     assert is_on_snap_grid(placed)
     assert snap_to_grid(placed) == placed
     assert abs(placed - moment) <= SNAP / 2
+
+
+# --------------------------------------------------------------------------------
+# A declaration carries a wall time and a duration in minutes, and no instant at all,
+# so neither can be read by the instant predicate above.
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("minute", [0, 15, 30, 45])
+def test_a_declared_wall_time_on_a_quarter_hour_is_on_the_grid(minute: int) -> None:
+    assert is_wall_time_on_snap_grid(time(5, minute))
+
+
+@pytest.mark.parametrize(
+    "at_time",
+    [time(5, 5), time(5, 50), time(5, 0, 1), time(5, 0, 0, 1)],
+    ids=["five past", "ten to", "a second past", "a microsecond past"],
+)
+def test_a_declared_wall_time_off_the_quarter_hour_is_not(at_time: time) -> None:
+    assert not is_wall_time_on_snap_grid(at_time)
+
+
+@pytest.mark.parametrize("minutes", [0, 15, 45, 1440])
+def test_a_duration_that_is_a_multiple_of_the_step_keeps_an_end_on_the_grid(
+    minutes: int,
+) -> None:
+    assert is_a_snap_multiple(minutes)
+    assert is_on_snap_grid(at(5) + timedelta(minutes=minutes))
+
+
+@pytest.mark.parametrize("minutes", [1, 20, 50])
+def test_a_duration_that_is_not_would_move_an_end_off_it(minutes: int) -> None:
+    # The half that matters: a start on the grid plus one of these ends between two quarter
+    # hours, which is the block a materialized entry would produce.
+    assert not is_a_snap_multiple(minutes)
+    assert not is_on_snap_grid(at(5) + timedelta(minutes=minutes))

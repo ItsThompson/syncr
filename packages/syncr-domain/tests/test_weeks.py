@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from syncr_domain.weeks import IsoWeek, IsoWeekError, week_span
+from syncr_domain.weeks import IsoWeek, IsoWeekError, Weekday, week_span
 from syncr_domain.zones import TravelOverride, ZoneProfile
 
 LONDON = "Europe/London"
@@ -82,6 +82,30 @@ class TestIsoWeekIdentity:
             IsoWeek(2026, 13),
             IsoWeek(2027, 1),
         ]
+
+
+class TestWeekdays:
+    def test_the_seven_weekdays_are_declared_in_iso_order(self) -> None:
+        # Load-bearing: the enum's own order is what the week-pattern editor renders and what
+        # the rejection message lists, so nothing restates it.
+        assert [weekday.value for weekday in Weekday] == [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ]
+
+    def test_each_weekday_matches_the_iso_position_of_a_real_date(self) -> None:
+        # 2026-W07 runs Monday the 9th to Sunday the 15th of February. Asserted against real
+        # dates because a name is only right if it agrees with the calendar.
+        monday = IsoWeek(2026, 7).monday()
+
+        for offset, weekday in enumerate(Weekday):
+            day = monday + timedelta(days=offset)
+            assert day.isoweekday() == offset + 1, weekday
 
 
 class TestWeekSpan:
