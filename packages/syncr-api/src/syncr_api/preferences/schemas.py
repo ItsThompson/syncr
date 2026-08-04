@@ -58,10 +58,11 @@ _BOUND_DESCRIPTION = (
 )
 _WINDOWS_DESCRIPTION = (
     f"The times of day this owner's work should happen, at most {MAX_WINDOWS} of them, returned "
-    "earliest first. They may not overlap: two that do describe one window. An empty list is "
-    "legal and on a habit's or a task's preference it is a statement rather than an omission, "
-    "because a preference replaces its Area's windows wholly: no windows means this one thing has "
-    "no preferred time even though the rest of its Area does."
+    "earliest first. Each sits inside one local day, so its end is later than its start and a "
+    "stretch across midnight is refused. They may not overlap: two that do describe one window. An "
+    "empty list is legal and on a habit's or a task's preference it is a statement rather than an "
+    "omission, because a preference replaces its Area's windows wholly: no windows means this one "
+    "thing has no preferred time even though the rest of its Area does."
 )
 _STRENGTH_DESCRIPTION = (
     "How much placing the work outside a preferred window costs. Both values are objective costs "
