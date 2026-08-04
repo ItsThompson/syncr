@@ -10,9 +10,12 @@ travel overrides are what the week's real span is resolved against. A second zon
 would be a second answer to "how long was that week".
 
 Which occupancy reader the report asks is decided here. It is
-:class:`~syncr_api.budgets.occupancy.UnplannedWeek`, because nothing in this deployment can
-occupy a week's time yet: there is no routine, anchor, forbidden-window, or off-plan table, and
-the plan document's interior shape is not defined, so no Area's blocks can be read out of one.
+:class:`~syncr_api.offplan.occupancy.OffPlanOccupancy`, because off-plan periods are the one kind
+of span this deployment can store: it fills the denominator's fourth subtrahend and leaves the
+other four sets empty, which is still the honest reading for them. There is no routine, anchor,
+or forbidden-window table, and the plan document's interior shape is not defined, so no Area's
+blocks can be read out of one. Whoever brings one of those online replaces this reader with one
+that composes theirs with off-plan's rather than editing off-plan's to know about theirs.
 """
 
 from __future__ import annotations
@@ -26,8 +29,9 @@ from fastapi import Depends
 # resolve to a NameError while the app is being constructed.
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
-from syncr_api.budgets.occupancy import UnplannedWeek
 from syncr_api.budgets.service import BudgetService
+from syncr_api.offplan.occupancy import OffPlanOccupancy
+from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 
 
@@ -37,7 +41,7 @@ def get_budget_service(principal: PrincipalDep, transaction: TransactionDep) -> 
         areas=AreaRepository(transaction, principal.tenant_id),
         settings=SettingsRepository(transaction, principal.tenant_id),
         overrides=TravelOverrideRepository(transaction, principal.tenant_id),
-        occupancy=UnplannedWeek(),
+        occupancy=OffPlanOccupancy(OffPlanPeriodRepository(transaction, principal.tenant_id)),
     )
 
 

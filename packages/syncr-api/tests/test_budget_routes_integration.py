@@ -112,6 +112,9 @@ def test_a_period_with_no_areas_reports_the_whole_span_as_unallocated(
     assert report["unallocatedMinutes"] == ORDINARY_WEEK_MINUTES
     assert report["oversubscriptionMinutes"] == 0
     assert report["areas"] == []
+    # No time off was declared, so nothing left the denominator and there is nothing to explain.
+    assert report["offPlanMinutes"] == 0
+    assert report["offPlanStatement"] is None
     # The span the denominator was derived from, so a reader can check the figure rather than
     # trust it.
     assert report["span"] == {"start": "2026-03-02T00:00:00Z", "end": "2026-03-09T00:00:00Z"}

@@ -5,13 +5,14 @@ that decides what the report divides. Which real span belongs in which of the fo
 decided here: ``syncr_domain.discretionary.SUBTRAHEND_BY_KIND`` is that table, and it is the
 only statement of it.
 
-``UnplannedWeek`` answers with empty sets, and it is the correct reading of the schema rather
-than a placeholder for one. There is no table of routines, no table of anchors, no table of
-forbidden windows, and no table of off-plan periods, so nothing in this deployment can occupy
-a week's time yet; and although the plan of record is stored, the interior shape of its
-document is not defined, so no Area's blocks can be read out of one. Under those conditions a
-week genuinely holds nothing, and the report says so: the whole span is discretionary, every
-minute of it is ``unallocated``, and each Area's actual is zero.
+``UnplannedWeek`` answers with empty sets. It is what the report asked before any table could
+occupy a week's time, and it stays the correct reading of a week that holds nothing: the whole
+span is discretionary, every minute of it is ``unallocated``, and each Area's actual is zero.
+Off-plan periods are stored now, so the wiring asks
+:class:`~syncr_api.offplan.occupancy.OffPlanOccupancy` instead. The other four sets are still
+empty there, because there is no table of routines, no table of anchors and no table of forbidden
+windows, and although the plan of record is stored, the interior shape of its document is not
+defined, so no Area's blocks can be read out of one.
 
 The reader is a protocol for the same reason the week input version counter is one: the
 concerns that produce these sets each own their own storage, and the report should acquire
@@ -66,7 +67,7 @@ class WeekOccupancyReader(Protocol):
 
 
 class UnplannedWeek:
-    """The occupancy of a week in a deployment where nothing can occupy one.
+    """The occupancy of a week nothing has occupied.
 
     Reads nothing and writes nothing. A budget report over it is honest: the denominator is the
     whole span, and every discretionary minute is unallocated because no block claims any of

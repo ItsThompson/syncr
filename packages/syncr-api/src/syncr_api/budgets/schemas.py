@@ -11,6 +11,12 @@ produces a positive oversubscription and a residual that is still whatever nothi
 
 No Area name appears here. This is arithmetic over identifiers, and the names live on
 ``/api/v1/areas``, so a rename cannot make a cached report read as another Area's.
+
+``offPlanMinutes`` and ``offPlanStatement`` are a pair, and the statement is what stops a row of
+zeros reading two ways. A week entirely inside an off-plan period has no discretionary time and
+therefore a zero target for every Area, which is identical on the wire to a week nobody planned;
+the statement says which of the two happened, and it is null for a partially off-plan week
+because a smaller denominator explains itself.
 """
 
 from __future__ import annotations
@@ -78,5 +84,17 @@ class BudgetResponse(WireModel):
     oversubscription_minutes: int = Field(
         description="How far the Area targets exceed discretionary time. Zero when they fit. A "
         "separate quantity from unallocatedMinutes, and never rendered as a negative one."
+    )
+    off_plan_minutes: int = Field(
+        description="How many of the period's minutes were declared off-plan, clipped to the "
+        "period. Already subtracted from discretionaryMinutes, through the interval union, so "
+        "this is what explains the denominator rather than something to subtract again."
+    )
+    off_plan_statement: str | None = Field(
+        default=None,
+        description="Why every figure above is zero, stated when the period was off-plan from "
+        "end to end. Null otherwise, including when part of the period was off-plan: a "
+        "partially off-plan week has a smaller denominator and meaningful deviations, so it "
+        "needs no statement.",
     )
     areas: list[AreaBudgetReading]

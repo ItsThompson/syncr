@@ -17,6 +17,11 @@ separately.** ``unallocated`` is discretionary time in no block carrying an Area
 ``oversubscription`` is how far Area targets exceed discretionary time. One is never rendered as
 the other, and neither is ever negative.
 
+**A week that was entirely off-plan says so.** Its denominator is zero and so is every
+percentage target, which on the wire is indistinguishable from a week nobody planned, and the two
+mean opposite things. The off-plan reading is acquired through the same occupancy the denominator
+subtracted, so the statement and the figure it explains cannot disagree.
+
 **The span is the week's real span.** It comes from ``week_span`` over the tenant's own zone
 profile, so a transition week is 167 or 169 hours and a travel week resolves two zones across
 its days. Every figure derives from ``span.total_minutes()``, so no figure needs a special case
@@ -33,6 +38,7 @@ from typing import TYPE_CHECKING
 from syncr_api.core.errors import FieldError, ValidationFailed
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
+from syncr_api.offplan.reading import off_plan_reading
 from syncr_api.user_settings.zone_reading import as_domain, stated_rejection, zone_profile
 from syncr_common.metrics import measured
 from syncr_domain.budgets import budget_report
@@ -43,6 +49,7 @@ if TYPE_CHECKING:
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.budgets.occupancy import WeekOccupancyReader
     from syncr_api.core.principal import Principal
+    from syncr_api.offplan.reading import OffPlanReading
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
     from syncr_domain.budgets import BudgetReport
     from syncr_domain.intervals import Interval
@@ -50,11 +57,12 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class BudgetView:
-    """One period's budget report, and the span its denominator was derived from."""
+    """One period's budget report, the span its denominator was derived from, and time off."""
 
     period: IsoWeek
     span: Interval
     report: BudgetReport
+    off_plan: OffPlanReading
 
 
 class BudgetService:
@@ -89,7 +97,12 @@ class BudgetService:
             shares=[area.as_share() for area in declared],
             covered=held.by_area,
         )
-        return BudgetView(period=iso_week, span=span, report=report)
+        return BudgetView(
+            period=iso_week,
+            span=span,
+            report=report,
+            off_plan=off_plan_reading(span, held.off_plan),
+        )
 
     async def _span_of(self, iso_week: IsoWeek) -> Interval:
         """The week's real span, bounded by the zone active on each of its two Mondays."""

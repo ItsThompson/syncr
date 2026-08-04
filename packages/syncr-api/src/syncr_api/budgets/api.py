@@ -48,6 +48,8 @@ def _as_response(view: BudgetView) -> BudgetResponse:
         discretionary_minutes=report.discretionary_minutes,
         unallocated_minutes=report.unallocated_minutes,
         oversubscription_minutes=report.oversubscription_minutes,
+        off_plan_minutes=view.off_plan.minutes,
+        off_plan_statement=view.off_plan.statement,
         areas=[
             AreaBudgetReading(
                 area_id=allocation.area_id,

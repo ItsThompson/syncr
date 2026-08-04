@@ -12,7 +12,10 @@ The tests worth reading:
 draft's ``discretionary - sum(area_target)`` formula had. ``test_the_denominator_unions_the
 _subtrahends_rather_than_summing_them`` is the arithmetic the whole section rests on. And
 ``test_a_spring_forward_week_has_one_hour_less_discretionary_time`` is the transition rule, over
-a real zone and real dates rather than a mocked offset.
+a real zone and real dates rather than a mocked offset. And
+``test_a_week_entirely_off_plan_reports_zero_discretionary_time_and_zero_targets`` is the case a
+row of zeros cannot express on its own: the report states that the week was off-plan, because
+otherwise a holiday and a week nobody planned are the same response.
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ from syncr_api.user_settings.config import ReviewCadence
 from syncr_api.user_settings.records import SettingsRecord, TravelOverrideRecord
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_domain.fixtures.dst_weeks import FALL_BACK, LONDON, SPRING_FORWARD
+from syncr_domain.fixtures.off_plan_week import OFF_PLAN_WEEK
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.weeks import IsoWeek, week_span
 
@@ -432,3 +436,105 @@ async def test_an_unreadable_home_zone_is_a_stated_rejection(principal: Principa
 
     with pytest.raises(ValidationFailed, match="IANA"):
         await service.read(principal, ORDINARY_WEEK)
+
+
+# --------------------------------------------------------------------------------
+# Time off
+# --------------------------------------------------------------------------------
+
+
+async def test_a_week_with_no_time_off_reads_zero_off_plan_minutes_and_says_nothing(
+    principal: Principal,
+) -> None:
+    service = build_service(principal)
+
+    view = await service.read(principal, ORDINARY_WEEK)
+
+    assert view.off_plan.minutes == 0
+    assert view.off_plan.statement is None
+
+
+async def test_a_week_entirely_off_plan_reports_zero_discretionary_time_and_zero_targets(
+    principal: Principal,
+) -> None:
+    # A row of zeros with a reason. Without the statement this response is identical to a week
+    # nobody planned, and the two mean opposite things.
+    span = week_span(IsoWeek.parse(ORDINARY_WEEK), SPRING_FORWARD.profile)
+    service = build_service(
+        principal,
+        areas=[an_area(FITNESS, percent="40"), an_area(CAREER, percent="60")],
+        occupancy=WeekOccupancy(off_plan=blocks(span)),
+    )
+
+    view = await service.read(principal, ORDINARY_WEEK)
+
+    assert view.report.discretionary_minutes == 0
+    assert [allocation.target_minutes for allocation in view.report.allocations] == [0, 0]
+    assert [allocation.actual_minutes for allocation in view.report.allocations] == [0, 0]
+    assert view.report.unallocated_minutes == 0
+    assert view.off_plan.minutes == ORDINARY_WEEK_MINUTES
+    assert view.off_plan.statement is not None
+
+
+async def test_an_area_declaring_a_floor_still_reports_that_floor_in_an_off_plan_week(
+    principal: Principal,
+) -> None:
+    # Stated rather than left to be discovered. A target is `floor + percent x remainder`, and
+    # the remainder is clamped at zero, so a percentage budget reports zero in an off-plan week
+    # while a declared floor reports itself and is counted as oversubscription. The clamp is what
+    # keeps an unmeetable budget from reporting as feasible, and it is not off-plan's to revisit.
+    span = week_span(IsoWeek.parse(ORDINARY_WEEK), SPRING_FORWARD.profile)
+    service = build_service(
+        principal,
+        areas=[an_area(FITNESS, floor_hours="4")],
+        occupancy=WeekOccupancy(off_plan=blocks(span)),
+    )
+
+    view = await service.read(principal, ORDINARY_WEEK)
+
+    assert view.report.discretionary_minutes == 0
+    assert [allocation.target_minutes for allocation in view.report.allocations] == [240]
+    assert view.report.oversubscription_minutes == 240
+    assert view.off_plan.statement is not None
+
+
+async def test_a_partly_off_plan_week_reports_the_minutes_without_a_statement(
+    principal: Principal,
+) -> None:
+    # Four days of the week were on plan, so its deviations still mean something and a statement
+    # would overstate what happened.
+    off_plan = Interval(at(ORDINARY_WEEK, day=4, hour=14), at(ORDINARY_WEEK, day=7, hour=0))
+    service = build_service(
+        principal,
+        areas=[an_area(FITNESS, percent="100")],
+        occupancy=WeekOccupancy(off_plan=blocks(off_plan)),
+    )
+
+    view = await service.read(principal, ORDINARY_WEEK)
+
+    assert view.off_plan.minutes == off_plan.total_minutes()
+    assert view.off_plan.statement is None
+    assert view.report.discretionary_minutes == ORDINARY_WEEK_MINUTES - off_plan.total_minutes()
+    assert view.report.allocations[0].target_minutes == view.report.discretionary_minutes
+
+
+async def test_a_frame_span_inside_an_off_plan_span_leaves_the_denominator_once(
+    principal: Principal,
+) -> None:
+    # OP8 through the report the product actually serves, over the off-plan fixture's own spans:
+    # a Saturday-night `Sleep` occurrence inside a Friday-to-Monday span. Summing the two
+    # subtrahends would remove those eight hours twice and report a smaller denominator, which is
+    # a plausible figure rather than a crash.
+    week = str(OFF_PLAN_WEEK.iso_week)
+    off_plan = blocks(OFF_PLAN_WEEK.off_plan)
+    frame = blocks(OFF_PLAN_WEEK.frame_inside)
+    service = build_service(principal, occupancy=WeekOccupancy(frame=frame, off_plan=off_plan))
+
+    view = await service.read(principal, week)
+
+    inside = OFF_PLAN_WEEK.off_plan_minutes_inside_the_week
+    assert view.span.total_minutes() == OFF_PLAN_WEEK.week_span_minutes
+    assert view.report.discretionary_minutes == OFF_PLAN_WEEK.week_span_minutes - inside
+    assert view.off_plan.minutes == inside
+    summed = OFF_PLAN_WEEK.week_span_minutes - (inside + frame.total_minutes())
+    assert view.report.discretionary_minutes == summed + 8 * 60
