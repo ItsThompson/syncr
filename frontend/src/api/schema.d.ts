@@ -1944,7 +1944,7 @@ export interface components {
             misses: number;
             /**
              * Outstanding
-             * @description Missed occurrences not yet made up, which the week assembler adds to a week as made-up occurrences. Always zero for forgive and for escalate: only debt accumulates.
+             * @description Confirmed skips of this habit's occurrences, clamped to the cap, which the week assembler adds to a week as made-up occurrences. It falls only when the log stops recording an occurrence as missed, which is what correcting the day on Today does: performing a make-up does not currently reduce it. Always zero for forgive and for escalate, because only debt accumulates.
              */
             outstanding: number;
             /**
@@ -2071,7 +2071,7 @@ export interface components {
             bindingSource: components["schemas"]["BindingSource"];
             cadence: components["schemas"]["CadenceRequest"];
             /**
-             * @description The ceiling on outstanding debt, in cadence periods. Two by default, which is two weeks' worth for a count-per-week habit and two days' worth for a daily one. A miss arriving at the cap is forgiven rather than added, and raises the habit in the weekly session.
+             * @description The ceiling on outstanding debt, in cadence periods. One period is a week for a count-per-week habit, a day for a daily one, and the stated interval for an approximate one, so the cap is that many periods' worth of occurrences. A miss arriving at the cap is forgiven rather than added, and raises the habit in the weekly session.
              * @default 2
              */
             debtCapPeriods: components["schemas"]["_DebtCap"];
@@ -2098,7 +2098,7 @@ export interface components {
         HabitPatchRequest: {
             bindingSource?: components["schemas"]["BindingSource"] | null;
             cadence?: components["schemas"]["CadenceRequest"] | null;
-            /** @description The ceiling on outstanding debt, in cadence periods. Two by default, which is two weeks' worth for a count-per-week habit and two days' worth for a daily one. A miss arriving at the cap is forgiven rather than added, and raises the habit in the weekly session. */
+            /** @description The ceiling on outstanding debt, in cadence periods. One period is a week for a count-per-week habit, a day for a daily one, and the stated interval for an approximate one, so the cap is that many periods' worth of occurrences. A miss arriving at the cap is forgiven rather than added, and raises the habit in the weekly session. */
             debtCapPeriods?: components["schemas"]["_DebtCap"] | null;
             /** @description The ceiling of one occurrence, in minutes. Equal to the floor means the duration is fixed: this span or nothing. */
             maxDurationMinutes?: components["schemas"]["_Duration"] | null;
@@ -2128,7 +2128,7 @@ export interface components {
             debt: components["schemas"]["DebtResponse"];
             /**
              * Debtcapperiods
-             * @description The ceiling on outstanding debt, in cadence periods. Two by default, which is two weeks' worth for a count-per-week habit and two days' worth for a daily one. A miss arriving at the cap is forgiven rather than added, and raises the habit in the weekly session.
+             * @description The ceiling on outstanding debt, in cadence periods. One period is a week for a count-per-week habit, a day for a daily one, and the stated interval for an approximate one, so the cap is that many periods' worth of occurrences. A miss arriving at the cap is forgiven rather than added, and raises the habit in the weekly session.
              */
             debtCapPeriods: number;
             /**
