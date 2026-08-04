@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import ast
 import inspect
+from collections import Counter
 from datetime import UTC, date, datetime, time, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 import pytest
@@ -79,6 +80,8 @@ from tests.assembly_fakes import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from prometheus_client.samples import Sample
 
     from syncr_domain.fixtures.dst_weeks import DstWeek
@@ -93,6 +96,13 @@ MINUTES_PER_HOUR = 60
 # and not one this application declares, so the label rule below is stated over what is left when
 # it is removed.
 BUCKET_BOUND_LABEL = "le"
+
+# How many times one assembly reads each collaborator, for the ones that are not read exactly
+# once. The concession table is read per week: the week being assembled has its own approved
+# concessions, and so does the week whose boundary-crossing occurrences this one inherits, which
+# have to be folded in or the two weeks disagree about how long one night was.
+READS_PER_ASSEMBLY: Final[Mapping[str, int]] = {"_adjustments": 2}
+ONE_READ: Final = 1
 
 
 # --------------------------------------------------------------------------------
@@ -663,17 +673,23 @@ def test_the_bullet_count_reads_the_pipeline_rather_than_every_line_of_the_docst
 
 def test_every_repository_the_assembler_holds_is_read_once_per_assembly() -> None:
     # The read count is the other half of the budget's basis, and a collaborator the constructor
-    # takes and the method never asks is a dependency nothing needs. Counted as a LIST as well as a
-    # set, because a set at sixteen would stay at sixteen if a second read of one repository were
-    # added, and the figure a latency budget rests on is reads rather than collaborators.
+    # takes and the method never asks is a dependency nothing needs. Counted PER COLLABORATOR
+    # against a declared inventory rather than as a total, because the figure a latency budget
+    # rests on is reads rather than collaborators, and a second read of any of them has to be
+    # declared below rather than absorbed into a total that still adds up.
     held = _constructor_collaborators(WeekAssembler)
-    reads = _awaited_collaborators(WeekAssembler)
+    reads = Counter(_awaited_collaborators(WeekAssembler))
 
-    assert held == set(reads), {"held but never read": sorted(held - set(reads))}
-    assert len(reads) == REPOSITORY_READ_COUNT
-    assert sorted(reads) == sorted(set(reads)), {
-        "read more than once": sorted({name for name in reads if reads.count(name) > 1})
+    assert held == set(reads), {
+        "held but never read": sorted(held - set(reads)),
+        "read but not held": sorted(set(reads) - held),
     }
+    assert reads == Counter({name: READS_PER_ASSEMBLY.get(name, ONE_READ) for name in held}), {
+        "read a different number of times than declared": sorted(
+            name for name in held if reads[name] != READS_PER_ASSEMBLY.get(name, ONE_READ)
+        )
+    }
+    assert sum(reads.values()) == REPOSITORY_READ_COUNT
 
 
 def test_the_assembly_histogram_carries_the_caller_and_no_other_label() -> None:

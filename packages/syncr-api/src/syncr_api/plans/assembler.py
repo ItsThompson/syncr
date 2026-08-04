@@ -7,11 +7,13 @@ lookup, derives no domain projection, and reads no clock, so it is testable agai
 
 ## The pipeline, and the count that is load-bearing
 
-**Fifteen resolutions over sixteen repository reads.** The figure is stated once, here, and the
+**Eighteen resolutions over nineteen repository reads.** The figure is stated once, here, and the
 bullets below are counted to match it, because a latency budget and an alert are calibrated to
 it: an assembly is budgeted at p95 under 100 ms against reads on a warm cache, and the assembly
-histogram's alert is read against that budget. Three of the fifteen are stubs today, each named
-below with what it awaits.
+histogram's alert is read against that budget. **The budget and the alert were both set against a
+figure of eleven, which was never counted; recalibrating them is its own piece of work, and
+restating the figure here does not do it.** Two of the eighteen are stubs today, each named below
+with what it awaits.
 
 ```
 assemble(iso_week, now, extra_adjustment=None)
@@ -20,14 +22,20 @@ assemble(iso_week, now, extra_adjustment=None)
   ├── read the input version, from which the seed derives
   ├── name the churn baseline: the last approved revision, or never-approved
   ├── read what the week already holds: the live plan and its pins
-  ├── load off-plan periods and clip them to the span
+  ├── load off-plan periods, over this week and the one before it, and clip them per week
   ├── materialize routines: local target times to instants, at EFFECTIVE durations
   │     clamped to min_duration_minutes, one occurrence per day, each keyed by date
+  ├── carry the PRECEDING week's boundary-crossing occurrences as the spans they occupy
+  │     here, resolved as that week resolves them, its own concessions folded in
   ├── materialize template entries from the week pattern and the day types, keyed by date
   ├── expand habit cadence into occurrences, keyed by index in expansion order
   │     ├── derive each rotation cursor from the outcome log
   │     └── apply outstanding debt, capped
   ├── read the active weight set's duration multipliers, gated by maturity
+  ├── read the anchor types, and the anchors of the span they widen it to, pairing each
+  │     anchor with the type it carries
+  ├── generate what every loaded anchor casts, clip it to the week, drop what is left with
+  │     nothing in it, and suppress the BLOCKS a declared off-plan span covers
   ├── collect eligible tasks, netting recorded minutes and IMMOVABLE placements only
   ├── compute the demand per deadline, netting EVERY placement falling before it
   ├── compute per-Area floor minutes, floor reservations, gross targets, and daily caps
@@ -41,15 +49,15 @@ before it runs, so a reader asking what a concession touches reads one function 
 tracing a pipeline. A candidate concession being evaluated is an argument rather than a table
 read, which is what keeps a tradeoff request from persisting anything.
 
-## Four resolutions await another component, and each is honest rather than absent
+**One collaborator is read twice, and it is the concession table.** The week being assembled and
+the week before it each have their own approved concessions, and the inherited occurrence has to
+be resolved as its own week resolves it or the two weeks disagree about how long one night was.
 
-*Anchors, shadows, and forbidden windows* are the calendar half of this method and land in the
-ticket that follows this one; the fields exist and are empty. *The preceding week's
-boundary-crossing frame occurrences* land with them: a Sunday ``Sleep 23:00 + 8h`` belongs to the
-week its start falls in, so the following week has to load its overhang as occupancy, and this
-method does not. *The live plan and its pins* come through a reader whose production implementation
-answers with nothing, because no code names the keys a stored binding holds yet. *The habit outcome
-log* is the same seam one module over.
+## Two resolutions await another component, and each is honest rather than absent
+
+*The live plan and its pins* come through a reader whose production implementation answers with
+nothing, because no code names the keys a stored binding holds yet. *The habit outcome log* is the
+same seam one module over.
 
 Each is a seam rather than a silence: the netting rules, the cursor, and the debt figure are all
 exercised through the real arithmetic in the suite, and bringing a reader online changes one line
@@ -72,16 +80,20 @@ from typing import TYPE_CHECKING
 
 from prometheus_client import Histogram
 
+from syncr_api.anchors.reach import casting_span
 from syncr_api.plans.cadence import habit_occurrences
+from syncr_api.plans.calendar_occupancy import calendar_occupancy, typed_anchors
 from syncr_api.plans.demand import deadline_demands, eligible_tasks, task_demands
 from syncr_api.plans.folding import Concessions, fold
 from syncr_api.plans.materialization import (
     OffPlanSuppression,
     frame_entries,
     materialized_entries,
+    periods_of,
 )
 from syncr_api.plans.multipliers import DurationMultipliers
 from syncr_api.plans.netting import PlacedTime, placements
+from syncr_api.plans.overhang import frame_overhang
 from syncr_api.plans.reservations import area_budgets
 from syncr_api.plans.resolved_preferences import area_caps, resolved_preferences
 from syncr_api.user_settings.zone_reading import as_domain, zone_profile
@@ -89,22 +101,23 @@ from syncr_common.logging import get_logger
 from syncr_common.metrics import REGISTRY, measured
 from syncr_domain.discretionary import discretionary_time
 from syncr_domain.intervals import Interval, IntervalSet
-from syncr_domain.off_plan import OffPlanPeriod
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.weeks import active_zone_by_date, week_span
-from syncr_solver.inputs import ChurnBaseline, SolveInputs, WeekAdjustment
+from syncr_solver.inputs import ChurnBaseline, SolveInputs, WeekAdjustment, frame_occupancy
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from datetime import datetime
 
+    from syncr_api.anchors.repository import AnchorRepository
+    from syncr_api.anchors.type_repository import AnchorTypeRepository
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.habits.outcome_log import HabitOutcomeReader
     from syncr_api.habits.repository import HabitRepository
     from syncr_api.learned.repository import WeightSetRepository
-    from syncr_api.offplan.records import OffPlanPeriodRecord
     from syncr_api.offplan.repository import OffPlanPeriodRepository
     from syncr_api.plans.adjustments import WeekAdjustmentRepository
+    from syncr_api.plans.calendar_occupancy import CalendarOccupancy
     from syncr_api.plans.placements import WeekPlacementReader
     from syncr_api.plans.records import PlanRevisionRecord, WeekAdjustmentRecord
     from syncr_api.plans.repository import PlanRepository
@@ -114,6 +127,7 @@ if TYPE_CHECKING:
     from syncr_api.tasks.repository import TaskRepository
     from syncr_api.templates.repository import TemplateRepository, WeekPatternRepository
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
+    from syncr_domain.off_plan import OffPlanPeriod
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import Date
     from syncr_solver.inputs import FrameEntry
@@ -122,11 +136,13 @@ _log = get_logger("syncr.plans")
 
 # How many resolutions the pipeline above performs, stated once so the docstring, the alert, and
 # the latency budget read one figure. `test_week_assembler.py` counts the bullets against it.
-RESOLUTION_COUNT = 15
+RESOLUTION_COUNT = 18
 
 # How many repository reads one assembly performs. The dominant cost of every request that
-# returns a live verdict, which is what the assembly histogram exists to make visible.
-REPOSITORY_READ_COUNT = 16
+# returns a live verdict, which is what the assembly histogram exists to make visible. Nineteen
+# reads over eighteen collaborators: the concession table is read once per week, for this week and
+# for the one whose boundary-crossing occurrences this week inherits.
+REPOSITORY_READ_COUNT = 19
 
 # The version an assembly of a week nothing has referenced reports. A missing row is a MISMATCH
 # to the conditional write rather than a match, so a first solve's write is superseded and its
@@ -159,9 +175,9 @@ class AssemblyCaller(StrEnum):
 class WeekAssembler:
     """Turn stored state into one resolved, self-contained ``SolveInputs``.
 
-    Sixteen collaborators, and that is the component's nature rather than an accident: this is
-    where every ounce of complexity the solver sheds actually lands. A caller cannot get it
-    partially right, because there is nothing to get partially right.
+    Eighteen collaborators plus the caller, and that is the component's nature rather than an
+    accident: this is where every ounce of complexity the solver sheds actually lands. A caller
+    cannot get it partially right, because there is nothing to get partially right.
     """
 
     def __init__(
@@ -180,6 +196,8 @@ class WeekAssembler:
         off_plan: OffPlanPeriodRepository,
         placements: WeekPlacementReader,
         adjustments: WeekAdjustmentRepository,
+        anchors: AnchorRepository,
+        anchor_types: AnchorTypeRepository,
         weights: WeightSetRepository,
         versions: WeekInputVersionRepository,
         revisions: PlanRepository,
@@ -198,6 +216,8 @@ class WeekAssembler:
         self._off_plan = off_plan
         self._placements = placements
         self._adjustments = adjustments
+        self._anchors = anchors
+        self._anchor_types = anchor_types
         self._weights = weights
         self._versions = versions
         self._revisions = revisions
@@ -233,19 +253,37 @@ class WeekAssembler:
         span = week_span(iso_week, profile)
         zone_by_date = active_zone_by_date(iso_week, profile)
         dates = iso_week.dates()
+        preceding = iso_week.preceding()
 
         input_version = await self._versions.current(iso_week) or UNVERSIONED_WEEK
         churn_baseline = _churn_baseline(await self._revisions.latest_approved(iso_week))
         held = await self._placements.read(iso_week)
         placed = PlacedTime(placements(held.live_plan, held.pins, now=now), now=now)
-        off_plan = _clipped_to(await self._off_plan.for_span(span), span)
+        # Both weeks in one read. The inherited occurrence is judged against the periods of the
+        # week that owns it, and reading only this week's would suppress it by a period this week
+        # holds or fail to suppress it by one the week before does.
+        declared_periods = await self._off_plan.for_span(
+            Interval(week_span(preceding, profile).start, span.end)
+        )
+        off_plan = periods_of(declared_periods, span)
 
         suppression = OffPlanSuppression(off_plan)
+        routines = await self._routines.list_all()
         frame = frame_entries(
-            await self._routines.list_all(),
+            routines,
             dates=dates,
             zone_by_date=zone_by_date,
             off_plan=suppression,
+        )
+        inherited = frame_overhang(
+            routines,
+            into=span,
+            preceding=preceding,
+            profile=profile,
+            periods=declared_periods,
+            adjustments=_adjustments(
+                await self._adjustments.for_week(preceding), None, dates=preceding.dates()
+            ),
         )
         template_entries = materialized_entries(
             pattern=await self._week_pattern.read(),
@@ -264,6 +302,8 @@ class WeekAssembler:
             multipliers=multipliers,
         )
 
+        calendar = await self._calendar_occupancy(span, off_plan=suppression)
+
         tasks = await self._tasks.list_all()
         stored_preferences = await self._preferences.list_all()
         declared_areas = await self._areas.list_all()
@@ -273,7 +313,13 @@ class WeekAssembler:
             demands=task_demands(tasks, placed=placed, multipliers=multipliers),
             areas=area_budgets(
                 declared_areas,
-                discretionary_minutes=_discretionary_minutes(span, frame, off_plan),
+                discretionary_minutes=_discretionary_minutes(
+                    span,
+                    frame=frame,
+                    inherited=inherited,
+                    calendar=calendar,
+                    off_plan=off_plan,
+                ),
                 placed=placed,
                 caps=area_caps(stored_preferences),
             ),
@@ -291,6 +337,10 @@ class WeekAssembler:
             zone_by_date=zone_by_date,
             input_version=input_version,
             frame=folded.frame,
+            frame_overhang=inherited,
+            anchors=calendar.anchors,
+            shadow_blocks=calendar.shadow_blocks,
+            forbidden_windows=calendar.forbidden_windows,
             off_plan=tuple(off_plan),
             template_entries=template_entries,
             habit_occurrences=occurrences,
@@ -315,6 +365,10 @@ class WeekAssembler:
             caller=self._caller.value,
             input_version=input_version,
             frame_entries=len(inputs.frame),
+            frame_overhang=len(inputs.frame_overhang),
+            anchors=len(inputs.anchors),
+            shadow_blocks=len(inputs.shadow_blocks),
+            forbidden_windows=len(inputs.forbidden_windows),
             template_entries=len(inputs.template_entries),
             habit_occurrences=len(inputs.habit_occurrences),
             eligible_tasks=len(inputs.eligible_tasks),
@@ -322,6 +376,23 @@ class WeekAssembler:
             adjustments=len(inputs.adjustments),
         )
         return inputs
+
+    async def _calendar_occupancy(
+        self, span: Interval, *, off_plan: OffPlanSuppression
+    ) -> CalendarOccupancy:
+        """The commitments this week holds, and everything their types cast inside it.
+
+        The types are read FIRST, and the order is load-bearing rather than incidental. Two
+        statements read a snapshot each, so a type deleted between them is answered by anchors
+        that no longer carry it, because releasing a type from its anchors and deleting it are one
+        transaction. Read the other way round, the same delete would leave an anchor carrying a
+        type this method could not find.
+        """
+        types = await self._anchor_types.list_all()
+        loaded = await self._anchors.overlapping(
+            casting_span(span, tuple(row.specification for row in types))
+        )
+        return calendar_occupancy(typed_anchors(loaded, types), span=span, off_plan=off_plan)
 
 
 def _churn_baseline(approved: PlanRevisionRecord | None) -> ChurnBaseline:
@@ -335,39 +406,29 @@ def _churn_baseline(approved: PlanRevisionRecord | None) -> ChurnBaseline:
     return ChurnBaseline.approved(approved.id, approved.approved_at)
 
 
-def _clipped_to(
-    periods: Sequence[OffPlanPeriodRecord], span: Interval
-) -> tuple[OffPlanPeriod, ...]:
-    """Every declared period, clipped to the week, in the order they were declared.
-
-    Clipping loses nothing a figure reads: the denominator subtracts within the span anyway. What
-    it buys is that a self-contained snapshot names no instant outside the week it describes, so a
-    reader of the snapshot cannot derive a figure from a span the week does not hold.
-    """
-    clipped: list[OffPlanPeriod] = []
-    for period in periods:
-        inside = IntervalSet([period.interval]).clip(span)
-        clipped.extend(
-            OffPlanPeriod(interval=member, keep_frame=period.keep_frame, label=period.label)
-            for member in inside
-        )
-    return tuple(clipped)
-
-
 def _discretionary_minutes(
-    span: Interval, frame: Sequence[FrameEntry], off_plan: Sequence[OffPlanPeriod]
+    span: Interval,
+    *,
+    frame: Sequence[FrameEntry],
+    inherited: Sequence[Interval],
+    calendar: CalendarOccupancy,
+    off_plan: Sequence[OffPlanPeriod],
 ) -> int:
     """The week's denominator, which the proportional share of an Area's target is taken from.
 
-    Two of the four subtrahends are empty here and neither is forgotten: anchors and absolute
-    forbidden windows arrive with the calendar resolutions, and the arithmetic takes them as sets
-    so they flow in without this call changing.
+    Each of the four subtrahends is read from whoever owns the question rather than assembled
+    here: the frame's occupancy is this week's occurrences with the ones it inherited, and which
+    windows leave the denominator is the calendar half's own reading of the subtraction table.
+
+    Prep and transit BLOCKS are absent, and that is the narrowing the pure package states: they
+    carry an Area, so they are discretionary time allocated to it in the same way a task is, and
+    subtracting them would take the time out of the denominator AND charge it to an Area.
     """
     return discretionary_time(
         span,
-        frame=IntervalSet(entry.interval for entry in frame),
-        anchors=IntervalSet(),
-        absolute_forbidden=IntervalSet(),
+        frame=frame_occupancy(frame, inherited),
+        anchors=calendar.anchor_spans(),
+        absolute_forbidden=calendar.absolute_forbidden(),
         off_plan=IntervalSet(period.interval for period in off_plan),
     )
 

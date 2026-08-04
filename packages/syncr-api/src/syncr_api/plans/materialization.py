@@ -30,7 +30,9 @@ to the part outside it: clipping changes the span an outcome is keyed against, a
 about what may sit inside the span rather than about how long a block is.
 
 A template entry is content, so any period suppresses it. A routine is the frame, so only a
-period whose ``keep_frame`` is false does.
+period whose ``keep_frame`` is false does. Which periods a week holds is :func:`periods_of`,
+because an assembly resolves two weeks and each occurrence is judged against the periods of the
+week that owns it.
 
 ## An occurrence can overlap its own next one, and no bound can stop it
 
@@ -49,6 +51,7 @@ from typing import TYPE_CHECKING
 
 from syncr_domain.identity import date_occurrence_key
 from syncr_domain.intervals import Interval, IntervalSet
+from syncr_domain.off_plan import OffPlanPeriod
 from syncr_domain.templates import TemplateEntryKind
 from syncr_domain.weeks import Weekday
 from syncr_domain.zones import to_instant
@@ -57,12 +60,35 @@ from syncr_solver.inputs import EntryBinding, FrameEntry, MaterializedEntry
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from syncr_api.offplan.records import OffPlanPeriodRecord
     from syncr_api.routines.records import RoutineRecord
     from syncr_api.templates.records import TemplateEntryRecord, TemplateRecord
     from syncr_domain.identifiers import DayTypeId
-    from syncr_domain.off_plan import OffPlanPeriod
     from syncr_domain.templates import WeekPattern
     from syncr_domain.zones import Date, LocalTime, ZoneId
+
+
+def periods_of(periods: Sequence[OffPlanPeriodRecord], span: Interval) -> tuple[OffPlanPeriod, ...]:
+    """Every declared period, clipped to one week's span, in the order they were declared.
+
+    Clipping loses nothing a figure reads: the denominator subtracts within the span anyway. What
+    it buys is that a self-contained snapshot names no instant outside the week it describes, so a
+    reader of the snapshot cannot derive a figure from a span the week does not hold.
+
+    Stated here rather than in the assembler because two weeks are read per assembly: the week
+    being assembled, and the one before it whose boundary-crossing occurrences it inherits. A
+    second statement of this is how the inherited occurrence would come to be suppressed by a
+    period its own week does not hold.
+    """
+    clipped: list[OffPlanPeriod] = []
+    for period in periods:
+        inside = period.interval.clipped_to(span)
+        if inside is None:
+            continue
+        clipped.append(
+            OffPlanPeriod(interval=inside, keep_frame=period.keep_frame, label=period.label)
+        )
+    return tuple(clipped)
 
 
 class OffPlanSuppression:

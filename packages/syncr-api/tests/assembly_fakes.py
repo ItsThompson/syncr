@@ -21,6 +21,10 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
+from syncr_api.anchors import rules
+from syncr_api.anchors.records import AnchorRecord, AnchorTypeRecord, AnchorTypeSpecification
+from syncr_api.anchors.repository import AnchorRepository
+from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.areas.records import AreaRecord
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.habits.records import HabitRecord
@@ -69,6 +73,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from decimal import Decimal
 
+    from syncr_api.anchors.records import AnchorTypeId
     from syncr_api.habits.outcome_log import HabitOutcomeReader
     from syncr_api.plans.config import AdjustmentKind
     from syncr_api.plans.placements import WeekPlacementReader
@@ -77,6 +82,9 @@ if TYPE_CHECKING:
     from syncr_domain.zones import Date
 
 TENANT = UUID("11111111-1111-4111-8111-111111111111")
+# The calendar every imported commitment in this suite came from. One source, because which feed
+# published a commitment decides nothing an assembly reads.
+SOURCE = UUID("22222222-2222-4222-8222-222222222222")
 
 # A week with no daylight-saving transition in it, so a figure that differs between two of its
 # days differs for the reason the test is about.
@@ -573,6 +581,80 @@ class FakeAdjustments(WeekAdjustmentRepository):
         return [row for row in self._stored if row.iso_week == iso_week]
 
 
+class FakeAnchors(AnchorRepository):
+    """The anchors a tenant holds, answering the assembly's unpaged span read.
+
+    Records which spans were asked for, because what an assembly reads beyond its own week is a
+    claim about the expansion rather than about the rows that came back.
+    """
+
+    def __init__(self, stored: Sequence[AnchorRecord] = ()) -> None:
+        self._stored = tuple(stored)
+        self.asked_for: list[Interval] = []
+
+    async def overlapping(self, span: Interval) -> tuple[AnchorRecord, ...]:
+        self.asked_for.append(span)
+        found = [row for row in self._stored if row.interval.overlaps(span)]
+        return tuple(sorted(found, key=lambda row: (row.interval, row.id)))
+
+
+class FakeAnchorTypes(AnchorTypeRepository):
+    def __init__(self, stored: Sequence[AnchorTypeRecord] = ()) -> None:
+        self._stored = tuple(stored)
+
+    async def list_all(self) -> tuple[AnchorTypeRecord, ...]:
+        return self._stored
+
+
+def an_anchor_type(
+    specification: AnchorTypeSpecification, *, rule_order: int = 0
+) -> AnchorTypeRecord:
+    """``specification`` as a stored row, refused here if the boundary rules would refuse it.
+
+    Validated so every geometry these tests read is one a tenant could really hold: a declaration
+    the rules reject describes a shadow the product cannot cast, and asserting arithmetic over one
+    asserts it against itself. The Areas it names count as declared, because a specification
+    naming an Area is what a suite with a real tenant would have created.
+    """
+    rules.validate(
+        specification,
+        declared_areas=set(specification.referenced_area_ids),
+        declared_sources=(
+            () if specification.match_source_id is None else (specification.match_source_id,)
+        ),
+    )
+    return AnchorTypeRecord(
+        id=uuid4(), tenant_id=TENANT, rule_order=rule_order, specification=specification
+    )
+
+
+def an_anchor(
+    *,
+    interval: Interval,
+    anchor_type: AnchorTypeRecord | None = None,
+    title: str = "Kontron Placement Interview",
+    anchor_type_id: AnchorTypeId | None = None,
+) -> AnchorRecord:
+    """One imported commitment, carrying ``anchor_type`` or the identifier given instead.
+
+    ``anchor_type_id`` is separate so a test can store the state a race produces: an anchor
+    carrying a type the types read did not return.
+    """
+    return AnchorRecord(
+        id=uuid4(),
+        tenant_id=TENANT,
+        source_id=SOURCE,
+        external_uid=f"{title}-{interval.start.isoformat()}@example.ac.uk",
+        series_uid=None,
+        title=title,
+        interval=interval,
+        location=None,
+        anchor_type_id=anchor_type_id or (None if anchor_type is None else anchor_type.id),
+        type_overridden=False,
+        possibly_stale=False,
+    )
+
+
 class FakeWeights(WeightSetRepository):
     def __init__(self, active: WeightSetRecord | None = None) -> None:
         self._active = active
@@ -612,6 +694,8 @@ def an_assembler(
     off_plan: OffPlanPeriodRepository | None = None,
     placements: WeekPlacementReader | None = None,
     adjustments: WeekAdjustmentRepository | None = None,
+    anchors: AnchorRepository | None = None,
+    anchor_types: AnchorTypeRepository | None = None,
     weights: WeightSetRepository | None = None,
     versions: WeekInputVersionRepository | None = None,
     revisions: PlanRepository | None = None,
@@ -632,6 +716,8 @@ def an_assembler(
         off_plan=off_plan or FakeOffPlan(),
         placements=placements or FakePlacements(),
         adjustments=adjustments or FakeAdjustments(),
+        anchors=anchors or FakeAnchors(),
+        anchor_types=anchor_types or FakeAnchorTypes(),
         weights=weights or FakeWeights(a_weight_set()),
         versions=versions or FakeVersions(3),
         revisions=revisions or FakeRevisions(),

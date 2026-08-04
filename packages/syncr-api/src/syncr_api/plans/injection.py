@@ -1,6 +1,6 @@
 """How a caller acquires a week assembler, and which reader each seam is wired to.
 
-The assembler takes sixteen collaborators, so composing one is stated here rather than at each
+The assembler takes eighteen collaborators, so composing one is stated here rather than at each
 call site: three components assemble a week and a second copy of this list is how one of them
 would come to read a different set of tables.
 
@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from syncr_api.anchors.repository import AnchorRepository
+from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.habits.outcome_log import NoRecordedOutcomes
 from syncr_api.habits.repository import HabitRepository
@@ -56,6 +58,9 @@ def build_week_assembler(
     arguments are the week, the instant, and the concession being evaluated: a fourth naming who
     is asking would put a metric label in the contract every consumer has to satisfy. The wiring
     is where the answer is already known.
+
+    The anchor repositories are the calendar half's, and they are read-only here: an assembly of a
+    week reads what a sync already reconciled and never writes an imported fact.
     """
     return WeekAssembler(
         settings=SettingsRepository(transaction, tenant_id),
@@ -71,6 +76,8 @@ def build_week_assembler(
         off_plan=OffPlanPeriodRepository(transaction, tenant_id),
         placements=NoPlacements(),
         adjustments=WeekAdjustmentRepository(transaction, tenant_id),
+        anchors=AnchorRepository(transaction, tenant_id),
+        anchor_types=AnchorTypeRepository(transaction, tenant_id),
         weights=WeightSetRepository(transaction, tenant_id),
         versions=WeekInputVersionRepository(transaction, tenant_id),
         revisions=PlanRepository(transaction, tenant_id),
