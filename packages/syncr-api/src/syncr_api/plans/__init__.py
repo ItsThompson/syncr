@@ -1,6 +1,8 @@
 """The plan-storage package: revisions, the pending slot, the version row, and the facts.
 
-Import layout, so a reader knows where to look. Storage first:
+Import layout, so a reader knows where to look. **Every module in this package appears in one of
+the two tables below**, which a test asserts against the directory: this index was found twelve
+modules stale once already, and an index a reader cannot trust is worse than none. Storage first:
 
 | Module | Holds |
 |---|---|

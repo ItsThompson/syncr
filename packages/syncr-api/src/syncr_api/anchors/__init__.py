@@ -45,12 +45,15 @@ interval sets a reader subtracts, and ``reach.py`` WIDENS a caller's own span in
 every commitment that can cast a product inside it. **Those four are the only modules here that
 compute time nobody stored.** The two others that name an interval at all merely rebuild one they
 were handed: ``queries.py`` from the bounds a request asked to read, and ``repository.py`` from the
-two columns a row holds. What the rest own is the declaration, the boundary rules the declaration
-has to satisfy, and the reconciliation that decides which anchors exist and which type each one
-carries. Every span the three shadow modules produce is unclipped, because which of them fall
-inside a week is a question only the caller holding that week's span can answer.
+two columns a row holds. A test enumerates the six against the source, because the claim is about
+every other module in the package and a negative one is not worth stating unless it is checked.
+What the rest own is the declaration, the boundary rules the declaration has to satisfy, and the
+reconciliation that decides which anchors exist and which type each one carries. Every span the
+three shadow modules produce is unclipped, because which of them fall inside a week is a question
+only the caller holding that week's span can answer.
 
-Import layout, so a reader knows where to look:
+Import layout, so a reader knows where to look. **Every module in this package appears in the
+table below**, which a test asserts against the directory:
 
 | Module | Holds |
 |---|---|
