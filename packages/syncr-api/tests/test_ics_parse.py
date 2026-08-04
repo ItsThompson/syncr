@@ -1752,3 +1752,85 @@ def test_a_signed_form_the_standard_allows_is_not_refused(rule: str) -> None:
     outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
 
     assert outcome.rejected == ()
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        # dateutil splits a rule value on ANY whitespace unless told to unfold, and treats each
+        # token as its own content line, so one space smuggles a second RRULE past guards that split
+        # on ";". The first of these provably never terminates: dateutil advances by INTERVAL, and
+        # zero never reaches a new value.
+        "FREQ=DAILY INTERVAL=0;FREQ=DAILY",
+        "FREQ=WEEKLY RRULE:FREQ=SECONDLY;BYSETPOS=300",
+        "FREQ=MONTHLY;COUNT=2 RRULE:FREQ=MINUTELY;BYSECOND=1;BYSETPOS=3",
+        # A tab and a newline are whitespace to dateutil's split too.
+        "FREQ=DAILY\tINTERVAL=0",
+        # And the same seam in a property name rather than a value.
+        "FREQ=DAILY;INT ERVAL=0",
+    ],
+)
+def test_whitespace_cannot_smuggle_a_second_rule_past_the_guards(rule: str) -> None:
+    # The guards read a ";"-separated property list; dateutil reads whitespace-separated content
+    # lines. Where the two grammars disagreed, syncr validated one rule and dateutil expanded a
+    # different one, and every guard was bypassed at once.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:ws@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    detail = outcome.rejected[0].detail
+    assert "whitespace" in detail
+    # The publisher is shown the offending text rather than a converter's complaint.
+    assert "unpack" not in detail
+
+
+@pytest.mark.parametrize(
+    ("rule", "events"),
+    [
+        # Padding around a separator is a real publisher idiom and carries no second property, so it
+        # is stripped and expanded rather than costing the series. This one used to reach the panel
+        # as a Python tuple-unpacking error.
+        ("FREQ=WEEKLY; BYDAY=MO", 1),
+        ("FREQ=WEEKLY ; BYDAY=MO", 1),
+        ("FREQ=DAILY ; COUNT=3", 3),
+        ("  FREQ=DAILY;COUNT=3  ", 3),
+        ("FREQ=DAILY;COUNT=3;", 3),
+        ("FREQ = DAILY;COUNT = 3", 3),
+    ],
+)
+def test_separator_padding_is_stripped_rather_than_costing_the_series(
+    rule: str, events: int
+) -> None:
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:pad5@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.rejected == ()
+    assert len(outcome.events) == events
+
+
+def test_a_rule_part_with_no_value_is_named_rather_than_unpacked() -> None:
+    # dateutil unpacks each part into a pair, so it answers this with "not enough values to unpack",
+    # which tells a publisher nothing about which property is wrong.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:nopair@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        "RRULE:FREQ=DAILY;COUNT\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    detail = outcome.rejected[0].detail
+    assert "COUNT" in detail
+    assert "unpack" not in detail

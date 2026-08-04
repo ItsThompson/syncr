@@ -38,7 +38,7 @@ from syncr_api.calendars.ics_times import resolve
 from syncr_api.calendars.ics_values import MAX_MAGNITUDE_DIGITS, ZoneKind
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
     from datetime import date
 
     from syncr_api.calendars.ics_values import IcsTime
@@ -63,13 +63,11 @@ _FREQ: Final = "FREQ"
 # one expands a period into more members, the other LIMITS which periods are considered at all. The
 # split moves with the frequency, and BYMINUTE is the trap: it expands an hour into minutes, and
 # merely limits which minutes a MINUTELY rule looks at. Counting a limiting part as room overstates
-# the set, which is how three of these shapes passed the guard and walked to year 9999 anyway.
+# the set, and a position past the real set then walks to year 9999 inside one call.
 #
-# DAILY is here because leaving it to dateutil was measured, not assumed, and the measurement was
-# wrong: one position past a daily set costs two seconds, and a LIST of them costs two seconds each.
-# A rule stating every position RFC 5545 allows, which is 366 of them, took 160 seconds in one call.
-# Weekly and coarser frequencies stay out: their sets are built from parts whose expansion is not
-# enumerable this cheaply, and each was measured under a second.
+# DAILY is in because a position past a daily set costs two seconds, and a rule may state the 366
+# positions RFC 5545 allows: 160 seconds in one call. WEEKLY and coarser stay out, each measured
+# under a second, because their sets are built from parts this cannot enumerate as cheaply.
 _EXPANDING_PARTS: Final = {
     "DAILY": (_BYHOUR, _BYMINUTE, _BYSECOND),
     "HOURLY": (_BYMINUTE, _BYSECOND),
@@ -81,10 +79,9 @@ _EXPANDING_PARTS: Final = {
 #
 # **Only four of these have a signed form.** BYMONTHDAY, BYYEARDAY, BYWEEKNO and BYSETPOS count
 # backwards from the end of their period, so -1 is the correct idiom on all four. BYMONTH, BYHOUR,
-# BYMINUTE and BYSECOND are unsigned. An earlier version of this table compared the MAGNITUDE, on
-# the stated premise that "the signed forms are covered by one entry": that premise was false for
-# half the table, and it admitted BYMONTH=-1, which no month matches and which is one slip from the
-# -1 that is right on the other four. Measured, that rule did not return in three minutes.
+# BYMINUTE and BYSECOND are unsigned, so each entry is the interval the standard gives rather than a
+# magnitude: comparing magnitudes admits BYMONTH=-1, which no month matches and which does not
+# return in three minutes.
 #
 # Zero is excluded from the signed properties because the standard excludes it and dateutil does
 # not: BYMONTHDAY=0 is accepted there and can never match.
@@ -219,6 +216,63 @@ def _candidates(start: IcsTime, recurrence: Recurrence) -> Iterator[datetime]:
 _RULE_FAULTS: Final = (ValueError, TypeError, OverflowError, IndexError, KeyError)
 
 
+@dataclass(frozen=True, slots=True)
+class _Rule:
+    """One ``RRULE`` value, parsed once into the properties dateutil will read.
+
+    ``text`` is the canonical form handed to the expander and ``parts`` is what the guards read, so
+    the rule syncr validates and the rule dateutil expands are the same rule by construction rather
+    than by two readers happening to agree.
+
+    That agreement is not free. dateutil calls ``s.split()`` on the value unless it is told to
+    unfold, so every whitespace-separated token becomes its own content line: a second ``RRULE``, an
+    ``EXRULE``, or a ``DTSTART`` overriding the one syncr resolved. A guard that splits on ``;`` and
+    treats whitespace as padding is therefore reading a different rule from the one that expands,
+    and one space is enough to separate them.
+    """
+
+    text: str
+    parts: Mapping[str, str]
+
+
+def _parse_rule(rule_text: str) -> _Rule:
+    """``rule_text`` as one property list, or a rejection naming the part that is not one.
+
+    RFC 5545 section 3.3.10 gives ``recur`` no whitespace at all, so whitespace here is a
+    publisher's slip and there are two kinds of it.
+
+    Padding around a separator is harmless and common: ``FREQ=WEEKLY; BYDAY=MO`` is a rule a real
+    publisher emits, and it is stripped and expanded. Whitespace INSIDE a name or a value is not
+    padding, because it is where a second property hides, so it is refused by name.
+
+    A part with no ``=`` is refused here too. dateutil unpacks each part into a pair, so it answers
+    that shape with ``not enough values to unpack``, which tells a publisher nothing.
+    """
+    kept: list[str] = []
+    parts: dict[str, str] = {}
+    for part in rule_text.strip().split(_RULE_SEPARATOR):
+        if not part.strip():
+            continue
+        name, separator, value = (piece.strip() for piece in part.partition("="))
+        if not separator:
+            message = (
+                f"the recurrence rule states {_stated(name, width=MAX_RULE_ITEM_CHARS)} with no "
+                "value, and every part of a rule is a name and a value"
+            )
+            raise UnparseableRecurrence(message)
+        for label, piece in (("name", name), ("value", value)):
+            if any(character.isspace() for character in piece):
+                message = (
+                    f"the recurrence rule states a {label} of "
+                    f"{_stated(piece, width=MAX_RULE_ITEM_CHARS)}, and RFC 5545 allows no "
+                    "whitespace inside a rule: a second property hides there"
+                )
+                raise UnparseableRecurrence(message)
+        kept.append(f"{name}={value}")
+        parts[name.upper()] = value.upper()
+    return _Rule(text=_RULE_SEPARATOR.join(kept), parts=parts)
+
+
 def _parsed_rule(rule_text: str, start: IcsTime) -> rruleset:
     """``rule_text`` as a dateutil rule set anchored at the series' naive start.
 
@@ -226,12 +280,25 @@ def _parsed_rule(rule_text: str, start: IcsTime) -> rruleset:
     bare rule or with a set depending on the input's shape, and the caller needs to add
     ``RDATE`` occurrences to whatever it got.
 
+    ``unfold=True`` keeps dateutil on its line-based branch rather than its whitespace-splitting
+    one. It is **not** what closes the divergence: measured, removing it leaves every test green,
+    because the canonical text carries no whitespace for either branch to differ over. It is kept as
+    a second mechanism at the point where the two grammars actually meet, so a future edit that
+    loosens the normalisation does not silently reopen the seam.
+
+    The normalisation is the load-bearing half, and its coverage is exact rather than probable:
+    ``_parse_rule`` refuses a part containing any ``str.isspace()`` character, and ``str.split()``
+    with no argument splits on exactly that set. The two cannot disagree about what a token is.
+
     dateutil raises a bare ``ValueError`` on a malformed rule, naming neither the property
     nor the feed, so it is re-raised as the package's own rejection.
     """
-    _require_expandable(rule_text)
+    rule = _parse_rule(rule_text)
+    _require_expandable(rule)
     try:
-        return rrulestr(_wall_until(rule_text, start), dtstart=start.wall, forceset=True)
+        return rrulestr(
+            _wall_until(rule.text, start), dtstart=start.wall, forceset=True, unfold=True
+        )
     except _RULE_FAULTS as error:
         message = (
             f"{_stated(rule_text, width=_QUOTED_RULE_WIDTH)} is not a recurrence rule syncr can "
@@ -240,40 +307,27 @@ def _parsed_rule(rule_text: str, start: IcsTime) -> rruleset:
         raise UnparseableRecurrence(message) from error
 
 
-def _require_expandable(rule_text: str) -> None:
+def _require_expandable(rule: _Rule) -> None:
     """Refuse a rule dateutil cannot expand in bounded time or bounded steps, naming the property.
 
     Three shapes. Two of them defeat a bound on how many occurrences a rule YIELDS, because neither
     yields at all. The third is a value so long that whether it converts at all depends on how the
     process was started.
     """
-    _require_readable_members(rule_text)
-    _require_positive_interval(rule_text)
-    _require_selectable_setpos(rule_text)
+    _require_readable_members(rule)
+    _require_positive_interval(rule)
+    _require_selectable_setpos(rule)
 
 
-def _require_readable_members(rule_text: str) -> None:
-    """Refuse a rule part whose member is longer than any real one, before anything converts it.
+def _require_readable_members(rule: _Rule) -> None:
+    """Refuse a rule member longer than any real one, and one outside its property's range.
 
-    Applied to EVERY part rather than to the two a guard happens to read. The bound's purpose is
-    that syncr and dateutil agree about a value, and dateutil reads parts syncr has no opinion on,
-    so a bound living inside one guard's predicate left `COUNT` unbounded while `INTERVAL` was
-    refused.
-
-    An earlier version of this bound lived in ``_signed``, which is consumed as a REFUSAL by one
-    caller and as a FILTER by two others. Tightening it there refused a padded interval and, at the
-    same time, made two guards silently skip the value they were meant to judge: a padded
-    ``BYSETPOS`` became no position at all, and a padded set member became a distinct member. Both
-    walked. A bound that fails open at some call sites and closed at others is not a bound, which is
-    why this one is its own pass over the text.
+    Applied to EVERY property rather than to the two a guard happens to read, because dateutil reads
+    properties syncr has no opinion on and converts them under the same interpreter limit. A bound
+    living inside one guard's predicate leaves the others unbounded.
     """
-    for part in rule_text.split(_RULE_SEPARATOR):
-        key, separator, value = part.partition("=")
-        if not separator:
-            continue
-        name = key.strip().upper()
-        for item in value.split(","):
-            stated = item.strip()
+    for name, value in rule.parts.items():
+        for stated in value.split(","):
             if len(stated) > MAX_RULE_ITEM_CHARS:
                 message = (
                     f"the recurrence rule states a {len(stated)}-character value for "
@@ -287,20 +341,17 @@ def _require_readable_members(rule_text: str) -> None:
 def _require_value_in_range(name: str, stated: str) -> None:
     """Refuse a numeric rule member outside the values RFC 5545 gives that property.
 
-    dateutil does not check most of these, and a value outside the range can never match anything,
-    so the rule yields nothing while the expander walks looking for it. Measured:
-    ``FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2`` did not return in twenty minutes, and no bound syncr
-    owns can see it, because the work is inside one call.
+    dateutil does not check most of these, and a value outside the range can never match, so the
+    rule yields nothing while the expander looks for it: ``FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2``
+    does not return in twenty minutes, inside one call no bound of syncr's can interrupt. A month
+    has at most 31 days, so 53 is a mistake, and refusing it by name is more useful than producing
+    nothing.
 
-    A month has at most 31 days, so 53 is not a publisher being unusual: it is a mistake, and
-    refusing it by name is more useful than a rule that quietly produces nothing.
-
-    **The conversion here is not ``_signed``.** That predicate answers "is this a magnitude syncr
-    will ACT on", which is a narrower question: it refuses anything past eleven significant digits,
-    and reading its ``False`` as "not a number, skip" made this check fail open for exactly the
-    values most obviously out of range. ``BYMONTHDAY=999999999999`` skipped the check and did not
-    return in five minutes. The length is already bounded by the caller, so a bare conversion here
-    cannot depend on the interpreter's digit limit.
+    **The conversion here is a bare ``int``, not ``_signed``.** ``_signed`` answers a narrower
+    question, "is this a magnitude syncr will ACT on", and is false past eleven significant digits,
+    so reading its ``False`` as "not a number" skips the check for exactly the values most obviously
+    out of range. The caller has already bounded the length, so the conversion cannot depend on the
+    interpreter's digit limit.
     """
     intervals = _RULE_RANGES.get(name)
     if intervals is None:
@@ -321,70 +372,53 @@ def _require_value_in_range(name: str, stated: str) -> None:
     raise UnparseableRecurrence(message)
 
 
-def _require_selectable_setpos(rule_text: str) -> None:
+def _require_selectable_setpos(rule: _Rule) -> None:
     """Refuse a ``BYSETPOS`` that reaches past the set its own period can hold.
 
-    ``BYSETPOS`` picks the Nth member of each period's expansion. On an hourly, minutely or
-    secondly frequency that set is built from at most ``BYMINUTE`` and ``BYSECOND``, so it is tiny
-    and a position past it selects NOTHING. dateutil then advances period by period to its own
-    maximum year INSIDE ONE STEP: about seventy million iterations, measured at sixty seconds for
-    ONE component, with the worker tick and its transaction held open throughout.
+    ``BYSETPOS`` picks the Nth member of each period's expansion. On a sub-daily frequency that set
+    is built from at most ``BYMINUTE`` and ``BYSECOND``, so a position past it selects NOTHING and
+    dateutil advances period by period to its own maximum year INSIDE ONE STEP: sixty seconds for
+    one component, with the worker tick and its transaction held open.
 
-    A bound on steps cannot see that, and neither can an ``UNTIL``: dateutil compares against
-    ``UNTIL`` only when a period yields a value, so a period that selects nothing never reaches the
-    comparison. Measured, an ``UNTIL`` two days out and a ``COUNT`` of five both still walk.
+    Neither a bound on steps nor an ``UNTIL`` can see that. dateutil compares against ``UNTIL`` only
+    when a period yields a value, so a period selecting nothing never reaches the comparison: an
+    ``UNTIL`` two days out and a ``COUNT`` of five both still walk.
 
-    Which parts count as room is per-frequency and is the whole difficulty: see
-    ``_EXPANDING_PARTS``. The position is compared against that size rather than the shape being
-    refused outright, so ``FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2`` still expands: it selects the
-    second of two, which dateutil answers in milliseconds. How MANY events that is depends on the
-    horizon and the series' duration, so the count is asserted in a test rather than quoted here:
-    three drafts of this docstring quoted three different numbers for it, each measured from a
-    different fixture and none of them checked.
+    Two things decide the comparison, and both are properties of dateutil rather than of the text:
 
-    Two subtleties, each of which let a walking rule through once:
+    - The room is how many values dateutil HOLDS. It stores each ``BY`` list as a set of integers,
+    so ``BYMINUTE=0,0`` and ``BYMINUTE=30,030`` hold one member each while naming two. Which parts
+    contribute is per-frequency: see ``_EXPANDING_PARTS``. - The reach is the SMALLEST position,
+    because dateutil skips an out-of-range member and yields for the rest. ``BYSETPOS=1,5`` against
+    a set of two is a legitimate rule.
 
-    - The room is how many values dateutil will HOLD, not how many the publisher wrote. It stores
-      each ``BY`` list as a set of integers, so ``BYMINUTE=0,0`` and ``BYMINUTE=30,030`` hold one
-      member each while naming two. Counting the spellings inflated the room and the position
-      walked.
-    - A position list is refused only when NONE of its members can land. dateutil skips an
-      out-of-range member and still yields for the rest, so ``BYSETPOS=1,5`` against a set of two is
-      a legitimate rule that produces the first member of every period. Comparing the largest member
-      lost the whole series.
+    So a position with somewhere to land still expands: ``FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2``
+    selects the second of two in milliseconds. How many events that is depends on the horizon and
+    the series' duration, so the count is asserted in a test rather than quoted here.
 
-    A WEEKLY or coarser frequency is left to dateutil, and that is a measurement rather than an
-    assumption: a position past a weekly set costs 0.54 seconds, a monthly one 0.23, a yearly one
-    0.10, because the periods are large enough to reach the year dateutil stops at quickly. DAILY
-    was left out on the same reasoning and the reasoning was wrong: two seconds per position, and a
-    rule may state 366 of them, which measured 160 seconds in one call. It is bounded here now.
+    WEEKLY and coarser frequencies are left to dateutil, measured at 0.54, 0.23 and 0.10 seconds,
+    because their periods reach the year dateutil stops at quickly.
 
-    The general problem, a foreign expander spending unbounded time inside one call, is NOT closed
-    by this. The worst shape measured is a fully LEGAL rule whose parts can never all be satisfied
-    at once: ``FREQ=SECONDLY;BYMONTH=2;BYMONTHDAY=30;BYHOUR=2`` did not return in five minutes here
-    and was measured at 1,290 seconds by an independent pass. Every value in it is inside the range
-    its property allows, so no check above can help, and eight further legal shapes exceed 200
-    seconds.
-
-    A partial impossibility check (February has no thirtieth) would close that one combination and
-    leave the others, which is the shape of claim this module has already been wrong about four
-    times. It is recorded as a known issue with its measurement instead.
+    **The general problem is not closed by this**, and the worst shape is a fully LEGAL rule whose
+    parts can never all be satisfied at once: ``FREQ=SECONDLY;BYMONTH=2;BYMONTHDAY=30;BYHOUR=2``
+    costs 1,290 seconds in one call, with eight further legal shapes over 200. Every value in it is
+    inside the range its property allows, so nothing here reaches it, and an impossibility check for
+    one pairing would read as though it closed the class. It is a known issue with its measurement,
+    and the ticket that bounds the expander from outside is what retires this function.
     """
-    parts = dict(
-        part.partition("=")[::2] for part in rule_text.upper().split(_RULE_SEPARATOR) if "=" in part
-    )
-    positions = parts.get(_SETPOS)
-    expanding = _EXPANDING_PARTS.get(parts.get(_FREQ, "").strip())
+    positions = rule.parts.get(_SETPOS)
+    frequency = rule.parts.get(_FREQ, "")
+    expanding = _EXPANDING_PARTS.get(frequency)
     if positions is None or expanding is None:
         return
     reach = min(
         (abs(_number(value)) for value in positions.split(",") if _signed(value)), default=0
     )
-    room = prod(_members(parts.get(part)) for part in expanding)
+    room = prod(_members(rule.parts.get(part)) for part in expanding)
     if reach > room:
         message = (
             f"the recurrence rule selects position {reach} of a "
-            f"{parts[_FREQ].strip()} period holding {room}, so it produces nothing and "
+            f"{frequency} period holding {room}, so it produces nothing and "
             "syncr will not expand it"
         )
         raise UnparseableRecurrence(message)
@@ -397,11 +431,10 @@ def _members(value: str | None) -> int:
     ``DTSTART`` names.
 
     Distinct by VALUE rather than by spelling, because that is what dateutil holds: it stores each
-    list as a set of integers. ``0,0`` names one minute and ``30,030`` names one minute, and
-    counting them as two put a position past the real set on the safe side of this guard.
+    list as a set of integers, so ``0,0`` and ``30,030`` each name one member.
 
-    A member syncr cannot read is not counted, which is the conservative direction: an unreadable
-    member cannot be one dateutil selects either, so counting it would only ever inflate the room.
+    A member syncr cannot read is not counted. That is the conservative direction: an unreadable
+    member is not one dateutil selects either, and counting it could only inflate the room.
     """
     if value is None:
         return 1
@@ -428,21 +461,18 @@ def _signed(value: str) -> bool:
     """Whether this is a number ``_number`` will convert to a magnitude syncr will act on.
 
     **The predicate is ``int`` itself, bounded, rather than a test that resembles it.** dateutil
-    converts these values with ``int``, so any predicate that merely approximates ``int``'s accept
-    set disagrees with the library somewhere, and both directions of disagreement have now cost a
-    defect:
+    converts these values with ``int``, so a predicate that merely approximates ``int``'s accept set
+    disagrees with the library somewhere, and the disagreement is a defect in whichever direction it
+    falls: ``str.isdigit`` is true for a superscript two that ``int`` refuses, and ``str.isdecimal``
+    is false for ``'2_0'`` that ``int`` accepts as 20. Asking ``int`` cannot disagree with it.
 
-    - ``str.isdigit`` is true for a superscript two and for circled digits, which ``int`` refuses. A
-      guard gated on it left the conversion able to raise while a table beside it called the site
-      guarded.
-    - ``str.isdecimal`` is false for ``'2_0'``, which ``int`` accepts as 20. Two guards read this
-      predicate as a FILTER, so an unreadable member was dropped rather than judged: a position
-      syncr could not read became no position at all and the rule walked to year 9999, while a set
-      member syncr could not read shrank the room and refused a rule dateutil would have expanded.
+    Two callers read this as a FILTER rather than a refusal, so a member it rejects is dropped from
+    their reckoning. That is why the answer has to match the library's exactly: a value syncr calls
+    unreadable and dateutil converts is a value neither guard judges.
 
-    Asking ``int`` ends that class. The length check comes first so the conversion cannot depend on
-    the interpreter's digit limit whatever order the callers run in, and the magnitude check reads
-    off the converted number rather than off the text.
+    The length check comes first, so the conversion cannot depend on the interpreter's digit limit
+    whatever order the callers run in, and the magnitude check reads the converted number rather
+    than the text.
     """
     stated = value.strip()
     if len(stated) > MAX_RULE_ITEM_CHARS:
@@ -461,7 +491,7 @@ def _stated(value: str, *, width: int = MAX_MAGNITUDE_DIGITS) -> str:
     return f"a value of {len(value)} characters"
 
 
-def _require_positive_interval(rule_text: str) -> None:
+def _require_positive_interval(rule: _Rule) -> None:
     """Refuse an ``INTERVAL`` that is not a positive number, naming the value.
 
     RFC 5545 requires a positive integer and dateutil enforces neither bound. A NEGATIVE interval is
@@ -473,17 +503,15 @@ def _require_positive_interval(rule_text: str) -> None:
     A leading ``+`` is accepted, as dateutil accepts it. The standard does not write the sign, but a
     publisher that does means one, and losing a whole series over it would be the wrong trade.
     """
-    for part in rule_text.split(_RULE_SEPARATOR):
-        key, separator, value = part.partition("=")
-        if not separator or key.strip().upper() != _INTERVAL:
-            continue
-        stated = value.strip()
-        if not _signed(stated) or _number(stated) < 1:
-            message = (
-                f"the recurrence rule states an INTERVAL of {_stated(stated)}, and an interval has "
-                "to be a positive number of periods"
-            )
-            raise UnparseableRecurrence(message)
+    stated = rule.parts.get(_INTERVAL)
+    if stated is None:
+        return
+    if not _signed(stated) or _number(stated) < 1:
+        message = (
+            f"the recurrence rule states an INTERVAL of {_stated(stated)}, and an interval has "
+            "to be a positive number of periods"
+        )
+        raise UnparseableRecurrence(message)
 
 
 def _wall_until(rule_text: str, start: IcsTime) -> str:

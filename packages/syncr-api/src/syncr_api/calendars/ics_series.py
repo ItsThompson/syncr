@@ -343,11 +343,10 @@ def _named_by(
     skipped 30 December 2011 entirely. A replacement naming a wall the series DOES produce belongs
     to that occurrence, whichever of the two is expanded first.
 
-    Checking ``applied`` alone was not enough, and the direction it missed was the reachable one.
-    The gap wall always sorts BEFORE the real wall that shares its instant, so the gap occurrence
-    reached the index first, took a replacement written for the later occurrence, and then the later
-    occurrence matched its own key exactly: one component placed twice, on two identities, and the
-    master's own occurrence deleted. A cancellation the same way suppressed two occurrences.
+    Whether the key was already applied is not the discriminator, because expansion order decides
+    that: the gap wall always sorts BEFORE the real wall sharing its instant, so the earlier
+    occurrence would take a replacement written for the later one and the later one would match its
+    own key as well. What settles it is the produced walls, which do not depend on order.
     """
     exact = (master.uid, wall)
     if exact in series.overrides or exact in series.tombstones:

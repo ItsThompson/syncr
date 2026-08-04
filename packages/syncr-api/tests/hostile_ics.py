@@ -418,6 +418,18 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         "RRULE:FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2",
     ),
     "a month past the year": ("DURATION:PT1H", "RRULE:FREQ=MINUTELY;BYMONTH=13"),
+    # Whitespace inside a rule value. dateutil splits the value on any whitespace and reads each
+    # token as its own content line, so a space smuggles a second RRULE past guards that split on
+    # ";". No body carried whitespace inside a rule before, which is why nine passes agreed with
+    # guards that read a different grammar from the expander they guard.
+    "a second rule hidden behind a space": (
+        "DURATION:PT1H",
+        "RRULE:FREQ=DAILY INTERVAL=0;FREQ=DAILY",
+    ),
+    "a second rule hidden behind a tab": ("DURATION:PT1H", "RRULE:FREQ=DAILY\tINTERVAL=0"),
+    "a rule name split by a space": ("DURATION:PT1H", "RRULE:FREQ=DAILY;INT ERVAL=0"),
+    # And the accepting mirror: padding around a separator is a real publisher idiom.
+    "separator padding a publisher writes": ("DURATION:PT1H", "RRULE:FREQ=WEEKLY; BYDAY=MO"),
     # A negative value on a property RFC 5545 leaves UNSIGNED. Nothing in the corpus carried one, so
     # a range check comparing the magnitude read it as valid and the rule walked for minutes.
     "a negative month with an hour": ("DURATION:PT1H", "RRULE:FREQ=SECONDLY;BYMONTH=-1;BYHOUR=2"),
