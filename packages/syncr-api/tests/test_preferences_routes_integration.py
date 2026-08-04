@@ -428,11 +428,11 @@ def test_the_document_advertises_two_strengths_and_no_more(http: TestClient) -> 
 
 
 @pytest.mark.parametrize(
-    ("case", "start"),
+    ("case", "start", "field"),
     [
-        ("an offset", "05:30:00+01:00"),
-        ("seconds", "05:30:30"),
-        ("off the quarter hour", "05:07"),
+        ("an offset", "05:30:00+01:00", "body.windows.0.start"),
+        ("seconds", "05:30:30", "body.windows.0.start"),
+        ("off the quarter hour", "05:07", "windows"),
     ],
     ids=["offset", "seconds", "off-grid"],
 )
@@ -442,11 +442,18 @@ def test_a_window_bound_that_is_not_wall_time_on_the_grid_is_refused(
     owned: Owned,
     case: str,
     start: str,
+    field: str,
     live_database_url: str,
     owner: UserRecord,
 ) -> None:
     # The offset case is the one that would otherwise be silent: pydantic parses an offset into an
-    # aware time, and a column with no offset drops it rather than refusing it.
+    # aware time, and a JSONB string carries it verbatim rather than refusing it.
+    #
+    # The FIELD each refusal names is asserted, not just the status, and that is what earns the
+    # boundary validator its place beside the entity's. The first two are refused where the request
+    # is read, so they point at the exact bound in a list of up to six; the quarter-hour rule is
+    # stated once in the domain, which sees the window rather than the request, so it names the
+    # list. Without this assertion the boundary validator could be deleted and nothing would fail.
     refused = http.put(
         owned.area,
         json={"windows": [{"start": start, "end": "08:00"}], "strength": "soft"},
@@ -454,6 +461,7 @@ def test_a_window_bound_that_is_not_wall_time_on_the_grid_is_refused(
     )
 
     assert refused.status_code == ValidationFailed.status, refused.text
+    assert [error["field"] for error in refused.json()["errors"]] == [field]
     assert preference_rows(live_database_url, owner.tenant_id) == []
 
 

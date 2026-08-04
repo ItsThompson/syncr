@@ -37,7 +37,14 @@ from syncr_api.habits.records import HabitRecord
 from syncr_api.habits.repository import HabitRepository
 from syncr_api.preferences.declarations import DeclaredWindow, PreferenceDeclaration
 from syncr_api.preferences.owners import PreferenceOwners
-from syncr_api.preferences.records import PreferenceRecord, windows_as_json
+from syncr_api.preferences.records import (
+    PreferenceRecord,
+    UnattributedPreferenceRow,
+    owner_columns,
+    owner_of,
+    windows_as_json,
+    windows_from_json,
+)
 from syncr_api.preferences.repository import OWNER_COLUMN, PreferenceRepository
 from syncr_api.preferences.service import PreferenceService
 from syncr_api.tasks.records import TaskRecord
@@ -50,6 +57,7 @@ from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
 from syncr_domain.preferences import (
     LocalTimeWindow,
     Preference,
+    PreferenceError,
     PreferenceOwner,
     PreferenceOwnerKind,
     PreferenceStrength,
@@ -823,3 +831,65 @@ class TestTheOwnerMappings:
 
         assert resolved is not None
         assert resolved.area_owner == resolved.owner
+
+
+class TestTheRowMapping:
+    """What a schemaless JSONB column can hold that the entity cannot see, refused where it is read.
+
+    The table validates the window list's shape and its length and nothing inside it, so these are
+    the refusals the record adds. Each is a 422 naming the field rather than a 500: what broke is
+    one row, not the server.
+    """
+
+    def test_a_window_list_survives_the_round_trip(self) -> None:
+        stored = windows_as_json((EARLY, MIDDAY))
+
+        assert windows_from_json(stored) == (EARLY, MIDDAY)
+
+    def test_a_stored_value_that_is_not_a_list_is_refused(self) -> None:
+        with pytest.raises(PreferenceError, match="ordered list"):
+            windows_from_json({"start": "05:30:00"})
+
+    def test_a_stored_element_that_is_not_an_object_is_refused(self) -> None:
+        with pytest.raises(PreferenceError, match="object naming"):
+            windows_from_json(["05:30:00"])
+
+    def test_a_stored_bound_that_is_not_a_string_is_refused(self) -> None:
+        with pytest.raises(PreferenceError, match="wall time"):
+            windows_from_json([{"start": 530, "end": "07:00:00"}])
+
+    def test_a_stored_bound_that_is_not_a_time_is_refused(self) -> None:
+        with pytest.raises(PreferenceError, match="not a time"):
+            windows_from_json([{"start": "half five", "end": "07:00:00"}])
+
+    def test_a_stored_bound_missing_altogether_is_refused(self) -> None:
+        with pytest.raises(PreferenceError, match="wall time"):
+            windows_from_json([{"start": "05:30:00"}])
+
+    def test_a_stored_bound_carrying_an_offset_is_refused_on_the_way_out(self) -> None:
+        # The tz-truncation class from the other side. Nothing can write this through the routes,
+        # because the boundary refuses an offset, but a JSONB string carries one verbatim rather
+        # than dropping it the way a column with no offset would, so a hand-written row is refused
+        # where it is read rather than resolved against the wrong hour.
+        with pytest.raises(PreferenceError, match="names no zone"):
+            windows_from_json([{"start": "05:30:00+01:00", "end": "07:00:00"}])
+
+    @pytest.mark.parametrize("kind", ["area", "habit", "task"], ids=["area", "habit", "task"])
+    def test_an_owner_survives_the_round_trip(self, kind: str) -> None:
+        owner = PreferenceOwner(kind=PreferenceOwnerKind(kind), id=uuid4())
+        area_id, habit_id, task_id = owner_columns(owner)
+
+        assert owner_of(owner.kind, area_id=area_id, habit_id=habit_id, task_id=task_id) == owner
+
+    @pytest.mark.parametrize("kind", ["area", "habit", "task"], ids=["area", "habit", "task"])
+    def test_exactly_one_reference_is_set_for_each_kind(self, kind: str) -> None:
+        owner = PreferenceOwner(kind=PreferenceOwnerKind(kind), id=uuid4())
+
+        assert [column for column in owner_columns(owner) if column is not None] == [owner.id]
+
+    def test_a_row_naming_a_kind_it_holds_no_identifier_for_is_a_fault(self) -> None:
+        # Not a 422: nothing a caller sent is wrong, so there is no field to name. The table's own
+        # constraint pairs the discriminator with the reference, so reaching this means that
+        # constraint is gone.
+        with pytest.raises(UnattributedPreferenceRow, match="belongs to nothing"):
+            owner_of(PreferenceOwnerKind.HABIT, area_id=uuid4(), habit_id=None, task_id=None)
