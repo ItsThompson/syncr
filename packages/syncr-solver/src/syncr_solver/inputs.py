@@ -68,6 +68,7 @@ from typing import TYPE_CHECKING
 
 from syncr_domain.intervals import IntervalSet, as_instant
 from syncr_domain.plan import PlanError, require_a_zone_for_every_day
+from syncr_domain.templates import TemplateEntryKind
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -89,7 +90,7 @@ if TYPE_CHECKING:
     from syncr_domain.plan import AdjustmentKind, PlanDocument
     from syncr_domain.preferences import PreferenceOwner, PreferenceStrength
     from syncr_domain.tasks import Priority
-    from syncr_domain.templates import BindingTarget, TemplateEntryKind
+    from syncr_domain.templates import BindingTarget
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import Date, ZoneId
 
@@ -143,10 +144,21 @@ class MaterializedEntry:
     ``occurrence_key`` is that date: five ``Shower`` blocks in a week need five
     identities, and the entry's id alone would give them one.
 
-    A concrete entry names its content and a slot names an Area and binds late, which is
-    why ``binding`` and ``area_id`` are each required for exactly one kind. A filled
-    slot's block carries the binding of the habit or task that filled it, so a slot has
-    no content identity here to carry.
+    A concrete entry names its content and a slot binds late, which is why ``binding`` and
+    ``title`` are each required for exactly one kind. A filled slot's block carries the
+    binding of the habit or task that filled it, so a slot has no content identity here to
+    carry, and no name either: nothing has been chosen for it to name.
+
+    ``title`` is the CONTENT's own name, resolved by the producer from the routine or habit
+    row the entry names. It is carried rather than joined out of this struct, because no join
+    inside the struct is total: ``habit_occurrences`` is cadence-filtered, so a concrete entry
+    naming a habit that is not due this week would find no name at all.
+
+    ``area_id`` is required for BOTH kinds, because a block that is neither the frame nor an
+    anchor carries an Area. For a slot it is the declared Area; for a concrete entry it is its
+    content's, falling back to the entry's own declaration. An entry whose Area resolves to
+    neither cannot become a block, so the producer drops it rather than carrying one nothing
+    can place.
     """
 
     entry_id: TemplateEntryId
@@ -154,8 +166,12 @@ class MaterializedEntry:
     kind: TemplateEntryKind
     interval: Interval
     flex_band_minutes: int
-    area_id: AreaId | None = None
+    area_id: AreaId
+    title: str | None = None
     binding: EntryBinding | None = None
+
+    def __post_init__(self) -> None:
+        _require_content_matching_the_kind(self.kind, self.binding, self.title)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -477,6 +493,29 @@ class SolveInputs:
         """
         digest = sha256(f"{self.iso_week}\x1f{self.input_version}".encode()).digest()
         return int.from_bytes(digest[:_SEED_BYTES])
+
+
+def _require_content_matching_the_kind(
+    kind: TemplateEntryKind, binding: EntryBinding | None, title: str | None
+) -> None:
+    """A concrete entry names content and a slot names none, in both directions.
+
+    Both halves protect the block an entry becomes. A concrete entry missing either half
+    cannot be placed at all: a block carries the resolved content name, and an empty name
+    names nothing. A slot carrying either would be a concrete entry claiming to bind late,
+    and the name would be a choice nobody has made.
+    """
+    named = kind is TemplateEntryKind.CONCRETE
+    for what, present in (("a binding", binding is not None), ("a title", bool(title))):
+        if present == named:
+            continue
+        states = "names its content" if named else "leaves its content to be bound"
+        holds = "carries no" if named else "carries"
+        raise PlanError(
+            f"a {kind.value!r} entry {states}, and this one {holds} {what}: the block an entry "
+            "becomes carries the resolved content name, so a name and the content it names "
+            "arrive together or neither does"
+        )
 
 
 def frame_occupancy(frame: Sequence[FrameEntry], overhang: Sequence[Interval]) -> IntervalSet:

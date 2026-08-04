@@ -369,8 +369,188 @@ async def test_a_slot_names_its_area_and_a_concrete_entry_names_its_content() ->
     concrete = next(e for e in inputs.template_entries if e.kind is TemplateEntryKind.CONCRETE)
     assert slot.area_id == area.id
     assert slot.binding is None
+    assert slot.title is None
     assert concrete.binding is not None
     assert (concrete.binding.target, concrete.binding.entity_id) == (BindingTarget.HABIT, habit.id)
+
+
+async def test_a_concrete_entry_carries_its_content_name_and_the_area_it_charges() -> None:
+    # A block carries the resolved content name and an Area, and an entry declares neither, so the
+    # producer resolves both from the row the binding names. The Area is the CONTENT's rather than
+    # the entry's declaration, because the minutes are that habit's work.
+    declared = an_area()
+    charged = an_area()
+    habit = a_habit(area_id=charged.id, title="Shower")
+    day_type = uuid4()
+    template = a_template(
+        day_type_id=day_type,
+        entries=[
+            a_concrete_entry(
+                template_id=uuid4(),
+                target=BindingTarget.HABIT,
+                entity_id=habit.id,
+                area_id=declared.id,
+            )
+        ],
+    )
+
+    inputs = await an_assembler(
+        areas=FakeAreas([declared, charged]),
+        habits=FakeHabits([habit]),
+        week_pattern=FakeWeekPattern(every_day(day_type)),
+        templates=FakeTemplates([template]),
+    ).assemble(WEEK, NOW)
+
+    assert {(entry.title, entry.area_id) for entry in inputs.template_entries} == {
+        ("Shower", charged.id)
+    }
+
+
+async def test_a_concrete_entry_naming_a_routine_charges_the_area_it_declares() -> None:
+    # A routine carries no Area, because the frame defines how much time exists rather than
+    # competing for it. So an entry naming one has to declare the Area its block is charged to.
+    area = an_area()
+    routine = a_routine(title="Wake", target_time=time(5, 0), duration_minutes=30)
+    day_type = uuid4()
+    template = a_template(
+        day_type_id=day_type,
+        entries=[
+            a_concrete_entry(
+                template_id=uuid4(),
+                target=BindingTarget.ROUTINE,
+                entity_id=routine.id,
+                area_id=area.id,
+            )
+        ],
+    )
+
+    inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        routines=FakeRoutines([routine]),
+        week_pattern=FakeWeekPattern(every_day(day_type)),
+        templates=FakeTemplates([template]),
+    ).assemble(WEEK, NOW)
+
+    assert {(entry.title, entry.area_id) for entry in inputs.template_entries} == {
+        ("Wake", area.id)
+    }
+
+
+async def test_a_concrete_entry_naming_a_routine_and_declaring_no_area_is_dropped() -> None:
+    # Neither side can name an Area, and every block but the frame and an anchor carries one, so
+    # the entry cannot become a block at all. Dropped rather than refused: the rest of the day
+    # shape is assemblable, and refusing would fail every solve of the week over one row.
+    area = an_area()
+    routine = a_routine()
+    day_type = uuid4()
+    template = a_template(
+        day_type_id=day_type,
+        entries=[
+            a_concrete_entry(
+                template_id=uuid4(), target=BindingTarget.ROUTINE, entity_id=routine.id
+            ),
+            a_slot_entry(template_id=uuid4(), area_id=area.id),
+        ],
+    )
+
+    inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        routines=FakeRoutines([routine]),
+        week_pattern=FakeWeekPattern(every_day(day_type)),
+        templates=FakeTemplates([template]),
+    ).assemble(WEEK, NOW)
+
+    assert {entry.kind for entry in inputs.template_entries} == {TemplateEntryKind.SLOT}
+    assert len(inputs.template_entries) == len(WEEK.dates())
+
+
+async def test_a_concrete_entry_naming_content_this_tenant_does_not_have_is_dropped() -> None:
+    # The entry boundary does not resolve a binding yet, so a concrete entry can name any
+    # identifier. It reaches the assembler as content that cannot be found, and the week still
+    # assembles.
+    area = an_area()
+    day_type = uuid4()
+    template = a_template(
+        day_type_id=day_type,
+        entries=[
+            a_concrete_entry(
+                template_id=uuid4(), target=BindingTarget.HABIT, entity_id=uuid4(), area_id=area.id
+            )
+        ],
+    )
+
+    inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        week_pattern=FakeWeekPattern(every_day(day_type)),
+        templates=FakeTemplates([template]),
+    ).assemble(WEEK, NOW)
+
+    assert inputs.template_entries == ()
+
+
+async def test_a_binding_does_not_resolve_against_the_table_its_target_does_not_name() -> None:
+    # The whole reason the target column exists: the two tables have no shared parent, so an
+    # identifier alone does not say which to read, and two rows sharing one would otherwise
+    # resolve to whichever was looked in first.
+    area = an_area()
+    routine = a_routine()
+    day_type = uuid4()
+    template = a_template(
+        day_type_id=day_type,
+        entries=[
+            a_concrete_entry(
+                template_id=uuid4(),
+                target=BindingTarget.HABIT,
+                entity_id=routine.id,
+                area_id=area.id,
+            )
+        ],
+    )
+
+    inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        routines=FakeRoutines([routine]),
+        week_pattern=FakeWeekPattern(every_day(day_type)),
+        templates=FakeTemplates([template]),
+    ).assemble(WEEK, NOW)
+
+    assert inputs.template_entries == ()
+
+
+async def test_a_routine_suppressed_every_night_still_names_the_entry_that_binds_it() -> None:
+    # Why the name is resolved from the ROW rather than joined out of the assembled snapshot. An
+    # off-plan period suppresses the frame occurrence and not an entry outside it, so the frame is
+    # empty while the entry that names that routine is not. A join against the frame would leave
+    # the block with no name at all.
+    area = an_area()
+    routine = a_routine(title="Sleep", target_time=time(23, 0))
+    day_type = uuid4()
+    template = a_template(
+        day_type_id=day_type,
+        entries=[
+            a_concrete_entry(
+                template_id=uuid4(),
+                target=BindingTarget.ROUTINE,
+                entity_id=routine.id,
+                area_id=area.id,
+                target_time=time(9, 0),
+            )
+        ],
+    )
+    nights = [
+        an_off_plan_period(interval=between(22, 32, day=day)) for day in range(len(WEEK.dates()))
+    ]
+
+    inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        routines=FakeRoutines([routine]),
+        off_plan=FakeOffPlan(nights),
+        week_pattern=FakeWeekPattern(every_day(day_type)),
+        templates=FakeTemplates([template]),
+    ).assemble(WEEK, NOW)
+
+    assert inputs.frame == ()
+    assert {entry.title for entry in inputs.template_entries} == {"Sleep"}
 
 
 async def test_a_tenant_with_no_week_pattern_materializes_no_entries() -> None:

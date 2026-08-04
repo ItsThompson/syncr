@@ -27,7 +27,8 @@ assemble(iso_week, now, extra_adjustment=None)
   │     clamped to min_duration_minutes, one occurrence per day, each keyed by date
   ├── carry the PRECEDING week's boundary-crossing occurrences as the spans they occupy
   │     here, resolved as that week resolves them, its own concessions folded in
-  ├── materialize template entries from the week pattern and the day types, keyed by date
+  ├── materialize template entries from the week pattern and the day types, keyed by date,
+  │     each concrete one named and charged by the routine or habit row it binds
   ├── expand habit cadence into occurrences, keyed by index in expansion order
   │     ├── derive each rotation cursor from the outcome log
   │     └── apply outstanding debt, capped
@@ -285,15 +286,17 @@ class WeekAssembler:
                 await self._adjustments.for_week(preceding), None, dates=preceding.dates()
             ),
         )
+        habits = await self._habits.list_all()
         template_entries = materialized_entries(
             pattern=await self._week_pattern.read(),
             templates=await self._templates.list_all(),
+            routines=routines,
+            habits=habits,
             dates=dates,
             zone_by_date=zone_by_date,
             off_plan=suppression,
         )
 
-        habits = await self._habits.list_all()
         multipliers = DurationMultipliers.of(await self._weights.active())
         occurrences = habit_occurrences(
             habits,
