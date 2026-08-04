@@ -34,7 +34,7 @@ found a master".
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from syncr_api.calendars.events import RawEvent
 from syncr_api.calendars.ics_errors import MalformedValue
@@ -59,6 +59,10 @@ if TYPE_CHECKING:
 # Measured, that placed one override twice and lost the other of a pair. Cross-form matching is a
 # SECOND index instead: see ``Series.same_instant``.
 type OccurrenceKey = tuple[str, datetime]
+
+# What a component sorted as a replacement always has, so a missing one is syncr's bug rather than
+# the feed's. Named once because two sites assert it.
+_NOT_A_REPLACEMENT: Final = "a component with no RECURRENCE-ID was sorted as a replacement"
 
 _OCCURRENCE_STAMP = "%Y%m%dT%H%M%S"
 
@@ -224,7 +228,14 @@ def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
     cancelled = 0
     for replacement in replacements:
         key = replaced_key(replacement)
-        instants[key] = replacement.replaces_at or key[1]
+        # `replaces_at` is optional on the component because most components have no RECURRENCE-ID,
+        # but anything sorted as a replacement carries one, so this cannot be None here and the
+        # check is the type's rather than the value's. Falling back to `key[1]` would be worse than
+        # raising: that is a WALL time, and it would sit in an index of instants where no lookup can
+        # match it.
+        if replacement.replaces_at is None:  # pragma: no cover - only replacements reach here
+            raise MalformedValue(_NOT_A_REPLACEMENT)
+        instants[key] = replacement.replaces_at
         if replacement.cancelled:
             if key in tombstones:
                 duplicates += 1
@@ -340,6 +351,11 @@ def _named_by(
     """
     exact = (master.uid, wall)
     if exact in series.overrides or exact in series.tombstones:
+        return exact
+    if not series.same_instant:
+        # The ordinary feed: no replacement is written in the other form, so there is nothing to
+        # look up and no reason to resolve this occurrence to an instant. Without this, every
+        # occurrence of every series in every feed pays for a resolve only a cross-form body needs.
         return exact
     instant = resolve(master.start, profile, wall=wall)
     other = series.same_instant.get((master.uid, instant))
@@ -475,6 +491,8 @@ def _never_offered(
     A magnitude that cannot be resolved has already been refused where the component was read, so
     there is nothing to catch here.
     """
+    # The second condition is the TYPE's, not the value's: `replaces_at` is optional on the
+    # component and set for everything sorted as a replacement.
     if master is None or replacement.replaces_at is None:
         return True
     window = _window(horizon, master)
@@ -489,8 +507,7 @@ def replaced_key(replacement: EventComponent) -> OccurrenceKey:
     forms of a ``RECURRENCE-ID`` is done with a second index rather than by keying on the instant.
     """
     if replacement.replaces is None:  # pragma: no cover - only replacements reach here
-        message = "a component with no RECURRENCE-ID was sorted as a replacement"
-        raise MalformedValue(message)
+        raise MalformedValue(_NOT_A_REPLACEMENT)
     return (replacement.uid, replacement.replaces.wall)
 
 
