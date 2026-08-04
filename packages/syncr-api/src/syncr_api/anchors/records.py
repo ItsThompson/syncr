@@ -37,10 +37,12 @@ from syncr_api.anchors.config import (
 if TYPE_CHECKING:
     from syncr_api.anchors.config import AnchorTypeSource, PostScope
     from syncr_api.calendars.records import CalendarSourceId
-    from syncr_domain.identifiers import AreaId, TenantId
+    from syncr_domain.identifiers import AnchorId, AreaId, TenantId
     from syncr_domain.intervals import Interval
 
-type AnchorId = UUID
+# The anchor's own identifier is the pure package's, because a pure shape names one: a plan
+# document's forbidden window says which anchor cast it. The anchor TYPE's stays here, since
+# nothing in the pure package names one.
 type AnchorTypeId = UUID
 
 

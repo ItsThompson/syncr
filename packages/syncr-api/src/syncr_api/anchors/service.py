@@ -59,7 +59,6 @@ if TYPE_CHECKING:
     from syncr_api.anchors.declarations import AnchorTypeChange, RuleOrder, TypeAssignment
     from syncr_api.anchors.evaluation import RuleEvaluator
     from syncr_api.anchors.records import (
-        AnchorId,
         AnchorRecord,
         AnchorTypeId,
         AnchorTypeRecord,
@@ -73,6 +72,7 @@ if TYPE_CHECKING:
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
     from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_domain.identifiers import AnchorId
     from syncr_domain.intervals import Interval
 
 _log = get_logger("syncr.anchors")

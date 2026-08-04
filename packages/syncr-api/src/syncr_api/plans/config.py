@@ -15,6 +15,9 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
+from syncr_domain import plan as plan_document
+from syncr_domain.identity import BLOCK_ID_LENGTH
+
 PLAN_REVISIONS_TABLE = "plan_revisions"
 PENDING_PROPOSALS_TABLE = "pending_proposals"
 WEEK_INPUT_VERSIONS_TABLE = "week_input_versions"
@@ -33,6 +36,11 @@ APPLIED: Final[RevisionStatus] = "applied"
 APPROVED: Final[RevisionStatus] = "approved"
 REVISION_STATUSES: Final = (APPLIED, APPROVED)
 
+# What caused a revision to exist. The vocabulary is the plan document's, in the domain
+# package, and the tuple the check constraint reads is derived from it so the column and the
+# document cannot disagree. The `Literal` below is the same six members written as a type, so
+# a repository signature narrows a caller's string; `tests/test_plan_vocabulary.py` asserts the
+# two are one set.
 type RevisionReason = Literal[
     "auto_applied_fill",
     "user_approved",
@@ -41,14 +49,7 @@ type RevisionReason = Literal[
     "materialized",
     "horizon_advanced",
 ]
-REVISION_REASONS: Final = (
-    "auto_applied_fill",
-    "user_approved",
-    "tradeoff_approved",
-    "anchor_delta",
-    "materialized",
-    "horizon_advanced",
-)
+REVISION_REASONS: Final = tuple(reason.value for reason in plan_document.RevisionReason)
 
 # The five reality states. `presumed` is the default and teaches nothing; the other four
 # are what the user said happened.
@@ -71,9 +72,9 @@ type AdjustmentKind = Literal["drop_item", "reduce_routine", "breach_floor", "ac
 ADJUSTMENT_KINDS: Final = ("drop_item", "reduce_routine", "breach_floor", "accept_partial")
 
 # A block id is a hash of the week and the content identity, derived on construction and
-# never minted. This is the width the column reserves for one, not a claim about the
-# hash: the derivation lives in the domain package with the value types.
-BLOCK_ID_MAX_LENGTH = 64
+# never minted. The column reserves exactly what the derivation produces, taken from the
+# derivation itself rather than restated, so a change to the hash cannot outgrow the column.
+BLOCK_ID_MAX_LENGTH = BLOCK_ID_LENGTH
 
 # The first version of a week's inputs. A missing row means nobody has touched the week
 # yet, so the first reference creates it here.

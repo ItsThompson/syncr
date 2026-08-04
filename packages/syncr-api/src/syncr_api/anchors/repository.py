@@ -42,8 +42,9 @@ if TYPE_CHECKING:
     from collections.abc import Collection
     from datetime import datetime
 
-    from syncr_api.anchors.records import AnchorId, AnchorTypeId
+    from syncr_api.anchors.records import AnchorTypeId
     from syncr_api.calendars.records import CalendarSourceId
+    from syncr_domain.identifiers import AnchorId
 
 
 class AnchorRepository(TenantScopedRepository):

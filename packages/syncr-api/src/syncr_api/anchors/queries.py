@@ -39,7 +39,7 @@ from syncr_api.core.errors import FieldError, ValidationFailed
 from syncr_domain.intervals import Interval, as_instant
 
 if TYPE_CHECKING:
-    from syncr_api.anchors.records import AnchorId
+    from syncr_domain.identifiers import AnchorId
 
 _SEPARATOR: Final = "|"
 _PARTS: Final = 2
