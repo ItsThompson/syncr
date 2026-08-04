@@ -25,9 +25,63 @@ export function jsonHandler(path: string, stubbed: StubbedResponse): RequestHand
   );
 }
 
+/** How many times a stubbed GET has been answered, which is how a revalidation is observed. */
+export interface CountedHandler {
+  readonly handler: RequestHandler;
+  readonly count: () => number;
+}
+
+/**
+ * A GET that counts its answers.
+ *
+ * A mutation is required to invalidate by explicit key rather than by a blanket revalidation, and the only
+ * observable difference is WHICH reads run again. Counting them is what makes that assertable: the keys a write
+ * names are read a second time and the keys it does not name are not.
+ */
+export function countedHandler(path: string, stubbed: StubbedResponse): CountedHandler {
+  let answered = 0;
+  const handler = http.get(url(path), () => {
+    answered += 1;
+    return HttpResponse.json(stubbed.body ?? null, { status: stubbed.status });
+  });
+  return { handler, count: () => answered };
+}
+
+/** The unsafe methods, which a read stub cannot answer for. */
+export type WriteMethod = "post" | "put" | "patch";
+
+/** Any method these stubs answer for. */
+export type HandledMethod = "get" | WriteMethod;
+
+export interface RecordingHandler {
+  readonly handler: RequestHandler;
+  /** Every body the api was sent, parsed, in order. */
+  readonly bodies: unknown[];
+}
+
+/**
+ * An unsafe method that records what it was sent.
+ *
+ * The body is the whole contract of a write, so a hook test asserts the request the client actually built:
+ * the path it went to, and the members it carried. Recording it here rather than in each test keeps one
+ * definition of "what was sent".
+ */
+export function recordingHandler(
+  method: WriteMethod,
+  path: string,
+  stubbed: StubbedResponse,
+): RecordingHandler {
+  const bodies: unknown[] = [];
+  const handler = http[method](url(path), async ({ request }) => {
+    bodies.push(await request.json());
+    return HttpResponse.json(stubbed.body ?? null, { status: stubbed.status });
+  });
+  return { handler, bodies };
+}
+
 /** A path whose request never completes, standing in for an unreachable api. */
-export function unreachableHandler(path: string): RequestHandler {
-  return http.get(url(path), () => HttpResponse.error());
+export function unreachableHandler(path: string, method: HandledMethod = "get"): RequestHandler {
+  return http[method](url(path), () => HttpResponse.error());
 }
 
 /** A path whose request never answers, so a pending reading can be asserted deterministically. */
