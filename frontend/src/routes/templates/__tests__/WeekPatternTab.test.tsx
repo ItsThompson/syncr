@@ -8,6 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { WeekPatternTab } from "../tabs/WeekPatternTab";
+import { WEEKDAY_KEYS, weekdayLabel } from "../labels";
 import { withRouter } from "./render";
 import { writeDouble } from "./writeDouble";
 import { DAY_TYPE_WEEKEND, buildDayType, buildWeekPattern } from "./fixtures";
@@ -84,6 +85,21 @@ describe("the declared pattern", () => {
 });
 
 describe("declaring the pattern", () => {
+  /* THE CONTROLS ARE ASSERTED, NOT ONLY THE DRAFT. Every other assertion here is driven by the draft, so an
+   * editor rendering five selects would still refuse a partial mapping, still name the two weekdays left, and
+   * still submit all seven from a declared pattern: a first-run reader would be told to choose two weekdays with
+   * no control to choose them. */
+  it("offers one control per weekday, named for that weekday", () => {
+    renderTab({ pattern: { status: "ready", data: null } });
+
+    for (const weekday of WEEKDAY_KEYS) {
+      expect(
+        screen.getByRole("combobox", { name: new RegExp(weekdayLabel(weekday)) }),
+      ).toBeInTheDocument();
+    }
+    expect(screen.getAllByRole("combobox")).toHaveLength(WEEKDAY_KEYS.length);
+  });
+
   it("carries a changed weekday into the body", async () => {
     const { declaration } = renderTab();
 

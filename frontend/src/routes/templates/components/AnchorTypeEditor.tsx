@@ -128,6 +128,9 @@ export function AnchorTypeEditor({ type, areas, write }: AnchorTypeEditorProps) 
         onStateChange={(next) =>
           setDraft((previous) => ({
             ...previous,
+            /* Unchecking restores the figure the abutting default stands for, which is the journey's own duration:
+             * leaving exactly late enough to arrive on time IS a lead equal to the duration. Any other starting
+             * figure would move the leg the moment a reader stopped abutting. */
             transitLeadMinutes: next === "checked" ? null : previous.transitDurationMinutes,
           }))
         }

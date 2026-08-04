@@ -93,6 +93,25 @@ describe("the templates route", () => {
     expect(within(strip).getByRole("tab", { name: /Anchor types/ })).toHaveTextContent("2");
   });
 
+  /* A count of zero is a count and renders as one: a tab that lost its figure when its list emptied would make a
+   * reader wonder whether the feature exists. The week pattern is the tab that counts NOTHING, which is a
+   * different statement and is why it carries no figure at all. */
+  it("renders a count of zero rather than dropping the figure", async () => {
+    apiServer.use(
+      jsonHandler("/api/v1/habits", { status: 200, body: { habits: [] } }),
+      ...screenHandlers(),
+    );
+    renderAt("/templates");
+    const strip = await screen.findByRole("tablist", { name: "Templates" });
+
+    await waitFor(() =>
+      expect(within(strip).getByRole("tab", { name: /Habits/ })).toHaveTextContent("0"),
+    );
+    expect(within(strip).getByRole("tab", { name: "Week pattern" }).textContent).toBe(
+      "Week pattern",
+    );
+  });
+
   it("selects the first day shape, so the editor is not empty on arrival", async () => {
     await renderTemplates();
 
