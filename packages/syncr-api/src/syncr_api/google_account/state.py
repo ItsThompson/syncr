@@ -19,9 +19,8 @@ value signed under one key for two purposes is a value one purpose can forge for
 per-use key from HKDF-like derivation costs one hash and closes that.
 
 No PKCE. syncr is a confidential client here: the code is exchanged with a client secret Google
-verifies, so a code intercepted at the browser cannot be redeemed. That reasoning is recorded
-rather than assumed, and `tickets/1181-pkce-on-the-google-connect-flow.md` holds the case for
-adding it anyway.
+verifies, so a code intercepted at the browser cannot be redeemed. Ticket 1181 holds the case for
+adding it anyway, which needs the verifier to survive the round trip.
 """
 
 from __future__ import annotations
