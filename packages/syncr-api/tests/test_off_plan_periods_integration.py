@@ -388,6 +388,38 @@ async def test_moving_a_span_bumps_the_weeks_it_left_and_the_weeks_it_reaches(
     assert await version_of(sessions, owner.tenant_id, UNTOUCHED) == 2
 
 
+async def test_a_span_moved_onto_a_week_it_already_covered_leaves_that_week_two_ahead(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # The observable effect of bumping per range rather than per week: the shared week is
+    # incremented by both ranges. Harmless, because the guard compares a version for equality
+    # rather than counting increments, and asserted here so the arithmetic is a measurement rather
+    # than a claim in a docstring.
+    following = week_span(FOLLOWING, OFF_PLAN_WEEK.profile)
+    third = week_span(IsoWeek.parse("2026-W45"), OFF_PLAN_WEEK.profile)
+    await track(sessions, owner.tenant_id, WEEK, FOLLOWING, IsoWeek.parse("2026-W45"))
+    await store(sessions, owner.tenant_id, OFF_PLAN_WEEK.off_plan)
+    async with sessions() as session:
+        stored = await OffPlanPeriodRepository(session, owner.tenant_id).list_all()
+
+    async with sessions() as session, session.begin():
+        # From [W43, W44] to [W44, W45]: the two ranges share W44.
+        await build_service(session, owner.tenant_id).update(
+            principal_for(owner),
+            stored[0].id,
+            OffPlanChange(
+                start=following.end - timedelta(hours=8),
+                end=third.start + timedelta(hours=8),
+                keep_frame=False,
+                label=None,
+            ),
+        )
+
+    assert await version_of(sessions, owner.tenant_id, WEEK) == 2
+    assert await version_of(sessions, owner.tenant_id, FOLLOWING) == 3
+    assert await version_of(sessions, owner.tenant_id, IsoWeek.parse("2026-W45")) == 2
+
+
 async def test_removing_a_span_bumps_the_weeks_it_covered(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:

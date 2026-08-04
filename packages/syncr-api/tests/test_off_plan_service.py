@@ -406,6 +406,38 @@ async def test_moving_a_span_bumps_the_weeks_it_left_and_the_weeks_it_now_covers
     ]
 
 
+async def test_moving_a_span_onto_a_week_it_already_covered_bumps_that_week_twice(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # The two ranges share W11 without being equal, so both reach the counter and W11 is
+    # incremented twice. Recorded as the behavior rather than deduplicated per week: the guard
+    # compares a version for equality rather than counting increments, so a second increment costs
+    # nothing, and the alternative is a set of weeks where a range is the natural unit.
+    spanning_two_weeks = Interval(
+        datetime(2026, 3, 6, 14, 0, tzinfo=UTC), datetime(2026, 3, 9, 9, 0, tzinfo=UTC)
+    )
+    stored = [a_period(principal.tenant_id, spanning_two_weeks)]
+    service, _, _ = build(principal, versions, stored=stored)
+    moved_forward = Interval(
+        datetime(2026, 3, 13, 14, 0, tzinfo=UTC), datetime(2026, 3, 16, 9, 0, tzinfo=UTC)
+    )
+
+    await service.update(
+        principal,
+        stored[0].id,
+        OffPlanChange(
+            start=moved_forward.start, end=moved_forward.end, keep_frame=ABSENT, label=ABSENT
+        ),
+    )
+
+    assert versions.bumped == [
+        WeekRange(first=WEEK_10, last=WEEK_11),
+        WeekRange(first=WEEK_11, last=IsoWeek.parse("2026-W12")),
+    ]
+    # Both ranges cover W11, and nothing collapses them.
+    assert [affected.covers(WEEK_11) for affected in versions.bumped] == [True, True]
+
+
 async def test_a_change_that_moves_nothing_bumps_its_weeks_once(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:

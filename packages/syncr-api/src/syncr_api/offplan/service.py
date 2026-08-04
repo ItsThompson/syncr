@@ -191,7 +191,13 @@ class OffPlanService:
         await self._bump(settings.home_zone, found.interval)
 
     async def _bump(self, home_zone: ZoneId, *spans: Interval) -> None:
-        """Invalidate every week the given spans touch, each week at most once."""
+        """Invalidate the weeks the given spans touch, each RANGE at most once.
+
+        Per range rather than per week: two ranges that share a week without being equal both
+        reach the counter, so the shared week is incremented twice. That is harmless, because the
+        guard compares a version for equality rather than counting increments, and deduplicating
+        per week would buy nothing for a set of ranges this small.
+        """
         ranges = dict.fromkeys(weeks_touching(span, home_zone=home_zone) for span in spans)
         for affected in ranges:
             await self._versions.bump(affected)
