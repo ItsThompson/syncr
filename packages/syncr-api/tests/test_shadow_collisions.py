@@ -159,6 +159,32 @@ def test_a_short_block_that_collided_with_nothing_is_kept_whole() -> None:
     )
 
 
+def test_a_block_gives_way_to_the_earliest_collision_rather_than_the_first_one_found() -> None:
+    # The journeys are kept in cast order, and the commitment cast FIRST is the one whose journey
+    # starts later, so a rule that stopped at the first collision it found would leave the prep
+    # still covering the other journey. One pass is enough only against the earliest.
+    close_journey = a_journey_only_type(lead=30, duration=30)
+    distant_journey = a_journey_only_type(lead=180, duration=60)
+    long_prep = a_prep_only_type(lead=480, duration=240)
+    anchors = [
+        TypedAnchor(
+            an_anchor(close_journey, start=at(INTERVIEW_DAY, 11), minutes=60), close_journey
+        ),
+        TypedAnchor(
+            an_anchor(distant_journey, start=at(INTERVIEW_DAY, 12), minutes=60), distant_journey
+        ),
+        TypedAnchor(an_anchor(long_prep, start=at(INTERVIEW_DAY, 16), minutes=60), long_prep),
+    ]
+
+    shadows = regenerate(anchors)
+
+    assert spans(shadows) == (
+        ("prep", NO_OCCURRENCE, "Tue 2026-02-10 08:00", "Tue 2026-02-10 09:00"),
+        ("transit", "out", "Tue 2026-02-10 09:00", "Tue 2026-02-10 10:00"),
+        ("transit", "out", "Tue 2026-02-10 10:30", "Tue 2026-02-10 11:00"),
+    )
+
+
 def test_no_two_surviving_blocks_cover_the_same_minute() -> None:
     # The property the truncation exists to hold, over four commitments whose leads deliberately
     # reach across one another.

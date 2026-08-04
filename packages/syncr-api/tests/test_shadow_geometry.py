@@ -297,6 +297,18 @@ def test_the_post_buffer_is_a_window_even_when_the_type_names_areas_everywhere()
     assert not [block for block in shadows.blocks if block.interval.overlaps(recovery.interval)]
 
 
+def test_a_window_that_forbids_everything_forbids_an_area_declared_after_it() -> None:
+    # `all` is not a longer list of Areas, it is the answer that no Area may claim the time. A
+    # window generated before an Area existed still forbids that Area, which is what makes the
+    # scope a choice the user made rather than a list that happens to be empty.
+    declaration = replace(NOTHING, post_buffer_minutes=60, post_scope=FORBIDS_EVERYTHING)
+    _, shadows = an_interview_anchor(declaration)
+    declared_later = uuid4()
+
+    assert shadows.forbidden_for(declared_later).total_minutes() == 60
+    assert shadows.forbidden_for(CAREER).total_minutes() == 60
+
+
 def test_a_window_names_the_reason_and_the_commitment_that_reserved_the_time() -> None:
     anchor, shadows = an_interview_anchor(INTERVIEW)
 
