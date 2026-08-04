@@ -160,6 +160,20 @@ class TestABlockDerivesRatherThanStores:
     def test_an_undivided_block_has_no_chunk_number(self) -> None:
         assert a_block().split_index is None
 
+    def test_a_block_with_no_title_names_nothing(self) -> None:
+        """A block's title is the resolved content name, which is what the grid renders."""
+        with pytest.raises(PlanError, match="names nothing"):
+            a_block(title="")
+
+    def test_a_title_of_whitespace_is_not_judged_here(self) -> None:
+        """Characterization, deliberately, and the same answer a window's label gets.
+
+        What counts as whitespace and what counts as unreadable is one class with one
+        definition, and it lives at the boundary that fits publisher text to a column. A second
+        definition here would diverge from that one the first time either changed.
+        """
+        assert a_block(title=" ").title == " "
+
 
 class TestWhichBlocksCarryAnArea:
     @pytest.mark.parametrize(
