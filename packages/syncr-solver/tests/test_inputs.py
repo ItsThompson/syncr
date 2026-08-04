@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from syncr_domain.intervals import Interval, IntervalError
+from syncr_domain.intervals import Interval, IntervalError, IntervalSet
 from syncr_domain.plan import PlanError
 from syncr_domain.weeks import IsoWeek
 from syncr_solver.inputs import (
@@ -35,6 +35,7 @@ from syncr_solver.inputs import (
     MaterializedEntry,
     ResolvedPreference,
     SolveInputs,
+    frame_occupancy,
 )
 
 if TYPE_CHECKING:
@@ -89,6 +90,7 @@ def test_the_struct_carries_every_field_a_solve_and_a_probe_read() -> None:
         "zone_by_date",
         "input_version",
         "frame",
+        "frame_overhang",
         "anchors",
         "shadow_blocks",
         "forbidden_windows",
@@ -206,3 +208,73 @@ def test_an_assembly_defaults_to_a_week_holding_nothing() -> None:
     assert empty.deadline_demands == ()
     assert empty.live_plan is None
     assert empty.churn_baseline.reason == ChurnBaseline.NEVER_APPROVED
+
+
+def a_frame_entry(interval: Interval) -> FrameEntry:
+    return FrameEntry(
+        routine_id=uuid4(),
+        occurrence_key="2026-02-09",
+        interval=interval,
+        min_duration_minutes=360,
+        flex_band_minutes=30,
+        title="Sleep",
+    )
+
+
+def test_the_frames_occupancy_is_this_weeks_occurrences_and_the_inherited_spans() -> None:
+    # One question with one answer. A consumer reading `frame` alone would place work inside the
+    # night the preceding week's occurrence already spent, which is the whole reason the
+    # inherited spans are carried at all.
+    monday_night = Interval(
+        MONDAY_MIDNIGHT + timedelta(hours=23), MONDAY_MIDNIGHT + timedelta(hours=31)
+    )
+    inherited = Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(hours=7))
+
+    occupied = inputs(
+        frame=(a_frame_entry(monday_night),), frame_overhang=(inherited,)
+    ).frame_occupancy()
+
+    assert occupied == IntervalSet([inherited, monday_night])
+    assert occupied.total_minutes() == 7 * 60 + 8 * 60
+
+
+def test_the_struct_and_the_producer_read_one_statement_of_that_occupancy() -> None:
+    # The producer needs the same union before the struct exists, because the discretionary
+    # denominator subtracts the frame while the fields are still being resolved. Two statements
+    # of it is how the denominator and the constraint checker would come to disagree.
+    monday_night = Interval(
+        MONDAY_MIDNIGHT + timedelta(hours=23), MONDAY_MIDNIGHT + timedelta(hours=31)
+    )
+    inherited = Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(hours=7))
+    frame = (a_frame_entry(monday_night),)
+
+    assert inputs(frame=frame, frame_overhang=(inherited,)).frame_occupancy() == frame_occupancy(
+        frame, (inherited,)
+    )
+
+
+def test_an_inherited_span_reaching_outside_the_week_it_describes_is_refused() -> None:
+    # The overhang is the part of the preceding week's occurrence that falls in THIS week, so a
+    # member reaching past the span is the occurrence carried whole rather than clipped, and it
+    # would subtract minutes this week does not hold from every figure taken over it.
+    unclipped = Interval(MONDAY_MIDNIGHT - timedelta(hours=1), MONDAY_MIDNIGHT + timedelta(hours=7))
+
+    with pytest.raises(PlanError):
+        inputs(frame_overhang=(unclipped,))
+
+
+def test_an_inherited_span_reaching_past_the_end_of_the_week_is_refused_too() -> None:
+    # The mirror case, which a check written against the start alone would accept: the following
+    # week owns whatever runs past this span's end.
+    beyond = Interval(MONDAY_MIDNIGHT + timedelta(days=6), MONDAY_MIDNIGHT + timedelta(days=8))
+
+    with pytest.raises(PlanError):
+        inputs(frame_overhang=(beyond,))
+
+
+def test_an_inherited_span_that_fills_the_whole_week_is_accepted() -> None:
+    # A routine longer than a week is representable, and the bound is the span rather than a
+    # duration, so an occurrence covering every minute of this week is inside it.
+    whole = Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(days=7))
+
+    assert inputs(frame_overhang=(whole,)).frame_overhang == (whole,)

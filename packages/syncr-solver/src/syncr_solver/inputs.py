@@ -41,6 +41,15 @@ two failures first.
 and its recorded minutes, and neither appears on this struct. That is why the assembler
 computes it directly rather than ``for_probe()`` projecting it out of ``eligible_tasks``.
 
+## One field that is two fields for a different reason, so it is not mistaken for a pair
+
+``frame_overhang`` is not a second quantity. Both consumers read it as the same thing the
+field above it is: occupied time, subtracted for one reason. It is separate from ``frame``
+because one week OWNS a boundary-crossing occurrence and materializes its block, so the
+week it runs into carries the spans without carrying the occurrence. ``frame_occupancy()``
+is the one reading of the two together, which is what keeps this pair from becoming the
+kind above.
+
 ## What is deliberately absent
 
 No identifier of the tenant, because a snapshot is already one tenant's. No clock: ``now``
@@ -57,11 +66,11 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
-from syncr_domain.intervals import as_instant
-from syncr_domain.plan import require_a_zone_for_every_day
+from syncr_domain.intervals import IntervalSet, as_instant
+from syncr_domain.plan import PlanError, require_a_zone_for_every_day
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
     from uuid import UUID
 
     from syncr_domain.gaps import ForbiddenWindow
@@ -401,7 +410,25 @@ class SolveInputs:
     input_version: int
 
     frame: tuple[FrameEntry, ...] = ()
+    # The PRECEDING week's frame occurrences, as the spans they occupy in THIS one, clipped to
+    # the span. A Sunday `Sleep 23:00 + 8h` belongs to the week its start falls in and runs into
+    # the next one, where the time is genuinely occupied.
+    #
+    # Spans rather than entries, because one week owns the occurrence: it holds the whole
+    # interval at the routine's own duration and materializes the one block. There is nothing
+    # here a second document could hold, so the occurrence cannot appear twice.
+    #
+    # Read through `frame_occupancy()` together with `frame` above. Both consumers ask the same
+    # question of both fields, and a consumer reading `frame` alone would place work inside a
+    # night the preceding week already spent.
+    frame_overhang: tuple[Interval, ...] = ()
+    # Hard occupancy: an immovable external fact. Every anchor OVERLAPPING the span, at its own
+    # real time and unclipped, because a commitment's duration is the source's fact rather than
+    # this week's reading of it. Every figure taken over these subtracts within the span.
     anchors: tuple[Anchor, ...] = ()
+    # Prep and transit blocks, with the Area their type named, clipped to the span. SOLVER only:
+    # the probe sees them through `placed`, never as a separate subtrahend, because a shadow
+    # block is discretionary time ALLOCATED to an Area in the same way a task is.
     shadow_blocks: tuple[ShadowBlock, ...] = ()
     # Recovery windows and unattributed buffers, each with its scope intact. The split by
     # scope happens in `for_probe()` and NOWHERE else, which is what stops the solver's
@@ -425,6 +452,16 @@ class SolveInputs:
         object.__setattr__(self, "now", as_instant(self.now))
         object.__setattr__(self, "zone_by_date", dict(self.zone_by_date))
         require_a_zone_for_every_day(self.iso_week, self.zone_by_date)
+        _require_the_overhang_inside_the_span(self.span, self.frame_overhang)
+
+    def frame_occupancy(self) -> IntervalSet:
+        """Every span the circadian frame occupies in this week, this week's and inherited.
+
+        One question with one answer, asked by H3 and by the probe's ``occupied``. Behind one
+        call rather than two fields each consumer unions itself, because the preceding week's
+        overhang is occupancy for exactly the same reason this week's own occurrences are.
+        """
+        return frame_occupancy(self.frame, self.frame_overhang)
 
     @property
     def seed(self) -> int:
@@ -440,3 +477,30 @@ class SolveInputs:
         """
         digest = sha256(f"{self.iso_week}\x1f{self.input_version}".encode()).digest()
         return int.from_bytes(digest[:_SEED_BYTES])
+
+
+def frame_occupancy(frame: Sequence[FrameEntry], overhang: Sequence[Interval]) -> IntervalSet:
+    """The spans a week's circadian frame occupies, its own occurrences and the inherited ones.
+
+    Stated here rather than at each call site, because the producer needs it before the struct
+    exists: the discretionary denominator subtracts the frame, and it is computed while the
+    fields are still being resolved.
+    """
+    return IntervalSet([*(entry.interval for entry in frame), *overhang])
+
+
+def _require_the_overhang_inside_the_span(span: Interval, overhang: Sequence[Interval]) -> None:
+    """The inherited spans describe THIS week, so none of them may name time outside it.
+
+    A member reaching past the span would be the preceding week's occurrence carried whole
+    rather than clipped, which would subtract minutes this week does not hold from a figure
+    taken over it. Refused rather than clipped here: which week owns an occurrence is the
+    producer's question, and silently correcting it would hide a producer that answered wrongly.
+    """
+    outside = [member for member in overhang if member.start < span.start or member.end > span.end]
+    if outside:
+        raise PlanError(
+            f"{len(outside)} of {len(overhang)} inherited frame spans reach outside "
+            f"[{span.start}, {span.end}): an overhang is the part of the preceding week's "
+            "occurrence that falls in this week, so it is clipped to this week's span"
+        )
