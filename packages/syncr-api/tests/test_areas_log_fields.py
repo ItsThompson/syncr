@@ -33,6 +33,7 @@ PACKAGES = (
     "areas",
     "budgets",
     "calendars",
+    "google_account",
     "habits",
     "offplan",
     "routines",

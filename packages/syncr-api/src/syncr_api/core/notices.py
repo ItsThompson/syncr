@@ -21,6 +21,7 @@ rather than a fix.
 
 from __future__ import annotations
 
+from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import Final, Literal, Self
 
 from pydantic import Field, model_validator
@@ -72,8 +73,13 @@ class Notice(WireModel):
             "because a notice that says only what broke leaves the reader unable to act."
         )
     )
-    since: str | None = Field(
-        default=None, description="ISO instant: how long the condition has held, if it is known."
+    since: datetime | None = Field(
+        default=None,
+        description=(
+            "How long the condition has held, as an instant. Null while it is not known. Typed "
+            "as an instant rather than a string so it is serialized the way every other instant "
+            "in this document is: one spelling per document, not two."
+        ),
     )
     action: NoticeAction | None = None
     scope: NoticeScope | None = None

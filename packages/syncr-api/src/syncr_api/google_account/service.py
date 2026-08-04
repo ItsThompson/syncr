@@ -245,7 +245,7 @@ class GoogleConnectionService:
         _log.info(
             "google_account.connected",
             tenant_id=str(principal.tenant_id),
-            credential_id=str(stored.id),
+            grant_id=str(stored.id),
             granted_scope_count=len(stored.granted_scopes),
         )
         return CONNECTED

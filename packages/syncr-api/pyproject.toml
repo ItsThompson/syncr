@@ -92,8 +92,12 @@ files = ["src/syncr_api", "alembic", "scripts", "tests"]
 # imports resolving.
 pythonpath = ["src", "."]
 testpaths = ["tests"]
-addopts = "--strict-markers --strict-config"
+# `-m "not google_live"` is what keeps the one suite that talks to a real provider out of the
+# default run: it needs credentials nobody commits, a network, and a real account's quota. Run it
+# deliberately with `uv run pytest -m google_live`.
+addopts = "--strict-markers --strict-config -m 'not google_live'"
 asyncio_mode = "auto"
 markers = [
     "integration: requires a reachable Postgres (DATABASE_URL); skipped when absent.",
+    "google_live: talks to the real Google Calendar API; excluded from the default run.",
 ]

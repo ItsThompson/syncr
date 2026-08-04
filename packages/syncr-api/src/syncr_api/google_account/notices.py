@@ -63,7 +63,7 @@ def write_target_expiry_notices(
     if credential is None or credential.refresh_failing_since is None:
         return ()
     detail = _detail(now - credential.refresh_failing_since, credential.last_refresh_error)
-    since = credential.refresh_failing_since.isoformat()
+    since = credential.refresh_failing_since
     return (
         _notice(BANNER_NOTICE_ID, BANNER, detail=detail, since=since, scope=None),
         _notice(
@@ -81,7 +81,7 @@ def _notice(
     volume: NoticeVolume,
     *,
     detail: str,
-    since: str,
+    since: datetime,
     scope: NoticeScope | None,
 ) -> Notice:
     return Notice(

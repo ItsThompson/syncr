@@ -591,7 +591,9 @@ def test_the_notice_states_how_long_writes_have_been_failing() -> None:
     )
 
     assert "4 days" in raised[0].detail
-    assert raised[0].since == (NOW - timedelta(days=4)).isoformat()
+    # The instant is carried as an instant, so it is serialized the way every other instant in the
+    # document is rather than in a spelling of this module's own.
+    assert raised[0].since == NOW - timedelta(days=4)
 
 
 def test_the_notice_states_that_reading_works_and_writing_does_not() -> None:
