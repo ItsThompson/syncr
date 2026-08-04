@@ -105,10 +105,10 @@ def task_demands(
 
     **A deadline outside the week still produces a demand, in both directions.** A task due next
     month yields one at that instant, and a task due last Tuesday yields one too, which is correct
-    because the work is overdue rather than excused. What a consumer does with a deadline the week's
-    capacity window does not reach is the consumer's rule: the probe clips its capacity to the span
-    and to ``now``, so a deadline in the past yields zero capacity and its whole demand is the
-    shortfall.
+    because the work is overdue rather than excused. What a consumer does with a deadline its own
+    capacity window does not reach is that consumer's rule to state: the probe's ticket owns whether
+    a capacity clipped to the span and to ``now`` leaves a past deadline with zero capacity and its
+    whole demand as the shortfall. Nothing here decides it, and nothing here drops such a demand.
     """
     demands: list[TaskDemand] = []
     for task in tasks:

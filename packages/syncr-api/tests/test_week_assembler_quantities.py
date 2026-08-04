@@ -8,20 +8,26 @@ Every test here is stated in hours and minutes with the arithmetic worked in the
 the failures this suite exists to catch are quiet: a merged pair reports a shortfall on a healthy
 week, or schedules a task at half its size, and in both directions the two sides agree so nothing
 else notices.
+
+What a preferred window does on a daylight-saving transition date is in
+``test_preference_windows_across_dst.py``: one mechanism with five answers, which reads better
+beside its own table than inside the chain resolution.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import io
+import json
 from datetime import time
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 import pytest
 
 from syncr_api.plans.config import ADJUSTMENT_KINDS
-from syncr_domain.fixtures.dst_weeks import FALL_BACK, SPRING_FORWARD
+from syncr_common.logging import configure_logging
 from syncr_domain.habits import Duration
 from syncr_domain.identity import BindingRef, date_occurrence_key
 from syncr_domain.plan import AdjustmentKind
@@ -58,6 +64,9 @@ from tests.assembly_fakes import (
     at,
     between,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 MINUTES_PER_HOUR = 60
 FOUR_HOURS = 4 * MINUTES_PER_HOUR
@@ -548,85 +557,6 @@ async def test_a_declared_window_resolves_against_each_days_own_zone() -> None:
     assert windows[6] == between(5.5, 7, day=6)
 
 
-@pytest.mark.parametrize(
-    ("start", "end"),
-    [(time(1, 0), time(2, 0)), (time(1, 30), time(2, 30)), (time(1, 45), time(2, 0))],
-    ids=["collapses", "collapses at the gap's far side", "inverts"],
-)
-async def test_a_window_a_spring_forward_gap_swallows_leaves_that_date_without_one(
-    start: time, end: time
-) -> None:
-    # Both bounds resolve through one mapping that is NOT order-preserving across the gap: on
-    # Europe/London 2026-03-29 both 01:30 and 02:30 are 01:30Z, so a window the user declared
-    # forward in wall time collapses or inverts in instants. Every one of these raised from
-    # `Interval` before the guard, which failed the whole assembly: every solve, pin, live verdict
-    # and background assembly for that week, annually, on a declaration the boundary accepts.
-    fitness = an_area(name="Fitness")
-
-    inputs = await an_assembler(
-        areas=FakeAreas([fitness]),
-        settings=FakeSettings(SPRING_FORWARD.zone),
-        preferences=FakePreferences(
-            [a_preference(owner=an_area_owner(fitness.id), windows=[a_window(start, end)])]
-        ),
-    ).assemble(SPRING_FORWARD.iso_week, NOW)
-
-    windows = inputs.preferences[0].windows
-    assert len(windows) == 6
-    assert all(window.start < window.end for window in windows)
-    # The six that survive are the six dates that are not the transition, so the missing one is the
-    # date whose gap swallowed the hour rather than an arbitrary one.
-    assert SPRING_FORWARD.transition_date not in {
-        window.start.astimezone(ZoneInfo(SPRING_FORWARD.zone)).date() for window in windows
-    }
-
-
-async def test_a_window_clear_of_the_gap_survives_the_transition_date() -> None:
-    # The control for the guard above: it drops a date, not a week. A window outside the gap
-    # resolves on all seven dates of the same week.
-    fitness = an_area(name="Fitness")
-
-    inputs = await an_assembler(
-        areas=FakeAreas([fitness]),
-        settings=FakeSettings(SPRING_FORWARD.zone),
-        preferences=FakePreferences(
-            [
-                a_preference(
-                    owner=an_area_owner(fitness.id), windows=[a_window(time(5, 30), time(7, 0))]
-                )
-            ]
-        ),
-    ).assemble(SPRING_FORWARD.iso_week, NOW)
-
-    assert len(inputs.preferences[0].windows) == 7
-
-
-async def test_a_fall_back_date_carries_the_wider_window_the_repeated_hour_makes() -> None:
-    # The other half of the same non-monotonicity, and it needs no rule: `fold=0` takes the earlier
-    # offset for the ambiguous start while the end sits after the repeat, so this date's window is
-    # 120 minutes rather than 60. Pinned so a doubled window is a stated behaviour rather than a
-    # figure nobody wrote down.
-    fitness = an_area(name="Fitness")
-
-    inputs = await an_assembler(
-        areas=FakeAreas([fitness]),
-        settings=FakeSettings(FALL_BACK.zone),
-        preferences=FakePreferences(
-            [
-                a_preference(
-                    owner=an_area_owner(fitness.id), windows=[a_window(time(1, 0), time(2, 0))]
-                )
-            ]
-        ),
-    ).assemble(FALL_BACK.iso_week, NOW)
-
-    windows = inputs.preferences[0].windows
-    minutes = sorted({window.total_minutes() for window in windows})
-    assert len(windows) == 7
-    assert minutes == [60, 120]
-    assert sum(1 for window in windows if window.total_minutes() == 120) == 1
-
-
 async def test_an_area_with_no_preference_and_no_override_resolves_nothing() -> None:
     fitness = an_area(name="Fitness")
     habit = a_habit(area_id=fitness.id)
@@ -984,3 +914,51 @@ async def test_a_reduction_naming_a_date_this_week_does_not_hold_is_dropped() ->
     assert set(inputs.adjustments[0].reductions) == {MONDAY}
     by_key = {entry.occurrence_key: entry for entry in inputs.frame}
     assert by_key[date_occurrence_key(MONDAY)].interval.total_minutes() == 420
+
+
+@pytest.fixture
+def captured_log() -> Iterator[io.StringIO]:
+    """Render to a captured stream, then hand the configuration back.
+
+    Logging configuration is process-global, and ``conftest.py`` fails the test that leaves it
+    changed, so the restore is part of the fixture rather than an afterthought.
+    """
+    stream = io.StringIO()
+    configure_logging(environment="production", log_level="info", stream=stream)
+    yield stream
+    configure_logging(environment="test", log_level="info")
+
+
+async def test_a_malformed_key_and_a_foreign_date_are_reported_as_different_causes(
+    captured_log: io.StringIO,
+) -> None:
+    # Both are dropped for one consequence, and an operator reading one event should not hunt for
+    # the other fault: a foreign date is perfectly readable and merely out of scope.
+    routine = a_routine()
+
+    await an_assembler(
+        routines=FakeRoutines([routine]),
+        adjustments=FakeAdjustments(
+            [
+                an_adjustment(
+                    kind=AdjustmentKind.REDUCE_ROUTINE.value,
+                    target_id=routine.id,
+                    reductions={
+                        "not-a-date": 30,
+                        "2030-01-01": 60,
+                        date_occurrence_key(MONDAY): 60,
+                    },
+                )
+            ]
+        ),
+    ).assemble(WEEK, NOW)
+
+    reported = {
+        line["event"]: line.get("entries")
+        for line in (json.loads(line) for line in captured_log.getvalue().splitlines() if line)
+        if line["event"].startswith("plans.adjustment.")
+    }
+    assert reported == {
+        "plans.adjustment.unreadable_reduction": 1,
+        "plans.adjustment.reduction_outside_the_week": 1,
+    }

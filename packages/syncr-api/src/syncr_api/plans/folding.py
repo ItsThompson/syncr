@@ -30,8 +30,10 @@ the panel reports the same gap, because the probe reads the other field.
 ``reduce_routine`` shortens the frame occurrence on each named date, and nothing further. The
 frame is one field.
 
-A concession is unique per week, kind, and target, which the storage index enforces, so approving
-one twice does not apply it twice and this pass needs no idempotence of its own.
+A concession is unique per week, kind, and target, which the storage index enforces, so approving it
+twice does not apply it twice. That covers stored rows only: a candidate being evaluated is an
+argument rather than a row, so a candidate and a stored concession on one kind and target both
+apply. :func:`fold` carries the whole statement, including what that means for the figure.
 """
 
 from __future__ import annotations

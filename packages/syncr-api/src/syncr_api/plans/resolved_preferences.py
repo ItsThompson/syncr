@@ -17,19 +17,31 @@ should walk.
 **The windows.** A declared window is wall time, so ``05:30-07:00`` becomes one interval per date
 of the week, each resolved against the zone active on that date.
 
-**A day whose own gap swallows a window carries no window.** Resolving both bounds through
-:func:`syncr_domain.zones.to_instant` is NOT order-preserving across a spring-forward gap: every
-wall time inside the gap shifts onto a real time later in the day, so on ``Europe/London``,
-2026-03-29, both 01:30 and 02:30 resolve to ``2026-03-29T01:30Z``. A window from 01:30 to 02:30
-therefore collapses to one instant, and 01:45 to 02:00 inverts. The hour the user named does not
-exist on that date, so that date carries no window and every other date of the week keeps its own.
-The alternative, shifting the end forward by the gap, would invent an hour the day does not have,
-and a preference is a wall-clock window rather than a duration.
+**A date is dropped only when its own resolved bounds do not run forward.** Resolving both bounds
+through :func:`syncr_domain.zones.to_instant` is NOT order-preserving across a spring-forward gap:
+every wall time inside the gap shifts onto a real time later in the day, so on ``Europe/London``,
+2026-03-29, both 01:30 and 02:30 resolve to ``2026-03-29T01:30Z``. A window whose start falls inside
+the gap and whose end is at or after the gap's end therefore collapses to one instant or inverts,
+and that date carries no window while every other date of the week keeps its own. Shifting the end
+forward instead would invent an hour the day does not have, and a preference is a wall-clock window
+rather than a duration.
 
-A fall-back date is the other half of the same non-monotonicity and it needs no rule: ``fold=0``
-takes the earlier offset for an ambiguous start while the end sits after the repeat, so
-``01:00-02:00`` resolves to a 120-minute window on that date. A soft window twice as wide once a
-year costs nothing, and it is stated here so it is not read later as a defect.
+**Every other date keeps a window at whatever its own arithmetic makes it, which is not always the
+declared length.** One mechanism, two directions, both measured on the ``dst_weeks`` fixture:
+
+```
+declared        spring-forward date 2026-03-29        fall-back date 2026-10-25
+01:00-01:30     30m, shifted to 02:00 local           30m
+00:45-02:15     30m, NARROWED by the hour the day     150m, WIDENED by the repeated hour
+                lost
+01:45-02:00     dropped: the bounds invert            75m
+01:00-02:00     dropped: the bounds collapse          120m
+05:30-07:00     90m                                   90m
+```
+
+A soft window that is narrower or wider once a year costs nothing, and the narrowing is the more
+surprising of the two because it is the one that can leave a window too small for the session it was
+declared for. Both are stated here and pinned by tests so neither is read later as a defect.
 
 A window sits inside one local day: a declaration whose end is at or before its start is refused
 where it is authored. That refusal is checked in WALL TIME, which is why the guard above exists: an
@@ -170,12 +182,16 @@ class _WeekWindows:
         return found
 
     def _on(self, window: LocalTimeWindow, on: Date) -> Interval | None:
-        """This window on ``on``, or nothing when the day's own gap leaves no stretch to name.
+        """This window on ``on``, or nothing when its resolved bounds do not run forward.
 
         A spring-forward gap is not order-preserving, so two bounds a declaration ordered in wall
-        time can resolve to one instant, or backwards. The user named an hour the date does not
-        have, so the date carries no window: the alternative is an assembly that raises, and this
-        is the widest integration point in the product and the one with no degraded mode.
+        time can resolve to one instant, or backwards. That is the ONE case a date is dropped for:
+        the alternative is an assembly that raises, and this is the widest integration point in the
+        product and the one with no degraded mode.
+
+        A date whose bounds still run forward keeps its window at whatever the day's own arithmetic
+        makes it, which can be narrower or wider than the declared length. The module docstring
+        tabulates both directions.
         """
         zone = self._zone_by_date[on]
         start = to_instant(window.start, on, zone)

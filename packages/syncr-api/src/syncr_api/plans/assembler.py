@@ -404,21 +404,29 @@ def _reductions(stored: Mapping[str, object], *, dates: Sequence[Date]) -> Mappi
 
     An entry this week cannot honour is dropped and reported, and there are three of them: a key
     that is not a date, a value that is not a count of minutes, and a date the week does not hold.
-    All three are the same fault, which is a reduction that would pair with no frame occurrence and
-    be applied to nothing while the concession claimed to have been honoured. A concession is
-    week-scoped, so a foreign date names an occurrence another week's assembly owns.
+    All three have one consequence, which is a reduction that pairs with no frame occurrence and is
+    applied to nothing while the concession claims to have been honoured. They are reported
+    separately because the causes differ: the first two are malformed and the third is a readable
+    date that another week's assembly owns, and an operator reading one event name should not go
+    hunting for the other fault.
     """
     week = set(dates)
     reductions: dict[Date, int] = {}
-    unreadable: list[str] = []
+    malformed: list[str] = []
+    foreign: list[str] = []
     for key, value in stored.items():
         on = _a_date(key)
-        if on is None or on not in week or isinstance(value, bool) or not isinstance(value, int):
-            unreadable.append(key)
+        if on is None or isinstance(value, bool) or not isinstance(value, int):
+            malformed.append(key)
+            continue
+        if on not in week:
+            foreign.append(key)
             continue
         reductions[on] = value
-    if unreadable:
-        _log.warning("plans.adjustment.unreadable_reduction", entries=len(unreadable))
+    if malformed:
+        _log.warning("plans.adjustment.unreadable_reduction", entries=len(malformed))
+    if foreign:
+        _log.warning("plans.adjustment.reduction_outside_the_week", entries=len(foreign))
     return reductions
 
 

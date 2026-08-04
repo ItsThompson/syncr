@@ -261,8 +261,13 @@ class ResolvedPreference:
     merge. A habit that declares none carries its Area's, under its own owner, so the
     solver walks no chain.
 
-    ``windows`` are instants for THIS week: each declared wall-time window resolved
-    against every date of the week, in the zone active on that date.
+    ``windows`` are instants for THIS week: each declared wall-time window resolved against the
+    dates of the week, in the zone active on each date. **This can hold fewer than one interval per
+    date per declaration**, and an interval can be narrower or wider than the declaration: a date
+    whose own daylight-saving gap leaves the window's resolved bounds not running forward
+    contributes nothing, and a date holding a gap or a repeat inside the window contributes a
+    shorter or longer one. So a reader counts what is here rather than sizing on seven times the
+    declaration count, and the producer states the arithmetic of both directions.
 
     There is no ``max_per_day`` here, and its absence is the rule: a daily cap is an
     Area's and travels on ``AreaBudget``.
