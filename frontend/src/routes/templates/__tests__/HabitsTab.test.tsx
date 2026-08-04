@@ -157,8 +157,9 @@ describe("the two derivations are readings and not controls", () => {
     renderTab();
 
     /* The api's statement already names the variant and already says there is no control. Rendering it as it
-     * arrives is the whole contract of the field, so the panel holds it once and adds nothing. */
-    expect(derivations()).toHaveTextContent(CURSOR_STATEMENT);
+     * arrives is the whole contract of the field, so the panel holds it once and adds nothing. Counted rather
+     * than asserted for presence, because a restatement is still present. */
+    expect(within(derivations()).getByText(CURSOR_STATEMENT)).toBeInTheDocument();
     expect(occurrencesIn(derivations(), "On Legs")).toBe(1);
     expect(occurrencesIn(derivations(), "no control to set it")).toBe(1);
   });
@@ -174,7 +175,9 @@ describe("the two derivations are readings and not controls", () => {
     (role) => {
       renderTab();
 
-      expect(within(derivations()).getByText(CURSOR_STATEMENT)).toBeInTheDocument();
+      /* Both positive halves. The sentence is asserted as CONTENT rather than as an element's exact text, so
+       * this sweep stays about the absence: whether the panel restates the sentence is one test's job, above. */
+      expect(derivations()).toHaveTextContent(CURSOR_STATEMENT);
       expect(habitTable()).toHaveTextContent("Legs \u00B7 derived");
 
       expect(screen.queryAllByRole(role, { name: CURSOR_NAMES })).toEqual([]);
