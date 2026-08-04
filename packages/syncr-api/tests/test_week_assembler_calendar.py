@@ -28,6 +28,10 @@ overhang this week carries, its off-plan periods and its approved concessions in
 **An off-plan span suppresses the blocks and neither the windows nor the commitments.** A prep
 block carries an Area and is content; a recovery window explains a gap that is real; a commitment
 during a period the user declared off is still a commitment.
+
+One case here pins a limitation rather than a rule, and it says so: collisions are resolved over
+the commitments a week reads, so two commitments whose shadows collide across the week's edge can
+leave one block in one week and not the other. It is measured rather than argued, and tracked.
 """
 
 from __future__ import annotations
@@ -57,6 +61,7 @@ from tests.anchor_specifications import (
     CAREER,
     EXAM,
     INTERVIEW,
+    NOTHING,
     STANDUP,
     STUDY,
     TRANSIT,
@@ -449,6 +454,57 @@ async def test_a_commitment_whose_type_this_read_did_not_see_is_busy_time_rather
         if line["event"] == "plans.assembly.anchor_type_unread"
     ]
     assert [(line["anchors"], line["types"], line["read"]) for line in reported] == [(1, 0, 1)]
+
+
+async def test_a_collision_the_read_does_not_cover_is_not_resolved_in_this_week() -> None:
+    # Measured rather than argued, and tracked as ticket 1262. Collisions are resolved over the
+    # loaded set, and the loaded set is every commitment that can cast INSIDE the week rather than
+    # every commitment that can cast over one of those products. A journey home that ends before
+    # the read begins truncates a prep block below the grid step in the week that reads both, and
+    # the week after it, which reads only the prep, keeps the half that falls inside it.
+    #
+    # The consequence is bounded: two derived blocks may cover the same minutes, which is a state
+    # the grid draws, and each charges its own Area.
+    returns = an_anchor_type(
+        replace(NOTHING, name="Returns", return_transit_minutes=60, transit_area_id=TRANSIT)
+    )
+    preps = an_anchor_type(
+        replace(
+            NOTHING,
+            name="Preps",
+            prep_lead_minutes=90,
+            prep_duration_minutes=60,
+            prep_area_id=CAREER,
+        ),
+        rule_order=1,
+    )
+    edge = on_monday(0, 0)
+    away = an_anchor(
+        interval=Interval(edge - timedelta(minutes=120), edge - timedelta(minutes=60)),
+        anchor_type=returns,
+        title="Away Match",
+    )
+    interview = an_anchor(
+        interval=Interval(edge + timedelta(minutes=60), edge + timedelta(minutes=120)),
+        anchor_type=preps,
+        title="Interview",
+    )
+    assembler = an_assembler(
+        settings=FakeSettings(LONDON),
+        anchors=FakeAnchors([away, interview]),
+        anchor_types=FakeAnchorTypes([returns, preps]),
+    )
+
+    before = await assembler.assemble(BEFORE, NOW)
+    after = await assembler.assemble(WEEK, NOW)
+
+    # The week that reads both drops the prep entirely: it gives way to the journey home and what
+    # is left of it is shorter than a grid step.
+    assert [block.title for block in before.shadow_blocks] == ["Go Home"]
+    # The week that reads only the prep keeps its half hour.
+    assert [(block.title, block.interval) for block in after.shadow_blocks] == [
+        ("Prep for Interview", Interval(edge, edge + timedelta(minutes=30)))
+    ]
 
 
 # --------------------------------------------------------------------------------
