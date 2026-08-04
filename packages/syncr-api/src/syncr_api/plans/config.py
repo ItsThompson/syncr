@@ -67,9 +67,13 @@ VERDICT_PROVENANCES: Final = ("probe", "solver")
 # appends a verdict event, and `maintainer` is what records a time-driven transition.
 VERDICT_SURFACES: Final = ("pin", "mutation", "tradeoff", "solve", "cli", "maintainer")
 
-# The four tradeoff concessions an approval can persist.
+# The four tradeoff concessions an approval can persist. The vocabulary is the assembler's
+# and the reason record's, in the domain package, and the tuple the check constraint reads is
+# derived from it so the column and the concession cannot disagree. The `Literal` below is the
+# same four members written as a type, so a repository signature narrows a caller;
+# `tests/test_plan_vocabulary.py` asserts the two are one set.
 type AdjustmentKind = Literal["drop_item", "reduce_routine", "breach_floor", "accept_partial"]
-ADJUSTMENT_KINDS: Final = ("drop_item", "reduce_routine", "breach_floor", "accept_partial")
+ADJUSTMENT_KINDS: Final = tuple(kind.value for kind in plan_document.AdjustmentKind)
 
 # A block id is a hash of the week and the content identity, derived on construction and
 # never minted. The column reserves exactly what the derivation produces, taken from the

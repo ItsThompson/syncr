@@ -5,15 +5,15 @@ and the storage layer holds only its JSONB column. ``syncr_api.plans.config`` ho
 tables are defined against: the tuple a check constraint renders, the ``Literal`` a repository
 signature narrows a caller with, and the width of the column a block id is stored in.
 
-**Two of these four tests cannot fail today, and that is what they are for.** The tuple and the
+**Two of these four pairs cannot fail today, and that is what they are for.** The tuples and the
 width are derived from the domain rather than written twice, so drift between them is not
 representable and no test can detect it. What they detect is the derivation being replaced by a
-literal: the day someone writes the six strings out again, these turn red on the first divergence.
+literal: the day someone writes the strings out again, these turn red on the first divergence.
 
-The two that bite now are the other two. The ``Literal`` cannot be derived, because a type cannot
-be built from an enum at type-check time, so it is a genuine second statement and it is compared
-here, in the one package that can see both. And the column's width is a number the migration
-spells for itself, so a shortened digest or a widened column shows up as an inequality.
+The ones that bite now are the ``Literal``s. A type cannot be built from an enum at type-check
+time, so each is a genuine second statement and it is compared here, in the one package that can
+see both. And the column's width is a number the migration spells for itself, so a shortened
+digest or a widened column shows up as an inequality.
 """
 
 from __future__ import annotations
@@ -21,8 +21,15 @@ from __future__ import annotations
 from typing import get_args
 from uuid import uuid4
 
-from syncr_api.plans.config import BLOCK_ID_MAX_LENGTH, REVISION_REASONS, RevisionReason
+from syncr_api.plans.config import (
+    ADJUSTMENT_KINDS,
+    BLOCK_ID_MAX_LENGTH,
+    REVISION_REASONS,
+    AdjustmentKind,
+    RevisionReason,
+)
 from syncr_domain.identity import BLOCK_ID_LENGTH, BindingRef, block_id
+from syncr_domain.plan import AdjustmentKind as ConcessionKind
 from syncr_domain.plan import RevisionReason as DocumentRevisionReason
 from syncr_domain.weeks import IsoWeek
 
@@ -66,3 +73,22 @@ def test_the_column_holds_exactly_what_the_derivation_produces() -> None:
     derived = block_id(IsoWeek(2026, 7), BindingRef.for_anchor(uuid4()))
 
     assert BLOCK_ID_MAX_LENGTH == BLOCK_ID_LENGTH == len(derived)
+
+
+def test_the_concession_constraints_vocabulary_is_the_assemblers_own() -> None:
+    """The same regression guard, over the four tradeoff concessions.
+
+    ``ADJUSTMENT_KINDS`` is a comprehension over the domain enum the week assembler folds and a
+    reason clause cites, so this compares that comprehension to itself. It earns its place the day
+    the comprehension becomes a literal that has drifted.
+    """
+    assert list(ADJUSTMENT_KINDS) == [kind.value for kind in ConcessionKind]
+
+
+def test_the_narrowing_the_concession_repository_applies_is_the_same_set() -> None:
+    """The statement that cannot be derived, so it is the one that has to be compared.
+
+    Measured: adding a fifth kind to the domain enum, or renaming one, fails here and nowhere else
+    in this file.
+    """
+    assert set(get_args(AdjustmentKind.__value__)) == {kind.value for kind in ConcessionKind}

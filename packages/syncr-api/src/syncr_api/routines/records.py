@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from uuid import UUID
 
+from syncr_domain.identifiers import RoutineId
 from syncr_domain.routines import RoutineSpan
 
 if TYPE_CHECKING:
@@ -28,7 +28,10 @@ if TYPE_CHECKING:
 
 # Declared here rather than among the domain's identifier aliases, because a span carries no
 # identity: the row is what has one, and the domain's frame arithmetic never needs it.
-type RoutineId = UUID
+# Re-exported rather than declared, so a routine's identifier has one spelling. The pure
+# package owns it because a pure shape names one: a frame entry says which routine it
+# materialized from.
+__all__ = ["RoutineId", "RoutineRecord"]
 
 
 @dataclass(frozen=True, slots=True)
