@@ -168,11 +168,8 @@ def test_a_habit_owned_row_is_accepted(table: LiveTable) -> None:
     ("case", "overrides"),
     [
         ("an unknown kind of owner", {"owner_kind": "project"}),
-        ("an area kind naming a habit", {"owner_kind": "area", "area_id": None}),
-        (
-            "a habit kind naming an Area",
-            {"owner_kind": "habit", "habit_id": None},
-        ),
+        ("an area kind naming no Area", {"owner_kind": "area", "area_id": None}),
+        ("a habit kind naming an Area", {"owner_kind": "habit", "habit_id": None}),
         (
             "a row naming two owners",
             {"owner_kind": "area", "habit_id": uuid4()},
