@@ -15,6 +15,7 @@ from syncr_domain.snap import (
     is_a_snap_multiple,
     is_on_snap_grid,
     is_wall_time_on_snap_grid,
+    nearest_snap_multiple,
     snap_to_grid,
 )
 from tests.instants import MONDAY, at
@@ -142,3 +143,49 @@ def test_a_duration_that_is_not_would_move_an_end_off_it(minutes: int) -> None:
     # hours, which is the block a materialized entry would produce.
     assert not is_a_snap_multiple(minutes)
     assert not is_on_snap_grid(at(5) + timedelta(minutes=minutes))
+
+
+# --------------------------------------------------------------------------------
+# A duration a computation produced rather than a person declared: a learned multiplier
+# scales a declared range, and the scaled figure has to land on the grid the declaration
+# was refused off.
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("scaled", "expected"),
+    [
+        (54, 60),
+        (52, 45),
+        (53, 60),
+        (45, 45),
+        (8, 15),
+        (7, 15),
+        (0, 15),
+        (1440, 1440),
+    ],
+    ids=[
+        "45 scaled by 1.2",
+        "nearer the step below",
+        "nearer the step above",
+        "already a whole step",
+        "just over half a step",
+        "just under half a step",
+        "scaled to nothing",
+        "a whole day",
+    ],
+)
+def test_a_scaled_duration_moves_to_the_nearest_whole_step(scaled: int, expected: int) -> None:
+    assert nearest_snap_multiple(scaled) == expected
+    assert is_a_snap_multiple(nearest_snap_multiple(scaled))
+
+
+def test_a_scaled_duration_never_falls_below_one_step() -> None:
+    # A duration below one step could not both start and end on the grid, and a scaled duration of
+    # zero would name no block at all.
+    assert nearest_snap_multiple(1) == SNAP_MINUTES
+
+
+def test_a_negative_duration_is_a_caller_error_rather_than_a_short_one() -> None:
+    with pytest.raises(ValueError, match="count of minutes"):
+        nearest_snap_multiple(-15)

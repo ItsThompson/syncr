@@ -23,6 +23,17 @@ materialize a block starting or ending between two of the grid's lines is refuse
 user can still fix it rather than at solve time, where the entry is already fixed by
 derivation. :class:`syncr_domain.routines.RoutineSpan` declares the same pair and reads
 neither. The two are checked differently today.
+
+**A declared duration owes the grid, and so does a wall time the user chose.** That is the side
+this product implements, and it is settled in four places rather than assumed here: a habit's
+both duration bounds and a template entry's target time and duration are refused off the grid,
+a preferred window's bounds are refused off it, and the week assembler snaps an elastic
+duration back onto it after the learned multiplier scales it. The reason is that every
+placement lands on the grid, so a declaration off it names a time or a length no block can
+hold. Tickets 1142, 1151, and 1161 carry the question for the shapes that do not enforce it
+yet: a routine's target time and duration, and a task's minimum chunk. Nothing in this module
+snaps on its own, so an unsnapped interval stays legal and a producer that owes the grid
+applies it to its own output.
 """
 
 from __future__ import annotations
@@ -41,6 +52,8 @@ SNAP_MINUTES: Final = 15
 SNAP: Final = timedelta(minutes=SNAP_MINUTES)
 
 _HALF_SNAP = SNAP / 2
+# The same half step as a count of minutes, for rounding a duration rather than an instant.
+_HALF_SNAP_MINUTES = SNAP_MINUTES // 2
 
 
 def is_on_snap_grid(moment: Instant) -> bool:
@@ -81,3 +94,23 @@ def is_a_snap_multiple(minutes: int) -> bool:
     grid, which is what a declared duration owes the block it will materialize into.
     """
     return minutes % SNAP_MINUTES == 0
+
+
+def nearest_snap_multiple(minutes: int) -> int:
+    """``minutes`` moved to the nearest whole number of steps.
+
+    For a duration a computation produced rather than a person declared: scaling a declared
+    45-minute range by a learned 1.2 gives 54, which no block can hold, so the scaled figure
+    is moved back onto the grid where the scaling happens rather than refused there.
+
+    No tie rule is needed and none is stated: half a step is seven and a half minutes, so no
+    whole number of minutes sits equidistant between two steps.
+
+    The floor is one step, because a duration below one step could not both start and end on
+    the grid, and a scaled duration of zero would name no block at all. A negative input is a
+    caller error rather than a short duration, so it is refused instead of clamped.
+    """
+    if minutes < 0:
+        raise ValueError(f"a duration is a count of minutes and this one is {minutes}")
+    steps = (minutes + _HALF_SNAP_MINUTES) // SNAP_MINUTES
+    return max(SNAP_MINUTES, steps * SNAP_MINUTES)
