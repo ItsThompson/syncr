@@ -19,7 +19,7 @@ import { NotFoundRoute } from "./NotFoundRoute";
 import { SettingsRoute } from "./SettingsRoute";
 import { SetupRoute } from "./SetupRoute";
 import { SignInRoute } from "./SignInRoute";
-import { TemplatesRoute } from "./TemplatesRoute";
+import { TemplatesRoute } from "./templates";
 import { TodayRoute } from "./TodayRoute";
 import { WeekRoute } from "./WeekRoute";
 
