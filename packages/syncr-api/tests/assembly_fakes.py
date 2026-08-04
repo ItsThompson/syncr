@@ -1,0 +1,644 @@
+"""Fakes and builders for the week assembler's tier-2 suite.
+
+Sixteen collaborators is the component's nature, so a test that spelled all sixteen would be a
+test about wiring. :func:`an_assembler` composes them and takes an override per seam, so each test
+states only the stored state its own resolution reads.
+
+Every fake is the REAL repository's interface over a list of records and no database. The domain is
+real throughout: the zone resolution, the interval algebra, the cursor, the debt figure, the budget
+arithmetic, and every value type are the shipped ones, because a stubbed derivation would let this
+suite pass while a figure was wrong.
+
+Two seams are protocols rather than repositories, and both are supplied here with real content:
+the habit outcome log and the week's placements. Production wires readers that answer with
+nothing, so without these the netting rules and the two derivations could only ever be asserted
+against an empty week.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, date, datetime, time, timedelta
+from typing import TYPE_CHECKING, Any
+from uuid import UUID, uuid4
+
+from syncr_api.areas.records import AreaRecord
+from syncr_api.areas.repository import AreaRepository
+from syncr_api.habits.records import HabitRecord
+from syncr_api.habits.repository import HabitRepository
+from syncr_api.learned.config import HAND_TUNED, P0_WEIGHTS
+from syncr_api.learned.records import WeightSetRecord
+from syncr_api.learned.repository import WeightSetRepository
+from syncr_api.offplan.records import OffPlanPeriodRecord
+from syncr_api.offplan.repository import OffPlanPeriodRepository
+from syncr_api.plans.adjustments import WeekAdjustmentRepository
+from syncr_api.plans.assembler import AssemblyCaller, WeekAssembler
+from syncr_api.plans.placements import WeekPlacements
+from syncr_api.plans.records import PlanRevisionRecord, WeekAdjustmentRecord
+from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.preferences.records import PreferenceRecord, windows_as_json
+from syncr_api.preferences.repository import PreferenceRepository
+from syncr_api.routines.records import RoutineRecord
+from syncr_api.routines.repository import RoutineRepository
+from syncr_api.tasks.records import TaskRecord
+from syncr_api.tasks.repository import TaskRepository
+from syncr_api.templates.records import TemplateEntryRecord, TemplateRecord
+from syncr_api.templates.repository import TemplateRepository, WeekPatternRepository
+from syncr_api.user_settings.config import ReviewCadence
+from syncr_api.user_settings.records import SettingsRecord, TravelOverrideRecord
+from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
+from syncr_domain.fixtures.dst_weeks import LONDON
+from syncr_domain.habits import BindingSource, CadenceKind, Duration, MissPolicy
+from syncr_domain.identity import BindingRef
+from syncr_domain.intervals import Interval
+from syncr_domain.plan import Block, PlanDocument
+from syncr_domain.preferences import (
+    LocalTimeWindow,
+    PreferenceOwner,
+    PreferenceOwnerKind,
+    PreferenceStrength,
+)
+from syncr_domain.reasons import Bound, DerivationSource, ReasonRecord
+from syncr_domain.tasks import Priority, TaskStatus
+from syncr_domain.templates import BindingTarget, EntrySpan, TemplateEntryKind, WeekPattern
+from syncr_domain.weeks import IsoWeek, Weekday, active_zone_by_date
+from syncr_domain.zones import ZoneProfile
+from syncr_solver.inputs import Pin
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from decimal import Decimal
+
+    from syncr_api.habits.outcome_log import HabitOutcomeReader
+    from syncr_api.plans.config import AdjustmentKind
+    from syncr_api.plans.placements import WeekPlacementReader
+    from syncr_domain.identifiers import AreaId, HabitId, TaskId
+    from syncr_domain.outcomes import HabitOutcome
+    from syncr_domain.zones import Date
+
+TENANT = UUID("11111111-1111-4111-8111-111111111111")
+
+# A week with no daylight-saving transition in it, so a figure that differs between two of its
+# days differs for the reason the test is about.
+WEEK = IsoWeek(2026, 7)
+MONDAY = WEEK.monday()
+# 2026-W07 in London is on GMT throughout, so local midnight is UTC midnight.
+MONDAY_MIDNIGHT = datetime(2026, 2, 9, tzinfo=UTC)
+# Wednesday mid-morning: half the week is past and half is future, which is what makes the
+# immovable half of every netting rule reachable.
+NOW = datetime(2026, 2, 11, 9, 0, tzinfo=UTC)
+
+MINUTES_PER_HOUR = 60
+
+A_REASON = ReasonRecord((Bound(DerivationSource.ROUTINE, "Sleep · 23:00 + 8h"),))
+
+
+def at(hour: float, *, day: int = 0) -> datetime:
+    """An instant inside ``WEEK``, ``hour`` hours into the ``day``-th day."""
+    return MONDAY_MIDNIGHT + timedelta(days=day, hours=hour)
+
+
+def between(start_hour: float, end_hour: float, *, day: int = 0) -> Interval:
+    return Interval(at(start_hour, day=day), at(end_hour, day=day))
+
+
+def an_area(
+    *,
+    area_id: AreaId | None = None,
+    name: str = "Fitness",
+    floor_hours: Decimal | None = None,
+    budget_percent: Decimal | None = None,
+    parent_id: AreaId | None = None,
+) -> AreaRecord:
+    return AreaRecord(
+        id=area_id or uuid4(),
+        tenant_id=TENANT,
+        parent_id=parent_id,
+        name=name,
+        pigment_index=1,
+        budget_percent=budget_percent,
+        floor_hours=floor_hours,
+        default_preference_id=None,
+        created_at=MONDAY_MIDNIGHT,
+    )
+
+
+def a_task(
+    *,
+    task_id: TaskId | None = None,
+    area_id: AreaId,
+    title: str = "F&F Past Papers",
+    estimate_minutes: int = 240,
+    recorded_minutes: int = 0,
+    deadline: datetime | None = None,
+    status: TaskStatus = TaskStatus.OPEN,
+    min_chunk_minutes: int = 30,
+    splittable: bool = True,
+    priority: Priority = Priority.NORMAL,
+) -> TaskRecord:
+    return TaskRecord(
+        id=task_id or uuid4(),
+        tenant_id=TENANT,
+        area_id=area_id,
+        project_id=None,
+        title=title,
+        estimate_minutes=estimate_minutes,
+        deadline=deadline,
+        priority=priority,
+        min_chunk_minutes=min_chunk_minutes,
+        splittable=splittable,
+        status=status,
+        recorded_minutes=recorded_minutes,
+        completed_at=None,
+        created_at=MONDAY_MIDNIGHT,
+    )
+
+
+def a_habit(
+    *,
+    habit_id: HabitId | None = None,
+    area_id: AreaId,
+    title: str = "Gym",
+    cadence_kind: CadenceKind = CadenceKind.TIMES_PER_WEEK,
+    times_per_week: int | None = 4,
+    approx_days: int | None = None,
+    duration: Duration | None = None,
+    miss_policy: MissPolicy = MissPolicy.FORGIVE,
+    binding_source: BindingSource = BindingSource.FIXED,
+    variants: tuple[str, ...] = (),
+    debt_cap_periods: int = 2,
+) -> HabitRecord:
+    span = duration or Duration.fixed(60)
+    return HabitRecord(
+        id=habit_id or uuid4(),
+        tenant_id=TENANT,
+        area_id=area_id,
+        title=title,
+        cadence_kind=cadence_kind,
+        cadence_times_per_week=times_per_week,
+        cadence_approx_days=approx_days,
+        duration_min_minutes=span.min_minutes,
+        duration_max_minutes=span.max_minutes,
+        miss_policy=miss_policy,
+        binding_source=binding_source,
+        variants=variants,
+        debt_cap_periods=debt_cap_periods,
+        created_at=MONDAY_MIDNIGHT,
+    )
+
+
+def a_routine(
+    *,
+    routine_id: UUID | None = None,
+    title: str = "Sleep",
+    target_time: time = time(23, 0),
+    duration_minutes: int = 8 * MINUTES_PER_HOUR,
+    min_duration_minutes: int | None = None,
+    flex_band_minutes: int = 30,
+) -> RoutineRecord:
+    return RoutineRecord(
+        id=routine_id or uuid4(),
+        tenant_id=TENANT,
+        title=title,
+        target_time=target_time,
+        duration_minutes=duration_minutes,
+        min_duration_minutes=(
+            duration_minutes if min_duration_minutes is None else min_duration_minutes
+        ),
+        flex_band_minutes=flex_band_minutes,
+        created_at=MONDAY_MIDNIGHT,
+    )
+
+
+def a_slot_entry(
+    *,
+    entry_id: UUID | None = None,
+    template_id: UUID,
+    area_id: AreaId,
+    target_time: time = time(18, 0),
+    duration_minutes: int = 60,
+    flex_band_minutes: int = 15,
+) -> TemplateEntryRecord:
+    return TemplateEntryRecord(
+        id=entry_id or uuid4(),
+        tenant_id=TENANT,
+        template_id=template_id,
+        kind=TemplateEntryKind.SLOT,
+        span=EntrySpan(
+            target_time=target_time,
+            duration_minutes=duration_minutes,
+            flex_band_minutes=flex_band_minutes,
+        ),
+        area_id=area_id,
+        binding_target=None,
+        binding_ref=None,
+    )
+
+
+def a_concrete_entry(
+    *,
+    entry_id: UUID | None = None,
+    template_id: UUID,
+    target: BindingTarget = BindingTarget.HABIT,
+    entity_id: UUID | None = None,
+    area_id: AreaId | None = None,
+    target_time: time = time(6, 45),
+    duration_minutes: int = 15,
+) -> TemplateEntryRecord:
+    return TemplateEntryRecord(
+        id=entry_id or uuid4(),
+        tenant_id=TENANT,
+        template_id=template_id,
+        kind=TemplateEntryKind.CONCRETE,
+        span=EntrySpan(
+            target_time=target_time, duration_minutes=duration_minutes, flex_band_minutes=0
+        ),
+        area_id=area_id,
+        binding_target=target,
+        binding_ref=entity_id or uuid4(),
+    )
+
+
+def a_template(
+    *,
+    template_id: UUID | None = None,
+    day_type_id: UUID,
+    name: str = "Weekday",
+    entries: Sequence[TemplateEntryRecord] = (),
+) -> TemplateRecord:
+    return TemplateRecord(
+        id=template_id or uuid4(),
+        tenant_id=TENANT,
+        day_type_id=day_type_id,
+        name=name,
+        created_at=MONDAY_MIDNIGHT,
+        entries=tuple(entries),
+    )
+
+
+def every_day(day_type_id: UUID) -> WeekPattern:
+    """One day type on all seven weekdays, which is the smallest complete pattern."""
+    return WeekPattern(dict.fromkeys(Weekday, day_type_id))
+
+
+def a_preference(
+    *,
+    owner: PreferenceOwner,
+    windows: Sequence[LocalTimeWindow] = (),
+    strength: PreferenceStrength = PreferenceStrength.SOFT,
+    preferred_duration_minutes: int | None = None,
+    max_per_day_minutes: int | None = None,
+) -> PreferenceRecord:
+    return PreferenceRecord(
+        id=uuid4(),
+        tenant_id=TENANT,
+        owner=owner,
+        windows=tuple(windows_as_json(list(windows))),
+        strength=strength,
+        preferred_duration_minutes=preferred_duration_minutes,
+        max_per_day_minutes=max_per_day_minutes,
+        created_at=MONDAY_MIDNIGHT,
+    )
+
+
+def an_area_owner(area_id: AreaId) -> PreferenceOwner:
+    return PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=area_id)
+
+
+def a_habit_owner(habit_id: HabitId) -> PreferenceOwner:
+    return PreferenceOwner(kind=PreferenceOwnerKind.HABIT, id=habit_id)
+
+
+def a_window(start: time, end: time) -> LocalTimeWindow:
+    return LocalTimeWindow(start=start, end=end)
+
+
+def an_off_plan_period(
+    *, interval: Interval, keep_frame: bool = False, label: str | None = None
+) -> OffPlanPeriodRecord:
+    return OffPlanPeriodRecord(
+        id=uuid4(),
+        tenant_id=TENANT,
+        interval=interval,
+        keep_frame=keep_frame,
+        label=label,
+        created_at=MONDAY_MIDNIGHT,
+    )
+
+
+def a_weight_set(
+    *, duration_multiplier: dict[str, Any] | None = None, version: int = 1
+) -> WeightSetRecord:
+    return WeightSetRecord(
+        tenant_id=TENANT,
+        version=version,
+        active=True,
+        origin=HAND_TUNED,
+        deadline_risk=P0_WEIGHTS["deadline_risk"],
+        budget_deviation=P0_WEIGHTS["budget_deviation"],
+        time_of_day_misfit=P0_WEIGHTS["time_of_day_misfit"],
+        fragmentation=P0_WEIGHTS["fragmentation"],
+        churn=P0_WEIGHTS["churn"],
+        context_switch=P0_WEIGHTS["context_switch"],
+        staleness=P0_WEIGHTS["staleness"],
+        duration_multiplier=duration_multiplier or {},
+        time_of_day_fitness={},
+        skip_probability={},
+        context_switch_cost=P0_WEIGHTS["context_switch_cost"],
+        churn_tolerance=P0_WEIGHTS["churn_tolerance"],
+        fitted_at=None,
+        maturity=[],
+        created_at=MONDAY_MIDNIGHT,
+    )
+
+
+def an_adjustment(
+    *,
+    kind: AdjustmentKind,
+    target_id: UUID,
+    reductions: dict[str, Any] | None = None,
+    delta_minutes: int | None = None,
+) -> WeekAdjustmentRecord:
+    return WeekAdjustmentRecord(
+        id=uuid4(),
+        tenant_id=TENANT,
+        iso_week=WEEK,
+        kind=kind,
+        target_id=target_id,
+        reductions=reductions or {},
+        delta_minutes=delta_minutes,
+        created_at=MONDAY_MIDNIGHT,
+        created_by_operation_id=uuid4(),
+    )
+
+
+def an_approved_revision(*, approved_at: datetime) -> PlanRevisionRecord:
+    return PlanRevisionRecord(
+        id=uuid4(),
+        tenant_id=TENANT,
+        iso_week=WEEK,
+        status="approved",
+        reason="user_approved",
+        document={},
+        objective_breakdown={},
+        weight_set_version=1,
+        input_version=3,
+        supersedes_id=None,
+        created_at=MONDAY_MIDNIGHT,
+        approved_at=approved_at,
+    )
+
+
+def a_task_block(
+    *,
+    task_id: TaskId,
+    area_id: AreaId,
+    interval: Interval,
+    split_index: int | None = None,
+    split_count: int | None = None,
+) -> Block:
+    """One placed block of a task, as a stored plan document holds it.
+
+    Several placements of ONE task in one week are its CHUNKS: a document refuses two blocks
+    sharing a binding, and a task's binding is keyed by its chunk, so an unsplit task has exactly
+    one block. That is why every test placing a task twice numbers the chunks.
+    """
+    return Block(
+        iso_week=WEEK,
+        interval=interval,
+        binding=BindingRef.for_task(task_id, split_index=split_index),
+        title="F&F Past Papers",
+        reason=A_REASON,
+        area_id=area_id,
+        split_count=None if split_index is None else (split_count or 2),
+    )
+
+
+def a_habit_block(
+    *, habit_id: HabitId, area_id: AreaId, interval: Interval, index: int = 0
+) -> Block:
+    return Block(
+        iso_week=WEEK,
+        interval=interval,
+        binding=BindingRef.for_habit(habit_id, index=index),
+        title="Gym",
+        reason=A_REASON,
+        area_id=area_id,
+    )
+
+
+def a_plan(*, blocks: Sequence[Block] = (), profile: ZoneProfile | None = None) -> PlanDocument:
+    """A live plan holding ``blocks``. Its figures are not what any of these tests read."""
+    return PlanDocument(
+        iso_week=WEEK,
+        zone_by_date=active_zone_by_date(WEEK, profile or ZoneProfile(LONDON)),
+        discretionary_minutes=0,
+        unallocated_minutes=0,
+        oversubscription_minutes=0,
+        blocks=tuple(blocks),
+    )
+
+
+def a_pin(*, binding: BindingRef, interval: Interval, pinned_on: Date | None = None) -> Pin:
+    return Pin(binding=binding, interval=interval, pinned_on=pinned_on or MONDAY)
+
+
+class FakeSettings(SettingsRepository):
+    def __init__(self, home_zone: str = LONDON) -> None:
+        self._home_zone = home_zone
+
+    async def read(self) -> SettingsRecord:
+        return SettingsRecord(
+            tenant_id=TENANT,
+            visible_hours=18,
+            day_start=time(6, 0),
+            day_end=time(0, 0),
+            review_cadence=ReviewCadence.ON_DEMAND,
+            home_zone=self._home_zone,
+        )
+
+
+class FakeOverrides(TravelOverrideRepository):
+    def __init__(self, stored: Sequence[TravelOverrideRecord] = ()) -> None:
+        self._stored = tuple(stored)
+
+    async def list_all(self) -> tuple[TravelOverrideRecord, ...]:
+        return self._stored
+
+
+def a_travel_override(*, start_date: Date, end_date: Date, zone: str) -> TravelOverrideRecord:
+    return TravelOverrideRecord(
+        id=uuid4(), tenant_id=TENANT, start_date=start_date, end_date=end_date, zone=zone
+    )
+
+
+class FakeRoutines(RoutineRepository):
+    def __init__(self, stored: Sequence[RoutineRecord] = ()) -> None:
+        self._stored = tuple(stored)
+
+    async def list_all(self) -> tuple[RoutineRecord, ...]:
+        return tuple(sorted(self._stored, key=lambda row: (row.target_time, row.id)))
+
+
+class FakeWeekPattern(WeekPatternRepository):
+    def __init__(self, pattern: WeekPattern | None = None) -> None:
+        self._pattern = pattern
+
+    async def read(self) -> WeekPattern | None:
+        return self._pattern
+
+
+class FakeTemplates(TemplateRepository):
+    def __init__(self, stored: Sequence[TemplateRecord] = ()) -> None:
+        self._stored = tuple(stored)
+
+    async def list_all(self) -> tuple[TemplateRecord, ...]:
+        return self._stored
+
+
+class FakeHabits(HabitRepository):
+    def __init__(self, stored: Sequence[HabitRecord] = ()) -> None:
+        self._stored = tuple(stored)
+
+    async def list_all(self, *, area_id: AreaId | None = None) -> tuple[HabitRecord, ...]:
+        return tuple(row for row in self._stored if area_id is None or row.area_id == area_id)
+
+
+class FakeOutcomes:
+    """The outcome log seam, with content. Records which habits were asked for."""
+
+    def __init__(self, stored: Sequence[HabitOutcome] = ()) -> None:
+        self._stored = tuple(stored)
+        self.asked_for: list[HabitId] = []
+
+    async def read(self, habit_ids: Sequence[HabitId]) -> tuple[HabitOutcome, ...]:
+        self.asked_for.extend(habit_ids)
+        return tuple(row for row in self._stored if row.habit_id in set(habit_ids))
+
+
+class FakeTasks(TaskRepository):
+    def __init__(self, stored: Sequence[TaskRecord] = ()) -> None:
+        self._stored = tuple(stored)
+
+    async def list_all(
+        self, *, area_id: AreaId | None = None, status: TaskStatus | None = None
+    ) -> tuple[TaskRecord, ...]:
+        return tuple(
+            row
+            for row in self._stored
+            if (area_id is None or row.area_id == area_id)
+            and (status is None or row.status == status)
+        )
+
+
+class FakeAreas(AreaRepository):
+    def __init__(self, stored: Sequence[AreaRecord] = ()) -> None:
+        self._stored = tuple(stored)
+
+    async def list_all(self) -> tuple[AreaRecord, ...]:
+        return self._stored
+
+
+class FakePreferences(PreferenceRepository):
+    def __init__(self, stored: Sequence[PreferenceRecord] = ()) -> None:
+        self._stored = tuple(stored)
+
+    async def list_all(self) -> tuple[PreferenceRecord, ...]:
+        return self._stored
+
+
+class FakeOffPlan(OffPlanPeriodRepository):
+    def __init__(self, stored: Sequence[OffPlanPeriodRecord] = ()) -> None:
+        self._stored = tuple(stored)
+
+    async def for_span(self, span: Interval) -> tuple[OffPlanPeriodRecord, ...]:
+        return tuple(row for row in self._stored if row.interval.overlaps(span))
+
+
+class FakePlacements:
+    """The placement seam, with content: a live plan and the pins bound to it."""
+
+    def __init__(self, *, live_plan: PlanDocument | None = None, pins: Sequence[Pin] = ()) -> None:
+        self._placements = WeekPlacements(live_plan=live_plan, pins=tuple(pins))
+
+    async def read(self, iso_week: IsoWeek) -> WeekPlacements:
+        return self._placements
+
+
+class FakeAdjustments(WeekAdjustmentRepository):
+    def __init__(self, stored: Sequence[WeekAdjustmentRecord] = ()) -> None:
+        self._stored = tuple(stored)
+
+    async def for_week(self, iso_week: IsoWeek) -> list[WeekAdjustmentRecord]:
+        return [row for row in self._stored if row.iso_week == iso_week]
+
+
+class FakeWeights(WeightSetRepository):
+    def __init__(self, active: WeightSetRecord | None = None) -> None:
+        self._active = active
+
+    async def active(self) -> WeightSetRecord | None:
+        return self._active
+
+
+class FakeVersions(WeekInputVersionRepository):
+    def __init__(self, current: int | None = None) -> None:
+        self._current = current
+
+    async def current(self, iso_week: IsoWeek) -> int | None:
+        return self._current
+
+
+class FakeRevisions(PlanRepository):
+    def __init__(self, latest_approved: PlanRevisionRecord | None = None) -> None:
+        self._latest_approved = latest_approved
+
+    async def latest_approved(self, iso_week: IsoWeek) -> PlanRevisionRecord | None:
+        return self._latest_approved
+
+
+def an_assembler(
+    *,
+    settings: SettingsRepository | None = None,
+    overrides: TravelOverrideRepository | None = None,
+    routines: RoutineRepository | None = None,
+    week_pattern: WeekPatternRepository | None = None,
+    templates: TemplateRepository | None = None,
+    habits: HabitRepository | None = None,
+    outcomes: HabitOutcomeReader | None = None,
+    tasks: TaskRepository | None = None,
+    areas: AreaRepository | None = None,
+    preferences: PreferenceRepository | None = None,
+    off_plan: OffPlanPeriodRepository | None = None,
+    placements: WeekPlacementReader | None = None,
+    adjustments: WeekAdjustmentRepository | None = None,
+    weights: WeightSetRepository | None = None,
+    versions: WeekInputVersionRepository | None = None,
+    revisions: PlanRepository | None = None,
+    caller: AssemblyCaller = AssemblyCaller.REQUEST,
+) -> WeekAssembler:
+    """An assembler over fakes, with every seam empty unless a test supplies it."""
+    return WeekAssembler(
+        settings=settings or FakeSettings(),
+        overrides=overrides or FakeOverrides(),
+        routines=routines or FakeRoutines(),
+        week_pattern=week_pattern or FakeWeekPattern(),
+        templates=templates or FakeTemplates(),
+        habits=habits or FakeHabits(),
+        outcomes=outcomes or FakeOutcomes(),
+        tasks=tasks or FakeTasks(),
+        areas=areas or FakeAreas(),
+        preferences=preferences or FakePreferences(),
+        off_plan=off_plan or FakeOffPlan(),
+        placements=placements or FakePlacements(),
+        adjustments=adjustments or FakeAdjustments(),
+        weights=weights or FakeWeights(a_weight_set()),
+        versions=versions or FakeVersions(3),
+        revisions=revisions or FakeRevisions(),
+        caller=caller,
+    )
+
+
+def an_outcome_date(*, day: int) -> date:
+    """A local date inside ``WEEK``, for a fixture that keys by one."""
+    return MONDAY + timedelta(days=day)
