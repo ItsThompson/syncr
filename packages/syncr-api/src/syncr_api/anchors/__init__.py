@@ -38,14 +38,16 @@ leg, a return leg, a recovery buffer, and what that recovery forbids. Rules eval
 the first match wins; a user's retype outranks every rule and persists on the series, so a daily
 standup is typed once rather than 250 times.
 
-**Where a span comes from, and where it does not.** ``shadows.py`` DERIVES every span, from an
-anchor's own interval and the two leads and four durations its type declares.
-``shadow_collisions.py`` NARROWS one that an earlier-kept block already covers, and
-``shadow_products.py`` UNIONS them into the interval sets a reader subtracts. Those three are the
-only modules here that produce a span at all: the rest own the declaration, the boundary rules the
-declaration has to satisfy, and the reconciliation that decides which anchors exist and which type
-each one carries. Every span the three produce is unclipped, because which of them fall inside a
-week is a question only the caller holding that week's span can answer.
+**Where a span comes from.** ``shadows.py`` DERIVES the spans a commitment casts, from its own
+interval plus the two leads and four durations its type declares. ``shadow_collisions.py`` NARROWS
+one that an earlier-kept block already covers, and ``shadow_products.py`` UNIONS them into the
+interval sets a reader subtracts. **Those three are the only modules here that compute time nobody
+stored.** The two others that name an interval at all merely rebuild one they were handed:
+``queries.py`` from the bounds a request asked to read, and ``repository.py`` from the two columns a
+row holds. What the rest own is the declaration, the boundary rules the declaration has to satisfy,
+and the reconciliation that decides which anchors exist and which type each one carries. Every span
+the three shadow modules produce is unclipped, because which of them fall inside a week is a
+question only the caller holding that week's span can answer.
 
 Import layout, so a reader knows where to look:
 
