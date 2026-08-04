@@ -1834,3 +1834,75 @@ def test_a_rule_part_with_no_value_is_named_rather_than_unpacked() -> None:
     detail = outcome.rejected[0].detail
     assert "COUNT" in detail
     assert "unpack" not in detail
+
+
+@pytest.mark.parametrize(
+    ("rule", "phrase"),
+    [
+        # A property NAME carrying a colon is a second content line to dateutil, which splits
+        # `name:value` before it looks at properties at all. So `RRULE:FREQ` is the name here,
+        # `FREQ` is absent, and every guard that reads FREQ declines to judge while dateutil
+        # expands.
+        ("RRULE:FREQ=SECONDLY;BYSETPOS=300", "second content line"),
+        ("EXRULE:FREQ=DAILY;COUNT=3", "second content line"),
+        # These two carry no `=` at all, so they are refused one check earlier. Both are the same
+        # smuggling attempt; each keeps the message for the malformation it actually has.
+        ("RDATE:20260212T090000Z", "with no value"),
+        ("DTSTART:20260101T000000Z;FREQ=DAILY", "with no value"),
+    ],
+)
+def test_a_name_carrying_a_colon_cannot_smuggle_a_second_content_line(
+    rule: str, phrase: str
+) -> None:
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:colon@example.org\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    assert phrase in outcome.rejected[0].detail
+
+
+def test_an_exclusion_rule_smuggled_by_a_colon_cannot_delete_the_series_silently() -> None:
+    # The worst of the four forms, because it is silent rather than slow: dateutil reads EXRULE as
+    # an EXCLUSION rule, so the series is removed with no rejection and no events, and the panel
+    # reports a healthy feed that produced nothing.
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:exrule@example.org\r\nSUMMARY:Weekly\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        "RRULE:EXRULE:FREQ=DAILY;COUNT=3\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    assert "second content line" in outcome.rejected[0].detail
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        # dateutil upper-cases every rule name and value, so comparing either case-sensitively is
+        # the same divergence one letter wide. A lowercase z made UNTIL a floating time to syncr and
+        # a UTC one to dateutil, which refused the pair and cost the whole series.
+        "FREQ=DAILY;UNTIL=20260220T000000z",
+        "freq=daily;until=20260220t000000z",
+        "FREQ=DAILY;until=20260220T000000Z",
+    ],
+)
+def test_a_rule_is_read_in_the_case_dateutil_reads_it(rule: str) -> None:
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:case@example.org\r\nSUMMARY:Weekly\r\n"
+        "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
+        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert outcome.rejected == ()
+    assert len(outcome.events) == 10

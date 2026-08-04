@@ -238,15 +238,25 @@ class _Rule:
 def _parse_rule(rule_text: str) -> _Rule:
     """``rule_text`` as one property list, or a rejection naming the part that is not one.
 
-    RFC 5545 section 3.3.10 gives ``recur`` no whitespace at all, so whitespace here is a
-    publisher's slip and there are two kinds of it.
+    Three things make the canonical text the same rule dateutil will read, and each closes a door on
+    the same seam: syncr and dateutil parsing one string by different grammars.
 
-    Padding around a separator is harmless and common: ``FREQ=WEEKLY; BYDAY=MO`` is a rule a real
-    publisher emits, and it is stripped and expanded. Whitespace INSIDE a name or a value is not
-    padding, because it is where a second property hides, so it is refused by name.
+    **Whitespace.** RFC 5545 gives ``recur`` none at all. Padding around a separator is harmless and
+    common, so ``FREQ=WEEKLY; BYDAY=MO`` is stripped and expanded; whitespace INSIDE a name or a
+    value is refused, because dateutil splits on it and reads each token as its own content line.
 
-    A part with no ``=`` is refused here too. dateutil unpacks each part into a pair, so it answers
-    that shape with ``not enough values to unpack``, which tells a publisher nothing.
+    **The name must be an RFC token.** A name carrying a colon is a second content line to dateutil,
+    which splits ``name:value`` before it looks at properties: ``RRULE:FREQ=SECONDLY;BYSETPOS=300``
+    reads here as a property called ``RRULE:FREQ``, so ``FREQ`` is absent and every guard that reads
+    it declines to judge, while dateutil expands a secondly rule. ``EXRULE:`` is worse than a hang:
+    it is an EXCLUSION rule, so the series is deleted with no rejection at all.
+
+    **Case.** dateutil upper-cases every name and value, so comparing either case-sensitively here
+    is the same divergence one letter wide: a lowercase ``z`` on an ``UNTIL`` is a UTC value to
+    dateutil and a floating one to syncr, which costs the whole series.
+
+    A part with no ``=`` is refused too. dateutil unpacks each part into a pair, so it answers that
+    shape with ``not enough values to unpack``, which tells a publisher nothing.
     """
     kept: list[str] = []
     parts: dict[str, str] = {}
@@ -268,7 +278,17 @@ def _parse_rule(rule_text: str) -> _Rule:
                     "whitespace inside a rule: a second property hides there"
                 )
                 raise UnparseableRecurrence(message)
-        kept.append(f"{name}={value}")
+        # Checked AFTER the whitespace pass so each cause keeps its own message: a name carrying a
+        # space is not a token either, and reporting that as a colon would name the wrong fault.
+        if not name.replace("-", "").isalnum():
+            message = (
+                f"the recurrence rule states a property name of "
+                f"{_stated(name, width=MAX_RULE_ITEM_CHARS)}, and a rule property is one name and "
+                "one value: a colon there is a second content line, which dateutil reads and the "
+                "guards here do not"
+            )
+            raise UnparseableRecurrence(message)
+        kept.append(f"{name.upper()}={value.upper()}")
         parts[name.upper()] = value.upper()
     return _Rule(text=_RULE_SEPARATOR.join(kept), parts=parts)
 

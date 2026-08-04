@@ -428,6 +428,18 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
     ),
     "a second rule hidden behind a tab": ("DURATION:PT1H", "RRULE:FREQ=DAILY\tINTERVAL=0"),
     "a rule name split by a space": ("DURATION:PT1H", "RRULE:FREQ=DAILY;INT ERVAL=0"),
+    # A property NAME carrying a colon. dateutil splits `name:value` before it reads properties, so
+    # each of these is a second content line: a rule, an exclusion rule, a date, or a start that
+    # overrides the one syncr resolved. The exclusion form is silent rather than slow.
+    "a second rule behind a colon": (
+        "DURATION:PT1H",
+        "RRULE:RRULE:FREQ=SECONDLY;BYSETPOS=300",
+    ),
+    "an exclusion rule behind a colon": ("DURATION:PT1H", "RRULE:EXRULE:FREQ=DAILY;COUNT=3"),
+    "a date behind a colon": ("DURATION:PT1H", "RRULE:RDATE:20260212T090000Z"),
+    "a start behind a colon": ("DURATION:PT1H", "RRULE:DTSTART:20260101T000000Z;FREQ=DAILY"),
+    # And the case axis: dateutil upper-cases every name and value.
+    "an until in lower case": ("DURATION:PT1H", "RRULE:FREQ=DAILY;UNTIL=20260220T000000z"),
     # And the accepting mirror: padding around a separator is a real publisher idiom.
     "separator padding a publisher writes": ("DURATION:PT1H", "RRULE:FREQ=WEEKLY; BYDAY=MO"),
     # A negative value on a property RFC 5545 leaves UNSIGNED. Nothing in the corpus carried one, so
