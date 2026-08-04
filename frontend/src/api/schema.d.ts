@@ -2234,7 +2234,7 @@ export interface components {
             scope?: components["schemas"]["NoticeScope"] | null;
             /**
              * Since
-             * @description ISO instant: how long the condition has held, if it is known.
+             * @description How long the condition has held, as an instant. Null while it is not known. Typed as an instant rather than a string so it is serialized the way every other instant in this document is: one spelling per document, not two.
              */
             since?: string | null;
             /**
@@ -2295,7 +2295,7 @@ export interface components {
             keepFrame: boolean;
             /**
              * Label
-             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name.
+             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said.
              */
             label?: string | null;
             /**
@@ -2325,7 +2325,7 @@ export interface components {
             keepFrame?: boolean | null;
             /**
              * Label
-             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name.
+             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said.
              */
             label?: string | null;
             /**
@@ -2357,7 +2357,7 @@ export interface components {
             keepFrame: boolean;
             /**
              * Label
-             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name.
+             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said.
              */
             label: string | null;
             /**
