@@ -180,7 +180,7 @@ def broke_h8(state: PartialPlan) -> bool:
         claimed = IntervalSet(
             placement.interval
             for placement in state.placed
-            if placement.area_id == area.area_id and not immovable_at(placement, state)
+            if placement.area_id == area.area_id and not inherited(placement, state)
         )
         for day in state.days:
             if claimed.clip(day.interval).total_minutes() > area.max_per_day_minutes:
@@ -199,10 +199,10 @@ def broke_h9(state: PartialPlan) -> bool:
 
     "Before the plan" is the placements nothing chose, which is what a caller seeds the state with.
     """
-    inherited = tuple(placement for placement in state.placed if immovable_at(placement, state))
-    if len(inherited) == len(state.placed):
+    already_held = tuple(placement for placement in state.placed if inherited(placement, state))
+    if len(already_held) == len(state.placed):
         return False
-    if _shortfall_over(state, inherited) > 0:
+    if _shortfall_over(state, already_held) > 0:
         return False
     return _shortfall_over(state, state.placed) > 0
 
@@ -295,17 +295,17 @@ def authored(placement: Placement, state: PartialPlan) -> bool:
     return state.pins.get(placement.binding) == placement.interval
 
 
-def immovable_at(placement: Placement, state: PartialPlan) -> bool:
-    """Whether the week already held this content at exactly this span, so nothing chose it.
+def inherited(placement: Placement, state: PartialPlan) -> bool:
+    """Whether the week already held this content, so nothing chose to place it.
 
     The two allocation rules pass over such a placement, and so must the two oracles that judge
     them: a plan has to hold its own past blocks whether or not the budgets close around them.
+
+    It reads the same predicate the rules read, `PartialPlan.holds`, restated rather than called
+    because an oracle that calls the implementation asserts only that the implementation equals
+    itself. A narrower reading here was a live asymmetry once and could only produce a false red.
     """
-    for index in (state.started, state.immovable):
-        held = index.get(placement.binding)
-        if held is not None and held.interval == placement.interval:
-            return True
-    return False
+    return placement.binding in state.started or placement.binding in state.immovable
 
 
 ORACLE_BY_RULE = {
@@ -693,6 +693,12 @@ def reached(offered: Sequence[Placement], state: PartialPlan) -> set[ConstraintR
     H13 goes unreached in a measurement taken through the composed checker even though the stream
     reaches it. The state still grows through the full checker, so each rule is asked about a real
     week.
+
+    **This measures reach and nothing stronger.** The generated property reddens only when a
+    candidate's ONLY broken row is the one being tested, which reach does not establish. The
+    in-suite proof that each rule's property can fail is the hand-built pairing above, which is
+    deterministic and covers all thirteen; the bite matrix behind the biased draw is a measurement
+    the changeset records rather than a test.
     """
     check = ConstraintCheck(HARD_RULES)
     found: set[ConstraintRule] = set()

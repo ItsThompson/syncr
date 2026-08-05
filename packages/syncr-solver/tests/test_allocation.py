@@ -22,7 +22,8 @@ from syncr_domain.intervals import Interval
 from syncr_domain.weeks import LOCAL_MIDNIGHT, IsoWeek
 from syncr_domain.zones import to_instant
 from syncr_solver.allocation import area_daily_cap, area_floor
-from syncr_solver.constraints import ConstraintRule
+from syncr_solver.constraints import ConstraintCheck, ConstraintRule
+from syncr_solver.rules import HARD_RULES
 from syncr_solver.state import PartialPlan
 from tests.materialized_weeks import (
     CAREER,
@@ -384,11 +385,45 @@ def test_a_floor_a_placement_nothing_can_move_made_unreachable_refuses_nothing_a
     assert area_floor(a_candidate(Interval(at(2), at(3)), binding=GYM), state) is None
 
 
+def test_one_areas_arriving_shortfall_leaves_every_other_areas_floor_unprotected() -> None:
+    # The bound on the gate, measured rather than left to prose. The shortfall is ONE aggregate over
+    # every Area, floors summed and time unioned, so a twenty-minute deficit in Fitness opens the
+    # gate for Career's individually satisfiable thirty-minute floor as well: a week arriving twenty
+    # short can end two hundred and thirty short.
+    #
+    # The control is the same week with Fitness's floor lowered until nothing arrives short, and it
+    # refuses the identical candidate. So what varies is the arriving deficit and nothing else.
+    #
+    # This is the over-crediting direction rather than the unsafe one, and the answer is a per-Area
+    # reservation rather than one summed figure, which is a construction decision: ticket 1334.
+    span = {"off_plan": (an_off_plan_period(interval=Interval(at(3.5), at(0, day=7))),)}
+    whole_week = a_candidate(Interval(at(0), at(3.5)), area_id=STUDY, binding=READING)
+    career = an_area_budget(area_id=CAREER, name="Career", floor_minutes=30)
+
+    arrives_short = PartialPlan.of(
+        inputs(**span, areas=(an_area_budget(floor_minutes=200), career))
+    )
+    arrives_satisfiable = PartialPlan.of(
+        inputs(**span, areas=(an_area_budget(floor_minutes=180), career))
+    )
+
+    assert arrives_short.discretionary().total_minutes() == 210
+    assert area_floor(whole_week, arrives_short) is None
+    refused = area_floor(whole_week, arrives_satisfiable)
+    assert refused is not None
+    assert refused.detail == "Fitness would be left 180m short of its floor, with 0m free"
+
+
 def test_the_clause_never_names_the_area_the_refused_block_would_have_served() -> None:
-    # Provable rather than incidental, over a week that arrives satisfiable: a candidate of an Area
-    # that still owes its floor absorbs its own minutes, so the shortfall cannot rise and the
-    # candidate cannot be refused. Whatever IS refused therefore belongs to an Area owing nothing.
-    # The one exception is a candidate the figure already netted, which is driven separately.
+    # Provable rather than incidental, and universal now that the rule passes over any content the
+    # week already holds. A candidate that reaches this rule is held nowhere, so its minutes are not
+    # already inside `floor_minutes` and they count toward its own Area: that Area's unmet floor can
+    # only FALL. If it is still owing afterwards then the candidate was fully absorbed, so the
+    # shortfall did not rise and nothing was refused. Whatever IS refused therefore belongs to an
+    # Area owing nothing, and the clause cannot name it.
+    #
+    # The precondition and the refusal are both asserted, because the earlier form of this test
+    # skipped a candidate nothing refused and would have gone green while asserting nothing at all.
     week = inputs(
         **NARROW_WEEK,
         areas=(
@@ -397,15 +432,20 @@ def test_the_clause_never_names_the_area_the_refused_block_would_have_served() -
         ),
     )
     state = PartialPlan.of(week)
+    offered = [
+        a_candidate(Interval(at(0), at(2.5)), area_id=area_id, binding=READING)
+        for area_id in (FITNESS, CAREER)
+    ]
+    refused = [(candidate, area_floor(candidate, state)) for candidate in offered]
 
-    for area_id, name in ((FITNESS, "Fitness"), (CAREER, "Career")):
-        rejection = area_floor(
-            a_candidate(Interval(at(0), at(2.5)), area_id=area_id, binding=READING), state
-        )
+    assert all(not state.holds(candidate) for candidate in offered)
+    assert any(rejection is not None for _, rejection in refused)
+    for candidate, rejection in refused:
         if rejection is None:
             continue
         assert rejection.detail is not None
-        assert not rejection.detail.startswith(name)
+        served = next(area.name for area in state.areas if area.area_id == candidate.area_id)
+        assert not rejection.detail.startswith(served)
 
 
 def test_a_placement_the_floor_figure_already_netted_is_not_netted_a_second_time() -> None:
@@ -503,7 +543,7 @@ def test_a_week_declaring_no_floors_refuses_nothing() -> None:
 
 
 # --------------------------------------------------------------------------------
-# What neither rule judges: a placement nothing can move
+# What neither rule judges: content the week already holds, wherever it holds it
 # --------------------------------------------------------------------------------
 
 
@@ -521,29 +561,34 @@ def test_a_block_that_has_begun_is_judged_by_neither_allocation_rule() -> None:
     candidate = a_candidate(Interval(at(0), at(2)), binding=GYM)
     state = PartialPlan.of(week)
 
-    assert state.holds_immovably(candidate)
+    assert state.holds(candidate)
     assert area_daily_cap(candidate, state) is None
     assert area_floor(candidate, state) is None
 
 
-def test_the_same_block_offered_somewhere_else_is_judged_and_counted_once() -> None:
-    # A past block offered at another span reaches both rules, because H10 refuses it one row later.
-    # Its minutes are already inside `floor_minutes`, so the floor owes its whole residual: netting
-    # them again would report a smaller gap than the week has.
-    started = a_block(binding=GYM, interval=Interval(at(0), at(1)))
+def test_a_block_dragged_off_the_moment_it_began_is_refused_for_that_and_not_a_budget() -> None:
+    # The pass-over reads the BINDING rather than the span, and this is the reason. Both allocation
+    # rules sit above H10 and H11 in the table, so bounded to the span they answered first and the
+    # user who dragged a block that has already run was told about a daily cap. Nothing was dropped,
+    # because H10 refuses the same candidate one row later, but the clause named the wrong thing.
+    #
+    # Reachable with no pin at all, which is what makes it the most user-visible of the three.
+    started = a_block(binding=GYM, interval=Interval(at(0), at(1)), title="Gym")
     week = inputs(
         **NARROW_WEEK,
-        areas=(an_area_budget(floor_minutes=2 * HOUR),),
+        areas=(an_area_budget(floor_minutes=2 * HOUR, max_per_day_minutes=HOUR),),
         live_plan=a_live_plan(started),
     )
-    moved = a_candidate(Interval(at(1), at(3)), binding=GYM)
+    dragged = a_candidate(Interval(at(1), at(3)), binding=GYM, title="Gym")
     state = PartialPlan.of(week)
 
-    assert not state.holds_immovably(moved)
-    rejection = area_floor(moved, state)
+    assert state.holds(dragged)
+    assert area_daily_cap(dragged, state) is None
+    assert area_floor(dragged, state) is None
 
-    assert rejection is not None
-    assert rejection.detail == "Fitness would be left 120m short of its floor, with 60m free"
+    reported = ConstraintCheck(HARD_RULES).check(dragged, state)
+    assert reported is not None
+    assert (reported.rule, reported.detail) == (ConstraintRule.PAST_BLOCK, "Gym")
 
 
 def test_a_pin_and_a_block_fixed_by_derivation_are_the_other_two_the_rules_pass_over() -> None:
@@ -569,6 +614,6 @@ def test_a_pin_and_a_block_fixed_by_derivation_are_the_other_two_the_rules_pass_
     pinned = a_candidate(Interval(at(0), at(2)), area_id=CAREER, binding=READING)
 
     for candidate in (derived, pinned):
-        assert state.holds_immovably(candidate)
+        assert state.holds(candidate)
         assert area_daily_cap(candidate, state) is None
         assert area_floor(candidate, state) is None

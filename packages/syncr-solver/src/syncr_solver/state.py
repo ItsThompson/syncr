@@ -251,23 +251,24 @@ class PartialPlan:
             off_plan=IntervalSet(period.interval for period in self.off_plan),
         )
 
-    def holds_immovably(self, candidate: Placement) -> bool:
-        """Whether the week already holds this candidate's content at exactly this span.
+    def holds(self, candidate: Placement) -> bool:
+        """Whether the week already holds this candidate's content somewhere, movable or not.
 
-        A placement the solver cannot move is not a choice it is making, so a rule that judges a
-        CHOICE has nothing to say about one: refusing it would drop a block the week holds rather
-        than correct anything. Step 1 of the algorithm says as much, listing the past blocks, the
-        pins and the derived blocks as the space rather than as candidates inside it.
+        The two allocation rules read this and nothing else does. Neither has anything to say about
+        content the solver cannot place freely: at the span that holds it, refusing would drop a
+        block the week already has, and at any OTHER span the refusal belongs to H10 or H11, which
+        say the true thing. Step 1 of the algorithm lists the past blocks, the pins and the derived
+        blocks as the space rather than as candidates inside it.
 
-        Read by the two allocation rules and by nothing else. The occupancy rules read a narrower
-        exception, the user's own pin alone, because a derived buffer colliding with another derived
-        buffer IS a refusal a derivation has to make.
+        It reads the binding rather than the span for the second of those reasons. Bounded to the
+        span, a block dragged off the moment it began was refused with a budget clause: nothing was
+        dropped, because H10 refuses the same candidate one row later, but the user who dragged it
+        was told about a daily cap.
+
+        The occupancy rules read a narrower exception, the user's own pin at its own span, because a
+        derived buffer colliding with another derived buffer IS a refusal a derivation has to make.
         """
-        for index in (self.started, self.immovable):
-            held = index.get(candidate.binding)
-            if held is not None and held.interval == candidate.interval:
-                return True
-        return False
+        return candidate.binding in self.started or candidate.binding in self.immovable
 
 
 def _require_a_sizing_matching_the_kind(kind: BindingKind, sizing: Sizing | None) -> None:
