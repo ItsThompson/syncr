@@ -129,3 +129,41 @@ describe("a reference sheet", () => {
     ]);
   });
 });
+
+/* Section 14's promotion table moves a component's geometry out of the token layer and beside the component when
+ * that component is built, and calls the move "a rename of location, not of value". A check that resolved a
+ * sheet's references against `tokens/` alone refused every such promotion, so the interim location had become a
+ * rule. What keeps the sheet honest is the LINK: the value has to be on the same load the check approved. */
+describe("a token promoted out of the layer and beside its component", () => {
+  const promoted = fixture("promoted-layer-2.css");
+
+  it("resolves in a sheet that links the layer-2 sheet declaring it", async () => {
+    const outcome = await validate([cleanEntry], [fixture("sheet-promoted.html")], [promoted]);
+
+    expect(outcome.findings).toEqual([]);
+  });
+
+  it("counts the properties reached that way, so a silent zero shows", async () => {
+    const outcome = await validate([cleanEntry], [fixture("sheet-promoted.html")], [promoted]);
+
+    expect(outcome.notes).toContain(
+      "  3 propert(ies) reached that way, which is where a promoted layer-2 token lives",
+    );
+  });
+
+  it("dangles in a sheet that reads it without linking it", async () => {
+    const outcome = await validate(
+      [cleanEntry],
+      [fixture("sheet-unlinked-promotion.html")],
+      [promoted],
+    );
+    const dangling = outcome.findings.filter(
+      (finding) => finding.check === "dangling-sheet-reference",
+    );
+
+    expect(dangling.map((finding) => finding.message)).toEqual([
+      "var(--grid-h) resolves against none of the token files, the stylesheets this sheet links, " +
+        "or its own declarations, so the sheet renders a missing value and still looks plausible.",
+    ]);
+  });
+});

@@ -1,0 +1,8 @@
+/* A miniature of a promoted layer-2 sheet: geometry that left the token layer and now sits beside
+   the component that owns it, still referencing layer 1 by name. */
+
+:root {
+  --grid-h: 626px;
+  --axis-w: 56px;
+  --grid-line-hour: var(--ink-deep);
+}

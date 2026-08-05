@@ -12,7 +12,7 @@
  *   2. every statement inside `:root` is a real custom-property declaration
  *   3. no property is declared twice in one file
  *   4. every `var()` reference in a token file resolves
- *   5. every `var()` reference in a reference sheet resolves against the token files
+ *   5. every `var()` reference in a reference sheet resolves against the stylesheets it LINKS
  *   6. every stylesheet reference resolves on disk, in a token file and in a sheet
  *   7. the Area ramp's hue ledger is derived from the pigments, and neither the comment beside a pigment nor a
  *      reference sheet's own copy of it may disagree
@@ -114,11 +114,14 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
 
   let dynamicInSheets = 0;
   let resolvedInSheets = 0;
+  let promotedInSheets = 0;
   for (const file of input.sheetFiles) {
     const scan = scanHtml(await readFile(file, "utf8"));
     dynamicInSheets += scan.dynamicVarReferences.length;
     resolvedInSheets += scan.varReferences.length;
-    findings.push(...checkSheetReferences(file, scan, declared, callerProvided));
+    const linked = namesLinkedBy(file, scan, consumerScans);
+    promotedInSheets += linked.size;
+    findings.push(...checkSheetReferences(file, scan, declared, callerProvided, linked));
     findings.push(...(await checkSheetLink(file, scan, input.tokenEntry)));
   }
 
@@ -128,6 +131,8 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
     `  each against the token layer plus the sheets its own component loads`,
     `  ${unloadedSheets} sheet(s) no module imports, which resolve against the token layer alone`,
     `${input.sheetFiles.length} reference sheet(s), ${resolvedInSheets} literal var() reference(s) resolved`,
+    `  each against the token layer plus the component sheets the sheet itself links`,
+    `  ${promotedInSheets} propert(ies) reached that way, which is where a promoted layer-2 token lives`,
     `${dynamicInSheets} var() reference(s) in the sheets are assembled at runtime and are not statically resolvable`,
   ];
   if (callerProvided.size > 0) {
@@ -248,25 +253,63 @@ function checkTokenReferences(
   return findings;
 }
 
+/* THE PROPERTIES A SHEET REACHES THROUGH ITS OWN `<link>` TAGS, following each linked sheet's `@import` chain.
+ *
+ * A reference sheet renders live from what ships, and what ships is not all in `tokens/`: section 14's promotion
+ * table moves a component's own geometry down to a layer-2 sheet beside the component when that component is
+ * built. Resolving a sheet's references against the token directory alone therefore refuses every legitimate
+ * promotion, which made the interim location a rule rather than the interim measure the table calls it.
+ *
+ * The honesty guarantee is unchanged and is what picks this over an allowlist: a name resolves only if the sheet
+ * LINKS the file that declares it, so the browser has the value on the same load the check approved. */
+function namesLinkedBy(
+  file: string,
+  scan: HtmlScan,
+  scans: ReadonlyMap<string, CssScan>,
+): Set<string> {
+  const names = new Set<string>();
+  const seen = new Set<string>();
+  const pending = scan.stylesheetLinks
+    .filter((link) => !/^[a-z]+:/i.test(link.href))
+    .map((link) => path.resolve(path.dirname(file), link.href));
+
+  while (pending.length > 0) {
+    const sheet = pending.pop();
+    if (sheet === undefined || seen.has(sheet)) continue;
+    seen.add(sheet);
+    const linked = scans.get(sheet);
+    if (linked === undefined) continue;
+    for (const declaration of linked.declarations) names.add(declaration.name);
+    for (const atImport of linked.imports) {
+      if (!atImport.specifier.startsWith(".")) continue;
+      pending.push(path.resolve(path.dirname(sheet), atImport.specifier));
+    }
+  }
+  return names;
+}
+
 function checkSheetReferences(
   file: string,
   scan: HtmlScan,
   declared: ReadonlySet<string>,
   callerProvided: ReadonlySet<string>,
+  linked: ReadonlySet<string>,
 ): Finding[] {
   const findings: Finding[] = [];
   for (const reference of scan.varReferences) {
     if (declared.has(reference.name)) continue;
     if (callerProvided.has(reference.name)) continue;
     if (scan.declaredNames.has(reference.name)) continue;
+    if (linked.has(reference.name)) continue;
     findings.push({
       file,
       line: reference.line,
       column: reference.column,
       check: "dangling-sheet-reference",
       message:
-        `var(${reference.name}) resolves against neither the token files nor this sheet's own ` +
-        "declarations, so the sheet renders a missing value and still looks plausible.",
+        `var(${reference.name}) resolves against none of the token files, the stylesheets this ` +
+        "sheet links, or its own declarations, so the sheet renders a missing value and still " +
+        "looks plausible.",
     });
   }
   return findings;
