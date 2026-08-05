@@ -21,9 +21,10 @@ A third removes a night that could concede nothing at all: an occurrence already
 It is dropped rather than counted, so one rigid night cannot suppress the offer for a routine whose
 other nights have room.
 
-The distribution itself is even, over the fewest nights that can supply the gap. Both halves are
-the product's own wording: "reduce sleep by 1h across three nights" states one figure per night, and
-a night the concession does not need is a night the user keeps whole.
+The distribution itself is even, over the fewest nights that can supply the gap, and those nights
+are the earliest eligible ones. Both halves are the product's own wording: "reduce sleep by 1h
+across three nights" states one figure per night, and a night the concession does not need is a
+night the user keeps whole. What a prefix costs is stated on :func:`distributed`.
 """
 
 from __future__ import annotations
@@ -93,12 +94,26 @@ def distributed(
     **A night with no give is dropped rather than counted**, so one rigid occurrence cannot suppress
     the offer for a routine whose other nights have room.
 
-    **The figure per night is the smallest give among the nights USED**, which is why the count and
-    the figure are chosen together: taking the smallest across every candidate would let one
-    low-give night shrink the figure for nights that could have supplied more, and the concession
-    would recover less than the week had to give. Each count is scored at what its own prefix can
-    supply, the first count that reaches the gap wins, and where none reaches it the largest total
-    does.
+    **The figure per night is the smallest give among the nights USED**, and the nights used are a
+    PREFIX of the eligible ones: each count is scored at what its own prefix can supply, the first
+    count that reaches the gap wins, and where none reaches it the largest total does. A prefix
+    because the earliest capacity is spent first, which is what "the fewest nights" means for a week
+    that is running out of them.
+
+    **A residual follows from the prefix, and it is stated rather than hidden.** A low-give night
+    EARLY in the week shrinks the figure for every night after it, because every prefix that reaches
+    those nights also contains it. Against a forty-minute gap, with gives in the eligible order:
+
+    ```
+    (20, 20, 5)  ->  2 nights at 20, recovers 40   the low night is never reached
+    (5, 20, 20)  ->  3 nights at 5,  recovers 15   40 was available over nights 2 and 3
+    (20, 5, 20)  ->  1 night at 20,  recovers 20   40 was available over nights 1 and 3
+    ```
+
+    Searching subsets instead would recover more and would stop naming a prefix, which is a product
+    decision about which nights a concession may skip rather than an arithmetic fix. It is latent
+    either way today: every occurrence of one routine shares ``min_duration_minutes``, so every
+    eligible night has the same give.
 
     Where the nights together cannot reach the gap they are all used at their full give and the
     concession recovers less than the gap: the user reads the figure and sees that this one does not
@@ -117,10 +132,13 @@ def distributed(
 def _fewest_nights(gap: int, *, gives: Sequence[int]) -> tuple[int, int] | None:
     """How many of the earliest nights to use, and what each gives up. ``None`` for no give at all.
 
-    Scored per count rather than solved: a prefix of ``k`` nights can supply ``k`` times the
+    Scored per prefix rather than solved: a prefix of ``k`` nights can supply ``k`` times the
     smallest give among those ``k``, and the figure each night gives up is bounded by that same
     smallest. Fifteen nights is the widest input a week can produce, so the walk is cheaper than the
     reasoning about it.
+
+    Prefixes only, so a low-give night early in the week bounds every count that reaches past it.
+    :func:`distributed` states that residual with its figures.
     """
     best: tuple[int, int] | None = None
     bound = 0

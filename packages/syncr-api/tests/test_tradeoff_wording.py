@@ -144,11 +144,14 @@ def test_the_figure_per_night_is_the_smallest_give_among_the_nights_used() -> No
     assert list(distribution.reductions) == [elastic_sleep.TUESDAY]
 
 
-def test_a_low_give_night_does_not_shrink_the_figure_the_others_could_have_supplied() -> None:
-    # The shape the bound was wrong about, and the review's own numbers. Twenty, twenty and five
-    # against a forty-minute gap: two nights at twenty close it. Bounding by the smallest give
-    # across ALL THREE candidates gave five apiece over three nights, recovering fifteen where forty
-    # was available and taking a night the concession did not need.
+def test_a_trailing_low_give_night_no_longer_shrinks_the_figure_before_it() -> None:
+    # Twenty, twenty and five against a forty-minute gap: two nights at twenty close it, and the
+    # third is never reached. Bounding by the smallest give across ALL THREE candidates gave five
+    # apiece over three nights, recovering fifteen where forty was available and taking a night the
+    # concession did not need.
+    #
+    # TRAILING is the whole claim: the search is over prefixes, so a low-give night EARLY in the
+    # week still bounds every count that reaches past it. That residual is measured below.
     gives = (20, 20, 5)
     over = [
         a_night(day=index + 1, min_duration_minutes=elastic_sleep.DURATION_MINUTES - give)
@@ -161,6 +164,36 @@ def test_a_low_give_night_does_not_shrink_the_figure_the_others_could_have_suppl
     assert distribution.each == 20
     assert distribution.recovers == 40
     assert list(distribution.reductions) == [elastic_sleep.TUESDAY, elastic_sleep.WEDNESDAY]
+
+
+@pytest.mark.parametrize(
+    ("gives", "each", "recovers"),
+    [
+        ((5, 20, 20), 5, 15),
+        ((20, 5, 20), 20, 20),
+    ],
+)
+def test_a_low_give_night_early_in_the_week_still_bounds_the_nights_after_it(
+    gives: tuple[int, ...], each: int, recovers: int
+) -> None:
+    # The residual of searching prefixes, measured rather than described. Forty minutes were
+    # available over the two twenty-minute nights in each case, and the concession offers less
+    # because every prefix that reaches them also contains the low one.
+    #
+    # Recorded rather than fixed: searching subsets would recover more and would stop naming a
+    # prefix, which is a decision about which nights a concession may SKIP rather than an arithmetic
+    # correction. Latent today because every occurrence of one routine shares its minimum, so every
+    # eligible night has the same give.
+    over = [
+        a_night(day=index + 1, min_duration_minutes=elastic_sleep.DURATION_MINUTES - give)
+        for index, give in enumerate(gives)
+    ]
+
+    distribution = nights.distributed(40, over=over, dates=DATES)
+
+    assert distribution is not None
+    assert distribution.each == each
+    assert distribution.recovers == recovers
 
 
 def test_a_night_with_no_give_is_dropped_rather_than_killing_the_offer() -> None:
