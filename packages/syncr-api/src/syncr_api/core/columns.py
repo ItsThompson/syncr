@@ -58,7 +58,9 @@ def json_key(column: str, key: str) -> TextClause:
     than a convention, exactly as :func:`values_in`'s does: a key carrying a quote would close
     the string and whatever followed would be read as SQL.
     """
-    if "'" in key or "'" in column:
+    if "'" in column:
+        raise ValueError(f"a column name carries a quote, which would end the string: {column!r}")
+    if "'" in key:
         raise ValueError(f"{column}'s key carries a quote, which would end it: {key!r}")
     return text(f"({column} ->> '{key}')")
 

@@ -133,6 +133,10 @@ class BlockOutcomeRecord:
         ``psql`` say, is refused here rather than silently attributing its planned span. The check
         constraints refuse the same pair, so this is the second reading of one rule rather than the
         only one.
+
+        No production path calls this yet. It is the seam the live placement reader will project
+        through, because the netting is stated over ``RecordedOutcome`` and a repository hands back
+        a record; until then the claim above is exercised by the suite rather than by a request.
         """
         return RecordedOutcome(
             binding=self.binding,

@@ -348,9 +348,12 @@ def test_the_habit_projection_states_both_keys_the_index_leads_with() -> None:
 
 def test_a_json_key_expression_refuses_a_key_that_would_end_the_string() -> None:
     # The control for the helper the index above is built with. Every caller passes a constant, so
-    # the rejection is what makes that a property of the call rather than a convention.
-    with pytest.raises(ValueError, match="carries a quote"):
+    # the rejection is what makes that a property of the call rather than a convention. Two
+    # conditions, two messages: one naming the key and one naming the column.
+    with pytest.raises(ValueError, match="key carries a quote"):
         json_key(BINDING, "kind' OR true --")
+    with pytest.raises(ValueError, match="column name carries a quote"):
+        json_key("binding' OR true --", KIND)
 
 
 # --------------------------------------------------------------------------------
