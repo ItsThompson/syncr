@@ -17,6 +17,12 @@ from typing import TYPE_CHECKING, Final
 
 import pytest
 
+from syncr_api.calendars.injection import UNARMED
+from syncr_api.calendars.projection_errors import ProjectionFailed, ProjectionRefused
+from syncr_api.calendars.projection_notices import PROJECTION_STOPPED
+from syncr_api.calendars.schemas import SyncStateResponse
+from syncr_api.google_account.models import GoogleCredential
+from syncr_api.google_account.notices import WRITE_TARGET_EXPIRED
 from syncr_api.solving.config import (
     FAILED_RETENTION,
     LEASE,
@@ -26,6 +32,7 @@ from syncr_api.solving.config import (
     SUCCEEDED_RETENTION,
 )
 from syncr_api.solving.maintenance import MAINTENANCE_INTERVAL
+from syncr_common.metrics import REGISTRY
 
 if TYPE_CHECKING:
     from datetime import timedelta
@@ -34,6 +41,7 @@ RUNBOOKS: Final = Path(__file__).resolve().parents[3] / "docs" / "runbooks"
 
 STUCK_OPERATION = RUNBOOKS / "stuck-operation.md"
 SOLVE_FAILING = RUNBOOKS / "solve-failing.md"
+GOOGLE_TOKEN_EXPIRED = RUNBOOKS / "google-token-expired.md"
 
 
 def read(runbook: Path) -> str:
@@ -49,7 +57,11 @@ def days(value: timedelta) -> int:
     return value.days
 
 
-@pytest.mark.parametrize("runbook", [STUCK_OPERATION, SOLVE_FAILING], ids=lambda one: one.name)
+@pytest.mark.parametrize(
+    "runbook",
+    [STUCK_OPERATION, SOLVE_FAILING, GOOGLE_TOKEN_EXPIRED],
+    ids=lambda one: one.name,
+)
 def test_the_runbook_exists_and_states_a_trigger(runbook: Path) -> None:
     """Every runbook opens with what made the reader come here, per the deployment section."""
     assert "## Trigger" in read(runbook)
@@ -144,3 +156,91 @@ class TestTheSolveFailingRunbook:
         _before, _, after = read(SOLVE_FAILING).partition("### Read the snapshot")
 
         assert "expected rather than a lost snapshot" in after.split("###")[0]
+
+
+class TestTheGoogleTokenExpiredRunbook:
+    """The third runbook, and the one whose procedure is longest.
+
+    Every identifier it quotes is crossed against the code that produces it: a notice id, an error
+    code, a log event, a wire field, an environment variable, a column. A runbook that names a log
+    line nobody emits sends an operator looking for evidence that does not exist.
+    """
+
+    def test_it_states_a_trigger_and_what_survives(self) -> None:
+        text = read(GOOGLE_TOKEN_EXPIRED)
+
+        assert "## Trigger" in text
+        assert "## Surviving capability" in text
+        assert "still read" in text, "the reader has to be told anchor ingest is unaffected"
+
+    def test_it_answers_every_item_it_used_to_defer(self) -> None:
+        """The stub listed five open items and a callout warning not to trust their absence."""
+        text = read(GOOGLE_TOKEN_EXPIRED)
+
+        assert "> **Stub.**" not in text
+        assert "## Confirm that refresh is the failing step" in text
+        assert "## Distinguish the three ways refreshing stops working" in text
+        assert "## Tell a displaced token from a revoked one" in text
+        assert "## Prove the write target is current after reconnecting" in text
+        assert "## When it is not the token" in text
+
+    def test_it_quotes_the_two_notice_identities_the_code_raises(self) -> None:
+        text = read(GOOGLE_TOKEN_EXPIRED)
+
+        assert f"`{WRITE_TARGET_EXPIRED}`" in text
+        assert f"`{PROJECTION_STOPPED}`" in text
+
+    def test_it_quotes_the_two_error_codes_the_code_sets(self) -> None:
+        text = read(GOOGLE_TOKEN_EXPIRED)
+
+        assert f"`{ProjectionRefused.code}`" in text
+        assert f"`{ProjectionFailed.code}`" in text
+
+    @pytest.mark.parametrize(
+        "event",
+        [
+            "calendars.projection.completed",
+            "calendars.projection.failed",
+            "calendars.projection.skipped",
+            "calendars.projection.tenant_failed",
+            "google_account.connected",
+        ],
+    )
+    def test_every_log_event_it_names_is_one_the_code_emits(
+        self, event: str, source_root: Path
+    ) -> None:
+        assert f"`{event}`" in read(GOOGLE_TOKEN_EXPIRED)
+        emitted = any(f'"{event}"' in path.read_text() for path in source_root.rglob("*.py"))
+        assert emitted, f"the runbook names {event}, which nothing emits"
+
+    def test_it_quotes_the_environment_variable_that_switches_writing_on(self) -> None:
+        """Named in the message the product renders too, so the two cannot drift apart."""
+        assert "`GOOGLE_PROJECTION_WRITES`" in read(GOOGLE_TOKEN_EXPIRED)
+        assert "GOOGLE_PROJECTION_WRITES" in UNARMED.reason
+
+    def test_it_quotes_the_credential_columns_that_exist(self) -> None:
+        text = read(GOOGLE_TOKEN_EXPIRED)
+        columns = {column.name for column in GoogleCredential.__table__.columns}
+
+        for named in ("refresh_failing_since", "last_refresh_error", "connected_at"):
+            assert named in text
+            assert named in columns
+
+    def test_it_quotes_the_sync_state_fields_the_wire_carries(self) -> None:
+        text = read(GOOGLE_TOKEN_EXPIRED)
+        fields = set(SyncStateResponse.model_json_schema(by_alias=True)["properties"])
+
+        for named in ("lastSuccessAt", "lastAttemptAt", "lastError", "attempts"):
+            assert f"`{named}`" in text
+            assert named in fields
+
+    def test_it_does_not_claim_an_alert_that_cannot_fire(self) -> None:
+        """The stub said the critical alert fires. Its metric is exported by nothing at all.
+
+        A runbook whose trigger names an alert that cannot fire tells an operator they will be told,
+        which is exactly the silence that makes this failure dangerous.
+        """
+        text = read(GOOGLE_TOKEN_EXPIRED)
+
+        assert "the alert cannot fire" in text
+        assert REGISTRY.get_sample_value("syncr_write_target_token_age_seconds") is None

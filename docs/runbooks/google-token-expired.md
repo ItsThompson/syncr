@@ -1,13 +1,13 @@
 # Google write-target token expired
 
-> **Stub.** The trigger, the meaning, and the reconnect path are settled and recorded below. The step-by-step operational procedure lands with the projection writer, which is the code that surfaces this failure. Do not treat the absence of those steps as the absence of a problem.
-
 ## Trigger
 
 Either of these means the write target's OAuth token can no longer be refreshed:
 
-- The `WriteTargetTokenExpiring` alert fires. It watches `syncr_write_target_token_age_seconds` past a refresh-failure threshold and is **critical**.
 - The in-product banner appears, in oxide, on every screen, with a panel on Settings.
+- `GET /api/v1/google/connection` carries a notice whose `id` starts `google.write-target-expired`.
+
+The `WriteTargetTokenExpiring` alert is defined against `syncr_write_target_token_age_seconds`, and **that metric is not exported by any process today**, so the alert cannot fire. Nothing about this failure is silent in the product itself: the banner is raised from the credential's own record and is the notice this runbook is written around. The gap is in the alerting, and the metric set belongs to ticket 54.
 
 ## Why this is the loudest failure in the product
 
@@ -47,10 +47,111 @@ The last two rows exist to be ruled out fast. Both are common explanations for t
 
 The third row is the one that misleads. It decouples cause from symptom in time: the reconnect that crossed the limit succeeds and looks healthy, and the failure appears later against a different grant. A token that fails with no recent change to publishing status, no revocation, and recent activity is the signature. `google-oauth-verification.md` records the limit alongside the user cap, which is a different hundred.
 
+## Confirm that refresh is the failing step
+
+Work in this order. Each step rules out one thing, and the first two are reads that cost nothing.
+
+**1. Read the connection.** `GET /api/v1/google/connection` returns the notices this integration raises. Two conditions raise notices and they are different failures:
+
+| Notice id starts | Condition | Section to read |
+|---|---|---|
+| `google.write-target-expired` | The stored authorization can no longer be refreshed | This runbook |
+| `calendar.projection-stopped` | The projection stopped for some other reason | `## When it is not the token` |
+
+Both can be raised at once. The expiry is the one to act on first, because it is also a cause of the other.
+
+**2. Read the write target.** `GET /api/v1/calendar-sources` returns every source; the one holding `role: "write-target"` also carries a `writeTarget` object. Its `syncState` is the projection's own record:
+
+| Field | What it says |
+|---|---|
+| `lastSuccessAt` | When the plan last reached the calendar. This is how old what the phone shows is |
+| `lastAttemptAt` | When syncr last tried. Recent, with an older `lastSuccessAt`, is a target that is failing |
+| `lastError` | Why the last attempt stopped, in the words the banner renders |
+| `attempts` | How many provider calls the last attempt made |
+
+A target whose `lastAttemptAt` is null has never been projected to at all, which is a setup state rather than a failure.
+
+**3. Read the operations.** `GET /api/v1/operations?kind=projection` returns the queue's own history, newest first. Each row carries `status`, `attempt`, and an `error` with a `code`. Two codes exist and they mean different things:
+
+| `error.code` | Meaning | Fix |
+|---|---|---|
+| `projection_refused` | This deployment will not write at all. Nothing was sent | An operator changes the deployment. See below |
+| `projection_failed` | A write was attempted and did not complete | Depends on `error.message`, which states the provider's own reason |
+
+**4. Read the logs.** Every pass emits one line, and which line it is answers what happened:
+
+| Event | Meaning |
+|---|---|
+| `calendars.projection.completed` | The target matches the plan. Carries the counts per action |
+| `calendars.projection.failed` | It did not. Carries `error_code` and the counts that DID land |
+| `calendars.projection.skipped` | No calendar is designated as the write target. Nothing was attempted |
+| `calendars.projection.tenant_failed` | The pass raised outside a stated failure. A defect, with a traceback |
+
+No log line carries a token, a calendar title, or an event title. That is enforced by the logger's own redaction and asserted by the suite, so a line will not tell you which event failed to write, by design.
+
+## Distinguish the three ways refreshing stops working
+
+Only ONE of these sets the credential's failure record, and that asymmetry is the diagnosis.
+
+| What happened | What syncr records | How to tell |
+|---|---|---|
+| The grant is gone: revoked, expired, replaced | `refresh_failing_since` and `last_refresh_error` are set, and the expiry banner is raised | The banner is present. Google answered `invalid_grant` |
+| Google could not be asked: a network fault, a 5xx at the token endpoint, a timeout | **Nothing.** The credential is untouched | No expiry banner, and the projection failure names a status or a transport error rather than an authorization |
+| The token is fine and the CALENDAR refused the write | Nothing on the credential; `lastError` on the write target | No expiry banner. `error.message` says the account may no longer be allowed to write |
+
+That asymmetry is deliberate: treating an unreachable token endpoint as a dead grant would raise the loudest notice in the product against a healthy credential and teach the reader to ignore it.
+
+Read the failure record directly when the api is not available:
+
+```sql
+SELECT tenant_id, connected_at, last_refresh_at, refresh_failing_since, last_refresh_error
+FROM google_credentials;
+```
+
+The two failure columns move together, enforced by a check constraint, so one set and the other null is a corrupt row rather than a state to interpret.
+
+## Tell a displaced token from a revoked one
+
+Both fail permanently, both answer `invalid_grant`, and neither announces itself at the moment it happens. The distinguishing evidence is syncr's own record of when each grant was issued.
+
+| Evidence | Revoked by the user | Displaced by the 100-token limit |
+|---|---|---|
+| `connected_at` | Any age | Old. The grant that displaced it was minted later |
+| Reconnects since | None needed to explain it | Several. Each reconnect mints a token and the oldest is discarded silently |
+| Google account activity | The app appears removed from the account's third-party access list | The app is still listed and still authorized |
+
+Each connect REPLACES the row, deleting the previous one, so `connected_at` is the instant of the most recent connect and not a history. If you need the history, it is in the log: `google_account.connected` is emitted once per successful connect.
+
+The practical answer is the same either way, which is why this is the last thing to establish rather than the first: reconnect. What it changes is whether to expect the failure again, and repeatedly exercising the reconnect path is what causes the displacement in the first place.
+
+## Prove the write target is current after reconnecting
+
+Reconnecting stores a fresh grant; it does not project. The next projection does that, and a projection is enqueued only when the live plan changes, so **nothing may happen for hours** on a quiet week. Force it rather than waiting:
+
+1. Confirm the grant took. `GET /api/v1/google/connection` shows `connected: true`, a fresh `connectedAt`, and **no** notice whose id starts `google.write-target-expired`.
+2. Make the live plan change, which is what enqueues a projection. Any mutation that appends a revision does; the plan horizon maintainer also plans any horizon week that has none, on its own fifteen-minute tick.
+3. Watch for `calendars.projection.completed` in the worker's log. It carries `inserted_count`, `patched_count`, `deleted_count` and `foreign_deleted_count`.
+4. Read the write target again. `syncState.lastSuccessAt` has moved and `syncState.lastError` is null.
+5. Read the calendar on the phone. The first projection after an outage is the one likely to show a non-zero `foreign_deleted_count`: reconciliation is destructive over the horizon, so anything the user created by hand there while writes were failing has now been removed.
+
+A projection that succeeds and writes nothing is the healthy steady state, not a failure to converge: the reconciliation writes only the difference, so a target that already matches the plan produces no provider call at all.
+
+## When it is not the token
+
+The projection stops for reasons that have nothing to do with the authorization, and each states itself in `error.code` and in `syncState.lastError`.
+
+| Cause | What the message says | Fix |
+|---|---|---|
+| Writing is switched off in this deployment | "writing is switched off", and it names `GOOGLE_PROJECTION_WRITES` | An operator sets `GOOGLE_PROJECTION_WRITES=true` and restarts the worker. **Off is the shipped default**, because the destructive write had never been run against the real Google API |
+| This deployment has no Google OAuth client | "no Google OAuth client" | Set the three `GOOGLE_OAUTH_*` values and restart |
+| The designated write target is an ICS feed | "a feed is published by somebody else" | Designate a Google calendar. A feed cannot be written to at all |
+| Google rate limited the write | "rate limiting" | Nothing. It retries, and the next reconciliation converges |
+| Google answered a 5xx, or the connection dropped | "Whether it was applied is unknown, so it was not retried" | Nothing. The next reconciliation recomputes the diff from a fresh read |
+
+The last two are worth understanding rather than acting on. A write is retried in place only when Google is known to have rejected it; anything ambiguous ends the reconciliation, because retrying a write that may have been applied is what would put two copies of one block on the phone.
+
 ## Still to be written
 
-- How to confirm from the logs and metrics that refresh is the failing step, rather than a rate limit or a revoked grant.
-- How to read the projection failure count and the last successful write timestamp.
-- What to check after reconnecting to prove the write target is current.
-- How to distinguish a user-revoked grant, which cannot be recovered without reconnecting, from a transient refresh error, which retries clear.
-- How to tell a silently displaced token, from the 100-per-client limit, apart from a revoked one. Both fail permanently and neither announces itself, so the distinguishing evidence has to come from syncr's own records of when each grant was issued.
+Nothing. The five open items this runbook carried are answered above.
+
+One gap remains and it is not in this procedure: `syncr_write_target_token_age_seconds` is not exported, so `WriteTargetTokenExpiring` cannot fire and this failure has no ALERT. It is visible in the product, in the api, and in the log. Ticket 54 owns the metric set.
