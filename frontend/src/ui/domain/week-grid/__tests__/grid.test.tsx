@@ -139,6 +139,53 @@ describe("the grid's composition", () => {
     expect(container.querySelectorAll(".week-now")).toHaveLength(0);
   });
 
+  it("draws every band BEFORE every block, which is what puts a band under one", () => {
+    /* A band takes z-index 0 and a block takes none, so the two paint together in DOCUMENT ORDER. The order is
+     * therefore the whole of "a band sits under every block", and a pinned block inside a recovery window still
+     * reads as a block because of it. */
+    const { container } = render(
+      <WeekGrid
+        days={[
+          {
+            ...day(DATES[0], [block("a", 540, 600)]),
+            bands: [
+              {
+                id: "w1",
+                span: { startMin: 500, endMin: 620 },
+                label: "recovery",
+                reason: "recovery",
+              },
+            ],
+          },
+        ]}
+        extent={EXTENT}
+        labels={["MON 09"]}
+        nowMs={null}
+        visibleHours={12}
+      />,
+    );
+    const drawn = [...container.querySelectorAll(".week-band, .week-block")].map((node) =>
+      node.classList.contains("week-band") ? "band" : "block",
+    );
+
+    expect(drawn).toEqual(["band", "block"]);
+  });
+
+  it("draws the now rule LAST, because it is a statement about every band and every block", () => {
+    const { container } = render(
+      <WeekGrid
+        days={[day(DATES[0], [block("a", 540, 600)])]}
+        extent={EXTENT}
+        labels={["MON 09"]}
+        nowMs={Date.parse(`${DATES[0]}T14:20:00Z`)}
+        visibleHours={12}
+      />,
+    );
+    const canvas = container.querySelector(".week-day__canvas");
+
+    expect(canvas?.lastElementChild).toHaveClass("week-now");
+  });
+
   it("renders roughly 210 blocks without virtualizing any of them", () => {
     const days = DATES.map((date) =>
       day(
