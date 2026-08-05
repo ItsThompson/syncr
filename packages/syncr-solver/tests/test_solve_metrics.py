@@ -8,12 +8,17 @@ fall rather than as a series that went absent.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
+import pytest
 from prometheus_client import generate_latest
 
 from syncr_common.metrics import REGISTRY
 from syncr_domain.gaps import EmptySlotReason
+from syncr_domain.identity import BindingRef
+from syncr_solver.errors import SolveError
 from syncr_solver.metrics import SOLVE_FAMILIES, SolveOutcome
-from tests.materialized_weeks import CAREER, a_slot, an_area_budget, between
+from tests.materialized_weeks import CAREER, a_pin, a_slot, an_area_budget, between
 from tests.objective_weeks import an_eligible_task
 from tests.solve_weeks import a_week, solved
 
@@ -36,6 +41,32 @@ def test_a_solve_records_its_duration_under_the_outcome_it_reached() -> None:
     assert (
         sample("syncr_solve_duration_seconds_count", {"outcome": SolveOutcome.SUCCEEDED.value})
         == before + 1
+    )
+
+
+def test_a_solve_that_raises_records_its_duration_under_failed_and_not_under_succeeded() -> None:
+    """A failure that reads as a success is the alert inversion three tickets in this wave hit.
+
+    A context manager around the body records on exit whether or not the body raised, so it would
+    put one raise under ``succeeded`` and the coordinator would add its own ``failed``: one failure,
+    two rows, two labels, and a success rate that reads high.
+    """
+    before = {
+        outcome: sample("syncr_solve_duration_seconds_count", {"outcome": outcome.value})
+        for outcome in SolveOutcome
+    }
+    week = a_week(pins=(a_pin(binding=BindingRef.for_habit(uuid4(), index=3)),))
+
+    with pytest.raises(SolveError):
+        solved(week)
+
+    assert (
+        sample("syncr_solve_duration_seconds_count", {"outcome": SolveOutcome.FAILED.value})
+        == before[SolveOutcome.FAILED] + 1
+    )
+    assert (
+        sample("syncr_solve_duration_seconds_count", {"outcome": SolveOutcome.SUCCEEDED.value})
+        == before[SolveOutcome.SUCCEEDED]
     )
 
 

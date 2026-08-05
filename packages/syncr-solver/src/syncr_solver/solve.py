@@ -42,6 +42,7 @@ comparison of two objective totals.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 from syncr_domain.gaps import EmptySlotReason
@@ -113,7 +114,9 @@ def solve(
     one that finishes are both discarded when nobody wants the result.
     """
     limits = SolveBudget() if budget is None else budget
-    with SOLVE_DURATION.labels(outcome=SolveOutcome.SUCCEEDED.value).time():
+    started = perf_counter()
+    outcome = SolveOutcome.FAILED
+    try:
         materialization = derive(inputs, cause=MaterializeCause.PHASE1)
         attempt = Attempt.of(
             inputs, placements=inherited(inputs, materialization.document.blocks)
@@ -122,7 +125,16 @@ def solve(
         # The checkpoint after construction, expressed as a search with no moves to spend: the plan
         # is still evaluated, because a result carries what its own plan costs.
         spent = replace(limits, move_evaluations=0) if cancelled() else limits
-        return _result(improve(attempt, weights, budget=spent, cancelled=cancelled))
+        result = _result(improve(attempt, weights, budget=spent, cancelled=cancelled))
+    except BaseException:
+        # A raise is recorded under the outcome it is, and re-raised. Timed with a context manager
+        # around the body instead, the observation lands under `succeeded` whether or not the body
+        # raised, so one failure reads as one success and the coordinator's own `failed` observation
+        # makes it two rows under two labels.
+        SOLVE_DURATION.labels(outcome=outcome.value).observe(perf_counter() - started)
+        raise
+    SOLVE_DURATION.labels(outcome=SolveOutcome.SUCCEEDED.value).observe(perf_counter() - started)
+    return result
 
 
 def _result(found: Improved) -> SolveResult:

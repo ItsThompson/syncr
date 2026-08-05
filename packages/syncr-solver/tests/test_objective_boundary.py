@@ -105,6 +105,10 @@ IMPORTS_ALLOWED: Final = frozenset(
         "syncr_common",
         "syncr_domain",
         "syncr_solver",
+        # A monotonic clock, read in `syncr_solver.solve` and nowhere else, so the duration family
+        # can be observed under the outcome a solve actually reached. Timing a call cannot change
+        # what the call returns; `test_solve_boundary` asserts no other phase reads one.
+        "time",
         "typing",
         "uuid",
     }

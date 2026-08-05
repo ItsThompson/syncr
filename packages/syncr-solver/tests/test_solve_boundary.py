@@ -140,8 +140,24 @@ def test_no_phase_names_a_randomness_source_or_a_temperature() -> None:
     """
     source = solve_source()
 
-    for forbidden in ("random", "shuffle", "temperature", "anneal", "perf_counter", "monotonic"):
+    for forbidden in ("random", "shuffle", "temperature", "anneal"):
         assert forbidden not in source, forbidden
+
+
+def test_the_one_clock_a_solve_reads_is_the_one_its_own_duration_is_timed_against() -> None:
+    """Named rather than banned, because the duration family has to be observed by something.
+
+    A solve is the only thing that knows when it started, and timing a call cannot change what the
+    call returns, so the purity a stored plan can observe is untouched. What is guarded is that NO
+    OTHER phase reads a clock: one inside a placement decision would make two solves of one week
+    differ, and the determinism property could not tell that from a fixture problem.
+    """
+    elsewhere = code_of(
+        "\n".join(source_of(module) for module in SOLVE_MODULES if module != "solve.py")
+    )
+
+    assert "perf_counter" not in elsewhere
+    assert "perf_counter" in code_of(source_of("solve.py"))
 
 
 def test_the_budget_is_configured_rather_than_read_from_the_environment() -> None:
