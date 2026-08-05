@@ -13,10 +13,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from syncr_domain.identity import BindingKind
+from syncr_domain.preferences import PreferenceStrength
 from syncr_solver.attempt import Attempt
 from syncr_solver.binding import bind_slots
 from syncr_solver.budget import SolveBudget, never_cancelled
 from syncr_solver.filling import fill_gaps
+from syncr_solver.inheritance import inherited
+from syncr_solver.materialize import derive
+from syncr_solver.metrics import MaterializeCause
 from syncr_solver.moves import RELOCATE, RESIZE, RESPLIT, SWAP, moves
 from syncr_solver.objective import evaluate
 from syncr_solver.offering import CHECK
@@ -25,12 +30,15 @@ from syncr_solver.search import improve
 from tests.materialized_weeks import (
     CAREER,
     a_frame_entry,
+    a_live_plan,
+    a_pin,
     an_area_budget,
     between,
 )
 from tests.objective_weeks import (
     A_TASK,
     ANOTHER_TASK,
+    a_chunk_block,
     a_preference,
     a_window,
     an_eligible_task,
@@ -86,8 +94,17 @@ def a_week_offering_every_move() -> SolveInputs:
 
 
 def constructed(week: SolveInputs) -> Attempt:
-    """The plan the two construction phases produce, which is what a move is offered over."""
-    return fill_gaps(bind_slots(Attempt.of(week)), hand_tuned_weights(), budget=BUDGET)
+    """The plan the construction produces, which is what a move is offered over.
+
+    Phase 1 and the inheritance run too, rather than starting from an empty attempt. Without them
+    the plan holds no placement the solve did not choose, so a test about what a move may not touch
+    has nothing to touch and passes over an arrangement the entry point never produces.
+    """
+    attempt = Attempt.of(
+        week,
+        placements=inherited(week, derive(week, cause=MaterializeCause.PHASE1).document.blocks),
+    )
+    return fill_gaps(bind_slots(attempt), hand_tuned_weights(), budget=BUDGET)
 
 
 def kinds_offered(attempt: Attempt, limit: int = 4000) -> set[str]:
@@ -141,19 +158,69 @@ def test_every_move_offered_proposes_a_plan_the_thirteen_rules_accept() -> None:
             break
 
 
+def a_week_whose_pinned_chunk_a_re_split_could_drop() -> SolveInputs:
+    """A divided task with one piece pinned outside its Area's preferred window.
+
+    The arrangement the property below needs and the week above cannot produce: that week holds no
+    live plan and no pins, so every placement in it is one the solve chose and the property is
+    vacuous with respect to the filter it is named for.
+
+    A re-split drops every piece of the task and lets the packer place the work again, and a
+    re-placed piece takes a NEW chunk number, so H11 cannot match it. **What makes dropping the
+    pinned piece a strict improvement is the Area's target.** The pinned chunk is netted out of
+    ``remaining_minutes``, so re-placing the work does not put it back: the plan loses two hours,
+    and with the target at two hours rather than four the Area's deviation falls from the whole of
+    it to nothing. So a search that reached the pinned piece would take the move.
+    """
+    pinned = a_chunk_block(
+        task_id=A_TASK,
+        index=0,
+        of=2,
+        interval=between(2, 4, day=3),
+        title="Papers",
+        area_id=CAREER,
+    )
+    return a_week(
+        eligible_tasks=(
+            an_eligible_task(
+                task_id=A_TASK,
+                remaining_minutes=120,
+                min_chunk_minutes=60,
+                area_id=CAREER,
+                title="Papers",
+            ),
+        ),
+        areas=(an_area_budget(area_id=CAREER, name="Career", target_minutes=120),),
+        preferences=(
+            a_preference(
+                owner_id=CAREER,
+                windows=tuple(a_window(18, 22, day=day) for day in range(7)),
+                strength=PreferenceStrength.STRONG,
+            ),
+        ),
+        live_plan=a_live_plan(pinned),
+        pins=(a_pin(binding=pinned.binding, interval=pinned.interval),),
+    )
+
+
 def test_no_move_touches_a_placement_the_solve_did_not_choose() -> None:
     """The frame, the commitments and the pins are the space rather than candidates inside it.
 
-    **The filter that expresses this is an optimization, not the rule.** Measured: dropping it
-    reddens nothing, because H10 and H11 refuse a move over such a placement on every window, so the
-    generator yields the same moves and merely spends longer reaching them. What this test holds is
-    the property; the rules are what make it unreachable to break.
+    Driven over a week that HOLDS a pinned chunk of a divided task, which is the one arrangement a
+    move can break the property on: a re-split places the work again under a new chunk number, so
+    H11 cannot match the pinned piece and cannot refuse a move that dropped it. Over a week with no
+    pins the assertion is true of every move and says nothing, which is what this test used to be.
     """
-    attempt = constructed(a_week_offering_every_move())
+    attempt = constructed(a_week_whose_pinned_chunk_a_re_split_could_drop())
     preferences = ResolvedPreferences(attempt.inputs.preferences)
     fixed = {
         (held.block.binding, held.block.interval) for held in attempt.placements if not held.chosen
     }
+
+    assert fixed, "the week has to hold a placement the solve did not choose"
+    assert any(
+        held.chosen and held.block.binding.kind is BindingKind.TASK for held in attempt.placements
+    ), "and a chosen piece of the same task, or no re-split is offered at all"
 
     for index, move in enumerate(moves(attempt, preferences)):
         held = {
@@ -164,6 +231,26 @@ def test_no_move_touches_a_placement_the_solve_did_not_choose() -> None:
         assert held == fixed, move.kind
         if index >= 40:
             break
+
+
+def test_a_re_split_keeps_the_pinned_piece_of_the_task_it_re_divides() -> None:
+    """The property above, read from the other side: the pin is still at its interval afterwards.
+
+    Stated as well as the set equality because this is what a user loses when it fails. Measured
+    with the three filters that hold it all removed: the objective falls from 4.667 to 1.667, the
+    search accepts the move, and the pinned chunk is absent from the proposal.
+    """
+    week = a_week_whose_pinned_chunk_a_re_split_could_drop()
+    pinned = week.pins[0]
+
+    found = improve(
+        constructed(week), hand_tuned_weights(), budget=BUDGET, cancelled=never_cancelled
+    )
+
+    assert any(
+        block.binding == pinned.binding and block.interval == pinned.interval
+        for block in found.attempt.document().blocks
+    )
 
 
 def test_a_relocation_moves_one_block_and_leaves_every_other_one_where_it_was() -> None:

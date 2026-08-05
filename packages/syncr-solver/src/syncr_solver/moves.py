@@ -30,6 +30,14 @@ A candidate has to be judged against a week that no longer holds the block being
 against the state that still holds it, H4 would refuse every relocation for overlapping itself. So a
 move builds the attempt without the placements it is changing, offers the new ones into that, and
 carries the accepted result forward. The rebuild is what makes the removal expressible at all.
+
+## Why the four generators share one file, over the 300-line guidance
+
+This module is above it. Every one of the four reads ``_without``, and three of them read
+``_moved_to`` or ``_candidate_of`` as well, so splitting by kind would put four callers of three
+helpers in five files and the reader would follow a move across two of them to see what it does. The
+chunk numbering that used to live in :mod:`syncr_solver.attempt` was the opposite case and was
+lifted: it had its own question and no shared machinery. Revisit this if a fifth kind arrives.
 """
 
 from __future__ import annotations
@@ -86,10 +94,23 @@ def moves(attempt: Attempt, preferences: ResolvedPreferences) -> Iterator[Move]:
 def _chosen(attempt: Attempt) -> tuple[Placed, ...]:
     """The placements this solve chose, in span order, so a move set has one order.
 
-    **The filter is an optimization rather than a rule.** H10 and H11 refuse a move over anything
-    else on every window, so offering one would produce no move and spend the budget proving it:
-    measured, dropping the filter reddens nothing and changes no plan. It is what keeps the pass
-    affordable rather than what keeps it correct.
+    **The filter is an optimization for three of the four kinds and it is the RULE for the fourth.**
+    Relocate, swap and resize move a placement under its own binding, so H11 matches the binding
+    the week already holds and refuses the move: offering one produces no move and spends the
+    budget proving it. **Re-split is different.** It drops every piece of a divided task and lets
+    the packer place the work again; a re-placed piece takes a NEW chunk number, so its binding is
+    not the one ``state.immovable`` holds and H11 has nothing to refuse. A re-split that dropped a
+    pinned piece would therefore be accepted whenever it priced better, and the pin would be gone
+    from the proposal with no rule having spoken.
+
+    Measured on a week whose pinned chunk is netted out of the demand, so re-placing the work does
+    not put it back, and whose Area target makes losing two hours an improvement: the objective
+    falls from 4.667 to 1.667, the search accepts, and the pin is lost.
+
+    So the filter is applied at three points rather than one, each of which independently prevents
+    the loss: here, in :func:`_divided`, and in the pieces :func:`_resplits` drops. Any one of them
+    suffices, which is why no single bite reddens and the bite of all three reddens 2. That is
+    defence in depth over a property no rule can enforce, not three statements of one rule.
     """
     return tuple(
         sorted(
@@ -224,7 +245,11 @@ def _resplits(
     thing the search can change: a move over one piece can only ever move that piece.
     """
     for key in _divided(chosen):
-        pieces = tuple(held for held in chosen if demand_key(held.block.binding) == key)
+        # Only a piece the solve chose may be dropped. See `_chosen`: no rule refuses a re-placed
+        # piece, because it takes a chunk number `state.immovable` cannot match.
+        pieces = tuple(
+            held for held in chosen if held.chosen and demand_key(held.block.binding) == key
+        )
         rest = _without(attempt, pieces)
         candidate = _candidate_of(pieces[0], rest)
         if candidate is None:
@@ -265,10 +290,16 @@ def _repacked(
 
 
 def _divided(chosen: Sequence[Placed]) -> tuple[DemandKey, ...]:
-    """The tasks this plan holds pieces of, in the order their first piece was placed."""
+    """The tasks the solve holds a piece of, in the order their first piece was placed.
+
+    ``chosen`` is filtered again rather than trusted, and it does two things. It keeps the pieces a
+    re-split drops to the ones the solve chose, which is the property :func:`_chosen` explains; and
+    it keeps a task whose only piece is pinned out of the keys, so the pieces the caller collects
+    next are never empty.
+    """
     found: list[DemandKey] = []
     for held in chosen:
-        if held.block.binding.kind is not BindingKind.TASK:
+        if not held.chosen or held.block.binding.kind is not BindingKind.TASK:
             continue
         key = demand_key(held.block.binding)
         if key not in found:
