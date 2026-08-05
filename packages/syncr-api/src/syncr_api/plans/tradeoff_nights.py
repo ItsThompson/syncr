@@ -17,6 +17,10 @@ whole occurrence has to be ahead of ``now``.
 *A night after the deadline a gap was measured against.* Time handed back on Friday cannot be spent
 on work due Thursday morning.
 
+A third removes a night that could concede nothing at all: an occurrence already at its own minimum.
+It is dropped rather than counted, so one rigid night cannot suppress the offer for a routine whose
+other nights have room.
+
 The distribution itself is even, over the fewest nights that can supply the gap. Both halves are
 the product's own wording: "reduce sleep by 1h across three nights" states one figure per night, and
 a night the concession does not need is a night the user keeps whole.
@@ -86,19 +90,48 @@ def distributed(
     concede, which by default is every one of them. That is the elastic-sleep rule, and it is why
     the solver may propose spending the floor the user set and may never spend it silently.
 
-    The figure per night is bounded by the SMALLEST give among the nights used, so every night can
-    supply the same amount. Where the nights together cannot reach the gap they are all used at
-    their full give and the concession recovers less than the gap: the user reads the figure and
-    sees that this one does not close it.
+    **A night with no give is dropped rather than counted**, so one rigid occurrence cannot suppress
+    the offer for a routine whose other nights have room.
+
+    **The figure per night is the smallest give among the nights USED**, which is why the count and
+    the figure are chosen together: taking the smallest across every candidate would let one
+    low-give night shrink the figure for nights that could have supplied more, and the concession
+    would recover less than the week had to give. Each count is scored at what its own prefix can
+    supply, the first count that reaches the gap wins, and where none reaches it the largest total
+    does.
+
+    Where the nights together cannot reach the gap they are all used at their full give and the
+    concession recovers less than the gap: the user reads the figure and sees that this one does not
+    close it.
     """
-    give = min((_give(night) for night in over), default=0)
-    if give <= 0:
+    usable = [night for night in over if _give(night) > 0]
+    chosen = _fewest_nights(gap, gives=[_give(night) for night in usable])
+    if chosen is None:
         return None
-    nights = min(len(over), ceil(gap / give))
-    each = min(give, ceil(gap / nights))
+    count, each = chosen
     return Distribution(
-        each=each, reductions={dates[night.occurrence_key]: each for night in over[:nights]}
+        each=each, reductions={dates[night.occurrence_key]: each for night in usable[:count]}
     )
+
+
+def _fewest_nights(gap: int, *, gives: Sequence[int]) -> tuple[int, int] | None:
+    """How many of the earliest nights to use, and what each gives up. ``None`` for no give at all.
+
+    Scored per count rather than solved: a prefix of ``k`` nights can supply ``k`` times the
+    smallest give among those ``k``, and the figure each night gives up is bounded by that same
+    smallest. Fifteen nights is the widest input a week can produce, so the walk is cheaper than the
+    reasoning about it.
+    """
+    best: tuple[int, int] | None = None
+    bound = 0
+    for count, give in enumerate(gives, start=1):
+        bound = give if count == 1 else min(bound, give)
+        each = min(bound, ceil(gap / count))
+        if count * each >= gap:
+            return count, each
+        if best is None or count * each > best[0] * best[1]:
+            best = (count, each)
+    return best
 
 
 def dates_of(inputs: SolveInputs) -> dict[str, Date]:

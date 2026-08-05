@@ -129,18 +129,52 @@ def test_no_nights_is_no_distribution_either() -> None:
     assert nights.distributed(60, over=[], dates=DATES) is None
 
 
-def test_the_figure_per_night_is_bounded_by_the_smallest_give_among_them() -> None:
-    # A night with less give cannot supply the same figure as the others, so the shared figure
-    # is the smallest. Otherwise a reduction would be clamped by R6 on that night and recover less
-    # than the concession claimed.
+def test_the_figure_per_night_is_the_smallest_give_among_the_nights_used() -> None:
+    # Among the nights USED, not among every candidate. A night that can supply the whole gap on its
+    # own is one night, and a second night with less give is left whole rather than dragging the
+    # shared figure down to what IT could have given.
     generous = a_night(day=1, min_duration_minutes=elastic_sleep.DURATION_MINUTES - 60)
     mean = a_night(day=2, min_duration_minutes=elastic_sleep.DURATION_MINUTES - 10)
 
     distribution = nights.distributed(60, over=[generous, mean], dates=DATES)
 
     assert distribution is not None
-    assert distribution.each == 10
-    assert distribution.recovers == 20
+    assert distribution.each == 60
+    assert distribution.recovers == 60
+    assert list(distribution.reductions) == [elastic_sleep.TUESDAY]
+
+
+def test_a_low_give_night_does_not_shrink_the_figure_the_others_could_have_supplied() -> None:
+    # The shape the bound was wrong about, and the review's own numbers. Twenty, twenty and five
+    # against a forty-minute gap: two nights at twenty close it. Bounding by the smallest give
+    # across ALL THREE candidates gave five apiece over three nights, recovering fifteen where forty
+    # was available and taking a night the concession did not need.
+    gives = (20, 20, 5)
+    over = [
+        a_night(day=index + 1, min_duration_minutes=elastic_sleep.DURATION_MINUTES - give)
+        for index, give in enumerate(gives)
+    ]
+
+    distribution = nights.distributed(40, over=over, dates=DATES)
+
+    assert distribution is not None
+    assert distribution.each == 20
+    assert distribution.recovers == 40
+    assert list(distribution.reductions) == [elastic_sleep.TUESDAY, elastic_sleep.WEDNESDAY]
+
+
+def test_a_night_with_no_give_is_dropped_rather_than_killing_the_offer() -> None:
+    # One rigid occurrence among elastic ones must not suppress the whole routine's offer: it can
+    # concede nothing, so it is not a night the distribution counts.
+    elastic = a_night(day=1)
+    rigid = a_night(day=2, min_duration_minutes=elastic_sleep.DURATION_MINUTES)
+    later = a_night(day=3)
+
+    distribution = nights.distributed(40, over=[elastic, rigid, later], dates=DATES)
+
+    assert distribution is not None
+    assert distribution.recovers == 2 * elastic_sleep.GIVE_MINUTES
+    assert list(distribution.reductions) == [elastic_sleep.TUESDAY, elastic_sleep.THURSDAY]
 
 
 def test_nights_that_cannot_reach_the_gap_are_all_used_at_their_full_give() -> None:
