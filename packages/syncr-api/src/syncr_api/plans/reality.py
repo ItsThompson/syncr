@@ -31,6 +31,10 @@ not settling the day, and that is what keeps an unconfirmed row out of reviews a
 :meth:`settle` is the day's confirmation: it presumes every block with no row yet and stamps the
 day's rows, keeping the FIRST confirmation instant so confirming twice changes nothing.
 
+**Both writes are upserts, which is what makes a retry safe by itself.** Each states an absolute
+value rather than a delta, so applying one twice lands the same row. The idempotency guard on the
+routes adds the stored RESPONSE on top of that rather than the write's own safety.
+
 **A row is never deleted.** An outcome is a fact about a week that happened, and it is retained
 even after its binding's entity is gone, which is why the binding is denormalized onto it.
 """
@@ -89,15 +93,20 @@ class BlockOutcomeRepository(TenantScopedRepository):
         block_id: BlockId,
         revision_id: PlanRevisionId,
         occurred_at: datetime,
-    ) -> None:
+    ) -> BlockOutcomeRecord:
         """State what happened to one block, replacing whatever the log said before.
 
         The outcome arrives as the domain value rather than as a state and two loose columns, so
         the pair each state carries is checked before a statement is built: a ``partial`` with no
         minutes and a ``moved`` with no interval are both refused where the value is constructed,
         and the check constraints are the second line rather than the only one.
+
+        The row is returned by the statement that wrote it rather than read back, because the one
+        column the caller cannot compute is ``confirmed_at``: it belongs to the day and is left
+        exactly as it was, so a correction after a confirmation has to report the instant the day
+        was settled at rather than a fresh one.
         """
-        await self._session.execute(
+        written = await self._session.scalars(
             insert(BlockOutcome)
             .values([self._row(outcome, block_id, revision_id, occurred_at)])
             .on_conflict_do_update(
@@ -112,7 +121,9 @@ class BlockOutcomeRepository(TenantScopedRepository):
                     "occurred_at": occurred_at,
                 },
             )
+            .returning(BlockOutcome)
         )
+        return _as_record(written.one())
 
     async def settle(self, presumptions: Sequence[Presumption], *, at: datetime) -> int:
         """Record the day these blocks belong to, and answer how many rows it settled.
