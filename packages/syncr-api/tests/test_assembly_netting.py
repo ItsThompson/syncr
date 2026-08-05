@@ -436,3 +436,31 @@ def test_an_outcome_is_read_against_the_pins_interval_rather_than_the_plans() ->
 
     attributed = placed.attributed_to_task_before(TASK, FRIDAY_09)
     assert (attributed.past, attributed.future) == (30, 0)
+
+
+def test_a_move_onto_another_chunks_hour_is_counted_once_rather_than_twice() -> None:
+    # Minutes are counted through an interval UNION, so a `moved` span landing on another placement
+    # of the same task collapses into it: two hours become one. That is the right answer (the user
+    # cannot have done two hours inside one) and it is the safe direction, because the demand this
+    # figure is subtracted from rises. Pinned because it is a consequence of attributing SPANS
+    # rather than counts, and nothing else in the suite would notice if the union became a sum.
+    morning = a_task_block(
+        task_id=TASK, area_id=CAREER, interval=between(9, 10, day=1), split_index=0, split_count=2
+    )
+    afternoon = a_task_block(
+        task_id=TASK, area_id=CAREER, interval=between(14, 15, day=1), split_index=1, split_count=2
+    )
+    plan = a_plan(blocks=[morning, afternoon])
+    onto_the_afternoon = RecordedOutcome(
+        binding=morning.binding,
+        state=OutcomeState.MOVED,
+        actual_interval=afternoon.interval,
+    )
+
+    before = placed_time(live_plan=plan)
+    after = placed_time(live_plan=plan, outcomes=[onto_the_afternoon])
+
+    assert before.attributed_to_task_before(TASK, FRIDAY_09).past == 120
+    assert after.attributed_to_task_before(TASK, FRIDAY_09).past == 60
+    # Capacity is untouched, as it is for every outcome: both hours are still committed time.
+    assert after.minutes_of_area(CAREER) == 120

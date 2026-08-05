@@ -17,7 +17,7 @@ from datetime import date, time
 from syncr_domain.feasibility import probe
 from syncr_domain.fixtures import partial_progress
 from syncr_domain.intervals import Instant, Interval, IntervalSet
-from syncr_domain.outcomes import MISS_STATE
+from syncr_domain.outcomes import MISS_STATE, attributed_span
 from syncr_domain.weeks import week_span
 from syncr_domain.zones import ZoneProfile, to_instant
 
@@ -102,20 +102,39 @@ def test_the_week_the_fixture_describes_is_one_the_probe_finds_no_gap_in() -> No
 
 
 def test_a_confirmed_skip_on_the_past_hour_raises_the_demand_by_that_hour() -> None:
-    # The attribution table's one contested row, re-derived rather than asserted as a number: the
-    # user said the Tuesday hour's work was not done, so nothing is attributed for it and the whole
-    # 240 less the two pinned hours is outstanding again.
+    # The attribution table's one contested row, re-derived THROUGH the table rather than by hand:
+    # the skipped hour attributes nothing, so the whole 240 less the two pinned hours is outstanding
+    # again. Worked by hand this would pass even if the table said `skipped` attributes its planned
+    # span, which is the reading ticket 1290 rejected.
+    attributed_past = attributed_span(
+        partial_progress.UNCONFIRMED_PAST, partial_progress.SKIPPED_PAST
+    )
     recorded = 0
-    past_before_the_deadline = 0
+    past_before_the_deadline = 0 if attributed_past is None else attributed_past.total_minutes()
     future_before_the_deadline = partial_progress.PINNED_AHEAD.total_minutes()
     attributed = max(recorded, past_before_the_deadline) + future_before_the_deadline
 
+    assert attributed_past is None
     assert (
         partial_progress.ESTIMATE_MINUTES - attributed
         == partial_progress.REMAINING_MINUTES_AFTER_A_SKIP
     )
     assert partial_progress.AFTER_A_SKIP.deadline_demands[0].remaining_minutes == (
         partial_progress.REMAINING_MINUTES_AFTER_A_SKIP
+    )
+
+
+def test_the_healthy_weeks_demand_is_re_derived_through_the_same_table() -> None:
+    # The other side of the pair, so the two figures come from one mechanism: with no row at all the
+    # past hour attributes its planned span, which is what O1 means and what keeps the minutes from
+    # vanishing from both sides of the arithmetic.
+    attributed_past = attributed_span(partial_progress.UNCONFIRMED_PAST, None)
+
+    assert attributed_past == partial_progress.UNCONFIRMED_PAST
+    assert (
+        partial_progress.ESTIMATE_MINUTES
+        - (attributed_past.total_minutes() + partial_progress.PINNED_AHEAD.total_minutes())
+        == partial_progress.REMAINING_MINUTES
     )
 
 
