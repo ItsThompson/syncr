@@ -49,6 +49,19 @@ describe("a block with nothing overlapping it", () => {
     expect(placements.map(widthOf)).toEqual([0.5, 0.5, 0.5]);
     expect(placements[2].left).toBe(0);
   });
+
+  /* THE RUNNING MAXIMUM END IS COMPARED WITH `>=` BECAUSE THE SPANS ARE HALF-OPEN, and the difference shows one block
+   * BACK rather than at the boundary itself. A block ending exactly where a pair begins shares no minute with either,
+   * so it keeps the whole column; comparing with `>` holds the cluster open, deals the pair its two columns, and hands
+   * the earlier block a HALF column for an overlap it is not in. */
+  it("keeps the whole column for a block that ends exactly where a pair begins", () => {
+    const [before, first, second] = placeOverlaps([span(0, 60), span(60, 120), span(60, 120)]);
+
+    expect(widthOf(before)).toBe(1);
+    expect(before.isSplit).toBe(false);
+    expect(widthOf(first)).toBe(0.5);
+    expect(widthOf(second)).toBe(0.5);
+  });
 });
 
 describe("an even split", () => {
@@ -141,6 +154,19 @@ describe("no origin is special-cased", () => {
 });
 
 describe("layout does not depend on paint order", () => {
+  /* SORTED BY START, THEN BY DESCENDING END. Where two blocks begin together the longer one is dealt the leftmost
+   * column and the shorter stacks to its right; the reverse leaves a long block sitting right of the short ones it
+   * contains, which reads as unrelated rather than as an overlap. It is the one part of the sweep whose answer depends
+   * on the tie-break, so it is asserted directly rather than through a cluster's column count. */
+  it("gives the LONGER of two blocks starting together the leftmost column", () => {
+    const [longer, shorter] = placeOverlaps([span(0, 120), span(0, 60)]);
+
+    expect(longer.left).toBe(0);
+    expect(longer.isSplit).toBe(false);
+    expect(shorter.left).toBe(0.5);
+    expect(shorter.isSplit).toBe(true);
+  });
+
   it("answers the same for each block however the input is ordered", () => {
     const spans = [span(0, 315), span(300, 360), span(310, 340), span(315, 330), span(600, 660)];
     const forwards = placeOverlaps(spans);

@@ -13,6 +13,11 @@ import { describe, expect, it } from "vitest";
 import { apiServer } from "../../../testing/apiServer";
 import { jsonHandler, readyz, recordingHandler } from "../../../testing/apiStub";
 import { renderAt } from "../../../testing/renderRoute";
+import { GRID_H_PX } from "../../../ui/domain";
+
+/* The axis the fixture's own week yields: the declared bounds run 06:00 to 22:00 and no block lies outside them, so
+ * the extent is 960 minutes and every column's canvas is that many minutes of pixels. */
+const EXTENT_MINUTES = 16 * 60;
 
 const ISO_WEEK = "2026-W07";
 const DATES = [
@@ -214,6 +219,26 @@ describe("the week the reader asked for", () => {
     expect(await screen.findByText("MON 09")).toBeInTheDocument();
     expect(screen.getByText("SUN 15")).toBeInTheDocument();
   });
+
+  /* THE SETTING IS BROUGHT INSIDE THE DISPLAY'S OWN CAP BEFORE IT REACHES THE GRID. A 24-hour setting on the 13 inch
+   * reference display would draw a thirty-minute block at 13px, below the label floor, which is the one thing the
+   * clamp exists to prevent. The canvas height is where that is observable: pixels per minute is the grid height over
+   * the VISIBLE minutes, so a clamped setting produces a taller canvas for the same extent. */
+  it("renders a 24-hour setting at the display's own cap of 16 hours", async () => {
+    installReads(weekView());
+    apiServer.use(
+      jsonHandler("/api/v1/settings", { status: 200, body: { ...SETTINGS, visibleHours: 24 } }),
+    );
+    const { container } = renderAt(weekPath);
+
+    await screen.findByText("MON 09");
+    const canvas = container.querySelector(".week-day__canvas");
+    const atTheCap = (EXTENT_MINUTES * (GRID_H_PX / (16 * 60))).toFixed(3);
+    const unclamped = (EXTENT_MINUTES * (GRID_H_PX / (24 * 60))).toFixed(3);
+
+    expect(canvas).toHaveStyle({ height: `${atTheCap}px` });
+    expect(canvas).not.toHaveStyle({ height: `${unclamped}px` });
+  });
 });
 
 describe("a week with no plan", () => {
@@ -318,5 +343,16 @@ describe("a week the api refuses", () => {
     renderAt(weekPath);
 
     expect(await screen.findByText("iso_week is not an ISO week identifier.")).toBeInTheDocument();
+  });
+
+  /* THE FIGURES AND THE PLAN ARRIVE TOGETHER OR NOT AT ALL: `readings` is null exactly when `live` is, which is the
+   * endpoint's own biconditional. A payload holding one without the other is a response the server does not produce,
+   * and it is read as NOT YET READABLE rather than rendered with holes: a strip drawing three empty cells over a real
+   * grid would state figures nobody computed. Checking `live` alone leaves that reachable, so the pair is checked. */
+  it("treats a plan with no figures as not yet readable rather than drawing it with holes", async () => {
+    installReads(weekView({ readings: null }));
+    renderAt(weekPath);
+
+    expect(await screen.findByText("Reading this week")).toBeInTheDocument();
   });
 });
