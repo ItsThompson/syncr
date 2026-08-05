@@ -140,6 +140,7 @@ NOT_SUBTRACTED = (
     OccupancyKind.TRANSIT_BLOCK,
     OccupancyKind.TASK_BLOCK,
     OccupancyKind.HABIT_BLOCK,
+    OccupancyKind.TEMPLATE_ENTRY_BLOCK,
     OccupancyKind.SLOT_BLOCK,
     OccupancyKind.EMPTY_SLOT,
 )
@@ -155,7 +156,8 @@ def test_time_no_area_can_claim_leaves_the_denominator(kind: OccupancyKind) -> N
 def test_time_an_area_can_claim_stays_in_the_denominator(kind: OccupancyKind) -> None:
     # Prep and transit BLOCKS are the pair the upstream definition subtracted. They carry an
     # Area, so subtracting them would remove the time from the denominator and charge it to
-    # an Area at the same time.
+    # an Area at the same time. A materialized concrete template entry carries one for the same
+    # reason, which is why it is named here rather than left out of the vocabulary.
     assert is_subtracted(kind) is False
     assert kind not in SUBTRAHEND_BY_KIND
 

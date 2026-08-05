@@ -76,6 +76,7 @@ class OccupancyKind(StrEnum):
     TRANSIT_BLOCK = "transit_block"
     TASK_BLOCK = "task_block"
     HABIT_BLOCK = "habit_block"
+    TEMPLATE_ENTRY_BLOCK = "template_entry_block"
     SLOT_BLOCK = "slot_block"
     EMPTY_SLOT = "empty_slot"
 
@@ -93,7 +94,7 @@ class OccupancyKind(StrEnum):
 #                        is a block, and a block is allocation
 #   OFF_PLAN             discretionary scheduling suspends
 #
-# And the five that stay in:
+# And the six that stay in:
 #
 #   RECOVERY_AREAS       only the named Areas are excluded. Every other Area may claim it,
 #                        and unfilled it becomes `unallocated`
@@ -101,6 +102,9 @@ class OccupancyKind(StrEnum):
 #   TRANSIT_BLOCK          the same way a task does
 #   TASK_BLOCK           allocation is not removal
 #   HABIT_BLOCK
+#   TEMPLATE_ENTRY_BLOCK a concrete entry of a day's shape: a `Shower` five mornings a week.
+#                        It carries an Area, so allocation is not removal, for the same
+#                        reason the two buffer blocks above are not
 #   SLOT_BLOCK
 #   EMPTY_SLOT           discretionary time nothing could be placed in. Subtracting it
 #                        would make an unfillable week read as a fully-budgeted one, when

@@ -31,6 +31,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from syncr_domain.discretionary import OccupancyKind, is_subtracted
 from syncr_domain.gaps import EmptySlotReason
 from syncr_domain.identity import BindingKind, BindingRef, Origin, TransitLeg, block_id
 from syncr_domain.plan import MIN_SPLIT_COUNT, Block, PlanDocument, PlanError, RevisionReason
@@ -209,6 +210,45 @@ class TestWhichBlocksCarryAnArea:
         """A routine is not a category competing with Fitness, and an anchor is not owned."""
         with pytest.raises(PlanError, match="carries no Area"):
             a_block_of(origin, area_id=CAREER)
+
+
+class TestWhichKindOfSpanABlockIs:
+    @pytest.mark.parametrize("origin", list(Origin), ids=[origin.value for origin in Origin])
+    def test_every_origin_names_a_kind_the_denominator_knows(self, origin: Origin) -> None:
+        """Total over the seven, so the assembler converts a block rather than deciding about one.
+
+        Before this, ``template_entry`` mapped to nothing and each caller had to decide per span
+        whether a materialized ``Shower`` was a slot or was absent from the vocabulary, which is
+        the re-litigation the span table exists to prevent.
+        """
+        assert a_block_of(origin).occupancy_kind in set(OccupancyKind)
+
+    def test_a_concrete_entry_is_its_own_kind_rather_than_the_slot_it_is_not(self) -> None:
+        """A slot's content is bound late, so a filled slot's block takes the filler's origin."""
+        assert (
+            a_block_of(Origin.TEMPLATE_ENTRY).occupancy_kind is OccupancyKind.TEMPLATE_ENTRY_BLOCK
+        )
+
+    def test_no_block_maps_onto_the_slot_kind(self) -> None:
+        """The control on the pair above: a slot describes a slot, and blocks are not slots."""
+        kinds = {a_block_of(origin).occupancy_kind for origin in Origin}
+
+        assert OccupancyKind.SLOT_BLOCK not in kinds
+
+    @pytest.mark.parametrize(
+        "origin", ORIGINS_WITH_AN_AREA, ids=[origin.value for origin in ORIGINS_WITH_AN_AREA]
+    )
+    def test_a_block_carrying_an_area_stays_in_the_denominator(self, origin: Origin) -> None:
+        """B2 and the subtraction table agree: allocation to an Area is not removal.
+
+        The crossing is what makes the new member a vocabulary completion rather than an
+        arithmetic change. A concrete entry behaved this way already, by not being named at all.
+        """
+        assert is_subtracted(a_block_of(origin).occupancy_kind) is False
+
+    @pytest.mark.parametrize("origin", [Origin.FRAME, Origin.ANCHOR], ids=["frame", "anchor"])
+    def test_a_block_carrying_no_area_leaves_it(self, origin: Origin) -> None:
+        assert is_subtracted(a_block_of(origin).occupancy_kind) is True
 
 
 class TestWhatAPinHasToState:

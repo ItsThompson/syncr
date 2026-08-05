@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
+from syncr_domain.discretionary import OccupancyKind
 from syncr_domain.errors import DomainError
 from syncr_domain.identity import Origin, block_id
 from syncr_domain.reasons import require_a_finite_delta
@@ -67,6 +68,23 @@ ORIGINS_WITHOUT_AN_AREA: Final = frozenset({Origin.FRAME, Origin.ANCHOR})
 # A division has at least two chunks. One chunk is the whole task, which is spelled by
 # carrying no chunk number at all.
 MIN_SPLIT_COUNT: Final = 2
+
+# Which kind of span the discretionary-time denominator reads a block of each origin as.
+# Total over `Origin`, so a caller assembling the denominator converts a block rather than
+# deciding about one, and the subtraction table stays the single home of what each kind does.
+#
+# `OccupancyKind.SLOT_BLOCK` is deliberately not a value here: a slot's content is bound
+# late, so a FILLED slot's block carries the binding of the habit or task that filled it and
+# takes that origin. The kind describes the slot, not a block.
+_OCCUPANCY_BY_ORIGIN: Final[Mapping[Origin, OccupancyKind]] = {
+    Origin.FRAME: OccupancyKind.FRAME,
+    Origin.ANCHOR: OccupancyKind.ANCHOR,
+    Origin.PREP: OccupancyKind.PREP_BLOCK,
+    Origin.TRANSIT: OccupancyKind.TRANSIT_BLOCK,
+    Origin.TASK: OccupancyKind.TASK_BLOCK,
+    Origin.HABIT: OccupancyKind.HABIT_BLOCK,
+    Origin.TEMPLATE_ENTRY: OccupancyKind.TEMPLATE_ENTRY_BLOCK,
+}
 
 
 class PlanError(DomainError):
@@ -174,6 +192,17 @@ class Block:
     def split_index(self) -> int | None:
         """Which chunk of a divided task this is, read from the binding the id is derived from."""
         return self.binding.split_index
+
+    @property
+    def occupancy_kind(self) -> OccupancyKind:
+        """Which kind of span the discretionary-time denominator reads this block as.
+
+        Stated as a mapping into that vocabulary rather than as a second answer to "is this
+        subtracted", exactly as :attr:`~syncr_domain.gaps.ForbiddenWindow.occupancy_kind` is:
+        the subtraction table has one home, and a caller assembling the four subtrahends asks
+        it rather than reading an Area twice.
+        """
+        return _OCCUPANCY_BY_ORIGIN[self.origin]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
