@@ -33,6 +33,13 @@ import { primitivesDir } from "./kitStylesheets";
 
 const EXCLUDED_DIRECTORY = "__fixtures__";
 
+/* THE TREE IS READ ONCE PER ROOT, because the questions asked of it are asked per CLASS. Two layers ask "is this
+ * class named by anything the application renders" for every class they declare, which is roughly two hundred
+ * questions over roughly four hundred files: re-reading the tree per question is eighty thousand file reads, and it
+ * took the two layer-rule suites past the runner's own timeout as the application grew. The answer is the same for
+ * every question, so it is computed once. A test only ever reads. */
+const BY_ROOT = new Map<string, Promise<ComponentSource[]>>();
+
 export interface ComponentSource {
   /** The path relative to the root read, so a finding names the file a reader will open. */
   readonly name: string;
@@ -57,7 +64,15 @@ export function namesClass(source: string, className: string): boolean {
 }
 
 /** Every component under a root, the kit's own layer by default. */
-export async function componentSources(root: string = primitivesDir): Promise<ComponentSource[]> {
+export function componentSources(root: string = primitivesDir): Promise<ComponentSource[]> {
+  const held = BY_ROOT.get(root);
+  if (held !== undefined) return held;
+  const reading = readComponentSources(root);
+  BY_ROOT.set(root, reading);
+  return reading;
+}
+
+async function readComponentSources(root: string): Promise<ComponentSource[]> {
   const entries = await readdir(root, { withFileTypes: true, recursive: true });
   const files = entries
     .filter((entry) => entry.isFile())
