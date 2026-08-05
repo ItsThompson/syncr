@@ -2,14 +2,15 @@
 
 Every rule here is enforced by Postgres rather than by the code that writes a row, and each is
 asserted by inserting the row it must refuse. That distinction matters because these tables are
-written by code that does not exist yet: the outcome path, the conflict detector, the verdict
-recorder, and the solve coordinator all arrive later, and what stops them from writing a row
-that lies is the constraint rather than a review of their repository.
+written by code that does not exist yet: the conflict detector, the verdict recorder, and the
+solve coordinator all arrive later, and what stops them from writing a row that lies is the
+constraint rather than a review of their repository.
 
 The three partial and unique indexes carry the invariants the deployment notes call structural:
-one non-terminal solve per tenant per week, one active weight set per tenant, and one outcome
-per block and plan of record. Each is asserted to BITE here; the boundary suite asserts each is
-declared, which is the half that fails when a later migration drops one.
+one non-terminal solve per tenant per week, one active weight set per tenant, and one adjustment
+per kind and target. Each is asserted to BITE here; the boundary suite asserts each is declared,
+which is the half that fails when a later migration drops one. The outcome log's identity is a
+fourth: one row per block, whichever plan of record recorded it.
 """
 
 from __future__ import annotations
@@ -191,25 +192,28 @@ async def test_an_outcome_state_the_vocabulary_does_not_name_is_refused(
     )
 
 
-async def test_one_outcome_per_block_and_plan_of_record(
+async def test_one_outcome_per_block(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, revision_id: PlanRevisionId
 ) -> None:
-    # `(block_id, revision_id)` identifies an outcome. Two rows for one pair would make "what
-    # happened to this block" have two answers, and the retro would count it twice.
+    # `block_id` identifies an outcome. Two rows for one block would make "what happened to this"
+    # have two answers, and every consumer of the log is a count over the rows it is handed.
     await accepts(sessions, outcome(owner.tenant_id, revision_id, state="completed"))
 
     await refuses(
         sessions,
         outcome(owner.tenant_id, revision_id, state="skipped"),
-        "uq_block_outcomes_tenant_id_block_id_revision_id",
+        "uq_block_outcomes_tenant_id_block_id",
     )
 
 
-async def test_the_same_block_in_a_later_plan_of_record_is_a_second_outcome(
+async def test_the_same_block_in_a_later_plan_of_record_is_the_same_outcome(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, revision_id: PlanRevisionId
 ) -> None:
-    # The control for the index above: the pair is what identifies an outcome, so the same block
-    # under a different revision is a different fact rather than a duplicate.
+    # The case the identity was narrowed for, and the one the wider index permitted. A block id is
+    # a digest of the week and the binding, so a re-solve that places the same content again does
+    # not produce a second thing that happened: the user recorded one outcome about one block, and
+    # a revision boundary is not something they can see. Two rows here would put a rotation cursor
+    # a variant past the content the user actually did.
     async with sessions() as session, session.begin():
         later_revision = await PlanRepository(session, owner.tenant_id).append(
             document={"iso_week": str(WEEK), "blocks": []},
@@ -222,7 +226,24 @@ async def test_the_same_block_in_a_later_plan_of_record_is_a_second_outcome(
         )
 
     await accepts(sessions, outcome(owner.tenant_id, revision_id, state="completed"))
-    await accepts(sessions, outcome(owner.tenant_id, later_revision.id, state="completed"))
+    await refuses(
+        sessions,
+        outcome(owner.tenant_id, later_revision.id, state="completed"),
+        "uq_block_outcomes_tenant_id_block_id",
+    )
+
+
+async def test_a_different_block_under_one_revision_is_its_own_outcome(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord, revision_id: PlanRevisionId
+) -> None:
+    # The control for the index above: it must distinguish rather than refuse a second row. Two
+    # blocks of one week are two things that happened, whichever plan of record placed them.
+    another = block_id(WEEK, BindingRef.for_habit(uuid4(), index=1))
+
+    await accepts(sessions, outcome(owner.tenant_id, revision_id, state="completed"))
+    await accepts(
+        sessions, outcome(owner.tenant_id, revision_id, state="skipped", block_id=another)
+    )
 
 
 async def test_an_outcome_whose_binding_no_longer_exists_is_still_readable(

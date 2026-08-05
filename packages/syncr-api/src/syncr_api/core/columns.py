@@ -1,6 +1,6 @@
-"""The column vocabulary the plan-side tables share, and the check-constraint helper.
+"""The column vocabulary the plan-side tables share, and the two SQL helpers.
 
-Three things are stated here because four feature packages read them.
+Four things are stated here because four feature packages read them.
 
 ``JsonObject`` and ``JsonDocument`` are the two Python shapes of a ``JSONB`` column: what
 the mapper round-trips, and what a caller hands a repository to store. A document's
@@ -13,19 +13,23 @@ as its identifier (``2026-W07``) rather than as a year and a week number, becaus
 the identifier and sorting the week agree, and every read is either for one exact week or
 for an ordered range of them.
 
-``values_in`` renders a column's closed set of legal values as a check constraint. The set
-itself lives in the owning package's ``config.py``, so the database rejects a value the
-application does not name and neither statement of the set can drift alone.
+``values_in`` renders a column's closed set of legal values as a check constraint, and
+``json_key`` renders one key of a JSONB column as the expression an index is built over. The
+set and the key both live in the owning package, so neither statement of either can drift
+alone.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSONB
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from sqlalchemy.sql.elements import TextClause
 
 # The mutable mapping a JSONB column round-trips.
 type JsonObject = dict[str, Any]
@@ -43,6 +47,20 @@ NULLABLE_JSONB = JSONB(none_as_null=True)
 
 # `2026-W07`: four digits, `-W`, two digits.
 ISO_WEEK_LENGTH = 8
+
+
+def json_key(column: str, key: str) -> TextClause:
+    """The SQL an index over one key of a ``JSONB`` column is built over.
+
+    An expression index needs the extraction as SQL, and rendering it here means the index and
+    the writer name the same key: a caller passes the constant its own serializer writes rather
+    than a string spelled a second time. The rejection makes that a property of the call rather
+    than a convention, exactly as :func:`values_in`'s does: a key carrying a quote would close
+    the string and whatever followed would be read as SQL.
+    """
+    if "'" in key or "'" in column:
+        raise ValueError(f"{column}'s key carries a quote, which would end it: {key!r}")
+    return text(f"({column} ->> '{key}')")
 
 
 def values_in(column: str, values: Sequence[str]) -> str:

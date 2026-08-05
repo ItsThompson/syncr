@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING
 import pytest
 from sqlalchemy import Column, Index, MetaData, String, Table, Uuid
 
-from syncr_api.core.columns import values_in
+from syncr_api.core.columns import json_key, values_in
 from syncr_api.core.orm import Base
 from syncr_api.core.repository import TenantScopedReader, TenantScopedRepository
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
@@ -56,6 +56,7 @@ from syncr_api.plans.config import (
 from syncr_api.plans.models import PlanRevision  # noqa: F401 - registers the plan-side tables
 from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.stored_documents import BINDING, ENTITY_ID, KIND
 from syncr_api.solving.config import NON_TERMINAL_STATUSES, OPERATIONS_TABLE, SOLVE
 from syncr_api.solving.models import Operation  # noqa: F401 - registers its table
 from tests.boundaries import package_mapped_classes, public_methods, table_names
@@ -116,10 +117,10 @@ DOMINANT_READS: dict[str, tuple[tuple[str, ...], ...]] = {
     WEIGHT_SETS_TABLE: ((TENANT_ID_COLUMN,),),
     # The solver reads a week's pins as a hard constraint.
     PINS_TABLE: ((TENANT_ID_COLUMN, "iso_week"),),
-    # A span of days for the ledger and the retro, and one outcome by its identity.
+    # A span of days for the ledger and the retro, and one outcome by the block it is about.
     BLOCK_OUTCOMES_TABLE: (
         (TENANT_ID_COLUMN, "occurred_at"),
-        (TENANT_ID_COLUMN, "block_id", "revision_id"),
+        (TENANT_ID_COLUMN, "block_id"),
     ),
     # A fitter reads a window of edits, newest first.
     EDIT_EVENTS_TABLE: ((TENANT_ID_COLUMN, "created_at"),),
@@ -301,15 +302,38 @@ def test_one_adjustment_per_week_kind_and_target_is_a_unique_index() -> None:
     ]
 
 
-def test_one_outcome_per_block_and_revision_is_a_unique_index() -> None:
-    index = named_index(BLOCK_OUTCOMES_TABLE, "uq_block_outcomes_tenant_id_block_id_revision_id")
+def test_one_outcome_per_block_is_a_unique_index() -> None:
+    # Narrowed from `(tenant_id, block_id, revision_id)`. A block id is a digest of the week and
+    # the binding, so one content instance in one week keeps one id however many revisions place
+    # it, and every consumer of this table is a COUNT over the rows it is handed. The wider index
+    # let one habit occurrence hold a row per revision, which a count reads as several
+    # occurrences: a rotation cursor lands a variant past the content the user did.
+    index = named_index(BLOCK_OUTCOMES_TABLE, "uq_block_outcomes_tenant_id_block_id")
 
     assert index.unique is True
-    assert [column.name for column in index.columns] == [
-        TENANT_ID_COLUMN,
-        "block_id",
-        "revision_id",
+    assert [column.name for column in index.columns] == [TENANT_ID_COLUMN, "block_id"]
+
+
+def test_the_habit_projection_reads_an_index_over_the_keys_a_binding_is_written_with() -> None:
+    # An expression index, so it cannot be checked by column name. What matters is that the two
+    # keys it extracts are the ones `stored_binding` writes: an index over a key nobody writes is
+    # a sequential scan with no symptom, and the read it serves runs once per habit collection.
+    index = named_index(BLOCK_OUTCOMES_TABLE, "ix_block_outcomes_tenant_id_binding_entity")
+    rendered = [str(expression) for expression in index.expressions]
+
+    assert index.unique is False
+    assert rendered == [
+        f"{BLOCK_OUTCOMES_TABLE}.{TENANT_ID_COLUMN}",
+        f"({BINDING} ->> '{KIND}')",
+        f"({BINDING} ->> '{ENTITY_ID}')",
     ]
+
+
+def test_a_json_key_expression_refuses_a_key_that_would_end_the_string() -> None:
+    # The control for the helper the index above is built with. Every caller passes a constant, so
+    # the rejection is what makes that a property of the call rather than a convention.
+    with pytest.raises(ValueError, match="carries a quote"):
+        json_key(BINDING, "kind' OR true --")
 
 
 # --------------------------------------------------------------------------------

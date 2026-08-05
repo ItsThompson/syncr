@@ -22,13 +22,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_domain.outcomes import RecordedOutcome
+
 if TYPE_CHECKING:
     from datetime import datetime
     from uuid import UUID
 
     from syncr_api.core.columns import JsonObject
     from syncr_api.plans.config import AdjustmentKind, RevisionReason, RevisionStatus
-    from syncr_domain.identifiers import OperationId, PlanRevisionId, TenantId
+    from syncr_domain.identifiers import (
+        BlockOutcomeId,
+        OperationId,
+        PlanRevisionId,
+        TenantId,
+    )
+    from syncr_domain.identity import BindingRef, BlockId
+    from syncr_domain.intervals import Interval
+    from syncr_domain.outcomes import OutcomeState
     from syncr_domain.weeks import IsoWeek
 
 
@@ -83,3 +93,50 @@ class WeekAdjustmentRecord:
     delta_minutes: int | None
     created_at: datetime
     created_by_operation_id: OperationId
+
+
+@dataclass(frozen=True, slots=True)
+class BlockOutcomeRecord:
+    """What the log says happened to one block, as persistence knows it.
+
+    The record carries a rebuilt ``BindingRef`` and an ``Interval`` where the table carries a
+    JSONB object and two columns. That is the whole reason it exists rather than the row being
+    passed around: every reader of an outcome wants the identity as one value and the span as one
+    value, and rebuilding either in a second place is how two readers would come to disagree about
+    which block a row names.
+
+    ``confirmed_at`` is the instant the DAY was settled, not the instant this row was written. A
+    row with none is a statement about the block on a day the user has not answered for, which is
+    what excludes it from reviews and from learning.
+    """
+
+    id: BlockOutcomeId
+    tenant_id: TenantId
+    block_id: BlockId
+    binding: BindingRef
+    revision_id: PlanRevisionId
+    state: OutcomeState
+    actual_minutes: int | None
+    actual_interval: Interval | None
+    occurred_at: datetime
+    confirmed_at: datetime | None
+
+    @property
+    def is_confirmed(self) -> bool:
+        """Whether the day this outcome belongs to has been settled."""
+        return self.confirmed_at is not None
+
+    def as_domain(self) -> RecordedOutcome:
+        """The domain value the attribution table is stated over.
+
+        Where persistence meets the invariants: a ``partial`` stored with no minutes, by hand in
+        ``psql`` say, is refused here rather than silently attributing its planned span. The check
+        constraints refuse the same pair, so this is the second reading of one rule rather than the
+        only one.
+        """
+        return RecordedOutcome(
+            binding=self.binding,
+            state=self.state,
+            actual_minutes=self.actual_minutes,
+            actual_interval=self.actual_interval,
+        )

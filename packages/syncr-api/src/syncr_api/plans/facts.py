@@ -26,7 +26,7 @@ from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from syncr_api.core.columns import ISO_WEEK_LENGTH, JsonObject, values_in
+from syncr_api.core.columns import ISO_WEEK_LENGTH, JsonObject, json_key, values_in
 from syncr_api.core.orm import Base
 from syncr_api.core.tenancy import TENANT_ID_COLUMN, TenantScoped
 from syncr_api.plans.config import (
@@ -46,6 +46,7 @@ from syncr_api.plans.config import (
     VERDICT_SURFACES,
     WEEK_ADJUSTMENTS_TABLE,
 )
+from syncr_api.plans.stored_documents import BINDING, ENTITY_ID, KIND
 
 STATE_LENGTH = 16
 KIND_LENGTH = 24
@@ -93,11 +94,18 @@ class Pin(Base, TenantScoped):
 
 
 class BlockOutcome(Base, TenantScoped):
-    """What actually happened to one block in one plan of record.
+    """What actually happened to one block, in the plan of record it was recorded against.
 
     ``binding`` is denormalized onto the row so an outcome survives its block's binding
     ceasing to exist, which is also what lets a corrected confirmation re-derive rotation
     cursors and outstanding debt.
+
+    **One row per block, ever**, which is what the unique index below says. A block id is a
+    digest of the week and the binding, so one content instance in one week keeps one id
+    however many revisions place it, and every consumer of this table is a COUNT over the
+    rows it is handed: two rows for one habit occurrence move a rotation cursor a variant
+    past the content the user actually did. ``revision_id`` therefore names the plan of
+    record the outcome was recorded AGAINST, restated when a correction is recorded.
     """
 
     __tablename__ = BLOCK_OUTCOMES_TABLE
@@ -137,17 +145,29 @@ class BlockOutcome(Base, TenantScoped):
             "(actual_starts_at IS NULL) = (actual_ends_at IS NULL)",
             name="actual_interval_is_whole",
         ),
-        # An outcome is a fact about one block in one plan of record, so the pair
-        # identifies it. Led by the tenant because every read is scoped by one.
+        # An outcome is a fact about one block, so the block identifies it. A block id is a
+        # digest of the week and the binding, which is what makes one content instance in one
+        # week one row rather than one per revision that placed it. Led by the tenant because
+        # every read is scoped by one.
         Index(
-            "uq_block_outcomes_tenant_id_block_id_revision_id",
+            "uq_block_outcomes_tenant_id_block_id",
             TENANT_ID_COLUMN,
             "block_id",
-            "revision_id",
             unique=True,
         ),
         # The day ledger and the retro both read a span of days.
         Index("ix_block_outcomes_tenant_id_occurred_at", TENANT_ID_COLUMN, "occurred_at"),
+        # The rotation cursor and outstanding debt read every row whose binding names one of a
+        # set of habits, which neither index above offers: one leads with the instant and the
+        # other with the block. Declared as an expression index over the two keys the match is
+        # an equality on, so the tenant is part of the index condition rather than a filter
+        # applied after another tenant's rows have been read.
+        Index(
+            "ix_block_outcomes_tenant_id_binding_entity",
+            TENANT_ID_COLUMN,
+            json_key(BINDING, KIND),
+            json_key(BINDING, ENTITY_ID),
+        ),
     )
 
 
