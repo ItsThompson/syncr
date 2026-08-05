@@ -23,6 +23,7 @@ import pytest
 
 from syncr_domain.intervals import Interval, IntervalError, IntervalSet
 from syncr_domain.plan import PlanError
+from syncr_domain.templates import BindingTarget, TemplateEntryKind
 from syncr_domain.weeks import IsoWeek
 from syncr_solver.inputs import (
     AreaBudget,
@@ -278,3 +279,77 @@ def test_an_inherited_span_that_fills_the_whole_week_is_accepted() -> None:
     whole = Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(days=7))
 
     assert inputs(frame_overhang=(whole,)).frame_overhang == (whole,)
+
+
+# --------------------------------------------------------------------------------
+# What a template entry of each kind carries
+# --------------------------------------------------------------------------------
+
+
+def an_entry(kind: TemplateEntryKind, **overrides: object) -> MaterializedEntry:
+    stated: dict[str, object] = {
+        "entry_id": uuid4(),
+        "occurrence_key": "2026-02-09",
+        "kind": kind,
+        "interval": Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(minutes=15)),
+        "flex_band_minutes": 0,
+        "area_id": uuid4(),
+    }
+    stated.update(overrides)
+    return MaterializedEntry(**stated)  # type: ignore[arg-type]
+
+
+def test_a_concrete_entry_carries_the_content_it_names_and_the_name_of_it() -> None:
+    binding = EntryBinding(target=BindingTarget.HABIT, entity_id=uuid4())
+
+    entry = an_entry(TemplateEntryKind.CONCRETE, binding=binding, title="Shower")
+
+    assert (entry.binding, entry.title) == (binding, "Shower")
+
+
+def test_a_slot_carries_neither_a_binding_nor_a_name_because_nothing_is_chosen_yet() -> None:
+    entry = an_entry(TemplateEntryKind.SLOT)
+
+    assert (entry.binding, entry.title) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("kind", "overrides"),
+    [
+        (TemplateEntryKind.CONCRETE, {"title": "Shower"}),
+        (
+            TemplateEntryKind.CONCRETE,
+            {"binding": EntryBinding(target=BindingTarget.HABIT, entity_id=uuid4())},
+        ),
+        (TemplateEntryKind.CONCRETE, {"binding": None, "title": ""}),
+        (
+            TemplateEntryKind.SLOT,
+            {"binding": EntryBinding(target=BindingTarget.ROUTINE, entity_id=uuid4())},
+        ),
+        (TemplateEntryKind.SLOT, {"title": "Shower"}),
+    ],
+)
+def test_half_a_content_statement_is_refused_whichever_half_it_is(
+    kind: TemplateEntryKind, overrides: dict[str, object]
+) -> None:
+    # The block an entry becomes renders the resolved content name, so a name and the content it
+    # names arrive together or neither does. Both directions, because each has its own failure: a
+    # concrete entry missing either half cannot be placed, and a slot carrying either would be a
+    # concrete entry claiming to bind late.
+    with pytest.raises(PlanError):
+        an_entry(kind, **overrides)
+
+
+def test_an_entry_of_either_kind_carries_the_area_its_minutes_are_charged_to() -> None:
+    # Required for both kinds, because a block that is neither the frame nor an anchor carries an
+    # Area. For a concrete entry the producer resolves it from the content; there is no field for
+    # "no Area", so an entry nothing can charge is not representable here.
+    assert "area_id" in {field.name for field in dataclasses.fields(MaterializedEntry)}
+    with pytest.raises(TypeError):
+        MaterializedEntry(  # type: ignore[call-arg]
+            entry_id=uuid4(),
+            occurrence_key="2026-02-09",
+            kind=TemplateEntryKind.SLOT,
+            interval=Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(minutes=15)),
+            flex_band_minutes=0,
+        )
