@@ -66,6 +66,12 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
+# ``DeadlineDemand`` is defined beside the probe that reads it, and re-exported here so a reader
+# of this struct's fields finds the type next to them. The redundant alias is the explicit
+# re-export form: an implicit one is invisible to a strict type checker.
+from syncr_domain.feasibility import DeadlineDemand as DeadlineDemand
+from syncr_domain.feasibility import FloorReservation, ProbeInputs, ScopedWindow
+from syncr_domain.gaps import ForbiddenScope
 from syncr_domain.intervals import IntervalSet, as_instant
 from syncr_domain.plan import PlanError, require_a_zone_for_every_day
 from syncr_domain.templates import TemplateEntryKind
@@ -222,29 +228,6 @@ class EligibleTask:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class DeadlineDemand:
-    """How much work one Area owes before one deadline.
-
-    ``remaining_minutes`` is net, deadline-scoped, and ``max()``-corrected: per task it is
-    the corrected estimate less ``max(recorded, minutes placed in the past before the
-    deadline)`` less minutes placed in the future before the deadline, and EVERY placement
-    counts, pinned or not.
-
-    **This is the PROBE's quantity.** It is read by ``for_probe()`` and by nothing else.
-    The solver reads ``EligibleTask.remaining_minutes``.
-
-    ``labels`` names the tasks that contribute, for the shortfall message. Several tasks
-    sharing one deadline in one Area are one demand, because the probe compares a demand
-    against the capacity that Area has before that instant.
-    """
-
-    deadline: Instant
-    remaining_minutes: int
-    area_id: AreaId
-    labels: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
 class AreaBudget:
     """One Area's floors, target, and what is already placed in it, for this week.
 
@@ -255,6 +238,9 @@ class AreaBudget:
     """
 
     area_id: AreaId
+    # The Area's own name, carried because a shortfall names what cannot be satisfied in the
+    # user's words, and the probe resolves no identifier: it performs no lookup at all.
+    name: str
     # NET of IMMOVABLE placements in this Area only, clamped at zero. The SOLVER's
     # quantity, read by H9 and by nothing else: an unpinned block is about to be
     # re-placed, so reserving against it would let the solver under-place the floor by
@@ -478,6 +464,79 @@ class SolveInputs:
         overhang is occupancy for exactly the same reason this week's own occurrences are.
         """
         return frame_occupancy(self.frame, self.frame_overhang)
+
+    def committed_occupancy(self) -> IntervalSet:
+        """Every span this week has already committed to something: the plan's blocks and the pins.
+
+        **A pin and the live-plan block it pins are one placement.** They are paired by binding
+        and the pin's interval wins, because that is where the block is. Unioned unpaired, a
+        dragged block would occupy both where it was and where the user put it, and free capacity
+        would lose an hour the week still has.
+
+        The api's netting states the same pairing over per-placement attribution, because it needs
+        each placement's Area and whether the solver may still move it. The two are crossed
+        against each other in the api suite rather than one being written in terms of the other:
+        this is a union of intervals and that is an index by task and by Area.
+        """
+        pinned = {pin.binding for pin in self.pins}
+        blocks = () if self.live_plan is None else self.live_plan.blocks
+        return IntervalSet(
+            [
+                *(block.interval for block in blocks if block.binding not in pinned),
+                *(pin.interval for pin in self.pins),
+            ]
+        )
+
+    def for_probe(self) -> ProbeInputs:
+        """The capacity arithmetic's reading of this week. A projection, not a second assembly.
+
+        It splits the forbidden windows by scope, flattens the typed collections into interval
+        sets, and carries the netted demands and reservations forward **verbatim**. It computes no
+        netting: the assembler did that, and re-deriving it here is the one mistake this
+        projection must not make. No lookup and no clock read either, so two projections of one
+        assembly are equal.
+
+        The verdict's own instant is the instant this assembly was stamped with. A verdict is a
+        fact about one assembly, so reading a clock here would make it irreproducible from stored
+        inputs for the sake of the microseconds between the two.
+
+        **``shadow_blocks`` is deliberately absent.** A prep or transit block carries an Area, so
+        it is discretionary time allocated to that Area rather than removed from the week, and the
+        probe sees it through ``placed`` once a plan holds it. Before a week is first solved it
+        holds none, so the probe counts that time as free: capacity arithmetic then over-credits
+        rather than over-reports, which is the only direction a check that may not prove
+        feasibility can safely err in.
+        """
+        return ProbeInputs(
+            span=self.span,
+            now=self.now,
+            computed_at=self.now,
+            input_version=self.input_version,
+            frame=self.frame_occupancy(),
+            anchors=IntervalSet(anchor.interval for anchor in self.anchors),
+            absolute_forbidden=IntervalSet(
+                window.interval
+                for window in self.forbidden_windows
+                if window.scope is ForbiddenScope.ALL
+            ),
+            scoped_forbidden=tuple(
+                ScopedWindow(interval=window.interval, forbidden_area_ids=window.forbidden_area_ids)
+                for window in self.forbidden_windows
+                if window.scope is ForbiddenScope.AREAS
+            ),
+            off_plan=IntervalSet(period.interval for period in self.off_plan),
+            placed=self.committed_occupancy(),
+            area_floor_reservations=tuple(
+                FloorReservation(
+                    area_id=area.area_id,
+                    reserved_minutes=area.floor_reservation_minutes,
+                    label=area.name,
+                )
+                for area in self.areas
+            ),
+            area_targets={area.area_id: area.target_minutes for area in self.areas},
+            deadline_demands=self.deadline_demands,
+        )
 
     @property
     def seed(self) -> int:

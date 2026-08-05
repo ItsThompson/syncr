@@ -193,10 +193,15 @@ def a_recovery_window(
 
 
 def an_area_budget(
-    *, area_id: AreaId = FITNESS, target_minutes: int = 0, floor_minutes: int = 0
+    *,
+    area_id: AreaId = FITNESS,
+    target_minutes: int = 0,
+    floor_minutes: int = 0,
+    name: str = "Fitness",
 ) -> AreaBudget:
     return AreaBudget(
         area_id=area_id,
+        name=name,
         floor_minutes=floor_minutes,
         floor_reservation_minutes=floor_minutes,
         target_minutes=target_minutes,
