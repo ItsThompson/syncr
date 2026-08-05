@@ -6,6 +6,16 @@ Area, so it refuses a candidate that would take time some other Area still needs
 a cap comes from an Area preference and no override may relax it, and a floor is breached only
 through an approved concession, never by the solver on its own.
 
+## Neither judges a placement the solver cannot move
+
+A rule that judges a CHOICE has nothing to say about a placement nothing can move: refusing a past
+block, a pin, or a block fixed by derivation at its own span would drop a block the week already
+holds rather than correct anything, and it would do so one rule before H10 and H11 could say the
+placement is the one being preserved. Step 1 of the algorithm lists exactly those as the space
+rather than as candidates inside it. So both rules pass over a candidate the state holds immovably
+at its own span, which is a wider exception than the occupancy rules take, and deliberately: a
+derived buffer colliding with another derived buffer IS a refusal a derivation has to make.
+
 ## Both measure over what the state holds, and the caller states that
 
 A candidate's own Area minutes are not on the inputs: ``AreaBudget`` carries a whole-week figure,
@@ -55,6 +65,8 @@ def area_daily_cap(candidate: Placement, state: PartialPlan) -> Blocked | None:
     past its cap by placing it, so reporting one would name a rejection this candidate did not
     cause.
     """
+    if state.holds_immovably(candidate):
+        return None
     area = _budget_of(state.areas, candidate.area_id)
     if area is None or area.max_per_day_minutes is None:
         return None
@@ -81,7 +93,7 @@ def area_floor(candidate: Placement, state: PartialPlan) -> Blocked | None:
     this rule refuses fewer candidates than the capacity check the verdict is taken from. A hard
     constraint that may not prove feasibility can only safely err that way.
     """
-    if candidate.area_id is None:
+    if candidate.area_id is None or state.holds_immovably(candidate):
         return None
     free = state.discretionary().subtract(_spans(state.placed, including=candidate))
     owing = [(area, owed) for area in state.areas if (owed := _owed(area, state, candidate)) > 0]
@@ -104,12 +116,13 @@ def _owed(area: AreaBudget, state: PartialPlan, candidate: Placement) -> int:
 
     Netted against the placements the floor figure has not already accounted for, which is every
     placement except one that has started and a pin. That is the same set the assembler subtracted
-    when it computed ``floor_minutes``, so the two readings cannot count one minute twice.
+    when it computed ``floor_minutes``, so the two readings cannot count one minute twice. The
+    candidate is filtered on the same rule as the rest: a past block offered somewhere ELSE reaches
+    this rule, because H10 refuses it one row later, and its minutes are already in the figure.
     """
     placed = _spans(
-        [item for item in state.placed if not _already_netted(item, state)],
+        [item for item in (*state.placed, candidate) if not _already_netted(item, state)],
         area_id=area.area_id,
-        including=candidate if candidate.area_id == area.area_id else None,
     )
     return max(0, area.floor_minutes - placed.total_minutes())
 

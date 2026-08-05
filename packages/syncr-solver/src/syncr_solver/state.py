@@ -236,20 +236,23 @@ class PartialPlan:
             off_plan=IntervalSet(period.interval for period in self.off_plan),
         )
 
-    def claimed(self, area_id: AreaId, *, including: Placement | None = None) -> IntervalSet:
-        """The spans this Area's placements cover, unioned so a minute claimed twice counts once.
+    def holds_immovably(self, candidate: Placement) -> bool:
+        """Whether the week already holds this candidate's content at exactly this span.
 
-        Unioned rather than summed, which is what keeps a user-authored overlap inside one Area
-        from reading as twice the time: two blocks over one hour occupy one hour of the day. The
-        solver's own placements never overlap, because H4 forbids it, so the two readings differ
-        only where the user has already overlapped something by hand.
+        A placement the solver cannot move is not a choice it is making, so a rule that judges a
+        CHOICE has nothing to say about one: refusing it would drop a block the week holds rather
+        than correct anything. Step 1 of the algorithm says as much, listing the past blocks, the
+        pins and the derived blocks as the space rather than as candidates inside it.
+
+        Read by the two allocation rules and by nothing else. The occupancy rules read a narrower
+        exception, the user's own pin alone, because a derived buffer colliding with another derived
+        buffer IS a refusal a derivation has to make.
         """
-        offered = () if including is None else (including,)
-        return IntervalSet(
-            placement.interval
-            for placement in (*self.placed, *offered)
-            if placement.area_id == area_id
-        )
+        for index in (self.started, self.immovable):
+            held = index.get(candidate.binding)
+            if held is not None and held.interval == candidate.interval:
+                return True
+        return False
 
 
 def _require_a_sizing_matching_the_kind(kind: BindingKind, sizing: Sizing | None) -> None:

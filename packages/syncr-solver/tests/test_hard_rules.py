@@ -171,7 +171,9 @@ def broke_h8(state: PartialPlan) -> bool:
         if area.max_per_day_minutes is None:
             continue
         claimed = IntervalSet(
-            placement.interval for placement in state.placed if placement.area_id == area.area_id
+            placement.interval
+            for placement in state.placed
+            if placement.area_id == area.area_id and not immovable_at(placement, state)
         )
         for day in state.days:
             if claimed.clip(day.interval).total_minutes() > area.max_per_day_minutes:
@@ -185,7 +187,14 @@ def broke_h9(state: PartialPlan) -> bool:
     An invariant of the finished plan rather than of one candidate: H9 preserves it at every step,
     so the last accepted placement leaves it true. The weeks below all begin with it true, so a plan
     that breaks it broke it by placing something.
+
+    Stated over what the solver CHOSE, because a placement it cannot move is not a choice: a plan
+    has to hold its own past blocks whether or not the budgets close around them, and the last such
+    placement would otherwise be blamed for a state the inputs arrived in.
     """
+    chosen = tuple(placement for placement in state.placed if not immovable_at(placement, state))
+    if not chosen:
+        return False
     claimed = IntervalSet(
         placement.interval for placement in state.placed if placement.area_id is not None
     )
@@ -196,7 +205,7 @@ def broke_h9(state: PartialPlan) -> bool:
             area.floor_minutes
             - IntervalSet(
                 placement.interval
-                for placement in state.placed
+                for placement in chosen
                 if placement.area_id == area.area_id
                 and placement.binding not in state.started
                 and placement.binding not in state.pins
@@ -265,6 +274,19 @@ def exempt(kind: ForbiddenKind, anchor_id: UUID, placement: Placement) -> bool:
 def authored(placement: Placement, state: PartialPlan) -> bool:
     """Whether this placement is the user's own, at the interval the user chose."""
     return state.pins.get(placement.binding) == placement.interval
+
+
+def immovable_at(placement: Placement, state: PartialPlan) -> bool:
+    """Whether the week already held this content at exactly this span, so nothing chose it.
+
+    The two allocation rules pass over such a placement, and so must the two oracles that judge
+    them: a plan has to hold its own past blocks whether or not the budgets close around them.
+    """
+    for index in (state.started, state.immovable):
+        held = index.get(placement.binding)
+        if held is not None and held.interval == placement.interval:
+            return True
+    return False
 
 
 ORACLE_BY_RULE = {

@@ -31,6 +31,7 @@ from tests.materialized_weeks import (
     a_candidate,
     a_live_plan,
     a_pin,
+    a_transit_block,
     an_area_budget,
     an_off_plan_period,
     at,
@@ -409,3 +410,75 @@ def test_a_week_declaring_no_floors_refuses_nothing() -> None:
     assert (
         area_floor(a_candidate(Interval(at(0), at(3)), binding=GYM), PartialPlan.of(week)) is None
     )
+
+
+# --------------------------------------------------------------------------------
+# What neither rule judges: a placement nothing can move
+# --------------------------------------------------------------------------------
+
+
+def test_a_block_that_has_begun_is_judged_by_neither_allocation_rule() -> None:
+    # Refusing it would drop a block the week already holds, and it would do so one rule before H10
+    # could say the placement is the one being preserved. Both figures are deliberately arranged so
+    # that a rule reading them would refuse: two hours of a one-hour cap, and a floor that cannot be
+    # met from what is left.
+    started = a_block(binding=GYM, interval=Interval(at(0), at(2)))
+    week = inputs(
+        **NARROW_WEEK,
+        areas=(an_area_budget(floor_minutes=3 * HOUR, max_per_day_minutes=HOUR),),
+        live_plan=a_live_plan(started),
+    )
+    candidate = a_candidate(Interval(at(0), at(2)), binding=GYM)
+    state = PartialPlan.of(week)
+
+    assert state.holds_immovably(candidate)
+    assert area_daily_cap(candidate, state) is None
+    assert area_floor(candidate, state) is None
+
+
+def test_the_same_block_offered_somewhere_else_is_judged_and_counted_once() -> None:
+    # A past block offered at another span reaches both rules, because H10 refuses it one row later.
+    # Its minutes are already inside `floor_minutes`, so the floor owes its whole residual: netting
+    # them again would report a smaller gap than the week has.
+    started = a_block(binding=GYM, interval=Interval(at(0), at(1)))
+    week = inputs(
+        **NARROW_WEEK,
+        areas=(an_area_budget(floor_minutes=2 * HOUR),),
+        live_plan=a_live_plan(started),
+    )
+    moved = a_candidate(Interval(at(1), at(3)), binding=GYM)
+    state = PartialPlan.of(week)
+
+    assert not state.holds_immovably(moved)
+    rejection = area_floor(moved, state)
+
+    assert rejection is not None
+    assert rejection.detail == "Fitness still owes 120m of its floor, and 60m is free"
+
+
+def test_a_pin_and_a_block_fixed_by_derivation_are_the_other_two_the_rules_pass_over() -> None:
+    # The exception is wider than the occupancy rules take, on purpose: those except the user's own
+    # placement alone, because a derived buffer colliding with another IS a refusal a derivation has
+    # to make. A budget is not a collision.
+    transit = a_transit_block(
+        anchor_id=UUID(int=51), interval=Interval(at(0), at(2)), area_id=CAREER
+    )
+    week = inputs(
+        **NARROW_WEEK,
+        areas=(
+            an_area_budget(floor_minutes=3 * HOUR),
+            an_area_budget(area_id=CAREER, name="Career", max_per_day_minutes=HOUR),
+        ),
+        shadow_blocks=(transit,),
+        pins=(a_pin(binding=READING, interval=Interval(at(0), at(2))),),
+    )
+    state = PartialPlan.of(week)
+    derived = a_candidate(
+        Interval(at(0), at(2)), binding=transit.binding, area_id=CAREER, title="Leave for Uni"
+    )
+    pinned = a_candidate(Interval(at(0), at(2)), area_id=CAREER, binding=READING)
+
+    for candidate in (derived, pinned):
+        assert state.holds_immovably(candidate)
+        assert area_daily_cap(candidate, state) is None
+        assert area_floor(candidate, state) is None
