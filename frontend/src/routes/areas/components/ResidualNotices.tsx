@@ -9,6 +9,11 @@
  * targets exceed discretionary time, and it is never rendered as a negative `Unallocated`: a budget that does
  * not fit is accepted and reported, never refused, and a negative vacancy is not a wedge.
  *
+ * A WEEK WITH NO DISCRETIONARY TIME GETS THE SENTENCE THAT EXPLAINS ITS ZEROES. A week declared off-plan from
+ * end to end has no denominator to divide, so neither residual has anything to say and both charts draw
+ * nothing; without this the reader would meet two empty panels and no reason for them. The api's own statement
+ * is rendered rather than paraphrased, and it is non-null exactly when the period was off-plan end to end.
+ *
  * BOTH NOTICES ARE STATIC AND NEITHER SPINS, because nothing in this product does. */
 
 import { NoticePanel } from "../../../ui/domain";
@@ -69,9 +74,33 @@ function oversubscriptionNotice(minutes: number, discretionary: number): Notice 
   };
 }
 
+function offPlanNotice(statement: string, minutes: number): Notice {
+  return {
+    id: "areas.off-plan",
+    volume: "panel",
+    pigment: "info",
+    title: "This week was declared off-plan",
+    detail: `${statement} ${asHours(minutes)} of it were declared off.`,
+    unavailable: [],
+    stillWorks: [
+      "Every Area's declared floor and share are unchanged",
+      "The next week you have not declared off reports its figures as usual",
+    ],
+    since: null,
+    action: null,
+    scope: { screen: "areas" },
+  };
+}
+
 export function ResidualNotices({ review }: ResidualNoticesProps) {
   const discretionary = review.discretionaryMinutes;
-  if (discretionary === null || discretionary === 0) return null;
+  const offPlan = review.offPlanStatement ?? null;
+  if (discretionary === null || discretionary === 0) {
+    /* Nothing to divide, so neither residual has a figure. The one thing a reader needs here is why. */
+    return offPlan === null ? null : (
+      <NoticePanel notice={offPlanNotice(offPlan, review.offPlanMinutes)} />
+    );
+  }
 
   const vacancy = review.unallocatedMinutes;
   const excess = review.oversubscriptionMinutes;

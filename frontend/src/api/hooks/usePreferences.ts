@@ -6,7 +6,8 @@
  * number of Areas is data, and React resolves hooks by call order.
  *
  * A MISSING PREFERENCE IS AN ANSWER. The routes 404 on the OWNER and never on the preference, so every Area
- * answers 200 and `declared` is null for one that has authored none. Nothing here treats that as an error.
+ * answers 200 and `declared` is null for one that has authored none. Nothing here treats that as an error, and
+ * an Area whose own read FAILED is absent from the set rather than fatal to it: see `readPreferences`.
  *
  * THE CAP IS ON THE AREA'S REQUEST SHAPE AND ON NO OTHER. A daily cap is a hard constraint and an Area's
  * alone, so an override's request shape has no field for one and sending it is a stated 422. That is the api's
@@ -48,9 +49,22 @@ async function readPreference(areaId: string): Promise<Preference> {
   );
 }
 
+/**
+ * Every named Area's preference, read together, with a failed one absent rather than fatal.
+ *
+ * `allSettled` rather than `all`, and that is the difference between one column degrading and the screen going
+ * down. The set is one request per Area, so one Area's route failing, or one Area deleted between the list read
+ * and these reads, would reject the whole set under `Promise.all`, and the screen's own reading would then turn
+ * the pie, the deviation rows and the budget sheet into a failure surface over a Preference cell. A rejected
+ * entry is simply not a member, which `PreferenceCell` already draws as a dash while still offering the act.
+ */
 async function readPreferences(areaIds: readonly string[]): Promise<PreferenceSet> {
-  const found = await Promise.all(areaIds.map((areaId) => readPreference(areaId)));
-  return Object.fromEntries(areaIds.map((areaId, index) => [areaId, found[index]]));
+  const found = await Promise.allSettled(areaIds.map((areaId) => readPreference(areaId)));
+  return Object.fromEntries(
+    found.flatMap((answered, index) =>
+      answered.status === "fulfilled" ? [[areaIds[index], answered.value]] : [],
+    ),
+  );
 }
 
 /**
