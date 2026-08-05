@@ -15,6 +15,7 @@
  * ordering is not re-decided here. */
 
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 
 import { Button } from "../../primitives";
 import { EmptyState } from "../status";
@@ -39,37 +40,38 @@ const TITLE: Readonly<Record<EmptyWeekReason, string>> = {
   setup_incomplete: "This week cannot be planned yet",
 };
 
-export function EmptyWeek({
-  reason,
-  statement,
-  setupHref,
-  extendHorizonHref,
-  onSolveNow,
-}: EmptyWeekProps) {
-  return <EmptyState action={actionsFor(reason)} detail={statement} title={TITLE[reason]} />;
-
-  /* Two actions for the horizon and one for the setup state, because the horizon has two honest repairs and a
-   * missing Area has exactly one. A reader is never asked to choose between two ways of fixing one thing.
-   *
-   * WIDENING THE HORIZON IS A DESTINATION AND SOLVING IS A REQUEST, so one is a real link and the other is a
-   * button. A link keeps middle-click, cmd-click and the browser's own affordances; a button is what a write is. */
-  function actionsFor(state: EmptyWeekReason): ReactNode {
-    if (state === "setup_incomplete") {
-      return (
-        <Button asChild rank="primary">
-          <a href={setupHref}>Finish setting up</a>
-        </Button>
-      );
-    }
+/* TWO ACTIONS FOR THE HORIZON AND ONE FOR THE SETUP STATE, because the horizon has two honest repairs and a missing
+ * Area has exactly one. A reader is never asked to choose between two ways of fixing one thing.
+ *
+ * WIDENING THE HORIZON IS A DESTINATION AND SOLVING IS A REQUEST, so one is a link and the other is a button. Both
+ * destinations are routes this application owns, so they are `Link`s: a raw `href` would reload the document,
+ * discarding the cache and re-running the gate and the bundle to reach a screen already in memory. A `Link` still
+ * renders a real anchor, so middle-click, cmd-click and the browser's own affordances are unaffected.
+ *
+ * Declared above the component rather than inside it, so a reader scanning for the body does not stop at a `return`
+ * with a helper hoisted below it. */
+function actionsFor(props: EmptyWeekProps): ReactNode {
+  if (props.reason === "setup_incomplete") {
     return (
-      <>
-        <Button asChild rank="secondary">
-          <a href={extendHorizonHref}>Extend the horizon</a>
-        </Button>
-        <Button onClick={onSolveNow} rank="primary">
-          Solve this week now
-        </Button>
-      </>
+      <Button asChild rank="primary">
+        <Link to={props.setupHref}>Finish setting up</Link>
+      </Button>
     );
   }
+  return (
+    <>
+      <Button asChild rank="secondary">
+        <Link to={props.extendHorizonHref}>Extend the horizon</Link>
+      </Button>
+      <Button onClick={props.onSolveNow} rank="primary">
+        Solve this week now
+      </Button>
+    </>
+  );
+}
+
+export function EmptyWeek(props: EmptyWeekProps) {
+  return (
+    <EmptyState action={actionsFor(props)} detail={props.statement} title={TITLE[props.reason]} />
+  );
 }

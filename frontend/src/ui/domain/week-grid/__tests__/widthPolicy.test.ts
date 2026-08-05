@@ -42,7 +42,13 @@ const pixels = async (property: string): Promise<number> => {
 /* What a day column loses to the block's own chrome before a character fits: the 1px inset either side, the 3px state
  * rule, and --block-pad-x either side. The ledger in the design record works backwards through exactly these. */
 const CHROME_PX = 2 * 1 + 3 + 2 * 5;
-/** The measured advance of one character at --fs-block in the mono face, from the design record's own ledger. */
+/**
+ * The measured advance of one character at --fs-block in the mono face.
+ *
+ * A MEASUREMENT RATHER THAN A MIRROR, and the one figure in this component that is held against nothing: it comes
+ * from the design record's own character ledger, measured in JetBrains Mono at 11.5px, and a change of face or of
+ * --fs-block would move it silently. Everything else here is read from the file that declares it.
+ */
 const CHARACTER_PX = 7.02;
 const CHARACTER_FLOOR = 17;
 

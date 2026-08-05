@@ -54,6 +54,13 @@ function band(id: string, startMs: number, endMs: number): WeekBand {
   };
 }
 
+/** The day before an ISO date, so a span can be given a start outside the week under test. */
+function previousDate(isoDate: string): string {
+  const at = new Date(`${isoDate}T00:00:00Z`);
+  at.setUTCDate(at.getUTCDate() - 1);
+  return at.toISOString().slice(0, 10);
+}
+
 function modelOf(
   week: DstWeek,
   blocks: readonly WeekBlock[] = [],
@@ -212,6 +219,33 @@ describe("a span crossing midnight inside the week", () => {
 });
 
 describe("no block is clipped, on either week and at every edge", () => {
+  /* THE INVARIANT HAS TWO BOUNDS AND ONLY ONE OF THEM IS UNCONDITIONAL. Nothing is clipped for a span that starts
+   * inside the week: the pieces sum to its own duration, asserted below over six shapes per week. A span that starts
+   * BEFORE the week IS clipped at the first column, and that is correct rather than a defect: the minutes before
+   * Monday's own midnight are last week's, and drawing them above Monday's midnight line would put another week's
+   * time on this axis. Asserted so the invariant reads as bounded rather than as absolute.
+   *
+   * Whether the api sends a preceding week's frame occurrence at all is a different question and a server one: if it
+   * does not, Monday's small hours read as free while they are occupied. The arithmetic here is right either way. */
+  it.each(DST_WEEKS)("$label clips a span that began before the week", (week: DstWeek) => {
+    const before = block(
+      "leading-overhang",
+      wall(week, previousDate(week.dates[0]), "22:00"),
+      wall(week, week.dates[0], "06:00"),
+    );
+    const { days } = modelOf(week, [before]);
+    const pieces = days.flatMap((day) => day.blocks);
+    const drawn = pieces.reduce(
+      (total, piece) => total + (piece.span.endMin - piece.span.startMin),
+      0,
+    );
+
+    expect(pieces).toHaveLength(1);
+    expect(pieces[0].span.startMin).toBe(0);
+    expect(drawn).toBe(6 * 60);
+    expect(drawn).toBeLessThan((before.endMs - before.startMs) / MILLISECONDS_IN_MINUTE);
+  });
+
   it.each(DST_WEEKS)("$label", (week: DstWeek) => {
     const blocks = [
       block("overnight", wall(week, week.dates[0], "22:30"), wall(week, week.dates[1], "06:30")),

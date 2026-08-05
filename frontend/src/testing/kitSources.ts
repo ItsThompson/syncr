@@ -37,7 +37,10 @@ const EXCLUDED_DIRECTORY = "__fixtures__";
  * class named by anything the application renders" for every class they declare, which is roughly two hundred
  * questions over roughly four hundred files: re-reading the tree per question is eighty thousand file reads, and it
  * took the two layer-rule suites past the runner's own timeout as the application grew. The answer is the same for
- * every question, so it is computed once. A test only ever reads. */
+ * every question, so it is computed once. A test only ever reads.
+ *
+ * NEVER INVALIDATED, which is correct for a run-once process and is the one thing to know about it: under
+ * `vitest --watch` a source file changed mid-session is answered from the cache until the process restarts. */
 const BY_ROOT = new Map<string, Promise<ComponentSource[]>>();
 
 export interface ComponentSource {

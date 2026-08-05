@@ -5,6 +5,7 @@
  * verdict. The paint is a browser's business and the declarations are the stylesheet tests'. */
 
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import { EmptyWeek } from "../EmptyWeek";
@@ -12,6 +13,8 @@ import { SummaryStrip } from "../SummaryStrip";
 import { TimeAxis } from "../TimeAxis";
 import { WeekGrid } from "../WeekGrid";
 import { GRID_H_PX } from "../metrics";
+import type { ReactElement } from "react";
+
 import type { Extent, GridBlock, StripReadings, WeekDay } from "..";
 
 const EXTENT: Extent = { startMin: 300, endMin: 1440 };
@@ -47,6 +50,10 @@ function day(date: string, blocks: readonly GridBlock[] = []): WeekDay {
     bands: [],
   };
 }
+
+/* Both of the empty week's destinations are routes this application owns, so both are `Link`s and both need a router:
+ * a raw `href` would reload the document to reach a screen already in memory. */
+const renderEmpty = (element: ReactElement) => render(<MemoryRouter>{element}</MemoryRouter>);
 
 const READINGS: StripReadings = {
   scheduledMinutes: 4848,
@@ -307,7 +314,7 @@ describe("the week with no plan", () => {
   const actions = { onSolveNow: vi.fn<() => void>(), extendHorizonHref: "/settings" };
 
   it("offers the horizon's two repairs, and states the server's own sentence", () => {
-    render(
+    renderEmpty(
       <EmptyWeek
         {...actions}
         reason="outside_horizon"
@@ -327,7 +334,7 @@ describe("the week with no plan", () => {
   });
 
   it("offers exactly one repair for a missing input, because there is one", () => {
-    render(
+    renderEmpty(
       <EmptyWeek
         {...actions}
         reason="setup_incomplete"
@@ -344,7 +351,7 @@ describe("the week with no plan", () => {
   });
 
   it("names the missing input by rendering the server's statement rather than a wording of its own", () => {
-    render(
+    renderEmpty(
       <EmptyWeek
         {...actions}
         reason="setup_incomplete"
@@ -359,7 +366,7 @@ describe("the week with no plan", () => {
   });
 
   it("renders statically, with nothing that could spin", () => {
-    const { container } = render(
+    const { container } = renderEmpty(
       <EmptyWeek
         {...actions}
         reason="outside_horizon"
