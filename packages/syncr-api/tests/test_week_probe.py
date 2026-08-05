@@ -233,6 +233,29 @@ async def test_a_deadline_the_week_cannot_reach_names_the_task_and_honors_the_ot
     assert not verdict.feasible
 
 
+async def test_an_orphan_pin_takes_capacity_that_no_areas_reservation_nets() -> None:
+    # The Blocker-1 asymmetry one level deeper, recorded rather than fixed. A pin whose binding the
+    # live plan no longer holds carries no Area, so the netting gives it `area_id=None` and no
+    # Area's reservation nets it, while the probe's free capacity loses the hour. The floor gap is
+    # therefore over-reported by the pinned minutes, which is the forbidden direction.
+    #
+    # It is unreachable while nothing in this deployment writes a pin, and closing it needs an Area
+    # on the pin or a read of the binding's entity, which is ticket 1251's scope. This test states
+    # the direction so the next reader inherits a measurement instead of a surprise.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(5))
+    orphan = FakePlacements(
+        live_plan=a_plan(blocks=[]),
+        pins=[a_pin(binding=BindingRef.for_task(FITNESS_TASK), interval=between(10, 11, day=2))],
+    )
+
+    inputs = await an_assembly(areas=FakeAreas([fitness]), placements=orphan)
+    projected = inputs.for_probe()
+
+    assert projected.placed.total_minutes() == MINUTES_PER_HOUR
+    assert projected.area_floor_reservations[0].reserved_minutes == 5 * MINUTES_PER_HOUR
+    assert inputs.areas[0].placed_minutes == 0
+
+
 async def test_a_verdict_carries_the_version_and_the_instant_its_assembly_was_built_against() -> (
     None
 ):

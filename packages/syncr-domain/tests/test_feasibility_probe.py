@@ -19,6 +19,7 @@ import pytest
 
 from syncr_domain.discretionary import discretionary_time
 from syncr_domain.feasibility import Provenance, ScopedWindow, Shortfall, ShortfallKind, probe
+from syncr_domain.fixtures.dst_weeks import DST_WEEKS, DstWeek
 from syncr_domain.intervals import Interval, IntervalSet
 from tests.instants import at
 from tests.probe_weeks import (
@@ -596,3 +597,86 @@ def test_no_verdict_this_module_can_produce_reports_a_week_as_feasible(now: Inst
     )
 
     assert not probe(week).feasible
+
+
+# --- a week whose own length is not 168 hours ------------------------------------------------
+
+
+@pytest.mark.parametrize("week", DST_WEEKS, ids=[one.label for one in DST_WEEKS])
+def test_a_transition_week_is_measured_in_the_minutes_it_really_holds(week: DstWeek) -> None:
+    # The arithmetic is over instants and every figure it takes is elapsed minutes, so a daylight
+    # transition needs no special case. That is a claim, so it is measured: the spring week holds
+    # 167 hours and the autumn week 169, and the denominator is each week's own length.
+    probed = a_week(span=week.span, now=week.span.start, computed_at=week.span.start)
+
+    assert probe(probed).discretionary_minutes == week.span_minutes
+    assert probe(probed).shortfalls == ()
+
+
+@pytest.mark.parametrize("week", DST_WEEKS, ids=[one.label for one in DST_WEEKS])
+def test_a_floor_of_exactly_a_transition_weeks_length_fits_and_one_minute_more_does_not(
+    week: DstWeek,
+) -> None:
+    # The boundary between two kinds, on a week whose length is not the obvious figure: a floor of
+    # exactly the week reports nothing, and a minute more reports one minute, twice, because one
+    # infeasibility deliberately emits a whole-week row and a per-Area row.
+    def reserving(minutes: int) -> ProbeInputs:
+        return a_week(
+            span=week.span,
+            now=week.span.start,
+            computed_at=week.span.start,
+            area_floor_reservations=(a_reservation(FITNESS, minutes),),
+        )
+
+    assert probe(reserving(week.span_minutes)).shortfalls == ()
+    assert [gap.minutes for gap in probe(reserving(week.span_minutes + 1)).shortfalls] == [1, 1]
+
+
+# --- the size the arithmetic is budgeted at ---------------------------------------------------
+
+
+def test_the_arithmetic_answers_a_week_of_roughly_two_hundred_intervals() -> None:
+    # The size the latency budget is stated at, asserted as a size rather than as a duration: a
+    # timing assertion in a unit suite measures the machine it runs on. What this holds is that a
+    # week of that shape is an input the probe answers, and that the answer is the one the figures
+    # imply.
+    #
+    # 196 interval members across the five occupancy fields plus 20 scoped windows, 8 reservations
+    # and 8 demands, which is the shape `19-nonfunctional.md` budgets the pin path against.
+    occupied = IntervalSet(
+        Interval(at(hour, minute=quarter * 15, day=day), at(hour, minute=quarter * 15 + 5, day=day))
+        for day in range(7)
+        for hour in range(7)
+        for quarter in range(4)
+    )
+    week = a_week(
+        frame=NIGHTS,
+        anchors=occupied,
+        absolute_forbidden=occupying(Interval(at(16, day=2), at(17, day=2))),
+        off_plan=occupying(Interval(at(0, day=5), at(6, day=5))),
+        placed=occupying(Interval(at(10, day=2), at(12, day=2))),
+        scoped_forbidden=tuple(
+            ScopedWindow(
+                interval=Interval(at(18, day=day), at(19, day=day)), forbidden_area_ids=(STUDY,)
+            )
+            for day in range(7)
+        ),
+        area_floor_reservations=(
+            a_reservation(FITNESS, 300),
+            a_reservation(CAREER, 180),
+            a_reservation(STUDY, 120),
+        ),
+        deadline_demands=tuple(
+            a_demand(CAREER, 60, at(9, day=day), label=f"Task {day}") for day in range(1, 7)
+        ),
+    )
+
+    members = sum(
+        len(occupancy)
+        for occupancy in (week.frame, week.anchors, week.absolute_forbidden, week.off_plan)
+    )
+    verdict = probe(week)
+
+    assert members >= 190
+    assert verdict.discretionary_minutes > 0
+    assert all(gap.honoring for gap in verdict.shortfalls)

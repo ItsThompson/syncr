@@ -265,8 +265,10 @@ def _floors_against_their_own_areas(week: _Week) -> tuple[Shortfall, ...]:
 class _Reserved:
     """How much of the other Areas' floors has to come out of the capacity before one deadline.
 
-    The labels are empty when the figure is, so a shortfall never honors a floor that took
-    nothing from it.
+    The labels are empty when the figure is, so a shortfall never honors a set of floors that took
+    nothing from it. Each floor in a non-empty set is named at its DECLARED size rather than at its
+    share of the figure: the constraint the user holds is the whole floor, and apportioning an
+    aggregate across the floors that produced it would state a split nothing computed.
     """
 
     minutes: int
@@ -326,7 +328,9 @@ def _occupancy_honored(inputs: ProbeInputs) -> tuple[str, ...]:
 
     Only a term that overlaps that window is named: occupancy entirely behind ``now`` took
     nothing from the capacity this check measured, so honoring it would name a constraint that
-    did not produce the gap.
+    did not produce the gap. The overlap is against the window rather than against free capacity,
+    so a term lying wholly inside another is still named: it is a constraint the user holds, and
+    which of two overlapping spans took a minute is not a question this list has to answer.
     """
     capacity = IntervalSet([inputs.span]).after(inputs.now)
     stated = (

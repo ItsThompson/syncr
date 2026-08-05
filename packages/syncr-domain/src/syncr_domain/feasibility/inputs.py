@@ -74,7 +74,7 @@ if TYPE_CHECKING:
     from syncr_domain.intervals import Instant, Interval
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ScopedWindow:
     """A forbidden window that names the Areas it forbids, and is capacity for every other one.
 
