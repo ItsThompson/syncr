@@ -16,7 +16,6 @@ saw does not decide that read's exit code. Both still run the real loop against 
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -37,6 +36,7 @@ from syncr_cli.operations import wait_for_operation
 from syncr_cli.results import CliResult
 from syncr_cli.wire.operation import Operation
 from tests import payloads
+from tests.child import child_environment
 from tests.fake_api import Answer, FakeApi
 
 if TYPE_CHECKING:
@@ -113,6 +113,15 @@ CASES: dict[ExitCode, Case] = {
 # successful read must not report the status of work nobody asked for -- so neither code can be
 # provoked through a shipped command. The loop, the server, and the codes are the real ones.
 CODES_REACHED_WITHOUT_THE_SCRIPT = frozenset({ExitCode.SUPERSEDED, ExitCode.TIMED_OUT})
+
+
+def test_the_exemption_set_is_the_two_codes_it_is_allowed_to_hold() -> None:
+    # Pinned, because the cheapest way to satisfy the completeness assertion below is to exempt a
+    # code rather than provoke it. Growing this set has to be a deliberate edit a reviewer sees, and
+    # `plan solve --wait` empties it.
+    allowed = frozenset({ExitCode.SUPERSEDED, ExitCode.TIMED_OUT})
+
+    assert allowed == CODES_REACHED_WITHOUT_THE_SCRIPT
 
 
 def test_every_documented_exit_code_has_a_case() -> None:
@@ -257,25 +266,20 @@ def _seed_credential(home: Path, api_url: str) -> None:
 def _child_environment(api_url: str, home: Path) -> dict[str, str]:
     """The environment every child of this file runs in.
 
-    ``PYTHONPATH`` names the source tree this test imported from, so the child runs the same code
-    the parent is asserting about. Without it the child resolves the package through whatever the
-    interpreter's editable install points at, which is a different tree whenever this suite is run
-    from a second checkout: the instrument would then read green while measuring something else.
-
-    One function rather than a literal per call site, so the precondition test and the cases it
-    guards cannot be given different environments.
+    ``tests/child.py`` owns pointing a child at the tree this suite imported, which is what stops a
+    case reading green while measuring another checkout. Stated here are the values this file's
+    children need on top of that, and one function rather than a literal per call site so the
+    precondition test and the cases it guards cannot be given different environments.
     """
-    return {
-        "PATH": os.environ.get("PATH", ""),
-        "PYTHONPATH": str(Path(syncr_cli.__file__).resolve().parent.parent),
-        "HOME": str(home),
-        "XDG_CONFIG_HOME": str(home / ".config"),
-        "SYNCR_API_URL": api_url,
+    return child_environment(
+        HOME=str(home),
+        XDG_CONFIG_HOME=str(home / ".config"),
+        SYNCR_API_URL=api_url,
         # The week is stated rather than left to the machine's clock: the routes this test serves
         # are for one week, and a subprocess reads the real date.
-        "SYNCR_WEEK": payloads.ISO_WEEK,
+        SYNCR_WEEK=payloads.ISO_WEEK,
         **NO_KEYCHAIN,
-    }
+    )
 
 
 def _run(argv: tuple[str, ...], api_url: str, home: Path) -> subprocess.CompletedProcess[str]:
