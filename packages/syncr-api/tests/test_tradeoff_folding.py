@@ -27,7 +27,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from syncr_api.plans.folding import FOLDED_FIELDS
+from syncr_api.plans.folding import FOLDED_FIELDS, Concessions, fold
 from syncr_api.plans.tradeoffs import Offer, offered_tradeoffs
 from syncr_domain.feasibility import DeadlineDemand, ShortfallKind, probe
 from syncr_domain.fixtures import elastic_sleep
@@ -410,3 +410,94 @@ async def test_a_concession_approved_for_another_week_reaches_none_of_this_weeks
 
     assert inputs.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR
     assert inputs.adjustments == ()
+
+
+# --------------------------------------------------------------------------------
+# The fold at its edges
+# --------------------------------------------------------------------------------
+
+
+async def test_folding_no_concessions_leaves_every_resolved_figure_alone() -> None:
+    # The ordinary week, and the pass's identity: a week nobody conceded anything for reads exactly
+    # as its declarations say.
+    inputs = await a_week_every_kind_can_be_offered_in().assemble(WEEK, elastic_sleep.NOW)
+    resolved = Concessions(
+        frame=inputs.frame,
+        eligible_tasks=inputs.eligible_tasks,
+        demands=(),
+        areas=inputs.areas,
+    )
+
+    assert fold((), resolved) == resolved
+
+
+async def test_folding_one_concession_twice_applies_it_twice() -> None:
+    # The measured behaviour, and it is what an increment means: each concession lowers the figure
+    # as it stands. What makes it unreachable is the input rather than a guard here: the assembler
+    # builds the list from one read of a table unique per kind and target, plus at most one
+    # candidate, and the candidate's identity is minted per request.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(5))
+    inputs = await an_assembler(areas=FakeAreas([fitness])).assemble(WEEK, NOW)
+    breach = WeekAdjustment(
+        adjustment_id=uuid4(),
+        kind=AdjustmentKind.BREACH_FLOOR,
+        target_id=fitness.id,
+        delta_minutes=60,
+    )
+    resolved = Concessions(
+        frame=inputs.frame, eligible_tasks=inputs.eligible_tasks, demands=(), areas=inputs.areas
+    )
+
+    once = fold((breach,), resolved)
+    twice = fold((breach, breach), resolved)
+
+    assert once.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR - 60
+    assert twice.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR - 120
+
+
+async def test_a_breach_of_no_minutes_lowers_nothing() -> None:
+    # Zero beside the negative figure already measured: neither lowers a floor, and for the same
+    # reason. A concession that concedes nothing must not read as one that did.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(5))
+
+    inputs = await an_assembler(
+        areas=FakeAreas([fitness]),
+        adjustments=FakeAdjustments(
+            [
+                an_adjustment(
+                    kind=AdjustmentKind.BREACH_FLOOR.value, target_id=fitness.id, delta_minutes=0
+                )
+            ]
+        ),
+    ).assemble(WEEK, NOW)
+
+    assert inputs.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR
+    assert inputs.areas[0].floor_reservation_minutes == 5 * MINUTES_PER_HOUR
+
+
+async def test_dropping_and_excusing_one_task_compose_to_one_answer_in_either_order() -> None:
+    # Two kinds against one target, which the storage index allows because it is keyed by both.
+    # The work leaves either way, so the order cannot matter: dropping removes the task eligibility
+    # carries the excused deadline on, and excusing a task nothing will schedule changes nothing.
+    career = an_area(name="Career")
+    task = a_task(
+        task_id=CAREER_TASK, area_id=career.id, estimate_minutes=120, deadline=at(10, day=4)
+    )
+    dropped = an_adjustment(kind=AdjustmentKind.DROP_ITEM.value, target_id=task.id)
+    excused = an_adjustment(kind=AdjustmentKind.ACCEPT_PARTIAL.value, target_id=task.id)
+
+    forward = await an_assembler(
+        areas=FakeAreas([career]),
+        tasks=FakeTasks([task]),
+        adjustments=FakeAdjustments([dropped, excused]),
+    ).assemble(WEEK, NOW)
+    backward = await an_assembler(
+        areas=FakeAreas([career]),
+        tasks=FakeTasks([task]),
+        adjustments=FakeAdjustments([excused, dropped]),
+    ).assemble(WEEK, NOW)
+
+    assert forward.eligible_tasks == ()
+    assert forward.deadline_demands == ()
+    assert forward.eligible_tasks == backward.eligible_tasks
+    assert forward.deadline_demands == backward.deadline_demands
