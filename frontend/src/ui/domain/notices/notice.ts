@@ -72,13 +72,48 @@ export type Notice = NoticeFields &
   );
 
 /**
- * The notice as it arrives over the wire, where `stillWorks` is a plain array.
+ * The notice as it arrives over the wire.
  *
- * `13-http-api.md` types the field `string[]`, and the api enforces the non-empty rule with a Pydantic schema. A
- * `string[]` is not assignable to a non-empty tuple, which is the point: the boundary is where the two models meet.
+ * FOUR FIELDS THE KIT REQUIRES ARE OPTIONAL HERE, and that is the document rather than a convenience. The api's
+ * schema requires `id`, `volume`, `pigment`, `title`, `detail` and `stillWorks`, and leaves the rest to be omitted:
+ * a notice about no one thing carries no scope, one with no repair carries no action, and one whose age is unknown
+ * carries no instant. The kit's own type has no absent case for any of them, because a component rendering a
+ * notice should not have to tell an omitted list from an empty one. Narrowing is where the two models meet.
+ *
+ * `stillWorks` is a plain array here for the same reason: `13-http-api.md` types it `string[]` and the api enforces
+ * the non-empty rule with a Pydantic schema, so the array is what arrives and the non-empty tuple is what the kit
+ * renders from.
  */
-export interface WireNotice extends NoticeFields {
+export interface WireNotice {
+  readonly id: string;
+  readonly volume: NoticeVolume;
+  readonly pigment: NoticePigment;
+  readonly title: string;
+  readonly detail: string;
   readonly stillWorks: readonly string[];
+  readonly unavailable?: readonly string[] | undefined;
+  readonly since?: string | null | undefined;
+  readonly action?: NoticeAction | null | undefined;
+  readonly scope?: WireNoticeScope | null | undefined;
+}
+
+/** The scope as the document types it: every member optional, and nullable with it. */
+interface WireNoticeScope {
+  readonly screen?: string | null | undefined;
+  readonly blockId?: string | null | undefined;
+  readonly sourceId?: string | null | undefined;
+  readonly date?: string | null | undefined;
+}
+
+/** A wire scope with its nulls read as absences, which is what the kit's own scope means by them. */
+function scopeFrom(scope: WireNoticeScope | null | undefined): NoticeScope | null {
+  if (scope === null || scope === undefined) return null;
+  return {
+    screen: scope.screen ?? undefined,
+    blockId: scope.blockId ?? undefined,
+    sourceId: scope.sourceId ?? undefined,
+    date: scope.date ?? undefined,
+  };
 }
 
 /**
@@ -94,8 +129,19 @@ export interface WireNotice extends NoticeFields {
  */
 export function noticeFrom(wire: WireNotice): Notice | null {
   const [first, ...rest] = wire.stillWorks;
-  if (first !== undefined) return { ...wire, stillWorks: [first, ...rest] };
-  return null;
+  if (first === undefined) return null;
+  return {
+    id: wire.id,
+    volume: wire.volume,
+    pigment: wire.pigment,
+    title: wire.title,
+    detail: wire.detail,
+    unavailable: wire.unavailable ?? [],
+    stillWorks: [first, ...rest],
+    since: wire.since ?? null,
+    action: wire.action ?? null,
+    scope: scopeFrom(wire.scope),
+  };
 }
 
 /**
@@ -106,5 +152,34 @@ export function noticeFrom(wire: WireNotice): Notice | null {
  * that would otherwise have to infer it from an empty array.
  */
 export function outageFrom(wire: WireNotice): Notice {
-  return { ...wire, stillWorks: [], isWholeProductDown: true };
+  return {
+    id: wire.id,
+    volume: wire.volume,
+    pigment: wire.pigment,
+    title: wire.title,
+    detail: wire.detail,
+    unavailable: wire.unavailable ?? [],
+    since: wire.since ?? null,
+    action: wire.action ?? null,
+    scope: scopeFrom(wire.scope),
+    stillWorks: [],
+    isWholeProductDown: true,
+  };
+}
+
+/**
+ * The wire's notices that render at one volume, narrowed, with any that name no surviving capability dropped.
+ *
+ * ONE CONDITION ARRIVES AS TWO NOTICES. The api raises the write target's expiry at banner volume and at panel
+ * volume, as two values with a shared identity root, because a notice carries one volume: volume is where it
+ * renders. So the two surfaces that show it each ask for their own volume, and neither has to know that the
+ * other exists. Filtering here rather than at each call site is what stops the top bar rendering a panel notice
+ * as a banner the first time a condition gains a second volume.
+ */
+export function noticesAt(volume: NoticeVolume, wire: readonly WireNotice[]): readonly Notice[] {
+  return wire.flatMap((one) => {
+    if (one.volume !== volume) return [];
+    const narrowed = noticeFrom(one);
+    return narrowed === null ? [] : [narrowed];
+  });
 }

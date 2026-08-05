@@ -132,6 +132,55 @@ describe("a notice arriving over the wire", () => {
     expect(outage.stillWorks).toHaveLength(0);
   });
 
+  /* THE DOCUMENT LEAVES FOUR FIELDS OUT RATHER THAN SENDING THEM EMPTY. A notice about no one thing carries no
+   * scope, one with no repair carries no action, and one whose age is unknown carries no instant. The kit's type
+   * has no absent case for any of them, so the narrowing is where an omission becomes the empty reading. */
+  it("reads an omitted list, instant, action and scope as the kit's own absences", () => {
+    const sparse = noticeFrom({
+      id: "calendar.feed-stale",
+      volume: "panel",
+      pigment: "amber",
+      title: "Timetable could not be read",
+      detail: "The feed answered 503.",
+      stillWorks: ["the anchors it already contributed"],
+    });
+
+    expect(sparse?.unavailable).toEqual([]);
+    expect(sparse?.since).toBeNull();
+    expect(sparse?.action).toBeNull();
+    expect(sparse?.scope).toBeNull();
+  });
+
+  it("reads a scope member sent as null as absent, which is what the kit's scope means by it", () => {
+    const scoped = noticeFrom({
+      ...wire,
+      scope: { screen: "settings", blockId: null, sourceId: null, date: null },
+    });
+
+    expect(scoped?.scope).toEqual({
+      screen: "settings",
+      blockId: undefined,
+      sourceId: undefined,
+      date: undefined,
+    });
+  });
+
+  it("carries the omissions through the outage form too, so one shape is not looser than the other", () => {
+    const outage = outageFrom({
+      id: "whole-product",
+      volume: "banner",
+      pigment: "oxide",
+      title: "syncr is unavailable",
+      detail: "The api cannot be reached.",
+      stillWorks: [],
+    });
+
+    expect(outage.unavailable).toEqual([]);
+    expect(outage.since).toBeNull();
+    expect(outage.action).toBeNull();
+    expect(outage.scope).toBeNull();
+  });
+
   /* The wire type is what the response actually is, so this pins that the narrowing is the only way in: a plain
    * array assigned straight to `Notice` is the error the guard exists to answer. */
   it("does not assign straight to the kit's type", () => {
@@ -139,6 +188,43 @@ describe("a notice arriving over the wire", () => {
     const direct: Notice = wire;
 
     expect(direct).toBeDefined();
+  });
+});
+
+/* ONE CONDITION, TWO VOLUMES. The api raises the write target's expiry twice, as a banner and as a panel with a
+ * shared identity root, because a notice carries one volume. Two surfaces each ask for their own. */
+describe("selecting the notices for one volume", () => {
+  const banner: WireNotice = {
+    ...BASE_NOTICE,
+    id: "google.write-target-expired.banner",
+    stillWorks: ["reading your calendars"],
+  };
+  const panel: WireNotice = { ...banner, id: "google.write-target-expired.panel", volume: "panel" };
+
+  it("answers with the ones at that volume and no others", () => {
+    expect(notices.noticesAt("banner", [banner, panel]).map((one) => one.id)).toEqual([
+      "google.write-target-expired.banner",
+    ]);
+    expect(notices.noticesAt("panel", [banner, panel]).map((one) => one.id)).toEqual([
+      "google.write-target-expired.panel",
+    ]);
+  });
+
+  it("narrows each one, so a call site renders without a cast", () => {
+    const [only] = notices.noticesAt("panel", [panel]);
+    if (only === undefined) throw new Error("the fixture is at panel volume");
+
+    render(<NoticePanel notice={only} />);
+
+    expect(screen.getByText("still works \u00b7 reading your calendars")).toBeInTheDocument();
+  });
+
+  it("drops one that names no surviving capability rather than rendering it", () => {
+    expect(notices.noticesAt("banner", [{ ...banner, stillWorks: [] }])).toEqual([]);
+  });
+
+  it("answers with nothing when the response carries none", () => {
+    expect(notices.noticesAt("banner", [])).toEqual([]);
   });
 });
 

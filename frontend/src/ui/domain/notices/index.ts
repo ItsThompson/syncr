@@ -21,4 +21,4 @@ export { NoticeMark, type NoticeMarkProps } from "./NoticeMark";
 export { NoticePanel, type NoticePanelProps } from "./NoticePanel";
 export { NoticeStrip, type NoticeStripProps } from "./NoticeStrip";
 export type { Notice, NoticeAction, NoticePigment, NoticeScope, NoticeVolume } from "./notice";
-export { noticeFrom, outageFrom, type WireNotice } from "./notice";
+export { noticeFrom, noticesAt, outageFrom, type WireNotice } from "./notice";
