@@ -39,7 +39,7 @@ ends in an identity that makes the rest unreachable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.discretionary import absolute_forbidden, discretionary_intervals
@@ -48,7 +48,6 @@ from syncr_domain.intervals import IntervalSet
 from syncr_domain.plan import PlanError
 from syncr_domain.templates import TemplateEntryKind
 from syncr_domain.weeks import local_days
-from syncr_solver.inputs import frame_occupancy
 from syncr_solver.ordering import (
     anchor_key,
     area_key,
@@ -200,6 +199,14 @@ class PartialPlan:
     # H4, and the per-Area arithmetic H8 and H9 measure. Empty before anything is placed, which
     # is the one field a default can honestly state
     placed: tuple[Placement, ...] = ()
+    # The parts of the week an Area may still claim, before any of it is placed. A fact about the
+    # SPACE rather than about the placements, so it does not move as candidates are accepted and
+    # `with_placed` carries it forward unchanged.
+    #
+    # A field rather than a call, because H9 asks for it once per candidate and it is the same
+    # answer every time: measured on a 152-block week, deriving it per candidate cost 1.1 s of a
+    # 2.5 s solve. Ticket 33 left it a call and named this measurement as what a field needed.
+    claimable: IntervalSet = field(default_factory=IntervalSet)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "started", dict(self.started))
@@ -229,6 +236,7 @@ class PartialPlan:
             immovable=_immovable(inputs),
             pins={pin.binding: pin.interval for pin in inputs.pins},
             placed=tuple(placed),
+            claimable=_claimable(inputs),
         )
 
     def with_placed(self, placement: Placement) -> PartialPlan:
@@ -238,18 +246,10 @@ class PartialPlan:
     def discretionary(self) -> IntervalSet:
         """The parts of the week an Area may still claim, before any of it is placed.
 
-        A fact about the space rather than about the placements, so it does not move as candidates
-        are accepted: what claims it is measured separately, against this. It is the same
-        arithmetic and the same four subtrahends the document's own denominator is taken over, so
-        H9's reading of how much room a week has cannot disagree with the figure it reports.
+        Read from the field the state was built with rather than derived here, because the answer is
+        the same for every candidate a week is offered: see :attr:`claimable`.
         """
-        return discretionary_intervals(
-            self.span,
-            frame=frame_occupancy(self.frame, self.inherited),
-            anchors=IntervalSet(anchor.interval for anchor in self.anchors),
-            absolute_forbidden=absolute_forbidden(self.forbidden_windows),
-            off_plan=IntervalSet(period.interval for period in self.off_plan),
-        )
+        return self.claimable
 
     def holds(self, candidate: Placement) -> bool:
         """Whether the week already holds this candidate's content somewhere, movable or not.
@@ -284,6 +284,21 @@ class PartialPlan:
         crossing one layer further out of reach.
         """
         return binding in self.started or binding in self.pins
+
+
+def _claimable(inputs: SolveInputs) -> IntervalSet:
+    """The parts of one week an Area may claim, over the same four subtrahends the document takes.
+
+    Stated once, here, so H9's reading of how much room a week has cannot disagree with the figure
+    the document reports for the same subtraction.
+    """
+    return discretionary_intervals(
+        inputs.span,
+        frame=inputs.frame_occupancy(),
+        anchors=IntervalSet(anchor.interval for anchor in inputs.anchors),
+        absolute_forbidden=absolute_forbidden(inputs.forbidden_windows),
+        off_plan=IntervalSet(period.interval for period in inputs.off_plan),
+    )
 
 
 def _require_a_sizing_matching_the_kind(kind: BindingKind, sizing: Sizing | None) -> None:
