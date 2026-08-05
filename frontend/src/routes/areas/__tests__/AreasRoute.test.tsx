@@ -5,11 +5,6 @@
  * anywhere including its label cell. The preference cell's edit path, because it is an interaction. And the
  * mode, because "reachable by URL" is a claim about the route table.
  *
- * THE COBALT GUARD IS BOUNDED BY THE INVENTORY OF WHAT MAY EXIST, not by a vocabulary of what may not: it reads
- * every element of the deviation figure and refuses any class the CHART FAMILY paints an Area with, plus the
- * chip class the ledger uses. A guard written as a list of forbidden strings would pass the first time the kit
- * renamed one.
- *
  * IT QUERIES THE CHANNEL A READER PERCEIVES. Hatch is a `background-image` on a segment and a `fill` on a
  * wedge, so the assertions read those attributes rather than a prop or a constant the implementation also
  * reads. */
@@ -20,6 +15,12 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse, type RequestHandler } from "msw";
 
 import { apiServer } from "../../../testing/apiServer";
+import {
+  CHIP_CONTAINER_CLASS,
+  KNOWN_AREA_INK_FAMILIES,
+  areaInkClasses,
+  areaInkMatcher,
+} from "../../../testing/areaCarriers";
 import {
   jsonHandler,
   pendingHandler,
@@ -50,22 +51,13 @@ const PERIOD = thisIsoWeek(new Date());
 const REVIEW_URL = `/api/v1/reviews/budget?period=${PERIOD}`;
 
 /**
- * Every class shape that carries an Area's ink, read off the two cva bases that emit one.
+ * The custom properties a pigment sets, which is the other channel an Area's ink can arrive through.
  *
- * BOUNDED BY WHAT CAN BE EMITTED, NOT BY A LIST MAINTAINED BY HAND. `charts/paint.ts` puts `chart-ink` on every
- * element it paints and adds `chart-ink--NN` and `chart-hatch--XX`; `marks/AreaChip.tsx` puts `area-chip` on its
- * own and adds `bg-area-NN`; the ledger's name row is `area-name`; and a chart fill is `chart-fill`. Matching
- * each base's PREFIX rather than enumerating its variants is what makes a new pigment, a new texture or a new
- * carrier caught by shape rather than by memory.
- *
- * The first version of this guard walked the figure only, and a chip in the panel around it passed. The second
- * was a hand-written list of five strings that omitted `chart-ink`, the one class every painted element carries,
- * so a real Area-pigmented hatched `PieChart` inside the deviation panel passed the whole file. Two holes in one
- * guard is why it is now a shape over an inventory rather than a list.
+ * The CLASSES are not listed here at all: they are derived from the components that emit them, by
+ * `testing/areaCarriers`. Three versions of this guard were bounded by a list, and each list had a hole that
+ * somebody else found. The last of them named two of the three cva bases in the kit that paint a ramp step, and a
+ * real `Block` inside the deviation panel passed every test.
  */
-const AREA_INK_CLASS = /^(chart-ink|chart-fill|chart-hatch|area-chip|area-name|bg-area-)/;
-
-/** The custom properties a pigment sets, which is the other channel an Area's ink can arrive through. */
 const AREA_INK_PROPERTY = /--area-|--ai\b|--hx\b/;
 
 /* A `figure` carries no accessible name from its own `figcaption` under this accname implementation, so a
@@ -212,17 +204,35 @@ describe("the two chart rules", () => {
      * been Area-coloured whether it sits in the row or in the panel around it, and a guard scoped to the
      * figure passes the moment somebody puts one just outside. The panel holds the chart and its statements
      * and nothing else, so the panel is the honest boundary. */
+    const { matches, derived } = await areaInkMatcher();
+    /* The floor on the derivation: a regex that stopped matching would otherwise make this guard vacuous. */
+    for (const family of KNOWN_AREA_INK_FAMILIES) expect(derived).toContain(family);
+
     const panel = screen.getByRole("region", { name: "Actual against target" });
     const offenders: string[] = [];
     for (const element of panel.querySelectorAll("*")) {
       for (const painted of element.classList) {
-        if (AREA_INK_CLASS.test(painted)) offenders.push(painted);
+        if (matches(painted)) offenders.push(painted);
       }
       const styled = element.getAttribute("style") ?? "";
       if (AREA_INK_PROPERTY.test(styled)) offenders.push(styled);
     }
 
     expect(offenders).toEqual([]);
+  });
+
+  it("derives the carrier set from every component that paints a ramp step", async () => {
+    /* The guard above is only as bounded as this set is. Asserted separately so a hole in the derivation reads
+     * as a hole in the derivation rather than as a screen that happens to draw no ink. */
+    const derived = await areaInkClasses();
+
+    expect(derived).toContain("chart-ink--01");
+    expect(derived).toContain("chart-hatch--fwd");
+    expect(derived).toContain("bg-area-01");
+    expect(derived).toContain("week-block--area-01");
+    expect(derived).toContain(CHIP_CONTAINER_CLASS);
+    /* Twelve steps per family and no thirteenth, which is the sealed ramp the derivation should have found. */
+    expect(derived.filter((one) => /^week-block--area-\d\d$/.test(one))).toHaveLength(12);
   });
 
   it("renders a deviation row per Area and one for the vacancy, signed and never coloured", async () => {
@@ -379,6 +389,46 @@ describe("declaring an Area", () => {
       { name: "Research", parentId: null, budgetPercent: null, floorHours: null },
     ]);
   });
+
+  it("refuses a floor that is not a figure rather than declaring an Area without one", async () => {
+    /* `Input` is text, so unlike the stepper it replaced the browser refuses no keystroke. Reading `3,5` as
+     * blank posted a successful 201 with a HARD solver constraint the reader typed silently absent. */
+    const created = recordingHandler("post", "/api/v1/areas", {
+      status: 201,
+      body: { area: buildAreas().areas[0], ramp: buildAreas().ramp },
+    });
+    await renderAreas({}, [created.handler]);
+
+    const form = screen.getByRole("form", { name: "Declaring an Area" });
+    await userEvent.type(within(form).getByRole("textbox", { name: "Area name" }), "Research");
+    await userEvent.type(
+      within(form).getByRole("textbox", { name: "Weekly floor in hours" }),
+      "3,5",
+    );
+
+    expect(screen.getByText(/A weekly floor is a number/)).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole("button", { name: "Declare it" }));
+    expect(created.bodies).toEqual([]);
+  });
+
+  it("refuses a share that is not a figure, and says so at the field", async () => {
+    const created = recordingHandler("post", "/api/v1/areas", {
+      status: 201,
+      body: { area: buildAreas().areas[0], ramp: buildAreas().ramp },
+    });
+    await renderAreas({}, [created.handler]);
+
+    const form = screen.getByRole("form", { name: "Declaring an Area" });
+    await userEvent.type(within(form).getByRole("textbox", { name: "Area name" }), "Research");
+    await userEvent.type(
+      within(form).getByRole("textbox", { name: /Share of the remainder/ }),
+      "thirty",
+    );
+
+    expect(screen.getByText(/A share of the remainder is a number/)).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole("button", { name: "Declare it" }));
+    expect(created.bodies).toEqual([]);
+  });
 });
 
 describe("the preference cell", () => {
@@ -471,6 +521,28 @@ describe("the preference cell", () => {
         maxPerDayMinutes: 100,
       },
     ]);
+  });
+
+  it("refuses a cap that is not a figure rather than clearing the one that is stored", async () => {
+    const declared = recordingHandler("put", `/api/v1/areas/${CAREER}/preference`, {
+      status: 200,
+      body: buildPreference(),
+    });
+    const table = await renderAreas({}, [declared.handler]);
+
+    const row = within(table).getByRole("row", { name: /Career/ });
+    await userEvent.click(
+      within(row).getByRole("button", { name: "Change the placement preference for Career" }),
+    );
+
+    const form = await screen.findByRole("form", { name: /Placement preference for Career/ });
+    const cap = within(form).getByRole("textbox", { name: "Daily cap in minutes" });
+    await userEvent.clear(cap);
+    await userEvent.type(cap, "1,5");
+
+    expect(within(form).getByText(/A daily cap is a number/)).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(declared.bodies).toEqual([]);
   });
 
   it("keeps the ideal session on the quarter hour, which is the one figure here that owes the grid", async () => {
@@ -770,17 +842,44 @@ describe("the review mode", () => {
 
     const field = screen.getByRole("textbox", { name: /Proposed share for Career/ });
     await userEvent.clear(field);
-    await userEvent.type(field, "33");
+    await userEvent.type(field, "33.5");
     await userEvent.click(screen.getByRole("button", { name: "Approve the revision" }));
 
     expect(applied.bodies).toEqual([
       {
         percentages: [
-          { areaId: CAREER, budgetPercent: 33 },
+          { areaId: CAREER, budgetPercent: 33.5 },
           { areaId: STUDY, budgetPercent: 40 },
         ],
       },
     ]);
+  });
+
+  it("refuses an adjusted share that is not a figure rather than applying the proposal", async () => {
+    /* Falling back to the proposed figure for a row the reader typed into is the same class of defect as
+     * rounding it: what is written is not what was typed, and nothing says so. */
+    const applied = recordingHandler("post", "/api/v1/reviews/budget/apply", {
+      status: 200,
+      body: { applied: 0, declared: [], changedAt: null, statement: "nothing." },
+    });
+    apiServer.use(
+      ...screenHandlers(buildAreas(), buildReview({ proposal: buildReadyProposal() })),
+      applied.handler,
+    );
+    renderAt(REVIEW_PATH);
+    await screen.findByText("Pie review");
+
+    const field = screen.getByRole("textbox", { name: /Proposed share for Career/ });
+    await userEvent.clear(field);
+    await userEvent.type(field, "33,5");
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The proposed share for Career is a number",
+    );
+    const approve = screen.getByRole("button", { name: "Approve the revision" });
+    expect(approve).toBeDisabled();
+    await userEvent.click(approve);
+    expect(applied.bodies).toEqual([]);
   });
 
   it("round-trips the figure the api proposed when the reader touches nothing", async () => {
@@ -856,6 +955,32 @@ describe("the review mode", () => {
         ],
       },
     ]);
+  });
+
+  it("names a row whose Area the list no longer holds without announcing its identifier", async () => {
+    /* The two cells agreed on nothing before: the Area column said `Unallocated` for a missing Area and the
+     * control announced its UUID, which is the defect round 1 named, surviving in a fallback. */
+    const missing = "77777777-7777-4777-8777-777777777777";
+    const proposal = buildReadyProposal();
+    apiServer.use(
+      ...screenHandlers(
+        buildAreas(),
+        buildReview({
+          proposal: {
+            ...proposal,
+            shares: [{ ...proposal.shares[0], areaId: missing }, ...proposal.shares.slice(1)],
+          },
+        }),
+      ),
+    );
+    renderAt(REVIEW_PATH);
+    await screen.findByText("Pie review");
+
+    expect(
+      screen.getByRole("textbox", { name: /Proposed share for an Area no longer declared/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "an Area no longer declared" })).toBeInTheDocument();
+    expect(screen.queryByText(missing)).not.toBeInTheDocument();
   });
 
   it("writes nothing when the proposal is rejected", async () => {
