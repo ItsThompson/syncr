@@ -75,7 +75,6 @@ read.
 
 from __future__ import annotations
 
-from datetime import date
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -84,6 +83,7 @@ from prometheus_client import Histogram
 from syncr_api.anchors.reach import casting_span
 from syncr_api.plans.cadence import habit_occurrences
 from syncr_api.plans.calendar_occupancy import calendar_occupancy, typed_anchors
+from syncr_api.plans.candidates import reductions_of
 from syncr_api.plans.demand import deadline_demands, eligible_tasks, task_demands
 from syncr_api.plans.folding import Concessions, fold
 from syncr_api.plans.materialization import (
@@ -107,7 +107,7 @@ from syncr_domain.weeks import active_zone_by_date, week_span
 from syncr_solver.inputs import ChurnBaseline, SolveInputs, WeekAdjustment, frame_occupancy
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
     from datetime import datetime
 
     from syncr_api.anchors.repository import AnchorRepository
@@ -458,44 +458,6 @@ def _as_adjustment(record: WeekAdjustmentRecord, *, dates: Sequence[Date]) -> We
         adjustment_id=record.id,
         kind=AdjustmentKind(record.kind),
         target_id=record.target_id,
-        reductions=_reductions(record.reductions, dates=dates),
+        reductions=reductions_of(record.reductions, dates=dates),
         delta_minutes=record.delta_minutes,
     )
-
-
-def _reductions(stored: Mapping[str, object], *, dates: Sequence[Date]) -> Mapping[Date, int]:
-    """The per-date minutes a routine reduction carries, as dates of THIS week.
-
-    An entry this week cannot honour is dropped and reported, and there are three of them: a key
-    that is not a date, a value that is not a count of minutes, and a date the week does not hold.
-    All three have one consequence, which is a reduction that pairs with no frame occurrence and is
-    applied to nothing while the concession claims to have been honoured. They are reported
-    separately because the causes differ: the first two are malformed and the third is a readable
-    date that another week's assembly owns, and an operator reading one event name should not go
-    hunting for the other fault.
-    """
-    week = set(dates)
-    reductions: dict[Date, int] = {}
-    malformed: list[str] = []
-    foreign: list[str] = []
-    for key, value in stored.items():
-        on = _a_date(key)
-        if on is None or isinstance(value, bool) or not isinstance(value, int):
-            malformed.append(key)
-            continue
-        if on not in week:
-            foreign.append(key)
-            continue
-        reductions[on] = value
-    if malformed:
-        _log.warning("plans.adjustment.unreadable_reduction", entries=len(malformed))
-    if foreign:
-        _log.warning("plans.adjustment.reduction_outside_the_week", entries=len(foreign))
-    return reductions
-
-
-def _a_date(key: str) -> Date | None:
-    try:
-        return date.fromisoformat(key)
-    except ValueError:
-        return None

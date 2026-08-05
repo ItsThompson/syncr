@@ -40,8 +40,11 @@ one resolved ``SolveInputs``:
 | ``resolved_preferences.py`` | the override chain, and the declared windows out to instants |
 | ``calendar_occupancy.py`` | what a week's commitments occupy, and what their types cast in it |
 | ``folding.py`` | the concession post-pass: one code path, four kinds |
+| ``readiness.py`` | the minimum inputs a week needs before a plan can exist for it |
+| ``production.py`` | one week's declarations to one stored revision, and the two reasons for one |
 | ``verdicts.py`` | the live verdict on the request path, and the caller-labeled histogram |
 | ``tradeoffs.py`` | what could close each gap, what it recovers, and nothing chosen |
 | ``tradeoff_nights.py`` | which nights a routine reduction touches, and by how much each |
 | ``tradeoff_labels.py`` | the words a tradeoff is offered in, per kind |
+| ``candidates.py`` | a candidate concession's path to the worker, and the reductions read |
 """
