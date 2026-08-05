@@ -2266,6 +2266,104 @@
         "title": "ConfirmRangeResponse",
         "type": "object"
       },
+      "ConflictResolution": {
+        "enum": [
+          "moved",
+          "kept-both",
+          "retyped"
+        ],
+        "type": "string"
+      },
+      "ConflictResponse": {
+        "description": "One overlap nothing may resolve silently, and how it was answered if it has been.",
+        "properties": {
+          "anchorId": {
+            "description": "The commitment the overlap is attributed to. For a prep or transit buffer landing on a pinned block this is the commitment that CAST the buffer, because the commitment is the fact that arrived and the buffer is its consequence.",
+            "format": "uuid",
+            "title": "Anchorid",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/BindingResponse",
+            "description": "What the block holds. Travels with the conflict because the record outlives the block, and a repeated collision is computed over the identity."
+          },
+          "blockId": {
+            "description": "The block the commitment landed on, as the grid keys it.",
+            "title": "Blockid",
+            "type": "string"
+          },
+          "detectedAt": {
+            "format": "date-time",
+            "title": "Detectedat",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "isoWeek": {
+            "description": "The week the overlap falls in, as `2026-W07`.",
+            "title": "Isoweek",
+            "type": "string"
+          },
+          "overlap": {
+            "$ref": "#/components/schemas/WireSpan"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConflictResolution"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How it was answered: one of `moved`, `kept-both`, `retyped`."
+          },
+          "resolvedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while the conflict is still waiting for an answer.",
+            "title": "Resolvedat"
+          }
+        },
+        "required": [
+          "id",
+          "isoWeek",
+          "anchorId",
+          "blockId",
+          "binding",
+          "overlap",
+          "detectedAt"
+        ],
+        "title": "ConflictResponse",
+        "type": "object"
+      },
+      "ConflictsResponse": {
+        "description": "Every conflict the query asked for, earliest overlap first.",
+        "properties": {
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictResponse"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conflicts"
+        ],
+        "title": "ConflictsResponse",
+        "type": "object"
+      },
       "CursorResponse": {
         "description": "Where a rotation habit's cursor sits, and what it rests on. Read-only, always.\n\nDerived from the append-only outcome log rather than stored, so there is no route that sets\nit and no field on any request that could. A wrong cursor means a wrong confirmation: the\nuser fixes the day on Today and this re-derives with no further action.",
         "properties": {
@@ -4851,6 +4949,57 @@
           "anchorTypeIds"
         ],
         "title": "ReorderAnchorTypesRequest",
+        "type": "object"
+      },
+      "ResolveConflictRequest": {
+        "additionalProperties": false,
+        "description": "How the user answered, and the commitment type they chose if they retyped.",
+        "properties": {
+          "anchorTypeId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The commitment type to apply, or null to leave the commitment as opaque busy time. Stated only with `retyped`; a `anchorTypeId` sent with any other answer is refused rather than ignored.",
+            "title": "Anchortypeid"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/ConflictResolution",
+            "description": "One of `moved`, `kept-both`, `retyped`. `kept-both` records the answer and leaves the overlap, and is the one answer that changes neither the plan nor what a solve reads."
+          }
+        },
+        "required": [
+          "resolution"
+        ],
+        "title": "ResolveConflictRequest",
+        "type": "object"
+      },
+      "ResolvedConflictResponse": {
+        "description": "The answered conflict, and the solve that will read the answer.\n\n``operation`` is null for `kept-both`, which asks for no solve: the overlap stays and the plan\nis unchanged, so there is nothing for a client to follow.",
+        "properties": {
+          "conflict": {
+            "$ref": "#/components/schemas/ConflictResponse"
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "conflict"
+        ],
+        "title": "ResolvedConflictResponse",
         "type": "object"
       },
       "RetypeAnchorRequest": {
@@ -9620,6 +9769,214 @@
         "summary": "Force a sync. Returns an Operation",
         "tags": [
           "calendars"
+        ]
+      }
+    },
+    "/api/v1/conflicts": {
+      "get": {
+        "description": "Every conflict, or only the open ones, earliest overlap first.",
+        "operationId": "list_conflicts_api_v1_conflicts_get",
+        "parameters": [
+          {
+            "description": "Narrow the list by state: `false` is what the banner reads, and `true` is the retained record a repeated collision is computed over. Omit it for both.",
+            "in": "query",
+            "name": "resolved",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Narrow the list by state: `false` is what the banner reads, and `true` is the retained record a repeated collision is computed over. Omit it for both.",
+              "title": "Resolved"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "The conflicts this account holds. Writes nothing",
+        "tags": [
+          "conflicts"
+        ]
+      }
+    },
+    "/api/v1/conflicts/{conflict_id}/resolve": {
+      "post": {
+        "description": "Record the answer, free what it frees, and answer with the solve that will read it.",
+        "operationId": "resolve_conflict_api_v1_conflicts__conflict_id__resolve_post",
+        "parameters": [
+          {
+            "description": "The conflict being answered.",
+            "in": "path",
+            "name": "conflict_id",
+            "required": true,
+            "schema": {
+              "description": "The conflict being answered.",
+              "format": "uuid",
+              "title": "Conflict Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveConflictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedConflictResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Answer one conflict, and do what that answer names",
+        "tags": [
+          "conflicts"
         ]
       }
     },

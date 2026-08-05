@@ -26,6 +26,7 @@ from syncr_api.areas.wiring import build_areas_router
 from syncr_api.budgets.wiring import build_budget_router
 from syncr_api.calendars.wiring import build_calendars_router
 from syncr_api.concessions.wiring import build_concessions_router
+from syncr_api.conflicts.wiring import build_conflicts_router
 from syncr_api.core.correlation import CorrelationMiddleware
 from syncr_api.core.error_handlers import PROBLEM_RESPONSES, build_exception_handlers
 from syncr_api.core.observability import create_metrics_router
@@ -87,6 +88,7 @@ FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
     build_weeks_router,
     build_outcomes_router,
     build_reviews_router,
+    build_conflicts_router,
 )
 
 # The one place the api's version is stated: the package metadata uv installs from

@@ -21,7 +21,7 @@ from typing import Final
 import pytest
 
 # The packages whose docstring states that every module of theirs appears in its index.
-PACKAGES_CLAIMING_A_COMPLETE_INDEX: Final = ("plans", "anchors", "reviews")
+PACKAGES_CLAIMING_A_COMPLETE_INDEX: Final = ("plans", "anchors", "reviews", "conflicts")
 
 COMPLETENESS_CLAIM: Final = "Every module in this package appears"
 

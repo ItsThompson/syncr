@@ -495,6 +495,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The conflicts this account holds. Writes nothing
+         * @description Every conflict, or only the open ones, earliest overlap first.
+         */
+        get: operations["list_conflicts_api_v1_conflicts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conflicts/{conflict_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer one conflict, and do what that answer names
+         * @description Record the answer, free what it frees, and answer with the solve that will read it.
+         */
+        post: operations["resolve_conflict_api_v1_conflicts__conflict_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/day-types": {
         parameters: {
             query?: never;
@@ -2671,6 +2711,58 @@ export interface components {
              */
             unconfirmedDays: number;
         };
+        /** @enum {string} */
+        ConflictResolution: "moved" | "kept-both" | "retyped";
+        /**
+         * ConflictResponse
+         * @description One overlap nothing may resolve silently, and how it was answered if it has been.
+         */
+        ConflictResponse: {
+            /**
+             * Anchorid
+             * Format: uuid
+             * @description The commitment the overlap is attributed to. For a prep or transit buffer landing on a pinned block this is the commitment that CAST the buffer, because the commitment is the fact that arrived and the buffer is its consequence.
+             */
+            anchorId: string;
+            /** @description What the block holds. Travels with the conflict because the record outlives the block, and a repeated collision is computed over the identity. */
+            binding: components["schemas"]["BindingResponse"];
+            /**
+             * Blockid
+             * @description The block the commitment landed on, as the grid keys it.
+             */
+            blockId: string;
+            /**
+             * Detectedat
+             * Format: date-time
+             */
+            detectedAt: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Isoweek
+             * @description The week the overlap falls in, as `2026-W07`.
+             */
+            isoWeek: string;
+            overlap: components["schemas"]["WireSpan"];
+            /** @description How it was answered: one of `moved`, `kept-both`, `retyped`. */
+            resolution?: components["schemas"]["ConflictResolution"] | null;
+            /**
+             * Resolvedat
+             * @description Null while the conflict is still waiting for an answer.
+             */
+            resolvedAt?: string | null;
+        };
+        /**
+         * ConflictsResponse
+         * @description Every conflict the query asked for, earliest overlap first.
+         */
+        ConflictsResponse: {
+            /** Conflicts */
+            conflicts: components["schemas"]["ConflictResponse"][];
+        };
         /**
          * CursorResponse
          * @description Where a rotation habit's cursor sits, and what it rests on. Read-only, always.
@@ -4027,6 +4119,30 @@ export interface components {
              * @description Every anchor type, in the order rules should evaluate. The first match wins.
              */
             anchorTypeIds: string[];
+        };
+        /**
+         * ResolveConflictRequest
+         * @description How the user answered, and the commitment type they chose if they retyped.
+         */
+        ResolveConflictRequest: {
+            /**
+             * Anchortypeid
+             * @description The commitment type to apply, or null to leave the commitment as opaque busy time. Stated only with `retyped`; a `anchorTypeId` sent with any other answer is refused rather than ignored.
+             */
+            anchorTypeId?: string | null;
+            /** @description One of `moved`, `kept-both`, `retyped`. `kept-both` records the answer and leaves the overlap, and is the one answer that changes neither the plan nor what a solve reads. */
+            resolution: components["schemas"]["ConflictResolution"];
+        };
+        /**
+         * ResolvedConflictResponse
+         * @description The answered conflict, and the solve that will read the answer.
+         *
+         *     ``operation`` is null for `kept-both`, which asks for no solve: the overlap stays and the plan
+         *     is unchanged, so there is nothing for a client to follow.
+         */
+        ResolvedConflictResponse: {
+            conflict: components["schemas"]["ConflictResponse"];
+            operation?: components["schemas"]["OperationResponse"] | null;
         };
         /**
          * RetypeAnchorRequest
@@ -7511,6 +7627,164 @@ export interface operations {
             };
             /** @description Authentication required */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_conflicts_api_v1_conflicts_get: {
+        parameters: {
+            query?: {
+                /** @description Narrow the list by state: `false` is what the banner reads, and `true` is the retained record a repeated collision is computed over. Omit it for both. */
+                resolved?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    resolve_conflict_api_v1_conflicts__conflict_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The conflict being answered. */
+                conflict_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveConflictRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedConflictResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
