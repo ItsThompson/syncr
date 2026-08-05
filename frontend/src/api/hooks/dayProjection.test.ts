@@ -100,6 +100,23 @@ describe("withRecordedOutcome", () => {
 
     expect(withRecordedOutcome(day, "e5".repeat(32), { state: "skipped" })).toEqual(day);
   });
+
+  /* A block a later re-solve added after the day was confirmed carries no instant, and the day is then not
+     settled: a block nobody has answered for is a block nobody has answered for. Recording an exception on
+     one of its neighbours must not make the day read as settled. */
+  it("leaves the day unconfirmed while any row carries no instant", () => {
+    const day = buildDay({
+      behind: [buildGymRow({ outcome: buildOutcome({ confirmedAt: AT }) }), buildRow()],
+      ahead: [],
+      blockCount: 2,
+      presumedCount: 1,
+    });
+
+    const projected = withRecordedOutcome(day, BLOCK_GYM, { state: "skipped" });
+
+    expect(projected.confirmedAt).toBeNull();
+    expect(projected.behind[0].outcome?.confirmedAt).toBe(AT);
+  });
 });
 
 describe("withConfirmedDay", () => {

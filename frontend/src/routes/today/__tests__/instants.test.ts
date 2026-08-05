@@ -5,9 +5,9 @@
  * twice on 25 October 2026. Pacific/Kiritimati is here because +14 puts the same instant on a different
  * date from the host's, which is the case a helper reading the host's zone renders wrongly. */
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, afterAll, describe, expect, it } from "vitest";
 
-import { clockIn, instantAt } from "../instants";
+import { clockIn, hostDateOf, instantAt } from "../instants";
 
 const LONDON = "Europe/London";
 const KIRITIMATI = "Pacific/Kiritimati";
@@ -29,6 +29,28 @@ describe("clockIn", () => {
 
   it("hands back text it cannot read rather than a plausible time", () => {
     expect(clockIn("not an instant", LONDON)).toBe("not an instant");
+  });
+});
+
+describe("hostDateOf", () => {
+  /* THE ZONE IS PINNED FOR THIS ONE CLAIM, because the claim is about the host's zone and the suite has to
+     be able to make it on any machine. Under Paris, 23:30 on the 8th in UTC is already the 9th locally, so a
+     derivation reading the date off `toISOString` answers with the day before: the day the reader has
+     already finished. */
+  const hostZone = process.env.TZ;
+  beforeAll(() => {
+    process.env.TZ = "Europe/Paris";
+  });
+  afterAll(() => {
+    process.env.TZ = hostZone;
+  });
+
+  it("takes the host's own calendar date rather than the date in UTC", () => {
+    expect(hostDateOf(new Date("2026-02-08T23:30:00Z"))).toBe("2026-02-09");
+  });
+
+  it("pads a single-digit month and day, so the date is the one the api addresses", () => {
+    expect(hostDateOf(new Date("2026-01-05T12:00:00Z"))).toBe("2026-01-05");
   });
 });
 
