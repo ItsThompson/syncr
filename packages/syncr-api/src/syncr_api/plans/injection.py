@@ -11,19 +11,21 @@ request-scoped dependency, because two of its three callers are not requests: th
 week and the horizon maintainer materializes one, and neither has a principal. The week service is
 request-only and takes the principal's own dependency.
 
-Three seams are wired to readers that answer with nothing, and each is the honest reading of this
+Two seams are wired to readers that answer with nothing, and each is the honest reading of this
 deployment rather than a placeholder:
 
 ``NoPlacements`` for the live plan and the pins, because no code names the keys a stored pin binding
 holds, so no committed capacity can be read back out of one.
 
-``NoRecordedOutcomes`` for the habit outcome log, for the same reason one module over: nothing
-writes a binding onto an outcome, so no row can be attributed to a habit occurrence.
+``NoRecordedOutcomes`` for the ASSEMBLER's habit outcome log, which is a different question from the
+one the week view asks: it attributes a row to a habit occurrence, and the wiring that answers it is
+the habit module's own.
 
-``NoConfirmations`` for the days the user has confirmed, because nothing records an outcome at all,
-so no day of any week carries the instant of confirmation that would make it fact.
+Whoever brings either online changes one line here.
 
-Whoever brings any of them online changes one line here.
+The week view's day confirmations are NOT a stub: ``RecordedDayConfirmations`` reads the plan of
+record and the outcome log, so the count on the Week screen and the count on the Today surface come
+from one rule. Both surfaces would otherwise answer the same question about the same week.
 """
 
 from __future__ import annotations
@@ -46,11 +48,13 @@ from syncr_api.habits.outcome_log import NoRecordedOutcomes
 from syncr_api.habits.repository import HabitRepository
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.repository import OffPlanPeriodRepository
+from syncr_api.outcomes.confirmations import RecordedDayConfirmations
+from syncr_api.outcomes.planned_days import PlannedDayReader
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.assembler import AssemblyCaller, WeekAssembler
-from syncr_api.plans.confirmations import NoConfirmations
 from syncr_api.plans.placements import NoPlacements
 from syncr_api.plans.readiness import MinimumInputs
+from syncr_api.plans.reality import BlockOutcomeRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.service import WeekService
 from syncr_api.plans.versions import WeekInputVersionRepository
@@ -129,9 +133,12 @@ def build_week_service(
     operation: a second one here would be a second reading of the state machine.
     """
     operations = OperationRepository(transaction, tenant_id)
+    revisions = PlanRepository(transaction, tenant_id)
+    settings = SettingsRepository(transaction, tenant_id)
+    overrides = TravelOverrideRepository(transaction, tenant_id)
     return WeekService(
         budgets=build_budget_service(transaction, tenant_id),
-        revisions=PlanRepository(transaction, tenant_id),
+        revisions=revisions,
         versions=WeekInputVersionRepository(transaction, tenant_id),
         operations=operations,
         lifecycle=OperationLifecycle(operations, clock),
@@ -140,9 +147,14 @@ def build_week_service(
             WeekPatternRepository(transaction, tenant_id),
         ),
         sources=CalendarSourceRepository(transaction, tenant_id),
-        settings=SettingsRepository(transaction, tenant_id),
+        settings=settings,
         off_plan=OffPlanPeriodRepository(transaction, tenant_id),
-        confirmations=NoConfirmations(),
+        confirmations=RecordedDayConfirmations(
+            PlannedDayReader(revisions),
+            BlockOutcomeRepository(transaction, tenant_id),
+            settings,
+            overrides,
+        ),
         clock=clock,
     )
 

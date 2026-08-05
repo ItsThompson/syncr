@@ -59,6 +59,7 @@ from syncr_api.core.errors import Conflict, ValidationFailed
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.config import OFF_PLAN_PREFIX
+from syncr_api.outcomes.config import DAYS_PREFIX
 from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.config import APPLIED, PLAN_REVISIONS_TABLE, VERDICT_EVENTS_TABLE
 from syncr_api.plans.currency import CURRENT, SOLVING, STALE
@@ -891,6 +892,24 @@ def test_a_past_week_holding_a_block_on_every_day_owes_seven_confirmations(
     assert readings["blockCount"] == 7
     assert readings["unconfirmedDays"] == 7
     assert readings["scheduledMinutes"] == 7 * 30
+
+
+def test_confirming_a_day_takes_it_out_of_the_count(
+    http: TestClient, owner: UserRecord, configured: dict[str, str], live_database_url: str
+) -> None:
+    """The count is the outcome log's own rule, so the two surfaces cannot disagree about a week.
+
+    Driven through the confirmation route rather than by seeding a row, because what this asserts is
+    that the week view reads the same confirmations the Today surface writes.
+    """
+    week = IsoWeek.containing(datetime.now(UTC).date() - timedelta(days=30))
+    append_a_document(live_database_url, owner.tenant_id, week, blocks=7)
+    monday = week.monday()
+
+    confirmed = http.post(f"{DAYS_PREFIX}/{monday}/confirm", headers=configured)
+
+    assert confirmed.status_code in {HTTPStatus.OK, HTTPStatus.NO_CONTENT}, confirmed.text
+    assert week_view(http, configured, week)["readings"]["unconfirmedDays"] == 6
 
 
 def test_a_week_nothing_is_working_on_reads_as_current(
