@@ -3393,7 +3393,7 @@ export interface components {
          * @description What the user says happened to one block.
          */
         OutcomeRequest: {
-            /** @description When the block really happened, for a `moved` outcome only. It creates no pin: a `moved` outcome describes the past, and a pin constrains the future. */
+            /** @description When the block really happened, for a `moved` outcome only. It creates no pin: a `moved` outcome describes the past, and a pin constrains the future. At most 1440 minutes long, for the reason `actualMinutes` carries the same bound. */
             actualInterval?: components["schemas"]["TimeRangeBody"] | null;
             /** @description How many minutes the block really took, for a `partial` outcome only. This is the sole source of the duration-estimate signal. At least 1, because a partial of no minutes is a skip and has its own state. */
             actualMinutes?: components["schemas"]["ActualMinutes"] | null;
