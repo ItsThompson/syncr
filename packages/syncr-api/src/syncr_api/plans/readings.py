@@ -101,6 +101,12 @@ def unconfirmed_days(
     a spring-forward date is 23 hours and a travel boundary makes one 14. That mapping was captured
     when the plan was produced, which is also what the grid draws the day columns from, so the day a
     figure is charged to is the day the reader sees.
+
+    **The span is live and the mapping is stored, and they can disagree.** A travel override
+    declared after the plan was produced moves the week's real bounds relative to the dates the
+    document captured. ``local_days`` clips every day to the span and drops one whose bounds do not
+    run forward, so the disagreement costs a day rather than a fault, and charging the figure to the
+    day the grid draws is the reading a person can check.
     """
     return sum(
         1
