@@ -167,10 +167,16 @@ describe("the write target", () => {
     renderAt("/settings");
     await settled();
 
+    /* Each value is asked for by its own term, because the api's statement in this panel also contains
+       `14 days`: an assertion over the panel's whole text would match that sentence and never read the rows. */
     const panel = panelNamed("Write target");
-    expect(panel).toHaveTextContent("syncr \u00b7 plan");
-    expect(panel).toHaveTextContent("14 days");
-    expect(panel).toHaveTextContent("destructive");
+    expect(within(panel).getByRole("definition", { name: "calendar" })).toHaveTextContent(
+      "syncr \u00b7 plan",
+    );
+    expect(within(panel).getByRole("definition", { name: "horizon" })).toHaveTextContent("14 days");
+    expect(within(panel).getByRole("definition", { name: "reconciliation" })).toHaveTextContent(
+      "destructive",
+    );
   });
 
   /* The most consequential fact on this screen, and it is the api's own sentence: whatever renders the write target
@@ -247,7 +253,7 @@ describe("the zone and travel panel", () => {
     expect(panelNamed("Zone and travel")).toHaveTextContent("Europe/London \u00b7 on 2026-08-05");
   });
 
-  it("says an override is in force when the active zone is not the home zone", async () => {
+  it("says an override is in force, naming its range, when one covers the resolved date", async () => {
     apiServer.use(
       ...settingsHandlers({
         settings: buildSettings({ activeZone: "Europe/Madrid" }),
@@ -258,8 +264,28 @@ describe("the zone and travel panel", () => {
     await settled();
 
     expect(panelNamed("Zone and travel")).toHaveTextContent(
-      "A travel override covers today, so the active zone is the override's",
+      "A travel override covers today, 2026-08-01 to 2026-08-09",
     );
+  });
+
+  /* THE CASE A ZONE COMPARISON GETS WRONG. The api accepts an override whose zone is the home zone, so
+     `activeZone !== homeZone` reports that nothing covers today while a declared range does. */
+  it("says an override is in force even when it names the home zone", async () => {
+    apiServer.use(
+      ...settingsHandlers({
+        overrides: [
+          buildTravelOverride({
+            startDate: "2026-08-01",
+            endDate: "2026-08-09",
+            zone: "Europe/London",
+          }),
+        ],
+      }),
+    );
+    renderAt("/settings");
+    await settled();
+
+    expect(panelNamed("Zone and travel")).toHaveTextContent("A travel override covers today");
   });
 
   it("lists each override with its range and zone, and offers a removal", async () => {
@@ -274,8 +300,8 @@ describe("the zone and travel panel", () => {
     expect(within(table).getByRole("button", { name: "Remove" })).toBeInTheDocument();
   });
 
-  it("says the home zone is in force where no override covers today", async () => {
-    apiServer.use(...settingsHandlers());
+  it("says the home zone is in force where no override covers the resolved date", async () => {
+    apiServer.use(...settingsHandlers({ overrides: [buildTravelOverride()] }));
     renderAt("/settings");
     await settled();
 
@@ -332,7 +358,7 @@ describe("the grid geometry panel", () => {
     renderAt("/settings");
     await settled();
 
-    expect(panelNamed("Grid geometry")).toHaveTextContent("thirty-minute block");
+    expect(panelNamed("Grid geometry")).toHaveTextContent("30-minute block");
     expect(panelNamed("Grid geometry")).toHaveTextContent(
       "listed as unavailable rather than removed",
     );
@@ -689,7 +715,7 @@ describe("the degradation panels", () => {
     expect(panel).toHaveTextContent(
       "still works \u00b7 The anchors this feed already contributed, which are retained and marked possibly stale",
     );
-    /* When it last succeeded, which is what US-ERR-04 asks the notice to state. */
+    /* When it last succeeded, which is the fact that makes the retained-anchors claim checkable. */
     expect(panel).toHaveTextContent("since 2026-08-04 \u00b7 04:00");
   });
 
