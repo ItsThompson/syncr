@@ -19,13 +19,13 @@ is the failure mode the table exists to prevent**, and a test asserts the two se
 | `span` | over what period is the DENOMINATOR taken? the whole week | `syncr_domain.weeks` |
 | `now` | from when is CAPACITY available? nothing earlier holds work | this module |
 | `computed_at` | what instant does the verdict claim? | this module |
-| `input_version` | which assembly is that verdict about? | the version counter |
+| `input_version` | which assembly is that verdict about? | `syncr_api.plans.versions` |
 | `frame` | what does the circadian frame occupy? | `syncr_solver.inputs` |
-| `anchors` | what is externally committed and unmovable? | the calendar adapter |
+| `anchors` | what is externally committed and unmovable? | `syncr_api.anchors` |
 | `absolute_forbidden` | what is unavailable to EVERY Area? | `syncr_domain.discretionary` |
 | `scoped_forbidden` | what is unavailable to SOME Areas? | `syncr_domain.gaps` |
 | `off_plan` | what did the user declare off-plan? | `syncr_domain.off_plan` |
-| `placed` | what capacity is already committed? | `syncr_solver.occupancy` |
+| `placed` | what capacity is already committed? | `syncr_solver.inputs` |
 | `area_floor_reservations` | what must be reserved per Area? | `syncr_api.plans.reservations` |
 | `area_targets` | what is each Area aiming at? no check reads it | `syncr_domain.budgets` |
 | `deadline_demands` | what work must fit before when? | `syncr_api.plans.demand` |

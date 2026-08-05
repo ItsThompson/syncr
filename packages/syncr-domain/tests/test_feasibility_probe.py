@@ -12,6 +12,7 @@ pass while the arithmetic underneath it was wrong.
 from __future__ import annotations
 
 import dataclasses
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -415,6 +416,61 @@ def test_the_discount_is_bounded_by_what_the_other_areas_can_really_place_elsewh
         gap for gap in probe(week).shortfalls if gap.kind is ShortfallKind.AREA_FLOOR_UNREACHABLE
     )
     assert unreachable.minutes == 60
+
+
+def test_two_competitors_are_discounted_once_between_them_rather_than_once_each() -> None:
+    # The discount is against the capacity this Area cannot use, and there is only one such set, so
+    # two competitors share it. Discounting each of them by the whole of it credits this Area twice
+    # with the same minutes and hides a gap that is real.
+    #
+    # Five hours are free from Monday 00:00 and the first is forbidden to Study, so Study may claim
+    # four and one hour is capacity only the others can use. Career owes an hour by 02:00, Fitness
+    # reserves an hour of floor that has nowhere after 05:00 to go, and Study owes four hours by
+    # 05:00. Six hours of work against five of capacity: Study is an hour short, exactly once.
+    week = a_week(
+        now=WEEK.start,
+        off_plan=occupying(Interval(at(5, day=0), at(0, day=7))),
+        scoped_forbidden=(
+            ScopedWindow(
+                interval=Interval(at(0, day=0), at(1, day=0)), forbidden_area_ids=(STUDY,)
+            ),
+        ),
+        area_floor_reservations=(a_reservation(FITNESS, 60),),
+        deadline_demands=(
+            a_demand(CAREER, 60, at(2, day=0), label="Leetcode"),
+            a_demand(STUDY, 4 * 60, at(5, day=0), label="F&F Past Papers"),
+        ),
+    )
+
+    gap = next(
+        shortfall
+        for shortfall in probe(week).shortfalls
+        if shortfall.area_id == STUDY and shortfall.kind is ShortfallKind.DEADLINE_CAPACITY
+    )
+    assert gap.minutes == 60
+
+
+def test_another_areas_floor_that_must_fit_early_is_discounted_the_same_way() -> None:
+    # The third reading of the same asymmetry, and the one a property found rather than a reader:
+    # the floors of other Areas that cannot wait until after a deadline are a whole-week figure too.
+    #
+    # The whole week is free from Monday 00:00, and one minute of it is forbidden to Fitness. Career
+    # reserves all but one of the week's 10080 minutes, so one minute of its floor has to land in
+    # the three before 00:03; Fitness owes one minute by 00:03 and may use two of those three. The
+    # week holds both: Career takes the forbidden minute and Fitness takes one of the other two.
+    week = a_week(
+        now=WEEK.start,
+        scoped_forbidden=(
+            ScopedWindow(
+                interval=Interval(WEEK.start, WEEK.start + timedelta(minutes=1)),
+                forbidden_area_ids=(FITNESS,),
+            ),
+        ),
+        area_floor_reservations=(a_reservation(CAREER, WEEK_MINUTES - 1),),
+        deadline_demands=(a_demand(FITNESS, 1, WEEK.start + timedelta(minutes=3), label="Gym"),),
+    )
+
+    assert probe(week).shortfalls == ()
 
 
 # --- what a shortfall says -------------------------------------------------------------------

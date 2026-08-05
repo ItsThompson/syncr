@@ -193,11 +193,16 @@ def _demands_against_their_deadlines(week: _Week) -> tuple[Shortfall, ...]:
     for demand in sorted(week.inputs.deadline_demands, key=_earliest_first):
         claimable = week.free_for(demand.area_id).before(demand.deadline)
         reserved = _reserved_before(week, demand.deadline, for_area=demand.area_id)
+        # One discount over both competitors together, because they compete for the same capacity:
+        # discounting each separately would credit this Area twice with the same minutes it cannot
+        # use.
         competing = _competing_minutes(
-            claimed, claimable=claimable, jointly=week.free.before(demand.deadline)
+            claimed + reserved.minutes,
+            claimable=claimable,
+            jointly=week.free.before(demand.deadline),
         )
         capacity = claimable.total_minutes()
-        available = max(0, capacity - reserved.minutes - competing)
+        available = max(0, capacity - competing)
         if available < demand.remaining_minutes:
             found.append(
                 Shortfall(
@@ -307,6 +312,10 @@ def _competing_minutes(minutes: int, *, claimable: IntervalSet, jointly: Interva
     optimistic about where the other work lands, which is the safe direction: the result is a lower
     bound on the competition and therefore an upper bound on what is available. With no scoped
     window naming this Area the discount is zero and this is the whole figure, unchanged.
+
+    Every competitor passes through here as ONE figure, because they compete for one set of
+    minutes: discounting two of them separately would credit this Area twice with the capacity it
+    cannot use.
     """
     elsewhere_only = jointly.subtract(claimable).total_minutes()
     return max(0, minutes - elsewhere_only)

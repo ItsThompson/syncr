@@ -99,7 +99,6 @@ def weeks(
     *,
     with_room_before_the_deadline: bool = False,
     demands: int = 2,
-    smaller_obligations: bool = False,
 ) -> ProbeInputs:
     """A week with occupancy, a floor in each of two Areas, a demand in each, and scoped windows.
 
@@ -119,9 +118,6 @@ def weeks(
     two demands, which conserves the total rather than leaving one figure alone. The example that
     shows it lands beside the property.
 
-    ``smaller_obligations`` draws floors and demands small enough that a week holding all of its
-    work is an ordinary draw, for the one property that is stated over such a week.
-
     ``with_room_before_the_deadline`` places the first deadline at least ten hours after ``now``,
     for the properties that have to pin minutes into the capacity before it. Left false, a deadline
     lands anywhere in the week including behind ``now``, which is the overdue case every
@@ -135,13 +131,11 @@ def weeks(
     deadline = MONDAY + timedelta(minutes=deadline_minutes)
     measured = draw(st.sampled_from((CAREER, FITNESS)))
     competitor = FITNESS if measured == CAREER else CAREER
-    owed = 600 if smaller_obligations else 3600
-    reserved = 120 if smaller_obligations else 600
     competing = (
         DeadlineDemand(
             deadline=MONDAY
             + timedelta(minutes=draw(st.integers(min_value=1, max_value=WEEK_MINUTES))),
-            remaining_minutes=draw(st.integers(min_value=0, max_value=owed // 2)),
+            remaining_minutes=draw(st.integers(min_value=0, max_value=1800)),
             area_id=competitor,
             labels=("Kim's Game Project",),
         ),
@@ -160,22 +154,22 @@ def weeks(
         area_floor_reservations=(
             FloorReservation(
                 area_id=measured,
-                reserved_minutes=draw(st.integers(min_value=0, max_value=reserved)),
+                reserved_minutes=draw(st.integers(min_value=0, max_value=600)),
                 label=NAMES[measured],
             ),
             FloorReservation(
                 area_id=competitor,
-                reserved_minutes=draw(st.integers(min_value=0, max_value=reserved)),
+                reserved_minutes=draw(st.integers(min_value=0, max_value=600)),
                 label=NAMES[competitor],
             ),
         ),
         deadline_demands=(
             DeadlineDemand(
                 deadline=deadline,
-                # Up to two and a half days of work by default, so a week whose capacity before
-                # the deadline cannot hold it is an ordinary draw rather than a rare one: a
-                # property about how a gap moves is worthless over inputs that mostly have no gap.
-                remaining_minutes=draw(st.integers(min_value=1, max_value=owed)),
+                # Up to two and a half days of work, so a week whose capacity before the deadline
+                # cannot hold it is an ordinary draw rather than a rare one: a property about how
+                # a gap moves is worthless over inputs that mostly have no gap.
+                remaining_minutes=draw(st.integers(min_value=1, max_value=3600)),
                 area_id=measured,
                 labels=("F&F Past Papers",),
             ),
@@ -603,7 +597,99 @@ def every_subset_fits(owed: tuple[Obligation, ...]) -> bool:
     return True
 
 
-@given(week=weeks(smaller_obligations=True))
+@st.composite
+def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
+    """A week whose obligations are drawn from the capacity it really has, per Area.
+
+    The property this feeds is stated over weeks where an assignment exists, and drawing
+    obligations blindly and filtering for that would discard most of them. So the capacity is
+    computed inside the strategy and every obligation is drawn from what its own Area may really
+    claim. The floor is drawn to land in the band where a per-Area capacity set and a whole-week
+    figure disagree, which is the shape a blind draw almost never produces.
+
+    The scoped windows and the second Area are the point: they are what make one Area's capacity
+    differ from the week's, which is the shape the arithmetic has to get right.
+    """
+    now_minutes = draw(st.integers(min_value=0, max_value=WEEK_MINUTES // 2))
+    now = MONDAY + timedelta(minutes=now_minutes)
+    frame = draw(interval_sets(max_size=2))
+    anchors = draw(interval_sets(max_size=1))
+    absolute_forbidden = draw(interval_sets(max_size=1))
+    off_plan = draw(interval_sets(max_size=1))
+    placed = draw(interval_sets(max_size=2))
+    measured = draw(st.sampled_from((CAREER, FITNESS)))
+    competitor = FITNESS if measured == CAREER else CAREER
+    windows = draw(scoped_windows(measured, competitor))
+
+    occupied = frame.union(anchors).union(absolute_forbidden).union(off_plan)
+    free = IntervalSet([WEEK]).subtract(occupied).after(now).subtract(placed)
+
+    def claimable(area_id: AreaId) -> IntervalSet:
+        return free.subtract(
+            IntervalSet(window.interval for window in windows if window.forbids(area_id))
+        )
+
+    def a_share_of(available: int) -> int:
+        return draw(st.integers(min_value=0, max_value=max(0, available // 2)))
+
+    deadlines = [
+        MONDAY + timedelta(minutes=draw(st.integers(min_value=now_minutes, max_value=WEEK_MINUTES)))
+        for _ in range(2)
+    ]
+    mine, theirs = claimable(measured), claimable(competitor)
+    # The competitor's work first, then this Area's floor drawn to land in the band where a
+    # per-Area capacity set and a whole-week one disagree: above what this Area's own capacity holds
+    # after the competitor's work, and at most what the two Areas' capacity holds together. A week
+    # drawn outside that band cannot tell the two readings apart, which is how the defect this
+    # property exists for survived a suite of 1158 tests.
+    owed_by_them = a_share_of(theirs.before(deadlines[1]).total_minutes())
+    together = mine.union(theirs).total_minutes()
+    at_least = max(0, mine.total_minutes() - owed_by_them)
+    reserved_by_me = draw(
+        st.integers(min_value=at_least, max_value=max(at_least, together - owed_by_them))
+    )
+    return ProbeInputs(
+        span=WEEK,
+        now=now,
+        computed_at=now,
+        input_version=draw(st.integers(min_value=0, max_value=99)),
+        frame=frame,
+        anchors=anchors,
+        absolute_forbidden=absolute_forbidden,
+        scoped_forbidden=windows,
+        off_plan=off_plan,
+        placed=placed,
+        area_floor_reservations=(
+            FloorReservation(
+                area_id=measured, reserved_minutes=reserved_by_me, label=NAMES[measured]
+            ),
+            FloorReservation(area_id=competitor, reserved_minutes=0, label=NAMES[competitor]),
+        ),
+        deadline_demands=(
+            DeadlineDemand(
+                deadline=deadlines[0],
+                remaining_minutes=draw(
+                    st.integers(
+                        min_value=0,
+                        max_value=max(
+                            0, mine.before(deadlines[0]).total_minutes() - reserved_by_me
+                        ),
+                    )
+                ),
+                area_id=measured,
+                labels=("F&F Past Papers",),
+            ),
+            DeadlineDemand(
+                deadline=deadlines[1],
+                remaining_minutes=owed_by_them,
+                area_id=competitor,
+                labels=("Kim's Game Project",),
+            ),
+        ),
+    )
+
+
+@given(week=weeks_that_can_hold_their_work())
 def test_a_week_that_can_hold_all_of_its_work_is_reported_with_no_gap_at_all(
     week: ProbeInputs,
 ) -> None:

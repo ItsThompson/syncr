@@ -10,6 +10,7 @@ the failure mode the table exists to prevent.
 from __future__ import annotations
 
 import dataclasses
+import importlib.util
 import re
 from datetime import timedelta
 from pathlib import Path
@@ -33,6 +34,9 @@ from tests.probe_weeks import CAREER, FITNESS, NOW, STUDY, a_demand, a_week
 
 PACKAGE_ROOT = Path(feasibility.__file__).parent
 
+# What a row says when the definition it points at is stated in the module the table is in.
+THIS_MODULE = "this module"
+
 # A row of the field table: the field name in backticks, then the question, then the owner.
 TABLE_ROW = re.compile(r"^\| `(?P<field>\w+)` \| (?P<question>[^|]+) \| (?P<owner>[^|]+) \|$")
 
@@ -55,15 +59,34 @@ def test_every_field_has_a_row_in_the_table_and_every_row_has_a_field() -> None:
 
 
 def test_every_row_answers_a_question_and_names_where_the_answer_lives() -> None:
-    # The table is only a drift-catcher if each row carries both halves. The owners that name a
-    # module in this package are resolved; the ones that name a component in another package are
-    # checked as prose only, which is stated here rather than implied.
+    # The table is only a drift-catcher if every row carries both halves AND the owner it names is
+    # real. Every dotted owner is resolved, in this package and in the two downstream ones, so a
+    # row naming a module that does not exist fails here rather than reading as an answer.
+    #
+    # `find_spec` resolves without executing the module's body, and the parent packages it does
+    # import carry nothing but a docstring. The domain's purity rule is about what SOURCE imports;
+    # this is a test reading the tree.
     for field, (question, owner) in table_rows().items():
         assert question.endswith("?") or "?" in question, field
         assert owner, field
-        if owner.startswith("`syncr_domain."):
-            module = owner.strip("`").split(".")
-            assert (PACKAGE_ROOT.parent / f"{module[1]}.py").exists(), owner
+        if owner == THIS_MODULE:
+            continue
+        assert owner.startswith("`"), f"{field}: {owner!r} is neither a module nor {THIS_MODULE!r}"
+        assert importlib.util.find_spec(owner.strip("`")) is not None, owner
+
+
+def test_the_guard_can_resolve_every_owner_the_table_names() -> None:
+    # An inventory rather than a rule, for the same reason the assembler's read-count guard next
+    # door is one: an owner the guard cannot resolve is an unchecked row, and this asserts there
+    # are none. A row that named prose would have to be added to the resolvable forms above
+    # deliberately, which is the moment to ask whether the thing it names has a home yet.
+    unresolvable = {
+        field
+        for field, (_, owner) in table_rows().items()
+        if owner != THIS_MODULE and not owner.startswith("`")
+    }
+
+    assert unresolvable == set()
 
 
 def test_every_module_in_the_package_appears_in_its_index() -> None:
