@@ -30,3 +30,4 @@ type TaskId = UUID
 type AnchorId = UUID
 type RoutineId = UUID
 type WeekAdjustmentId = UUID
+type BlockOutcomeId = UUID

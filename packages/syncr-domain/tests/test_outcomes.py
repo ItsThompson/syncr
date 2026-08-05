@@ -1,9 +1,10 @@
-"""The outcome projection: which states are a completion, which is a miss, and the partition.
+"""The outcome projection: which states are a completion, which is a miss, and what each attributes.
 
-The partition is the whole content of this module, and it is what both derivations rest on. It
-is asserted mechanically rather than by listing five states twice: a state added to the
-vocabulary and left out of both sets would otherwise be silently neither, and both derivations
-would ignore it.
+Two partitions of the same five states live here, and neither is asserted by listing the states
+twice. The completion partition is what both derivations rest on: a state added to the vocabulary
+and left out of both sets would be silently neither, and both derivations would ignore it. The
+attribution table is what the probe's demand rests on, and it is total over the vocabulary for the
+same reason.
 """
 
 from __future__ import annotations
@@ -14,16 +15,43 @@ from uuid import uuid4
 import pytest
 
 from syncr_domain.identity import BindingRef, index_occurrence_key
+from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import (
     COMPLETION_STATES,
+    MIN_ACTUAL_MINUTES,
     MISS_STATE,
     HabitOutcome,
     OutcomeError,
     OutcomeState,
+    RecordedOutcome,
+    attributed_span,
 )
 
 AT = datetime(2026, 8, 3, 6, 0, tzinfo=UTC)
 HABIT = uuid4()
+
+# One planned hour, so a partial's prefix and the planned span are told apart by their ends.
+PLANNED = Interval(AT, AT + timedelta(hours=1))
+
+# Two hours later than planned, and half as long, so neither bound nor the length coincides.
+ELSEWHERE = Interval(AT + timedelta(hours=2), AT + timedelta(hours=2, minutes=30))
+
+BINDING = BindingRef.for_habit(HABIT, index=0)
+
+
+def recorded(
+    state: OutcomeState,
+    *,
+    actual_minutes: int | None = None,
+    actual_interval: Interval | None = None,
+) -> RecordedOutcome:
+    """One block's outcome, with whatever its state carries supplied by the caller."""
+    return RecordedOutcome(
+        binding=BINDING,
+        state=state,
+        actual_minutes=actual_minutes,
+        actual_interval=actual_interval,
+    )
 
 
 def outcome(state: OutcomeState, *, confirmed: bool = True) -> HabitOutcome:
@@ -149,3 +177,126 @@ class TestTheOccurrenceKeyIsTheOneKeyABlockCouldCarry:
 
             assert outcome_keyed(derived).occurrence_key == derived
             assert BindingRef.for_habit(HABIT, index=index).occurrence_key == derived
+
+
+class TestWhatEachStateAttributes:
+    """The attribution table, and the two properties that make it a table rather than a list.
+
+    It is TOTAL over the vocabulary, so a sixth state cannot be silently unattributed, and exactly
+    one member attributes nothing. Both are asserted mechanically, because the failure a listed
+    table produces is a state that quietly contributes its planned span forever.
+    """
+
+    def test_a_block_with_no_row_at_all_attributes_its_planned_span(self) -> None:
+        # O1: a block is presumed complete with no user action, so the absence of a row is a
+        # reading rather than a gap. Without this the common case would attribute nothing.
+        assert attributed_span(PLANNED, None) == PLANNED
+
+    @pytest.mark.parametrize(
+        "state", [OutcomeState.PRESUMED, OutcomeState.COMPLETED], ids=["presumed", "completed"]
+    )
+    def test_a_presumed_or_completed_block_attributes_its_planned_span(
+        self, state: OutcomeState
+    ) -> None:
+        assert attributed_span(PLANNED, recorded(state)) == PLANNED
+
+    def test_a_partial_block_attributes_its_actual_minutes_from_the_planned_start(self) -> None:
+        # The prefix rather than a bare count: every reader clips this against a deadline and
+        # against `now`, and a count would have to be placed somewhere before it could be clipped.
+        span = attributed_span(PLANNED, recorded(OutcomeState.PARTIAL, actual_minutes=20))
+
+        assert span == Interval(PLANNED.start, PLANNED.start + timedelta(minutes=20))
+
+    def test_a_partial_reporting_longer_than_planned_attributes_past_the_planned_end(self) -> None:
+        # Stated rather than clamped. The user is reporting how long the work took, and the state
+        # they chose is theirs; clamping would silently discard the figure the signal is read from.
+        span = attributed_span(PLANNED, recorded(OutcomeState.PARTIAL, actual_minutes=90))
+
+        assert span is not None
+        assert span.total_minutes() == 90
+        assert span.end > PLANNED.end
+
+    def test_a_moved_block_attributes_the_interval_it_really_happened_in(self) -> None:
+        span = attributed_span(PLANNED, recorded(OutcomeState.MOVED, actual_interval=ELSEWHERE))
+
+        assert span == ELSEWHERE
+        assert span.total_minutes() == 30
+
+    def test_a_skipped_block_attributes_nothing(self) -> None:
+        # The row 1290 settled. The user said the work was not done, so the minutes are not held
+        # against the task: the demand stays gross for work that is genuinely still outstanding.
+        assert attributed_span(PLANNED, recorded(MISS_STATE)) is None
+
+    @pytest.mark.parametrize("state", sorted(OutcomeState))
+    def test_every_state_in_the_vocabulary_has_an_attribution(self, state: OutcomeState) -> None:
+        span = attributed_span(PLANNED, _any_outcome(state))
+
+        assert span is None or span.total_minutes() > 0
+
+    def test_exactly_one_state_attributes_nothing_and_it_is_the_miss(self) -> None:
+        # The property that pairs the two partitions: the state that says the content was not done
+        # is the one that contributes no minutes, and no completion state contributes none.
+        unattributed = {
+            state for state in OutcomeState if attributed_span(PLANNED, _any_outcome(state)) is None
+        }
+
+        assert unattributed == {MISS_STATE}
+        assert not unattributed & COMPLETION_STATES
+
+
+class TestTheDataTwoOfTheStatesCarry:
+    """O2 and O7's first half, each checked in both directions.
+
+    The reverse direction is not tidiness. A figure on a state that does not name one is a value
+    no reader looks at, so it can disagree with the span the block was planned for and nothing
+    would report the disagreement.
+    """
+
+    def test_a_partial_without_its_minutes_is_refused(self) -> None:
+        with pytest.raises(OutcomeError, match="duration-estimate signal"):
+            recorded(OutcomeState.PARTIAL)
+
+    @pytest.mark.parametrize(
+        "state",
+        [OutcomeState.PRESUMED, OutcomeState.COMPLETED, OutcomeState.SKIPPED, OutcomeState.MOVED],
+    )
+    def test_a_state_that_names_no_minutes_may_not_carry_them(self, state: OutcomeState) -> None:
+        interval = ELSEWHERE if state is OutcomeState.MOVED else None
+        with pytest.raises(OutcomeError, match="only a 'partial' outcome states its own minutes"):
+            recorded(state, actual_minutes=20, actual_interval=interval)
+
+    def test_a_partial_of_no_minutes_is_the_other_state_and_is_refused(self) -> None:
+        with pytest.raises(OutcomeError, match="which has its own state"):
+            recorded(OutcomeState.PARTIAL, actual_minutes=MIN_ACTUAL_MINUTES - 1)
+
+    def test_a_partial_of_the_smallest_reportable_figure_is_accepted(self) -> None:
+        # The bound distinguishes rather than refusing a figure: one minute is a real partial.
+        span = attributed_span(
+            PLANNED, recorded(OutcomeState.PARTIAL, actual_minutes=MIN_ACTUAL_MINUTES)
+        )
+
+        assert span is not None
+        assert span.total_minutes() == MIN_ACTUAL_MINUTES
+
+    def test_a_move_that_does_not_say_when_is_refused(self) -> None:
+        with pytest.raises(OutcomeError, match="states the interval it really happened in"):
+            recorded(OutcomeState.MOVED)
+
+    @pytest.mark.parametrize(
+        "state",
+        [OutcomeState.PRESUMED, OutcomeState.COMPLETED, OutcomeState.SKIPPED, OutcomeState.PARTIAL],
+    )
+    def test_a_state_that_names_no_interval_may_not_carry_one(self, state: OutcomeState) -> None:
+        minutes = 20 if state is OutcomeState.PARTIAL else None
+        with pytest.raises(OutcomeError, match="only a 'moved' outcome states when"):
+            recorded(state, actual_minutes=minutes, actual_interval=ELSEWHERE)
+
+
+def _any_outcome(state: OutcomeState) -> RecordedOutcome:
+    """A legal outcome of ``state``, whichever half that state has to carry."""
+    return RecordedOutcome(
+        binding=BINDING,
+        state=state,
+        actual_minutes=20 if state is OutcomeState.PARTIAL else None,
+        actual_interval=ELSEWHERE if state is OutcomeState.MOVED else None,
+    )
