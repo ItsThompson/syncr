@@ -31,6 +31,7 @@ from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.solving.config import (
     CALENDAR_SYNC,
     FAILED,
+    MAX_ATTEMPTS,
     OPERATION_KINDS,
     OPERATION_STATUSES,
     OPERATIONS_PREFIX,
@@ -174,23 +175,43 @@ def test_a_superseded_operation_is_reported_distinctly_from_a_failed_one(
     """The word and the sentence differ on the wire, which is where the user meets them.
 
     A superseded solve is the expected outcome of editing quickly, so reporting it as a failure
-    would make normal use look broken.
+    would make normal use look broken. Compared against a TERMINAL failure rather than a first one:
+    a first failure has an attempt left, so it is queued again and reads as ``pending``, and
+    comparing against that would assert this about the wrong pair of statuses.
     """
     displaced = seed_operation(live_database_url, owner.tenant_id, outcome=Superseded())
-    broken = seed_operation(
-        live_database_url,
-        owner.tenant_id,
-        week=IsoWeek(2026, 8),
-        outcome=Failed(code="solver_raised", message="the solver raised"),
-    )
+    broken = seed_operation(live_database_url, owner.tenant_id, week=IsoWeek(2026, 8))
+    for _ in range(MAX_ATTEMPTS):
+        _step(
+            live_database_url,
+            owner.tenant_id,
+            broken,
+            Failed(code="solver_raised", message="the solver raised"),
+        )
 
     one = http.get(f"{OPERATIONS_PREFIX}/{displaced.id}", headers=signed_in).json()
     other = http.get(f"{OPERATIONS_PREFIX}/{broken.id}", headers=signed_in).json()
 
-    assert one["status"] == SUPERSEDED
-    assert other["status"] == PENDING, "a first failure has an attempt left, so it is queued again"
+    assert (one["status"], other["status"]) == (SUPERSEDED, FAILED)
     assert one["statement"] != other["statement"]
     assert one["error"] is None, "supersession is not an error and carries no code"
+    assert other["error"] == {"code": "solver_raised", "message": "the solver raised"}
+
+
+def test_a_first_failure_is_queued_again_rather_than_reported_as_failed(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    """The control on the pair above: a retryable failure is not the status a reader compares to."""
+    retrying = seed_operation(
+        live_database_url,
+        owner.tenant_id,
+        outcome=Failed(code="solver_raised", message="the solver raised"),
+    )
+
+    body = http.get(f"{OPERATIONS_PREFIX}/{retrying.id}", headers=signed_in).json()
+
+    assert body["status"] == PENDING
+    assert body["attempt"] == 2, "a retrying job must not be silent"
 
 
 def test_a_terminal_failure_states_its_cause_and_what_still_works(
@@ -205,7 +226,7 @@ def test_a_terminal_failure_states_its_cause_and_what_still_works(
     body = http.get(f"{OPERATIONS_PREFIX}/{created.id}", headers=signed_in).json()
 
     assert body["status"] == FAILED
-    assert body["attempt"] == 3
+    assert body["attempt"] == MAX_ATTEMPTS
     assert body["error"] == {"code": "solver_raised", "message": "x"}
     assert "still projected" in body["statement"]
 

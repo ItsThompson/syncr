@@ -8,10 +8,12 @@ in UTC is a day out for half the world. Both are driven here against dates chose
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from syncr_api.horizon.weeks import horizon_dates, horizon_weeks, next_local_midnight
+from syncr_api.user_settings.zone_reading import local_date
 from syncr_domain.weeks import IsoWeek
 
 LONDON = "Europe/London"
@@ -137,3 +139,52 @@ def test_the_midnight_of_a_zone_is_that_zones_own_wall_time() -> None:
     for zone in (LONDON, AUCKLAND, LOS_ANGELES):
         local = next_local_midnight(now, zone).astimezone(ZoneInfo(zone))
         assert local.time() == time(0, 0)
+
+
+# Egypt reinstated DST in 2023 and moves its clocks AT midnight, on the last Friday of April and
+# again in October. So the local midnight of 2023-04-28 in Cairo does not exist, and the local
+# midnight of 2023-10-26 happens twice. Both are the case the due-ness gate rests on, and no zone
+# whose transition falls at 02:00 can exercise either.
+CAIRO = "Africa/Cairo"
+CAIRO_SPRING_EVE = datetime(2023, 4, 27, 12, 0, tzinfo=UTC)
+CAIRO_AUTUMN_EVE = datetime(2023, 10, 25, 12, 0, tzinfo=UTC)
+
+
+def test_a_local_midnight_the_clocks_skip_resolves_forward_by_the_gap() -> None:
+    """Cairo jumps 23:59:59 to 01:00, so 2023-04-28 00:00 names no instant at all there.
+
+    Date arithmetic that assumed a day is 24 hours would produce that nonexistent wall time. Routed
+    through the zone layer, the gap shifts forward, which is the same rule every other declared wall
+    time in this product follows.
+    """
+    midnight = next_local_midnight(CAIRO_SPRING_EVE, CAIRO)
+
+    assert midnight.astimezone(ZoneInfo(CAIRO)).time() == time(1, 0), "shifted by the one-hour gap"
+    assert midnight > CAIRO_SPRING_EVE
+
+
+def test_a_local_midnight_the_clocks_repeat_takes_the_first_occurrence() -> None:
+    """The other direction: Cairo's October change replays midnight, and the earlier one wins.
+
+    Taking the second would delay the horizon's advance by the whole repeated hour.
+    """
+    midnight = next_local_midnight(CAIRO_AUTUMN_EVE, CAIRO)
+    local = midnight.astimezone(ZoneInfo(CAIRO))
+
+    assert local.time() == time(0, 0)
+    assert local.utcoffset() == timedelta(hours=3), "the first occurrence, still on summer time"
+
+
+@pytest.mark.parametrize(
+    "eve", [CAIRO_SPRING_EVE, CAIRO_AUTUMN_EVE], ids=["clocks forward", "clocks back"]
+)
+def test_a_transition_still_advances_the_local_date_by_exactly_one(eve: datetime) -> None:
+    """The property the due-ness gate actually needs, either side of either transition.
+
+    The horizon is a window of local dates, so what the gate owes is that the next due instant falls
+    on the next local date: one earlier and the pass repeats a day, one later and a week entering
+    the horizon waits out a whole extra day.
+    """
+    midnight = next_local_midnight(eve, CAIRO)
+
+    assert local_date(midnight, CAIRO) == local_date(eve, CAIRO) + timedelta(days=1)

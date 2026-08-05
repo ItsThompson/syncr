@@ -1,12 +1,10 @@
 """The maintainer's cadence, and the duty vocabulary its histogram is labeled by.
 
 **Every fifteen minutes and at each local midnight**, and the second is not implied by the first.
-The
-horizon is ``[today_local, today_local + horizon_days)``, so it advances AT local midnight; a pure
-fifteen-minute cadence would advance it up to fifteen minutes late, and the phase of that cycle is
-whatever a restart happened to leave. The runner therefore takes the earlier of its next interval
-and
-the next local midnight, which it can compute for free because a pass has already read every
+The horizon is ``[today_local, today_local + horizon_days)``, so it advances AT local midnight; a
+pure fifteen-minute cadence would advance it up to fifteen minutes late, and the phase of that cycle
+is whatever a restart happened to leave. The runner therefore takes the earlier of its next interval
+and the next local midnight, which it can compute for free because a pass has already read every
 tenant's zone.
 """
 

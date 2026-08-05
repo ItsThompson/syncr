@@ -30,9 +30,11 @@ class OperationSweeps(TenantScopedRepository):
     async def running_since_before(self, cutoff: datetime) -> list[OperationRecord]:
         """Every operation still ``running`` whose claim was taken before ``cutoff``.
 
-        Bounded by construction rather than by a limit: at most one solve per week is non-terminal
-        at a time, which the partial unique index enforces, so the running set is a handful of rows
-        even on a deployment that has been up for months.
+        Unbounded by a limit, and small by construction rather than by that index: a row is
+        ``running`` only while a worker holds it, so the set is bounded by how many operations the
+        deployment's workers can hold at once plus whatever the last crash left behind. For SOLVE
+        operations the partial unique index bounds it further, at one per week per tenant; the other
+        three kinds have no single-flight bound, so the general argument is the concurrency one.
         """
         rows = await self._session.scalars(
             self.scoped_select(Operation).where(

@@ -38,12 +38,12 @@ from syncr_api.plans.stored_values import (
     read_list,
     read_mapping,
     read_member,
-    read_minutes,
     read_optional_id,
     read_optional_interval,
-    read_optional_minutes,
     read_optional_number,
+    read_optional_whole_number,
     read_text,
+    read_whole_number,
     rebuilt,
     stored_date,
     stored_id,
@@ -126,13 +126,13 @@ def plan_document(stored: JsonDocument) -> PlanDocument:
         lambda: PlanDocument(
             iso_week=iso_week,
             zone_by_date=_read_zones(stored.get(ZONE_BY_DATE)),
-            discretionary_minutes=read_minutes(
+            discretionary_minutes=read_whole_number(
                 stored.get(DISCRETIONARY_MINUTES), field=DISCRETIONARY_MINUTES
             ),
-            unallocated_minutes=read_minutes(
+            unallocated_minutes=read_whole_number(
                 stored.get(UNALLOCATED_MINUTES), field=UNALLOCATED_MINUTES
             ),
-            oversubscription_minutes=read_minutes(
+            oversubscription_minutes=read_whole_number(
                 stored.get(OVERSUBSCRIPTION_MINUTES), field=OVERSUBSCRIPTION_MINUTES
             ),
             blocks=_each(stored, BLOCKS, lambda one, at: _read_block(one, iso_week, field=at)),
@@ -207,7 +207,7 @@ def _read_block(value: object, iso_week: IsoWeek, *, field: str) -> Block:
             objective_delta=read_optional_number(
                 stored.get(OBJECTIVE_DELTA), field=f"{field}.{OBJECTIVE_DELTA}"
             ),
-            split_count=read_optional_minutes(
+            split_count=read_optional_whole_number(
                 stored.get(SPLIT_COUNT), field=f"{field}.{SPLIT_COUNT}"
             ),
         ),
@@ -238,7 +238,9 @@ def read_binding(value: object, *, field: str) -> BindingRef:
         kind=read_member(BindingKind, stored.get(KIND), field=f"{field}.{KIND}"),
         entity_id=read_id(stored.get(ENTITY_ID), field=f"{field}.{ENTITY_ID}"),
         occurrence_key=read_text(stored.get(OCCURRENCE_KEY), field=f"{field}.{OCCURRENCE_KEY}"),
-        split_index=read_optional_minutes(stored.get(SPLIT_INDEX), field=f"{field}.{SPLIT_INDEX}"),
+        split_index=read_optional_whole_number(
+            stored.get(SPLIT_INDEX), field=f"{field}.{SPLIT_INDEX}"
+        ),
     )
 
 

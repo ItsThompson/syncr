@@ -27,12 +27,12 @@ from syncr_api.plans.stored_values import (
     read_id,
     read_interval,
     read_mapping,
-    read_minutes,
     read_number,
     read_optional_id,
     read_optional_instant,
     read_optional_text,
     read_text,
+    read_whole_number,
     stored_date,
     stored_id,
     stored_instant,
@@ -171,9 +171,11 @@ def stored_floor(clause: Floor) -> JsonObject:
 def read_floor(stored: JsonDocument, field: str) -> Floor:
     return Floor(
         area_id=read_id(stored.get(AREA_ID), field=f"{field}.{AREA_ID}"),
-        floor_minutes=read_minutes(stored.get(FLOOR_MINUTES), field=f"{field}.{FLOOR_MINUTES}"),
-        placed=read_minutes(stored.get(PLACED), field=f"{field}.{PLACED}"),
-        of=read_minutes(stored.get(OF), field=f"{field}.{OF}"),
+        floor_minutes=read_whole_number(
+            stored.get(FLOOR_MINUTES), field=f"{field}.{FLOOR_MINUTES}"
+        ),
+        placed=read_whole_number(stored.get(PLACED), field=f"{field}.{PLACED}"),
+        of=read_whole_number(stored.get(OF), field=f"{field}.{OF}"),
     )
 
 

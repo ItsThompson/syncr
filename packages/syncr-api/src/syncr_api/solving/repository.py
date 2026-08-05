@@ -227,9 +227,9 @@ class OperationRepository(TenantScopedRepository):
     ) -> OperationRecord | None:
         """Return one failed operation to the queue as its next attempt.
 
-        ``finished_at`` and the result columns are cleared because the row is no longer finished.
-        The error is kept: a retrying job must not be silent, and the pair of a rising attempt and
-        the last cause is what says it is retrying rather than stuck.
+        ``started_at`` and ``finished_at`` are cleared because the row is no longer running and no
+        longer finished. The error is kept: a retrying job must not be silent, and the pair of a
+        rising attempt and the last cause is what says it is retrying rather than stuck.
         """
         return await self._stepped(
             operation_id,

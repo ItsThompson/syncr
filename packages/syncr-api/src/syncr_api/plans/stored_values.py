@@ -1,6 +1,6 @@
 """The leaf forms a stored plan document is built from, read and written in one place.
 
-An instant, a span, a local date, an identifier, a minute count, and a member of a closed
+An instant, a span, a local date, an identifier, a whole number, and a member of a closed
 vocabulary are the values every part of a document is ultimately made of, and each has exactly
 one stored spelling here. A second spelling of any of them is how a block's interval would come
 to round-trip while a pin clause's does not.
@@ -16,9 +16,9 @@ nothing.
 datetime and refuses a naive one, so a span written from a stored week and read back is the same
 value down to its offset.
 
-**A boolean is not a number and a number is not a count of minutes.** ``bool`` is an ``int`` in
-Python, so ``True`` would otherwise read as one minute, and a fractional value would read as a
-count of minutes the arithmetic cannot hold. Both are refused explicitly.
+**A boolean is not a number and a number is not a whole one.** ``bool`` is an ``int`` in
+Python, so ``True`` would otherwise read as a count of one, and a fractional value would read as
+a count the arithmetic cannot hold. Both are refused explicitly.
 """
 
 from __future__ import annotations
@@ -131,16 +131,21 @@ def read_optional_id(value: object, *, field: str) -> UUID | None:
     return None if value is None else read_id(value, field=field)
 
 
-def read_minutes(value: object, *, field: str) -> int:
-    """The whole count a stored value names, or a stated refusal."""
+def read_whole_number(value: object, *, field: str) -> int:
+    """The whole number a stored value names, or a stated refusal.
+
+    Named for what it reads rather than for what its first caller counted: a minute figure, a chunk
+    count and a chunk index are all this, and a name claiming minutes would be wrong at two of the
+    three call sites.
+    """
     if isinstance(value, bool) or not isinstance(value, int):
         raise _corrupt(field, value, "a whole number")
     return value
 
 
-def read_optional_minutes(value: object, *, field: str) -> int | None:
-    """The whole count a stored value names, or nothing when the document states none."""
-    return None if value is None else read_minutes(value, field=field)
+def read_optional_whole_number(value: object, *, field: str) -> int | None:
+    """The whole number a stored value names, or nothing when the document states none."""
+    return None if value is None else read_whole_number(value, field=field)
 
 
 def read_number(value: object, *, field: str) -> float:

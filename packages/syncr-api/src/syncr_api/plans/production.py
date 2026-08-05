@@ -35,7 +35,6 @@ its alert are what surface it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_api.plans.config import APPLIED
@@ -77,15 +76,6 @@ class NoWeightSetInForce(Exception):
     """A tenant with no active weight set, which provisioning makes impossible to create."""
 
 
-@dataclass(frozen=True, slots=True)
-class ProducedWeek:
-    """What producing a week left behind: the revision, and the operation that did it."""
-
-    revision: PlanRevisionRecord
-    operation_id: object
-    input_version: int
-
-
 class WeekProducer:
     """Turns one tenant's declarations into a stored plan for one week."""
 
@@ -104,15 +94,15 @@ class WeekProducer:
         self._weights = weights
         self._operations = operations
 
-    async def advance_into(self, iso_week: IsoWeek, *, now: datetime) -> ProducedWeek:
+    async def advance_into(self, iso_week: IsoWeek, *, now: datetime) -> PlanRevisionRecord:
         """Bring ``iso_week`` into range: a plan for a week nobody has touched.
 
         The reason is ``horizon_advanced``, so the history says the week was planned because time
         passed rather than because a solve could not produce one.
         """
-        return await self._produced(iso_week, now=now, reason=RevisionReason.HORIZON_ADVANCED)
+        return await self._produce_week(iso_week, now=now, reason=RevisionReason.HORIZON_ADVANCED)
 
-    async def materialize_week(self, iso_week: IsoWeek, *, now: datetime) -> ProducedWeek:
+    async def materialize_week(self, iso_week: IsoWeek, *, now: datetime) -> PlanRevisionRecord:
         """The plan of last resort: the frame, the commitments, the buffers, and the day's shape.
 
         The reason is ``materialized``, so the history distinguishes this from the maintainer's own
@@ -120,12 +110,22 @@ class WeekProducer:
         plan that explains itself beats an absent one, and the alternative on a week with no live
         revision is a blank grid and a calendar that runs out.
         """
-        return await self._produced(iso_week, now=now, reason=RevisionReason.MATERIALIZED)
+        return await self._produce_week(iso_week, now=now, reason=RevisionReason.MATERIALIZED)
 
     @measured("week_producer")
-    async def _produced(
+    async def _produce_week(
         self, iso_week: IsoWeek, *, now: datetime, reason: RevisionReason
-    ) -> ProducedWeek:
+    ) -> PlanRevisionRecord:
+        """The revision this week's declarations produce, whichever path asked for it.
+
+        Answers with the revision rather than with nothing, because the caller that needs it is the
+        one this ticket does not build: the coordinator's terminal-failure branch closes its own
+        operation with ``Succeeded(result_revision_id=...)``, and reading it back out of the table
+        would be a second statement of what this call just wrote.
+
+        Timed here rather than on the two entry points, because a timer on both would count one
+        production twice. The metric's method label is therefore this name.
+        """
         weights = await self._weights.active()
         if weights is None:
             raise NoWeightSetInForce(
@@ -167,4 +167,4 @@ class WeekProducer:
             blocks=len(document.blocks),
             empty_slots=len(document.empty_slots),
         )
-        return ProducedWeek(revision=revision, operation_id=operation.id, input_version=version)
+        return revision

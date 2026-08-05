@@ -10,10 +10,8 @@ first rather than whichever week a set iterated to first.
 
 **Local, not UTC.** A user in London at 00:30 is on a date that UTC still calls yesterday, so a
 horizon computed in UTC would advance half an hour late for them and, east of Greenwich, a day
-early.
-The date is resolved in the HOME zone, which is the same zone every other "which week is it"
-question
-in this application is answered in.
+early. The date is resolved in the HOME zone, which is the same zone every other "which week is it"
+question in this application is answered in.
 """
 
 from __future__ import annotations
