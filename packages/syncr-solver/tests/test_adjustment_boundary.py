@@ -55,14 +55,17 @@ def solver_modules() -> list[Path]:
 
 
 def importable_modules() -> set[str]:
-    """Every module the package exposes to an importer, spelled as a filename.
+    """Every module the package exposes to an importer, spelled as a path relative to its root.
 
     A second, independent enumeration: this one asks the import machinery and the walk above asks
     the filesystem. Comparing them is what stops the two guards below going vacuous if the walk ever
     stops finding anything.
+
+    Relative paths rather than basenames, so a module inside a future subpackage cannot satisfy the
+    comparison by sharing a name with a top-level one.
     """
     return {
-        f"{found.name.rsplit('.', 1)[-1]}.py"
+        f"{found.name.removeprefix(PACKAGE_PREFIX).replace('.', '/')}.py"
         for found in pkgutil.walk_packages(list(syncr_solver.__path__), PACKAGE_PREFIX)
         if not found.ispkg
     }
@@ -72,7 +75,7 @@ def test_the_walk_reads_every_module_of_the_package() -> None:
     # Bounded by the directory rather than by a list here, so a module added in a later slice is
     # covered by both checks below without anybody remembering to add it, and cross-checked against
     # the import machinery so a walk that silently found nothing cannot leave both guards vacuous.
-    walked = {path.name for path in solver_modules()}
+    walked = {path.relative_to(PACKAGE_ROOT).as_posix() for path in solver_modules()}
 
     assert "inputs.py" in walked
     assert importable_modules() - walked == set()
