@@ -118,12 +118,30 @@ def test_an_area_that_declares_no_cap_refuses_nothing() -> None:
 
 
 def test_a_candidate_whose_area_the_inputs_declare_no_budget_for_is_not_capped() -> None:
-    # There is no cap to compare against. A candidate carrying no Area at all is the frame or a
-    # commitment, and neither competes for an Area's budget.
     week = inputs(areas=(an_area_budget(area_id=CAREER, name="Career", max_per_day_minutes=15),))
 
     assert area_daily_cap(a_candidate(between(10, 12)), PartialPlan.of(week)) is None
     assert area_daily_cap(a_candidate(between(10, 12), area_id=None), PartialPlan.of(week)) is None
+
+
+def test_a_date_already_past_its_cap_refuses_nothing_elsewhere_in_the_week() -> None:
+    # A week can arrive already over a cap: the user pins two hours of an Area into a day capped at
+    # one, and a pin is honoured. Judging every date would then refuse every candidate of that Area
+    # anywhere in the week and name a date the candidate never reaches, which blames this placement
+    # for a state it did not make.
+    week = inputs(
+        areas=(an_area_budget(max_per_day_minutes=HOUR),),
+        pins=(a_pin(binding=GYM, interval=between(8, 10)),),
+    )
+    inherited = a_candidate(between(8, 10), binding=GYM)
+
+    assert (
+        area_daily_cap(
+            a_candidate(between(10, 11, day=2), binding=READING),
+            PartialPlan.of(week, placed=(inherited,)),
+        )
+        is None
+    )
 
 
 def test_two_overlapping_placements_of_one_area_charge_their_minutes_once() -> None:

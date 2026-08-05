@@ -337,7 +337,20 @@ def test_placing_something_carries_every_field_of_the_state_forward() -> None:
 
 def test_an_off_plan_period_is_ordered_by_every_field_it_carries() -> None:
     # The span alone is total over a legal input, because two periods of one tenant never cover a
-    # common instant. The rest is read so the order does not rest on an invariant checked elsewhere.
+    # common instant. So the pair below is not one a tenant can hold, and the key reads the rest of
+    # the value anyway: the order a document is held in does not rest on an invariant checked in
+    # another module, and a stable sort on a partial key would return the arrival order instead.
+    span = between(1, 2)
+    kept = an_off_plan_period(interval=span, keep_frame=True)
+    dropped = an_off_plan_period(interval=span)
+
+    forwards = PartialPlan.of(inputs(off_plan=(kept, dropped))).off_plan
+    backwards = PartialPlan.of(inputs(off_plan=(dropped, kept))).off_plan
+
+    assert forwards == backwards == (dropped, kept)
+
+
+def test_two_off_plan_periods_of_one_tenant_are_held_in_span_order() -> None:
     early = an_off_plan_period(interval=between(1, 2))
     late = an_off_plan_period(interval=between(3, 4), keep_frame=True)
 

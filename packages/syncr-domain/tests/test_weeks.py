@@ -371,3 +371,28 @@ class TestTheLocalDaysOfAWeek:
 
         assert all(span.start <= day.interval.start for day in days)
         assert all(day.interval.end <= span.end for day in days)
+
+    def test_a_day_whose_own_midnight_falls_before_the_week_opens_starts_where_the_week_does(
+        self,
+    ) -> None:
+        # The clip is not decoration. Moving east on the week's SECOND date puts that date's own
+        # midnight two hours before the week opens, so the first date cannot be bounded at all and
+        # the second would otherwise charge two hours the week does not hold.
+        week = IsoWeek(2026, 7)
+        profile = ZoneProfile(
+            "Etc/GMT+12", (TravelOverride(date(2026, 2, 10), date(2026, 2, 15), KIRITIMATI),)
+        )
+        span = week_span(week, profile)
+
+        days = local_days(week, active_zone_by_date(week, profile), span)
+
+        assert date(2026, 2, 9) not in {day.on for day in days}
+        assert days[0].on == date(2026, 2, 10)
+        assert days[0].interval.start == span.start
+        assert days[0].interval.total_minutes() == 22 * 60
+        # The last date runs to the span's end, which the FOLLOWING Monday's zone bounds: the
+        # override ends on the 15th, so that date is fifty hours long where the user was. The
+        # arithmetic is exposed rather than smoothed, because which instant closes the week is the
+        # span's own statement and not this function's to correct.
+        assert days[-1].interval.end == span.end
+        assert sum(day.interval.total_minutes() for day in days) == span.total_minutes()
