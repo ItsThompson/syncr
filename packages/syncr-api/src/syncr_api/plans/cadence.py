@@ -105,6 +105,7 @@ def habit_occurrences(
                 HabitOccurrence(
                     binding=BindingRef.for_habit(record.id, index=index),
                     duration=duration,
+                    binding_source=habit.binding_source,
                     variant=variants[index],
                     is_debt=index >= fresh,
                     area_id=record.area_id,

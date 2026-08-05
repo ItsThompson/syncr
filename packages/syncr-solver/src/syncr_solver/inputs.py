@@ -72,6 +72,11 @@ from typing import TYPE_CHECKING
 from syncr_domain.feasibility import DeadlineDemand as DeadlineDemand
 from syncr_domain.feasibility import FloorReservation, ProbeInputs, ScopedWindow
 from syncr_domain.gaps import ForbiddenScope
+
+# Re-exported for the same reason ``DeadlineDemand`` is: a reader of ``HabitOccurrence``'s
+# fields finds the vocabulary its binding source speaks next to them. The redundant alias is the
+# explicit re-export form, and the runtime import is what makes the re-export reachable.
+from syncr_domain.habits import BindingSource as BindingSource  # noqa: TC001
 from syncr_domain.identity import BindingKind, BindingRef
 from syncr_domain.intervals import IntervalSet, as_instant
 from syncr_domain.plan import PlanError, require_a_zone_for_every_day
@@ -213,12 +218,20 @@ class HabitOccurrence:
     ``is_debt`` marks an occurrence added to make up an earlier miss rather than a fresh
     one. It is a fact about this expansion and it is not written onto an outcome, so a
     later week's debt derivation cannot tell a made-up completion from a fresh one.
+
+    ``binding_source`` is the habit's own, carried because the solver reads it twice: a
+    ``queue`` occurrence draws its content from the backlog when it is bound, and every
+    occurrence's ``bound`` clause names the source that produced its content. It is NOT
+    derivable from ``variant``: a rotation resolves one, and ``fixed`` and ``queue`` both
+    resolve none, so those two would be indistinguishable and no occurrence could be
+    bound from the backlog at all.
     """
 
     binding: BindingRef
     duration: Duration
     area_id: AreaId
     title: str
+    binding_source: BindingSource
     variant: str | None = None
     is_debt: bool = False
 

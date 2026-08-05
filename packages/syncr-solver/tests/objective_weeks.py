@@ -114,13 +114,20 @@ def an_occurrence(
     is_debt: bool = False,
     area_id: AreaId = FITNESS,
     title: str = "Gym",
+    binding_source: BindingSource | None = None,
 ) -> HabitOccurrence:
-    """One due occurrence of one habit. A variant means its content came from the rotation."""
+    """One due occurrence of one habit. A variant means its content came from the rotation.
+
+    The binding source follows the variant by default, because a rotation is what resolves one, so a
+    test that states a variant does not also have to state the source it implies.
+    """
     return HabitOccurrence(
         binding=BindingRef.for_habit(habit_id or A_HABIT, index=index),
         duration=Duration(min_minutes=minutes, max_minutes=max_minutes or minutes),
         area_id=area_id,
         title=title,
+        binding_source=binding_source
+        or (BindingSource.ROTATION if variant is not None else BindingSource.FIXED),
         variant=variant,
         is_debt=is_debt,
     )
