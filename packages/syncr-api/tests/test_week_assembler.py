@@ -649,6 +649,27 @@ async def test_a_rotation_advances_across_the_week_from_where_the_log_leaves_it(
     ]
 
 
+async def test_every_occurrence_carries_the_binding_source_its_own_habit_declares() -> None:
+    """The solver reads it twice and cannot derive it: a `queue` habit draws its content from the
+    backlog, and every occurrence's ``bound`` clause names the source that produced its content.
+
+    Both sources that resolve no variant are asserted, because they are the pair a fallback would
+    make indistinguishable: read as ``fixed``, a queue habit silently keeps its own title and no
+    backlog item is ever named on a block.
+    """
+    area = an_area()
+    drawn = a_habit(area_id=area.id, times_per_week=2, binding_source=BindingSource.QUEUE)
+    repeated = a_habit(area_id=area.id, times_per_week=1, binding_source=BindingSource.FIXED)
+
+    inputs = await an_assembler(
+        areas=FakeAreas([area]), habits=FakeHabits([drawn, repeated])
+    ).assemble(WEEK, NOW)
+
+    assert {
+        entry.binding.entity_id: entry.binding_source for entry in inputs.habit_occurrences
+    } == {drawn.id: BindingSource.QUEUE, repeated.id: BindingSource.FIXED}
+
+
 async def test_outstanding_debt_adds_made_up_occurrences_after_the_fresh_ones() -> None:
     area = an_area()
     habit = a_habit(
