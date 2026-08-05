@@ -49,9 +49,12 @@ describe("rendering each screen", () => {
     },
   );
 
-  /* The root's decision needs a read, so this case installs it. Without handlers it would still land on the week,
-   * through the REFUSED-read branch, and read as though it had asserted the ready path. The three other answers
-   * the root gives are `__tests__/RootRedirect.test.tsx`'s. */
+  /* The root's decision needs a read, so this case installs one that lets a plan exist. Without handlers it still
+   * lands on the week, through the REFUSED-read branch, and would read as though it had asserted the ready path.
+   *
+   * No assertion HERE can tell the two apart, because both answer with the week: what this case owns is that the
+   * root has a route and lands on a real screen. Which answer the root gives, and why, is
+   * `__tests__/RootRedirect.test.tsx`'s, where the two that answer with setup are what make the branch falsifiable. */
   it("redirects the root to the week once a plan can exist", async () => {
     apiServer.use(...setupHandlers(MINIMUM_DECLARED));
     renderAt("/");
