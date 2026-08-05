@@ -129,7 +129,14 @@ class Blocked:
 
 @dataclass(frozen=True, slots=True)
 class Dominant:
-    """The objective term with the largest share of this block's cost."""
+    """The objective term with the largest share of the PLAN's total cost.
+
+    The plan's, not this block's. The objective measures a whole week: three of its seven terms
+    have no per-block reading at all, because an Area's budget deviation is a week's gap, churn
+    counts moves across the document, and staleness is over occurrences the plan does not hold.
+    So the share is ``cost of the term / cost of the plan``, which is the figure the breakdown
+    already answers and the same figure for every block of one plan.
+    """
 
     term: str
     share: float
@@ -214,16 +221,26 @@ type Clause = Blocked | Dominant | Bound | Floor | Pinned | InsteadOf
 # One statement per kind, keyed on the kinds themselves rather than on a parallel list of
 # names: a seventh clause reaches the budget or is refused at construction. Two rejected
 # windows is the most any block reports, because the panel shows the top two.
+#
+# **The key order is the order the rows are rendered in**, so the same mapping states the
+# vocabulary, the bound and the reading order rather than three lists to keep in step. The
+# order runs from what is most specific about this block to what is most general about the
+# week: what determined it, then the user's own edit and what that edit replaced, then the
+# windows the rules refused, then the term carrying the plan's cost, then the Area floor.
 CLAUSE_BUDGET: Final[Mapping[type[Clause], int]] = {
-    Blocked: 2,
-    Dominant: 1,
     Bound: 1,
-    Floor: 1,
     Pinned: 1,
     InsteadOf: 1,
+    Blocked: 2,
+    Dominant: 1,
+    Floor: 1,
 }
 
 MAX_CLAUSES: Final = sum(CLAUSE_BUDGET.values())
+
+# Each kind's position in the reading order, derived from the budget's own keys so a seventh
+# kind cannot be renderable without being budgeted.
+_RANK: Final[Mapping[type[Clause], int]] = {kind: rank for rank, kind in enumerate(CLAUSE_BUDGET)}
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,13 +249,17 @@ class ReasonRecord:
 
     The clauses are held as a tuple whatever the caller passed, so a record read back from a
     stored document cannot be changed through the list it was built from.
+
+    **They are held in the reading order** :data:`CLAUSE_BUDGET` states, whatever order they
+    arrived in, so one record has one rendering wherever it was built and whichever surface
+    draws it. Two clauses of one kind keep the order the caller gave them, which is what makes
+    the top two rejected windows readable as first and second.
     """
 
     clauses: tuple[Clause, ...]
 
     def __post_init__(self) -> None:
         clauses = tuple(self.clauses)
-        object.__setattr__(self, "clauses", clauses)
         if not clauses:
             raise ReasonError(
                 "a block carries at least one clause: a block with no reason is one the "
@@ -246,6 +267,7 @@ class ReasonRecord:
                 "satisfies this with a single 'bound' clause naming its determinant"
             )
         _require_the_budget(clauses)
+        object.__setattr__(self, "clauses", tuple(sorted(clauses, key=_rank_of)))
 
 
 def require_a_finite_delta(objective_delta: float) -> None:
@@ -260,6 +282,11 @@ def require_a_finite_delta(objective_delta: float) -> None:
             f"an objective delta is a finite number of objective units, and {objective_delta} "
             "is not one: it would render as itself and compare false against every threshold"
         )
+
+
+def _rank_of(clause: Clause) -> int:
+    """Where this clause reads in the record. Safe only after the budget check named the kind."""
+    return _RANK[type(clause)]
 
 
 def _require_the_budget(clauses: Sequence[Clause]) -> None:

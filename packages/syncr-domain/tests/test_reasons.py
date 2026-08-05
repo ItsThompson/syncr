@@ -15,6 +15,10 @@ non-optional, so the four derivation sources are asserted alongside the three ha
 sources and the derivation sources, so the two halves are asserted to be disjoint and to
 cover the seven the interface renders. A restatement of the three habit sources here would be
 a second definition to drift.
+
+**A record has one reading order.** The clauses come out in the budget's own key order
+whatever order they went in, so two surfaces rendering one record draw the same rows in the
+same sequence, and two clauses of one kind keep the order the caller gave them.
 """
 
 from __future__ import annotations
@@ -63,16 +67,43 @@ def a_reason(*clauses: Clause) -> ReasonRecord:
     return ReasonRecord(clauses or (Bound(DerivationSource.ROUTINE, "Sleep · 23:00 + 8h"),))
 
 
-# One clause of each kind, in the union's own order, so a generated combination can be built by
-# counting rather than by naming the kinds a second time.
+# One clause of each kind, in the RECORD's reading order, so a generated combination can be
+# built by counting rather than by naming the kinds a second time. Written out rather than
+# derived from the budget's keys: the order test compares against this literal, and a tuple
+# derived from the constant it checks would pass whatever that constant said.
 A_CLAUSE_OF_EACH_KIND: tuple[Clause, ...] = (
-    Blocked(WINDOW, "H2"),
-    Dominant("churn", 0.4),
     Bound(BindingSource.QUEUE, "Tries"),
-    Floor(CAREER, 240, 120, 240),
     Pinned(WINDOW, PINNED_ON),
     InsteadOf(ELSEWHERE, 3.0),
+    Blocked(WINDOW, "H2"),
+    Dominant("churn", 0.4),
+    Floor(CAREER, 240, 120, 240),
 )
+
+
+class TestTheReadingOrder:
+    def test_the_clauses_come_out_in_the_budgets_own_order(self) -> None:
+        """Whatever order they went in, so one record has one rendering on every surface."""
+        scrambled = tuple(reversed(A_CLAUSE_OF_EACH_KIND))
+
+        assert ReasonRecord(scrambled).clauses == A_CLAUSE_OF_EACH_KIND
+
+    def test_what_determined_the_block_reads_first_and_the_area_floor_last(self) -> None:
+        """The order runs from what is specific to this block to what is general to the week."""
+        kinds = [kind.__name__ for kind in CLAUSE_BUDGET]
+
+        assert kinds == ["Bound", "Pinned", "InsteadOf", "Blocked", "Dominant", "Floor"]
+
+    def test_the_two_rejected_windows_keep_the_order_they_arrived_in(self) -> None:
+        """The top two, in that order: a stable sort by kind cannot reorder one kind."""
+        first = Blocked(WINDOW, "anchor_overlap")
+        second = Blocked(ELSEWHERE, "area_daily_cap")
+
+        assert ReasonRecord((second, first)).clauses == (second, first)
+
+    @given(order=st.permutations(A_CLAUSE_OF_EACH_KIND))
+    def test_every_permutation_of_the_six_reads_the_same_way(self, order: list[Clause]) -> None:
+        assert ReasonRecord(tuple(order)).clauses == A_CLAUSE_OF_EACH_KIND
 
 
 class TestTheClauseVocabulary:
@@ -90,6 +121,12 @@ class TestTheClauseVocabulary:
     def test_every_kind_carries_a_budget(self) -> None:
         """A kind with no budget would be unrepresentable, so the two lists are one set."""
         assert set(CLAUSE_BUDGET) == set(get_args(Clause.__value__))
+
+    def test_every_kind_has_a_place_in_the_reading_order(self) -> None:
+        """A kind with no rank would raise on construction rather than render last."""
+        record = ReasonRecord(A_CLAUSE_OF_EACH_KIND)
+
+        assert {type(clause) for clause in record.clauses} == set(get_args(Clause.__value__))
 
     def test_only_the_rejected_windows_are_allowed_twice(self) -> None:
         assert CLAUSE_BUDGET[Blocked] == 2
