@@ -118,14 +118,15 @@ def classify(live: PlanDocument | None, candidate: PlanDocument, *, now: Instant
     """
     _require_one_week(live, candidate)
     held = {} if live is None else live.blocks_by_id()
+    wanted = candidate.blocks_by_id()
     occupied = IntervalSet(block.interval for block in (() if live is None else live.blocks))
-    fills, displacing = _new_blocks(candidate, held=held, occupied=occupied, now=now)
+    fills, displacing = _new_blocks(candidate.blocks, held=held, occupied=occupied, now=now)
     return Classification(
         auto_applicable=fills,
         proposal_diff=ProposalDiff(
             added=displacing,
-            removed=_dropped(held, candidate=candidate.blocks_by_id(), now=now),
-            moved=_relocated(held, candidate=candidate.blocks_by_id(), now=now),
+            removed=_dropped(held, candidate=wanted, now=now),
+            moved=_relocated(held, candidate=wanted, now=now),
         ),
         conflicts=detected_conflicts(
             live,
@@ -137,7 +138,7 @@ def classify(live: PlanDocument | None, candidate: PlanDocument, *, now: Instant
 
 
 def _new_blocks(
-    candidate: PlanDocument,
+    blocks: Sequence[Block],
     *,
     held: Mapping[BlockId, Block],
     occupied: IntervalSet,
@@ -150,9 +151,7 @@ def _new_blocks(
     slot binding late to content is the ordinary auto-application.
     """
     arriving = [
-        block
-        for block in candidate.blocks
-        if block.id not in held and not _has_started(block.interval, now)
+        block for block in blocks if block.id not in held and not _has_started(block.interval, now)
     ]
     return (
         _changes(
