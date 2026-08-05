@@ -16,6 +16,24 @@ rather than as candidates inside it. So both rules pass over a candidate the sta
 at its own span, which is a wider exception than the occupancy rules take, and deliberately: a
 derived buffer colliding with another derived buffer IS a refusal a derivation has to make.
 
+**So the invariant a finished plan holds is narrower than either rule's name.** No date is over an
+Area's cap and no satisfiable floor is left unsatisfied *among the placements the solver chose*: a
+pin can put a date over its cap and the plan keeps it, because refusing it would drop the user's own
+placement.
+
+## Neither refuses a candidate for a state the week arrived in
+
+H9 protects a floor that can still be met. A floor the week cannot meet is a shortfall the verdict
+reports and an approved concession excuses, and refusing content over it would leave an infeasible
+week with nothing in it: infeasibility is a notice rather than a failure, so the product raises,
+warns, and allows. Measured the other way round, the absolute reading refused even the candidate of
+the Area that owes the floor, and named that Area's own shortfall as the reason.
+
+So the comparison is against the state BEFORE the candidate. A week that arrives short stays short
+whatever is placed, and what H9 forbids is the placement that makes a reachable floor unreachable.
+The objective's budget term is what still pulls work into an under-filled Area; a hard rule that
+emptied the week would not.
+
 ## Both measure over what the state holds, and the caller states that
 
 A candidate's own Area minutes are not on the inputs: ``AreaBudget`` carries a whole-week figure,
@@ -40,11 +58,17 @@ by whatever the previous solve had already done.
 
 ``free`` is a union of time and ``owed`` is a sum across Areas, and that asymmetry is deliberate:
 one free minute can serve one Area, and two Areas each owing an hour owe two hours between them.
+
+## What H9 over-credits, which is the safe direction
+
+Free time inside a window that forbids the Area owing the floor is counted as usable here, so this
+rule refuses fewer candidates than the capacity check the verdict is taken from. A hard constraint
+that may not prove feasibility can only safely err that way.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from syncr_domain.intervals import IntervalSet
 from syncr_solver.constraints import Blocked, ConstraintRule
@@ -53,9 +77,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     from syncr_domain.identifiers import AreaId
-    from syncr_solver.constraints import Rule
     from syncr_solver.inputs import AreaBudget
     from syncr_solver.state import PartialPlan, Placement
+
+# One Area's unmet floor: the budget it belongs to, and the minutes still to place in it.
+type Unmet = tuple[AreaBudget, int]
 
 
 def area_daily_cap(candidate: Placement, state: PartialPlan) -> Blocked | None:
@@ -85,43 +111,73 @@ def area_daily_cap(candidate: Placement, state: PartialPlan) -> Blocked | None:
 
 
 def area_floor(candidate: Placement, state: PartialPlan) -> Blocked | None:
-    """H9. A candidate never takes the last of the time another Area's floor still needs.
+    """H9. A candidate never makes a floor the week could still meet unmeetable.
 
-    The comparison is a whole-week one, because a floor is a weekly quantity and the time that can
-    satisfy it is anywhere in the week. It over-credits in one direction and does so deliberately:
-    free time inside a window that forbids the Area owing the floor is counted as usable here, so
-    this rule refuses fewer candidates than the capacity check the verdict is taken from. A hard
-    constraint that may not prove feasibility can only safely err that way.
+    A whole-week comparison, because a floor is a weekly quantity and the time that can satisfy it
+    is anywhere in the week. Twice over: once for the state as it stands, and once with the
+    candidate placed. A week already short of its floors stays short whatever is placed, so the
+    candidate is not what did it and refusing it would empty the week.
+
+    The claimable set is read once and passed to both readings. It is a fact about the space rather
+    than about the placements, so it does not change between them.
     """
     if candidate.area_id is None or state.holds_immovably(candidate):
         return None
-    free = state.discretionary().subtract(_spans(state.placed, including=candidate))
-    owing = [(area, owed) for area in state.areas if (owed := _owed(area, state, candidate)) > 0]
-    total = sum(owed for _, owed in owing)
-    if not owing or total <= free.total_minutes():
+    claimable = state.discretionary()
+    if _shortfall(claimable, state, offered=None) > 0:
         return None
-    # The largest shortfall names the rejection, which is the axis the solver's own tie-breaking
+    owing = _unmet(state, offered=candidate)
+    free = _free(claimable, state, offered=candidate)
+    shortfall = sum(owed for _, owed in owing) - free
+    if shortfall <= 0:
+        return None
+    # The largest unmet floor names the rejection, which is the axis the solver's own tie-breaking
     # orders candidates by. `max` keeps the first of equal ones and the Areas are in identity
     # order, so a tie is broken the same way twice.
     area, owed = max(owing, key=lambda pair: pair[1])
     return Blocked(
         ConstraintRule.AREA_FLOOR,
         candidate.interval,
-        f"{area.name} still owes {owed}m of its floor, and {free.total_minutes()}m is free",
+        f"{area.name} would be left {owed}m short of its floor, with {free}m free",
     )
 
 
-def _owed(area: AreaBudget, state: PartialPlan, candidate: Placement) -> int:
-    """Minutes of this Area's floor that would still be unplaced once ``candidate`` is placed.
+def _shortfall(claimable: IntervalSet, state: PartialPlan, *, offered: Placement | None) -> int:
+    """How far the Areas' unmet floors exceed the claimable time left for them. Negative is slack.
+
+    One figure over two sets that count different things, which is the asymmetry the module
+    docstring states: the floors are summed across Areas because each needs its own minutes, and
+    the time is unioned because one free minute serves one Area.
+    """
+    owing = _unmet(state, offered=offered)
+    return sum(owed for _, owed in owing) - _free(claimable, state, offered=offered)
+
+
+def _free(claimable: IntervalSet, state: PartialPlan, *, offered: Placement | None) -> int:
+    """Minutes of claimable time no Area's placement covers, counting ``offered`` as placed."""
+    return claimable.subtract(_spans(state.placed, including=offered)).total_minutes()
+
+
+def _unmet(state: PartialPlan, *, offered: Placement | None) -> tuple[Unmet, ...]:
+    """Each Area that would still owe minutes of its floor, and how many, in identity order."""
+    return tuple(
+        (area, owed) for area in state.areas if (owed := _owed(area, state, offered=offered)) > 0
+    )
+
+
+def _owed(area: AreaBudget, state: PartialPlan, *, offered: Placement | None) -> int:
+    """Minutes of this Area's floor that would still be unplaced once ``offered`` is placed.
 
     Netted against the placements the floor figure has not already accounted for, which is every
     placement except one that has started and a pin. That is the same set the assembler subtracted
     when it computed ``floor_minutes``, so the two readings cannot count one minute twice. The
-    candidate is filtered on the same rule as the rest: a past block offered somewhere ELSE reaches
-    this rule, because H10 refuses it one row later, and its minutes are already in the figure.
+    offered candidate is filtered on the same rule as the rest: a past block offered somewhere ELSE
+    reaches this rule, because H10 refuses it one row later, and its minutes are already in the
+    figure.
     """
+    counted = (*state.placed, *(() if offered is None else (offered,)))
     placed = _spans(
-        [item for item in (*state.placed, candidate) if not _already_netted(item, state)],
+        [item for item in counted if not _already_netted(item, state)],
         area_id=area.area_id,
     )
     return max(0, area.floor_minutes - placed.total_minutes())
@@ -164,6 +220,3 @@ def _spans(
         for placement in (*placements, *offered)
         if placement.area_id is not None and area_id in (None, placement.area_id)
     )
-
-
-ALLOCATION_RULES: Final[tuple[Rule, ...]] = (area_daily_cap, area_floor)

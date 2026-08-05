@@ -167,6 +167,13 @@ def broke_h7(state: PartialPlan) -> bool:
 
 
 def broke_h8(state: PartialPlan) -> bool:
+    """Whether any Area's chosen minutes on a local date exceed the cap that Area declares.
+
+    Stated over what the solver CHOSE, because a placement it cannot move is not a choice: a pin can
+    put a date over its Area's cap and the plan keeps it, since refusing the pin would drop the
+    user's own placement. So the invariant a produced plan holds is narrower than the rule's name,
+    and it is narrower in exactly the way ``broke_h9`` is.
+    """
     for area in state.areas:
         if area.max_per_day_minutes is None:
             continue
@@ -182,21 +189,33 @@ def broke_h8(state: PartialPlan) -> bool:
 
 
 def broke_h9(state: PartialPlan) -> bool:
-    """Whether the plan leaves less claimable time than the floors still unmet need.
+    """Whether the plan left a satisfiable week unable to meet its floors.
 
-    An invariant of the finished plan rather than of one candidate: H9 preserves it at every step,
-    so the last accepted placement leaves it true. The weeks below all begin with it true, so a plan
-    that breaks it broke it by placing something.
+    An invariant of the finished plan rather than of one candidate, and a CONDITIONAL one: H9
+    protects a floor that can still be met, so a week that arrived short of its floors stays short
+    whatever is placed and the plan did not do it. Both readings are taken over the same placements
+    the rule reads, and the netting is the rule's own: an Area's floor figure arrived with the
+    started blocks and the pins already subtracted, so those are not subtracted twice.
 
-    Stated over what the solver CHOSE, because a placement it cannot move is not a choice: a plan
-    has to hold its own past blocks whether or not the budgets close around them, and the last such
-    placement would otherwise be blamed for a state the inputs arrived in.
+    "Before the plan" is the placements nothing chose, which is what a caller seeds the state with.
     """
-    chosen = tuple(placement for placement in state.placed if not immovable_at(placement, state))
-    if not chosen:
+    inherited = tuple(placement for placement in state.placed if immovable_at(placement, state))
+    if len(inherited) == len(state.placed):
         return False
+    if _shortfall_over(state, inherited) > 0:
+        return False
+    return _shortfall_over(state, state.placed) > 0
+
+
+def _shortfall_over(state: PartialPlan, placements: Sequence[Placement]) -> int:
+    """How far the Areas' unmet floors exceed the claimable time ``placements`` leave. Negative is
+    slack.
+
+    The floors are summed across Areas because each needs its own minutes, and the time is unioned
+    because one free minute serves one Area.
+    """
     claimed = IntervalSet(
-        placement.interval for placement in state.placed if placement.area_id is not None
+        placement.interval for placement in placements if placement.area_id is not None
     )
     free = state.discretionary().subtract(claimed).total_minutes()
     owed = sum(
@@ -205,7 +224,7 @@ def broke_h9(state: PartialPlan) -> bool:
             area.floor_minutes
             - IntervalSet(
                 placement.interval
-                for placement in chosen
+                for placement in placements
                 if placement.area_id == area.area_id
                 and placement.binding not in state.started
                 and placement.binding not in state.pins
@@ -213,7 +232,7 @@ def broke_h9(state: PartialPlan) -> bool:
         )
         for area in state.areas
     )
-    return owed > free
+    return owed - free
 
 
 def broke_h10(state: PartialPlan) -> bool:

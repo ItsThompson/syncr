@@ -26,6 +26,7 @@ from syncr_solver.constraints import ConstraintRule
 from syncr_solver.state import PartialPlan
 from tests.materialized_weeks import (
     CAREER,
+    FITNESS,
     WEEK,
     a_block,
     a_candidate,
@@ -41,6 +42,10 @@ from tests.materialized_weeks import (
 )
 
 TOKYO = "Asia/Tokyo"
+
+# A third Area, so the largest-unmet-floor tie-break has something to order. Its identity sorts
+# after both declared ones, which is what makes the tie test read the order rather than the input.
+STUDY = UUID("00000000-0000-4000-8000-000000000003")
 
 GYM = BindingRef.for_task(UUID(int=11))
 READING = BindingRef.for_task(UUID(int=12))
@@ -222,7 +227,7 @@ def test_a_candidate_that_leaves_another_areas_floor_unreachable_is_refused() ->
 
     assert rejection is not None
     assert rejection.rule is ConstraintRule.AREA_FLOOR
-    assert rejection.detail == "Fitness still owes 120m of its floor, and 60m is free"
+    assert rejection.detail == "Fitness would be left 120m short of its floor, with 60m free"
 
 
 def test_a_candidate_of_the_owing_area_itself_is_accepted_because_it_helps() -> None:
@@ -297,25 +302,110 @@ def test_two_areas_owing_a_floor_owe_the_sum_of_both() -> None:
     )
 
     assert rejection is not None
-    assert rejection.detail == "Career still owes 90m of its floor, and 75m is free"
+    assert rejection.detail == "Career would be left 90m short of its floor, with 75m free"
 
 
-def test_the_largest_shortfall_names_the_rejection() -> None:
+def test_the_largest_unmet_floor_names_the_rejection() -> None:
     # The axis the solver's own tie-breaking orders candidates by, so the clause names the Area a
-    # reader would expect to hear about first.
+    # reader would expect to hear about first. Three Areas, floors of 30, 120 and 30 against 180
+    # claimable minutes, so the week ARRIVES satisfiable and it is the ninety-minute candidate that
+    # makes it not. A week already short would be refused nothing, which is the rule below.
     week = inputs(
         **NARROW_WEEK,
         areas=(
-            an_area_budget(floor_minutes=90),
+            an_area_budget(floor_minutes=30),
             an_area_budget(area_id=CAREER, name="Career", floor_minutes=2 * HOUR),
+            an_area_budget(area_id=STUDY, name="Study", floor_minutes=30),
         ),
     )
 
-    rejection = area_floor(a_candidate(Interval(at(0), at(1)), binding=GYM), PartialPlan.of(week))
+    rejection = area_floor(a_candidate(Interval(at(0), at(1.5)), binding=GYM), PartialPlan.of(week))
 
     assert rejection is not None
-    assert rejection.detail is not None
-    assert rejection.detail.startswith("Career still owes 120m")
+    assert rejection.detail == "Career would be left 120m short of its floor, with 90m free"
+
+
+def test_two_areas_owing_the_same_amount_are_separated_by_their_identities() -> None:
+    # `max` keeps the first of equal ones and the Areas are held in identity order, so a tie is
+    # broken the same way twice rather than by whichever the inputs happened to list first.
+    areas = (
+        an_area_budget(area_id=CAREER, name="Career", floor_minutes=60),
+        an_area_budget(area_id=STUDY, name="Study", floor_minutes=60),
+    )
+    forwards = inputs(**NARROW_WEEK, areas=areas)
+    backwards = inputs(**NARROW_WEEK, areas=tuple(reversed(areas)))
+    candidate = a_candidate(Interval(at(0), at(1.25)), binding=GYM)
+
+    named = {area_floor(candidate, PartialPlan.of(week)) for week in (forwards, backwards)}
+
+    assert len(named) == 1
+    rejection = named.pop()
+    assert rejection is not None
+    assert rejection.detail == "Career would be left 60m short of its floor, with 105m free"
+
+
+def test_a_week_that_arrives_short_of_its_floors_refuses_nothing() -> None:
+    # Infeasibility is a notice rather than a failure: the product raises, warns and allows, and a
+    # week with nothing in it is not something the user can approve. The candidate takes nothing
+    # from anyone, the deficit is 60 minutes before it and 60 after, and the absolute reading
+    # refused it while naming the shortfall it reduces.
+    week = inputs(
+        **NARROW_WEEK,
+        areas=(
+            an_area_budget(floor_minutes=4 * HOUR),
+            an_area_budget(area_id=CAREER, name="Career"),
+        ),
+    )
+    state = PartialPlan.of(week)
+
+    assert state.discretionary().total_minutes() == 3 * HOUR
+    assert area_floor(a_candidate(Interval(at(0), at(1)), binding=GYM), state) is None
+    assert (
+        area_floor(a_candidate(Interval(at(0), at(1)), area_id=CAREER, binding=READING), state)
+        is None
+    )
+
+
+def test_a_floor_a_placement_nothing_can_move_made_unreachable_refuses_nothing_after_it() -> None:
+    # The same rule, reached the other way. A pin the user put inside a narrow week can take the
+    # capacity a floor needed, and the pin is honoured. What follows is a week that cannot meet its
+    # floor through no choice of the solver's, so H9 has nothing left to protect.
+    week = inputs(
+        **NARROW_WEEK,
+        areas=(
+            an_area_budget(floor_minutes=3 * HOUR),
+            an_area_budget(area_id=CAREER, name="Career"),
+        ),
+        pins=(a_pin(binding=READING, interval=Interval(at(0), at(2))),),
+    )
+    pinned = a_candidate(Interval(at(0), at(2)), area_id=CAREER, binding=READING)
+    state = PartialPlan.of(week).with_placed(pinned)
+
+    assert area_floor(a_candidate(Interval(at(2), at(3)), binding=GYM), state) is None
+
+
+def test_the_clause_never_names_the_area_the_refused_block_would_have_served() -> None:
+    # Provable rather than incidental, over a week that arrives satisfiable: a candidate of an Area
+    # that still owes its floor absorbs its own minutes, so the shortfall cannot rise and the
+    # candidate cannot be refused. Whatever IS refused therefore belongs to an Area owing nothing.
+    # The one exception is a candidate the figure already netted, which is driven separately.
+    week = inputs(
+        **NARROW_WEEK,
+        areas=(
+            an_area_budget(floor_minutes=2 * HOUR),
+            an_area_budget(area_id=CAREER, name="Career", floor_minutes=30),
+        ),
+    )
+    state = PartialPlan.of(week)
+
+    for area_id, name in ((FITNESS, "Fitness"), (CAREER, "Career")):
+        rejection = area_floor(
+            a_candidate(Interval(at(0), at(2.5)), area_id=area_id, binding=READING), state
+        )
+        if rejection is None:
+            continue
+        assert rejection.detail is not None
+        assert not rejection.detail.startswith(name)
 
 
 def test_a_placement_the_floor_figure_already_netted_is_not_netted_a_second_time() -> None:
@@ -343,7 +433,7 @@ def test_a_placement_the_floor_figure_already_netted_is_not_netted_a_second_time
     assert GYM not in this_pass.started
     refused = area_floor(career_hour, already_netted)
     assert refused is not None
-    assert refused.detail == "Fitness still owes 120m of its floor, and 60m is free"
+    assert refused.detail == "Fitness would be left 120m short of its floor, with 60m free"
     assert area_floor(career_hour, this_pass) is None
 
 
@@ -367,7 +457,7 @@ def test_a_pinned_placement_is_the_other_half_of_the_set_the_figure_already_nett
     )
 
     assert rejection is not None
-    assert rejection.detail == "Fitness still owes 120m of its floor, and 60m is free"
+    assert rejection.detail == "Fitness would be left 120m short of its floor, with 60m free"
 
 
 def test_occupied_time_leaves_free_capacity_whether_the_solver_may_move_it_or_not() -> None:
@@ -391,7 +481,7 @@ def test_occupied_time_leaves_free_capacity_whether_the_solver_may_move_it_or_no
     )
 
     assert rejection is not None
-    assert rejection.detail == "Fitness still owes 120m of its floor, and 90m is free"
+    assert rejection.detail == "Fitness would be left 120m short of its floor, with 90m free"
 
 
 def test_a_candidate_carrying_no_area_is_judged_by_neither_allocation_rule() -> None:
@@ -453,7 +543,7 @@ def test_the_same_block_offered_somewhere_else_is_judged_and_counted_once() -> N
     rejection = area_floor(moved, state)
 
     assert rejection is not None
-    assert rejection.detail == "Fitness still owes 120m of its floor, and 60m is free"
+    assert rejection.detail == "Fitness would be left 120m short of its floor, with 60m free"
 
 
 def test_a_pin_and_a_block_fixed_by_derivation_are_the_other_two_the_rules_pass_over() -> None:
