@@ -15,7 +15,11 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``proposals.py`` | the single pending slot, replaced by upsert |
 | ``versions.py`` | the input-version counter and the conditional-write guard |
 | ``adjustments.py`` | approved tradeoff concessions, one per kind and target |
-| ``errors.py`` | the two rejections a plan write raises, neither of them a caller's fault |
+| ``errors.py`` | the three rejections a plan write or a plan read raises, none a caller's fault |
+| ``stored_values.py`` | the leaf forms a stored document is built from: an instant, a span, an id |
+| ``stored_clauses.py`` | the six reason clauses, one stored form each |
+| ``stored_reasons.py`` | a block's reason record, and which of the six kinds a stored object is |
+| ``stored_documents.py`` | a whole week, written from and rebuilt through the domain constructors |
 
 And the week assembler, which turns everything above plus every declaration a tenant holds into
 one resolved ``SolveInputs``:

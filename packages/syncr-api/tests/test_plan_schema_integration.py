@@ -29,9 +29,11 @@ from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.plans.config import APPLIED
 from syncr_api.plans.facts import BlockOutcome, EditEvent, Pin, PlanConflict, VerdictEvent
 from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.stored_documents import stored_binding
 from syncr_api.solving.config import FAILED, RUNNING, SUCCEEDED, SUPERSEDED
 from syncr_api.solving.models import Operation
 from syncr_api.solving.repository import OperationRepository
+from syncr_domain.identity import BindingRef, block_id
 from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import delete_tenant, seed_owner
 
@@ -49,8 +51,12 @@ WEEK = IsoWeek(2026, 7)
 OTHER_WEEK = IsoWeek(2026, 8)
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 LATER = NOW + timedelta(minutes=30)
-BLOCK_ID = "b3f1a9c2d4e5f60718293a4b5c6d7e8f"
-BINDING = {"kind": "habit", "entity_id": str(uuid4()), "occurrence_key": "2026-02-09"}
+# Built through the domain rather than written out. The tables accept a malformed identity -- a
+# JSONB column holds any object, and the id column is a `varchar(64)`, so a shorter digest fits --
+# so the one hand-written example in the repository is derived instead, and stays legal.
+A_BINDING = BindingRef.for_habit(uuid4(), index=0)
+BLOCK_ID = block_id(WEEK, A_BINDING)
+BINDING = stored_binding(A_BINDING)
 
 
 @pytest.fixture
