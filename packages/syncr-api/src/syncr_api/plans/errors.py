@@ -1,4 +1,4 @@
-"""The three rejections the plan side raises, and why none is a ``SyncrError``.
+"""The four rejections the plan side raises, and why none is a ``SyncrError``.
 
 A revision reaches storage from a Pydantic model that has already validated it, and every
 document-describing column is derived rather than passed in. So a document that cannot
@@ -32,3 +32,14 @@ class RevisionRejected(Exception):
 
 class StoredDocumentCorrupt(Exception):
     """A stored document the domain constructors cannot rebuild, so it describes no week."""
+
+
+class AdjustmentRejected(Exception):
+    """A concession whose per-date reductions no week could honour, so the row is refused.
+
+    The write side of the same rule. A reduction naming a date outside the concession's own week,
+    or a figure that is not a positive count of minutes, pairs with no occurrence: stored, it would
+    sit on the table claiming to have been honoured while changing nothing. The read side is
+    deliberately tolerant and reports what it dropped, because a row already stored has to be
+    readable; this is what stops one being written.
+    """

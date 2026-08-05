@@ -10,6 +10,12 @@ and target. Otherwise approving "breach the floor by 1h20m" twice would breach i
 than on the database.
 
 Requesting a tradeoff writes nothing here. Only approval does.
+
+**WA7 is enforced on the write.** Every date a reduction names falls inside the concession's own
+week and every figure is a positive count of minutes. A reduction outside the week pairs with no
+occurrence, so stored it would claim to have been honoured while changing nothing, and a figure of
+zero or less would either do nothing or lengthen a routine a concession exists to shorten. The read
+side is deliberately tolerant and reports what it dropped; this is what stops such a row existing.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from syncr_api.core.repository import TenantScopedRepository
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
+from syncr_api.plans.errors import AdjustmentRejected
 from syncr_api.plans.facts import WeekAdjustment
 from syncr_api.plans.records import WeekAdjustmentRecord
 from syncr_domain.weeks import IsoWeek
@@ -61,7 +68,7 @@ class WeekAdjustmentRepository(TenantScopedRepository):
             "iso_week": str(iso_week),
             "kind": kind,
             "target_id": target_id,
-            "reductions": {} if reductions is None else dict(reductions),
+            "reductions": _honourable_reductions(reductions, iso_week=iso_week),
             "delta_minutes": delta_minutes,
             "created_at": created_at,
             "created_by_operation_id": created_by_operation_id,
@@ -86,6 +93,54 @@ class WeekAdjustmentRepository(TenantScopedRepository):
             .order_by(WeekAdjustment.kind, WeekAdjustment.created_at)
         )
         return [_as_record(row) for row in rows]
+
+    async def find(self, adjustment_id: UUID) -> WeekAdjustmentRecord | None:
+        """One concession of this tenant's, or ``None``.
+
+        Scoped, so another tenant's identifier reads as absent rather than as forbidden, which is
+        what makes the 404 a revocation raises truthful.
+        """
+        found = await self._session.scalar(
+            self.scoped_select(WeekAdjustment).where(WeekAdjustment.id == adjustment_id)
+        )
+        return _as_record(found) if found is not None else None
+
+    async def remove(self, adjustment_id: UUID) -> None:
+        """Revoke one concession, so the next assembly resolves the week without it.
+
+        Deleted rather than marked revoked. A concession is week-scoped and the plan document that
+        was solved under it records which ones by identifier, so what a revoked row would carry that
+        the revision history does not already hold is nothing.
+        """
+        await self._session.execute(
+            self.scoped_delete(WeekAdjustment).where(WeekAdjustment.id == adjustment_id)
+        )
+
+
+def _honourable_reductions(
+    reductions: JsonDocument | None, *, iso_week: IsoWeek
+) -> dict[str, object]:
+    """WA7: every date inside ``iso_week``, every value a positive count of minutes.
+
+    Refused rather than dropped, and the message names the entry, because this is the write: a row
+    that claims a concession and applies to nothing is worse than a refused approval, and the caller
+    that built it has the offer that would have been honourable.
+    """
+    if reductions is None:
+        return {}
+    week = {on.isoformat() for on in iso_week.dates()}
+    for key, value in reductions.items():
+        if key not in week:
+            raise AdjustmentRejected(
+                f"a reduction on {key!r} is not a date {iso_week} holds, so it would pair with no "
+                "occurrence and the concession would apply to nothing"
+            )
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise AdjustmentRejected(
+                f"a reduction of {value!r} on {key!r} is not a positive count of minutes: a "
+                "concession shortens a routine, so nothing else is a reduction"
+            )
+    return dict(reductions)
 
 
 def _as_record(adjustment: WeekAdjustment) -> WeekAdjustmentRecord:

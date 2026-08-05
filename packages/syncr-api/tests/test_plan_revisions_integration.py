@@ -10,6 +10,8 @@ SCHEMA enforces and everything a single statement has to do atomically:
   upsert;
 - a second concession for one kind and target REPLACES the first, so approving a tradeoff
   twice does not double its effect;
+- a reduction naming a date the concession's own week does not hold is refused on the write,
+  because stored it would claim to have been honoured while pairing with no occurrence;
 - and every statement that reaches Postgres carries the tenant predicate.
 """
 
@@ -26,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.config import APPLIED, APPROVED, PLAN_REVISIONS_TABLE, AdjustmentKind
+from syncr_api.plans.errors import AdjustmentRejected
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
@@ -538,3 +541,95 @@ async def test_a_concession_kind_the_vocabulary_does_not_name_is_rejected(
                 created_at=NOW,
                 created_by_operation_id=uuid4(),
             )
+
+
+# --------------------------------------------------------------------------------
+# WA7, and revoking a concession
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("reductions", "refused"),
+    [
+        ({"2026-03-02": 20}, "is not a date"),
+        ({"2026-02-10": 0}, "positive count"),
+        ({"2026-02-10": -20}, "positive count"),
+        ({"2026-02-10": True}, "positive count"),
+    ],
+)
+async def test_a_reduction_no_week_could_honour_is_refused_rather_than_stored(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    reductions: dict[str, Any],
+    refused: str,
+) -> None:
+    # WA7, on the write. A date outside the concession's own week pairs with no occurrence, and a
+    # figure of zero or less either does nothing or LENGTHENS the routine a concession exists to
+    # shorten. Either one stored would claim to have been honoured while changing nothing.
+    async with sessions() as session, session.begin():
+        with pytest.raises(AdjustmentRejected, match=refused):
+            await WeekAdjustmentRepository(session, owner.tenant_id).upsert(
+                iso_week=WEEK,
+                kind="reduce_routine",
+                target_id=uuid4(),
+                reductions=reductions,
+                created_at=NOW,
+                created_by_operation_id=uuid4(),
+            )
+
+    async with sessions() as session:
+        assert await WeekAdjustmentRepository(session, owner.tenant_id).for_week(WEEK) == []
+
+
+async def test_revoking_a_concession_leaves_the_week_resolving_without_it(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # WA8's storage half: removing a concession changes the inputs, so the row goes and the next
+    # assembly reads the week as it was declared. Deleted rather than marked revoked, because the
+    # revision history already records which concessions each document was solved under.
+    async with sessions() as session, session.begin():
+        adjustments = WeekAdjustmentRepository(session, owner.tenant_id)
+        stored = await adjustments.upsert(
+            iso_week=WEEK,
+            kind="breach_floor",
+            target_id=uuid4(),
+            delta_minutes=80,
+            created_at=NOW,
+            created_by_operation_id=uuid4(),
+        )
+
+    async with sessions() as session, session.begin():
+        adjustments = WeekAdjustmentRepository(session, owner.tenant_id)
+        found = await adjustments.find(stored.id)
+        await adjustments.remove(stored.id)
+
+    async with sessions() as session:
+        adjustments = WeekAdjustmentRepository(session, owner.tenant_id)
+        assert found is not None
+        assert found.id == stored.id
+        assert await adjustments.for_week(WEEK) == []
+        assert await adjustments.find(stored.id) is None
+
+
+async def test_another_tenants_concession_reads_as_absent_rather_than_as_forbidden(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # Which is what makes the 404 a revocation raises truthful, and what stops one tenant learning
+    # that another holds a row by that identifier.
+    async with sessions() as session, session.begin():
+        stored = await WeekAdjustmentRepository(session, owner.tenant_id).upsert(
+            iso_week=WEEK,
+            kind="breach_floor",
+            target_id=uuid4(),
+            delta_minutes=80,
+            created_at=NOW,
+            created_by_operation_id=uuid4(),
+        )
+
+    async with sessions() as session, session.begin():
+        stranger = WeekAdjustmentRepository(session, uuid4())
+        assert await stranger.find(stored.id) is None
+        await stranger.remove(stored.id)
+
+    async with sessions() as session:
+        assert await WeekAdjustmentRepository(session, owner.tenant_id).find(stored.id) is not None
