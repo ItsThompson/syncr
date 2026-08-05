@@ -8,18 +8,27 @@ waits for input.
 from __future__ import annotations
 
 import builtins
+import json
+from io import StringIO
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 from syncr_cli.exit_codes import ExitCode, exit_code_table
+from syncr_cli.main import _write
 from syncr_cli.parser import PROGRAM, build_parser
-from syncr_cli.settings import environment_variable
+from syncr_cli.results import CliResult
+from syncr_cli.runtime import Host
+from syncr_cli.settings import OutputFormat, environment_variable
+from syncr_domain.errors import DomainError
 from tests.fake_api import FakeApi
-from tests.harness import drive
+from tests.harness import TODAY, drive
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from datetime import datetime
+
+    from syncr_cli.wire.reading import JsonMapping
 
 COMMANDS = [
     ["auth", "login"],
@@ -141,6 +150,69 @@ def test_a_setting_stated_in_the_environment_is_honored(tmp_path: Path) -> None:
 
     assert ran.code is ExitCode.USAGE
     assert environment_variable("week") in ran.document["problem"]["detail"]
+
+
+def test_a_payload_whose_rendering_raises_still_answers_with_the_wrapper() -> None:
+    # The error boundary covers rendering, not only the command. `_write` is the one function whose
+    # contract is "turn anything into the wrapper", and the only way to hand it a renderer that
+    # raises is a payload that raises: every view implements this protocol, so a view that reaches a
+    # domain rule and is refused by it is the case this exists for.
+    #
+    # The human format is what is driven, because it is the format that reaches the domain at all:
+    # the JSON renderer emits the api's own object and calls no view method, which is exactly why an
+    # unusable value has to be refused when the payload is read as well as caught here.
+    stdout = StringIO()
+    host = _host(stdout)
+
+    code = _write(CliResult.succeeded(_RefusedByTheDomain()), host=host, output=OutputFormat.HUMAN)
+
+    written = stdout.getvalue()
+    assert code is ExitCode.FAILURE
+    assert "Unreadable response" in written
+    assert "cannot print" in written
+    assert "Traceback" not in written
+
+
+def test_the_same_payload_answers_the_json_wrapper_too() -> None:
+    # The fallback render cannot fail for the reason the first one did: a failed result carries no
+    # data and no verdict, so nothing in it reaches a view at all.
+    stdout = StringIO()
+
+    code = _write(
+        CliResult.succeeded(_RefusedByTheDomain()), host=_host(stdout), output=OutputFormat.JSON
+    )
+
+    document = json.loads(stdout.getvalue())
+    assert code is ExitCode.SUCCESS
+    assert list(document) == ["ok", "data", "verdict", "operation", "problem"]
+
+
+def _host(stdout: StringIO) -> Host:
+    return Host(
+        env={},
+        home=Path("/nowhere"),
+        stdout=stdout,
+        stderr=StringIO(),
+        stdout_is_tty=False,
+        today=TODAY,
+    )
+
+
+class _RefusedByTheDomain:
+    """A payload whose rendering reaches a domain rule that refuses its value."""
+
+    @property
+    def payload(self) -> JsonMapping:
+        return {}
+
+    def header_lines(self) -> list[str]:
+        raise DomainError("-5 minutes is not a duration, so it renders as nothing")
+
+    def body_lines(self) -> list[str]:
+        return []
+
+    def render_deadline(self, moment: datetime) -> str:
+        return moment.isoformat()
 
 
 @pytest.mark.parametrize("command", COMMANDS)
