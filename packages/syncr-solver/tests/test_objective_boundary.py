@@ -62,6 +62,10 @@ OBJECTIVE_MODULES: Final = ("objective.py", "terms.py", "preferred.py", "reading
 # revision whatever its status, and churn is measured against the newest APPROVED one, which the
 # baseline carries. The checker's state reads `live_plan` for the netted set, which is a different
 # question about the same field.
+#
+# `zone_by_date` is read for the local hour a fitted curve is keyed on, and it is read from HERE
+# rather than from the document's own copy of the same mapping, so the day bounds and the zone have
+# one source. `span` and `iso_week` are read for the week the two must agree on.
 FIELDS_READ: Final = frozenset(
     {
         "areas",
@@ -70,6 +74,7 @@ FIELDS_READ: Final = frozenset(
         "habit_occurrences",
         "iso_week",
         "preferences",
+        "zone_by_date",
     }
 )
 

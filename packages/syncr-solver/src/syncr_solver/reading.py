@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 
 from syncr_domain.identity import BindingKind
 from syncr_domain.intervals import IntervalSet
+from syncr_domain.plan import PlanError
 from syncr_domain.zones import resolve_zone
 from syncr_solver.figures import claimed_intervals
 from syncr_solver.state import PartialPlan
@@ -56,6 +57,22 @@ def content_key(binding: BindingRef) -> ContentKey:
     return (binding.kind, binding.entity_id)
 
 
+@dataclass(frozen=True, slots=True)
+class Placed:
+    """One block the plan places into an Area, with that Area non-optional.
+
+    The pair exists so no term has to re-ask whether a block carries an Area. Three of them read
+    only the blocks that do, and asking once here removes the same filter from each of them along
+    with the branch a type checker would otherwise need to narrow ``area_id`` at every use.
+    """
+
+    block: Block
+    area_id: AreaId
+
+    def minutes(self) -> int:
+        return self.block.interval.total_minutes()
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class PlanReading:
     """One week, one plan, and the three sets every term is a fraction of.
@@ -77,12 +94,21 @@ class PlanReading:
     # `unallocated_minutes` totals, which a test in this package crosses.
     free: IntervalSet
     # Each local date's opening instant with the zone it opened in, ascending. Read by the hour
-    # lookup and by nothing else.
+    # lookup and by nothing else. Both halves come from ``inputs.zone_by_date``: the bounds through
+    # the checker's own ``local_days``, and the zone from the same mapping, so one question has one
+    # source. The document carries its own copy of that mapping and it is deliberately unread, since
+    # taking the bounds from one and the zone from the other is how the two come to disagree.
     days: tuple[tuple[Instant, ZoneId], ...]
 
     @classmethod
     def of(cls, plan: PlanDocument, *, inputs: SolveInputs) -> PlanReading:
-        """Read ``plan`` against the week ``inputs`` describes."""
+        """Read ``plan`` against the week ``inputs`` describes.
+
+        The week guard is here rather than only on ``evaluate``, so both entry points agree. This
+        one is public and the suite calls it directly, and a cross-week pair would otherwise build
+        a reading whose day list describes one week and whose blocks belong to another.
+        """
+        require_one_week(plan, inputs)
         state = PartialPlan.of(inputs)
         discretionary = state.discretionary()
         return cls(
@@ -91,26 +117,26 @@ class PlanReading:
             state=state,
             discretionary=discretionary,
             free=discretionary.subtract(claimed_intervals(plan.blocks)),
-            days=tuple(
-                (day.interval.start, plan.zone_by_date[day.on])
-                for day in state.days
-                if day.on in plan.zone_by_date
-            ),
+            days=tuple((day.interval.start, inputs.zone_by_date[day.on]) for day in state.days),
         )
 
     def discretionary_minutes(self) -> int:
         """The week's denominator. Zero for a week with nothing an Area could claim."""
         return self.discretionary.total_minutes()
 
-    def area_blocks(self) -> tuple[Block, ...]:
-        """The blocks that carry an Area, in the order the document holds them.
+    def area_blocks(self) -> tuple[Placed, ...]:
+        """The blocks that carry an Area, paired with it, in the order the document holds them.
 
         An Area is what makes a block a claim on discretionary time, so it is also what makes a
         block something an objective term has anything to say about. The frame and an imported
         commitment carry none: one defines how much time exists and the other is time the
         product does not own, and no choice was made about either.
         """
-        return tuple(block for block in self.plan.blocks if block.area_id is not None)
+        return tuple(
+            Placed(block=block, area_id=block.area_id)
+            for block in self.plan.blocks
+            if block.area_id is not None
+        )
 
     def minutes_in(self, area_id: AreaId) -> int:
         """Minutes this plan's blocks cover in one Area, unioned so an overlap counts once.
@@ -172,8 +198,12 @@ class PlanReading:
         """The zone active on the local date that owns this instant.
 
         The dates are ascending, so the date that owns an instant is the last one to open at or
-        before it. A week with no local day at all cannot be read, and cannot exist either: the
-        span runs forward and every date is clipped to it, so at least one date opens inside it.
+        before it.
+
+        **The day list is never empty, and that is derived rather than guarded.** A date is dropped
+        only when its own midnight falls at or after the next date's, which needs the offset to fall
+        by a whole day; the range of offsets is 28 hours end to end, so at most one such fall can
+        happen in a week and never seven. A guard here would be one with no reachable violation.
         """
         opens = [start for start, _ in self.days]
         found = bisect_right(opens, at) - 1
@@ -196,26 +226,45 @@ def shortest_placeable_minutes(inputs: SolveInputs) -> int:
     )
 
 
-def gap_minutes(earlier: Block, later: Block) -> int:
-    """Unoccupied minutes between two blocks, and zero where they abut or overlap.
+def gap_minutes(earlier: Placed, later: Placed) -> int:
+    """Unoccupied minutes between two placements, and zero where they abut or overlap.
 
     Zero rather than a negative, because the callers ask how much room the schedule leaves
     between two placements and an overlap leaves none. A user-authored overlap is a legitimate
     content of a week, so this is a reachable state rather than a fault.
     """
-    if later.interval.start <= earlier.interval.end:
+    if later.block.interval.start <= earlier.block.interval.end:
         return 0
-    return int((later.interval.start - earlier.interval.end).total_seconds() // 60)
+    return int((later.block.interval.start - earlier.block.interval.end).total_seconds() // 60)
 
 
-def in_start_order(blocks: Sequence[Block]) -> tuple[Block, ...]:
-    """These blocks as the day runs, ending in an identity so no two of them tie.
+def in_start_order(placed: Sequence[Placed]) -> tuple[Placed, ...]:
+    """These placements as the day runs, ending in an identity so no two of them tie.
 
     The identity is what makes the order total, exactly as the document's own block order and the
-    solver's tie-breaking do: without it two blocks equal on span would be ordered by whatever
-    their inputs happened to do, and the pairs a term charges would change with an input's
-    arrival order while no placement changed.
+    solver's tie-breaking do: without it two blocks equal on span would be ordered by whatever their
+    inputs happened to do, and the pairs a term charges would change with an input's arrival order
+    while no placement changed. Measured, on a plan holding one such tie: 0.125 against 0.250 for
+    two orders of the same three blocks.
     """
     return tuple(
-        sorted(blocks, key=lambda block: (block.interval.start, block.interval.end, block.id))
+        sorted(
+            placed,
+            key=lambda one: (one.block.interval.start, one.block.interval.end, one.block.id),
+        )
     )
+
+
+def require_one_week(plan: PlanDocument, inputs: SolveInputs) -> None:
+    """A document and the inputs it is read against describe one week.
+
+    Every figure the terms compare is resolved for a specific week: an Area's target, a task's
+    remaining minutes, the discretionary denominator, and the local dates the hour lookup reads.
+    Read against another week's inputs the answer would be arithmetic over unrelated quantities
+    rather than an error, which is the failure this product cannot detect any other way.
+    """
+    if plan.iso_week != inputs.iso_week:
+        raise PlanError(
+            f"a plan for {plan.iso_week} cannot be scored against inputs for {inputs.iso_week}: "
+            "every figure the terms compare is resolved for one specific week"
+        )

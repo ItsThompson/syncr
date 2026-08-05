@@ -145,8 +145,10 @@ def evaluate(plan: PlanDocument, *, inputs: SolveInputs, weights: WeightSet) -> 
     The plan alone cannot be evaluated: a deadline, an Area's target, a preferred window and the
     approved baseline are all facts about the week rather than about the document, and the weights
     are the tenant's. So the three arrive together, and the function reads nothing else at all.
+
+    A plan and inputs for different weeks are refused, by the reading rather than here, so the one
+    statement of that rule serves both entry points.
     """
-    _require_one_week(plan, inputs)
     reading = PlanReading.of(plan, inputs=inputs)
     split = staleness(reading)
     return ObjectiveBreakdown(
@@ -160,21 +162,6 @@ def evaluate(plan: PlanDocument, *, inputs: SolveInputs, weights: WeightSet) -> 
         staleness_split=split,
         churn_baseline=inputs.churn_baseline,
     )
-
-
-def _require_one_week(plan: PlanDocument, inputs: SolveInputs) -> None:
-    """A document and the inputs it is scored against describe one week.
-
-    Every figure the terms compare is for a specific week: an Area's target, a task's remaining
-    minutes, the discretionary denominator. Scored against another week's inputs the answer would
-    be arithmetic on unrelated quantities rather than an error, which is the failure this product
-    cannot detect any other way.
-    """
-    if plan.iso_week != inputs.iso_week:
-        raise PlanError(
-            f"a plan for {plan.iso_week} cannot be scored against inputs for {inputs.iso_week}: "
-            "every figure the terms compare is resolved for one specific week"
-        )
 
 
 def _require_a_cost(term: str, cost: float) -> None:

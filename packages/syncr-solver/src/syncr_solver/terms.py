@@ -207,17 +207,13 @@ def time_of_day_misfit(reading: PlanReading, weights: WeightSet) -> float:
     preferences = ResolvedPreferences(reading.inputs.preferences)
     minutes = 0
     charged = 0.0
-    for block in reading.area_blocks():
-        area_id = block.area_id
-        if area_id is None:  # pragma: no cover - `area_blocks` selects on exactly this
-            continue
-        span = block.interval.total_minutes()
-        minutes += span
-        charged += span * misfit_of(
-            block.interval,
-            binding=block.binding,
-            area_id=area_id,
-            hour=reading.local_hour(block.interval.start),
+    for placed in reading.area_blocks():
+        minutes += placed.minutes()
+        charged += placed.minutes() * misfit_of(
+            placed.block.interval,
+            binding=placed.block.binding,
+            area_id=placed.area_id,
+            hour=reading.local_hour(placed.block.interval.start),
             preferences=preferences,
             weights=weights,
         )
