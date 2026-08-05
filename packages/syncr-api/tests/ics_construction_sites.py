@@ -209,7 +209,7 @@ SITES: Final[tuple[Site, ...]] = (
         guard=NOT_A_FEED_VALUE,
     ),
     Site(
-        module="injection",
+        module="horizons",
         function="read_ingest_horizon",
         constructor="timedelta",
         reads="the write target's stored horizon, bounded by the schema",
