@@ -53,9 +53,33 @@ describe("the probe's block against this component's", () => {
     }
   });
 
-  it("writes every nested element the component writes", () => {
-    for (const child of realBlock().querySelectorAll("[class]")) {
+  it("writes every nested element the component writes, in the same nesting", () => {
+    /* NESTING, NOT JUST PRESENCE. The glyph and the title are both inside `__body`, and a probe that emitted the glyph
+     * as a sibling made it a flex ITEM rather than a float, which pushed the title 17.80px down. The containment check
+     * alone passed that, because every class was still present somewhere. */
+    const block = realBlock();
+    const body = block.querySelector(".week-block__body");
+
+    expect(body?.querySelector(".week-block__glyph")).not.toBeNull();
+    expect(body?.querySelector(".week-block__title")).not.toBeNull();
+    expect(page).toContain('<span class="week-block__body"><span class="week-block__glyph"');
+    for (const child of block.querySelectorAll("[class]")) {
       expect(page, `the probe is missing ${child.className}`).toContain(child.className);
+    }
+  });
+
+  it("writes no shape the component does not, so the probe cannot drift by ADDING one", () => {
+    const drawn = new Set(
+      [...realBlock().querySelectorAll("[class]")].flatMap((child) => child.className.split(/\s+/)),
+    );
+    const inProbe = new Set(
+      [...page.matchAll(/class="([^"]*week-block__[^"]*)"/g)].flatMap((found) =>
+        found[1].split(/\s+/).filter((name) => name.startsWith("week-block__")),
+      ),
+    );
+
+    for (const name of inProbe) {
+      expect(drawn, `the probe draws ${name} and the component does not`).toContain(name);
     }
   });
 
@@ -67,7 +91,10 @@ describe("the probe's block against this component's", () => {
   });
 
   it("passes the same two per-block custom values the component passes", () => {
-    expect(page).toContain("--lines:");
+    /* The VALUE, not just the name: `--lines` is the figure the whole gate is about, and a probe that wrote a
+     * different one would measure a line count the product never sets. */
+    expect(realBlock().style.getPropertyValue("--lines")).toBe(String(modal.lines));
+    expect(page).toContain(`--lines:${String(modal.lines)}`);
     expect(page).toContain("var(--grid-inset)");
   });
 

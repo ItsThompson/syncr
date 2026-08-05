@@ -60,29 +60,20 @@ interface Cluster {
  * order the caller cannot see.
  */
 export function placeOverlaps(spans: readonly OffsetSpan[]): Placement[] {
-  /* Collected into a map and then materialised in the caller's own order, so the returned array is never a typed
-   * array with holes in it: every span joins exactly one cluster, and a `Placement[]` seeded with `undefined` would
-   * assert that before the sweep has proved it. */
-  const byIndex = new Map<number, Placement>();
-  for (const cluster of clustersOf(spans)) {
-    for (const member of cluster.members) {
-      byIndex.set(member.index, placementIn(cluster, member));
-    }
-  }
-  return spans.map((_, index) => byIndex.get(index) ?? WHOLE_COLUMN);
+  /* Every span joins exactly one cluster, so flattening the clusters back into the caller's own order is TOTAL by
+   * construction: no seeded array with holes, and no fallback for an index the sweep cannot leave unplaced. An earlier
+   * draft collected into a map and defaulted a miss, which added a branch the sweep makes unreachable and which would
+   * have hidden the very bug it guarded against. */
+  return clustersOf(spans)
+    .flatMap((cluster) =>
+      cluster.members.map((member) => ({
+        index: member.index,
+        placement: placementIn(cluster, member),
+      })),
+    )
+    .toSorted((left, right) => left.index - right.index)
+    .map((placed) => placed.placement);
 }
-
-/* What a span gets when no cluster claimed it, which the sweep makes unreachable: a span is compared against a
- * running maximum end and joins the current cluster or opens one, so there is no third path. It is a value rather
- * than a throw because a grid that drew one block full width would be a better failure than a grid that drew none. */
-const WHOLE_COLUMN: Placement = {
-  left: 0,
-  right: 0,
-  indentSteps: 0,
-  layer: 0,
-  overlapCount: null,
-  isSplit: false,
-};
 
 /* Sorted by start, then by DESCENDING end, so the longest of several blocks beginning together is dealt the
  * leftmost column and the shorter ones stack to its right. The reverse leaves a long block sitting right of the

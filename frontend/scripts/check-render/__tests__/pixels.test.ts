@@ -15,7 +15,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { CASES, geometryOf, heightOf, linesOf } from "../page.ts";
+import { CASES, geometryOf, heightOf, linesOf, tierOf } from "../page.ts";
+import { pxPerMinute } from "../../../src/ui/domain/week-grid/geometry.ts";
+import { tierFor, titleLineCount } from "../../../src/ui/domain/week-grid/tiers.ts";
 import { differencesBetween, firstInkedRow, imageOf, sketch, type Region } from "../pixels.ts";
 
 /** A gray image the readers can be pointed at, without a PNG codec in the way. */
@@ -88,11 +90,48 @@ describe("the difference between two regions", () => {
 });
 
 describe("the case geometry", () => {
-  it("takes each height from the reference display and each line count from the ladder", () => {
+  /* THE PROBE'S ARITHMETIC AGAINST THE DOMAIN'S, SWEPT RATHER THAN SAMPLED, AND IN BOTH DIRECTIONS.
+   *
+   * `page.ts` restates three formulas because it cannot import them: `tiers.ts` and `geometry.ts` import `./metrics`
+   * without an extension, which a bundler resolves and the runtime a script runs under does not. So this file, which
+   * runs under the bundler, imports both sides and requires them to agree at every height rather than at the six the
+   * gate happens to ship. Literals here pinned only the probe: a structural change to the ladder would redden the
+   * ladder's own test, the author would update that, and the probe would keep measuring a line count the product never
+   * sets. That sweep is what makes a divergence fail on whichever side moves. */
+  it("agrees with the ladder and the tier at every quarter-pixel from 0 to 220", () => {
+    for (let heightPx = 0; heightPx <= 220; heightPx += 0.25) {
+      expect(linesOf(heightPx), `lines at ${String(heightPx)}px`).toBe(titleLineCount(heightPx));
+      expect(tierOf(heightPx), `tier at ${String(heightPx)}px`).toBe(tierFor(heightPx));
+    }
+  });
+
+  it("agrees with pixels per minute at every zoom the range offers", () => {
+    for (let visibleHours = 6; visibleHours <= 24; visibleHours += 1) {
+      for (const durationMinutes of [15, 30, 60, 90, 240]) {
+        expect(heightOf(durationMinutes, visibleHours)).toBeCloseTo(
+          durationMinutes * pxPerMinute(0, visibleHours),
+          10,
+        );
+      }
+    }
+  });
+
+  /* THE LADDER IS THE DOMAIN'S, so this asserts that the geometry AGREES with it rather than restating the numbers.
+   * The literals were the only thing pinning the probe, and they pinned it in one direction: a structural change to
+   * `titleLineCount` would redden its own test, the author would update that, and the probe would keep measuring a
+   * line count the product never sets. */
+  it("takes each height from the reference display and each line count from the ladder itself", () => {
     expect(heightOf(30, 12)).toBeCloseTo(26.083, 3);
-    expect(linesOf(heightOf(30, 12))).toBe(1);
-    expect(linesOf(heightOf(90, 12))).toBe(5);
-    expect(linesOf(heightOf(15, 12))).toBe(1);
+
+    for (const each of geometryOf(CASES)) {
+      expect(each.lines).toBe(titleLineCount(each.heightPx));
+    }
+  });
+
+  it("reaches past eight lines, which is where the reader used to walk out of its own region", () => {
+    const deepest = geometryOf(CASES).reduce((most, each) => Math.max(most, each.lines), 0);
+
+    expect(deepest).toBeGreaterThan(8);
   });
 
   it("renders each case twice, capped and uncapped, at its own place on the page", () => {

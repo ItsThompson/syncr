@@ -176,6 +176,22 @@ describe("one statement of the clamp", () => {
     expect(declaring).toEqual([path.join("ui", "domain", "week-grid", "zoom.ts")]);
   });
 
+  /* AND A COPY UNDER ANY OTHER NAME. The three assertions above match on the exported NAMES, which catches a rename by
+   * substring only by luck: an inline `Math.floor((height * 30) / (19 * 60))` under a name of its own passed all of
+   * them. The formula has a shape, so the shape is what is searched for: a floor over a product of the protected
+   * duration and a quotient of the label floor, in whichever spelling. */
+  it("is not restated under a name of its own, in any spelling of the formula", async () => {
+    /* The floor's argument is a quotient whose numerator names the protected duration and whose denominator names the
+     * label floor. Matched across newlines, because the one true statement of it is wrapped over two lines. */
+    const shape =
+      /Math\.floor\s*\(\s*\(?[^;]*?(MODAL_DURATION_MINUTES|\b30\b)[^;]*?\/[^;]*?(BLOCK_H_LABEL_PX|\b19\b)/s;
+    const restating = (await sources())
+      .filter((file) => shape.test(file.text))
+      .map((file) => file.name);
+
+    expect(restating).toEqual([path.join("ui", "domain", "week-grid", "zoom.ts")]);
+  });
+
   it("is read by BOTH screens, so neither can answer the question alone", async () => {
     const reading = (await sources())
       .filter((file) => /from "(\.\/zoom|[^"]*week-grid\/zoom)"/.test(file.text))

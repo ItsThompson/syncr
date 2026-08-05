@@ -170,19 +170,13 @@
    found 4 of 37 distinct titles becoming ambiguous under end-ellipsis, because an ellipsis discards precisely
    the tail that had to survive.
 
-   THE CAP IS A HEIGHT, NOT A LINE CLAMP, AND THAT IS THE WHOLE POINT. `-webkit-line-clamp: n` is defined as
-   `max-lines: n` PLUS `block-ellipsis: auto`, so the ellipsis is part of the shorthand and `text-overflow` does
-   not govern it. Measured in Chromium 147 against the shipped bundle: the modal thirty-minute block on the
-   reference display at the twelve-hour default gets one line, and `Amazon Interview Prep`,
-   `Amazon Interview Prep - Behavioral` and `Amazon Interview Prep - System Design` all rendered as the identical
-   string with a trailing ellipsis, which is verbatim the failure this rule exists to prevent. The standard
-   longhands are no help either: Chromium 147 ignores `max-lines` with `block-ellipsis: none` and stops capping
-   the height at all.
+   THE CAP IS A HEIGHT, NOT A LINE CLAMP. `-webkit-line-clamp: n` is `max-lines: n` PLUS `block-ellipsis: auto`, so
+   the ellipsis rides in the shorthand and neither `white-space` nor `text-overflow` governs it. `1lh` is ONE LINE BOX
+   OF THIS ELEMENT'S OWN, so the cap is exact at the label tier and at the compact tier without either having to name
+   the other's line height, and capping at a whole number of line boxes is what puts the clip on a line boundary.
 
-   `1lh` is ONE LINE BOX OF THIS ELEMENT'S OWN, so the cap is exact at the label tier and at the compact tier
-   without either having to name the other's line height. Capping at a whole number of line boxes is what puts
-   the clip on a line boundary. `__tests__/rendered.test.ts` reads the rendered PIXELS rather than these
-   declarations, because reading `white-space` and `text-overflow` is exactly what let the ellipsis through. */
+   The rendered pixels are read by `scripts/check-render`, not by these declarations, because reading `white-space` and
+   `text-overflow` is what let an end-ellipsis ship. */
 .week-block__title {
   position: relative;
   z-index: 1;

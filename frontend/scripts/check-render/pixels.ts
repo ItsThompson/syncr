@@ -27,10 +27,19 @@ export function imageOf(bytes: Buffer): GrayImage {
   return decodeToGray(bytes);
 }
 
-/** One row of a region, as its luminance bytes. */
-function row(image: GrayImage, region: Region, y: number): Uint8Array {
+/**
+ * One row of a region, as its luminance bytes, or null where the row is outside it.
+ *
+ * NULL RATHER THAN THE NEIGHBOUR'S PIXELS. The first version computed an offset and read whatever was there, so a
+ * comparison deeper than its own region silently read the copy below it and then the next case: a fourteen-line case
+ * reported 1775 differing pixels, every one of them spurious. An out-of-region read is now a fact a caller has to
+ * handle rather than a plausible answer.
+ */
+function row(image: GrayImage, region: Region, y: number): Uint8Array | null {
+  if (y < 0 || y >= region.heightPx) return null;
+  if (region.topPx + y >= image.height) return null;
   const from = (region.topPx + y) * image.width + region.xPx;
-  return image.gray.subarray(from, from + region.widthPx);
+  return image.gray.subarray(from, from + Math.min(region.widthPx, image.width - region.xPx));
 }
 
 function hasInk(pixels: Uint8Array): boolean {
@@ -45,7 +54,18 @@ function hasInk(pixels: Uint8Array): boolean {
  */
 export function firstInkedRow(image: GrayImage, region: Region): number | null {
   for (let y = 0; y < region.heightPx; y += 1) {
-    if (hasInk(row(image, region, y))) return y;
+    const pixels = row(image, region, y);
+    if (pixels !== null && hasInk(pixels)) return y;
+  }
+  return null;
+}
+
+/** The last column of a region's row that holds ink, or null where the row is blank. */
+export function lastInkedColumn(image: GrayImage, region: Region, y: number): number | null {
+  const pixels = row(image, region, y);
+  if (pixels === null) return null;
+  for (let x = pixels.length - 1; x >= 0; x -= 1) {
+    if (pixels[x] < INK_BELOW) return x;
   }
   return null;
 }
@@ -59,14 +79,15 @@ export interface RowDifference {
 /**
  * Where two regions disagree over `depthPx` rows, each anchored on its own first inked row.
  *
- * Empty means the two renderings are identical over the rows compared, which for a clamped title against an
- * unclamped one is the whole of "the clip lands on a line boundary and adds nothing".
+ * Empty means the two renderings are identical over the rows compared. The depth is CLAMPED to what both regions
+ * hold, because a comparison that walks past a region is not a comparison: it reads the copy below.
  */
 export function differencesBetween(
   image: GrayImage,
   left: Region,
   right: Region,
   depthPx: number,
+  widthPx: number = left.widthPx,
 ): RowDifference[] {
   const leftTop = firstInkedRow(image, left);
   const rightTop = firstInkedRow(image, right);
@@ -75,9 +96,11 @@ export function differencesBetween(
   }
 
   const found: RowDifference[] = [];
-  for (let y = 0; y < depthPx; y += 1) {
-    const leftRow = row(image, { ...left, topPx: left.topPx + leftTop }, y);
-    const rightRow = row(image, { ...right, topPx: right.topPx + rightTop }, y);
+  const depth = Math.min(depthPx, left.heightPx - leftTop, right.heightPx - rightTop);
+  for (let y = 0; y < depth; y += 1) {
+    const leftRow = row(image, { ...left, widthPx }, leftTop + y);
+    const rightRow = row(image, { ...right, widthPx }, rightTop + y);
+    if (leftRow === null || rightRow === null) break;
     let differing = 0;
     for (let x = 0; x < Math.min(leftRow.length, rightRow.length); x += 1) {
       if (leftRow[x] !== rightRow[x]) differing += 1;
@@ -91,8 +114,9 @@ export function differencesBetween(
 export function sketch(image: GrayImage, region: Region, depthPx: number): string[] {
   const top = firstInkedRow(image, region) ?? 0;
   const lines: string[] = [];
-  for (let y = 0; y < depthPx; y += 1) {
-    const pixels = row(image, { ...region, topPx: region.topPx + top }, y);
+  for (let y = 0; y < Math.min(depthPx, region.heightPx - top); y += 1) {
+    const pixels = row(image, region, top + y);
+    if (pixels === null) break;
     lines.push([...pixels].map((value) => (value < 128 ? "#" : value < 240 ? "+" : ".")).join(""));
   }
   return lines;

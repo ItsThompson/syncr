@@ -45,9 +45,12 @@ const MILLISECONDS_IN_MINUTE = 60_000;
 
 export function WeekGrid({ days, extent, visibleHours, labels, nowMs }: WeekGridProps) {
   const viewport = useRef<HTMLDivElement>(null);
-  const measuredHeightPx = gridHeightPx(useObservedHeight(viewport) - DAY_HEADER_H_PX);
-  const hours = clampVisibleHours(visibleHours, measuredHeightPx);
-  const pxPerMin = pxPerMinute(measuredHeightPx, hours);
+  /* Named for what it IS rather than for where it came from: the measurement OR the reference display's height where
+   * nothing has been laid out. In the one component whose fix was about not confusing a constant with a measurement,
+   * calling this `measuredHeightPx` would be the same conflation one identifier over. */
+  const gridPx = gridHeightPx(useObservedHeight(viewport) - DAY_HEADER_H_PX);
+  const hours = clampVisibleHours(visibleHours, gridPx);
+  const pxPerMin = pxPerMinute(gridPx, hours);
   const canvasPx = canvasHeightPx(extent, pxPerMin);
 
   return (

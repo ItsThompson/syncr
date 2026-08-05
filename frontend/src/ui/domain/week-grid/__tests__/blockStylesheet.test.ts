@@ -133,7 +133,8 @@ describe("the title wraps and never truncates", () => {
    * and neither `white-space` nor `text-overflow` governs it. Those two were the only things the first version of
    * this file asserted, and an end-ellipsis shipped behind them: at the modal thirty-minute block on the reference
    * display three sibling titles rendered as one string. Refusing the property by name is the declaration-level
-   * channel; `__tests__/rendered.test.ts` reads the rendered pixels, which is the channel a reader perceives. */
+   * channel; `scripts/check-render` reads the rendered pixels, which is the channel a reader perceives, and it runs
+   * nowhere automatically until ticket 1352 lands, so this sweep is the armed net. */
   it("caps the title with a HEIGHT and names no line clamp, in any spelling", async () => {
     const declarations = await rule("block.css", ".week-block__title");
 
