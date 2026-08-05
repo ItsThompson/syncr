@@ -17,6 +17,7 @@ import { useCalendarSources } from "../../api/hooks/useCalendarSources";
 import { useDayShapes } from "../../api/hooks/useTemplates";
 import { useWeekPattern } from "../../api/hooks/useWeekPattern";
 import { readingOf } from "../reading";
+import { writeTargetOf } from "../settings/writeTarget";
 import { isMinimumDeclared, type SetupReads } from "./steps";
 import type { Resource } from "../../contract";
 
@@ -31,7 +32,7 @@ export function useSetupReads(): Resource<SetupReads> {
   if (reading.status === "loading") return { status: "loading" };
   if (reading.status === "error") return { status: "error", problem: reading.problem };
 
-  const target = reading.data.sources.find((source) => source.writeTarget != null) ?? null;
+  const target = writeTargetOf(reading.data.sources);
   return {
     status: "ready",
     data: {
@@ -39,7 +40,7 @@ export function useSetupReads(): Resource<SetupReads> {
       areaCount: reading.data.areas.areas.length,
       dayShapeCount: reading.data.shapes.length,
       isPatternDeclared: reading.data.pattern !== null,
-      writeTargetName: target?.writeTarget?.calendarName ?? null,
+      writeTargetName: target?.reading.calendarName ?? null,
     },
   };
 }

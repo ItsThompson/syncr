@@ -22,6 +22,7 @@ import { FormRow, Panel } from "../../../ui/layout";
 import { Button, Input, Select } from "../../../ui/primitives";
 import { DefinitionRow } from "./DefinitionRow";
 import { Refusal } from "./Refusal";
+import { writeTargetOf } from "../writeTarget";
 import type {
   CalendarSource,
   HorizonEdit,
@@ -39,15 +40,14 @@ export interface WriteTargetPanelProps {
 }
 
 export function WriteTargetPanel({ sources, horizon, role }: WriteTargetPanelProps) {
-  const target = sources.find((source) => source.writeTarget != null) ?? null;
-  const reading = target?.writeTarget ?? null;
-  const candidates = sources.filter((source) => source.id !== target?.id);
+  const target = writeTargetOf(sources);
+  const candidates = sources.filter((source) => source.id !== target?.source.id);
   const [chosenId, setChosenId] = useState("");
   /* Null while the reader has not typed, so the field shows the stored figure; an empty string is a field they
      cleared, which has to stay empty rather than snapping back to the stored value under the cursor. */
   const [days, setDays] = useState<string | null>(null);
 
-  if (target === null || reading == null) {
+  if (target === null) {
     const designateId = chosenId === "" ? (candidates.at(0)?.id ?? "") : chosenId;
     return (
       <Panel title="Write target">
@@ -82,6 +82,8 @@ export function WriteTargetPanel({ sources, horizon, role }: WriteTargetPanelPro
     );
   }
 
+  const { source, reading } = target;
+
   return (
     <Panel title="Write target" headerEnd={<span>{reading.calendarName}</span>}>
       <dl className="flex flex-col">
@@ -108,7 +110,7 @@ export function WriteTargetPanel({ sources, horizon, role }: WriteTargetPanelPro
               rank="secondary"
               onClick={() =>
                 void horizon.submit({
-                  sourceId: target.id,
+                  sourceId: source.id,
                   horizonDays: Number(days ?? reading.horizonDays),
                 })
               }

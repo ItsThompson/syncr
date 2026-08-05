@@ -66,8 +66,9 @@ describe("the levels a select offers", () => {
    * understands the range rather than wondering where the rest went. */
   it("marks the levels past the cap unavailable rather than dropping them", () => {
     const levels = zoomLevels(626);
+    const deepestAvailable = levels.findLast((level) => level.isAvailable);
 
-    expect(levels.filter((level) => level.isAvailable).at(-1)?.hours).toBe(16);
+    expect(deepestAvailable?.hours).toBe(16);
     expect(levels.find((level) => level.hours === 17)?.isAvailable).toBe(false);
     expect(levels.find((level) => level.hours === 24)?.isAvailable).toBe(false);
   });

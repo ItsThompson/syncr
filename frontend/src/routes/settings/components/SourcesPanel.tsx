@@ -33,8 +33,16 @@ export interface SourcesPanelProps {
   readonly sync: Write<SourceReference>;
 }
 
-export function SourcesPanel({ sources, zone, inclusion, removal, sync }: SourcesPanelProps) {
-  const columns: readonly TableColumn<CalendarSource>[] = [
+/* Built outside the component: a cell is a function the table CALLS per row rather than an element it mounts, so
+ * it is not a component, and defining one inside a component reads to a linter as a nested component whose subtree
+ * would remount. */
+function columnsFor({
+  zone,
+  inclusion,
+  removal,
+  sync,
+}: Omit<SourcesPanelProps, "sources">): readonly TableColumn<CalendarSource>[] {
+  return [
     { key: "name", header: "Source", cell: (source) => source.displayName },
     { key: "provider", header: "Provider", cell: (source) => source.provider },
     {
@@ -78,7 +86,9 @@ export function SourcesPanel({ sources, zone, inclusion, removal, sync }: Source
       ),
     },
   ];
+}
 
+export function SourcesPanel({ sources, zone, inclusion, removal, sync }: SourcesPanelProps) {
   const refusal = inclusion.problem ?? removal.problem ?? sync.problem;
 
   return (
@@ -87,7 +97,7 @@ export function SourcesPanel({ sources, zone, inclusion, removal, sync }: Source
         A count that changes is how a sync reports progress. Nothing here spins.
       </p>
       <Table
-        columns={columns}
+        columns={columnsFor({ zone, inclusion, removal, sync })}
         rows={sources}
         rowKey={(source) => source.id}
         caption="Anchor sources, with provider, anchor count, last sync and state"

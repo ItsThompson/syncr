@@ -35,15 +35,14 @@ export interface OffPlanPanelProps {
   readonly removal: Write<OffPlanRemoval>;
 }
 
-export function OffPlanPanel({
-  periods,
+/* Built outside the component, for the reason `SourcesPanel` states: a cell is a function the table calls per row,
+ * and defining one inside a component reads to a linter as a nested component. */
+function columnsFor({
   zone,
-  today,
-  declaration,
   edit,
   removal,
-}: OffPlanPanelProps) {
-  const columns: readonly TableColumn<OffPlanPeriod>[] = [
+}: Pick<OffPlanPanelProps, "zone" | "edit" | "removal">): readonly TableColumn<OffPlanPeriod>[] {
+  return [
     { key: "label", header: "Label", cell: (period) => period.label ?? "unnamed" },
     { key: "start", header: "From", cell: (period) => statedInstant(period.start, zone) },
     { key: "end", header: "To", cell: (period) => statedInstant(period.end, zone) },
@@ -74,7 +73,16 @@ export function OffPlanPanel({
       ),
     },
   ];
+}
 
+export function OffPlanPanel({
+  periods,
+  zone,
+  today,
+  declaration,
+  edit,
+  removal,
+}: OffPlanPanelProps) {
   return (
     <Panel title="Off plan" headerEnd={<span>{periods.length}</span>}>
       <p className="text-base text-ink-soft">
@@ -83,7 +91,7 @@ export function OffPlanPanel({
           "leaves the budget's denominator so a holiday does not read as every Area starving."}
       </p>
       <Table
-        columns={columns}
+        columns={columnsFor({ zone, edit, removal })}
         rows={periods}
         rowKey={(period) => period.id}
         caption="Off-plan periods, with their spans and whether the frame survives inside them"

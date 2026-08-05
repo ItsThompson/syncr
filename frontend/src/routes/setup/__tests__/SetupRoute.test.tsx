@@ -152,11 +152,9 @@ describe("leaving and coming back", () => {
     await waitFor(() => expect(ledger()).toBeInTheDocument());
     expect(rowNamed("Connect an anchor source")).toHaveTextContent("2 sources");
     expect(rowNamed("Declare Areas and budgets")).toHaveTextContent("3 Areas");
-    expect(
-      rows()
-        .filter((row) => row.getAttribute("aria-current") === "step")
-        .at(0),
-    ).toHaveTextContent("Build one day shape");
+    expect(rows().find((row) => row.getAttribute("aria-current") === "step")).toHaveTextContent(
+      "Build one day shape",
+    );
   });
 });
 

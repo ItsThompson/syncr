@@ -40,15 +40,10 @@ export interface ZonePanelProps {
   readonly removal: Write<TravelOverrideRemoval>;
 }
 
-export function ZonePanel({
-  settings,
-  overrides,
-  today,
-  patch,
-  declaration,
-  removal,
-}: ZonePanelProps) {
-  const columns: readonly TableColumn<TravelOverride>[] = [
+/* Built outside the component, for the reason `SourcesPanel` states: a cell is a function the table calls per row,
+ * and defining one inside a component reads to a linter as a nested component. */
+function columnsFor(removal: Write<TravelOverrideRemoval>): readonly TableColumn<TravelOverride>[] {
+  return [
     { key: "from", header: "From", cell: (override) => override.startDate },
     { key: "to", header: "To", cell: (override) => override.endDate },
     { key: "zone", header: "Zone", cell: (override) => override.zone },
@@ -66,7 +61,16 @@ export function ZonePanel({
       ),
     },
   ];
+}
 
+export function ZonePanel({
+  settings,
+  overrides,
+  today,
+  patch,
+  declaration,
+  removal,
+}: ZonePanelProps) {
   const isTravelling = settings.activeZone !== settings.homeZone;
 
   return (
@@ -105,7 +109,7 @@ export function ZonePanel({
       </FormRow>
       <Refusal problem={patch.problem} />
       <Table
-        columns={columns}
+        columns={columnsFor(removal)}
         rows={overrides}
         rowKey={(override) => override.id}
         caption="Travel overrides, with their date ranges and zones"
