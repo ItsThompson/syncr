@@ -41,6 +41,21 @@ export const offPlanKey = (): string => "/api/v1/off-plan";
  * source's inclusion changes the list and not this. */
 export const googleConnectionKey = (): string => "/api/v1/calendar-sources/google/connection";
 
+/* The period is part of the key, because two periods are two reviews: the quarter ending at this
+ * week is not the quarter ending at the last one. Built with `URLSearchParams` so the key is the
+ * request the client will send rather than a second spelling of it. Applying a revision changes
+ * every Area's target, so the apply names this key and the Area list's.
+ */
+export const budgetReviewKey = (period: string): string =>
+  `/api/v1/reviews/budget?${new URLSearchParams({ period }).toString()}`;
+
+/* One key for the whole set of Area preferences, not one per Area. The routes are addressed per
+ * owner, so reading them is a request each; the SET is what a surface renders, because the Areas
+ * table draws a Preference cell on every row and a table cannot draw two thirds of a column. The
+ * Area ids are in the key so declaring an Area does not hand back a set that has no row for it. */
+export const areaPreferencesKey = (areaIds: readonly string[]): string =>
+  `/api/v1/areas/preferences?${new URLSearchParams({ areas: [...areaIds].toSorted().join(",") }).toString()}`;
+
 /* The week is part of the key, because two weeks are two plans. Every write on the Week screen names it: a
  * pin, an approval, a requested solve and a tradeoff each change one week, and a blanket revalidation would
  * refetch a whole week's plan because a setting changed, which is slow and is a source of flicker on a
