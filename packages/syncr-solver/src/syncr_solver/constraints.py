@@ -5,17 +5,17 @@ rejected a candidate and over what window**, because that pair is the ``blocked`
 the panel renders, and reconstructing it later would mean re-running the check that already
 knew.
 
-## The vocabulary and the table are two statements of one inventory
+## The vocabulary, the table, and the rules are three statements of one inventory
 
-:class:`ConstraintRule` names the thirteen rules and :data:`HARD_CONSTRAINTS` is the table. A test
-crosses the two in both directions, so a rule cannot exist without a name and a name cannot exist
-without a rule. That is what lets a slice add a rule as BEHAVIOUR rather than as vocabulary: a rule
-function lands beside the ones already in force, and the enum, the table and the reason clause
-already speak its name.
+:class:`ConstraintRule` names the thirteen rules, :data:`HARD_CONSTRAINTS` is the table, and
+:mod:`syncr_solver.rules` maps each name to the function that checks it. A test crosses all three
+in both directions, so a rule cannot exist without a name, a name cannot exist without a rule, and
+a rule cannot report a member other than its own row's.
 
 Which rules are in force is neither a mode of this module nor a default. :class:`ConstraintCheck`
-is constructed with the tuple, so what is being checked is a value at the call site. The rules a
-derived plan needs are ``syncr_solver.occupancy.OCCUPANCY_RULES``.
+is constructed with the tuple, so what is being checked is a value at the call site: a plan
+derivation passes ``syncr_solver.occupancy.OCCUPANCY_RULES`` and a solve passes
+``syncr_solver.rules.HARD_RULES``.
 
 ## Two numbers are missing and the gaps are enumerated
 
@@ -183,8 +183,8 @@ class ConstraintCheck:
     """The rules a candidate is judged against, held as the tuple a caller chose.
 
     Which rules are in force is a value rather than a mode, and it carries no default: a caller
-    states what it is checking, so a slice adding the remaining rules passes a longer tuple and no
-    caller of this class changes.
+    states what it is checking, so a derivation checking the occupancy subset and a solve checking
+    all thirteen are two call sites rather than two modes of this class.
     """
 
     __slots__ = ("_rules",)

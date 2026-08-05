@@ -1,12 +1,14 @@
 """The hard-constraint inventory, and the checker that reads a tuple of it.
 
-Stated over the INVENTORY rather than over behaviour: the enum, the table and the withdrawn numbers
-are compared with each other in both directions, so a rule added without a name fails, a name added
-without a rule fails, and a number that is both declared and withdrawn fails. That is what lets a
-later slice add the rules a derived plan does not need as behaviour rather than as vocabulary.
+Stated over the INVENTORY rather than over behaviour: the enum, the table, the withdrawn numbers
+and the rule functions are compared with each other in every direction, so a rule added without a
+name fails, a name added without a rule fails, a number both declared and withdrawn fails, and a
+rule reporting a member other than its own row's fails. That is what makes each rule's own suite an
+assertion about behaviour rather than about vocabulary.
 
-Each rule is driven at the boundary it exists for in the module named after what it reads, starting
-with ``test_occupancy`` for the ones about a span already spent.
+Each rule is driven at the boundary it exists for in the module named after what it reads:
+``test_occupancy``, ``test_shape``, ``test_allocation`` and ``test_immovability``. The property per
+rule, and the demonstration that each property can fail, are in ``test_hard_rules``.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from syncr_solver.constraints import (
     ConstraintRule,
 )
 from syncr_solver.occupancy import OCCUPANCY_RULES
+from syncr_solver.rules import HARD_RULES, RULE_BY_NAME
 from syncr_solver.state import PartialPlan
 from tests.materialized_weeks import a_candidate, a_frame_entry, an_anchor, between, inputs
 
@@ -28,8 +31,8 @@ HIGHEST_NUMBER = 15
 
 
 def a_check() -> ConstraintCheck:
-    """The checker holding the rules a derived plan needs, which the caller always states."""
-    return ConstraintCheck(OCCUPANCY_RULES)
+    """The checker holding every hard constraint, which is what a solve states."""
+    return ConstraintCheck(HARD_RULES)
 
 
 def test_every_rule_in_the_table_has_a_name_and_every_name_has_a_rule() -> None:
@@ -60,19 +63,33 @@ def test_the_numbering_covers_every_number_once_as_a_rule_or_as_a_withdrawal() -
     assert all(reason for reason in WITHDRAWN_RULES.values())
 
 
-def test_the_rules_in_force_are_the_occupancy_subset_and_the_others_are_vocabulary_only() -> None:
-    # What a derived plan needs: it places nothing over a commitment, an absolute window, the
-    # frame, or something it already placed. The remaining rules are named by the enum and checked
-    # by nothing yet, which is a value at the call site rather than a hidden state of the module.
-    space = PartialPlan.of(inputs(anchors=(an_anchor(),)))
-    reported = {
-        rejection.rule
-        for rule in OCCUPANCY_RULES
-        if (rejection := rule(a_candidate(), space)) is not None
-    }
+def test_every_name_is_checked_by_exactly_one_rule_and_the_order_is_the_tables() -> None:
+    # The third statement of the inventory, crossed against the other two. A member the mapping
+    # does not hold cannot reach `HARD_RULES` at all, because the table is read by key, so what is
+    # left for this to catch is a member the mapping holds and the table does not order.
+    assert set(RULE_BY_NAME) == set(ConstraintRule)
+    assert len(HARD_RULES) == len(HARD_CONSTRAINTS)
+    assert tuple(RULE_BY_NAME[row.rule] for row in HARD_CONSTRAINTS) == HARD_RULES
 
-    assert len(OCCUPANCY_RULES) == 4
-    assert reported == {ConstraintRule.ANCHOR_OVERLAP}
+
+def test_the_rules_a_derived_plan_needs_are_the_ones_about_a_span_already_spent() -> None:
+    # A derivation chooses no content, sizes nothing and moves nothing, so the only way one of its
+    # placements can be illegal is that the span is already spent: by a commitment, an absolute
+    # window, the frame, something this pass placed, or a window forbidding the block's own Area.
+    # The other eight are named by the enum and are a longer tuple at a solve's own call site.
+    assert set(OCCUPANCY_RULES) == {
+        RULE_BY_NAME[rule]
+        for rule in (
+            ConstraintRule.ANCHOR_OVERLAP,
+            ConstraintRule.FORBIDDEN_WINDOW,
+            ConstraintRule.FRAME_OVERLAP,
+            ConstraintRule.BLOCK_OVERLAP,
+            ConstraintRule.FORBIDDEN_AREA,
+        )
+    }
+    assert tuple(OCCUPANCY_RULES) == tuple(
+        rule for rule in HARD_RULES if rule in set(OCCUPANCY_RULES)
+    )
 
 
 def test_a_candidate_that_breaks_nothing_is_accepted_with_nothing_to_report() -> None:

@@ -610,6 +610,97 @@ def test_nothing_derivation_chose_to_place_overlaps_anything_else_it_placed() ->
         )
 
 
+def test_a_buffer_is_refused_inside_another_commitments_window_forbidding_its_own_area() -> None:
+    # A buffer carries an Area, so the span a derived plan may not take is not only the span nothing
+    # at all may take: a Career prep block inside a second commitment's recovery window forbidding
+    # Career is a placement derivation determined and may not keep. Nothing upstream suppresses it,
+    # so this rule is the enforcement rather than a second opinion.
+    interview = an_anchor(interval=between(16, 16.75), title="Kontron Placement Interview")
+    lecture = an_anchor(interval=between(17.5, 19), title="Lecture")
+    recovery = a_recovery_window(
+        interval=between(16.75, 18),
+        anchor_id=interview.anchor_id,
+        scope=ForbiddenScope.AREAS,
+        forbidden_area_ids=(CAREER,),
+    )
+    prep = a_prep_block(anchor_id=lecture.anchor_id, interval=between(17, 17.5), area_id=CAREER)
+
+    materialized = derive(
+        a_week(
+            anchors=(interview, lecture),
+            forbidden_windows=(recovery,),
+            shadow_blocks=(prep,),
+            template_entries=(),
+        ),
+        cause=MaterializeCause.PHASE1,
+    )
+
+    assert Origin.PREP not in blocks_by_origin(materialized.document)
+    assert [(rejection.rule, rejection.detail) for rejection in materialized.blocked] == [
+        (ConstraintRule.FORBIDDEN_AREA, recovery.label)
+    ]
+
+
+def test_a_buffer_of_another_area_is_still_placed_inside_the_same_window() -> None:
+    # The other half of the same rule, without which it would be H2 under a second name: a Transit
+    # block inside a window forbidding Career only is legal, and the gym would be too.
+    interview = an_anchor(interval=between(16, 16.75), title="Kontron Placement Interview")
+    lecture = an_anchor(interval=between(17.5, 19), title="Lecture")
+    recovery = a_recovery_window(
+        interval=between(16.75, 18),
+        anchor_id=interview.anchor_id,
+        scope=ForbiddenScope.AREAS,
+        forbidden_area_ids=(CAREER,),
+    )
+    transit = a_transit_block(
+        anchor_id=lecture.anchor_id, interval=between(17, 17.5), area_id=FITNESS
+    )
+
+    materialized = derive(
+        a_week(
+            anchors=(interview, lecture),
+            forbidden_windows=(recovery,),
+            shadow_blocks=(transit,),
+            template_entries=(),
+        ),
+        cause=MaterializeCause.PHASE1,
+    )
+
+    assert Origin.TRANSIT in blocks_by_origin(materialized.document)
+    assert materialized.blocked == ()
+
+
+def test_the_journey_home_a_commitment_casts_is_placed_inside_its_own_recovery_window() -> None:
+    # Recovery runs from the commitment's end and so does the return leg, so `Go Home` sits inside
+    # recovery by construction. Without the exemption the one block a lecture reliably casts would
+    # be refused by every derivation.
+    lecture = an_anchor(interval=between(16, 17.5), title="Lecture")
+    recovery = a_recovery_window(
+        interval=between(17.5, 18.75), anchor_id=lecture.anchor_id, label="recovery · Lecture"
+    )
+    going_home = a_transit_block(
+        anchor_id=lecture.anchor_id,
+        leg=TransitLeg.BACK,
+        interval=between(17.5, 18),
+        title="Go Home",
+    )
+
+    materialized = derive(
+        a_week(
+            anchors=(lecture,),
+            forbidden_windows=(recovery,),
+            shadow_blocks=(going_home,),
+            template_entries=(),
+        ),
+        cause=MaterializeCause.PHASE1,
+    )
+
+    assert [block.title for block in blocks_by_origin(materialized.document)[Origin.TRANSIT]] == [
+        "Go Home"
+    ]
+    assert materialized.blocked == ()
+
+
 # --------------------------------------------------------------------------------
 # The contract a solve inherits
 # --------------------------------------------------------------------------------
