@@ -56,3 +56,27 @@ export function asFloor(floorHours: number | null): string {
 export function asWeekLabel(period: string): string {
   return `W${period.split("-W").at(1) ?? period}`;
 }
+
+/**
+ * What a reader typed, as the figure the api takes, or null for nothing.
+ *
+ * NOTHING IS ROUNDED AND NOTHING IS CLAMPED HERE. Every figure this screen authors is stored as
+ * `NUMERIC(5, 2)`: the api's own comment says that holds every legal percentage and every legal floor to the
+ * hundredth of an hour, and the domain's `floor_minutes` says a floor authored to the hundredth converts
+ * deterministically. So a share of 33.5 and a floor of 3.5 are both legal declarations, and a control that
+ * snapped either to a grid would write a budget the reader did not author. The api's own bounds refuse a
+ * figure out of range, and its 422 names the field.
+ *
+ * Blank is null rather than zero, because a reader who cleared the box stated nothing rather than none.
+ */
+export function parseFigure(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  const figure = Number(trimmed);
+  return Number.isFinite(figure) ? figure : null;
+}
+
+/** A figure as the field shows it back: the reader's own text, or empty for nothing declared. */
+export function asFieldText(figure: number | null): string {
+  return figure === null ? "" : String(figure);
+}

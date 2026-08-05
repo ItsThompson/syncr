@@ -17,7 +17,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { RequestHandler } from "msw";
+import { http, HttpResponse, type RequestHandler } from "msw";
 
 import { apiServer } from "../../../testing/apiServer";
 import {
@@ -49,8 +49,24 @@ import type { BudgetReview } from "../../../api/hooks/useBudgetReview";
 const PERIOD = thisIsoWeek(new Date());
 const REVIEW_URL = `/api/v1/reviews/budget?period=${PERIOD}`;
 
-/** Every class the chart family paints an Area's own ink with, plus the ledger's chip. */
-const AREA_INK_CLASSES = ["chart-fill", "chart-fill--hatched", "area-chip", "chip", "area-name"];
+/**
+ * Every class shape that carries an Area's ink, read off the two cva bases that emit one.
+ *
+ * BOUNDED BY WHAT CAN BE EMITTED, NOT BY A LIST MAINTAINED BY HAND. `charts/paint.ts` puts `chart-ink` on every
+ * element it paints and adds `chart-ink--NN` and `chart-hatch--XX`; `marks/AreaChip.tsx` puts `area-chip` on its
+ * own and adds `bg-area-NN`; the ledger's name row is `area-name`; and a chart fill is `chart-fill`. Matching
+ * each base's PREFIX rather than enumerating its variants is what makes a new pigment, a new texture or a new
+ * carrier caught by shape rather than by memory.
+ *
+ * The first version of this guard walked the figure only, and a chip in the panel around it passed. The second
+ * was a hand-written list of five strings that omitted `chart-ink`, the one class every painted element carries,
+ * so a real Area-pigmented hatched `PieChart` inside the deviation panel passed the whole file. Two holes in one
+ * guard is why it is now a shape over an inventory rather than a list.
+ */
+const AREA_INK_CLASS = /^(chart-ink|chart-fill|chart-hatch|area-chip|area-name|bg-area-)/;
+
+/** The custom properties a pigment sets, which is the other channel an Area's ink can arrive through. */
+const AREA_INK_PROPERTY = /--area-|--ai\b|--hx\b/;
 
 /* A `figure` carries no accessible name from its own `figcaption` under this accname implementation, so a
  * chart is located by the caption it draws and read through the figure that holds it. Asserting through the
@@ -197,12 +213,16 @@ describe("the two chart rules", () => {
      * figure passes the moment somebody puts one just outside. The panel holds the chart and its statements
      * and nothing else, so the panel is the honest boundary. */
     const panel = screen.getByRole("region", { name: "Actual against target" });
+    const offenders: string[] = [];
     for (const element of panel.querySelectorAll("*")) {
-      for (const painted of AREA_INK_CLASSES) {
-        expect([...element.classList]).not.toContain(painted);
+      for (const painted of element.classList) {
+        if (AREA_INK_CLASS.test(painted)) offenders.push(painted);
       }
-      expect(element.getAttribute("style") ?? "").not.toMatch(/--area-|--ai\b|--hx\b/);
+      const styled = element.getAttribute("style") ?? "";
+      if (AREA_INK_PROPERTY.test(styled)) offenders.push(styled);
     }
+
+    expect(offenders).toEqual([]);
   });
 
   it("renders a deviation row per Area and one for the vacancy, signed and never coloured", async () => {
@@ -249,6 +269,24 @@ describe("the two residuals", () => {
 
     expect(screen.queryByRole("status", { name: /Unallocated/ })).not.toBeInTheDocument();
   });
+
+  it("says why a week off-plan end to end reports zeroes, rather than showing two empty panels", async () => {
+    await renderAreas({
+      review: buildReview({
+        discretionaryMinutes: 0,
+        unallocatedMinutes: 0,
+        oversubscriptionMinutes: 0,
+        offPlanMinutes: 10080,
+        offPlanStatement:
+          "This week was declared off-plan from end to end, so it holds no discretionary time.",
+        categories: [],
+      }),
+    });
+
+    const notice = screen.getByRole("status", { name: /declared off-plan/ });
+    expect(notice).toHaveTextContent("holds no discretionary time");
+    expect(notice).toHaveTextContent("168.0h of it were declared off");
+  });
 });
 
 describe("declaring an Area", () => {
@@ -275,15 +313,17 @@ describe("declaring an Area", () => {
     await renderAreas();
 
     const form = screen.getByRole("form", { name: "Declaring an Area" });
-    const labels = within(form)
+    const named = within(form)
       .getAllByRole("textbox")
-      .concat(within(form).getAllByRole("spinbutton"))
-      .map((field) => field.getAttribute("aria-label") ?? field.id);
+      .map((field) => `${field.getAttribute("aria-label") ?? ""} ${field.id}`);
 
-    expect(labels.join(" ").toLowerCase()).not.toMatch(/colour|color|pigment/);
+    expect(named.join(" ").toLowerCase()).not.toMatch(/colour|color|pigment/);
   });
 
-  it("sends the name, the floor and the share it was given", async () => {
+  it("writes the floor and the share the reader typed, unrounded", async () => {
+    /* The defect this replaces: both fields were minute-measured steppers, so a declared 3-hour weekly floor
+     * was POSTed as 5 and a 33% share as 35%. A floor is a HARD solver constraint and this is the only surface
+     * in the product that declares one. Both figures are stored as NUMERIC(5, 2), so neither owes a grid. */
     const created = recordingHandler("post", "/api/v1/areas", {
       status: 201,
       body: { area: buildAreas().areas[0], ramp: buildAreas().ramp },
@@ -291,7 +331,48 @@ describe("declaring an Area", () => {
     await renderAreas({}, [created.handler]);
 
     const form = screen.getByRole("form", { name: "Declaring an Area" });
-    await userEvent.type(within(form).getByRole("textbox"), "Research");
+    await userEvent.type(within(form).getByRole("textbox", { name: "Area name" }), "Research");
+    await userEvent.type(within(form).getByRole("textbox", { name: "Weekly floor in hours" }), "3");
+    await userEvent.type(
+      within(form).getByRole("textbox", { name: /Share of the remainder/ }),
+      "33",
+    );
+    await userEvent.click(within(form).getByRole("button", { name: "Declare it" }));
+
+    expect(created.bodies).toEqual([
+      { name: "Research", parentId: null, budgetPercent: 33, floorHours: 3 },
+    ]);
+  });
+
+  it("writes a fractional floor, because a floor is stored to the hundredth of an hour", async () => {
+    const created = recordingHandler("post", "/api/v1/areas", {
+      status: 201,
+      body: { area: buildAreas().areas[0], ramp: buildAreas().ramp },
+    });
+    await renderAreas({}, [created.handler]);
+
+    const form = screen.getByRole("form", { name: "Declaring an Area" });
+    await userEvent.type(within(form).getByRole("textbox", { name: "Area name" }), "Research");
+    await userEvent.type(
+      within(form).getByRole("textbox", { name: "Weekly floor in hours" }),
+      "3.5",
+    );
+    await userEvent.click(within(form).getByRole("button", { name: "Declare it" }));
+
+    expect(created.bodies).toEqual([
+      { name: "Research", parentId: null, budgetPercent: null, floorHours: 3.5 },
+    ]);
+  });
+
+  it("declares no floor and no share for a field left blank, rather than zero", async () => {
+    const created = recordingHandler("post", "/api/v1/areas", {
+      status: 201,
+      body: { area: buildAreas().areas[0], ramp: buildAreas().ramp },
+    });
+    await renderAreas({}, [created.handler]);
+
+    const form = screen.getByRole("form", { name: "Declaring an Area" });
+    await userEvent.type(within(form).getByRole("textbox", { name: "Area name" }), "Research");
     await userEvent.click(within(form).getByRole("button", { name: "Declare it" }));
 
     expect(created.bodies).toEqual([
@@ -359,6 +440,88 @@ describe("the preference cell", () => {
 
     const form = await screen.findByRole("form", { name: /Placement preference for Career/ });
     expect(within(form).getByText("Daily cap")).toBeInTheDocument();
+  });
+
+  it("writes the daily cap the reader typed, because a cap owes no grid", async () => {
+    /* Ticket 21 settled that a cap is a budget figure rather than a geometry, so 100 minutes is legal and
+     * admits six blocks. The quarter-hour stepper this replaces wrote 105 for a typed 100, which is a hard
+     * constraint the reader did not declare. The ideal session is the opposite case and keeps its stepper. */
+    const declared = recordingHandler("put", `/api/v1/areas/${CAREER}/preference`, {
+      status: 200,
+      body: buildPreference(),
+    });
+    const table = await renderAreas({}, [declared.handler]);
+
+    const row = within(table).getByRole("row", { name: /Career/ });
+    await userEvent.click(
+      within(row).getByRole("button", { name: "Change the placement preference for Career" }),
+    );
+
+    const form = await screen.findByRole("form", { name: /Placement preference for Career/ });
+    const cap = within(form).getByRole("textbox", { name: "Daily cap in minutes" });
+    await userEvent.clear(cap);
+    await userEvent.type(cap, "100");
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+
+    expect(declared.bodies).toEqual([
+      {
+        windows: [{ start: "05:30", end: "07:00" }],
+        strength: "strong",
+        preferredDurationMinutes: 90,
+        maxPerDayMinutes: 100,
+      },
+    ]);
+  });
+
+  it("keeps the ideal session on the quarter hour, which is the one figure here that owes the grid", async () => {
+    const table = await renderAreas();
+
+    const row = within(table).getByRole("row", { name: /Career/ });
+    await userEvent.click(
+      within(row).getByRole("button", { name: "Change the placement preference for Career" }),
+    );
+
+    const form = await screen.findByRole("form", { name: /Placement preference for Career/ });
+    /* A stepper, not a figure field: the api refuses an ideal duration that is not a multiple of the snap. */
+    expect(within(form).getByRole("spinbutton")).toHaveAttribute("step", "15");
+  });
+
+  it("forgets a refusal about one row when another row's editor opens", async () => {
+    /* The two preference writes are one hook each, shared by every row, so a refusal outlived the editor that
+     * caused it and then appeared inside the next Area's editor, naming an Area the reader never touched. */
+    apiServer.use(
+      ...screenHandlers(buildAreas(), buildReview()),
+      http.put(`${window.location.origin}/api/v1/areas/${CAREER}/preference`, () =>
+        HttpResponse.json(
+          {
+            type: "syncr:validation-failed",
+            title: "Validation failed",
+            status: 422,
+            detail: "A window sits inside a single local day, and 23:00 to 02:00 does not.",
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    renderAt("/areas");
+    const table = await screen.findByRole("table", { name: /Every Area/ });
+
+    const career = within(table).getByRole("row", { name: /Career/ });
+    await userEvent.click(
+      within(career).getByRole("button", { name: "Change the placement preference for Career" }),
+    );
+    const refused = await screen.findByRole("form", { name: /Placement preference for Career/ });
+    await userEvent.click(within(refused).getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("23:00 to 02:00");
+
+    await userEvent.click(within(refused).getByRole("button", { name: "Cancel" }));
+    const study = within(table).getByRole("row", { name: /Study/ });
+    await userEvent.click(
+      within(study).getByRole("button", { name: "Set a placement preference for Study" }),
+    );
+
+    const opened = await screen.findByRole("form", { name: /Placement preference for Study/ });
+    expect(within(opened).queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("removes the declaration through its own act, which is not an empty window list", async () => {
@@ -436,6 +599,29 @@ describe("every state this screen can be in", () => {
     const failure = await screen.findByRole("alert");
     expect(failure).toHaveTextContent("The Areas could not be read");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Areas");
+  });
+
+  it("keeps the screen when one Area's preference cannot be read", async () => {
+    /* `Promise.all` would reject the whole set on one failure, and the screen's own reading would then turn the
+     * pie, the deviation rows and the budget sheet into a failure surface over a Preference cell. */
+    apiServer.use(
+      readyz(),
+      jsonHandler("/api/v1/areas", { status: 200, body: buildAreas() }),
+      jsonHandler(REVIEW_URL, { status: 200, body: buildReview() }),
+      jsonHandler(`/api/v1/areas/${CAREER}/preference`, { status: 200, body: buildPreference() }),
+      unreachableHandler(`/api/v1/areas/${STUDY}/preference`),
+    );
+    renderAt("/areas");
+
+    const table = await screen.findByRole("table", { name: /Every Area/ });
+    const career = within(table).getByRole("row", { name: /Career/ });
+    expect(
+      within(career).getByRole("button", { name: "Change the placement preference for Career" }),
+    ).toHaveTextContent("05:30 \u00b7 strong");
+    const study = within(table).getByRole("row", { name: /Study/ });
+    expect(
+      within(study).getByRole("button", { name: "Set a placement preference for Study" }),
+    ).toBeInTheDocument();
   });
 
   it("points at setup when no Area is declared, rather than drawing an empty pie", async () => {
@@ -555,9 +741,97 @@ describe("the review mode", () => {
 
     expect(screen.getByRole("button", { name: "Approve the revision" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
-    /* One adjustable field per Area row and none for the vacancy, which is not an Area to write a share to. */
-    expect(screen.getAllByRole("spinbutton", { name: /Proposed share for/ })).toHaveLength(2);
+    /* One adjustable field per Area row and none for the vacancy, which is not an Area to write a share to.
+     * Each is named by its AREA rather than by its identifier: this is the one control the mode exists to
+     * offer, and a reader hearing a UUID learns nothing about which share they are changing. */
+    const adjustable = screen.getAllByRole("textbox", { name: /Proposed share for/ });
+    expect(adjustable).toHaveLength(2);
+    expect(adjustable.map((field) => field.getAttribute("aria-label"))).toEqual([
+      "Proposed share for Career, as a percentage",
+      "Proposed share for Study, as a percentage",
+    ]);
     expect(screen.getByText(/never re-cuts the budget on its own/)).toBeInTheDocument();
+  });
+
+  it("applies the share the reader typed, whatever it is", async () => {
+    /* The defect this replaces: the adjust control was a five-minute stepper, so a typed 44 applied 45 and
+     * pressing increase on the api's own proposed 44 gave 45, which meant the mode could not round-trip its
+     * own figure. A share is stored as NUMERIC(5, 2) and the api bounds it only by range. */
+    const applied = recordingHandler("post", "/api/v1/reviews/budget/apply", {
+      status: 200,
+      body: { applied: 2, declared: [CAREER, STUDY], changedAt: null, statement: "2 of 2." },
+    });
+    apiServer.use(
+      ...screenHandlers(buildAreas(), buildReview({ proposal: buildReadyProposal() })),
+      applied.handler,
+    );
+    renderAt(REVIEW_PATH);
+    await screen.findByText("Pie review");
+
+    const field = screen.getByRole("textbox", { name: /Proposed share for Career/ });
+    await userEvent.clear(field);
+    await userEvent.type(field, "33");
+    await userEvent.click(screen.getByRole("button", { name: "Approve the revision" }));
+
+    expect(applied.bodies).toEqual([
+      {
+        percentages: [
+          { areaId: CAREER, budgetPercent: 33 },
+          { areaId: STUDY, budgetPercent: 40 },
+        ],
+      },
+    ]);
+  });
+
+  it("round-trips the figure the api proposed when the reader touches nothing", async () => {
+    const applied = recordingHandler("post", "/api/v1/reviews/budget/apply", {
+      status: 200,
+      body: { applied: 0, declared: [], changedAt: null, statement: "nothing." },
+    });
+    apiServer.use(
+      ...screenHandlers(buildAreas(), buildReview({ proposal: buildReadyProposal() })),
+      applied.handler,
+    );
+    renderAt(REVIEW_PATH);
+    await screen.findByText("Pie review");
+
+    const field = screen.getByRole("textbox", { name: /Proposed share for Career/ });
+    expect(field).toHaveValue("44");
+    await userEvent.click(screen.getByRole("button", { name: "Approve the revision" }));
+
+    expect(applied.bodies).toEqual([
+      {
+        percentages: [
+          { areaId: CAREER, budgetPercent: 44 },
+          { areaId: STUDY, budgetPercent: 40 },
+        ],
+      },
+    ]);
+  });
+
+  it("falls back to the proposed figure for a row the reader emptied", async () => {
+    const applied = recordingHandler("post", "/api/v1/reviews/budget/apply", {
+      status: 200,
+      body: { applied: 0, declared: [], changedAt: null, statement: "nothing." },
+    });
+    apiServer.use(
+      ...screenHandlers(buildAreas(), buildReview({ proposal: buildReadyProposal() })),
+      applied.handler,
+    );
+    renderAt(REVIEW_PATH);
+    await screen.findByText("Pie review");
+
+    await userEvent.clear(screen.getByRole("textbox", { name: /Proposed share for Career/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Approve the revision" }));
+
+    expect(applied.bodies).toEqual([
+      {
+        percentages: [
+          { areaId: CAREER, budgetPercent: 44 },
+          { areaId: STUDY, budgetPercent: 40 },
+        ],
+      },
+    ]);
   });
 
   it("applies the proposed figures, and the vacancy's row is not among them", async () => {

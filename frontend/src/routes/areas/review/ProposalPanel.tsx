@@ -6,7 +6,14 @@
  *
  * ADJUSTING TAKES THE SAME ROUTE AS APPROVING. One endpoint, one body: a caller applying the proposal sends
  * the proposal's figures and a caller adjusting it sends its own, so an adjusted revision cannot take a path a
- * whole one does not. That is the api's shape and this panel is why it has it.
+ * whole one does not.
+ *
+ * THE ADJUST FIELD IS A PLAIN FIGURE AND NOT A STEPPER, and that is a correction rather than a preference.
+ * `NumberStepper` snaps every commit to its measure's step, and both of its measures count minutes: with the
+ * ledger's five-minute step, typing 44 applied 45 and pressing increase on a proposed 29 gave 35, so the mode
+ * could not round-trip its own figure. A step of one would still snap 33.5 to 34, and a share is stored as
+ * `NUMERIC(5, 2)`, so no step is the right one: this field has no grid. The api's bounds refuse a figure out of
+ * range and its 422 names the field, which this panel renders.
  *
  * BELOW A QUARTER OF CONFIRMED WEEKS THERE IS NOTHING TO PROPOSE, and the panel states how much evidence is
  * missing instead of rendering an empty table. The gap between actual and target is the deviation chart, which
@@ -18,10 +25,10 @@
 import { useState } from "react";
 
 import { AreaChip, EmptyState, Table, areaPigment, type TableColumn } from "../../../ui/domain";
-import { Button, NumberStepper } from "../../../ui/primitives";
+import { Button, Input } from "../../../ui/primitives";
 import { Panel } from "../../../ui/layout";
 import { VACANCY_LABEL } from "../entries";
-import { asPercent, asWholePercent } from "../figures";
+import { asPercent, asWholePercent, parseFigure } from "../figures";
 import type { Area } from "../../../api/hooks/useAreas";
 import type {
   BudgetProposal,
@@ -30,16 +37,19 @@ import type {
 } from "../../../api/hooks/useBudgetReview";
 import type { Write } from "../../../api/hooks/useWrite";
 
-const SHARE_MAX = 100;
-
 export interface ProposalPanelProps {
   readonly proposal: BudgetProposal;
   readonly areas: readonly Area[];
   readonly write: Write<BudgetRevisionBody>;
 }
 
-/** Whatever the reader adjusted a row to, by Area id. A row nobody touched is not a member. */
-type Adjustments = Readonly<Record<string, number>>;
+/**
+ * What the reader typed into a row, by Area id, as TEXT.
+ *
+ * Text rather than a number, so a figure mid-typing is the reader's until they submit: `3.` is not a number and
+ * `33.50` is not `33.5`, and storing either as a number would rewrite the field under the caret.
+ */
+type Adjustments = Readonly<Record<string, string>>;
 
 /** The figures a submit sends: every Area row, at the adjusted figure or the proposed one. */
 export function bodyOf(
@@ -47,16 +57,12 @@ export function bodyOf(
   adjusted: Adjustments,
 ): BudgetRevisionBody {
   return {
-    percentages: shares.flatMap((share) =>
-      share.areaId === null
-        ? []
-        : [
-            {
-              areaId: share.areaId,
-              budgetPercent: adjusted[share.areaId] ?? share.proposedPercent,
-            },
-          ],
-    ),
+    percentages: shares.flatMap((share) => {
+      if (share.areaId === null) return [];
+      const typed = adjusted[share.areaId];
+      const figure = typed === undefined ? null : parseFigure(typed);
+      return [{ areaId: share.areaId, budgetPercent: figure ?? share.proposedPercent }];
+    }),
   };
 }
 
@@ -65,14 +71,16 @@ export function bodyOf(
 function columnsFor(
   areas: readonly Area[],
   adjusted: Adjustments,
-  onAdjust: (areaId: string, percent: number) => void,
+  onAdjust: (areaId: string, text: string) => void,
 ): readonly TableColumn<ProposedShare>[] {
+  const nameOf = new Map(areas.map((area) => [area.id, area]));
+
   return [
     {
       key: "area",
       header: "Area",
       cell: (share) => {
-        const found = areas.find((area) => area.id === share.areaId);
+        const found = share.areaId === null ? undefined : nameOf.get(share.areaId);
         if (found === undefined) return VACANCY_LABEL;
         return <AreaChip pigment={areaPigment(found.pigmentIndex)} name={found.name} />;
       },
@@ -96,15 +104,15 @@ function columnsFor(
       cell: (share) => {
         const areaId = share.areaId;
         if (areaId === null) return asWholePercent(share.proposedPercent);
+        /* Named by the AREA and never by its identifier: this is the one control the review mode exists to
+         * offer, and a reader hearing a UUID learns nothing about which share they are changing. */
+        const named = nameOf.get(areaId)?.name ?? areaId;
         return (
-          <NumberStepper
-            value={adjusted[areaId] ?? share.proposedPercent}
-            onValueChange={(next) => onAdjust(areaId, next)}
-            measure="actual-minutes"
-            min={0}
-            max={SHARE_MAX}
-            unit="%"
-            label={`Proposed share for ${areaId}`}
+          <Input
+            measure="figure"
+            value={adjusted[areaId] ?? String(share.proposedPercent)}
+            onValueChange={(text) => onAdjust(areaId, text)}
+            label={`Proposed share for ${named}, as a percentage`}
           />
         );
       },
@@ -153,8 +161,8 @@ export function ProposalPanel({ proposal, areas, write }: ProposalPanelProps) {
       footer={<span>{proposal.statement}</span>}
     >
       <Table
-        columns={columnsFor(areas, adjusted, (areaId, percent) =>
-          setAdjusted({ ...adjusted, [areaId]: percent }),
+        columns={columnsFor(areas, adjusted, (areaId, text) =>
+          setAdjusted({ ...adjusted, [areaId]: text }),
         )}
         rows={proposal.shares}
         rowKey={(share) => share.areaId ?? VACANCY_LABEL}

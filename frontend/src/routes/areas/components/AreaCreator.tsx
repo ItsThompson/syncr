@@ -14,36 +14,56 @@
  * once, so it is where a reader meets the collision; the statement is rendered rather than paraphrased so
  * that whichever way 1201 resolves, this panel says what the product says.
  *
+ * THE TWO BUDGET FIELDS ARE PLAIN FIGURES AND NOT STEPPERS, and that is a correction. `NumberStepper` snaps
+ * every commit to its measure's step and both of its measures count minutes, so with the ledger's five-minute
+ * step a declared three-hour floor was POSTed as five and a 33% share as 35%. A weekly floor is a HARD solver
+ * constraint and this panel is the only surface in the product that declares one, so a control that inflated
+ * one by two thirds was the worst instance of that defect. Both figures are stored as `NUMERIC(5, 2)`, which
+ * holds a floor to the hundredth of an hour, so no step is the right one: neither field has a grid.
+ *
+ * THE FIELDS HOLD THE READER'S OWN TEXT until they submit. A number would rewrite `3.` under the caret, and
+ * the point of this change is that the figure written is the figure typed.
+ *
  * A FLOOR AND A SHARE ARE BOTH OPTIONAL, because an Area with neither is a legitimate declaration: it holds
- * time and reports a zero target rather than an absent one. */
+ * time and reports a zero target rather than an absent one. So a blank field is null rather than zero. */
 
 import { useState } from "react";
 
-import { Button, Input, NumberStepper } from "../../../ui/primitives";
+import { Button, Input } from "../../../ui/primitives";
 import { FormRow, Panel } from "../../../ui/layout";
+import { parseFigure } from "../figures";
 import type { AreaDeclarationBody, Ramp } from "../../../api/hooks/useAreas";
 import type { Write } from "../../../api/hooks/useWrite";
 
-const SHARE_MAX = 100;
-const FLOOR_MAX_HOURS = 168;
+/** What the reader has typed, before it is a declaration. */
+interface Draft {
+  readonly name: string;
+  readonly floorHours: string;
+  readonly budgetPercent: string;
+}
 
-const EMPTY: AreaDeclarationBody = {
-  name: "",
-  parentId: null,
-  budgetPercent: null,
-  floorHours: null,
-};
+const EMPTY: Draft = { name: "", floorHours: "", budgetPercent: "" };
 
 export interface AreaCreatorProps {
   readonly ramp: Ramp;
   readonly write: Write<AreaDeclarationBody>;
 }
 
+/** The declaration a draft amounts to. A blank figure is null, which declares none. */
+function bodyOf(draft: Draft): AreaDeclarationBody {
+  return {
+    name: draft.name,
+    parentId: null,
+    budgetPercent: parseFigure(draft.budgetPercent),
+    floorHours: parseFigure(draft.floorHours),
+  };
+}
+
 export function AreaCreator({ ramp, write }: AreaCreatorProps) {
-  const [draft, setDraft] = useState<AreaDeclarationBody>(EMPTY);
+  const [draft, setDraft] = useState<Draft>(EMPTY);
 
   const submit = async () => {
-    if (await write.submit(draft)) setDraft(EMPTY);
+    if (await write.submit(bodyOf(draft))) setDraft(EMPTY);
   };
 
   return (
@@ -83,18 +103,15 @@ export function AreaCreator({ ramp, write }: AreaCreatorProps) {
 
         <FormRow
           label="Floor / wk"
-          hint="A weekly minimum the solver treats as a constraint. 0 declares none."
+          hint="A weekly minimum in hours the solver treats as a constraint, up to 168. Blank declares none."
         >
           {(field) => (
-            <NumberStepper
+            <Input
               id={field.id}
               describedBy={field.describedBy}
-              value={draft.floorHours ?? 0}
-              onValueChange={(hours) => setDraft({ ...draft, floorHours: hours || null })}
-              measure="actual-minutes"
-              min={0}
-              max={FLOOR_MAX_HOURS}
-              unit="hours"
+              measure="figure"
+              value={draft.floorHours}
+              onValueChange={(floorHours) => setDraft({ ...draft, floorHours })}
               label="Weekly floor in hours"
             />
           )}
@@ -102,19 +119,16 @@ export function AreaCreator({ ramp, write }: AreaCreatorProps) {
 
         <FormRow
           label="Share of remainder"
-          hint="A share of the discretionary time the floors leave. Shares past 100 in total are reported, never refused."
+          hint="A percentage of the discretionary time the floors leave. Shares past 100 in total are reported, never refused."
         >
           {(field) => (
-            <NumberStepper
+            <Input
               id={field.id}
               describedBy={field.describedBy}
-              value={draft.budgetPercent ?? 0}
-              onValueChange={(percent) => setDraft({ ...draft, budgetPercent: percent || null })}
-              measure="actual-minutes"
-              min={0}
-              max={SHARE_MAX}
-              unit="%"
-              label="Share of the remainder"
+              measure="figure"
+              value={draft.budgetPercent}
+              onValueChange={(budgetPercent) => setDraft({ ...draft, budgetPercent })}
+              label="Share of the remainder, as a percentage"
             />
           )}
         </FormRow>

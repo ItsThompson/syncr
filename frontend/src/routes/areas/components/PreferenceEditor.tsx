@@ -9,6 +9,14 @@
  * that could carry one would be an override that could relax one. The api refuses the field at the boundary;
  * this form does not offer it at all, which is the same rule one layer earlier.
  *
+ * THE IDEAL SESSION STEPS AND THE DAILY CAP DOES NOT, and the two controls differ because the api's two rules
+ * differ. An ideal duration OWES the quarter-hour grid: `syncr_domain.preferences` refuses one that is not a
+ * multiple of it, so a stepper on the snap is exactly right and a figure off the grid would be a 422. A cap does
+ * NOT owe the grid: ticket 21 settled that a cap is a budget figure rather than a geometry, so 100 minutes is
+ * legal and admits six blocks. A stepper snaps every commit, so it wrote 105 for a typed 100, which is a hard
+ * constraint the reader did not declare. The cap is therefore a plain figure with the api's own bounds stated
+ * beside it.
+ *
  * AN EMPTY WINDOW LIST IS A STATEMENT, NOT AN OMISSION. Removing the last window and saving declares that this
  * Area names no time of day, which is a real declaration: the strength then weighs nothing. That is why the
  * control stays available at one window rather than being disabled there.
@@ -21,8 +29,9 @@
 
 import { useId, useState } from "react";
 
-import { Button, NumberStepper, Select, TimeRangeInput } from "../../../ui/primitives";
+import { Button, Input, NumberStepper, Select, TimeRangeInput } from "../../../ui/primitives";
 import { FormRow } from "../../../ui/layout";
+import { asFieldText, parseFigure } from "../figures";
 import {
   bodyOf,
   draftOf,
@@ -49,7 +58,8 @@ const STRENGTHS = [
   { value: "strong", label: "strong" },
 ] as const;
 
-/** The widest figures the api accepts, so a stepper cannot offer a value it would refuse. */
+/** The bounds the api accepts, so a control cannot offer a figure it would refuse. */
+const CAP_MIN_MINUTES = 15;
 const CAP_MAX_MINUTES = 1440;
 const IDEAL_MAX_MINUTES = 480;
 
@@ -139,7 +149,7 @@ export function PreferenceEditor({
 
       <FormRow
         label="Ideal session"
-        hint="A split shorter than this is placed and charged to fragmentation, never refused."
+        hint="Whole quarter hours, which is the one figure here that owes the grid. A split shorter than this is placed and charged to fragmentation, never refused."
       >
         {(field) => (
           <NumberStepper
@@ -148,7 +158,6 @@ export function PreferenceEditor({
             value={draft.preferredDurationMinutes ?? 0}
             onValueChange={(next) => setDraft(withIdealDuration(draft, next === 0 ? null : next))}
             measure="duration"
-            min={0}
             max={IDEAL_MAX_MINUTES}
             unit="min, 0 for none"
           />
@@ -158,18 +167,19 @@ export function PreferenceEditor({
       {owner === "area" ? (
         <FormRow
           label="Daily cap"
-          hint="A hard constraint, and an Area's alone: an override cannot carry one, so it can never relax this."
+          hint={
+            "A hard constraint, and an Area's alone: an override cannot carry one, so it can never relax " +
+            `this. ${CAP_MIN_MINUTES} to ${CAP_MAX_MINUTES} minutes, and it owes no grid. Blank for none.`
+          }
         >
           {(field) => (
-            <NumberStepper
+            <Input
               id={field.id}
               describedBy={field.describedBy}
-              value={draft.maxPerDayMinutes ?? 0}
-              onValueChange={(next) => setDraft(withCap(draft, next === 0 ? null : next))}
-              measure="duration"
-              min={0}
-              max={CAP_MAX_MINUTES}
-              unit="min, 0 for none"
+              measure="figure"
+              value={asFieldText(draft.maxPerDayMinutes)}
+              onValueChange={(text) => setDraft(withCap(draft, parseFigure(text)))}
+              label="Daily cap in minutes"
             />
           )}
         </FormRow>
