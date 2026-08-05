@@ -143,3 +143,21 @@ def test_gaps_never_returns_one_shorter_than_asked(
 @given(interval_sets(), intervals())
 def test_overlaps_agrees_with_the_intersection(occupied: IntervalSet, probe: Interval) -> None:
     assert occupied.overlaps(probe) == bool(occupied.intersect(IntervalSet([probe])))
+
+
+@given(interval_sets(), intervals())
+def test_an_instant_partitions_a_set_into_what_precedes_it_and_what_follows(
+    occupied: IntervalSet, at_random: Interval
+) -> None:
+    # The two readings the probe's capacity rests on: the whole week's occupancy split at `now`,
+    # and one Area's free capacity split at a deadline. Written as one property because a
+    # partition is what makes "the capacity before D" and "what the floors can absorb after D"
+    # two halves of one figure rather than two subtractions that can disagree.
+    moment = at_random.start
+    before, after = occupied.before(moment), occupied.after(moment)
+
+    assert before.union(after) == occupied
+    assert not before.intersect(after)
+    assert before.total_minutes() + after.total_minutes() == occupied.total_minutes()
+    assert all(member.end <= moment for member in before)
+    assert all(member.start >= moment for member in after)

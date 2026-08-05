@@ -237,6 +237,40 @@ class TestClip:
         assert not IntervalSet([between(20, 21)]).clip(between(9, 17))
 
 
+class TestBeforeAndAfterAnInstant:
+    """The clip against an unbounded side, which the two capacity readings are stated over."""
+
+    OCCUPIED = IntervalSet([between(8, 10), between(11, 12), between(16, 20)])
+
+    def test_before_trims_the_member_the_instant_falls_inside(self) -> None:
+        assert self.OCCUPIED.before(at(17)) == IntervalSet(
+            [between(8, 10), between(11, 12), between(16, 17)]
+        )
+
+    def test_after_trims_the_same_member_from_the_other_side(self) -> None:
+        assert self.OCCUPIED.after(at(17)) == IntervalSet([between(17, 20)])
+
+    def test_an_instant_at_a_members_end_leaves_that_member_wholly_before_it(self) -> None:
+        # Half-open, so a member ending exactly there holds no minute of what follows.
+        assert self.OCCUPIED.before(at(10)) == IntervalSet([between(8, 10)])
+        assert self.OCCUPIED.after(at(10)) == IntervalSet([between(11, 12), between(16, 20)])
+
+    def test_an_instant_at_a_members_start_leaves_that_member_wholly_after_it(self) -> None:
+        assert self.OCCUPIED.before(at(11)) == IntervalSet([between(8, 10)])
+        assert self.OCCUPIED.after(at(11)) == IntervalSet([between(11, 12), between(16, 20)])
+
+    def test_an_instant_past_the_whole_set_leaves_nothing_after_it(self) -> None:
+        # The capacity reading of a week that has wholly elapsed: no span rather than an
+        # inverted one, which is why this is a set operation and not an interval constructed
+        # from `max(now, start)`.
+        assert self.OCCUPIED.after(at(21)) == IntervalSet()
+        assert self.OCCUPIED.before(at(21)) == self.OCCUPIED
+
+    def test_an_instant_before_the_whole_set_leaves_nothing_before_it(self) -> None:
+        assert self.OCCUPIED.before(at(7)) == IntervalSet()
+        assert self.OCCUPIED.after(at(7)) == self.OCCUPIED
+
+
 class TestGaps:
     def test_an_empty_set_leaves_the_whole_bound_open(self) -> None:
         assert IntervalSet().gaps(between(9, 17)) == IntervalSet([between(9, 17)])

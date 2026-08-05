@@ -208,6 +208,32 @@ class IntervalSet:
     def clip(self, bound: Interval) -> IntervalSet:
         return self.intersect(IntervalSet([bound]))
 
+    def before(self, moment: Instant) -> IntervalSet:
+        """The part of this set that falls before ``moment``.
+
+        A clip against an unbounded side, which :meth:`clip` cannot express: there is no
+        interval reaching to the beginning of time, so a member is kept whole, cut at the
+        instant, or dropped. With :meth:`after` it partitions the set, and the suite asserts
+        that rather than either being written in terms of the other.
+        """
+        return IntervalSet(
+            member if member.end <= moment else Interval(member.start, moment)
+            for member in self._members
+            if member.start < moment
+        )
+
+    def after(self, moment: Instant) -> IntervalSet:
+        """The part of this set that falls at or after ``moment``.
+
+        Half-open on the same side the rest of the algebra is: a member ending exactly at
+        ``moment`` holds no minute of what follows it, and one starting there is kept whole.
+        """
+        return IntervalSet(
+            member if member.start >= moment else Interval(moment, member.end)
+            for member in self._members
+            if member.end > moment
+        )
+
     def total_minutes(self) -> int:
         return _whole_minutes(sum((member.duration for member in self._members), timedelta()))
 
