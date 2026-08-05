@@ -188,11 +188,11 @@ def test_no_partial_file_is_left_when_a_write_cannot_finish(
     assert list(tmp_path.glob(".credentials-*")) == []
 
 
-def test_the_credential_files_own_permissions_are_stated_when_they_are_broader(
+def test_the_credential_files_own_permissions_are_stated_when_another_user_can_reach_it(
     tmp_path: Path, notices: Notices
 ) -> None:
     # A file this store did not write may be anything. The discipline is that a secret-storage
-    # property is announced rather than inferred, so "the file was NOT 0600" is announced too.
+    # property is announced rather than inferred, so "someone else can read this" is announced too.
     keyring.set_keyring(NoKeychain())
     path = tmp_path / "credentials.json"
     path.write_text(json.dumps({ACCOUNT: TOKEN}), encoding="utf-8")
@@ -206,15 +206,38 @@ def test_the_credential_files_own_permissions_are_stated_when_they_are_broader(
     assert "chmod 600" in stated
 
 
-def test_a_file_at_the_right_mode_says_nothing_about_it(tmp_path: Path, notices: Notices) -> None:
-    # The other direction, so the notice discriminates rather than always firing.
+@pytest.mark.parametrize("mode", [0o600, 0o700])
+def test_a_mode_only_its_owner_can_reach_says_nothing_about_itself(
+    tmp_path: Path, notices: Notices, mode: int
+) -> None:
+    # The notice discriminates rather than firing on any mode that is not 0600. Nobody but the owner
+    # can read a 0700 file, so the sentence would be untrue there, and a notice that cries wolf is
+    # one users learn to skip.
     keyring.set_keyring(NoKeychain())
-    keeping = store(tmp_path, notices)
-    keeping.write(TOKEN)
-    before = len(notices.stated)
+    path = tmp_path / "credentials.json"
+    path.write_text(json.dumps({ACCOUNT: TOKEN}), encoding="utf-8")
+    path.chmod(mode)
 
-    assert keeping.read() == TOKEN
-    assert len(notices.stated) == before
+    assert store(tmp_path, notices).read() == TOKEN
+
+    assert not [stated for stated in notices.stated if "permissions" in stated]
+
+
+def test_the_fallback_notice_states_what_this_store_writes_not_what_the_file_is(
+    tmp_path: Path, notices: Notices
+) -> None:
+    # Two sentences about one file must not contradict each other. The fallback says what the store
+    # does; only the permissions notice describes the file as it is.
+    keyring.set_keyring(NoKeychain())
+    path = tmp_path / "credentials.json"
+    path.write_text(json.dumps({ACCOUNT: TOKEN}), encoding="utf-8")
+    path.chmod(0o644)
+
+    store(tmp_path, notices).read()
+
+    fallback = next(stated for stated in notices.stated if KEYCHAIN_LOCATION in stated)
+    assert "writes at 0600" in fallback
+    assert "with 0600 permissions" not in fallback
 
 
 def test_the_credentials_file_sits_beside_the_configuration_rather_than_inside_it() -> None:

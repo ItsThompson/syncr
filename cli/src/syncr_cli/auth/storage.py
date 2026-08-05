@@ -13,7 +13,8 @@ store it is actually using.
 **The file is created 0600 and written atomically.** Created with the mode rather than chmodded
 afterwards, so there is no window where it is readable; replaced rather than truncated, so an
 interrupted write cannot leave a half-written credential where a whole one was. A file this store
-did not write and whose mode is broader is reported on the read, for the same reason a fallback is.
+did not write, whose group or other bits put it within somebody else's reach, is reported on the
+read, for the same reason a fallback is.
 """
 
 from __future__ import annotations
@@ -38,6 +39,10 @@ KEYRING_SERVICE: Final = "syncr-cli"
 
 CREDENTIALS_FILE_NAME: Final = "credentials.json"
 CREDENTIALS_FILE_MODE: Final = 0o600
+
+# The bits that put a credential within reach of somebody other than its owner. Group and other,
+# and nothing else: the owner's own execute bit makes a file no more readable than 0600 does.
+REACHABLE_BY_OTHERS: Final = stat.S_IRWXG | stat.S_IRWXO
 
 KEYCHAIN_LOCATION: Final = "the OS keychain"
 
@@ -104,10 +109,15 @@ class RefreshTokenStore:
 
     def _fall_back(self, error: KeyringError) -> None:
         self._using_file = True
+        # What this store DOES, not what the file currently is. A file it has not written yet may be
+        # at any mode, and claiming 0600 of one that is 0644 would put two contradictory sentences
+        # about one file in a single run: `_state_a_broad_mode` is the only sentence here that
+        # describes the file as it is.
         self._notices.state(
             f"{KEYCHAIN_LOCATION} is not available on this machine ({error.__class__.__name__}: "
-            f"{error}), so the refresh token is kept in {self._file.path} with 0600 permissions. "
-            "Anyone who can read that file can act as you until you run 'syncr auth logout'."
+            f"{error}), so the refresh token is kept in {self._file.path}, which this CLI writes "
+            "at 0600. Anyone who can read that file can act as you until you run "
+            "'syncr auth logout'."
         )
 
 
@@ -115,9 +125,9 @@ class _FileStore:
     """The fallback: one JSON object keyed by API URL, mode 0600.
 
     Every write normalizes the mode, so a file this store has written is 0600. A file it did not
-    write may be anything, and a mode broader than 0600 is stated on the read rather than inferred:
-    the discipline of this module is that a secret-storage property is announced, and "the file was
-    NOT 0600" is exactly as worth announcing as "the file is".
+    write may be anything, and a mode **another user can read or write** is stated on the read
+    rather than inferred: the discipline of this module is that a secret-storage property is
+    announced, and "someone else can read this" is exactly as worth announcing as "nobody can".
     """
 
     def __init__(self, path: Path, notices: Notices) -> None:
@@ -174,7 +184,11 @@ class _FileStore:
             raise
 
     def _state_a_broad_mode(self) -> None:
-        """Say so when the file holding a credential is readable by more than its owner.
+        """Say so when someone other than the owner can reach the file holding a credential.
+
+        The predicate is the group and other bits, which is what the sentence is about. Testing
+        every bit outside 0600 would fire on 0700, where nobody but the owner can read the file and
+        the sentence would be untrue: a security notice that cries wolf is one users learn to skip.
 
         Stated rather than tightened, because the file is the user's: a store that silently changed
         the permissions of a file it did not create would be acting outside what it was asked to do,
@@ -184,11 +198,11 @@ class _FileStore:
             mode = stat.S_IMODE(self.path.stat().st_mode)
         except OSError:
             return
-        if mode & ~CREDENTIALS_FILE_MODE:
+        if mode & REACHABLE_BY_OTHERS:
             self._notices.state(
-                f"{self.path} holds a refresh token and its permissions are {mode:04o}, which is "
-                f"broader than {CREDENTIALS_FILE_MODE:04o}: anyone who can read it can act as you. "
-                "Run 'chmod 600' on it, or 'syncr auth logout' and authorize again."
+                f"{self.path} holds a refresh token and its permissions are {mode:04o}, so users "
+                "other than you can reach it: anyone who can read it can act as you. Run "
+                "'chmod 600' on it, or 'syncr auth logout' and authorize again."
             )
 
 
