@@ -11,7 +11,10 @@
  *
  * THE VISIBLE TITLE IS NOT RENDERED RATHER THAN HIDDEN. A rule setting `display: none` under the tier attribute
  * would spend a property no state channel names, and the component already holds the tier: it is what computed
- * the line count. */
+ * the line count.
+ *
+ * ITS CONTENT SITS IN ONE BLOCK CHILD, because a button centres its content and a calendar block's title is
+ * top-aligned. `block.css` carries the measurement that found it. */
 
 import type { CSSProperties } from "react";
 
@@ -75,7 +78,7 @@ export function Block({ block, placement, states = AT_REST }: BlockProps) {
   return (
     <button
       aria-label={accessibleName(block)}
-      className={blockPaint(block.pigment, "week-block state-row")}
+      className={blockPaint(block.pigment, "state-row")}
       data-conflict={states.isConflicted === true ? "" : undefined}
       data-origin={block.origin}
       data-pinned={block.isPinned ? "" : undefined}
@@ -87,15 +90,17 @@ export function Block({ block, placement, states = AT_REST }: BlockProps) {
       type="button"
     >
       {isAnchor ? <span aria-hidden="true" className="week-block__hatch" /> : null}
-      <span className="week-block__glyph">
-        <GlyphSlot
-          isPinned={block.isPinned}
-          isProposalSource={states.isProposalSource}
-          origin={tierDrawsTitle(tier) ? undefined : block.origin}
-          overlapCount={placement.across.overlapCount ?? undefined}
-        />
+      <span className="week-block__body">
+        <span className="week-block__glyph">
+          <GlyphSlot
+            isPinned={block.isPinned}
+            isProposalSource={states.isProposalSource}
+            origin={tierDrawsTitle(tier) ? undefined : block.origin}
+            overlapCount={placement.across.overlapCount ?? undefined}
+          />
+        </span>
+        {tierDrawsTitle(tier) ? <span className="week-block__title">{block.title}</span> : null}
       </span>
-      {tierDrawsTitle(tier) ? <span className="week-block__title">{block.title}</span> : null}
     </button>
   );
 }

@@ -9,7 +9,7 @@
  * plausible state systems each looked correct on a single state and produced two pixel-identical rows in a
  * combination matrix while meaning different things. */
 
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { Block, type BlockPlacement, type BlockStates } from "../Block";
@@ -81,12 +81,13 @@ describe("the tier ladder as it reaches the DOM", () => {
     expect(renderBlock({}, { heightPx })).toHaveAttribute("data-tier", tier);
   });
 
-  it("draws the title at the two upper tiers", () => {
-    for (const heightPx of [40, BLOCK_H_LABEL_PX, BLOCK_H_COMPACT_PX]) {
-      render(<Block block={gridBlock()} placement={{ ...FULL_WIDTH, heightPx }} />);
-      expect(screen.getAllByText("Leetcode · Graphs").length).toBeGreaterThan(0);
-      screen.getAllByText("Leetcode · Graphs").forEach((node) => node.remove());
-    }
+  /* One height per case, so nothing has to be cleaned out of the DOM between iterations: the first draft rendered
+   * three blocks into one test and then removed the nodes it had just found, which is a test tidying up after itself
+   * rather than asserting. */
+  it.each([40, BLOCK_H_LABEL_PX, BLOCK_H_COMPACT_PX])("draws the title at %spx", (heightPx) => {
+    render(<Block block={gridBlock()} placement={{ ...FULL_WIDTH, heightPx }} />);
+
+    expect(screen.getByText("Leetcode · Graphs")).toBeInTheDocument();
   });
 
   it("draws NO title element below them, rather than hiding one with a rule", () => {
@@ -230,7 +231,9 @@ describe("every documented combination", () => {
     expect(element).toHaveAttribute("data-selected");
   });
 
-  it("proposal + hover leaves the fill to the proposal, which is a rule rather than a rendering", () => {
+  it("proposal + hover carries the attribute, and the CASCADE decides the fill", () => {
+    /* Which of the two lands is a cascade question, not a DOM one: the two rules tie on specificity and import order
+     * settles it. That half is asserted in `blockStylesheet.test.ts`, where the sheets are read. */
     expect(renderBlock({}, {}, { isProposalTarget: true })).toHaveAttribute("data-proposal");
   });
 
@@ -352,8 +355,18 @@ describe("the geometry a block is positioned by", () => {
   });
 
   it("is reachable by the keyboard at every tier, however small the pointer target", () => {
+    /* Queried by ROLE rather than by reading `tabIndex`, which is 0 on any button and would pass on a disabled one.
+     * What matters is that a screen reader and the tab order reach the element with its name at every height, which
+     * is the claim `j` and `k` rest on: the smallest block in the week is as reachable as the largest. */
     for (const heightPx of [40, BLOCK_H_COMPACT_PX, BLOCK_H_SLIVER_PX, 4]) {
-      expect(renderBlock({}, { heightPx }).tabIndex).toBe(0);
+      const { container } = render(
+        <Block block={gridBlock()} placement={{ ...FULL_WIDTH, heightPx }} />,
+      );
+      const reached = screen.getByRole("button", { name: "Leetcode · Graphs · Career" });
+
+      expect(reached).toBe(container.firstElementChild);
+      expect(reached).not.toBeDisabled();
+      cleanup();
     }
   });
 });

@@ -10,6 +10,8 @@
  * set of ramp steps, so a fourth edge or a thirteenth step is a failure rather than something the test is silent
  * about. */
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "postcss";
 
@@ -78,7 +80,14 @@ describe("the block draws three edges, not four", () => {
      * which EDGES the sheet sets rather than which property names it writes. */
     const rights: string[] = [];
     parse(await sheet("block.css")).walkDecls((declaration) => {
-      if (/^border(-right)?(-color|-style|-width)?$/.test(declaration.prop)) {
+      /* The physical shorthand and its longhands, and the LOGICAL forms too: in a left-to-right document
+       * `border-inline-end`, `border-inline` and `border-block` each set the right edge, and a rule matching only
+       * the physical spellings is the same longhand-shaped hole one property name over. */
+      if (
+        /^border(-right|-inline(-end|-start)?|-block(-end|-start)?)?(-color|-style|-width)?$/.test(
+          declaration.prop,
+        )
+      ) {
         rights.push(`${declaration.parent?.toString().split("{")[0].trim()} ${declaration.prop}`);
       }
     });
@@ -86,13 +95,22 @@ describe("the block draws three edges, not four", () => {
     expect(rights).toEqual([]);
   });
 
-  it("insets itself from the column edges through the component, so its own rules miss the divider", async () => {
-    /* The inset rides on the per-block `left` and `right`, because those carry the overlap share too: a rule in the
-     * sheet would be overridden by the share the moment a column split, which is how an earlier rendering put the
-     * leftmost block's bottom rule on top of the divider it was meant to sit beside. */
-    const naming = await componentsNaming("week-block", domainDir);
+  it("gets its zero right edge from the reset the bundle carries, not from a rule of its own", async () => {
+    /* Worth stating because the measurement depends on it: the block is a `<button>`, and a UA draws a button with a
+     * 2px outset border on all four sides. Tailwind's preflight zeroes it, and preflight is only in the BUILT sheet.
+     * A probe that links `block.css` alone measures a user-agent button and reports a right border that never ships,
+     * which is a false finding a reviewer already produced once. */
+    expect(await sheet("block.css")).not.toMatch(/border-right/);
+    expect(await code("block.css")).not.toMatch(/border:/);
+  });
 
-    expect(naming).toContain("week-grid/Block.tsx");
+  it("names its own class in exactly one place, the map that also sets the Area's ink", async () => {
+    /* One base class in one `cva` call, so the class list at the call site carries only what is not the block's own.
+     * The INSET itself rides on the per-block `left` and `right`, because those carry the overlap share too: a rule
+     * in the sheet would be overridden by the share the moment a column split, which is how an earlier rendering put
+     * the leftmost block's bottom rule on top of the divider it was meant to sit beside. It is asserted through the
+     * rendering, in `block.test.tsx`, because it is a computed value rather than a declaration. */
+    expect(await componentsNaming("week-block", domainDir)).toEqual(["week-grid/blockPaint.ts"]);
   });
 });
 
@@ -109,10 +127,46 @@ describe("the title wraps and never truncates", () => {
     expect(inFamily).toEqual([]);
   });
 
-  it("clamps to a computed line count rather than to a fixed one", async () => {
+  /* THE CAP IS A HEIGHT, AND THE CLAMP SHORTHAND IS REFUSED BY NAME.
+   *
+   * `-webkit-line-clamp: n` is `max-lines: n` PLUS `block-ellipsis: auto`, so the ellipsis rides in the shorthand
+   * and neither `white-space` nor `text-overflow` governs it. Those two were the only things the first version of
+   * this file asserted, and an end-ellipsis shipped behind them: at the modal thirty-minute block on the reference
+   * display three sibling titles rendered as one string. Refusing the property by name is the declaration-level
+   * channel; `__tests__/rendered.test.ts` reads the rendered pixels, which is the channel a reader perceives. */
+  it("caps the title with a HEIGHT and names no line clamp, in any spelling", async () => {
     const declarations = await rule("block.css", ".week-block__title");
 
-    expect(declarations).toContainEqual(["-webkit-line-clamp", "var(--lines)"]);
+    expect(declarations).toContainEqual(["max-height", "calc(var(--lines) * 1lh)"]);
+    expect(declarations.map(([property]) => property)).not.toContain("-webkit-line-clamp");
+    expect(declarations.map(([property]) => property)).not.toContain("line-clamp");
+  });
+
+  it("names no clamp and no ellipsis anywhere in the family, read over the code", async () => {
+    /* Bounded over every sheet the family ships rather than over the one rule, because the clamp reaching the title
+     * through a descendant selector would draw the same ellipsis. */
+    const names = ["block.css", "grid.css", "band.css", "strip.css", "tokens.css"];
+    const sheets = await Promise.all(names.map(code));
+    const clamps: string[] = [];
+    for (const [index, source] of sheets.entries()) {
+      parse(source).walkDecls((declaration) => {
+        if (/line-clamp|block-ellipsis|text-overflow|white-space/.test(declaration.prop)) {
+          clamps.push(`${names[index]} ${declaration.prop}: ${declaration.value}`);
+        }
+      });
+    }
+
+    expect(clamps).toEqual([]);
+  });
+
+  it("caps at a whole number of the element's OWN line boxes, so a clip lands on a boundary", async () => {
+    /* `1lh` resolves per element, which is what lets the label tier at 13.8px and the compact tier at 9.5px share
+     * one declaration: a per-tier pixel figure would need the compact line height named a second time. */
+    const declarations = await rule("block.css", ".week-block__title");
+    const cap = declarations.find(([property]) => property === "max-height")?.[1] ?? "";
+
+    expect(cap).toMatch(/1lh/);
+    expect(cap).toContain("var(--lines)");
   });
 
   it("breaks a long word rather than overflowing the column with it", async () => {
@@ -165,6 +219,9 @@ describe("one state, one channel", () => {
       "[data-selected] -> border-left-color",
       "[data-selected] -> border-left-width",
       "[data-split] -> border-left",
+      /* Twice, and not a slip: the pair rule `.week-block[data-split][data-selected],
+       * .week-block[data-split][data-conflict]` names `data-split` in both of its selectors, and the reader reports
+       * one entry per selector. Collapsing it here would hide a second rule genuinely arriving. */
       "[data-split] -> border-left-width",
       "[data-split] -> border-left-width",
       '[data-tier="compact"] -> padding-top, font-size, line-height',
@@ -191,6 +248,20 @@ describe("one state, one channel", () => {
 
     expect(source.indexOf(".week-block[data-split] {")).toBeLessThan(
       source.indexOf("[data-selected]"),
+    );
+  });
+
+  /* PROPOSAL AND HOVER TIE ON SPECIFICITY, `.week-block[data-proposal]` and `.state-row:hover` both at (0,2,0), so
+   * which fill lands is decided by IMPORT ORDER. `Block.tsx` imports the kit's row states first and its own sheet
+   * second, which is what puts the proposal's absent fill above hover's. Reversing the two reverses the rendering,
+   * and nothing else in the suite can see it. */
+  it("puts the proposal's absent fill above hover's, by importing the two sheets in that order", async () => {
+    const component = await readFile(path.join(domainDir, "week-grid", "Block.tsx"), "utf8");
+
+    expect(component).toContain('import "../../primitives/states.css";');
+    expect(component).toContain('import "./block.css";');
+    expect(component.indexOf("../../primitives/states.css")).toBeLessThan(
+      component.indexOf('import "./block.css"'),
     );
   });
 

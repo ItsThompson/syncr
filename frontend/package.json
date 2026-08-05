@@ -23,7 +23,8 @@
     "lint:markup": "node scripts/lint-markup/cli.ts",
     "lint:channels": "node scripts/check-channels/cli.ts",
     "lint:imports": "node scripts/check-imports/cli.ts",
-    "lint:bundle": "node scripts/check-bundle/cli.ts"
+    "lint:bundle": "node scripts/check-bundle/cli.ts",
+    "lint:render": "node scripts/check-render/cli.ts"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.20",
