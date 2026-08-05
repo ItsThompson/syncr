@@ -33,6 +33,7 @@ from syncr_api.google_account.wiring import build_google_account_router
 from syncr_api.habits.wiring import build_habits_router
 from syncr_api.oauth.wiring import build_oauth_router
 from syncr_api.offplan.wiring import build_off_plan_router
+from syncr_api.plans.wiring import build_weeks_router
 from syncr_api.preferences.wiring import build_preferences_router
 from syncr_api.routines.wiring import build_routines_router
 from syncr_api.solving.wiring import build_operations_router
@@ -81,6 +82,7 @@ FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
     build_preferences_router,
     build_operations_router,
     build_concessions_router,
+    build_weeks_router,
 )
 
 # The one place the api's version is stated: the package metadata uv installs from

@@ -48,4 +48,20 @@ one resolved ``SolveInputs``:
 | ``tradeoff_targets.py`` | which targets a gap names, per kind: the selection half |
 | ``tradeoff_labels.py`` | the words a tradeoff is offered in, per kind |
 | ``candidates.py`` | a candidate concession's path to the worker, and the reductions read |
+
+And the week routes, which compose everything above into the Week screen's whole read:
+
+| Module | Holds |
+|---|---|
+| ``week_config.py`` | the four paths and the resource name the week routes read |
+| ``service.py`` | ``WeekService``: the composed read, the history, the verdict, and the solve |
+| ``api.py`` | the four routes, each calling one service method |
+| ``wiring.py`` | the prefix, the tag, the origin check, and the statuses they answer |
+| ``emptiness.py`` | why a week holds no plan, and the facts the two actions need |
+| ``readings.py`` | the eight figures the strip shows and the review divides |
+| ``currency.py`` | how current a week's plan is, from the week's own operation state |
+| ``confirmations.py`` | the seam answering which of a week's days the user has confirmed |
+| ``schemas.py`` | the wire shapes the four routes answer with |
+| ``document_schemas.py`` | a stored document on the wire: the blocks and the two kinds of gap |
+| ``clause_schemas.py`` | the six reason clauses on the wire, discriminated by kind |
 """

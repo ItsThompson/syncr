@@ -1,44 +1,63 @@
-"""How a caller acquires a week assembler, and which reader each seam is wired to.
+"""How a caller acquires a week assembler and a week service, and which reader each seam is wired
+to.
 
 The assembler takes eighteen collaborators, so composing one is stated here rather than at each
 call site: three components assemble a week and a second copy of this list is how one of them
 would come to read a different set of tables.
 
-Every repository is scoped to a tenant HERE, before the assembler exists, so no statement it
-composes can reach another tenant's rows. The tenant is a parameter rather than a request-scoped
-dependency, because two of the three callers are not requests: the worker solves a week and the
-horizon maintainer materializes one, and neither has a principal.
+Every repository is scoped to a tenant HERE, before either is built, so no statement they compose
+can reach another tenant's rows. For the assembler the tenant is a parameter rather than a
+request-scoped dependency, because two of its three callers are not requests: the worker solves a
+week and the horizon maintainer materializes one, and neither has a principal. The week service is
+request-only and takes the principal's own dependency.
 
-Two seams are wired to readers that answer with nothing, and each is the honest reading of this
+Three seams are wired to readers that answer with nothing, and each is the honest reading of this
 deployment rather than a placeholder:
 
-``NoPlacements`` for the live plan and the pins, because no code names the keys a stored block or
-a stored pin binding holds, so no committed capacity can be read back out of a document.
+``NoPlacements`` for the live plan and the pins, because no code names the keys a stored pin binding
+holds, so no committed capacity can be read back out of one.
 
 ``NoRecordedOutcomes`` for the habit outcome log, for the same reason one module over: nothing
 writes a binding onto an outcome, so no row can be attributed to a habit occurrence.
 
-Whoever brings either online changes one line here.
+``NoConfirmations`` for the days the user has confirmed, because nothing records an outcome at all,
+so no day of any week carries the instant of confirmation that would make it fact.
+
+Whoever brings any of them online changes one line here.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
+from fastapi import Depends
+
+# FastAPI resolves these annotations at RUNTIME to build the dependency graph, and both names are
+# only reachable from an annotation, so under TYPE_CHECKING they would resolve to a NameError while
+# the app is being constructed.
+from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.anchors.repository import AnchorRepository
 from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.areas.repository import AreaRepository
+from syncr_api.budgets.injection import build_budget_service
+from syncr_api.calendars.repository import CalendarSourceRepository
+from syncr_api.core.clock import utc_now
 from syncr_api.habits.outcome_log import NoRecordedOutcomes
 from syncr_api.habits.repository import HabitRepository
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.assembler import AssemblyCaller, WeekAssembler
+from syncr_api.plans.confirmations import NoConfirmations
 from syncr_api.plans.placements import NoPlacements
+from syncr_api.plans.readiness import MinimumInputs
 from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.service import WeekService
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.preferences.repository import PreferenceRepository
 from syncr_api.routines.repository import RoutineRepository
+from syncr_api.solving.lifecycle import OperationLifecycle
+from syncr_api.solving.repository import OperationRepository
 from syncr_api.tasks.repository import TaskRepository
 from syncr_api.templates.repository import TemplateRepository, WeekPatternRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
@@ -46,6 +65,7 @@ from syncr_api.user_settings.repository import SettingsRepository, TravelOverrid
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from syncr_api.core.clock import Clock
     from syncr_domain.identifiers import TenantId
 
 
@@ -83,3 +103,48 @@ def build_week_assembler(
         revisions=PlanRepository(transaction, tenant_id),
         caller=caller,
     )
+
+
+def get_week_service(principal: PrincipalDep, transaction: TransactionDep) -> WeekService:
+    """The week service, wired for this request and scoped to this tenant."""
+    return build_week_service(transaction, principal.tenant_id, clock=utc_now)
+
+
+def build_week_service(
+    transaction: AsyncSession, tenant_id: TenantId, *, clock: Clock
+) -> WeekService:
+    """One week service, scoped to ``tenant_id``, reading time from ``clock``.
+
+    Split from the dependency above for the same reason ``build_week_assembler`` is a function of a
+    tenant: the composition is eleven collaborators, and a caller that wants one against a stated
+    instant should not have to restate all eleven. The horizon a week is compared against and the
+    days a figure is charged to both move at local midnight, so an instant is what a test of either
+    has to be able to fix.
+
+    The budget service is the api's own, acquired through its dependency rather than rebuilt, so the
+    three figures on the summary strip are the ones the pie review divides: a second composition of
+    that arithmetic here is exactly the disagreement the composed view exists to prevent.
+
+    The operation lifecycle is the solving module's, and it is the only creation path for an
+    operation: a second one here would be a second reading of the state machine.
+    """
+    operations = OperationRepository(transaction, tenant_id)
+    return WeekService(
+        budgets=build_budget_service(transaction, tenant_id),
+        revisions=PlanRepository(transaction, tenant_id),
+        versions=WeekInputVersionRepository(transaction, tenant_id),
+        operations=operations,
+        lifecycle=OperationLifecycle(operations, clock),
+        minimum=MinimumInputs(
+            AreaRepository(transaction, tenant_id),
+            WeekPatternRepository(transaction, tenant_id),
+        ),
+        sources=CalendarSourceRepository(transaction, tenant_id),
+        settings=SettingsRepository(transaction, tenant_id),
+        off_plan=OffPlanPeriodRepository(transaction, tenant_id),
+        confirmations=NoConfirmations(),
+        clock=clock,
+    )
+
+
+type WeekServiceDep = Annotated[WeekService, Depends(get_week_service)]
