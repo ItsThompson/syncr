@@ -12,8 +12,9 @@ Three collaborators come from elsewhere. The Area repository is read because a h
 exist and be this tenant's, which is a comparison between stored rows. ``BacklogWideBump`` carries
 plan storage's version counter and the settings row the home zone is read from, because a habit is
 a solve input and there is one serialization point for anything that invalidates a running solve.
-``NoRecordedOutcomes`` is the outcome log, and it is the one line that changes when outcome
-recording comes online.
+``HabitOutcomeLog`` is plan storage's projection of ``block_outcomes``: the cursor and the debt are
+derived from the log on every read, which is why correcting a past confirmation moves both figures
+with no further call.
 """
 
 from __future__ import annotations
@@ -28,9 +29,9 @@ from fastapi import Depends
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.clock import utc_now
-from syncr_api.habits.outcome_log import NoRecordedOutcomes
 from syncr_api.habits.repository import HabitRepository
 from syncr_api.habits.service import HabitService
+from syncr_api.plans.habit_log import HabitOutcomeLog
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
@@ -41,7 +42,7 @@ def get_habit_service(principal: PrincipalDep, transaction: TransactionDep) -> H
     return HabitService(
         habits=HabitRepository(transaction, principal.tenant_id),
         areas=AreaRepository(transaction, principal.tenant_id),
-        outcomes=NoRecordedOutcomes(),
+        outcomes=HabitOutcomeLog(transaction, principal.tenant_id),
         bump=BacklogWideBump(
             versions=TrackedWeekInputVersions(
                 WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now

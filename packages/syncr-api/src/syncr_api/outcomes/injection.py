@@ -1,0 +1,64 @@
+"""The dependencies the outcome routes declare.
+
+Every repository is scoped to the principal's tenant HERE, at the one point where the principal is
+available and before a service exists. That is what makes the scope structural: there is no code
+path that builds one of these without a tenant, so no statement they compose can reach another
+tenant's rows.
+
+Four collaborators come from other feature modules, and each is deliberate rather than convenient.
+The plan repository and the outcome log are plan storage's, because that package owns both tables
+and a second reader of either would be a second answer to what a week holds. The Area repository is
+read for the name each ledger row renders as a chip. The settings and travel-override repositories
+are read for the zones, because how long a day is and which date it is are decided by where the
+user is, and resolving that in a second place would let two surfaces disagree about which instants
+"today" covers.
+
+``BacklogWideBump`` is the one implementation of the open-ended version bump, floored at the week
+holding today's local date. A confirmation moves the rotation cursor and outstanding debt, which are
+inputs to weeks the user has not yet lived, and a past week's approved revision keeps the inputs it
+was computed with.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import Depends
+
+# FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and these
+# two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
+# NameError while the app is being constructed.
+from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
+from syncr_api.areas.repository import AreaRepository
+from syncr_api.core.clock import utc_now
+from syncr_api.outcomes.planned_days import PlannedDayReader
+from syncr_api.outcomes.service import OutcomeService
+from syncr_api.plans.reality import BlockOutcomeRepository
+from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
+from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
+
+
+def get_outcome_service(principal: PrincipalDep, transaction: TransactionDep) -> OutcomeService:
+    """The outcome service, wired for this request and scoped to this tenant."""
+    plans = PlanRepository(transaction, principal.tenant_id)
+    settings = SettingsRepository(transaction, principal.tenant_id)
+    return OutcomeService(
+        plans=plans,
+        days=PlannedDayReader(plans),
+        outcomes=BlockOutcomeRepository(transaction, principal.tenant_id),
+        areas=AreaRepository(transaction, principal.tenant_id),
+        settings=settings,
+        overrides=TravelOverrideRepository(transaction, principal.tenant_id),
+        bump=BacklogWideBump(
+            TrackedWeekInputVersions(
+                WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+            ),
+            settings,
+        ),
+        clock=utc_now,
+    )
+
+
+type OutcomeServiceDep = Annotated[OutcomeService, Depends(get_outcome_service)]

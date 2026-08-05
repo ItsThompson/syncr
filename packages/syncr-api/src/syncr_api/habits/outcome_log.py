@@ -5,22 +5,19 @@ service needs is that sequence and nothing else. It is a protocol for the same r
 report's occupancy reader is one: the concern that produces these rows owns its own storage, and
 a habit response should acquire their answers rather than reach into another module's table.
 
-``NoRecordedOutcomes`` answers with an empty log, and that is the correct reading of the schema
-today rather than a placeholder for one. ``block_outcomes`` exists and carries a ``binding``
-column, but the interior of a ``BindingRef`` is not defined anywhere yet: no code names the keys
-a stored binding holds, and nothing writes one. So no row in this deployment can be attributed
-to a habit occurrence, and the honest answer is that the log holds nothing for any habit: every
-rotation habit reads as sitting on its first variant, and every habit owes nothing.
+``NoRecordedOutcomes`` answers with an empty log. It is kept for the ONE suite that still needs it:
+``tests/test_habits_service.py`` asserts that a habit with no recorded outcome reads as sitting on
+its first variant and owing nothing, and a fake that answers with nothing is the honest way to state
+that. Production wires :class:`syncr_api.plans.habit_log.HabitOutcomeLog`, which reads the log for
+real.
 
-The seam earns its keep in the suite rather than in the production wiring. Without it, a cursor
-and a debt figure could only ever be asserted against an empty log; with it, the service tests
-supply a real one and assert both derivations through the service, with the real domain
-functions throughout.
+The seam earns its keep in the suite as well as in the wiring. The service tests supply a real log
+and assert both derivations through the service, with the real domain functions throughout, without
+reaching a database.
 
-Whoever brings outcome recording online supplies a reader that reads ``block_outcomes`` and
-changes one line in ``injection.py``. What that reader owes this module is the projection in
-``syncr_domain.outcomes``: the habit the binding names, the occurrence key, the state, when the
-occurrence was scheduled, and whether the day was confirmed.
+What a reader owes this module is the projection in ``syncr_domain.outcomes``: the habit the binding
+names, the occurrence key, the state, when the occurrence was scheduled, and whether the day was
+confirmed.
 """
 
 from __future__ import annotations
@@ -48,10 +45,13 @@ class HabitOutcomeReader(Protocol):
         ``HabitOutcome.occurrence_key`` is carried for: it is read by neither derivation and it is
         the thing this precondition is stated over.
 
-        This is not hypothetical. ``block_outcomes`` is keyed by ``(block_id, revision_id)``, so one
-        occurrence legitimately holds a row under each revision that placed it, and a reader taking
-        every row would deliver exactly the shape above. Whichever rule resolves that, the latest
-        revision or the newest confirmation, belongs in the reader rather than in the derivations.
+        The invariant is held by the WRITE path rather than by a rule here. ``block_outcomes`` is
+        keyed by ``(tenant_id, block_id)``, and a block id is a digest of the week and the binding,
+        so one habit occurrence in one week is one block and one block is one row. The schema first
+        shipped keyed by ``(block_id, revision_id)``, which permitted a row per plan of record and
+        would have delivered exactly the shape above; that identity was narrowed rather than a
+        latest-revision rule being invented here, because a revision boundary is not something the
+        user can see.
 
         Every instant a row carries has to be a real instant. ``HabitOutcome`` normalizes through
         ``syncr_domain.intervals.as_instant`` on construction and refuses a naive datetime, so a
@@ -66,10 +66,15 @@ class HabitOutcomeReader(Protocol):
 
 
 class NoRecordedOutcomes:
-    """The log of a deployment where no outcome can name a habit occurrence yet.
+    """An empty log, for the suite that asserts what a habit with no recorded outcome reads as.
 
     Reads nothing and writes nothing. A habit rendered against it reads as never having had an
-    occurrence recorded, which is what is true while nothing writes a binding.
+    occurrence recorded, which is the state every habit starts in.
+
+    Kept rather than deleted because ``tests/test_habits_service.py`` states that reading with it,
+    and a service test that had to seed an empty table to say "nothing has been recorded" would be
+    asserting the seeding. Production wires
+    :class:`syncr_api.plans.habit_log.HabitOutcomeLog`.
     """
 
     async def read(self, habit_ids: Sequence[HabitId]) -> tuple[HabitOutcome, ...]:
