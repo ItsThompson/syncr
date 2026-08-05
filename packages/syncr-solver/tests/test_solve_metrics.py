@@ -8,8 +8,6 @@ fall rather than as a series that went absent.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from prometheus_client import generate_latest
 
 from syncr_common.metrics import REGISTRY
@@ -19,16 +17,13 @@ from tests.materialized_weeks import CAREER, a_slot, an_area_budget, between
 from tests.objective_weeks import an_eligible_task
 from tests.solve_weeks import a_week, solved
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
 
 def exposition() -> str:
     return generate_latest(REGISTRY).decode("utf-8")
 
 
-def sample(name: str, labels: Mapping[str, str] | None = None) -> float:
-    found = REGISTRY.get_sample_value(name, labels or {})
+def sample(name: str, labels: dict[str, str] | None = None) -> float:
+    found = REGISTRY.get_sample_value(name, labels)
     return 0.0 if found is None else found
 
 
