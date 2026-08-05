@@ -47,6 +47,7 @@ from syncr_solver.rules import HARD_RULES
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
+    from syncr_domain.identifiers import AreaId
     from syncr_domain.intervals import Instant
     from syncr_solver.attempt import Attempt
     from syncr_solver.candidates import Candidate
@@ -93,7 +94,9 @@ def offers_in(candidate: Candidate, window: Interval, *, attempt: Attempt) -> It
     if room < SNAP_MINUTES:
         return
     for minutes in sizes_for(candidate, attempt):
-        length = min(minutes, room) if _packs_to_the_window(candidate) else minutes
+        length = (
+            _usable(candidate, min(minutes, room)) if _packs_to_the_window(candidate) else minutes
+        )
         if length < SNAP_MINUTES or length > room:
             continue
         yield offer_at(
@@ -143,15 +146,30 @@ def scored(offer: Offer, attempt: Attempt, weights: WeightSet) -> Scored:
 def windows_for(
     candidate: Candidate, gaps: Sequence[Interval], preferences: ResolvedPreferences
 ) -> tuple[Interval, ...]:
-    """These gaps in the order this candidate is offered them: the preferred ones first.
+    """These gaps in the order this candidate is offered them: the preferred ones first."""
+    return preferred_first(candidate.binding, candidate.area_id, gaps, preferences)
 
-    Stable inside each half, so the whole order is a function of the gaps and the candidate. The
+
+def preferred_first(
+    binding: BindingRef,
+    area_id: AreaId | None,
+    gaps: Sequence[Interval],
+    preferences: ResolvedPreferences,
+) -> tuple[Interval, ...]:
+    """These gaps with the ones meeting a preferred window of this content first.
+
+    Stable inside each half, so the whole order is a function of the gaps and the content. The
     strengths are not separated: a preference carries one strength and an override replaces its
-    Area's declaration wholly, so a candidate has strong windows or soft ones and never both.
+    Area's declaration wholly, so a block has strong windows or soft ones and never both.
+
+    A block carrying no Area is the frame or an imported commitment, and neither is something a
+    search moves, so there is no preference to resolve and the gaps are returned as they came.
     """
+    if area_id is None:
+        return tuple(gaps)
     preferred = tuple(
         window
-        for preference in preferences.applying_to(candidate.binding, candidate.area_id)
+        for preference in preferences.applying_to(binding, area_id)
         for window in preference.windows
     )
     if not preferred:
@@ -169,6 +187,27 @@ def _packs_to_the_window(candidate: Candidate) -> bool:
     the habit says is not one.
     """
     return candidate.binding.kind is BindingKind.TASK
+
+
+def _usable(candidate: Candidate, length: int) -> int:
+    """This length, shortened so what is left of the demand can still be placed in one piece.
+
+    A gap of 7h45m offered the whole of an 8h task takes 7h45m and leaves fifteen minutes, which a
+    one-hour minimum chunk cannot hold: the tail is then a packing failure the week did not have.
+    Taking 7h instead leaves an hour, and the hour is placeable.
+
+    Shortened only where the shorter piece is itself legal. A demand whose remainder cannot be
+    placed whatever is taken first is the packing failure the verdict reports, and hiding that by
+    taking less would leave the work unplaced with nothing recorded.
+
+    Every figure here is a multiple of the grid step, so the arithmetic cannot move a bound off it:
+    a declared minimum chunk owes the grid and so does a length taken from a snapped start.
+    """
+    tail = candidate.remaining_minutes - length
+    if tail <= 0 or tail >= candidate.min_minutes:
+        return length
+    shorter = length - (candidate.min_minutes - tail)
+    return shorter if shorter >= candidate.min_minutes else length
 
 
 def _chunking(candidate: Candidate, attempt: Attempt) -> tuple[BindingRef, int | None]:
