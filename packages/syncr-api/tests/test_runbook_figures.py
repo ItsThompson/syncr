@@ -17,9 +17,11 @@ from typing import TYPE_CHECKING, Final
 
 import pytest
 
+from syncr_api.calendars.google_config import WRITE_DEADLINE_SECONDS
 from syncr_api.calendars.injection import UNARMED
 from syncr_api.calendars.projection_errors import ProjectionFailed, ProjectionRefused
 from syncr_api.calendars.projection_notices import PROJECTION_STOPPED
+from syncr_api.calendars.projection_runner import TENANT_PROJECTION_FAILURES
 from syncr_api.calendars.schemas import SyncStateResponse
 from syncr_api.google_account.models import GoogleCredential
 from syncr_api.google_account.notices import WRITE_TARGET_EXPIRED
@@ -244,3 +246,18 @@ class TestTheGoogleTokenExpiredRunbook:
 
         assert "the alert cannot fire" in text
         assert REGISTRY.get_sample_value("syncr_write_target_token_age_seconds") is None
+
+    def test_it_names_the_one_failure_that_raises_no_banner(self) -> None:
+        """Every stated failure records itself on the target; a pass that raised did not.
+
+        So the runbook has to say which line to look for and which counter counts it, or the reader
+        concludes from a healthy product that nothing happened.
+        """
+        text = read(GOOGLE_TOKEN_EXPIRED)
+
+        assert "the one case with no banner" in text
+        assert TENANT_PROJECTION_FAILURES._name in text
+
+    def test_it_states_the_deadline_the_code_enforces(self) -> None:
+        """The figure an operator compares a recurring overrun against."""
+        assert f"stopped after {WRITE_DEADLINE_SECONDS:.0f}s" in read(GOOGLE_TOKEN_EXPIRED)

@@ -75,7 +75,7 @@ A target whose `lastAttemptAt` is null has never been projected to at all, which
 
 | `error.code` | Meaning | Fix |
 |---|---|---|
-| `projection_refused` | This deployment will not write at all. Nothing was sent | An operator changes the deployment. See below |
+| `projection_refused` | syncr will not write at all, and nothing was sent. Not retried, because retrying cannot clear it | An operator arms the deployment, or a user designates a calendar syncr can write to. See below |
 | `projection_failed` | A write was attempted and did not complete | Depends on `error.message`, which states the provider's own reason |
 
 **4. Read the logs.** Every pass emits one line, and which line it is answers what happened:
@@ -86,6 +86,8 @@ A target whose `lastAttemptAt` is null has never been projected to at all, which
 | `calendars.projection.failed` | It did not. Carries `error_code` and the counts that DID land |
 | `calendars.projection.skipped` | No calendar is designated as the write target. Nothing was attempted |
 | `calendars.projection.tenant_failed` | The pass raised outside a stated failure. A defect, with a traceback |
+
+**A `tenant_failed` line is the one case with no banner.** Every stated failure records itself on the write target, so the user sees it; a pass that raised outside them recorded nothing, and the operations it claimed sit `running` until the reaper returns them. Two shapes reach it: a fault in syncr, and two events syncr intends sharing one key (`ProjectionKeysCollide`), which is a fault in the plan's collection rather than at the provider. Read the traceback, and read `syncr_projection_tenant_failures_total`, which counts them.
 
 No log line carries a token, a calendar title, or an event title. That is enforced by the logger's own redaction and asserted by the suite, so a line will not tell you which event failed to write, by design.
 
@@ -144,14 +146,15 @@ The projection stops for reasons that have nothing to do with the authorization,
 |---|---|---|
 | Writing is switched off in this deployment | "writing is switched off", and it names `GOOGLE_PROJECTION_WRITES` | An operator sets `GOOGLE_PROJECTION_WRITES=true` and restarts the worker. **Off is the shipped default**, because the destructive write had never been run against the real Google API |
 | This deployment has no Google OAuth client | "no Google OAuth client" | Set the three `GOOGLE_OAUTH_*` values and restart |
-| The designated write target is an ICS feed | "a feed is published by somebody else" | Designate a Google calendar. A feed cannot be written to at all |
+| The designated write target is an ICS feed | "a feed is published by somebody else" | Designate a Google calendar. A feed cannot be written to at all, and this is a **refusal**: it is not retried, because retrying cannot change a source's provider |
+| The reconciliation ran out of time | "stopped after 90s without finishing" | Nothing, immediately. It states the counts that landed and the next pass converges. A first projection of a full horizon is the likely one; if it recurs, the horizon is larger than the budget and `horizon_days` is the lever |
 | Google rate limited the write | "rate limiting" | Nothing. It retries, and the next reconciliation converges |
 | Google answered a 5xx, or the connection dropped | "Whether it was applied is unknown, so it was not retried" | Nothing. The next reconciliation recomputes the diff from a fresh read |
 
-The last two are worth understanding rather than acting on. A write is retried in place only when Google is known to have rejected it; anything ambiguous ends the reconciliation, because retrying a write that may have been applied is what would put two copies of one block on the phone.
+The last three are worth understanding rather than acting on. A write is retried in place only when Google is known to have rejected it; anything ambiguous ends the reconciliation, because retrying a write that may have been applied is what would put two copies of one block on the phone. A reconciliation that ran out of time is the same shape: part of the plan reached the calendar and part did not, and the pass says which.
 
 ## Still to be written
 
 Nothing. The five open items this runbook carried are answered above.
 
-One gap remains and it is not in this procedure: `syncr_write_target_token_age_seconds` is not exported, so `WriteTargetTokenExpiring` cannot fire and this failure has no ALERT. It is visible in the product, in the api, and in the log. Ticket 54 owns the metric set.
+One gap remains and it is not in this procedure: `syncr_write_target_token_age_seconds` is not exported, so `WriteTargetTokenExpiring` cannot fire and this failure has no ALERT. It is visible in the product, in the api, and in the log. Ticket 1302 owns it, along with a rule for `syncr_projection_tenant_failures_total`, which is the only signal for a pass that raised outside a stated failure, and the arming gauge that lets `ProjectionFailing` be stated as failures AND writes enabled.
