@@ -38,6 +38,8 @@ from syncr_domain.reasons import (
     InsteadOf,
     Pinned,
 )
+from syncr_solver.constraints import Blocked as Rejection
+from syncr_solver.constraints import BlockedCandidate, ConstraintRule
 from syncr_solver.materialize import materialize
 from syncr_solver.metrics import MaterializeCause
 from syncr_solver.reasons import assemble, explained
@@ -74,6 +76,7 @@ from tests.solve_weeks import a_week, solved
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from syncr_domain.identifiers import AreaId
     from syncr_domain.plan import Block, PlanDocument
     from syncr_domain.reasons import ReasonRecord
     from syncr_solver.inputs import AreaBudget, Pin, SolveInputs
@@ -92,20 +95,28 @@ IMMOVABLE_MINUTES: Final = 60
 PLACED_MINUTES: Final = 120
 
 
-def a_floored_area(**overrides: object) -> AreaBudget:
+def a_floored_area(
+    *,
+    area_id: AreaId = FITNESS,
+    name: str = "Fitness",
+    floor_minutes: int = DECLARED_FLOOR - IMMOVABLE_MINUTES,
+    target_minutes: int = 0,
+    max_per_day_minutes: int | None = None,
+) -> AreaBudget:
     """One Area whose floor is partly served, with the two floor quantities genuinely different.
 
     ``floor_minutes`` nets the immovable placements and the reservation nets every placement, so a
     week holding both kinds is the only one where a reader can tell the two figures apart.
     """
-    stated: dict[str, object] = {
-        "area_id": FITNESS,
-        "floor_minutes": DECLARED_FLOOR - IMMOVABLE_MINUTES,
-        "floor_reservation_minutes": DECLARED_FLOOR - PLACED_MINUTES,
-        "placed_minutes": PLACED_MINUTES,
-    }
-    stated.update(overrides)
-    return an_area_budget(**stated)  # type: ignore[arg-type]
+    return an_area_budget(
+        area_id=area_id,
+        name=name,
+        floor_minutes=floor_minutes,
+        floor_reservation_minutes=DECLARED_FLOOR - PLACED_MINUTES,
+        placed_minutes=PLACED_MINUTES,
+        target_minutes=target_minutes,
+        max_per_day_minutes=max_per_day_minutes,
+    )
 
 
 def records_of(
@@ -114,16 +125,10 @@ def records_of(
     breakdown: ObjectiveBreakdown | None = None,
     pins: Sequence[Pin] = (),
     areas: Sequence[AreaBudget] = (),
-    log: Sequence[object] = (),
+    log: Sequence[BlockedCandidate] = (),
 ) -> tuple[ReasonRecord, ...]:
     """``assemble`` over one plan, with everything a test does not drive left empty."""
-    return assemble(
-        plan,
-        blocked_log=log,  # type: ignore[arg-type]
-        breakdown=breakdown,
-        pins=pins,
-        areas=areas,
-    )
+    return assemble(plan, blocked_log=log, breakdown=breakdown, pins=pins, areas=areas)
 
 
 def kinds_in(record: ReasonRecord) -> tuple[str, ...]:
@@ -167,7 +172,7 @@ def a_solved_week(**overrides: object) -> SolveResult:
 def untraceable(
     block: Block,
     *,
-    log: Sequence[object] = (),
+    log: Sequence[BlockedCandidate] = (),
     breakdown: ObjectiveBreakdown | None = None,
     pins: Sequence[Pin] = (),
     areas: Sequence[AreaBudget] = (),
@@ -180,7 +185,7 @@ def untraceable(
     over two carried fields, and the arithmetic is stated here in the same direction the clause
     states it.
     """
-    rows = [(row.window, row.rule, row.detail) for row in log]  # type: ignore[attr-defined]
+    rows = [(row.window, row.rule, row.detail) for row in log]
     pinned = [(pin.interval, pin.pinned_on) for pin in pins]
     replaced = [(pin.superseded_placement, pin.objective_delta) for pin in pins]
     floors = [
@@ -831,17 +836,23 @@ class TestWhatABoundaryInputDoesToTheBudget:
 
 class TestTheProjectionItself:
     def test_assembling_twice_produces_the_same_records(self) -> None:
-        result = a_solved_week(areas=(a_floored_area(target_minutes=60),))
-        arguments = {
-            "log": result.blocked_log,
-            "breakdown": result.objective_breakdown,
-            "areas": (a_floored_area(target_minutes=60),),
-        }
+        area = a_floored_area(target_minutes=60)
+        result = a_solved_week(areas=(area,))
 
-        assert records_of(result.document, **arguments) == records_of(  # type: ignore[arg-type]
+        once = records_of(
             result.document,
-            **arguments,  # type: ignore[arg-type]
+            log=result.blocked_log,
+            breakdown=result.objective_breakdown,
+            areas=(area,),
         )
+        twice = records_of(
+            result.document,
+            log=result.blocked_log,
+            breakdown=result.objective_breakdown,
+            areas=(area,),
+        )
+
+        assert once == twice
 
     def test_the_order_the_pins_and_the_areas_arrive_in_changes_nothing(self) -> None:
         occurrence = an_occurrence(habit_id=A_HABIT, index=0, minutes=60, area_id=FITNESS)
@@ -883,25 +894,32 @@ class TestTheProjectionItself:
         ]
 
     def test_each_record_reaches_the_block_it_was_assembled_for(self) -> None:
+        area = a_floored_area(target_minutes=60)
         result = solved(
             a_week(
                 frame=(a_frame_entry(),),
                 habit_occurrences=(
                     an_occurrence(habit_id=A_HABIT, index=0, minutes=60, area_id=FITNESS),
                 ),
-                areas=(a_floored_area(target_minutes=60),),
+                areas=(area,),
             )
         )
         plan = result.document
-        arguments = {
-            "blocked_log": result.blocked_log,
-            "breakdown": result.objective_breakdown,
-            "pins": (),
-            "areas": (a_floored_area(target_minutes=60),),
-        }
 
-        records = assemble(plan, **arguments)  # type: ignore[arg-type]
-        rebuilt = explained(plan, **arguments)  # type: ignore[arg-type]
+        records = assemble(
+            plan,
+            blocked_log=result.blocked_log,
+            breakdown=result.objective_breakdown,
+            pins=(),
+            areas=(area,),
+        )
+        rebuilt = explained(
+            plan,
+            blocked_log=result.blocked_log,
+            breakdown=result.objective_breakdown,
+            pins=(),
+            areas=(area,),
+        )
 
         assert [block.reason for block in rebuilt.blocks] == list(records)
 
@@ -938,10 +956,7 @@ def _a_placed_block() -> Block:
     return next(block for block in result.document.blocks if block.title == "Walk")
 
 
-def _a_row(block: Block, hour: float) -> object:
-    from syncr_solver.constraints import Blocked as Rejection
-    from syncr_solver.constraints import BlockedCandidate, ConstraintRule
-
+def _a_row(block: Block, hour: float) -> BlockedCandidate:
     return BlockedCandidate.of(
         block.binding,
         Rejection(ConstraintRule.BLOCK_OVERLAP, between(hour, hour + 1), "Sleep"),
