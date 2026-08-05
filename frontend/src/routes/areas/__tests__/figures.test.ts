@@ -9,11 +9,13 @@ import { describe, expect, it } from "vitest";
 import { UNALLOCATED, areaPigment } from "../../../ui/domain";
 import {
   VACANCY_LABEL,
+  WEDGE_LABEL_CHARS,
   deviationRowsOf,
   hoursOf,
   keyOf,
   legendOf,
   namingOf,
+  wedgeLabel,
   wedgesOf,
 } from "../entries";
 import {
@@ -165,6 +167,43 @@ describe("the wedges", () => {
     );
 
     expect(new Set(wedges.map((wedge) => wedge.pigment)).size).toBe(12);
+  });
+});
+
+describe("a wedge label", () => {
+  /* Measured in Chrome at 1440 and at 1024: the pie's gutter holds 97px and the label face sets at 5.7px per
+   * character, so a 57-character Area name ran 228px past the svg's own edge and painted over the panel's
+   * border. An Area name may be sixty characters, so this is an ordinary declaration. */
+  const LONG = "Career, interview preparation and the long game beyond it";
+
+  it("leaves a name the gutter holds exactly as it is", () => {
+    expect(wedgeLabel("Fitness")).toBe("Fitness");
+    expect(wedgeLabel("a".repeat(WEDGE_LABEL_CHARS))).toBe("a".repeat(WEDGE_LABEL_CHARS));
+  });
+
+  it("bounds a name the gutter does not hold, in one glyph rather than three", () => {
+    const bounded = wedgeLabel(LONG);
+
+    expect(bounded.length).toBeLessThanOrEqual(WEDGE_LABEL_CHARS);
+    expect(bounded.endsWith("\u2026")).toBe(true);
+  });
+
+  it("keeps two long names distinct where their heads differ", () => {
+    expect(wedgeLabel("Career, interview prep")).not.toBe(wedgeLabel("Career, long game"));
+  });
+
+  it("is applied to the pie and never to the legend, which is where the name is carried", () => {
+    const areas = [buildArea({ name: LONG })];
+    const categories = [buildCategory()];
+
+    expect(wedgesOf(categories, areas)[0].label).toBe(wedgeLabel(LONG));
+    expect(legendOf(categories, areas, DISCRETIONARY_MINUTES)[0].label).toBe(LONG);
+  });
+
+  it("is not applied to a deviation row, whose label cell is HTML and wraps", () => {
+    const areas = [buildArea({ name: LONG })];
+
+    expect(deviationRowsOf([buildCategory()], areas, DISCRETIONARY_MINUTES)[0].label).toBe(LONG);
   });
 });
 

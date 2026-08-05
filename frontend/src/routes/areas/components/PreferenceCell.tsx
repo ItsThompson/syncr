@@ -11,6 +11,11 @@
  * this table does not draw. Rendering the api's sentence rather than deriving one is what keeps the two from
  * disagreeing when the resolution chain changes.
  *
+ * THE CONTROL IS NAMED BY THE ACT, NOT BY WHAT IT READS. The cell's text is a dash for an Area that declares
+ * nothing, which is what the rendered budget sheet draws and what a reader compares down the column; a screen
+ * reader announcing "dash, button" learns nothing from it. So the button carries its own label naming the Area
+ * and whether the act sets or changes a preference.
+ *
  * NOTHING HERE SPINS AND THERE IS NO SUBMITTING STATE. A refusal replaces the last one and a success clears
  * it, which is the whole of what a write reports. */
 
@@ -57,13 +62,23 @@ export function PreferenceCell({
     );
   }
 
+  const inEffect = preference?.effective ?? null;
+
   return (
     <span className="flex flex-col items-start gap-1">
-      <Button rank="tertiary" onClick={() => onEdit(areaId)}>
-        {preferenceCellText(preference?.effective)}
+      <Button
+        rank="tertiary"
+        onClick={() => onEdit(areaId)}
+        label={
+          inEffect === null
+            ? `Set a placement preference for ${areaName}`
+            : `Change the placement preference for ${areaName}`
+        }
+      >
+        {preferenceCellText(inEffect)}
       </Button>
-      {preference?.effective === null || preference?.effective === undefined ? null : (
-        <span className="text-eyebrow text-text-muted">{preference.effective.statement}</span>
+      {inEffect === null ? null : (
+        <span className="text-eyebrow text-text-muted">{inEffect.statement}</span>
       )}
     </span>
   );

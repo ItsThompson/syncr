@@ -305,15 +305,23 @@ describe("the preference cell", () => {
     const table = await renderAreas();
 
     const row = within(table).getByRole("row", { name: /Career/ });
-    expect(within(row).getByRole("button", { name: "05:30 \u00b7 strong" })).toBeInTheDocument();
+    /* The control is named by the ACT and reads the FORM: a screen reader hears which Area's preference it
+     * changes, and a reader compares `05:30 \u00b7 strong` down the column. */
+    const control = within(row).getByRole("button", {
+      name: "Change the placement preference for Career",
+    });
+    expect(control).toHaveTextContent("05:30 \u00b7 strong");
     expect(within(row).getByText(/Set on this area/)).toBeInTheDocument();
   });
 
-  it("reads a dash for an Area with no preference in effect", async () => {
+  it("reads a dash for an Area with no preference in effect, and still names the act", async () => {
     const table = await renderAreas();
 
     const row = within(table).getByRole("row", { name: /Study/ });
-    expect(within(row).getByRole("button", { name: "\u2014" })).toBeInTheDocument();
+    const control = within(row).getByRole("button", {
+      name: "Set a placement preference for Study",
+    });
+    expect(control).toHaveTextContent("\u2014");
   });
 
   it("edits in place, and sends the whole preference rather than the field that changed", async () => {
@@ -324,7 +332,9 @@ describe("the preference cell", () => {
     const table = await renderAreas({}, [declared.handler]);
 
     const row = within(table).getByRole("row", { name: /Career/ });
-    await userEvent.click(within(row).getByRole("button", { name: "05:30 \u00b7 strong" }));
+    await userEvent.click(
+      within(row).getByRole("button", { name: "Change the placement preference for Career" }),
+    );
 
     const form = await screen.findByRole("form", { name: /Placement preference for Career/ });
     await userEvent.click(within(form).getByRole("button", { name: "Save" }));
@@ -343,7 +353,9 @@ describe("the preference cell", () => {
     const table = await renderAreas();
 
     const row = within(table).getByRole("row", { name: /Career/ });
-    await userEvent.click(within(row).getByRole("button", { name: "05:30 \u00b7 strong" }));
+    await userEvent.click(
+      within(row).getByRole("button", { name: "Change the placement preference for Career" }),
+    );
 
     const form = await screen.findByRole("form", { name: /Placement preference for Career/ });
     expect(within(form).getByText("Daily cap")).toBeInTheDocument();
@@ -357,7 +369,9 @@ describe("the preference cell", () => {
     const table = await renderAreas({}, [removed.handler]);
 
     const row = within(table).getByRole("row", { name: /Career/ });
-    await userEvent.click(within(row).getByRole("button", { name: "05:30 \u00b7 strong" }));
+    await userEvent.click(
+      within(row).getByRole("button", { name: "Change the placement preference for Career" }),
+    );
 
     const form = await screen.findByRole("form", { name: /Placement preference for Career/ });
     expect(
@@ -370,12 +384,12 @@ describe("the preference cell", () => {
 
     await userEvent.click(
       within(within(table).getByRole("row", { name: /Career/ })).getByRole("button", {
-        name: "05:30 \u00b7 strong",
+        name: "Change the placement preference for Career",
       }),
     );
     await userEvent.click(
       within(within(table).getByRole("row", { name: /Study/ })).getByRole("button", {
-        name: "\u2014",
+        name: "Set a placement preference for Study",
       }),
     );
 
