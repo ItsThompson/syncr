@@ -6,10 +6,15 @@
  * endpoint would be a stated 422 rather than a value quietly stored in two places. What this screen adds is
  * where a reader expects to find it.
  *
- * THE ROUTINE IS FOUND BY ITS TITLE, because nothing on a routine marks one as the sleep routine. Two routines
- * may legitimately share a title, so the FIRST match is the one, which is the same order the list is read in.
- * A tenant with no routine so titled has no floor to set, and the panel says so rather than offering a control
- * with nothing behind it.
+ * THE ROUTINE IS FOUND BY ITS TITLE, because nothing on a routine marks one as the sleep routine: `RoutineResponse`
+ * carries no such field, and the domain states outright that there is no sleep-specific rule. So the title is the
+ * only channel available. Two routines may legitimately share a title, so the FIRST match is the one, which is the
+ * same order the list is read in. A tenant with no routine so titled has no floor to set, and the panel says so
+ * rather than offering a control with nothing behind it.
+ *
+ * THAT LEAVES A HOLE THIS MODULE CANNOT CLOSE: a tenant whose routine is titled anything else can set no routine's
+ * floor from any screen, because no screen authors a routine. See ticket 1481. Widening the match is not the
+ * answer, and the ticket says why.
  *
  * THE CEILING IS THE TARGET DURATION. The api refuses a floor above it, because a routine that could be
  * compressed past its own target would make the target meaningless, and `reduce_routine` is offered only for a

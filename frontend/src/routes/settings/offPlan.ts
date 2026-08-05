@@ -1,6 +1,6 @@
 /* What `keepFrame` means, in both directions, stated once.
  *
- * BOTH MEANINGS ARE STATED WHEREVER THE FIELD IS. US-OFF-02 asks for the choice at declaration and for it to be
+ * BOTH MEANINGS ARE STATED WHEREVER THE FIELD IS. The choice is offered at declaration and is
  * editable afterwards, which is two surfaces, and a boolean labelled `keepFrame` on either of them says nothing
  * about what happens inside the span. Two copies of the sentence is how the declaration form and the table come to
  * describe the same field differently, so the sentence lives here and both read it.

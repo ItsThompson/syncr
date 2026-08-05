@@ -24,15 +24,9 @@ import { useState } from "react";
 
 import { client } from "../client";
 import { calendarSourcesKey, googleConnectionKey } from "../keys";
-import { apply, read } from "./request";
+import { answered, apply, read } from "./request";
 import { useWrite, type Write } from "./useWrite";
-import {
-  toProblem,
-  toResource,
-  unreachableProblem,
-  type Problem,
-  type Resource,
-} from "../../contract";
+import { toResource, type Problem, type Resource } from "../../contract";
 import type { components } from "../schema";
 
 export type CalendarSource = components["schemas"]["CalendarSourceResponse"];
@@ -190,21 +184,14 @@ export function useGoogleConsent(): ConsentRequest {
   const [problem, setProblem] = useState<Problem | null>(null);
 
   const begin = async (): Promise<GoogleConsent | null> => {
-    const answer = await client
-      .POST("/api/v1/calendar-sources/google/connect")
-      .catch((cause: unknown) => ({ data: undefined, error: cause, response: undefined }));
-    if (answer.data === undefined) {
-      setConsent(null);
-      setProblem(
-        answer.response === undefined
-          ? unreachableProblem(answer.error)
-          : toProblem(answer.error, answer.response),
-      );
-      return null;
-    }
-    setProblem(null);
-    setConsent(answer.data);
-    return answer.data;
+    /* `answered` rather than `apply`, because this is the one write on this screen whose own RESPONSE is what the
+       caller renders: `apply` drops the body, and asking for it again would mint a second state parameter. */
+    const { body, problem: refusal } = await answered(() =>
+      client.POST("/api/v1/calendar-sources/google/connect"),
+    );
+    setProblem(refusal);
+    setConsent(body);
+    return body;
   };
 
   return { begin, consent, problem };

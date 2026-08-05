@@ -29,7 +29,7 @@ export interface ShellLayoutProps {
   readonly notices?: ReactNode;
 }
 
-export function ShellLayout({ notices }: ShellLayoutProps = {}) {
+export function ShellLayout({ notices }: ShellLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   useScreenChords(SCREENS);

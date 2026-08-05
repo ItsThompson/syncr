@@ -10,11 +10,11 @@
  * conditions a great deal does: the anchors already read are retained, the week still solves, and the plan still
  * reaches the calendar.
  *
- * THE STALENESS THRESHOLD IS THIS SCREEN'S, AND THAT IS A GAP RATHER THAN A CHOICE. `19-nonfunctional.md`
- * requires a panel here and an inline notice on the affected days once a feed has been unreachable for "longer
- * than a stated threshold", and nothing on the wire states one. Twelve hours is stated here so the panel can
- * name it. Two surfaces need the same figure, so the wire is where it belongs: ticket 1480 carries moving it,
- * and until then the grid's inline notice must read this constant rather than pick its own. */
+ * THE STALENESS THRESHOLD IS THIS SCREEN'S, AND THAT IS A GAP RATHER THAN A CHOICE. A feed unreachable for longer
+ * than a threshold raises a panel here and an inline notice on the affected days, and nothing on the wire states
+ * what that threshold is. Twelve hours is stated here so the panel can name it. Two surfaces need the same figure,
+ * so the wire is where it belongs: ticket 1480 carries moving it, and until then the grid's inline notice must read
+ * this constant rather than pick its own. */
 
 import { type Notice } from "../../ui/domain";
 import type { CalendarSource } from "../../api/hooks/useCalendarSources";

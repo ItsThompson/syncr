@@ -1,8 +1,8 @@
-/* The anchor sources, as the table US-CAL-05 requires: provider, anchor count, last sync, and state.
+/* The anchor sources, as the table lists them: provider, anchor count, last sync, and state.
  *
  * A COUNT THAT CHANGES IS HOW SYNC PROGRESS IS REPORTED. There is no spinner and no progress bar here, and there
  * is none in the kit to reach for: pressing `Sync` re-reads the source, the anchor count in its row changes, and
- * that discrete redraw is the whole report. That is US-ERR-05's rule and US-CAL-05 states it again for this table.
+ * that discrete redraw is the whole report. There is no spinner in the kit to reach for even if one were wanted.
  *
  * `excluded` IS NOT AN ERROR AND THE STATE COLUMN SAYS SO. A reader asked for zero anchors from that source, so
  * reporting it in the same words as a feed that could not be read would be telling them something broke when

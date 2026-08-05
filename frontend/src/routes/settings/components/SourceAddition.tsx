@@ -1,6 +1,6 @@
 /* Adding an anchor source, which for an ICS feed is a URL and nothing else.
  *
- * NO OAUTH FOR AN ICS SOURCE, which is US-CAL-01's own criterion and the reason this form takes two fields. A
+ * NO OAUTH FOR AN ICS SOURCE, which is why this form takes two fields and no account linking. A
  * university timetable becomes anchors by pasting its address, and the api normalizes the address on the way in,
  * so this form does not try to guess whether `webcal://` should have been `https://`.
  *

@@ -1,7 +1,8 @@
 /* The declared off-plan periods, and the one field on each that is still a choice afterwards.
  *
- * `keepFrame` IS EDITABLE HERE, which US-OFF-02 requires: it is presented at declaration and changed afterwards.
- * The row's checkbox patches the period rather than redeclaring it, so shortening a holiday and changing what
+ * `keepFrame` IS EDITABLE HERE as well as at declaration: it is offered when the span is declared and changed
+ * afterwards without redeclaring it, because the two readings, a holiday abroad and a quiet week at home, are a
+ * decision a reader revises. The row's checkbox patches the period, so shortening a holiday and changing what
  * survives inside it are two separate acts on one row.
  *
  * BOTH ENDS RENDER IN THE ACTIVE ZONE. A period is stored as two instants and read in one zone, which is the same

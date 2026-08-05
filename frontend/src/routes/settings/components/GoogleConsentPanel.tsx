@@ -1,6 +1,6 @@
 /* Connecting Google: the consent surface first, then a real link to it.
  *
- * THE SCOPES AND THE CALENDARS ARE NAMED BEFORE THE READER LEAVES, which is US-CAL-02's own criterion. Asking for
+ * THE SCOPES AND THE CALENDARS ARE NAMED BEFORE THE READER LEAVES, rather than after. Asking for
  * consent mints a signed, expiring state parameter, so the request happens when a reader asks to connect rather
  * than when the screen opens, and what comes back is rendered here: what each scope lets syncr do, in the
  * reader's terms, and which calendars are already read.

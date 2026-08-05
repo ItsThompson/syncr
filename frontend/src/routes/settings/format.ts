@@ -1,6 +1,6 @@
 /* Instants, spans and durations as this screen states them, all in the one active zone.
  *
- * ONE ZONE AT A TIME, WHICH IS US-TZ-02'S OWN RULE. Every time on this screen renders in the zone active for
+ * ONE ZONE AT A TIME. Every time on this screen renders in the zone active for
  * the date being read, and no second zone is shown beside the first. The zone therefore arrives as an argument
  * everywhere rather than being read from the runtime: a formatter that reached for `Intl`'s default would
  * render a traveller's settings in the zone of the airport they are sitting in.

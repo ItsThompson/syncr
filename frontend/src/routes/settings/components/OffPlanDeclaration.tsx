@@ -53,6 +53,7 @@ export function OffPlanDeclaration({ write, today, zone }: OffPlanDeclarationPro
 
   const start = resolve(startDate, times.start, zone);
   const end = resolve(endDate, times.end, zone);
+  const shifted = shiftStatement(start, end);
 
   const declare = async () => {
     if (start === null || end === null) return;
@@ -134,9 +135,7 @@ export function OffPlanDeclaration({ write, today, zone }: OffPlanDeclarationPro
           ? `This does not resolve to a span in ${zone}. Check the dates and the times.`
           : `In ${zone} this reads ${start.wallDate} ${start.wallTime} to ${end.wallDate} ${end.wallTime}.`}
       </p>
-      {shiftStatement(start, end) === null ? null : (
-        <p className="text-sm text-text-muted">{shiftStatement(start, end)}</p>
-      )}
+      {shifted === null ? null : <p className="text-sm text-text-muted">{shifted}</p>}
       <div>
         <Button onClick={() => void declare()}>Declare off plan</Button>
       </div>

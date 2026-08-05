@@ -101,7 +101,7 @@ export function isKnownZone(zone: string): boolean {
     formatterFor(zone).format(0);
     return true;
   } catch {
-    FORMATTERS.delete(zone);
+    /* Nothing to evict: an unknown `timeZone` throws in the constructor, so `formatterFor` never cached one. */
     return false;
   }
 }

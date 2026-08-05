@@ -8,6 +8,7 @@
  * component cannot break an unrelated test. */
 
 import { delay, http, HttpResponse, type RequestHandler } from "msw";
+
 export interface StubbedResponse {
   readonly status: number;
   readonly body?: unknown;

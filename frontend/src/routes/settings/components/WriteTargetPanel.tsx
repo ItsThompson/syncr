@@ -33,6 +33,13 @@ import type { Write } from "../../../api/hooks/useWrite";
 /** The default the api applies, restated so the field's hint can name it. */
 const DEFAULT_HORIZON_DAYS = 14;
 
+/** A whole positive count of days, or null when the field holds something that is not one. */
+function daysTyped(text: string): number | null {
+  if (!/^\d+$/.test(text.trim())) return null;
+  const days = Number(text.trim());
+  return days > 0 ? days : null;
+}
+
 export interface WriteTargetPanelProps {
   readonly sources: readonly CalendarSource[];
   readonly horizon: Write<HorizonEdit>;
@@ -83,6 +90,7 @@ export function WriteTargetPanel({ sources, horizon, role }: WriteTargetPanelPro
   }
 
   const { source, reading } = target;
+  const typedDays = daysTyped(days ?? String(reading.horizonDays));
 
   return (
     <Panel title="Write target" headerEnd={<span>{reading.calendarName}</span>}>
@@ -94,7 +102,7 @@ export function WriteTargetPanel({ sources, horizon, role }: WriteTargetPanelPro
       <p className="text-base text-ink-soft">{reading.statement}</p>
       <FormRow
         label="Horizon"
-        hint={`How many days ahead the plan is written. Defaults to ${DEFAULT_HORIZON_DAYS}.`}
+        hint={`How many days ahead the plan is written, as a count. Defaults to ${DEFAULT_HORIZON_DAYS}.`}
       >
         {(field) => (
           <span className="flex items-center gap-3.25">
@@ -106,12 +114,16 @@ export function WriteTargetPanel({ sources, horizon, role }: WriteTargetPanelPro
               onValueChange={setDays}
               isInvalid={horizon.problem !== null}
             />
+            {/* Disabled rather than submitting a figure the client already knows is not a count: `Number("a")`
+                is NaN, which serialises to null, and the api's 422 would then name a field the reader can see
+                is wrong. The bound itself is the api's to state and this predicts none of it. */}
             <Button
               rank="secondary"
+              isDisabled={typedDays === null}
               onClick={() =>
                 void horizon.submit({
                   sourceId: source.id,
-                  horizonDays: Number(days ?? reading.horizonDays),
+                  horizonDays: typedDays ?? reading.horizonDays,
                 })
               }
             >
@@ -120,7 +132,7 @@ export function WriteTargetPanel({ sources, horizon, role }: WriteTargetPanelPro
           </span>
         )}
       </FormRow>
-      <Refusal problem={horizon.problem ?? role.problem} />
+      <Refusal problem={horizon.problem} />
     </Panel>
   );
 }
