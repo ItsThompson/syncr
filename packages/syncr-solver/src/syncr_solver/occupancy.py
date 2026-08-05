@@ -50,7 +50,12 @@ DERIVED_FROM_AN_ANCHOR: Final = frozenset({BindingKind.ANCHOR_PREP, BindingKind.
 
 
 def anchor_overlap(candidate: Placement, state: PartialPlan) -> Blocked | None:
-    """H1. An anchor is an immovable external fact, so a candidate gives way to it."""
+    """H1. An anchor is an immovable external fact, so a candidate gives way to it.
+
+    It has no self-exemption, so an anchor offered at its own span is refused naming itself. Nothing
+    reaches that: an anchor is the space rather than a candidate inside it, which is what a caller
+    states by placing the anchors unchecked and offering everything derived from them here.
+    """
     for anchor in state.anchors:
         if anchor.interval.overlaps(candidate.interval):
             return Blocked(ConstraintRule.ANCHOR_OVERLAP, candidate.interval, anchor.title)

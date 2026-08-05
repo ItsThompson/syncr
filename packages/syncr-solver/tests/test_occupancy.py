@@ -289,6 +289,11 @@ def test_the_exemption_holds_for_a_window_of_either_scope() -> None:
 def test_an_anchors_own_block_is_still_refused_by_a_window_that_is_not_recovery() -> None:
     # Bounded to the kind the geometry makes unavoidable. An unattributed buffer overlapping a block
     # the same anchor cast is a collision the generator resolves, not a span this excuses.
+    #
+    # The pair is unreachable in the product and is driven anyway, so the bound is a measured
+    # statement rather than an assumption: prep precedes the anchor, and an unattributed return leg
+    # is a window rather than a block, so no anchor casts both halves of this collision. A reader
+    # should not mistake this for a behaviour the product can meet.
     buffer = ForbiddenWindow(
         between(11, 11.5),
         ForbiddenKind.TRANSIT_UNATTRIBUTED,

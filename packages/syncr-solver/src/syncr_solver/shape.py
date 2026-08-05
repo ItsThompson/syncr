@@ -23,7 +23,6 @@ from syncr_domain.snap import SNAP_MINUTES, is_on_snap_grid
 from syncr_solver.constraints import Blocked, ConstraintRule
 
 if TYPE_CHECKING:
-    from syncr_solver.constraints import Rule
     from syncr_solver.state import PartialPlan, Placement
 
 # The kinds the fifteen-minute grid does not bind: an imported commitment, and the prep and transit
@@ -67,6 +66,13 @@ def below_min_chunk(candidate: Placement, _: PartialPlan) -> Blocked | None:
     Read only for a divisible demand. An atomic one is bounded by H6 at its whole duration, which
     is a stricter bound than its minimum chunk, so reading the minimum here as well would report
     the wrong rule for the same rejection.
+
+    Neither rule bounds a placement from ABOVE, and that symmetry is deliberate: an elastic
+    occurrence sized past its smallest legal length and a task placed past what is left of it are
+    the same shape, and over-allocating is charged by the objective's budget term rather than
+    forbidden here. So a demand whose minimum chunk exceeds what is left of it has nothing this rule
+    will accept below the minimum and nothing that refuses one piece at the minimum. That is the
+    packing failure the verdict reports, not a rule missing from the table.
     """
     sizing = candidate.sizing
     if sizing is None or not sizing.splittable:
@@ -101,6 +107,3 @@ def snap(candidate: Placement, _: PartialPlan) -> Blocked | None:
         candidate.interval,
         f"{candidate.title} is off the {SNAP_MINUTES}-minute grid at {', '.join(off)}",
     )
-
-
-SHAPE_RULES: Final[tuple[Rule, ...]] = (atomic_not_splittable, below_min_chunk, snap)

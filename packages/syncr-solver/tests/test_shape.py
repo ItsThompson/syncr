@@ -143,6 +143,23 @@ def test_an_atomic_demand_smaller_than_its_own_minimum_chunk_is_placed_whole() -
     assert below_min_chunk(candidate, EMPTY) is None
 
 
+def test_a_divisible_demand_smaller_than_its_own_minimum_chunk_has_no_placeable_piece() -> None:
+    # The other half of the same pairing, and it is reachable: the declared minimum chunk is bounded
+    # by the ESTIMATE, so a 120m task with a 45m minimum and 30m left arrives in exactly this shape.
+    # Every piece at or under what is left is refused, and one piece at the minimum over-allocates
+    # and is not refused by anything, because neither rule bounds a placement from above. That is
+    # the packing failure the verdict reports rather than a rule missing from the table.
+    sizing = a_sizing(whole_minutes=30, min_chunk_minutes=45, splittable=True)
+
+    refused = below_min_chunk(a_candidate(between(10, 10.5), sizing=sizing), EMPTY)
+    over_allocated = a_candidate(between(10, 10.75), sizing=sizing)
+
+    assert refused is not None
+    assert refused.rule is ConstraintRule.BELOW_MIN_CHUNK
+    assert below_min_chunk(over_allocated, EMPTY) is None
+    assert atomic_not_splittable(over_allocated, EMPTY) is None
+
+
 def test_neither_sizing_rule_judges_a_candidate_derivation_sized() -> None:
     # A derived block carries no sizing at all, which is the pairing the candidate enforces, so
     # both rules pass over it rather than reading a figure that is not there.

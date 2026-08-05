@@ -16,6 +16,7 @@ directory in both directions, because an index a reader cannot trust is worse th
 | ``clauses.py`` | the ``bound`` clause a derived block carries, and the labels it renders |
 | ``constraints.py`` | the hard-constraint vocabulary, the table, and the checker |
 | ``state.py`` | a candidate placement, and the state of the week every rule judges it against |
+| ``ordering.py`` | one key per collection the state holds, and the property every key holds |
 | ``rules.py`` | each rule name paired with its check, and the thirteen in the table's order |
 | ``occupancy.py`` | the five rules that ask whether a span is already spent |
 | ``shape.py`` | the three rules about what length a block may take and where its bounds fall |

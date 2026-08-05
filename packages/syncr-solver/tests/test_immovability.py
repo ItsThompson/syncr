@@ -94,17 +94,60 @@ def test_a_different_binding_is_not_the_block_that_has_begun() -> None:
 
 
 def test_a_pinned_block_may_not_be_placed_anywhere_but_where_the_user_put_it() -> None:
+    # Friday, so the block is ahead of the stamped instant and this is H11's case alone: a pin on a
+    # block that has already begun belongs to H10, which the pair below drives.
     week = inputs(
-        pins=(a_pin(binding=GYM, interval=between(13, 14)),),
-        live_plan=a_live_plan(a_block(binding=GYM, interval=between(13, 14), title="Gym")),
+        pins=(a_pin(binding=GYM, interval=between(13, 14, day=4)),),
+        live_plan=a_live_plan(a_block(binding=GYM, interval=between(13, 14, day=4), title="Gym")),
     )
 
-    moved = immovable_block(a_candidate(between(10, 11), binding=GYM), PartialPlan.of(week))
-    kept = immovable_block(a_candidate(between(13, 14), binding=GYM), PartialPlan.of(week))
+    moved = immovable_block(a_candidate(between(10, 11, day=4), binding=GYM), PartialPlan.of(week))
+    kept = immovable_block(a_candidate(between(13, 14, day=4), binding=GYM), PartialPlan.of(week))
 
     assert moved is not None
     assert (moved.rule, moved.detail) == (ConstraintRule.IMMOVABLE_BLOCK, f"Gym, {PINNED}")
     assert kept is None
+
+
+def test_a_pin_on_a_block_that_has_begun_leaves_the_content_placeable_where_it_began() -> None:
+    # The two rules would otherwise hold one binding to two different spans and place it at neither,
+    # dropping the block from the week: H10 refuses the pin and H11 refuses the span it began in.
+    # H11 yields, so exactly one span is legal and the reader is told the truer thing.
+    began = between(8, 9)
+    dragged_to = between(10, 11, day=3)
+    week = inputs(
+        pins=(a_pin(binding=GYM, interval=dragged_to),),
+        live_plan=a_live_plan(a_block(binding=GYM, interval=began, title="Gym")),
+    )
+    state = PartialPlan.of(week)
+
+    assert state.started[GYM].interval == began
+    assert state.immovable[GYM].interval == dragged_to
+    assert immovable_block(a_candidate(began, binding=GYM), state) is None
+    assert past_block(a_candidate(began, binding=GYM), state) is None
+
+    at_the_pin = past_block(a_candidate(dragged_to, binding=GYM), state)
+    assert at_the_pin is not None
+    assert at_the_pin.rule is ConstraintRule.PAST_BLOCK
+    assert immovable_block(a_candidate(dragged_to, binding=GYM), state) is None
+
+
+def test_a_pin_on_a_block_that_has_not_begun_is_still_H11s() -> None:
+    # The yield is bounded to the binding H10 answers for. A pin on a future block is refused by H11
+    # exactly as before, so the precedence buys H10 nothing it did not already own.
+    week = inputs(
+        pins=(a_pin(binding=READING, interval=between(13, 14, day=4)),),
+        live_plan=a_live_plan(
+            a_block(binding=READING, interval=between(13, 14, day=4), title="Leetcode")
+        ),
+    )
+
+    rejection = immovable_block(
+        a_candidate(between(10, 11, day=4), binding=READING), PartialPlan.of(week)
+    )
+
+    assert rejection is not None
+    assert rejection.rule is ConstraintRule.IMMOVABLE_BLOCK
 
 
 def test_a_block_fixed_by_derivation_may_not_be_placed_anywhere_else_either() -> None:
@@ -138,7 +181,7 @@ def test_both_senses_report_one_rule_and_differ_only_in_what_the_clause_says() -
     )
     pinned = immovable_block(
         a_candidate(between(11, 11.5), binding=GYM),
-        PartialPlan.of(inputs(pins=(a_pin(binding=GYM, interval=between(13, 14)),))),
+        PartialPlan.of(inputs(pins=(a_pin(binding=GYM, interval=between(13, 14, day=4)),))),
     )
 
     assert derived is not None

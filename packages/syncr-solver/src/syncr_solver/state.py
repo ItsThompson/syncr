@@ -30,12 +30,11 @@ derivation, and the user may still pin one elsewhere, which is how a longer-than
 expressed. Composed the other way, that pin would be refused for not being where derivation put
 it.
 
-## Every ordering key reads the whole of the value it orders
+## Every collection is held in one order, and that order lives beside itself
 
-Each collection is sorted, so a candidate overlapping two members names the earlier one whatever
-order the inputs arrived in, and a document holds its windows in an order its inputs cannot
-change. That holds only while a key can separate two unequal values, so each key below reads
-every field its type carries, or ends in an identity that makes the rest unreachable.
+:meth:`PartialPlan.of` sorts each collection through :mod:`syncr_solver.ordering`, which holds one
+key per collection and the property they share: every key reads the whole of the value it orders, or
+ends in an identity that makes the rest unreachable.
 """
 
 from __future__ import annotations
@@ -50,13 +49,21 @@ from syncr_domain.plan import PlanError
 from syncr_domain.templates import TemplateEntryKind
 from syncr_domain.weeks import local_days
 from syncr_solver.inputs import frame_occupancy
+from syncr_solver.ordering import (
+    anchor_key,
+    area_key,
+    frame_key,
+    period_key,
+    span_key,
+    window_key,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
     from syncr_domain.gaps import ForbiddenWindow
-    from syncr_domain.identifiers import AnchorId, AreaId, RoutineId
-    from syncr_domain.intervals import Instant, Interval
+    from syncr_domain.identifiers import AreaId
+    from syncr_domain.intervals import Interval
     from syncr_domain.off_plan import OffPlanPeriod
     from syncr_domain.plan import Block
     from syncr_domain.weeks import LocalDay
@@ -85,6 +92,14 @@ class Sizing:
     or an occurrence's smallest legal length. ``min_chunk_minutes`` is the smallest piece a
     divisible demand may be placed in, and it is read only when ``splittable`` is true, because an
     atomic demand is this duration or nothing rather than a duration with a floor.
+
+    **A minimum chunk above the whole is a legal state, and it means the remainder cannot be
+    placed.** It is reachable from a valid task: the declared minimum chunk is bounded by the
+    ESTIMATE, and ``whole_minutes`` is what is left, so a 120-minute task with a 45-minute minimum
+    chunk and 30 minutes to go arrives here. Nothing refuses it, because nothing should: the tail is
+    genuinely unplaceable, that is the packing failure the verdict reports, and an approved
+    ``accept_partial`` is how it is excused. Clamping the minimum to the remainder would place a
+    piece the content says is unusable.
     """
 
     whole_minutes: int
@@ -204,12 +219,12 @@ class PartialPlan:
         return cls(
             span=inputs.span,
             days=local_days(inputs.iso_week, inputs.zone_by_date, inputs.span),
-            frame=tuple(sorted(inputs.frame, key=_frame_key)),
-            inherited=tuple(sorted(inputs.frame_overhang, key=_span_key)),
-            anchors=tuple(sorted(inputs.anchors, key=_anchor_key)),
-            forbidden_windows=tuple(sorted(inputs.forbidden_windows, key=_window_key)),
-            off_plan=tuple(sorted(inputs.off_plan, key=_period_key)),
-            areas=tuple(sorted(inputs.areas, key=_area_key)),
+            frame=tuple(sorted(inputs.frame, key=frame_key)),
+            inherited=tuple(sorted(inputs.frame_overhang, key=span_key)),
+            anchors=tuple(sorted(inputs.anchors, key=anchor_key)),
+            forbidden_windows=tuple(sorted(inputs.forbidden_windows, key=window_key)),
+            off_plan=tuple(sorted(inputs.off_plan, key=period_key)),
+            areas=tuple(sorted(inputs.areas, key=area_key)),
             started=_started(inputs),
             immovable=_immovable(inputs),
             pins={pin.binding: pin.interval for pin in inputs.pins},
@@ -339,75 +354,3 @@ def _fixed(inputs: SolveInputs) -> Iterator[tuple[BindingRef, Interval, str]]:
     for materialized in inputs.template_entries:
         if materialized.kind is TemplateEntryKind.CONCRETE and materialized.title:
             yield (materialized.block_binding, materialized.interval, materialized.title)
-
-
-def _span_key(interval: Interval) -> tuple[Instant, Instant]:
-    """Span order. Instants rather than their text, so two zones' spellings compare as instants."""
-    return (interval.start, interval.end)
-
-
-def _frame_key(entry: FrameEntry) -> tuple[Instant, Instant, str, str, RoutineId]:
-    """Span order, ending in the occurrence's own identity so no two entries tie.
-
-    The two fields it does not read, the minimum duration and the flex band, cannot separate two
-    entries this key ties: such entries share a routine and an occurrence key, so they are one
-    occurrence declared twice, they derive one block id, and a document refuses the pair.
-    """
-    return (*_span_key(entry.interval), entry.title, entry.occurrence_key, entry.routine_id)
-
-
-def _anchor_key(anchor: Anchor) -> tuple[Instant, Instant, str, AnchorId]:
-    """Span order, the title, then the commitment's identity. Every field an anchor carries."""
-    return (*_span_key(anchor.interval), anchor.title, anchor.anchor_id)
-
-
-def _period_key(period: OffPlanPeriod) -> tuple[Instant, Instant, bool, bool, str]:
-    """Span order, then what survives inside the span and the user's word for it.
-
-    The span alone is already total over a legal input, because two periods of one tenant never
-    cover a common instant. The rest of the value is read anyway, so the order does not rest on an
-    invariant this module does not check, and a period with no label is separated from one whose
-    label is empty rather than tying with it.
-    """
-    return (
-        *_span_key(period.interval),
-        period.keep_frame,
-        period.label is None,
-        period.label or "",
-    )
-
-
-def _area_key(area: AreaBudget) -> AreaId:
-    """The Area's own identity, which makes every other field it carries unreachable as a tie.
-
-    One budget per Area per week, so two budgets sharing an identity are one Area declared twice
-    and their figures would disagree about the same Area.
-    """
-    return area.area_id
-
-
-# What the window order reads, which is every field a window carries. The anchor is NOT an identity
-# here: one commitment casts up to four windows, so two of them can share a span, a label and an
-# anchor while differing in kind, in scope, or in the Areas they forbid. A key stopping at the
-# anchor would order such a pair by input arrival, and the document holds the windows in this order.
-WINDOW_ORDER_FIELDS: Final = (
-    "interval",
-    "kind",
-    "scope",
-    "label",
-    "forbidden_area_ids",
-    "anchor_id",
-)
-
-
-def _window_key(
-    window: ForbiddenWindow,
-) -> tuple[Instant, Instant, str, str, str, tuple[AreaId, ...], AnchorId]:
-    return (
-        *_span_key(window.interval),
-        window.kind.value,
-        window.scope.value,
-        window.label,
-        window.forbidden_area_ids,
-        window.anchor_id,
-    )

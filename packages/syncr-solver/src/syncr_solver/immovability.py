@@ -16,6 +16,14 @@ H10 is time: a block that has begun cannot be moved because the moment has passe
 either the user placed it, or derivation determined it. Both are immovable to the solver, and they
 differ in everything else, so the checker treats them alike and the reason clause names the sense.
 
+**One binding gets one answer, and when both rules could give one, H10's wins.** A pin on a block
+that has already begun would otherwise leave the content placeable nowhere: H10 refuses it at the
+pin and H11 refuses it where it began, so the block is dropped from the week entirely. That is the
+same fault the two allocation rules had, between the two rules whose whole job is preservation. Time
+outranks authority here because the past is not a placement anybody can choose, and refusing the
+move is what the user is told. Whether a pin on a started block should be REJECTED where the user
+makes it is the pin route's rule rather than the checker's, and no route writes a pin yet.
+
 ## H12 excepts a pin, and needs no rule of its own for a mostly-off week
 
 A pin inside an off-plan span is honoured. That is how "off, except this one thing" is expressed,
@@ -31,7 +39,6 @@ from typing import TYPE_CHECKING, Final
 from syncr_solver.constraints import Blocked, ConstraintRule
 
 if TYPE_CHECKING:
-    from syncr_solver.constraints import Rule
     from syncr_solver.state import PartialPlan, Placement
 
 # What a rejection calls an off-plan span the user gave no name to. A span needs no label to
@@ -57,7 +64,13 @@ def immovable_block(candidate: Placement, state: PartialPlan) -> Blocked | None:
 
     One rule for both senses, because both are immovable to the solver. The detail names which
     sense, since that is the one thing a reader cannot recover from the rule's own name.
+
+    A binding whose block has begun is H10's alone. Both rules answering for one binding would hold
+    it to two different spans and place it at neither, so this one yields and the reader is told the
+    truer thing: the moment has passed.
     """
+    if candidate.binding in state.started:
+        return None
     held = state.immovable.get(candidate.binding)
     if held is None or held.interval == candidate.interval:
         return None
@@ -81,6 +94,3 @@ def off_plan(candidate: Placement, state: PartialPlan) -> Blocked | None:
                 period.label or UNNAMED_OFF_PLAN,
             )
     return None
-
-
-IMMOVABILITY_RULES: Final[tuple[Rule, ...]] = (past_block, immovable_block, off_plan)
