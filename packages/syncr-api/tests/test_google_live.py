@@ -5,10 +5,11 @@ default: a suite that needed a network and a real account would be slow, would c
 would fail for reasons that have nothing to do with the code. What a fake cannot prove is that
 syncr's reading of Google's contract matches Google's, so this exists and is run deliberately.
 
-**It reads and never writes.** The destructive reconciliation is ticket 30's behaviour under test,
-and it points at the development calendar. This suite lists the account's calendars, finds that
-development calendar by name, and reads its events over a horizon. Nothing here inserts, patches or
-deletes anything, so it cannot damage a real calendar even if it is pointed at one by mistake.
+**The destructive write is here, and it is the last test in the file.** It exercises one
+reconciliation against the development calendar ticket 2 created: it inserts one event syncr
+intends, reads the calendar back to confirm the diff key survived the round trip, and then removes
+it by reconciling against an empty plan. Nothing else in the account is touched, because the
+horizon is a two-hour window on a calendar that holds nothing real.
 
 **It is excluded by a marker, not by a skip.** ``addopts`` carries ``-m "not google_live"``, so the
 default run never collects it and a developer opts in explicitly:
@@ -25,14 +26,27 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta
+from hashlib import sha256
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 
+from syncr_api.calendars.config import GOOGLE, WRITE_TARGET
+from syncr_api.calendars.google_adapter import GoogleAdapter
 from syncr_api.calendars.google_client import CalendarsRead, EventsRead, GoogleCalendarClient
+from syncr_api.calendars.google_events import (
+    SYNCR_KEY_PROPERTY,
+    GoogleEventWriter,
+)
 from syncr_api.calendars.google_transport import HttpxGoogleTransport, create_google_read_client
 from syncr_api.calendars.google_values import ReadSpan, read_span
+from syncr_api.calendars.google_writes import (
+    HttpxGoogleWriteTransport,
+    create_google_write_client,
+)
+from syncr_api.calendars.projection import ProjectedEvent
+from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 from syncr_api.core.clock import utc_now
 from syncr_api.google_account.crypto import TokenCipher
 from syncr_api.google_account.oauth_client import GoogleOAuthClient
@@ -47,7 +61,7 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.google_live
 
 # The calendar ticket 2 created for exactly this: a secondary owned calendar holding nothing real,
-# so a read here and a destructive write in ticket 30 cannot touch the user's own commitments.
+# so a read here and the destructive write below cannot touch the user's own commitments.
 DEVELOPMENT_CALENDAR = "syncr (dev)"
 
 CLIENT_ID_VAR = "GOOGLE_OAUTH_CLIENT_ID"
@@ -141,11 +155,11 @@ async def test_the_accounts_calendars_include_the_development_calendar(
     names = [one.display_name for one in answer.calendars]
     assert DEVELOPMENT_CALENDAR in names, (
         f"the development calendar {DEVELOPMENT_CALENDAR!r} is not in this account: {names}. "
-        "Ticket 2 created it so a read here and a destructive write in ticket 30 cannot touch a "
+        "Ticket 2 created it so a read here and the destructive write below cannot touch a "
         "real calendar."
     )
     development = next(one for one in answer.calendars if one.display_name == DEVELOPMENT_CALENDAR)
-    # Ticket 30 writes to it, so the account has to own it rather than merely read it.
+    # The destructive write below writes to it, so the account has to own it rather than read it.
     assert development.writable is True
 
 
@@ -226,3 +240,97 @@ async def test_an_incremental_read_after_a_full_one_reports_no_change(
     # here too and was a tautology, since its value was "a token was sent" and the test sent one.
     assert second.events == ()
     assert second.sync_token
+
+
+# --------------------------------------------------------------------------------------
+# The destructive write, once, against the development calendar
+# --------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def live_writer(live_client: GoogleCalendarClient) -> AsyncIterator[GoogleEventWriter]:
+    """A writer against the real API, on the same token source the read client holds.
+
+    Built from the read client's own token source deliberately: what a deployment does is share one,
+    so the live suite exercises the same arrangement rather than a second grant of its own.
+    """
+    async with create_google_write_client() as http:
+        yield GoogleEventWriter(
+            transport=HttpxGoogleWriteTransport(http),
+            # The token source the deployment shares between the read and the write.
+            tokens=live_client._tokens,
+        )
+
+
+async def a_development_target(client: GoogleCalendarClient) -> CalendarSourceRecord:
+    """The development calendar as a write target, found by the name ticket 2 gave it."""
+    listed = await client.list_calendars()
+    assert isinstance(listed, CalendarsRead), listed
+    development = next(
+        (one for one in listed.calendars if one.display_name == DEVELOPMENT_CALENDAR), None
+    )
+    assert development is not None, (
+        f"{DEVELOPMENT_CALENDAR!r} is not in this account, and this test writes destructively: "
+        "it will not be pointed at any other calendar."
+    )
+    return CalendarSourceRecord(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        provider=GOOGLE,
+        role=WRITE_TARGET,
+        display_name=development.display_name,
+        external_id=development.calendar_id,
+        included=True,
+        horizon_days=HORIZON_DAYS,
+        sync_state=SyncStateRecord(),
+    )
+
+
+async def test_one_destructive_reconciliation_against_the_development_calendar(
+    live_client: GoogleCalendarClient, live_writer: GoogleEventWriter
+) -> None:
+    """THE claim a fake cannot make: that Google accepts the requests syncr sends and answers them
+    the way syncr reads them.
+
+    One reconciliation, over a two-hour window on a calendar that holds nothing real, and then a
+    second reconciliation against an empty plan to take the event away again. Four things are
+    asserted that no fake can establish: the insert is accepted, the diff key survives the round
+    trip through the provider's extended properties, the second pass finds the event unchanged and
+    writes nothing, and the delete removes it.
+    """
+    target = await a_development_target(live_client)
+    # A window far enough ahead that it cannot overlap anything a person put on the calendar today,
+    # and short enough that the reconciliation reads a handful of events rather than a fortnight.
+    start = (utc_now() + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
+    window = Interval(start, start + timedelta(hours=2))
+    google = GoogleAdapter(
+        client=live_client,
+        profile=ZoneProfile(home_zone="Europe/London"),
+        horizon=window,
+        clock=utc_now,
+        writes=live_writer,
+    )
+    intended = ProjectedEvent(
+        syncr_key=sha256(f"syncr-live-{uuid4()}".encode()).hexdigest(),
+        interval=Interval(start, start + timedelta(minutes=30)),
+        title="syncr live suite · safe to delete",
+        description="Written by the live Google suite. It removes this again in the same test.",
+    )
+
+    inserted = await google.reconcile(target, [intended])
+    unchanged = await google.reconcile(target, [intended])
+    removed = await google.reconcile(target, [])
+
+    assert inserted.inserted == 1, inserted
+    # The second pass is the one that proves the key round-tripped: without it the event would be
+    # found under no key, deleted as foreign, and inserted again.
+    assert unchanged.written == 0, unchanged
+    assert unchanged.unchanged == 1, unchanged
+    assert removed.deleted == 1, removed
+    assert removed.foreign_deleted == 0, removed
+    # Nothing is left behind on the calendar, whatever else this account holds.
+    remaining = await live_client.list_events(target.external_id, sync_token=None, window=window)
+    assert isinstance(remaining, EventsRead), remaining
+    assert intended.syncr_key not in {
+        one.private_property(SYNCR_KEY_PROPERTY) for one in remaining.events
+    }
