@@ -260,6 +260,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/blocks/{block_id}/outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record what happened to one block
+         * @description State `completed`, `partial` with minutes, `skipped`, or `moved` with an interval.
+         *
+         *     Recording does not confirm the day. A block marked skipped on a day the user has not answered
+         *     for is a statement about the block, and the day stays excluded from reviews and from learning.
+         */
+        put: operations["record_outcome_api_v1_blocks__block_id__outcome_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/budget": {
         parameters: {
             query?: never;
@@ -490,6 +513,66 @@ export interface paths {
          * @description Declare a kind of day. The week pattern is what puts weekdays onto it.
          */
         post: operations["declare_day_type_api_v1_day_types_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/days/confirm-range": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm several past days in one call
+         * @description Backfill a range of past days, and report how many it settled.
+         */
+        post: operations["confirm_range_api_v1_days_confirm_range_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/days/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Today ledger for one date
+         * @description The day's blocks in time order, grouped into what has ended and what has not.
+         */
+        get: operations["read_day_api_v1_days__date__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/days/{date}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm one day, converting presumption into record
+         * @description Answer for every block of the day, and read the settled ledger back.
+         */
+        post: operations["confirm_day_api_v1_days__date__confirm_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1056,6 +1139,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/weeks/{iso_week}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The composed week view. Writes nothing
+         * @description The Week screen's whole read: the plan, or the reason there is none.
+         */
+        get: operations["read_week_api_v1_weeks__iso_week__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/weeks/{iso_week}/adjustments": {
         parameters: {
             query?: never;
@@ -1096,6 +1199,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/weeks/{iso_week}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Revision history for the week. Read-only
+         * @description Every revision this week's plan has had, newest first.
+         */
+        get: operations["read_revisions_api_v1_weeks__iso_week__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/weeks/{iso_week}/solve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request a solve of this week. Idempotent per week, and needs no key
+         * @description Ask for a plan for this week, and answer with the operation to follow.
+         */
+        post: operations["request_solve_api_v1_weeks__iso_week__solve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/weeks/{iso_week}/tradeoffs": {
         parameters: {
             query?: never;
@@ -1110,6 +1253,26 @@ export interface paths {
          * @description Ask for a proposal that honors one concession. Nothing is conceded until it is approved.
          */
         post: operations["request_tradeoff_api_v1_weeks__iso_week__tradeoffs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/weeks/{iso_week}/verdict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The verdict alone, for a cheap refresh. Writes nothing
+         * @description The week's verdict. Always null in this deployment, and this read appends no event.
+         */
+        get: operations["read_verdict_api_v1_weeks__iso_week__verdict_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1307,6 +1470,7 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ActualMinutes: number;
         /**
          * AddCalendarSourceRequest
          * @description Add an anchor source. No OAuth is required for an ICS source.
@@ -1858,6 +2022,39 @@ export interface components {
             openCount: number;
         };
         /**
+         * BindingKind
+         * @description Which entity a block's content comes from, and therefore how it is keyed.
+         *
+         *     ``template_entry`` is distinct from ``routine`` because a concrete entry and a bare
+         *     routine are separately editable, so each needs its own identity even when the entry
+         *     names the routine.
+         * @enum {string}
+         */
+        BindingKind: "routine" | "template_entry" | "habit" | "task" | "anchor" | "anchor_prep" | "anchor_transit";
+        /**
+         * BindingResponse
+         * @description What a block's content IS: the identity six mechanisms pair on.
+         */
+        BindingResponse: {
+            /**
+             * Entityid
+             * Format: uuid
+             * @description The row this block's content comes from.
+             */
+            entityId: string;
+            kind: components["schemas"]["BindingKind"];
+            /**
+             * Occurrencekey
+             * @description Which occurrence of that row: a date, a zero-padded index, or a transit leg.
+             */
+            occurrenceKey: string;
+            /**
+             * Splitindex
+             * @description Which chunk of a divided task this is. Null when it is whole.
+             */
+            splitIndex?: number | null;
+        };
+        /**
          * BindingSource
          * @description Where an occurrence's content comes from.
          * @enum {string}
@@ -1874,6 +2071,65 @@ export interface components {
          * @enum {string}
          */
         BindingTarget: "routine" | "habit";
+        /**
+         * BlockResponse
+         * @description One thing that happens in the week, and why it is where it is.
+         */
+        BlockResponse: {
+            /**
+             * Areaid
+             * @description The Area this block is charged to. Null for the frame and for an imported anchor: one defines how much time exists and the other is time the product does not own.
+             */
+            areaId?: string | null;
+            binding: components["schemas"]["BindingResponse"];
+            /**
+             * Id
+             * @description A hash of the week and the binding, derived on read, so it is stable across reads and cannot name content it does not hold.
+             */
+            id: string;
+            interval: components["schemas"]["WireSpan"];
+            /**
+             * Objectivedelta
+             * @description What overriding that placement cost.
+             */
+            objectiveDelta?: number | null;
+            /** @description What this block is to the reader, read from the binding. */
+            origin: components["schemas"]["Origin"];
+            /**
+             * Pinned
+             * @description True only for the user's own edit. A block whose time was fixed by derivation is not pinned and carries no pin glyph, even where the solver cannot move it.
+             */
+            pinned: boolean;
+            reason: components["schemas"]["ReasonResponse"];
+            /**
+             * Splitcount
+             * @description How many chunks the divided task was split into.
+             */
+            splitCount?: number | null;
+            /** @description Where a pinned block would otherwise have been. */
+            supersededPlacement?: components["schemas"]["WireSpan"] | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BlockedClause
+         * @description A candidate window, and the hard constraint that rejected it.
+         */
+        BlockedClause: {
+            /** Detail */
+            detail?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "blocked";
+            /**
+             * Rule
+             * @description The hard constraint that refused the window, in the checker's vocabulary.
+             */
+            rule: string;
+            window: components["schemas"]["WireSpan"];
+        };
         /** Body_decide_oauth_authorize_decision_post */
         Body_decide_oauth_authorize_decision_post: {
             /**
@@ -1944,6 +2200,24 @@ export interface components {
             /** Token Type Hint */
             token_type_hint?: string | null;
         };
+        /**
+         * BoundClause
+         * @description What determined this block's content, or its whole placement.
+         */
+        BoundClause: {
+            /** Cursor */
+            cursor?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "bound";
+            /** Selected */
+            selected: string;
+            /** @description How a habit's content was chosen, or what fixed a derived block outright. */
+            source: components["schemas"]["BoundSource"];
+        };
+        BoundSource: components["schemas"]["BindingSource"] | components["schemas"]["DerivationSource"];
         /**
          * BudgetResponse
          * @description One period's discretionary time, and how the Areas divide it.
@@ -2092,6 +2366,26 @@ export interface components {
             ok: boolean;
         };
         /**
+         * ChurnBaselineResponse
+         * @description Which approved plan churn was measured against. Both halves are set, or neither.
+         *
+         *     Neither means the week has never been approved, so churn is zero and the clause says why
+         *     rather than silently comparing against a proposal nobody agreed to.
+         */
+        ChurnBaselineResponse: {
+            /**
+             * Approvedat
+             * @description When it was approved, which the clause renders as a date.
+             */
+            approvedAt?: string | null;
+            /**
+             * Revisionid
+             * @description The approved revision churn is the difference from.
+             */
+            revisionId?: string | null;
+        };
+        ClauseResponse: components["schemas"]["BlockedClause"] | components["schemas"]["DominantClause"] | components["schemas"]["BoundClause"] | components["schemas"]["FloorClause"] | components["schemas"]["PinnedClause"] | components["schemas"]["InsteadOfClause"];
+        /**
          * ConcreteEntryRequest
          * @description A specific routine or habit at a target time. It cannot omit its binding.
          */
@@ -2133,6 +2427,45 @@ export interface components {
             targetTime: string;
         };
         /**
+         * ConfirmRangeRequest
+         * @description Which past days to settle in one call.
+         */
+        ConfirmRangeRequest: {
+            /**
+             * From
+             * Format: date
+             * @description The first date to confirm, included.
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             * @description The last date to confirm, included. At most 28 days after the first.
+             */
+            to: string;
+        };
+        /**
+         * ConfirmRangeResponse
+         * @description What a backfill settled, so the control can say how many.
+         */
+        ConfirmRangeResponse: {
+            /**
+             * Blocksrecorded
+             * @description How many blocks the call answered for across those days.
+             */
+            blocksRecorded: number;
+            /**
+             * Confirmeddays
+             * @description How many days this call settled. A day already confirmed, a day holding no block, and a date that does not exist in the tenant's zone are each not counted.
+             */
+            confirmedDays: number;
+            /**
+             * Unconfirmeddays
+             * @description How many past days hold blocks and have not been confirmed, over the last 28 days. A day older than that window can still be confirmed by naming it; the window bounds the count rather than the act.
+             */
+            unconfirmedDays: number;
+        };
+        /**
          * CursorResponse
          * @description Where a rotation habit's cursor sits, and what it rests on. Read-only, always.
          *
@@ -2171,6 +2504,51 @@ export interface components {
              * @description The content at that index.
              */
             variant: string;
+        };
+        /**
+         * DayResponse
+         * @description One day's ledger: the header figures, and the rows in two sections.
+         */
+        DayResponse: {
+            /**
+             * Ahead
+             * @description The blocks that have not ended, earliest first. A block still running is here: it has not happened yet, so it is presumed until the user says otherwise.
+             */
+            ahead: components["schemas"]["LedgerRowResponse"][];
+            /**
+             * Behind
+             * @description The blocks that have ended, earliest first.
+             */
+            behind: components["schemas"]["LedgerRowResponse"][];
+            /** Blockcount */
+            blockCount: number;
+            /**
+             * Confirmedat
+             * @description When the day was confirmed, or null when at least one of its blocks has not been answered for. A day holding no block is never confirmed and is never counted as unconfirmed: there is nothing to answer for.
+             */
+            confirmedAt: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Presumedcount
+             * @description How many of the day's blocks nobody has said anything about.
+             */
+            presumedCount: number;
+            /** @description The instants the day covers. 23 or 25 hours long on a daylight-saving transition date, and any length at all across a travel boundary. */
+            span: components["schemas"]["TimeRangeResponse"];
+            /**
+             * Unconfirmeddays
+             * @description How many past days hold blocks and have not been confirmed, over the last 28 days. A day older than that window can still be confirmed by naming it; the window bounds the count rather than the act.
+             */
+            unconfirmedDays: number;
+            /**
+             * Zone
+             * @description The zone this day's bounds were resolved in.
+             */
+            zone: string;
         };
         /**
          * DayTypeCreateRequest
@@ -2270,6 +2648,15 @@ export interface components {
             windows: components["schemas"]["TimeWindowResponse"][];
         };
         /**
+         * DerivationSource
+         * @description What determined a block whose placement nobody chose.
+         *
+         *     Read by the ``bound`` clause for the four kinds of block the solver never places: the
+         *     frame, a concrete template entry, an imported anchor, and a buffer an anchor's type cast.
+         * @enum {string}
+         */
+        DerivationSource: "routine" | "template_entry" | "anchor" | "anchor_type";
+        /**
          * DisclosedCalendarResponse
          * @description One Google calendar already configured as a source, and whether it is read.
          */
@@ -2278,6 +2665,26 @@ export interface components {
             displayName: string;
             /** Included */
             included: boolean;
+        };
+        /**
+         * DominantClause
+         * @description The objective term with the largest share of this block's cost.
+         */
+        DominantClause: {
+            /** @description Set when the term is churn: what it was measured against. */
+            baseline?: components["schemas"]["ChurnBaselineResponse"] | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "dominant";
+            /**
+             * Share
+             * @description This term's share of this block's total cost, from 0 to 1.
+             */
+            share: number;
+            /** Term */
+            term: string;
         };
         /**
          * EffectivePreferenceResponse
@@ -2306,6 +2713,64 @@ export interface components {
              * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list means this owner names no time of day, and on a habit's or a task's preference that is a statement rather than an omission, because a preference replaces its Area's windows wholly: it means this one thing has no preferred time even though the rest of its Area does.
              */
             windows: components["schemas"]["TimeWindowResponse"][];
+        };
+        /** @enum {string} */
+        EmptyReason: "outside_horizon" | "setup_incomplete";
+        /**
+         * EmptySlotReason
+         * @description Why a template slot the solver could not fill is empty.
+         *
+         *     ``not_solved`` is the materialized case, where no binding was attempted at all. It is a
+         *     member of its own because nobody looked at the backlog, and the other three all report
+         *     something that was computed.
+         * @enum {string}
+         */
+        EmptySlotReason: "no_eligible_content" | "off_plan" | "blocked_by_constraint" | "not_solved";
+        /**
+         * EmptySlotResponse
+         * @description Discretionary time an Area was offered, and nothing filled.
+         */
+        EmptySlotResponse: {
+            /**
+             * Areaid
+             * Format: uuid
+             */
+            areaId: string;
+            interval: components["schemas"]["WireSpan"];
+            /** @description Why the slot holds nothing. */
+            reason: components["schemas"]["EmptySlotReason"];
+        };
+        /**
+         * EmptyWeekResponse
+         * @description Why a week holds no plan, and what the screen's two actions need to be offered.
+         */
+        EmptyWeekResponse: {
+            /**
+             * Coversthisweek
+             * @description Whether the horizon reaches this week. False means extending it brings the week in; true means the week is inside it and its plan has not been produced yet.
+             */
+            coversThisWeek: boolean;
+            /**
+             * Horizondays
+             * @description How many days ahead the projection horizon reaches.
+             */
+            horizonDays: number;
+            /**
+             * Horizonthrough
+             * Format: date
+             * @description The last local date the horizon covers, which is the date the statement names.
+             */
+            horizonThrough: string;
+            /**
+             * Missinginputs
+             * @description Which minimum inputs the tenant has not declared, in setup order. Empty unless emptyReason is setup_incomplete.
+             */
+            missingInputs: string[];
+            /**
+             * Statement
+             * @description One sentence naming why this week holds no plan and what still works, composed here so two surfaces cannot word it differently.
+             */
+            statement: string;
         };
         /**
          * EntryPatchRequest
@@ -2342,6 +2807,67 @@ export interface components {
             field: string;
             /** Message */
             message: string;
+        };
+        /**
+         * FloorClause
+         * @description An Area floor that forced or forbade this placement.
+         */
+        FloorClause: {
+            /**
+             * Areaid
+             * Format: uuid
+             */
+            areaId: string;
+            /** Floorminutes */
+            floorMinutes: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "floor";
+            /** Of */
+            of: number;
+            /** Placed */
+            placed: number;
+        };
+        /**
+         * ForbiddenKind
+         * @description Why a span is forbidden. Three kinds, and only recovery can be scoped.
+         *
+         *     An unattributed buffer is reserved time with no Area to claim it, which is exactly the
+         *     condition that made it a window rather than a block.
+         * @enum {string}
+         */
+        ForbiddenKind: "recovery" | "prep_unattributed" | "transit_unattributed";
+        /**
+         * ForbiddenScope
+         * @description What a forbidden window forbids.
+         *
+         *     Two members, where an anchor type's own control has three. A type may say it forbids
+         *     nothing, and that generates no window at all, so by the time a window exists it forbids
+         *     either every Area or a named set of them. A window that would forbid nothing is not one.
+         * @enum {string}
+         */
+        ForbiddenScope: "all" | "areas";
+        /**
+         * ForbiddenWindowResponse
+         * @description A span work is forbidden in, and what forbade it.
+         */
+        ForbiddenWindowResponse: {
+            /**
+             * Anchorid
+             * Format: uuid
+             * @description The commitment whose type cast this window.
+             */
+            anchorId: string;
+            /** Forbiddenareaids */
+            forbiddenAreaIds: string[];
+            interval: components["schemas"]["WireSpan"];
+            kind: components["schemas"]["ForbiddenKind"];
+            /** Label */
+            label: string;
+            /** @description Whether the window forbids every Area, or only the ones it names. */
+            scope: components["schemas"]["ForbiddenScope"];
         };
         /**
          * GoogleConnectionResponse
@@ -2514,6 +3040,20 @@ export interface components {
             horizonDays: number;
         };
         /**
+         * InsteadOfClause
+         * @description The placement a pin overrode, and what overriding it cost.
+         */
+        InsteadOfClause: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "instead_of";
+            /** Objectivedelta */
+            objectiveDelta: number;
+            placement: components["schemas"]["WireSpan"];
+        };
+        /**
          * JsonWebKeySet
          * @description RFC 7517: the published key set. Public material only.
          *
@@ -2526,6 +3066,33 @@ export interface components {
             keys?: {
                 [key: string]: string;
             }[];
+        };
+        /**
+         * LedgerRowResponse
+         * @description One row of the day, in the order the ledger renders its columns.
+         */
+        LedgerRowResponse: {
+            /**
+             * Areaid
+             * @description The Area this block is charged to. Null for the frame and for an anchor.
+             */
+            areaId: string | null;
+            /**
+             * Areaname
+             * @description The Area's name, or null when the block carries no Area or the Area is gone.
+             */
+            areaName: string | null;
+            /** Blockid */
+            blockId: string;
+            /** Durationminutes */
+            durationMinutes: number;
+            interval: components["schemas"]["TimeRangeResponse"];
+            /** @description What the block is to the reader. `prep` and `transit` are blocks like any other: they appear here, they can be confirmed, and they carry outcomes. */
+            origin: components["schemas"]["Origin"];
+            /** @description What the log says happened, or null when nothing has been recorded. Null reads as `presumed` and unconfirmed: a block is presumed complete unless the user says otherwise, so the absent row is the ordinary case. */
+            outcome: components["schemas"]["OutcomeResponse"] | null;
+            /** Title */
+            title: string;
         };
         /**
          * LivenessReading
@@ -2812,6 +3379,62 @@ export interface components {
             operations: components["schemas"]["OperationResponse"][];
         };
         /**
+         * Origin
+         * @description What a block IS to the reader. The vocabulary the grid and the ledger render.
+         *
+         *     Seven members, one per kind of intent a week holds. Three are spelled differently from
+         *     the :class:`BindingKind` that produces them, and the mapping between the two is stated
+         *     once in this module.
+         * @enum {string}
+         */
+        Origin: "frame" | "template_entry" | "habit" | "task" | "anchor" | "prep" | "transit";
+        /**
+         * OutcomeRequest
+         * @description What the user says happened to one block.
+         */
+        OutcomeRequest: {
+            /** @description When the block really happened, for a `moved` outcome only. It creates no pin: a `moved` outcome describes the past, and a pin constrains the future. */
+            actualInterval?: components["schemas"]["TimeRangeBody"] | null;
+            /** @description How many minutes the block really took, for a `partial` outcome only. This is the sole source of the duration-estimate signal. At least 1, because a partial of no minutes is a skip and has its own state. */
+            actualMinutes?: components["schemas"]["ActualMinutes"] | null;
+            /**
+             * Isoweek
+             * @description The ISO week the block belongs to, such as `2026-W07`. A block id is a digest of the week and the content it holds, so the week cannot be read back out of the id.
+             */
+            isoWeek: string;
+            /** @description What happened to the block. `partial` requires `actualMinutes` and `moved` requires `actualInterval`; every other state refuses both. `presumed` is the state a block already holds with no user action, so recording it explicitly says only that nothing else happened. */
+            state: components["schemas"]["OutcomeState"];
+        };
+        /**
+         * OutcomeResponse
+         * @description One block's outcome, as the log now holds it.
+         */
+        OutcomeResponse: {
+            actualInterval: components["schemas"]["TimeRangeResponse"] | null;
+            /** Actualminutes */
+            actualMinutes: number | null;
+            /** Blockid */
+            blockId: string;
+            /**
+             * Confirmedat
+             * @description When the day this block belongs to was confirmed. Null means the day is unconfirmed, which excludes it from reviews and from learning. Recording an outcome does not confirm a day, and correcting one does not move this instant.
+             */
+            confirmedAt?: string | null;
+            /**
+             * Occurredat
+             * Format: date-time
+             * @description When the block was scheduled.
+             */
+            occurredAt: string;
+            state: components["schemas"]["OutcomeState"];
+        };
+        /**
+         * OutcomeState
+         * @description The five reality states one block's outcome can hold.
+         * @enum {string}
+         */
+        OutcomeState: "presumed" | "completed" | "partial" | "skipped" | "moved";
+        /**
          * OverridePreferenceRequest
          * @description A preference to put on one Habit or Task, whole.
          *
@@ -2856,6 +3479,51 @@ export interface components {
              * Format: date-time
              */
             start: string;
+        };
+        /**
+         * PinnedClause
+         * @description The user's own edit, and the date they made it.
+         */
+        PinnedClause: {
+            at: components["schemas"]["WireSpan"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "pinned";
+            /**
+             * Pinnedon
+             * Format: date
+             */
+            pinnedOn: string;
+        };
+        /** @enum {string} */
+        PlanCurrency: "current" | "solving" | "stale";
+        /**
+         * PlanDocumentResponse
+         * @description One week's plan, in full, as the grid renders it.
+         */
+        PlanDocumentResponse: {
+            /**
+             * Adjustments
+             * @description The approved concessions this plan was solved under, so a week never looks feasible for a reason the user cannot see.
+             */
+            adjustments: string[];
+            /** Blocks */
+            blocks: components["schemas"]["BlockResponse"][];
+            /** Emptyslots */
+            emptySlots: components["schemas"]["EmptySlotResponse"][];
+            /** Forbiddenwindows */
+            forbiddenWindows: components["schemas"]["ForbiddenWindowResponse"][];
+            /** Isoweek */
+            isoWeek: string;
+            /**
+             * Zonebydate
+             * @description The active zone per day, captured when the plan was produced, so a travel override declared afterwards cannot silently re-read a stored week. All seven dates, keyed by ISO date.
+             */
+            zoneByDate: {
+                [key: string]: string;
+            };
         };
         /** @enum {string} */
         PostScope: "none" | "all" | "areas";
@@ -3050,6 +3718,14 @@ export interface components {
             status: "ready" | "not_ready";
         };
         /**
+         * ReasonResponse
+         * @description Why one block is where it is. At least one clause, never more than the budget.
+         */
+        ReasonResponse: {
+            /** Clauses */
+            clauses: components["schemas"]["ClauseResponse"][];
+        };
+        /**
          * RejectedEventResponse
          * @description One component of a feed that produced no event, and why.
          */
@@ -3148,6 +3824,10 @@ export interface components {
          * @enum {string}
          */
         ReviewCadence: "on_demand" | "quarterly";
+        /** @enum {string} */
+        RevisionReason: "auto_applied_fill" | "user_approved" | "tradeoff_approved" | "anchor_delta" | "materialized" | "horizon_advanced";
+        /** @enum {string} */
+        RevisionStatus: "applied" | "approved";
         /**
          * RoutineCreateRequest
          * @description A routine to declare.
@@ -3804,6 +4484,40 @@ export interface components {
             templates: components["schemas"]["TemplateSummary"][];
         };
         /**
+         * TimeRangeBody
+         * @description A half-open span of instants, as a request body carries one.
+         */
+        TimeRangeBody: {
+            /**
+             * End
+             * Format: date-time
+             * @description When it ended, excluded. Carries a UTC offset.
+             */
+            end: string;
+            /**
+             * Start
+             * Format: date-time
+             * @description When it began. Carries a UTC offset.
+             */
+            start: string;
+        };
+        /**
+         * TimeRangeResponse
+         * @description A half-open span of instants, as a response carries one.
+         */
+        TimeRangeResponse: {
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+        };
+        /**
          * TimeWindowRequest
          * @description One preferred stretch of the day, as the caller states it.
          */
@@ -4010,7 +4724,190 @@ export interface components {
              */
             wednesday: string;
         };
+        /**
+         * WeekReadingsResponse
+         * @description The three readings the summary strip shows, its sub-line, and the four beside them.
+         */
+        WeekReadingsResponse: {
+            /**
+             * Blockcount
+             * @description How many blocks the plan holds.
+             */
+            blockCount: number;
+            /**
+             * Discretionaryminutes
+             * @description The denominator every percentage is measured against: the week's span less the interval union of the circadian frame, external anchors, absolutely forbidden windows, and off-plan periods. Never scheduled time.
+             */
+            discretionaryMinutes: number;
+            /**
+             * Offplanminutes
+             * @description How many of the week's minutes were declared off-plan. Already subtracted from discretionaryMinutes, so this explains the denominator rather than reducing it again.
+             */
+            offPlanMinutes: number;
+            /**
+             * Oversubscriptionminutes
+             * @description How far the Area targets exceed discretionary time. Zero when they fit. A separate quantity from unallocatedMinutes, and never rendered as a negative one.
+             */
+            oversubscriptionMinutes: number;
+            /** @description Whether the block count is current, being recomputed, or the last one that worked. Derived from the week's own operation state, so this and the operation resource cannot disagree. */
+            planCurrency: components["schemas"]["PlanCurrency"];
+            /**
+             * Scheduledminutes
+             * @description Minutes of the week that hold a block. Unioned, so a minute the user deliberately double-booked counts once, and clipped to the week, so a Sunday-night routine running into Monday is not charged here twice.
+             */
+            scheduledMinutes: number;
+            /**
+             * Unallocatedminutes
+             * @description Discretionary minutes covered by NO block carrying an Area. Never negative, and not zero merely because the declared shares sum to 100. The same figure the budget report carries, from the same arithmetic.
+             */
+            unallocatedMinutes: number;
+            /**
+             * Unconfirmeddays
+             * @description Days of this week that have ended, hold at least one block, and have not been confirmed. A day still ahead cannot be confirmed and is not counted.
+             */
+            unconfirmedDays: number;
+        };
+        /**
+         * WeekRevisionResponse
+         * @description One appended revision of a week's plan, as the history lists it.
+         */
+        WeekRevisionResponse: {
+            /**
+             * Approvedat
+             * @description When the user assented. Null for an applied revision.
+             */
+            approvedAt?: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             * @description When the revision was appended.
+             */
+            createdAt: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Inputversion
+             * @description The input snapshot the revision was produced from.
+             */
+            inputVersion: number;
+            /** @description What caused this revision to exist. */
+            reason: components["schemas"]["RevisionReason"];
+            /** @description Whether the authority rule applied it or the user assented to it. */
+            status: components["schemas"]["RevisionStatus"];
+        };
+        /**
+         * WeekRevisionsResponse
+         * @description One week's revision history, newest first. Read-only: no route mutates a revision.
+         */
+        WeekRevisionsResponse: {
+            /** Revisions */
+            revisions: components["schemas"]["WeekRevisionResponse"][];
+        };
+        /**
+         * WeekVerdictResponse
+         * @description The week's verdict alone, for a cheap refresh.
+         *
+         *     Always null, and this read writes nothing at all: no ``VerdictEvent`` is appended by any read
+         *     path. Ticket 44 supplies the verdict, and ticket 43 owns the only writer of a transition.
+         */
+        WeekVerdictResponse: {
+            /**
+             * Verdict
+             * @description Always null: no read computes a verdict in this deployment.
+             */
+            verdict?: null;
+        };
+        /**
+         * WeekViewResponse
+         * @description The Week screen's whole read, in one request.
+         */
+        WeekViewResponse: {
+            /**
+             * Adjustments
+             * @description Always empty: the concessions a week holds are read through the adjustments route in this deployment.
+             */
+            adjustments?: components["schemas"]["AdjustmentResponse"][];
+            /** @description Always null: a candidate concession rides on an operation and is not read back into this view yet. */
+            candidateAdjustment?: components["schemas"]["AdjustmentResponse"] | null;
+            /**
+             * Conflicts
+             * @description Always empty: nothing records a conflict in this deployment.
+             */
+            conflicts?: null[];
+            /** @description Why live is null. Null exactly when live is populated. */
+            emptyReason?: components["schemas"]["EmptyReason"] | null;
+            /** @description The facts behind emptyReason. Null exactly when live is populated. */
+            emptyWeek?: components["schemas"]["EmptyWeekResponse"] | null;
+            /**
+             * Inputversion
+             * @description The week's input counter, for optimistic client reasoning. Zero when nothing has referenced the week yet: versions start at one.
+             */
+            inputVersion: number;
+            /** Isoweek */
+            isoWeek: string;
+            /** @description The plan of record for this week, or null when none exists. A read never produces one: navigating between weeks is not a mutation. */
+            live?: components["schemas"]["PlanDocumentResponse"] | null;
+            /**
+             * Offplan
+             * @description Every declared off-plan span reaching into this week, unclipped, so a Friday-to-Monday span reads the same in both weeks it touches.
+             */
+            offPlan?: components["schemas"]["OffPlanPeriodResponse"][];
+            /** @description The non-terminal solve for this week, if one is in flight. */
+            operation?: components["schemas"]["OperationResponse"] | null;
+            /**
+             * Pins
+             * @description Always empty: nothing records a pin in this deployment.
+             */
+            pins?: null[];
+            /**
+             * Proposal
+             * @description Always null: nothing produces a proposal in this deployment.
+             */
+            proposal?: null;
+            /** @description The strip's figures. Null exactly when live is null. */
+            readings?: components["schemas"]["WeekReadingsResponse"] | null;
+            /** @description The week's real span. 167 or 169 hours across a daylight-saving transition, and something else again across a travel boundary. */
+            span: components["schemas"]["WireSpan"];
+            /**
+             * Verdict
+             * @description Always null: no read computes a verdict in this deployment.
+             */
+            verdict?: null;
+            /**
+             * Zonebydate
+             * @description The zone active on each of the week's dates NOW, keyed by ISO date. The mapping inside live is the one captured when the plan was produced, and the two differ wherever a travel override was declared afterwards.
+             */
+            zoneByDate: {
+                [key: string]: string;
+            };
+        };
         WireDecimal: number;
+        /**
+         * WireSpan
+         * @description A half-open interval, ``[start, end)``, as every span on the wire is spelled.
+         *
+         *     Half-open in both directions of reading: a span ending at 09:00 does not include 09:00, and
+         *     another may begin exactly there. The length is not carried, because two instants already
+         *     state it and a third field could disagree with them: a span across a daylight-saving
+         *     transition is 23 or 25 hours long and a reader that needs the figure takes the difference.
+         */
+        WireSpan: {
+            /**
+             * End
+             * Format: date-time
+             * @description When the span ends. NOT inside it.
+             */
+            end: string;
+            /**
+             * Start
+             * Format: date-time
+             * @description When the span begins. Inside it.
+             */
+            start: string;
+        };
         /**
          * WriteTargetResponse
          * @description What the one calendar syncr writes to is, and what syncr does to it.
@@ -5416,6 +6313,78 @@ export interface operations {
             };
         };
     };
+    record_outcome_api_v1_blocks__block_id__outcome_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The block's derived identity. */
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutcomeResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     read_budget_api_v1_budget_get: {
         parameters: {
             query: {
@@ -6406,6 +7375,211 @@ export interface operations {
             };
             /** @description Conflict with the current state */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    confirm_range_api_v1_days_confirm_range_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmRangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfirmRangeResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_day_api_v1_days__date__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The local date, as `2026-02-09`. */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    confirm_day_api_v1_days__date__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The local date, as `2026-02-09`. */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9963,6 +11137,73 @@ export interface operations {
             };
         };
     };
+    read_week_api_v1_weeks__iso_week__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekViewResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_adjustments_api_v1_weeks__iso_week__adjustments_get: {
         parameters: {
             query?: never;
@@ -10114,6 +11355,143 @@ export interface operations {
             };
         };
     };
+    read_revisions_api_v1_weeks__iso_week__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekRevisionsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    request_solve_api_v1_weeks__iso_week__solve_post: {
+        parameters: {
+            query?: {
+                /** @description Bypass the debounce window a solve would otherwise wait out, which is what the 'solve this week now' action on an empty week sends. */
+                immediate?: boolean;
+            };
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     request_tradeoff_api_v1_weeks__iso_week__tradeoffs_post: {
         parameters: {
             query?: never;
@@ -10158,6 +11536,73 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_verdict_api_v1_weeks__iso_week__verdict_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekVerdictResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

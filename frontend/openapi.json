@@ -1,6 +1,11 @@
 {
   "components": {
     "schemas": {
+      "ActualMinutes": {
+        "maximum": 1440.0,
+        "minimum": 1.0,
+        "type": "integer"
+      },
       "AddCalendarSourceRequest": {
         "additionalProperties": false,
         "description": "Add an anchor source. No OAuth is required for an ICS source.",
@@ -1080,6 +1085,58 @@
         "title": "BacklogHeader",
         "type": "object"
       },
+      "BindingKind": {
+        "description": "Which entity a block's content comes from, and therefore how it is keyed.\n\n``template_entry`` is distinct from ``routine`` because a concrete entry and a bare\nroutine are separately editable, so each needs its own identity even when the entry\nnames the routine.",
+        "enum": [
+          "routine",
+          "template_entry",
+          "habit",
+          "task",
+          "anchor",
+          "anchor_prep",
+          "anchor_transit"
+        ],
+        "title": "BindingKind",
+        "type": "string"
+      },
+      "BindingResponse": {
+        "description": "What a block's content IS: the identity six mechanisms pair on.",
+        "properties": {
+          "entityId": {
+            "description": "The row this block's content comes from.",
+            "format": "uuid",
+            "title": "Entityid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BindingKind"
+          },
+          "occurrenceKey": {
+            "description": "Which occurrence of that row: a date, a zero-padded index, or a transit leg.",
+            "title": "Occurrencekey",
+            "type": "string"
+          },
+          "splitIndex": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which chunk of a divided task this is. Null when it is whole.",
+            "title": "Splitindex"
+          }
+        },
+        "required": [
+          "kind",
+          "entityId",
+          "occurrenceKey"
+        ],
+        "title": "BindingResponse",
+        "type": "object"
+      },
       "BindingSource": {
         "description": "Where an occurrence's content comes from.",
         "enum": [
@@ -1098,6 +1155,133 @@
         ],
         "title": "BindingTarget",
         "type": "string"
+      },
+      "BlockResponse": {
+        "description": "One thing that happens in the week, and why it is where it is.",
+        "properties": {
+          "areaId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Area this block is charged to. Null for the frame and for an imported anchor: one defines how much time exists and the other is time the product does not own.",
+            "title": "Areaid"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/BindingResponse"
+          },
+          "id": {
+            "description": "A hash of the week and the binding, derived on read, so it is stable across reads and cannot name content it does not hold.",
+            "title": "Id",
+            "type": "string"
+          },
+          "interval": {
+            "$ref": "#/components/schemas/WireSpan"
+          },
+          "objectiveDelta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What overriding that placement cost.",
+            "title": "Objectivedelta"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/Origin",
+            "description": "What this block is to the reader, read from the binding."
+          },
+          "pinned": {
+            "description": "True only for the user's own edit. A block whose time was fixed by derivation is not pinned and carries no pin glyph, even where the solver cannot move it.",
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReasonResponse"
+          },
+          "splitCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many chunks the divided task was split into.",
+            "title": "Splitcount"
+          },
+          "supersededPlacement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WireSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where a pinned block would otherwise have been."
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "interval",
+          "binding",
+          "origin",
+          "title",
+          "reason",
+          "pinned"
+        ],
+        "title": "BlockResponse",
+        "type": "object"
+      },
+      "BlockedClause": {
+        "description": "A candidate window, and the hard constraint that rejected it.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "kind": {
+            "const": "blocked",
+            "default": "blocked",
+            "title": "Kind",
+            "type": "string"
+          },
+          "rule": {
+            "description": "The hard constraint that refused the window, in the checker's vocabulary.",
+            "title": "Rule",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/WireSpan"
+          }
+        },
+        "required": [
+          "window",
+          "rule"
+        ],
+        "title": "BlockedClause",
+        "type": "object"
       },
       "Body_decide_oauth_authorize_decision_post": {
         "properties": {
@@ -1241,6 +1425,52 @@
         ],
         "title": "Body_revoke_oauth_revoke_post",
         "type": "object"
+      },
+      "BoundClause": {
+        "description": "What determined this block's content, or its whole placement.",
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "kind": {
+            "const": "bound",
+            "default": "bound",
+            "title": "Kind",
+            "type": "string"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/BoundSource",
+            "description": "How a habit's content was chosen, or what fixed a derived block outright."
+          }
+        },
+        "required": [
+          "source",
+          "selected"
+        ],
+        "title": "BoundClause",
+        "type": "object"
+      },
+      "BoundSource": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/BindingSource"
+          },
+          {
+            "$ref": "#/components/schemas/DerivationSource"
+          }
+        ]
       },
       "BudgetResponse": {
         "description": "One period's discretionary time, and how the Areas divide it.",
@@ -1560,6 +1790,72 @@
         "title": "CheckReading",
         "type": "object"
       },
+      "ChurnBaselineResponse": {
+        "description": "Which approved plan churn was measured against. Both halves are set, or neither.\n\nNeither means the week has never been approved, so churn is zero and the clause says why\nrather than silently comparing against a proposal nobody agreed to.",
+        "properties": {
+          "approvedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was approved, which the clause renders as a date.",
+            "title": "Approvedat"
+          },
+          "revisionId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The approved revision churn is the difference from.",
+            "title": "Revisionid"
+          }
+        },
+        "title": "ChurnBaselineResponse",
+        "type": "object"
+      },
+      "ClauseResponse": {
+        "discriminator": {
+          "mapping": {
+            "blocked": "#/components/schemas/BlockedClause",
+            "bound": "#/components/schemas/BoundClause",
+            "dominant": "#/components/schemas/DominantClause",
+            "floor": "#/components/schemas/FloorClause",
+            "instead_of": "#/components/schemas/InsteadOfClause",
+            "pinned": "#/components/schemas/PinnedClause"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/BlockedClause"
+          },
+          {
+            "$ref": "#/components/schemas/DominantClause"
+          },
+          {
+            "$ref": "#/components/schemas/BoundClause"
+          },
+          {
+            "$ref": "#/components/schemas/FloorClause"
+          },
+          {
+            "$ref": "#/components/schemas/PinnedClause"
+          },
+          {
+            "$ref": "#/components/schemas/InsteadOfClause"
+          }
+        ]
+      },
       "ConcreteEntryRequest": {
         "additionalProperties": false,
         "description": "A specific routine or habit at a target time. It cannot omit its binding.",
@@ -1624,6 +1920,57 @@
         "title": "ConcreteEntryRequest",
         "type": "object"
       },
+      "ConfirmRangeRequest": {
+        "additionalProperties": false,
+        "description": "Which past days to settle in one call.",
+        "properties": {
+          "from": {
+            "description": "The first date to confirm, included.",
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "to": {
+            "description": "The last date to confirm, included. At most 28 days after the first.",
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "ConfirmRangeRequest",
+        "type": "object"
+      },
+      "ConfirmRangeResponse": {
+        "description": "What a backfill settled, so the control can say how many.",
+        "properties": {
+          "blocksRecorded": {
+            "description": "How many blocks the call answered for across those days.",
+            "title": "Blocksrecorded",
+            "type": "integer"
+          },
+          "confirmedDays": {
+            "description": "How many days this call settled. A day already confirmed, a day holding no block, and a date that does not exist in the tenant's zone are each not counted.",
+            "title": "Confirmeddays",
+            "type": "integer"
+          },
+          "unconfirmedDays": {
+            "description": "How many past days hold blocks and have not been confirmed, over the last 28 days. A day older than that window can still be confirmed by naming it; the window bounds the count rather than the act.",
+            "title": "Unconfirmeddays",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confirmedDays",
+          "blocksRecorded",
+          "unconfirmedDays"
+        ],
+        "title": "ConfirmRangeResponse",
+        "type": "object"
+      },
       "CursorResponse": {
         "description": "Where a rotation habit's cursor sits, and what it rests on. Read-only, always.\n\nDerived from the append-only outcome log rather than stored, so there is no route that sets\nit and no field on any request that could. A wrong cursor means a wrong confirmation: the\nuser fixes the day on Today and this re-derives with no further action.",
         "properties": {
@@ -1682,6 +2029,81 @@
           "statement"
         ],
         "title": "CursorResponse",
+        "type": "object"
+      },
+      "DayResponse": {
+        "description": "One day's ledger: the header figures, and the rows in two sections.",
+        "properties": {
+          "ahead": {
+            "description": "The blocks that have not ended, earliest first. A block still running is here: it has not happened yet, so it is presumed until the user says otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/LedgerRowResponse"
+            },
+            "title": "Ahead",
+            "type": "array"
+          },
+          "behind": {
+            "description": "The blocks that have ended, earliest first.",
+            "items": {
+              "$ref": "#/components/schemas/LedgerRowResponse"
+            },
+            "title": "Behind",
+            "type": "array"
+          },
+          "blockCount": {
+            "title": "Blockcount",
+            "type": "integer"
+          },
+          "confirmedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the day was confirmed, or null when at least one of its blocks has not been answered for. A day holding no block is never confirmed and is never counted as unconfirmed: there is nothing to answer for.",
+            "title": "Confirmedat"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "presumedCount": {
+            "description": "How many of the day's blocks nobody has said anything about.",
+            "title": "Presumedcount",
+            "type": "integer"
+          },
+          "span": {
+            "$ref": "#/components/schemas/TimeRangeResponse",
+            "description": "The instants the day covers. 23 or 25 hours long on a daylight-saving transition date, and any length at all across a travel boundary."
+          },
+          "unconfirmedDays": {
+            "description": "How many past days hold blocks and have not been confirmed, over the last 28 days. A day older than that window can still be confirmed by naming it; the window bounds the count rather than the act.",
+            "title": "Unconfirmeddays",
+            "type": "integer"
+          },
+          "zone": {
+            "description": "The zone this day's bounds were resolved in.",
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "zone",
+          "span",
+          "blockCount",
+          "presumedCount",
+          "confirmedAt",
+          "unconfirmedDays",
+          "behind",
+          "ahead"
+        ],
+        "title": "DayResponse",
         "type": "object"
       },
       "DayTypeCreateRequest": {
@@ -1833,6 +2255,17 @@
         "title": "DeclaredPreferenceResponse",
         "type": "object"
       },
+      "DerivationSource": {
+        "description": "What determined a block whose placement nobody chose.\n\nRead by the ``bound`` clause for the four kinds of block the solver never places: the\nframe, a concrete template entry, an imported anchor, and a buffer an anchor's type cast.",
+        "enum": [
+          "routine",
+          "template_entry",
+          "anchor",
+          "anchor_type"
+        ],
+        "title": "DerivationSource",
+        "type": "string"
+      },
       "DisclosedCalendarResponse": {
         "description": "One Google calendar already configured as a source, and whether it is read.",
         "properties": {
@@ -1850,6 +2283,43 @@
           "included"
         ],
         "title": "DisclosedCalendarResponse",
+        "type": "object"
+      },
+      "DominantClause": {
+        "description": "The objective term with the largest share of this block's cost.",
+        "properties": {
+          "baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChurnBaselineResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the term is churn: what it was measured against."
+          },
+          "kind": {
+            "const": "dominant",
+            "default": "dominant",
+            "title": "Kind",
+            "type": "string"
+          },
+          "share": {
+            "description": "This term's share of this block's total cost, from 0 to 1.",
+            "title": "Share",
+            "type": "number"
+          },
+          "term": {
+            "title": "Term",
+            "type": "string"
+          }
+        },
+        "required": [
+          "term",
+          "share"
+        ],
+        "title": "DominantClause",
         "type": "object"
       },
       "EffectivePreferenceResponse": {
@@ -1897,6 +2367,91 @@
           "statement"
         ],
         "title": "EffectivePreferenceResponse",
+        "type": "object"
+      },
+      "EmptyReason": {
+        "enum": [
+          "outside_horizon",
+          "setup_incomplete"
+        ],
+        "type": "string"
+      },
+      "EmptySlotReason": {
+        "description": "Why a template slot the solver could not fill is empty.\n\n``not_solved`` is the materialized case, where no binding was attempted at all. It is a\nmember of its own because nobody looked at the backlog, and the other three all report\nsomething that was computed.",
+        "enum": [
+          "no_eligible_content",
+          "off_plan",
+          "blocked_by_constraint",
+          "not_solved"
+        ],
+        "title": "EmptySlotReason",
+        "type": "string"
+      },
+      "EmptySlotResponse": {
+        "description": "Discretionary time an Area was offered, and nothing filled.",
+        "properties": {
+          "areaId": {
+            "format": "uuid",
+            "title": "Areaid",
+            "type": "string"
+          },
+          "interval": {
+            "$ref": "#/components/schemas/WireSpan"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/EmptySlotReason",
+            "description": "Why the slot holds nothing."
+          }
+        },
+        "required": [
+          "interval",
+          "areaId",
+          "reason"
+        ],
+        "title": "EmptySlotResponse",
+        "type": "object"
+      },
+      "EmptyWeekResponse": {
+        "description": "Why a week holds no plan, and what the screen's two actions need to be offered.",
+        "properties": {
+          "coversThisWeek": {
+            "description": "Whether the horizon reaches this week. False means extending it brings the week in; true means the week is inside it and its plan has not been produced yet.",
+            "title": "Coversthisweek",
+            "type": "boolean"
+          },
+          "horizonDays": {
+            "description": "How many days ahead the projection horizon reaches.",
+            "title": "Horizondays",
+            "type": "integer"
+          },
+          "horizonThrough": {
+            "description": "The last local date the horizon covers, which is the date the statement names.",
+            "format": "date",
+            "title": "Horizonthrough",
+            "type": "string"
+          },
+          "missingInputs": {
+            "description": "Which minimum inputs the tenant has not declared, in setup order. Empty unless emptyReason is setup_incomplete.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Missinginputs",
+            "type": "array"
+          },
+          "statement": {
+            "description": "One sentence naming why this week holds no plan and what still works, composed here so two surfaces cannot word it differently.",
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "missingInputs",
+          "horizonDays",
+          "horizonThrough",
+          "coversThisWeek"
+        ],
+        "title": "EmptyWeekResponse",
         "type": "object"
       },
       "EntryPatchRequest": {
@@ -1965,6 +2520,104 @@
           "message"
         ],
         "title": "FieldError",
+        "type": "object"
+      },
+      "FloorClause": {
+        "description": "An Area floor that forced or forbade this placement.",
+        "properties": {
+          "areaId": {
+            "format": "uuid",
+            "title": "Areaid",
+            "type": "string"
+          },
+          "floorMinutes": {
+            "title": "Floorminutes",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "floor",
+            "default": "floor",
+            "title": "Kind",
+            "type": "string"
+          },
+          "of": {
+            "title": "Of",
+            "type": "integer"
+          },
+          "placed": {
+            "title": "Placed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "areaId",
+          "floorMinutes",
+          "placed",
+          "of"
+        ],
+        "title": "FloorClause",
+        "type": "object"
+      },
+      "ForbiddenKind": {
+        "description": "Why a span is forbidden. Three kinds, and only recovery can be scoped.\n\nAn unattributed buffer is reserved time with no Area to claim it, which is exactly the\ncondition that made it a window rather than a block.",
+        "enum": [
+          "recovery",
+          "prep_unattributed",
+          "transit_unattributed"
+        ],
+        "title": "ForbiddenKind",
+        "type": "string"
+      },
+      "ForbiddenScope": {
+        "description": "What a forbidden window forbids.\n\nTwo members, where an anchor type's own control has three. A type may say it forbids\nnothing, and that generates no window at all, so by the time a window exists it forbids\neither every Area or a named set of them. A window that would forbid nothing is not one.",
+        "enum": [
+          "all",
+          "areas"
+        ],
+        "title": "ForbiddenScope",
+        "type": "string"
+      },
+      "ForbiddenWindowResponse": {
+        "description": "A span work is forbidden in, and what forbade it.",
+        "properties": {
+          "anchorId": {
+            "description": "The commitment whose type cast this window.",
+            "format": "uuid",
+            "title": "Anchorid",
+            "type": "string"
+          },
+          "forbiddenAreaIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Forbiddenareaids",
+            "type": "array"
+          },
+          "interval": {
+            "$ref": "#/components/schemas/WireSpan"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ForbiddenKind"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ForbiddenScope",
+            "description": "Whether the window forbids every Area, or only the ones it names."
+          }
+        },
+        "required": [
+          "interval",
+          "kind",
+          "scope",
+          "forbiddenAreaIds",
+          "label",
+          "anchorId"
+        ],
+        "title": "ForbiddenWindowResponse",
         "type": "object"
       },
       "GoogleConnectionResponse": {
@@ -2333,6 +2986,30 @@
         "title": "HorizonPatchRequest",
         "type": "object"
       },
+      "InsteadOfClause": {
+        "description": "The placement a pin overrode, and what overriding it cost.",
+        "properties": {
+          "kind": {
+            "const": "instead_of",
+            "default": "instead_of",
+            "title": "Kind",
+            "type": "string"
+          },
+          "objectiveDelta": {
+            "title": "Objectivedelta",
+            "type": "number"
+          },
+          "placement": {
+            "$ref": "#/components/schemas/WireSpan"
+          }
+        },
+        "required": [
+          "placement",
+          "objectiveDelta"
+        ],
+        "title": "InsteadOfClause",
+        "type": "object"
+      },
       "JsonWebKeySet": {
         "description": "RFC 7517: the published key set. Public material only.\n\nTyped loosely on purpose. A JWK's members depend on its key type, so pinning today's\nES256 shape in a schema would make an algorithm change a contract change in two places.\n:meth:`~syncr_api.oauth.keys.SigningKey.as_public_jwk` is where the shape is decided.",
         "properties": {
@@ -2348,6 +3025,77 @@
           }
         },
         "title": "JsonWebKeySet",
+        "type": "object"
+      },
+      "LedgerRowResponse": {
+        "description": "One row of the day, in the order the ledger renders its columns.",
+        "properties": {
+          "areaId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Area this block is charged to. Null for the frame and for an anchor.",
+            "title": "Areaid"
+          },
+          "areaName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Area's name, or null when the block carries no Area or the Area is gone.",
+            "title": "Areaname"
+          },
+          "blockId": {
+            "title": "Blockid",
+            "type": "string"
+          },
+          "durationMinutes": {
+            "title": "Durationminutes",
+            "type": "integer"
+          },
+          "interval": {
+            "$ref": "#/components/schemas/TimeRangeResponse"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/Origin",
+            "description": "What the block is to the reader. `prep` and `transit` are blocks like any other: they appear here, they can be confirmed, and they carry outcomes."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutcomeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the log says happened, or null when nothing has been recorded. Null reads as `presumed` and unconfirmed: a block is presumed complete unless the user says otherwise, so the absent row is the ordinary case."
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blockId",
+          "interval",
+          "durationMinutes",
+          "areaId",
+          "areaName",
+          "title",
+          "origin",
+          "outcome"
+        ],
+        "title": "LedgerRowResponse",
         "type": "object"
       },
       "LivenessReading": {
@@ -2955,6 +3703,136 @@
         "title": "OperationsResponse",
         "type": "object"
       },
+      "Origin": {
+        "description": "What a block IS to the reader. The vocabulary the grid and the ledger render.\n\nSeven members, one per kind of intent a week holds. Three are spelled differently from\nthe :class:`BindingKind` that produces them, and the mapping between the two is stated\nonce in this module.",
+        "enum": [
+          "frame",
+          "template_entry",
+          "habit",
+          "task",
+          "anchor",
+          "prep",
+          "transit"
+        ],
+        "title": "Origin",
+        "type": "string"
+      },
+      "OutcomeRequest": {
+        "additionalProperties": false,
+        "description": "What the user says happened to one block.",
+        "properties": {
+          "actualInterval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeRangeBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the block really happened, for a `moved` outcome only. It creates no pin: a `moved` outcome describes the past, and a pin constrains the future."
+          },
+          "actualMinutes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActualMinutes"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many minutes the block really took, for a `partial` outcome only. This is the sole source of the duration-estimate signal. At least 1, because a partial of no minutes is a skip and has its own state."
+          },
+          "isoWeek": {
+            "description": "The ISO week the block belongs to, such as `2026-W07`. A block id is a digest of the week and the content it holds, so the week cannot be read back out of the id.",
+            "title": "Isoweek",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OutcomeState",
+            "description": "What happened to the block. `partial` requires `actualMinutes` and `moved` requires `actualInterval`; every other state refuses both. `presumed` is the state a block already holds with no user action, so recording it explicitly says only that nothing else happened."
+          }
+        },
+        "required": [
+          "isoWeek",
+          "state"
+        ],
+        "title": "OutcomeRequest",
+        "type": "object"
+      },
+      "OutcomeResponse": {
+        "description": "One block's outcome, as the log now holds it.",
+        "properties": {
+          "actualInterval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeRangeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actualMinutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualminutes"
+          },
+          "blockId": {
+            "title": "Blockid",
+            "type": "string"
+          },
+          "confirmedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the day this block belongs to was confirmed. Null means the day is unconfirmed, which excludes it from reviews and from learning. Recording an outcome does not confirm a day, and correcting one does not move this instant.",
+            "title": "Confirmedat"
+          },
+          "occurredAt": {
+            "description": "When the block was scheduled.",
+            "format": "date-time",
+            "title": "Occurredat",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OutcomeState"
+          }
+        },
+        "required": [
+          "blockId",
+          "state",
+          "actualMinutes",
+          "actualInterval",
+          "occurredAt"
+        ],
+        "title": "OutcomeResponse",
+        "type": "object"
+      },
+      "OutcomeState": {
+        "description": "The five reality states one block's outcome can hold.",
+        "enum": [
+          "presumed",
+          "completed",
+          "partial",
+          "skipped",
+          "moved"
+        ],
+        "title": "OutcomeState",
+        "type": "string"
+      },
       "OverridePreferenceRequest": {
         "additionalProperties": false,
         "description": "A preference to put on one Habit or Task, whole.\n\n``PUT`` rather than ``PATCH``: this replaces its Area's windows and ideal duration wholly, so a\nfield left out is null afterwards rather than unchanged, and there is no merge rule to express.\n\n**There is no ``maxPerDayMinutes`` field here.** A daily cap is a hard constraint and an Area's\nalone, so an unknown field is rejected and sending one is a stated 422. An override that could\ncarry a cap would be an override that could relax one.",
@@ -3013,6 +3891,96 @@
           "end"
         ],
         "title": "PeriodSpan",
+        "type": "object"
+      },
+      "PinnedClause": {
+        "description": "The user's own edit, and the date they made it.",
+        "properties": {
+          "at": {
+            "$ref": "#/components/schemas/WireSpan"
+          },
+          "kind": {
+            "const": "pinned",
+            "default": "pinned",
+            "title": "Kind",
+            "type": "string"
+          },
+          "pinnedOn": {
+            "format": "date",
+            "title": "Pinnedon",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "pinnedOn"
+        ],
+        "title": "PinnedClause",
+        "type": "object"
+      },
+      "PlanCurrency": {
+        "enum": [
+          "current",
+          "solving",
+          "stale"
+        ],
+        "type": "string"
+      },
+      "PlanDocumentResponse": {
+        "description": "One week's plan, in full, as the grid renders it.",
+        "properties": {
+          "adjustments": {
+            "description": "The approved concessions this plan was solved under, so a week never looks feasible for a reason the user cannot see.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Adjustments",
+            "type": "array"
+          },
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/BlockResponse"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "emptySlots": {
+            "items": {
+              "$ref": "#/components/schemas/EmptySlotResponse"
+            },
+            "title": "Emptyslots",
+            "type": "array"
+          },
+          "forbiddenWindows": {
+            "items": {
+              "$ref": "#/components/schemas/ForbiddenWindowResponse"
+            },
+            "title": "Forbiddenwindows",
+            "type": "array"
+          },
+          "isoWeek": {
+            "title": "Isoweek",
+            "type": "string"
+          },
+          "zoneByDate": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The active zone per day, captured when the plan was produced, so a travel override declared afterwards cannot silently re-read a stored week. All seven dates, keyed by ISO date.",
+            "title": "Zonebydate",
+            "type": "object"
+          }
+        },
+        "required": [
+          "isoWeek",
+          "zoneByDate",
+          "blocks",
+          "forbiddenWindows",
+          "emptySlots",
+          "adjustments"
+        ],
+        "title": "PlanDocumentResponse",
         "type": "object"
       },
       "PostScope": {
@@ -3382,6 +4350,23 @@
         "title": "ReadinessReading",
         "type": "object"
       },
+      "ReasonResponse": {
+        "description": "Why one block is where it is. At least one clause, never more than the budget.",
+        "properties": {
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/ClauseResponse"
+            },
+            "title": "Clauses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "clauses"
+        ],
+        "title": "ReasonResponse",
+        "type": "object"
+      },
       "RejectedEventResponse": {
         "description": "One component of a feed that produced no event, and why.",
         "properties": {
@@ -3558,6 +4543,24 @@
           "quarterly"
         ],
         "title": "ReviewCadence",
+        "type": "string"
+      },
+      "RevisionReason": {
+        "enum": [
+          "auto_applied_fill",
+          "user_approved",
+          "tradeoff_approved",
+          "anchor_delta",
+          "materialized",
+          "horizon_advanced"
+        ],
+        "type": "string"
+      },
+      "RevisionStatus": {
+        "enum": [
+          "applied",
+          "approved"
+        ],
         "type": "string"
       },
       "RoutineCreateRequest": {
@@ -4642,6 +5645,51 @@
         "title": "TemplatesResponse",
         "type": "object"
       },
+      "TimeRangeBody": {
+        "additionalProperties": false,
+        "description": "A half-open span of instants, as a request body carries one.",
+        "properties": {
+          "end": {
+            "description": "When it ended, excluded. Carries a UTC offset.",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "description": "When it began. Carries a UTC offset.",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "TimeRangeBody",
+        "type": "object"
+      },
+      "TimeRangeResponse": {
+        "description": "A half-open span of instants, as a response carries one.",
+        "properties": {
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "TimeRangeResponse",
+        "type": "object"
+      },
       "TimeWindowRequest": {
         "additionalProperties": false,
         "description": "One preferred stretch of the day, as the caller states it.",
@@ -4908,8 +5956,309 @@
         "title": "WeekPatternResponse",
         "type": "object"
       },
+      "WeekReadingsResponse": {
+        "description": "The three readings the summary strip shows, its sub-line, and the four beside them.",
+        "properties": {
+          "blockCount": {
+            "description": "How many blocks the plan holds.",
+            "title": "Blockcount",
+            "type": "integer"
+          },
+          "discretionaryMinutes": {
+            "description": "The denominator every percentage is measured against: the week's span less the interval union of the circadian frame, external anchors, absolutely forbidden windows, and off-plan periods. Never scheduled time.",
+            "title": "Discretionaryminutes",
+            "type": "integer"
+          },
+          "offPlanMinutes": {
+            "description": "How many of the week's minutes were declared off-plan. Already subtracted from discretionaryMinutes, so this explains the denominator rather than reducing it again.",
+            "title": "Offplanminutes",
+            "type": "integer"
+          },
+          "oversubscriptionMinutes": {
+            "description": "How far the Area targets exceed discretionary time. Zero when they fit. A separate quantity from unallocatedMinutes, and never rendered as a negative one.",
+            "title": "Oversubscriptionminutes",
+            "type": "integer"
+          },
+          "planCurrency": {
+            "$ref": "#/components/schemas/PlanCurrency",
+            "description": "Whether the block count is current, being recomputed, or the last one that worked. Derived from the week's own operation state, so this and the operation resource cannot disagree."
+          },
+          "scheduledMinutes": {
+            "description": "Minutes of the week that hold a block. Unioned, so a minute the user deliberately double-booked counts once, and clipped to the week, so a Sunday-night routine running into Monday is not charged here twice.",
+            "title": "Scheduledminutes",
+            "type": "integer"
+          },
+          "unallocatedMinutes": {
+            "description": "Discretionary minutes covered by NO block carrying an Area. Never negative, and not zero merely because the declared shares sum to 100. The same figure the budget report carries, from the same arithmetic.",
+            "title": "Unallocatedminutes",
+            "type": "integer"
+          },
+          "unconfirmedDays": {
+            "description": "Days of this week that have ended, hold at least one block, and have not been confirmed. A day still ahead cannot be confirmed and is not counted.",
+            "title": "Unconfirmeddays",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scheduledMinutes",
+          "discretionaryMinutes",
+          "unallocatedMinutes",
+          "oversubscriptionMinutes",
+          "unconfirmedDays",
+          "offPlanMinutes",
+          "blockCount",
+          "planCurrency"
+        ],
+        "title": "WeekReadingsResponse",
+        "type": "object"
+      },
+      "WeekRevisionResponse": {
+        "description": "One appended revision of a week's plan, as the history lists it.",
+        "properties": {
+          "approvedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the user assented. Null for an applied revision.",
+            "title": "Approvedat"
+          },
+          "createdAt": {
+            "description": "When the revision was appended.",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "inputVersion": {
+            "description": "The input snapshot the revision was produced from.",
+            "title": "Inputversion",
+            "type": "integer"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/RevisionReason",
+            "description": "What caused this revision to exist."
+          },
+          "status": {
+            "$ref": "#/components/schemas/RevisionStatus",
+            "description": "Whether the authority rule applied it or the user assented to it."
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "status",
+          "reason",
+          "inputVersion"
+        ],
+        "title": "WeekRevisionResponse",
+        "type": "object"
+      },
+      "WeekRevisionsResponse": {
+        "description": "One week's revision history, newest first. Read-only: no route mutates a revision.",
+        "properties": {
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/WeekRevisionResponse"
+            },
+            "title": "Revisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "revisions"
+        ],
+        "title": "WeekRevisionsResponse",
+        "type": "object"
+      },
+      "WeekVerdictResponse": {
+        "description": "The week's verdict alone, for a cheap refresh.\n\nAlways null, and this read writes nothing at all: no ``VerdictEvent`` is appended by any read\npath. Ticket 44 supplies the verdict, and ticket 43 owns the only writer of a transition.",
+        "properties": {
+          "verdict": {
+            "description": "Always null: no read computes a verdict in this deployment.",
+            "title": "Verdict",
+            "type": "null"
+          }
+        },
+        "title": "WeekVerdictResponse",
+        "type": "object"
+      },
+      "WeekViewResponse": {
+        "description": "The Week screen's whole read, in one request.",
+        "properties": {
+          "adjustments": {
+            "description": "Always empty: the concessions a week holds are read through the adjustments route in this deployment.",
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentResponse"
+            },
+            "title": "Adjustments",
+            "type": "array"
+          },
+          "candidateAdjustment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustmentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Always null: a candidate concession rides on an operation and is not read back into this view yet."
+          },
+          "conflicts": {
+            "description": "Always empty: nothing records a conflict in this deployment.",
+            "items": {
+              "type": "null"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "emptyReason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmptyReason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why live is null. Null exactly when live is populated."
+          },
+          "emptyWeek": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmptyWeekResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The facts behind emptyReason. Null exactly when live is populated."
+          },
+          "inputVersion": {
+            "description": "The week's input counter, for optimistic client reasoning. Zero when nothing has referenced the week yet: versions start at one.",
+            "title": "Inputversion",
+            "type": "integer"
+          },
+          "isoWeek": {
+            "title": "Isoweek",
+            "type": "string"
+          },
+          "live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanDocumentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The plan of record for this week, or null when none exists. A read never produces one: navigating between weeks is not a mutation."
+          },
+          "offPlan": {
+            "description": "Every declared off-plan span reaching into this week, unclipped, so a Friday-to-Monday span reads the same in both weeks it touches.",
+            "items": {
+              "$ref": "#/components/schemas/OffPlanPeriodResponse"
+            },
+            "title": "Offplan",
+            "type": "array"
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The non-terminal solve for this week, if one is in flight."
+          },
+          "pins": {
+            "description": "Always empty: nothing records a pin in this deployment.",
+            "items": {
+              "type": "null"
+            },
+            "title": "Pins",
+            "type": "array"
+          },
+          "proposal": {
+            "description": "Always null: nothing produces a proposal in this deployment.",
+            "title": "Proposal",
+            "type": "null"
+          },
+          "readings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeekReadingsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The strip's figures. Null exactly when live is null."
+          },
+          "span": {
+            "$ref": "#/components/schemas/WireSpan",
+            "description": "The week's real span. 167 or 169 hours across a daylight-saving transition, and something else again across a travel boundary."
+          },
+          "verdict": {
+            "description": "Always null: no read computes a verdict in this deployment.",
+            "title": "Verdict",
+            "type": "null"
+          },
+          "zoneByDate": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The zone active on each of the week's dates NOW, keyed by ISO date. The mapping inside live is the one captured when the plan was produced, and the two differ wherever a travel override was declared afterwards.",
+            "title": "Zonebydate",
+            "type": "object"
+          }
+        },
+        "required": [
+          "isoWeek",
+          "span",
+          "zoneByDate",
+          "inputVersion"
+        ],
+        "title": "WeekViewResponse",
+        "type": "object"
+      },
       "WireDecimal": {
         "type": "number"
+      },
+      "WireSpan": {
+        "description": "A half-open interval, ``[start, end)``, as every span on the wire is spelled.\n\nHalf-open in both directions of reading: a span ending at 09:00 does not include 09:00, and\nanother may begin exactly there. The length is not carried, because two instants already\nstate it and a third field could disagree with them: a span across a daylight-saving\ntransition is 23 or 25 hours long and a reader that needs the figure takes the difference.",
+        "properties": {
+          "end": {
+            "description": "When the span ends. NOT inside it.",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "description": "When the span begins. Inside it.",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "WireSpan",
+        "type": "object"
       },
       "WriteTargetResponse": {
         "description": "What the one calendar syncr writes to is, and what syncr does to it.\n\nPresent only on the source holding the role. It exists so the destructive behaviour is part of\nthe READ MODEL rather than copy on one screen: whatever renders the write target renders this,\nand a second surface cannot forget to say it.",
@@ -6651,6 +8000,101 @@
         ]
       }
     },
+    "/api/v1/blocks/{block_id}/outcome": {
+      "put": {
+        "description": "State `completed`, `partial` with minutes, `skipped`, or `moved` with an interval.\n\nRecording does not confirm the day. A block marked skipped on a day the user has not answered\nfor is a statement about the block, and the day stays excluded from reviews and from learning.",
+        "operationId": "record_outcome_api_v1_blocks__block_id__outcome_put",
+        "parameters": [
+          {
+            "description": "The block's derived identity.",
+            "in": "path",
+            "name": "block_id",
+            "required": true,
+            "schema": {
+              "description": "The block's derived identity.",
+              "title": "Block Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutcomeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutcomeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Record what happened to one block",
+        "tags": [
+          "outcomes"
+        ]
+      }
+    },
     "/api/v1/budget": {
       "get": {
         "description": "One period's budget report. Writes nothing.",
@@ -7903,6 +9347,260 @@
         "summary": "Declare a day type",
         "tags": [
           "templates"
+        ]
+      }
+    },
+    "/api/v1/days/confirm-range": {
+      "post": {
+        "description": "Backfill a range of past days, and report how many it settled.",
+        "operationId": "confirm_range_api_v1_days_confirm_range_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmRangeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Confirm several past days in one call",
+        "tags": [
+          "outcomes"
+        ]
+      }
+    },
+    "/api/v1/days/{date}": {
+      "get": {
+        "description": "The day's blocks in time order, grouped into what has ended and what has not.",
+        "operationId": "read_day_api_v1_days__date__get",
+        "parameters": [
+          {
+            "description": "The local date, as `2026-02-09`.",
+            "in": "path",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "description": "The local date, as `2026-02-09`.",
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "The Today ledger for one date",
+        "tags": [
+          "outcomes"
+        ]
+      }
+    },
+    "/api/v1/days/{date}/confirm": {
+      "post": {
+        "description": "Answer for every block of the day, and read the settled ledger back.",
+        "operationId": "confirm_day_api_v1_days__date__confirm_post",
+        "parameters": [
+          {
+            "description": "The local date, as `2026-02-09`.",
+            "in": "path",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "description": "The local date, as `2026-02-09`.",
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Confirm one day, converting presumption into record",
+        "tags": [
+          "outcomes"
         ]
       }
     },
@@ -12286,6 +13984,89 @@
         ]
       }
     },
+    "/api/v1/weeks/{iso_week}": {
+      "get": {
+        "description": "The Week screen's whole read: the plan, or the reason there is none.",
+        "operationId": "read_week_api_v1_weeks__iso_week__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeekViewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "The composed week view. Writes nothing",
+        "tags": [
+          "weeks"
+        ]
+      }
+    },
     "/api/v1/weeks/{iso_week}/adjustments": {
       "get": {
         "description": "Every approved concession for the week. Writes nothing.",
@@ -12475,6 +14256,184 @@
         ]
       }
     },
+    "/api/v1/weeks/{iso_week}/revisions": {
+      "get": {
+        "description": "Every revision this week's plan has had, newest first.",
+        "operationId": "read_revisions_api_v1_weeks__iso_week__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeekRevisionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Revision history for the week. Read-only",
+        "tags": [
+          "weeks"
+        ]
+      }
+    },
+    "/api/v1/weeks/{iso_week}/solve": {
+      "post": {
+        "description": "Ask for a plan for this week, and answer with the operation to follow.",
+        "operationId": "request_solve_api_v1_weeks__iso_week__solve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bypass the debounce window a solve would otherwise wait out, which is what the 'solve this week now' action on an empty week sends.",
+            "in": "query",
+            "name": "immediate",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Bypass the debounce window a solve would otherwise wait out, which is what the 'solve this week now' action on an empty week sends.",
+              "title": "Immediate",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Request a solve of this week. Idempotent per week, and needs no key",
+        "tags": [
+          "weeks"
+        ]
+      }
+    },
     "/api/v1/weeks/{iso_week}/tradeoffs": {
       "post": {
         "description": "Ask for a proposal that honors one concession. Nothing is conceded until it is approved.",
@@ -12575,6 +14534,89 @@
         "summary": "Solve this week against one tradeoff. Persists nothing; returns an operation",
         "tags": [
           "concessions"
+        ]
+      }
+    },
+    "/api/v1/weeks/{iso_week}/verdict": {
+      "get": {
+        "description": "The week's verdict. Always null in this deployment, and this read appends no event.",
+        "operationId": "read_verdict_api_v1_weeks__iso_week__verdict_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeekVerdictResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "The verdict alone, for a cheap refresh. Writes nothing",
+        "tags": [
+          "weeks"
         ]
       }
     },
