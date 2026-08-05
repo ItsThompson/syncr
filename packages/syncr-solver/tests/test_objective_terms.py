@@ -45,6 +45,7 @@ from tests.materialized_weeks import (
     between,
     inputs,
     on,
+    zones,
 )
 from tests.objective_weeks import (
     A_HABIT,
@@ -53,10 +54,12 @@ from tests.objective_weeks import (
     A_TASK,
     ANOTHER_HABIT,
     ANOTHER_TASK,
+    SYDNEY,
     a_budget,
     a_chunk_block,
     a_fitness_curve,
     a_plan_for,
+    a_plan_in,
     a_preference,
     a_window,
     an_eligible_task,
@@ -623,6 +626,51 @@ def test_the_misfit_is_weighted_by_how_long_a_block_sits_in_the_wrong_place() ->
     cost = only_charges(evaluate(plan, inputs=week, weights=flat_weights()), "time_of_day_misfit")
 
     assert cost == pytest.approx(0.5 * MISFIT_SOFT / MISFIT_MAX)
+
+
+def test_the_hour_a_fitted_curve_is_keyed_on_is_the_users_own_hour_and_not_utc() -> None:
+    """The one thing the reading states for the first time, and the only zone-sensitive figure here.
+
+    Every other fixture in this package is Europe/London in February, which is GMT, so a local wall
+    time and its UTC spelling coincide and no assertion over them can tell the two readings apart.
+    Against Australia/Sydney a block at 10:00 UTC is at 21:00 locally, so a curve fitted at hour
+    21 is charged and one fitted at hour 10 is not. The last assertion is the control: the same
+    block in London reads the other way round, so this fails if the hour is read without a zone.
+    """
+    block = a_task_block()
+    local = flat_weights(time_of_day_fitness={FITNESS: a_fitness_curve(at_hour=21, value=0.0)})
+    utc = flat_weights(time_of_day_fitness={FITNESS: a_fitness_curve(at_hour=10, value=0.0)})
+    sydney = inputs(zone_by_date=zones(zone=SYDNEY))
+    charged = pytest.approx(0.1 / MISFIT_MAX)
+
+    assert evaluate(a_plan_in(SYDNEY, block), inputs=sydney, weights=local).time_of_day_misfit == (
+        charged
+    )
+    assert evaluate(a_plan_in(SYDNEY, block), inputs=sydney, weights=utc).time_of_day_misfit == 0.0
+    assert evaluate(a_live_plan(block), inputs=inputs(), weights=utc).time_of_day_misfit == charged
+
+
+def test_the_skip_bucket_is_the_users_own_part_of_the_day() -> None:
+    """The second consumer of the same lookup, and the one a wrong zone silently mis-buckets.
+
+    A 10:00 UTC block is morning in London and evening in Sydney. A Sydney tenant reading the
+    morning bucket would take a probability fitted for a part of the day they were not working in.
+    """
+    block = a_task_block()
+    evening = flat_weights(skip_probability=skip_probabilities(bucket=TimeBucket.EVENING))
+    morning = flat_weights(skip_probability=skip_probabilities(bucket=TimeBucket.MORNING))
+    sydney = inputs(zone_by_date=zones(zone=SYDNEY))
+    charged = pytest.approx(0.1 / MISFIT_MAX)
+
+    assert evaluate(
+        a_plan_in(SYDNEY, block), inputs=sydney, weights=evening
+    ).time_of_day_misfit == (charged)
+    assert (
+        evaluate(a_plan_in(SYDNEY, block), inputs=sydney, weights=morning).time_of_day_misfit == 0.0
+    )
+    assert evaluate(a_live_plan(block), inputs=inputs(), weights=morning).time_of_day_misfit == (
+        charged
+    )
 
 
 def test_a_block_carrying_no_area_is_not_measured_against_a_window() -> None:

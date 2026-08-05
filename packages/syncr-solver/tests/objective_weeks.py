@@ -34,12 +34,17 @@ from syncr_solver.inputs import (
 from syncr_solver.objective import ObjectiveBreakdown
 from syncr_solver.terms import StalenessSplit
 from syncr_solver.weights import OBJECTIVE_TERMS, TimeBucket, WeightSet
-from tests.materialized_weeks import CAREER, FITNESS, LONDON, NOW, WEEK, between
+from tests.materialized_weeks import CAREER, FITNESS, LONDON, NOW, WEEK, WEEK_MINUTES, between
 
 if TYPE_CHECKING:
     from syncr_domain.identifiers import AreaId
     from syncr_domain.intervals import Interval
     from syncr_domain.weeks import IsoWeek
+    from syncr_domain.zones import ZoneId
+
+# Eleven hours ahead of UTC in February, so a block at 10:00 UTC reads at 21:00 locally and falls in
+# a different time bucket. What a test about the zone an hour is read in needs.
+SYDNEY = "Australia/Sydney"
 
 A_TASK: UUID = UUID("00000000-0000-4000-8000-0000000000a1")
 ANOTHER_TASK: UUID = UUID("00000000-0000-4000-8000-0000000000a2")
@@ -261,6 +266,23 @@ def raw_breakdown(**costs: float) -> ObjectiveBreakdown:
         churn=stated["churn"],
         context_switch=stated["context_switch"],
         staleness=stated["staleness"],
+    )
+
+
+def a_plan_in(zone: ZoneId, *blocks: Block) -> PlanDocument:
+    """The week's plan, with a stated zone per day.
+
+    Separate from the materialization suite's builder because that one is Europe/London, which is
+    on GMT in February, so a local wall time and its UTC spelling coincide there. A test about the
+    zone an hour is read in cannot be written against a week where the two are the same.
+    """
+    return PlanDocument(
+        iso_week=WEEK,
+        zone_by_date=dict.fromkeys(WEEK.dates(), zone),
+        discretionary_minutes=WEEK_MINUTES,
+        unallocated_minutes=WEEK_MINUTES,
+        oversubscription_minutes=0,
+        blocks=blocks,
     )
 
 
