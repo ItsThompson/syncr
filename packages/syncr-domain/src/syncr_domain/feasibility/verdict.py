@@ -133,8 +133,10 @@ class Tradeoff:
     ``label`` is rendered text because the wording is per kind and per target ("Reduce sleep by
     20m on Tue, Wed and Thu" names the nights, because the concession stores them).
 
-    **Enumerating these is ticket 36's**, the tradeoff enumerator. Nothing in this package
-    builds one, and a probe verdict carries none.
+    **Nothing in this package builds one, and a probe verdict carries none.** Enumeration needs the
+    identity of the task, routine, or Area a concession would act on, and capacity arithmetic reads
+    no identifier: the caller that renders a verdict enumerates over the same assembly the probe
+    read, and hands the result back on the verdict.
     """
 
     kind: AdjustmentKind
@@ -161,7 +163,8 @@ class Verdict:
     # neither surface re-derives it from a second subtraction.
     discretionary_minutes: int
     shortfalls: tuple[Shortfall, ...] = ()
-    # Always empty here. Enumerating a tradeoff per shortfall is ticket 36's.
+    # Empty from the probe, which reads no identifier and so cannot name what a concession would
+    # act on. The caller that renders a verdict enumerates one per gap over the same assembly.
     tradeoffs: tuple[Tradeoff, ...] = ()
 
     def __post_init__(self) -> None:
