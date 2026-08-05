@@ -98,7 +98,7 @@ def read_blocked(stored: JsonDocument, field: str) -> Blocked:
 
 
 def stored_dominant(clause: Dominant) -> JsonObject:
-    """The objective term with the largest share of this block's cost."""
+    """The objective term with the largest share of the plan's total cost."""
     return {
         TERM: clause.term,
         SHARE: clause.share,

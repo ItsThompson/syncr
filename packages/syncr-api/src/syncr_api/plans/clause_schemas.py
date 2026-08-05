@@ -46,7 +46,11 @@ from syncr_domain.reasons import (
 if TYPE_CHECKING:
     from syncr_domain.reasons import Clause, ReasonRecord
 
-_SHARE_DESCRIPTION = "This term's share of this block's total cost, from 0 to 1."
+_SHARE_DESCRIPTION = (
+    "This term's share of the PLAN's total cost, from 0 to 1. The plan's rather than this "
+    "block's: three of the seven objective terms are whole-week figures with no per-block "
+    "reading, so every block of one plan carries the same share."
+)
 _RULE_DESCRIPTION = "The hard constraint that refused the window, in the checker's vocabulary."
 
 
@@ -79,7 +83,7 @@ class BlockedClause(WireModel):
 
 
 class DominantClause(WireModel):
-    """The objective term with the largest share of this block's cost."""
+    """The objective term with the largest share of the plan's total cost."""
 
     kind: Literal["dominant"] = "dominant"
     term: str

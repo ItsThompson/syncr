@@ -2668,7 +2668,7 @@ export interface components {
         };
         /**
          * DominantClause
-         * @description The objective term with the largest share of this block's cost.
+         * @description The objective term with the largest share of the plan's total cost.
          */
         DominantClause: {
             /** @description Set when the term is churn: what it was measured against. */
@@ -2680,7 +2680,7 @@ export interface components {
             kind: "dominant";
             /**
              * Share
-             * @description This term's share of this block's total cost, from 0 to 1.
+             * @description This term's share of the PLAN's total cost, from 0 to 1. The plan's rather than this block's: three of the seven objective terms are whole-week figures with no per-block reading, so every block of one plan carries the same share.
              */
             share: number;
             /** Term */
