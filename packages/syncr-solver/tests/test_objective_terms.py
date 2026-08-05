@@ -26,7 +26,7 @@ from syncr_domain.feasibility import DeadlineDemand
 from syncr_domain.identity import BindingRef
 from syncr_domain.plan import PlanError
 from syncr_domain.preferences import PreferenceOwnerKind, PreferenceStrength
-from syncr_solver.constraints import HARD_CONSTRAINTS
+from syncr_solver.constraints import HARD_CONSTRAINTS, WITHDRAWN_RULES, ConstraintRule
 from syncr_solver.inputs import ChurnBaseline
 from syncr_solver.objective import ObjectiveBreakdown, evaluate
 from syncr_solver.preferred import MISFIT_MAX, MISFIT_SOFT, MISFIT_STRONG
@@ -516,7 +516,12 @@ def test_neither_strength_can_leave_a_block_unscheduled() -> None:
 
     assert plan.blocks[0].interval == between(10, 11)
     assert breakdown.time_of_day_misfit == pytest.approx(1.0)
-    assert "preference" not in " ".join(rule.forbids for rule in HARD_CONSTRAINTS)
+    # Over the closed enum's members rather than over the rule text: a substring search for
+    # "preference" passes for a rule whose text says "preferred window", so it would not catch the
+    # thing it exists to catch. H5 was the withdrawn rule and its absence is what this asserts.
+    assert "preference" not in {rule.rule.value for rule in HARD_CONSTRAINTS}
+    assert 5 in WITHDRAWN_RULES
+    assert len(HARD_CONSTRAINTS) == len(ConstraintRule)
 
 
 def test_only_one_of_the_two_declared_strengths_can_apply_to_one_block() -> None:

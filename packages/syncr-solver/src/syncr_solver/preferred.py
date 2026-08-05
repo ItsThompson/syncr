@@ -126,8 +126,15 @@ class ResolvedPreferences:
     def ideal_session_minutes(self, binding: BindingRef, area_id: AreaId) -> int | None:
         """The ideal length of one session of this content, or nothing because none is declared.
 
-        The largest where several preferences name one, which is the only reading that cannot make
-        a plan look better by declaring a second preference.
+        The largest where several preferences name one. **That ``max`` cannot fire today**, because
+        one preference exists per owner, so the list never holds two: substituting ``min`` reddens
+        nothing. It is kept rather than reduced to a single read for two reasons. It costs nothing,
+        and it is the safe direction if the per-owner index ever relaxes: taking the largest is the
+        only reading under which declaring a second preference cannot make a plan look better.
+
+        That is a different case from a GUARD that cannot fire, which this ticket deleted one of. A
+        guard that cannot fire raises on nothing and states a rule the code does not need; this is
+        an ordinary expression whose input happens to be short today.
         """
         stated = [
             preference.preferred_duration_minutes
