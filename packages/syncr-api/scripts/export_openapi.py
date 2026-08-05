@@ -49,6 +49,9 @@ EXPORT_SETTINGS = ServiceSettings(
     google_oauth_client_secret=SecretStr(""),
     google_oauth_redirect_uri="",
     google_token_encryption_key=SecretStr("openapi-export-not-an-encryption-key"),
+    # False for the same reason: the document describes the routes, and whether this deployment may
+    # write to a calendar is a property of the deployment rather than of the contract.
+    google_projection_writes=False,
 )
 
 # The `kid` is fixed too. No signing key reaches the document, but the state has to exist
