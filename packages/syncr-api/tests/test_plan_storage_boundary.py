@@ -28,9 +28,11 @@ from __future__ import annotations
 import ast
 import inspect
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import Column, Index, MetaData, String, Table, Uuid
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from syncr_api.core.columns import json_key, values_in
 from syncr_api.core.orm import Base
@@ -53,6 +55,7 @@ from syncr_api.plans.config import (
     WEEK_ADJUSTMENTS_TABLE,
     WEEK_INPUT_VERSIONS_TABLE,
 )
+from syncr_api.plans.habit_log import HabitOutcomeLog
 from syncr_api.plans.models import PlanRevision  # noqa: F401 - registers the plan-side tables
 from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
@@ -327,6 +330,20 @@ def test_the_habit_projection_reads_an_index_over_the_keys_a_binding_is_written_
         f"({BINDING} ->> '{KIND}')",
         f"({BINDING} ->> '{ENTITY_ID}')",
     ]
+
+
+def test_the_habit_projection_states_both_keys_the_index_leads_with() -> None:
+    # The other half, and the half that has no behavioral symptom. Both derivations re-filter the
+    # rows they are handed by habit, so a read that dropped either predicate would still produce the
+    # right cursor: what it would cost is the index, because the index leads with the binding's
+    # `kind` and a query that does not state it cannot use the index at all.
+    #
+    # Asserted over the compiled SQL, the way the tenancy rules assert their own predicate, because
+    # the claim is about the statement rather than about the rows it returns today.
+    sql = str(HabitOutcomeLog(AsyncSession(), uuid4()).statement([uuid4()]))
+
+    assert sql.count(f"({BLOCK_OUTCOMES_TABLE}.{BINDING} ->> ") == 2
+    assert f"{BLOCK_OUTCOMES_TABLE}.{TENANT_ID_COLUMN} = " in sql
 
 
 def test_a_json_key_expression_refuses_a_key_that_would_end_the_string() -> None:

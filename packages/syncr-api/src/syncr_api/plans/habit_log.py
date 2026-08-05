@@ -17,6 +17,15 @@ than a filter that could silently narrow. The at-most-one-row-per-occurrence pre
 protocol states is held by the write path's identity, ``(tenant_id, block_id)``, so this reader has
 no rule to apply for it: a habit occurrence in one week is one block, and one block is one row.
 
+**Neither predicate is the correctness boundary, and saying so matters.** Both derivations filter
+the rows they are handed by ``habit_id`` themselves, so a read that returned every row of the log
+would still produce the right cursor and the right debt figure. What the two predicates buy is the
+READ: they bound it to the rows a caller asked about, and they are what lets the expression index
+serve it. The index leads with the binding's ``kind``, so a query that did not state it could not
+use the index at all and every habit collection would cost a sequential scan over the tenant's whole
+log. That is why the statement is asserted rather than only its answer: the defect this predicate
+prevents has no symptom other than a slow request.
+
 **The key spellings are the writer's own.** The two extractions name the constants
 ``stored_binding`` writes rather than strings spelled a second time, which is what makes a silent
 zero impossible: a guessed key would match no row and every rotation habit would read as sitting on
@@ -38,6 +47,8 @@ from syncr_domain.outcomes import HabitOutcome, OutcomeState
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from sqlalchemy import Select
+
     from syncr_domain.identifiers import HabitId
 
 
@@ -51,21 +62,26 @@ class HabitOutcomeLog(TenantScopedReader):
         is not part of the contract, because both derivations are counts; the rows come back in the
         index's own order.
 
-        An empty request reads nothing rather than everything: a missing predicate on an ``IN`` over
-        no values is the difference between "no habit was asked about" and "every row this tenant
-        has", and the second would attribute another habit's occurrences to whichever one a caller
-        then looked at.
+        An empty request answers without a read. An empty ``IN`` already matches nothing, so this
+        saves the round trip rather than changing the answer: a tenant with no habits is a real case
+        and the habit collection route reaches it on every render.
         """
         if not habit_ids:
             return ()
-        named = [str(habit_id) for habit_id in habit_ids]
-        rows = await self._session.scalars(
-            self.scoped_select(BlockOutcome).where(
-                BlockOutcome.binding[KIND].astext == BindingKind.HABIT.value,
-                BlockOutcome.binding[ENTITY_ID].astext.in_(named),
-            )
-        )
+        rows = await self._session.scalars(self.statement(habit_ids))
         return tuple(_as_habit_outcome(row) for row in rows)
+
+    def statement(self, habit_ids: Sequence[HabitId]) -> Select[tuple[BlockOutcome]]:
+        """The read this projection is taken over. Public so the SQL itself can be asserted.
+
+        Separated from :meth:`read` for the reason the scoped-statement rules are: what this class
+        owes its callers is a query the expression index can serve, and that is a property of the
+        statement rather than of the rows it happens to return today.
+        """
+        return self.scoped_select(BlockOutcome).where(
+            BlockOutcome.binding[KIND].astext == BindingKind.HABIT.value,
+            BlockOutcome.binding[ENTITY_ID].astext.in_([str(one) for one in habit_ids]),
+        )
 
 
 def _as_habit_outcome(row: BlockOutcome) -> HabitOutcome:

@@ -28,7 +28,7 @@ The cookie is replayed by setting the header rather than through a cookie jar: t
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
@@ -525,6 +525,50 @@ def test_confirming_a_day_twice_keeps_the_instant_it_was_first_settled_at(
     _, second_answer = confirm(http, signed_in, YESTERDAY)
 
     assert first_answer["confirmedAt"] == second_answer["confirmedAt"]
+
+
+def test_correcting_an_outcome_after_a_confirmation_keeps_the_stored_confirmation(
+    http: TestClient,
+    signed_in: dict[str, str],
+    planned: tuple[Block, Block],
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # The write's own rule, against the real statement rather than against a fake of it: recording
+    # states the state and the two carried columns and NOTHING else, so a correction in March
+    # against a day settled in February leaves the day settled in February.
+    #
+    # Read at the row rather than through the cursor, because the cursor cannot tell the two apart:
+    # a correction that cleared `confirmed_at` would leave the row neither a completion nor a miss,
+    # which reads as the same variant a corrected skip does. The column is the only witness.
+    first, _ = planned
+    _, day = confirm(http, signed_in, YESTERDAY)
+    settled_at_first = day["confirmedAt"]
+
+    status, corrected = record(http, signed_in, first.id, {"state": "skipped"})
+
+    assert status == HTTPStatus.OK, corrected
+    assert corrected["confirmedAt"] == settled_at_first
+    stored = {row.block_id: row for row in outcome_rows(live_database_url, owner.tenant_id)}
+    assert stored[first.id].state == "skipped"
+    assert stored[first.id].confirmed_at is not None
+    assert read_day(http, signed_in, YESTERDAY)["confirmedAt"] == settled_at_first
+
+
+def test_a_backfill_over_a_range_the_zone_does_not_hold_settles_nothing(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    # Reachable: Pacific/Apia skipped 30 December 2011, and a range naming only that date holds no
+    # day at all. The range bounds pass, so the walk has to answer for an empty one rather than
+    # reading the first of no days.
+    answered = http.patch(SETTINGS_PREFIX, json={"homeZone": "Pacific/Apia"}, headers=signed_in)
+    assert answered.status_code == HTTPStatus.OK, answered.text
+
+    status, backfill = confirm_range(http, signed_in, date(2011, 12, 30), date(2011, 12, 30))
+
+    assert status == HTTPStatus.OK, backfill
+    assert backfill["confirmedDays"] == 0
+    assert backfill["blocksRecorded"] == 0
 
 
 def test_one_idempotency_key_replaying_a_confirmation_answers_the_stored_body(
