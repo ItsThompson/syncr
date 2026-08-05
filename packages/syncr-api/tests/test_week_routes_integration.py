@@ -386,12 +386,13 @@ def row_counts(database_url: str, tenant_id: TenantId, source_root: Path) -> dic
                 counted = {}
                 for model in mapped_classes(source_root):
                     scope = getattr(model, "tenant_id", None)
-                    if scope is None:
+                    table = getattr(model, "__tablename__", None)
+                    if scope is None or table is None:
                         continue
                     total = await session.scalar(
                         select(func.count()).select_from(model).where(scope == tenant_id)
                     )
-                    counted[model.__tablename__] = int(total or 0)
+                    counted[str(table)] = int(total or 0)
                 return counted
         finally:
             await database.engine.dispose()

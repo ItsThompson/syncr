@@ -67,6 +67,8 @@ from syncr_domain.zones import ZoneProfile
 from tests.plan_documents import CAREER, LONDON, WEEK, a_block, a_document, a_zone_map, at, between
 
 if TYPE_CHECKING:
+    from pydantic import BaseModel
+
     from syncr_api.solving.config import OperationKind, OperationStatus
 
 # Monday of 2026-W07 in London, where local midnight and UTC midnight coincide.
@@ -467,10 +469,11 @@ def test_the_wire_kinds_are_exactly_the_clause_kinds_the_domain_may_hold() -> No
     assert declared == set(CLAUSE_KIND.values())
 
 
-def _wire_clauses() -> tuple[type, ...]:
+def _wire_clauses() -> tuple[type[BaseModel], ...]:
     """Every member of the discriminated union, read off the union itself."""
     union, _discriminator = get_args(ClauseResponse.__value__)
-    return get_args(union)
+    members: tuple[type[BaseModel], ...] = get_args(union)
+    return members
 
 
 def test_every_clause_the_domain_can_hold_maps_onto_the_wire() -> None:
@@ -587,12 +590,9 @@ SECTION_13_READINGS = frozenset(
 )
 
 
-def aliases(model: type) -> frozenset[str]:
+def aliases(model: type[BaseModel]) -> frozenset[str]:
     """The wire spelling of every field of a response model."""
-    return frozenset(
-        field.alias or name
-        for name, field in model.model_fields.items()  # type: ignore[attr-defined]
-    )
+    return frozenset(field.alias or name for name, field in model.model_fields.items())
 
 
 def test_the_week_view_matches_section_13_field_for_field() -> None:
