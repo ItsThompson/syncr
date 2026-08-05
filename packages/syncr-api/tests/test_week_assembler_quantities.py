@@ -448,12 +448,24 @@ def test_the_area_budget_carries_both_floor_quantities_and_nothing_has_merged_th
     # rather than turning up as a shortfall on a healthy week.
     assert {field.name for field in dataclasses.fields(AreaBudget)} == {
         "area_id",
+        "name",
         "floor_minutes",
         "floor_reservation_minutes",
         "target_minutes",
         "placed_minutes",
         "max_per_day_minutes",
     }
+
+
+async def test_an_area_budget_carries_the_name_a_shortfall_renders() -> None:
+    # The probe performs no lookup, so the words a refusal is written in have to arrive with the
+    # figures. An identifier in a panel is not a refusal the user can act on.
+    fitness = an_area(name="Fitness")
+
+    inputs = await an_assembler(areas=FakeAreas([fitness])).assemble(WEEK, NOW)
+
+    assert inputs.areas[0].name == "Fitness"
+    assert inputs.for_probe().area_floor_reservations[0].label == "Fitness"
 
 
 # --------------------------------------------------------------------------------

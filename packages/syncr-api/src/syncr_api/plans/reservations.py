@@ -28,6 +28,10 @@ correct: the solver now has that much less to place in order to honour the floor
 ``target_minutes`` nets nothing, because it is a reporting figure rather than a reservation.
 ``placed_minutes`` names its own set, which is the reservation's, so the ``floor`` reason clause
 cannot disagree with whichever reservation a reader compares it against.
+
+The Area's **name** travels with the figures for one reason: the probe renders a shortfall that says
+what cannot be satisfied in the user's words, and it resolves no identifier because it performs no
+lookup at all.
 """
 
 from __future__ import annotations
@@ -64,10 +68,12 @@ def area_budgets(
     resolution that enforces that is stated once, where preferences resolve.
     """
     shares = [area.as_share() for area in areas]
+    names = {area.id: area.name for area in areas}
     after_floors = minutes_after_floors(discretionary_minutes, shares)
     return tuple(
         AreaBudget(
             area_id=share.area_id,
+            name=names[share.area_id],
             floor_minutes=max(
                 0, share.floor_minutes - placed.immovable_minutes_of_area(share.area_id)
             ),
