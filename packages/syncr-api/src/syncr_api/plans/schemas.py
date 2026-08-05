@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from syncr_api.plans.emptiness import EmptyWeek
     from syncr_api.plans.readings import WeekReadings
     from syncr_api.plans.records import PlanRevisionRecord
-    from syncr_api.plans.service import WeekRevisions, WeekView
+    from syncr_api.plans.week_views import WeekRevisions, WeekView
 
 
 class WeekReadingsResponse(WireModel):

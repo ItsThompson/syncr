@@ -57,6 +57,7 @@ And the week routes, which compose everything above into the Week screen's whole
 |---|---|
 | ``week_config.py`` | the four paths and the resource name the week routes read |
 | ``service.py`` | ``WeekService``: the composed read, the history, the verdict, and the solve |
+| ``week_views.py`` | the two shapes it answers with, which the wire schemas describe |
 | ``api.py`` | the four routes, each calling one service method |
 | ``wiring.py`` | the prefix, the tag, the origin check, and the statuses they answer |
 | ``emptiness.py`` | why a week holds no plan, and the facts the two actions need |

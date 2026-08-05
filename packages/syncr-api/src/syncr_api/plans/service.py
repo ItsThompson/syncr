@@ -46,7 +46,6 @@ polling nothing while the maintainer produced the plan it is waiting for.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_api.calendars.injection import read_horizon_days
@@ -60,68 +59,37 @@ from syncr_api.plans.emptiness import Horizon, empty_week
 from syncr_api.plans.readings import week_readings
 from syncr_api.plans.stored_documents import plan_document
 from syncr_api.plans.week_config import HISTORY_PAGE
+from syncr_api.plans.week_views import WeekRevisions, WeekView
 from syncr_api.solving.config import PLAN_KINDS, SOLVE
 from syncr_api.user_settings.zone_reading import local_date
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
     from datetime import datetime
 
     from syncr_api.budgets.service import BudgetService, BudgetView
     from syncr_api.calendars.repository import CalendarSourceRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
-    from syncr_api.offplan.records import OffPlanPeriodRecord
     from syncr_api.offplan.repository import OffPlanPeriodRepository
     from syncr_api.plans.confirmations import DayConfirmationReader
     from syncr_api.plans.emptiness import EmptyWeek
     from syncr_api.plans.readiness import MinimumInputs
     from syncr_api.plans.readings import WeekReadings
-    from syncr_api.plans.records import PlanRevisionRecord
     from syncr_api.plans.repository import PlanRepository
     from syncr_api.plans.versions import WeekInputVersionRepository
     from syncr_api.solving.lifecycle import OperationLifecycle
     from syncr_api.solving.records import OperationRecord
     from syncr_api.solving.repository import OperationRepository
-    from syncr_domain.intervals import Interval
     from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
-    from syncr_domain.zones import Date, ZoneId
 
 _log = get_logger("syncr.weeks")
 
 # What the week view reports when nothing has referenced the week yet. Versions start at one, so
 # zero is a value no row can hold and reads as "untracked" rather than as a version.
 UNTRACKED_VERSION = 0
-
-
-@dataclass(frozen=True, slots=True)
-class WeekView:
-    """One week, composed: the plan or the reason there is none, and the figures beside it."""
-
-    iso_week: IsoWeek
-    span: Interval
-    zone_by_date: Mapping[Date, ZoneId]
-    live: PlanDocument | None
-    empty: EmptyWeek | None
-    off_plan: Sequence[OffPlanPeriodRecord]
-    operation: OperationRecord | None
-    input_version: int
-    readings: WeekReadings | None
-
-
-@dataclass(frozen=True, slots=True)
-class WeekRevisions:
-    """One page of a week's history, and whether the week holds more than the page.
-
-    The pair travels together because a bounded page that does not say it is bounded is a partial
-    history a client cannot tell from a whole one.
-    """
-
-    revisions: Sequence[PlanRevisionRecord]
-    truncated: bool
 
 
 class WeekService:
