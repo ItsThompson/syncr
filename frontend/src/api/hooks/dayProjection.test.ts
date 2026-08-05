@@ -15,7 +15,14 @@ import {
   buildOutcome,
   buildRow,
 } from "../../routes/today/__tests__/fixtures";
-import { stateOf, withConfirmedDay, withRecordedOutcome } from "./dayProjection";
+import {
+  outcomesOf,
+  stateOf,
+  unansweredBlockIds,
+  withConfirmedDay,
+  withRecordedOutcome,
+  withRestoredOutcomes,
+} from "./dayProjection";
 
 const AT = "2026-02-09T20:41:00.000Z";
 
@@ -116,6 +123,73 @@ describe("withRecordedOutcome", () => {
 
     expect(projected.confirmedAt).toBeNull();
     expect(projected.behind[0].outcome?.confirmedAt).toBe(AT);
+  });
+});
+
+describe("outcomesOf and withRestoredOutcomes", () => {
+  /* The undo of a refused write. It names rows rather than the day, so a row the write never touched keeps
+     whatever it holds now, including a change a peer applied while the refused one was in flight. */
+  it("puts back the named row and leaves every other row as it now stands", () => {
+    const day = buildDay();
+    const before = outcomesOf(day, [BLOCK_GYM]);
+    const changed = withRecordedOutcome(
+      withRecordedOutcome(day, BLOCK_GYM, { state: "skipped" }),
+      BLOCK_LEETCODE,
+      { state: "completed" },
+    );
+
+    const restored = withRestoredOutcomes(changed, before);
+
+    expect(restored.behind[1].outcome).toBeNull();
+    expect(restored.ahead[0].outcome?.state).toBe("completed");
+    expect(restored.presumedCount).toBe(3);
+  });
+
+  it("restores an outcome a row already carried rather than clearing it", () => {
+    const day = buildDay({
+      behind: [buildGymRow({ outcome: buildOutcome({ state: "partial", actualMinutes: 20 }) })],
+      ahead: [],
+      blockCount: 1,
+      presumedCount: 0,
+    });
+    const before = outcomesOf(day, [BLOCK_GYM]);
+
+    const restored = withRestoredOutcomes(
+      withRecordedOutcome(day, BLOCK_GYM, { state: "skipped" }),
+      before,
+    );
+
+    expect(restored.behind[0].outcome).toMatchObject({ state: "partial", actualMinutes: 20 });
+  });
+
+  it("names the blocks a confirmation would stamp, which are the ones carrying no instant", () => {
+    const day = buildDay({
+      behind: [buildGymRow({ outcome: buildOutcome({ confirmedAt: AT }) }), buildRow()],
+      ahead: [],
+      blockCount: 2,
+      presumedCount: 1,
+    });
+
+    expect(unansweredBlockIds(day)).toEqual([BLOCK_LEETCODE]);
+  });
+
+  it("unstamps only what a confirmation stamped", () => {
+    const day = buildDay({
+      behind: [buildGymRow({ outcome: buildOutcome({ confirmedAt: AT }) }), buildRow()],
+      ahead: [],
+      blockCount: 2,
+      presumedCount: 1,
+    });
+    const before = outcomesOf(day, unansweredBlockIds(day));
+
+    const restored = withRestoredOutcomes(
+      withConfirmedDay(day, "2026-02-09T21:00:00.000Z"),
+      before,
+    );
+
+    expect(restored.behind[0].outcome?.confirmedAt).toBe(AT);
+    expect(restored.behind[1].outcome).toBeNull();
+    expect(restored.confirmedAt).toBeNull();
   });
 });
 

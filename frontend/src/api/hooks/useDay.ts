@@ -11,9 +11,11 @@
  * the last read reported and not which dates produced it. So a backfill waits, and what it states
  * afterwards is the response's own figures.
  *
- * THE REVERT IS THE DAY THE ROW WAS RENDERED FROM, not a refetch. A refused write leaves the api's own
- * sentence beside the row, and a revert that had to reach the network would fail a second time exactly
- * when the api is unreachable, replacing a whole ledger with an error surface over one refused row.
+ * A CHANGE AND ITS UNDO ARE BOTH FUNCTIONS OF THE LATEST DAY, never of a snapshot. A refused write puts
+ * back the rows it changed and leaves every other row as it now stands, so two writes in flight compose:
+ * restoring a snapshot would drop a change a peer had applied to another row in between. It is also why the
+ * undo does not refetch: an api that refused a write is an api a second request may not reach either, and
+ * reverting over the network would replace a whole ledger with an error surface over one refused row.
  *
  * A RECORDING'S REFUSAL CARRIES THE ROW IT BELONGS TO, which is why it does not use `useWrite`: that hook
  * holds one refusal for one subject, and a ledger has as many subjects as it has rows. Volume one is
@@ -27,7 +29,14 @@ import useSWR, { useSWRConfig, type ScopedMutator } from "swr";
 
 import { client } from "../client";
 import { dayKey } from "../keys";
-import { withConfirmedDay, withRecordedOutcome, type Day } from "./dayProjection";
+import {
+  outcomesOf,
+  unansweredBlockIds,
+  withConfirmedDay,
+  withRecordedOutcome,
+  withRestoredOutcomes,
+  type Day,
+} from "./dayProjection";
 import { apply, read } from "./request";
 import { useWrite, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
@@ -58,26 +67,36 @@ export function useDay(date: string): Resource<Day> {
   return toResource(useSWR<Day, Problem>(dayKey(date), () => readDay(date)));
 }
 
+/** What a write does to the day on screen, and how it is undone when the api refuses it. */
+interface DayChange {
+  readonly project: (latest: Day) => Day;
+  readonly restore: (latest: Day) => Day;
+}
+
 /**
- * A write that shows its answer before the api gives it, and puts the day back when it is refused.
+ * A write that shows its answer before the api gives it, and puts back what it changed when refused.
  *
- * `current` is null where the caller has no day to project onto, which is every state but `ready`. The
+ * `change` is null where the caller has no day to project onto, which is every state but `ready`. The
  * screen renders no outcome control until the ledger has arrived, so the write is then an ordinary one
  * rather than one projecting onto a day it invented.
  */
 async function optimistically(
   mutate: ScopedMutator,
   date: string,
-  current: Day | null,
-  projected: Day | null,
+  change: DayChange | null,
   send: () => Promise<Problem | null>,
 ): Promise<Problem | null> {
   const key = dayKey(date);
-  if (projected !== null) await mutate(key, projected, { revalidate: false });
+  const applied = (step: (latest: Day) => Day) =>
+    mutate<Day>(key, (latest) => (latest === undefined ? latest : step(latest)), {
+      revalidate: false,
+    });
+
+  if (change !== null) await applied(change.project);
 
   const refusal = await send();
   if (refusal !== null) {
-    if (current !== null) await mutate(key, current, { revalidate: false });
+    if (change !== null) await applied(change.restore);
     return refusal;
   }
 
@@ -109,11 +128,16 @@ export function useOutcomeRecording(date: string, day: Day | null): OutcomeRecor
   const [refusal, setRefusal] = useState<OutcomeRefusal | null>(null);
 
   const record = async (draft: OutcomeDraft): Promise<boolean> => {
+    const before = day === null ? null : outcomesOf(day, [draft.blockId]);
     const refused = await optimistically(
       mutate,
       date,
-      day,
-      day === null ? null : withRecordedOutcome(day, draft.blockId, draft.outcome),
+      before === null
+        ? null
+        : {
+            project: (latest) => withRecordedOutcome(latest, draft.blockId, draft.outcome),
+            restore: (latest) => withRestoredOutcomes(latest, before),
+          },
       () =>
         apply(() =>
           client.PUT("/api/v1/blocks/{block_id}/outcome", {
@@ -134,19 +158,27 @@ export function useOutcomeRecording(date: string, day: Day | null): OutcomeRecor
  *
  * The projected instant is the client's and the stored one is the server's: they differ by the round
  * trip, and the invalidation that follows replaces the projection with what was stored.
+ *
+ * The undo names the blocks this call would stamp, which are the ones carrying no instant, so a refusal
+ * leaves a row someone answered for in between exactly as it now stands.
  */
 export function useDayConfirmation(date: string, day: Day | null): Write<void> {
   const { mutate } = useSWRConfig();
 
-  return useWrite(() =>
-    optimistically(
+  return useWrite(() => {
+    const before = day === null ? null : outcomesOf(day, unansweredBlockIds(day));
+    return optimistically(
       mutate,
       date,
-      day,
-      day === null ? null : withConfirmedDay(day, new Date().toISOString()),
+      before === null
+        ? null
+        : {
+            project: (latest) => withConfirmedDay(latest, new Date().toISOString()),
+            restore: (latest) => withRestoredOutcomes(latest, before),
+          },
       () => apply(() => client.POST("/api/v1/days/{date}/confirm", { params: { path: { date } } })),
-    ),
-  );
+    );
+  });
 }
 
 export interface BackfillWrite extends Write<BackfillRange> {
@@ -160,6 +192,9 @@ export function useBackfill(date: string): BackfillWrite {
   const [settled, setSettled] = useState<Backfill | null>(null);
 
   const write = useWrite(async (range: BackfillRange) => {
+    /* The body is captured from inside `apply` rather than returned by it. `request.ts` offers two answer
+     * shapes, one that throws and one that discards the body, and a third belongs there rather than here:
+     * it is shared infrastructure, and one write wanting a response body is not yet a pattern. */
     let answered: Backfill | undefined;
     const refusal = await apply(async () => {
       const result = await client.POST("/api/v1/days/confirm-range", { body: range });

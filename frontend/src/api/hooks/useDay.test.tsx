@@ -16,6 +16,7 @@ import { countedHandler, recordingHandler } from "../../testing/apiStub";
 import { FreshCache } from "../../testing/renderRoute";
 import {
   BLOCK_GYM,
+  BLOCK_LEETCODE,
   DATE,
   ISO_WEEK,
   buildBackfill,
@@ -132,6 +133,56 @@ describe("useOutcomeRecording", () => {
     await expect(result.current.record(SKIP)).resolves.toBe(true);
 
     expect(write.bodies).toHaveLength(1);
+  });
+
+  /* THE UNDO NAMES THE ROW IT CHANGED, which is what lets two writes in flight compose. Restoring the whole
+     day would put back every row as it stood when the refused write started, dropping what a peer applied to
+     another row in between. */
+  it("reverts only the row it was refused on, leaving a peer's applied row alone", async () => {
+    const day = buildDay();
+    const held = heldResponse();
+    apiServer.use(
+      http.get(`${window.location.origin}${DAY}`, () => HttpResponse.json(day)),
+      /* The first row's recording is held open; the second's is refused at once. */
+      http.put(`${window.location.origin}/api/v1/blocks/${BLOCK_LEETCODE}/outcome`, async () => {
+        await held.held;
+        return HttpResponse.json(null);
+      }),
+      http.put(`${window.location.origin}${OUTCOME}`, () =>
+        HttpResponse.json(buildOutcomeRejection(), { status: 422 }),
+      ),
+    );
+
+    const { result } = renderHook(
+      () => {
+        const read = useDay(DATE);
+        return {
+          read,
+          write: useOutcomeRecording(DATE, read.status === "ready" ? read.data : null),
+        };
+      },
+      { wrapper: FreshCache },
+    );
+    await waitFor(() => expect(result.current.read.status).toBe("ready"));
+
+    const peer = result.current.write.record({
+      blockId: BLOCK_LEETCODE,
+      outcome: { isoWeek: ISO_WEEK, state: "completed" },
+    });
+    await waitFor(() => {
+      const current = result.current.read;
+      expect(current.status === "ready" ? stateOf(current.data.ahead[0]) : null).toBe("completed");
+    });
+
+    await expect(result.current.write.record(SKIP)).resolves.toBe(false);
+
+    const current = result.current.read;
+    /* The refused row is back, and the peer's optimistic row is still there. */
+    expect(current.status === "ready" ? stateOf(current.data.behind[1]) : null).toBe("presumed");
+    expect(current.status === "ready" ? stateOf(current.data.ahead[0]) : null).toBe("completed");
+
+    held.release();
+    await expect(peer).resolves.toBe(true);
   });
 });
 

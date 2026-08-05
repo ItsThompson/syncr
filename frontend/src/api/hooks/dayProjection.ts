@@ -10,6 +10,10 @@
  * both are read back off the projected rows. Adjusting them by a delta would need a second statement of
  * what a presumed row is, and the two would disagree the first time a row already carried an outcome.
  *
+ * A PROJECTION AND ITS UNDO BOTH TOUCH ONLY THE ROWS THEY CHANGED, which is what lets two writes in flight
+ * compose. Restoring a whole snapshot would put back every row as it was when the refused write started,
+ * dropping a change a peer had applied to another row in between.
+ *
  * `unconfirmedDays` is left alone. It counts days BEFORE the day on screen, so no write this screen makes
  * can change it, and a backfill invalidates the key rather than projecting one.
  *
@@ -95,6 +99,38 @@ export function withRecordedOutcome(day: Day, blockId: string, recorded: Recorde
     };
     return { ...row, outcome };
   });
+}
+
+/** What these blocks said before a write, so a refusal can put back what it changed and nothing else. */
+export function outcomesOf(
+  day: Day,
+  blockIds: readonly string[],
+): ReadonlyMap<string, Outcome | null> {
+  const wanted = new Set(blockIds);
+  const held = new Map<string, Outcome | null>();
+  for (const row of [...day.behind, ...day.ahead]) {
+    if (wanted.has(row.blockId)) held.set(row.blockId, row.outcome ?? null);
+  }
+  return held;
+}
+
+/** The blocks of the day nobody has answered for, which are the ones confirming it would stamp. */
+export function unansweredBlockIds(day: Day): string[] {
+  return [...day.behind, ...day.ahead]
+    .filter((row) => confirmedAtOf(row) === null)
+    .map((row) => row.blockId);
+}
+
+/**
+ * The day with these blocks' outcomes put back to what they were.
+ *
+ * The undo of a refused write, and it names the rows rather than the day: a row this write never touched
+ * keeps whatever it holds now, including a change a peer applied while the refused one was in flight.
+ */
+export function withRestoredOutcomes(day: Day, restore: ReadonlyMap<string, Outcome | null>): Day {
+  return mapRows(day, (row) =>
+    restore.has(row.blockId) ? { ...row, outcome: restore.get(row.blockId) ?? null } : row,
+  );
 }
 
 /**
