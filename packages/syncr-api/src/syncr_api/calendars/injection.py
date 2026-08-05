@@ -59,6 +59,7 @@ from syncr_api.calendars.sync import SourceSyncer
 from syncr_api.core.clock import utc_now
 from syncr_api.google_account.injection import build_access_tokens
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
@@ -177,7 +178,9 @@ async def get_calendar_source_service(
         sources=sources,
         syncer=SourceSyncer(
             sources=sources,
-            operations=OperationRepository(transaction, principal.tenant_id),
+            operations=OperationLifecycle(
+                OperationRepository(transaction, principal.tenant_id), utc_now
+            ),
             adapters=adapters,
             anchors=AnchorReconciler(
                 AnchorRepository(transaction, principal.tenant_id),

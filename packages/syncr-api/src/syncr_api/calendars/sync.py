@@ -13,11 +13,12 @@ spend a request to produce a number the read model discards. A forced sync on on
 with a succeeded operation and no fetch, because "nothing happened, by your own instruction" is
 the honest answer and an error would be wrong.
 
-**The operation is created and marked succeeded here, synchronously.** ``POST .../sync`` must
-answer with an ``Operation`` and the operations table already exists, but the service that owns
-an operation's lifecycle does not: **ticket 28 owns the claim, the terminal transitions, the
-reaper, and the retention sweep.** Until it lands, this creates the row through the repository
-and completes it in the same transaction. It must not grow into a second operation lifecycle.
+**The operation is created, claimed and completed here, synchronously.** ``POST .../sync`` must
+answer with an ``Operation``, and the work is already done by the time the response is composed, so
+there is nothing to hand a worker. It steps the row through the lifecycle service rather than
+writing a status, which is what keeps the state machine's ``pending`` to ``running`` to
+``succeeded`` true of a request that performs its own work: a row that went straight to
+``succeeded`` would be the one operation in the product that never ran.
 
 **Anchors are reconciled here, between the fetch and the sync-state write.** The reconciler is
 injected as a protocol declared in :mod:`syncr_api.calendars.anchor_writing`, so this package does
@@ -44,6 +45,7 @@ from typing import TYPE_CHECKING
 from syncr_api.calendars.config import SYNC_INTERVAL
 from syncr_api.calendars.events import FetchOutcome
 from syncr_api.solving.config import CALENDAR_SYNC
+from syncr_api.solving.outcomes import Succeeded
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
@@ -57,8 +59,8 @@ if TYPE_CHECKING:
     from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
     from syncr_api.calendars.repository import CalendarSourceRepository
     from syncr_api.core.clock import Clock
+    from syncr_api.solving.lifecycle import OperationLifecycle
     from syncr_api.solving.records import OperationRecord
-    from syncr_api.solving.repository import OperationRepository
 
 _log = get_logger("syncr.calendars")
 
@@ -110,7 +112,7 @@ class SourceSyncer:
     def __init__(
         self,
         sources: CalendarSourceRepository,
-        operations: OperationRepository,
+        operations: OperationLifecycle,
         adapters: Mapping[CalendarProvider, CalendarAdapter],
         anchors: AnchorWriter,
         clock: Clock,
@@ -163,18 +165,16 @@ class SourceSyncer:
     async def sync_now(self, source: CalendarSourceRecord) -> OperationRecord:
         """Sync one source and answer with the operation that did it.
 
-        The operation is created and completed in this transaction. Ticket 28 owns the claim and
-        the terminal transitions; this must not become a second operation lifecycle.
+        The operation is created, claimed and completed in this transaction, through the lifecycle
+        service, so it takes the same steps a worker-run operation takes.
 
         Not timed: it delegates to :meth:`sync`, which is, and a timer on both would count one
         attempt twice.
         """
-        now = self._clock()
-        operation = await self._operations.enqueue(
-            kind=CALENDAR_SYNC, scheduled_for=now, source_id=source.id
-        )
+        operation = await self._operations.enqueue(kind=CALENDAR_SYNC, source_id=source.id)
+        await self._operations.claim(operation.id)
         outcome, state = await self.sync(source)
-        completed = await self._operations.mark_succeeded(operation.id, at=now)
+        completed = await self._operations.finish(operation.id, Succeeded())
         _log.info(
             "calendars.sync.forced",
             tenant_id=str(source.tenant_id),
