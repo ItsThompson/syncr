@@ -16,6 +16,7 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``versions.py`` | the input-version counter and the conditional-write guard |
 | ``adjustments.py`` | approved tradeoff concessions, one per kind and target |
 | ``reality.py`` | the outcome log: one row per block, recorded and corrected in place |
+| ``habit_log.py`` | the same log keyed by habit, for the rotation cursor and outstanding debt |
 | ``errors.py`` | the three rejections a plan write or a plan read raises, none a caller's fault |
 | ``stored_values.py`` | the leaf forms a stored document is built from: an instant, a span, an id |
 | ``stored_clauses.py`` | the six reason clauses, one stored form each |
