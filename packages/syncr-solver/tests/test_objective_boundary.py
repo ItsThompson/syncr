@@ -40,6 +40,7 @@ from tests.materialized_weeks import (
     an_off_plan_period,
     between,
     inputs,
+    on,
 )
 from tests.objective_weeks import A_TASK, an_eligible_task
 
@@ -294,11 +295,22 @@ def test_the_free_time_the_gaps_are_measured_over_is_the_documents_own_unallocat
     The fragmentation term needs the SET so it can find the members too short to use; the document
     reports the TOTAL. Both are ``discretionary`` less what an Area's blocks claim, and they read
     the claimed spans through the same function, so this asserts the pair agrees on a week where
-    every subtrahend is present.
+    every subtrahend is present and on a plan holding a block that carries no Area.
+
+    **The Area filter inside that shared function is redundant, and the crossing cannot show it.**
+    The only origins carrying no Area are the frame and an imported commitment, and both are already
+    out of the denominator, so a claim over their spans subtracts time that had left it. Measured:
+    dropping the filter reddens nothing in this member, which is an equivalence rather than a gap.
     """
     week = a_week_with_something_left_out_of_the_denominator()
     plan = a_live_plan(
-        a_block(binding=BindingRef.for_task(A_TASK), interval=between(14, 15), area_id=FITNESS)
+        a_block(binding=BindingRef.for_task(A_TASK), interval=between(14, 15), area_id=FITNESS),
+        a_block(
+            binding=BindingRef.for_routine(A_TASK, on=on(0)),
+            interval=between(23, 30),
+            area_id=None,
+            title="Sleep",
+        ),
     )
 
     reading = PlanReading.of(plan, inputs=week)
