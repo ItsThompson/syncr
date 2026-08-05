@@ -1,4 +1,4 @@
-"""The four rejections the plan side raises, and why none is a ``SyncrError``.
+"""The five rejections the plan side raises, and why none is a ``SyncrError``.
 
 A revision reaches storage from a Pydantic model that has already validated it, and every
 document-describing column is derived rather than passed in. So a document that cannot
@@ -42,4 +42,15 @@ class AdjustmentRejected(Exception):
     sit on the table claiming to have been honoured while changing nothing. The read side is
     deliberately tolerant and reports what it dropped, because a row already stored has to be
     readable; this is what stops one being written.
+    """
+
+
+class ClassificationRejected(Exception):
+    """A partition of a candidate plan that could not describe an authority decision.
+
+    Two documents of different weeks pair on ids derived against different weeks, and a change
+    that applies without asking cannot state a placement it replaced. Both are defects in the
+    caller that composed the pair rather than anything a request carried, and both would
+    otherwise commit: the first as a whole week proposed as new, the second as a move applied
+    under a revision saying only empty space was filled.
     """

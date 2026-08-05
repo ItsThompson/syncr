@@ -22,6 +22,8 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``stored_clauses.py`` | the six reason clauses, one stored form each |
 | ``stored_reasons.py`` | a block's reason record, and which of the six kinds a stored object is |
 | ``stored_documents.py`` | a whole week, written from and rebuilt through the domain constructors |
+| ``overlaps.py`` | the two overlaps nothing may settle quietly, detected against the live plan |
+| ``authority.py`` | the authority rule: what auto-applies, what waits, and what collides |
 
 And the week assembler, which turns everything above plus every declaration a tenant holds into
 one resolved ``SolveInputs``:
