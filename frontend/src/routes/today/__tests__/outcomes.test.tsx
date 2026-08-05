@@ -162,7 +162,8 @@ describe("skipping a row", () => {
   });
 
   /* The counterpart, so the release cannot be implemented by never claiming a row at all: focus moving from
-     one control of a row to another has not left the row. */
+     one control of a row to another releases and reclaims it in one turn, and the row a key acts on is the
+     one it ends on. */
   it("keeps the row while focus moves between its own controls", async () => {
     await renderToday(onHostToday(buildDay()));
     const sent = stubRecording();

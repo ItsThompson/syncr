@@ -3,8 +3,9 @@
  * THE ROW CLAIMS THE KEYBOARD BY BEING FOCUSED, AND RELEASES IT WHEN FOCUS LEAVES. `x`, `Shift+X` and `m`
  * are bare keys bound by the route, and the row they act on is the one holding focus, which a reader reaches
  * by tabbing to its controls. Nothing here invents a second focus channel: the controls are real buttons and
- * the ring is the kit's. The release is guarded on containment, because focus moving from one control of this
- * row to another has not left the row.
+ * the ring is the kit's. The release is unconditional and needs no containment test, because focus leaving one
+ * control of this row for another dispatches the blur and then the focus: the row is released and reclaimed in
+ * one turn, and nothing reads it in between. A guard on containment there would be a guard that cannot fire.
  *
  * FOCUS FOLLOWS THE FORM A KEYSTROKE OPENS, AND COMES BACK WHEN IT CLOSES. The control that held focus
  * unmounts when the form replaces it, so without the handoff focus falls to the document and the figure the
@@ -19,7 +20,7 @@
  * a notice in the outcome column would push the controls off a row whose whole point is that they sit at
  * one offset. It is a sibling of the row, so the run of rows keeps its own hairlines. */
 
-import { useEffect, useRef, type FocusEvent } from "react";
+import { useEffect, useRef } from "react";
 
 import { LedgerRow, NoticeCard, type LedgerRowArea } from "../../../ui/domain";
 import type { Notice } from "../../../ui/domain";
@@ -52,12 +53,6 @@ export function OutcomeRow({ row, zone, section, area, form, refusal, actions }:
     wasOpen.current = form !== null;
   });
 
-  /* `relatedTarget` is the element focus is moving TO, and null when it is moving to nothing. Either way,
-     focus has left this row unless the destination is inside it. */
-  const onBlur = (event: FocusEvent<HTMLElement>): void => {
-    if (!event.currentTarget.contains(event.relatedTarget)) actions.onLeave();
-  };
-
   return (
     <>
       <LedgerRow
@@ -71,7 +66,7 @@ export function OutcomeRow({ row, zone, section, area, form, refusal, actions }:
         <span
           className="flex items-center gap-2"
           onFocus={() => actions.onEnter(row)}
-          onBlur={onBlur}
+          onBlur={() => actions.onLeave()}
         >
           <span className="text-eyebrow text-text-muted">{stateReading(row, section, zone)}</span>
           {form === null ? (

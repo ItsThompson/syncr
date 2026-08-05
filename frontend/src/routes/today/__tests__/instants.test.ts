@@ -56,6 +56,19 @@ describe("hostDateOf", () => {
   });
 });
 
+/* Declared after the pinned block, so it runs after it: the zone is restored through the runner rather than
+   by writing a remembered value back, because a host with no `TZ` set would be restored to the string
+   "undefined" and every later date in this file would resolve in a zone nothing knows. */
+describe("after the zone was pinned", () => {
+  it("leaves the host's own zone rather than a value it invented", () => {
+    expect(process.env.TZ).not.toBe("undefined");
+  });
+
+  it("reads an instant in the zone it is given, as it did before", () => {
+    expect(clockIn("2026-02-09T13:30:00+00:00", LONDON)).toBe("13:30");
+  });
+});
+
 describe("instantAt", () => {
   it("resolves a wall time under the offset in force on the day", () => {
     expect(instantAt("2026-02-09", "13:30", LONDON)).toBe("2026-02-09T13:30:00.000Z");
