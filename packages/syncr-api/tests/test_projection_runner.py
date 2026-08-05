@@ -662,6 +662,32 @@ async def test_a_refused_write_fails_every_claimed_operation(
     assert all(row.error_code == "projection_failed" for row in rows)
 
 
+async def test_a_retry_behind_its_backoff_is_not_claimed_before_it_is_due(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    calendar: FakeCalendar,
+) -> None:
+    """A failure that will run again is scheduled, and the queue reads only what is due.
+
+    The bite check found this: dropping the schedule from the queue's own predicate passed every
+    test, so nothing held the one property a backoff exists for. A drain that ignored it would spend
+    a destructive reconciliation per tick against a provider that has just refused one.
+    """
+    await declare_a_planned_week(sessions, context, owner.tenant_id)
+    calendar.refuse_after = 0
+    await drain(context, calendar)
+    refused = len(calendar.requests)
+    rows = await projections_of(sessions, owner.tenant_id)
+    assert {row.status for row in rows} == {PENDING}, "the failures have to be retrying"
+    assert all(row.scheduled_for > DRAINED_AT for row in rows), "pushed out by the backoff"
+
+    performed = await drain(context, calendar)
+
+    assert performed == 0
+    assert len(calendar.requests) == refused
+
+
 async def test_a_partially_applied_write_leaves_what_landed_and_records_the_failure(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
