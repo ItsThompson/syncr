@@ -79,6 +79,7 @@ from syncr_domain.discretionary import discretionary_intervals
 from syncr_domain.feasibility.honoring import (
     demands_due_no_later,
     demands_honored,
+    floor_honored,
     occupancy_honored,
 )
 from syncr_domain.feasibility.verdict import (
@@ -319,8 +320,9 @@ def _competition_before(
         minutes += max(claimed.get(area_id, 0), early)
         if early and reservation is not None:
             labels.append(
-                f"the {reservation.label} floor of "
-                f"{hours_and_minutes(reservation.reserved_minutes)}"
+                floor_honored(
+                    label=reservation.label, reserved_minutes=reservation.reserved_minutes
+                )
             )
     return _Competition(minutes=minutes, labels=tuple(labels))
 

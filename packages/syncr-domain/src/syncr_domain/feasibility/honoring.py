@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from syncr_domain.feasibility.verdict import hours_and_minutes
 from syncr_domain.intervals import IntervalSet
 
 if TYPE_CHECKING:
@@ -56,6 +57,19 @@ def demands_honored(demands: Sequence[DeadlineDemand]) -> tuple[str, ...]:
         for label in demand.labels:
             named.setdefault(label, None)
     return tuple(named)
+
+
+def floor_honored(*, label: str, reserved_minutes: int) -> str:
+    """One Area's floor, named as a constraint that took capacity from another Area's window.
+
+    The phrase has two readers rather than one, which is why it is a function rather than an
+    f-string at its single call site. A shortfall names the floor, and a tradeoff enumerator
+    matches against that name to decide which floors are worth offering to breach: a shortfall
+    carries no identifier for the floors it honored, and this list is the record of which ones
+    took capacity from the window the check measured. Spelled in two places, the two spellings
+    would drift and the enumerator would offer a breach that recovers nothing.
+    """
+    return f"the {label} floor of {hours_and_minutes(reserved_minutes)}"
 
 
 def demands_due_no_later(demand: DeadlineDemand) -> tuple[str, ...]:
