@@ -15,9 +15,11 @@ that required ``start`` would reject every deletion, which is exactly the silent
 sync token exists to prevent. What each absence MEANS is decided one layer up, in
 :mod:`syncr_api.calendars.google_values`.
 
-**Nothing here is a title syncr keeps by accident.** ``summary`` and ``location`` are read because
-an anchor needs them; the redaction rule is enforced where lines are written, and every field name
-on these models is one the logger's key-name redactor already eats.
+**Nothing here is a title syncr keeps by accident.** ``summary``, ``description`` and ``location``
+are read because an anchor needs the first and the last, and because the projection compares what an
+event on the write target says against what syncr intends; the redaction rule is enforced where
+lines are written, and every field name on these models is one the logger's key-name redactor
+already eats.
 """
 
 from __future__ import annotations
@@ -50,6 +52,24 @@ class GoogleTimePayload(BaseModel):
     time_zone: str | None = Field(default=None, alias="timeZone")
 
 
+class GoogleExtendedProperties(BaseModel):
+    """The private property bag syncr's own key travels in.
+
+    Only ``private`` is declared. ``shared`` exists on the API and is not read: syncr owns the write
+    target, so there is nobody to share a property with, and a key in the shared bag would be one an
+    attendee of a copied event could see.
+
+    The values are typed as text because Google's own contract says they are text. A property whose
+    value is not text is a shape syncr cannot read, and it is refused at this boundary like any
+    other, rather than silently reading as an event with no key -- which would make it a foreign
+    deletion.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    private: dict[str, str] = Field(default_factory=dict)
+
+
 class GoogleEventPayload(BaseModel):
     """One event as the events collection states it.
 
@@ -63,12 +83,16 @@ class GoogleEventPayload(BaseModel):
     id: str = Field(min_length=1)
     status: str | None = None
     summary: str | None = None
+    description: str | None = None
     location: str | None = None
     transparency: str | None = None
     sequence: int | None = None
     recurring_event_id: str | None = Field(default=None, alias="recurringEventId")
     start: GoogleTimePayload | None = None
     end: GoogleTimePayload | None = None
+    extended_properties: GoogleExtendedProperties | None = Field(
+        default=None, alias="extendedProperties"
+    )
 
     @property
     def is_cancelled(self) -> bool:
@@ -79,6 +103,16 @@ class GoogleEventPayload(BaseModel):
     def is_transparent(self) -> bool:
         """Whether Google says this event does not consume the user's time."""
         return self.transparency == TRANSPARENT
+
+    def private_property(self, name: str) -> str | None:
+        """One private extended property, or ``None`` when the event carries none of that name.
+
+        The absence is what makes an event on the write target one the user created by hand, so it
+        is answered here rather than by a caller reaching through two optional levels.
+        """
+        if self.extended_properties is None:
+            return None
+        return self.extended_properties.private.get(name)
 
 
 class GoogleEventsPage(BaseModel):

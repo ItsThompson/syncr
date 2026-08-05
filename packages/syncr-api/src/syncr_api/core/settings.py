@@ -150,6 +150,14 @@ class EnvSettings(SyncrSettings):
     google_oauth_redirect_uri: str = ""
     # The Fernet key a stored Google refresh token is encrypted with.
     google_token_encryption_key: SecretStr = SecretStr(DEV_GOOGLE_TOKEN_ENCRYPTION_KEY)
+    # Whether this deployment may WRITE to the calendar it owns. Off everywhere by default, and
+    # deliberately not gated on the environment: the destructive reconciliation has never been run
+    # against the real Google API, because obtaining the standing authorization it needs takes a
+    # human at a consent screen. Until somebody has done that and run the live suite, a deployment
+    # that projected would be exercising an unverified write path against a real calendar. With it
+    # off, the whole projection is computed and then refused before any request is sent, and the
+    # refusal is stated in the same banner a failure raises rather than being silent.
+    google_projection_writes: bool = False
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
@@ -292,6 +300,7 @@ class ServiceSettings(BaseModel):
     google_oauth_client_secret: SecretStr
     google_oauth_redirect_uri: str
     google_token_encryption_key: SecretStr
+    google_projection_writes: bool
 
 
 def build_service_settings(
@@ -315,4 +324,5 @@ def build_service_settings(
         google_oauth_client_secret=env.google_oauth_client_secret,
         google_oauth_redirect_uri=env.google_oauth_redirect_uri,
         google_token_encryption_key=env.google_token_encryption_key,
+        google_projection_writes=env.google_projection_writes,
     )

@@ -1,4 +1,4 @@
-"""The bounds and the endpoints of the Google read path.
+"""The bounds and the endpoints of the Google path, read and write.
 
 Every value here answers something Google chooses the size of. A page is as large as the API
 returns, a calendar is as large as the account made it, a sync token is as long as Google mints
@@ -29,6 +29,15 @@ def events_url(calendar_id: str) -> str:
     Quoting it is what stops one with a slash addressing a different collection.
     """
     return f"{CALENDAR_API_BASE}/calendars/{quote(calendar_id, safe='')}/events"
+
+
+def event_url(calendar_id: str, event_id: str) -> str:
+    """One event of one calendar, with both identifiers escaped.
+
+    The event id comes from the provider's own answer and reaches a URL path exactly as the
+    calendar id does, so it is quoted for the same reason: neither is a value syncr chose.
+    """
+    return f"{events_url(calendar_id)}/{quote(event_id, safe='')}"
 
 
 # How many events one page asks for. Google's own default is 250 and its ceiling is 2,500. The
@@ -81,3 +90,31 @@ MAX_HONOURED_RETRY_AFTER_SECONDS: Final = 30.0
 RATE_LIMIT_REASONS: Final = frozenset(
     {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}
 )
+
+# --- The write path -----------------------------------------------------------------------------
+#
+# The reconciliation is bounded from outside for the same reason a read is, and the numbers differ
+# because the failure modes do. A read is one paginated request; a reconciliation is one request per
+# event it changes, made SEQUENTIALLY, so its cost scales with how much the plan moved.
+
+# How long ONE reconciliation may take, including every write and every wait. Three times the
+# thirty-second budget `19-nonfunctional.md` sets, so exceeding the budget is visible in the
+# duration histogram while a provider that has stopped answering still cannot hold the worker
+# indefinitely: the duties on the loop are serial, so an unbounded write would stop the calendar
+# poll and the horizon maintainer as well.
+#
+# Not a hard reading of the budget. A first projection of a full horizon is a couple of hundred
+# writes and may legitimately exceed thirty seconds; a reconciliation in the steady state writes
+# only what moved, which is a handful.
+WRITE_DEADLINE_SECONDS: Final = 90.0
+# How long one write request may take. Inside the deadline above, so one hung request cannot consume
+# the whole budget and leave nothing for the events after it.
+WRITE_REQUEST_TIMEOUT_SECONDS: Final = 20.0
+
+# How many times one MUTATING request is retried, and it is deliberately fewer than a read gets.
+# A retry is only safe where the provider is known to have rejected the request without applying it:
+# a rate limit is exactly that, and a 5xx or a dropped connection is not. So a write retries a rate
+# limit and nothing else, and an ambiguous failure ends the reconciliation instead. That is what
+# makes a duplicate event impossible by construction rather than by hoping Google deduplicates:
+# the next reconciliation recomputes the diff from a fresh read of the target and converges.
+MAX_WRITE_ATTEMPTS: Final = 3
