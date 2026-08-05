@@ -270,6 +270,21 @@ class PartialPlan:
         """
         return candidate.binding in self.started or candidate.binding in self.immovable
 
+    def already_netted(self, binding: BindingRef) -> bool:
+        """Whether the Area figures arrived with this binding's minutes already subtracted.
+
+        Every placement except one that has started and a pin. That is the set the assembler
+        subtracted when it computed ``AreaBudget.floor_minutes`` and ``EligibleTask``'s remaining
+        minutes, so a reader netting it a second time counts one minute twice.
+
+        **Two readers, one statement.** H9 asks it of the floor it may still reserve, and the
+        objective's deadline term asks it of the work a task still owes. The assembler's own
+        statement of the same set is ``syncr_api.plans.netting.Placement.immovable``, and ticket
+        1330 is the test that crosses the two packages; a third statement here would put that
+        crossing one layer further out of reach.
+        """
+        return binding in self.started or binding in self.pins
+
 
 def _require_a_sizing_matching_the_kind(kind: BindingKind, sizing: Sizing | None) -> None:
     """The two kinds the solver sizes carry a sizing, and the five it does not carry none.

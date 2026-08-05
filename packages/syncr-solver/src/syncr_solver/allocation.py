@@ -187,9 +187,8 @@ def _unmet(state: PartialPlan, *, offered: Placement | None) -> tuple[Unmet, ...
 def _owed(area: AreaBudget, state: PartialPlan, *, offered: Placement | None) -> int:
     """Minutes of this Area's floor that would still be unplaced once ``offered`` is placed.
 
-    Netted against the placements the floor figure has not already accounted for, which is every
-    placement except one that has started and a pin. That is the same set the assembler subtracted
-    when it computed ``floor_minutes``, so the two readings cannot count one minute twice.
+    Netted through :meth:`~syncr_solver.state.PartialPlan.already_netted`, which is the one
+    statement of the set the assembler subtracted before ``floor_minutes`` arrived.
 
     The filter runs over the offered candidate as well, and reaches nothing: a candidate whose
     binding has started or is pinned never gets here, because :meth:`PartialPlan.holds` covers both.
@@ -198,15 +197,10 @@ def _owed(area: AreaBudget, state: PartialPlan, *, offered: Placement | None) ->
     """
     counted = (*state.placed, *(() if offered is None else (offered,)))
     placed = _spans(
-        [item for item in counted if not _already_netted(item, state)],
+        [item for item in counted if not state.already_netted(item.binding)],
         area_id=area.area_id,
     )
     return max(0, area.floor_minutes - placed.total_minutes())
-
-
-def _already_netted(placement: Placement, state: PartialPlan) -> bool:
-    """Whether the Area figures arrived with this placement's minutes already subtracted."""
-    return placement.binding in state.started or placement.binding in state.pins
 
 
 def _budget_of(areas: Sequence[AreaBudget], area_id: AreaId | None) -> AreaBudget | None:

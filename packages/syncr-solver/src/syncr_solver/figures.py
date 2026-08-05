@@ -62,18 +62,23 @@ def week_figures(inputs: SolveInputs, blocks: Sequence[Block]) -> WeekFigures:
     )
     return WeekFigures(
         discretionary_minutes=discretionary.total_minutes(),
-        unallocated_minutes=unallocated_minutes(discretionary, _claimed(blocks)),
+        unallocated_minutes=unallocated_minutes(discretionary, claimed_intervals(blocks)),
         oversubscription_minutes=oversubscription_minutes(
             (area.target_minutes for area in inputs.areas), discretionary.total_minutes()
         ),
     )
 
 
-def _claimed(blocks: Sequence[Block]) -> IntervalSet:
+def claimed_intervals(blocks: Sequence[Block]) -> IntervalSet:
     """The spans some Area's blocks cover, unioned, so a minute claimed twice is claimed once.
 
     An Area is what makes a block a claim on discretionary time: the frame and an anchor carry
     none, because one defines how much time exists and the other is time the product does not
     own, and both are already out of the denominator.
+
+    Public because the objective's fragmentation term reads the same set from the other side: the
+    gaps a plan leaves are the discretionary time this does NOT cover, and a second statement of
+    what an Area claims would let the figure a document reports and the gaps a term charges
+    disagree about one block.
     """
     return IntervalSet(block.interval for block in blocks if block.area_id is not None)
