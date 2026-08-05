@@ -226,6 +226,10 @@ describe("the minutes a block really took", () => {
     const field = await screen.findByLabelText(`actual minutes for ${GYM}`);
     expect(field).toHaveValue(60);
     expect(field).toHaveAttribute("step", "5");
+    /* No floor on the control: a number field takes `min` as the step BASE, so a floor of 1 would put the
+       browser's own arrow keys on 1, 6, 11 and step 420 to 416. The floor is stated beside the control and
+       applied to what is sent. */
+    expect(field).not.toHaveAttribute("min");
     expect(screen.getByText("min of 60m planned")).toBeInTheDocument();
   });
 

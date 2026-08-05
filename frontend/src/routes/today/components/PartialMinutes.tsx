@@ -18,7 +18,13 @@
  *
  * A FIGURE OUTSIDE THE API'S BOUNDS DISABLES THE RECORD BUTTON AND SAYS SO. The stepper hands a typed value
  * back unsnapped and unclamped on purpose, so the surface that knows the bounds is the one that judges it,
- * and a stated bound beats a 422 the reader has to read to learn the same thing. */
+ * and a stated bound beats a 422 the reader has to read to learn the same thing.
+ *
+ * THE FLOOR IS NOT PASSED TO THE CONTROL, which is deliberate rather than an omission. An `<input
+ * type="number">` takes `min` as the STEP BASE, so a floor of 1 with a step of 5 puts the valid figures on 1,
+ * 6, 11, and the browser's own arrow keys then step 420 to 416 rather than to 415: measured in Chrome.
+ * Without it the grid is multiples of five, which is what the kit's step means, and the floor is the one
+ * `isSendable` applies from the api's own bound, stated beside the control. */
 
 import { useEffect, useRef, type FormEvent } from "react";
 
@@ -59,7 +65,6 @@ export function PartialMinutes({ row, form, actions }: PartialMinutesProps) {
         value={form.minutes}
         onValueChange={(minutes) => actions.onDraft({ ...form, minutes })}
         measure="actual-minutes"
-        min={MIN_ACTUAL_MINUTES}
         max={MAX_ACTUAL_MINUTES}
         isInvalid={!canRecord}
         label={`actual minutes for ${row.title}`}
