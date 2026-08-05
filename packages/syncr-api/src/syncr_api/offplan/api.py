@@ -6,7 +6,8 @@ persistence: ``tests/test_authorization_boundary.py`` asserts this file cannot r
 
 Each response is built field by field rather than validated from the record, so a column added
 to the table cannot reach the wire by sharing a name with a schema field. The record carries an
-``Interval`` and the wire carries two instants, which is the one place that pair is taken apart.
+``Interval`` and the wire carries two instants, which is the one place that pair is taken apart,
+and it is on the schema itself because the week view answers with a period too.
 
 The patch handler builds its change through :func:`syncr_api.core.patches.stated`, which is what
 distinguishes a field the request omitted from one it sent as null. Reading the request is a
@@ -22,7 +23,6 @@ request that already succeeded: the guard replays the stored 201 instead. ``PATC
 from __future__ import annotations
 
 from http import HTTPStatus
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -41,22 +41,9 @@ from syncr_api.offplan.schemas import (
     OffPlanPeriodsResponse,
 )
 
-if TYPE_CHECKING:
-    from syncr_api.offplan.records import OffPlanPeriodRecord
-
 router = APIRouter()
 
 DECLARE_ROUTE = "offplan.declare_period"
-
-
-def _as_period(record: OffPlanPeriodRecord) -> OffPlanPeriodResponse:
-    return OffPlanPeriodResponse(
-        id=record.id,
-        start=record.interval.start,
-        end=record.interval.end,
-        keep_frame=record.keep_frame,
-        label=record.label,
-    )
 
 
 @router.get("", summary="Every declared off-plan period")
@@ -65,7 +52,7 @@ async def list_off_plan_periods(
 ) -> OffPlanPeriodsResponse:
     """The periods, earliest first."""
     found = await service.list_all(principal)
-    return OffPlanPeriodsResponse(periods=[_as_period(period) for period in found])
+    return OffPlanPeriodsResponse(periods=[OffPlanPeriodResponse.of(period) for period in found])
 
 
 @router.post(
@@ -83,7 +70,7 @@ async def declare_off_plan_period(
     )
 
     async def declare() -> OffPlanPeriodResponse:
-        return _as_period(await service.declare(principal, declaration))
+        return OffPlanPeriodResponse.of(await service.declare(principal, declaration))
 
     return await guard.once(DECLARE_ROUTE, OffPlanPeriodResponse, declare)
 
@@ -93,7 +80,7 @@ async def read_off_plan_period(
     period_id: UUID, principal: PrincipalDep, service: OffPlanServiceDep
 ) -> OffPlanPeriodResponse:
     """One period of this tenant's."""
-    return _as_period(await service.read(principal, period_id))
+    return OffPlanPeriodResponse.of(await service.read(principal, period_id))
 
 
 @router.patch(OFF_PLAN_PATH, summary="Move a bound, rename a span, or change keepFrame")
@@ -110,7 +97,7 @@ async def update_off_plan_period(
         keep_frame=stated_unless_null(body.keep_frame),
         label=stated(body, "label", body.label),
     )
-    return _as_period(await service.update(principal, period_id, change))
+    return OffPlanPeriodResponse.of(await service.update(principal, period_id, change))
 
 
 @router.delete(

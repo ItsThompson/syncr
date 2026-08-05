@@ -33,6 +33,7 @@ on the wire, and ticket 1135 owns deciding it once in ``core/schemas.py``.
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
+from typing import TYPE_CHECKING, Self
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
@@ -40,6 +41,9 @@ from pydantic import ConfigDict, Field, field_validator
 from syncr_api.core.schemas import WireModel
 from syncr_api.offplan.config import LABEL_MAX_LENGTH, LABEL_MIN_LENGTH
 from syncr_domain.snap import SNAP_MINUTES
+
+if TYPE_CHECKING:
+    from syncr_api.offplan.records import OffPlanPeriodRecord
 
 _START_DESCRIPTION = (
     "When the period begins, as an instant. Inside the period, and on a "
@@ -75,6 +79,21 @@ class OffPlanPeriodResponse(WireModel):
     end: datetime = Field(description=_END_DESCRIPTION)
     keep_frame: bool = Field(description=_KEEP_FRAME_DESCRIPTION)
     label: str | None = Field(description=_LABEL_DESCRIPTION)
+
+    @classmethod
+    def of(cls, record: OffPlanPeriodRecord) -> Self:
+        """The wire shape of one stored period.
+
+        Here rather than in a route module because two routes answer with a period: the off-plan
+        collection, and the week view whose gutter draws the spans reaching into that week.
+        """
+        return cls(
+            id=record.id,
+            start=record.interval.start,
+            end=record.interval.end,
+            keep_frame=record.keep_frame,
+            label=record.label,
+        )
 
 
 class OffPlanPeriodsResponse(WireModel):
