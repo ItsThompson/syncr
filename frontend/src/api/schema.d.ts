@@ -799,6 +799,46 @@ export interface paths {
         patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
+    "/api/v1/reviews/budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Composition, trend, deviation, and the proposed percentages
+         * @description One quarter's pie review, anchored at ``period``. Writes nothing.
+         */
+        get: operations["read_budget_review_api_v1_reviews_budget_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reviews/budget/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply proposed percentages, wholly or adjusted
+         * @description Declare the shares the caller sent. The proposal's own figures, or its own edits of them.
+         */
+        post: operations["apply_budget_review_api_v1_reviews_budget_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/routines": {
         parameters: {
             query?: never;
@@ -1840,6 +1880,20 @@ export interface components {
             nextCursor?: string | null;
         };
         /**
+         * AppliedShare
+         * @description One Area's share, as a caller asks for it to be declared.
+         */
+        AppliedShare: {
+            /**
+             * Areaid
+             * Format: uuid
+             * @description The Area to declare this share on. The vacancy has no row here: it is not an Area, so its share follows from the Areas' own.
+             */
+            areaId: string;
+            /** @description The share to declare. Shares summing past 100 across Areas are accepted and reported as oversubscription, never rejected. */
+            budgetPercent: components["schemas"]["WireDecimal"];
+        };
+        /**
          * AreaBudgetReading
          * @description One Area's row of the report.
          *
@@ -2219,6 +2273,80 @@ export interface components {
         };
         BoundSource: components["schemas"]["BindingSource"] | components["schemas"]["DerivationSource"];
         /**
+         * BudgetApplyRequest
+         * @description The shares to declare, whether they are the proposal's own or adjusted ones.
+         *
+         *     There is no "apply wholly" flag, and the absence is the contract. A caller applying the
+         *     proposal sends the proposal's figures; a caller adjusting it sends its own. One path, so an
+         *     adjusted revision cannot take a route a whole one does not.
+         *
+         *     An Area the request does not name is left alone, which is what makes rejecting one row of a
+         *     proposal expressible without restating the rest.
+         */
+        BudgetApplyRequest: {
+            /**
+             * Percentages
+             * @description At least one Area's share. An empty list is refused rather than applied as a no-op: it is a request that states nothing, and answering 200 to one would report a revision nobody made.
+             */
+            percentages: components["schemas"]["AppliedShare"][];
+        };
+        /**
+         * BudgetApplyResponse
+         * @description What one apply changed, and the two figures the caller needs immediately afterwards.
+         */
+        BudgetApplyResponse: {
+            /**
+             * Applied
+             * @description How many Areas' shares this call changed. A share replaced by the value it already held is not one of them, so nothing was written and no solve was invalidated.
+             */
+            applied: number;
+            /**
+             * Changedat
+             * @description When the change was applied, or null when nothing changed.
+             */
+            changedAt?: string | null;
+            /**
+             * Declared
+             * @description The Areas whose share this call changed, so a caller can render exactly what moved.
+             */
+            declared: string[];
+            /**
+             * Statement
+             * @description What was applied, in one sentence.
+             */
+            statement: string;
+        };
+        /**
+         * BudgetProposalResponse
+         * @description The proposed revision, or the count that says why there is not one yet.
+         *
+         *     ``shares`` is empty exactly when ``confirmedWeeks`` is below ``requiredWeeks``. Both counts are
+         *     present either way, because the count is the answer to "why is this empty" and a caller that had
+         *     to infer it from an empty list would be inferring it.
+         */
+        BudgetProposalResponse: {
+            /**
+             * Confirmedweeks
+             * @description How many weeks of the quarter were FULLY confirmed. A partly confirmed week is reported in the day counts but is not evidence: its actuals cover some days and its denominator covers all seven.
+             */
+            confirmedWeeks: number;
+            /**
+             * Requiredweeks
+             * @description How many fully confirmed weeks a proposal needs. A quarter, which is 13.
+             */
+            requiredWeeks: number;
+            /**
+             * Shares
+             * @description One row per Area, then the vacancy. Empty until the quarter's worth of confirmed weeks exists.
+             */
+            shares: components["schemas"]["ProposedShareResponse"][];
+            /**
+             * Statement
+             * @description What the proposal rests on, or how much evidence is missing. Always present: both readings are something the reader needs.
+             */
+            statement: string;
+        };
+        /**
          * BudgetResponse
          * @description One period's discretionary time, and how the Areas divide it.
          */
@@ -2256,6 +2384,63 @@ export interface components {
              * @description Discretionary minutes covered by NO block carrying an Area. Never negative, and not zero merely because the shares sum to 100.
              */
             unallocatedMinutes: number;
+        };
+        /**
+         * BudgetReviewResponse
+         * @description One period's pie review: the figures, the categories, the trend, and the proposal.
+         */
+        BudgetReviewResponse: {
+            /**
+             * Categories
+             * @description One row per declared Area, then the vacancy, in the order the wedges are drawn. This is the NAMED WEEK's composition and its actual against target.
+             */
+            categories: components["schemas"]["CategoryReadingResponse"][];
+            /** @description The named week's own day counts. */
+            days: components["schemas"]["ReviewDayCounts"];
+            /**
+             * Discretionaryminutes
+             * @description The denominator every share here is measured against, taken from the week's own plan of record, which is the figure the week was solved against. Null when the week holds no plan.
+             */
+            discretionaryMinutes: number | null;
+            /**
+             * Offplanminutes
+             * @description How many of the period's minutes were declared off-plan, clipped to the period.
+             */
+            offPlanMinutes: number;
+            /**
+             * Offplanstatement
+             * @description Why every figure above is zero, stated when the period was off-plan from end to end. Null otherwise.
+             */
+            offPlanStatement?: string | null;
+            /**
+             * Oversubscriptionminutes
+             * @description How far the Area targets exceed discretionary time. Zero when they fit. A SEPARATE quantity from unallocatedMinutes, and never rendered as a negative one. Null with no plan of record.
+             */
+            oversubscriptionMinutes: number | null;
+            /**
+             * Period
+             * @description The ISO week the review is anchored at, such as '2026-W07'.
+             */
+            period: string;
+            proposal: components["schemas"]["BudgetProposalResponse"];
+            /** @description The whole reviewed quarter's day counts, summed from the trend's weeks. */
+            quarterDays: components["schemas"]["ReviewDayCounts"];
+            span: components["schemas"]["PeriodSpan"];
+            /**
+             * Statement
+             * @description Why the figures above are null, stated when the week holds no plan of record. Null otherwise.
+             */
+            statement?: string | null;
+            /**
+             * Trend
+             * @description The quarter by week, oldest first, ending with the named week.
+             */
+            trend: components["schemas"]["TrendWeekResponse"][];
+            /**
+             * Unallocatedminutes
+             * @description Discretionary minutes covered by NO confirmed block carrying an Area. Never negative, and not zero merely because the shares sum to 100. Null with no plan of record.
+             */
+            unallocatedMinutes: number | null;
         };
         /**
          * CadenceKind
@@ -2351,6 +2536,27 @@ export interface components {
         CalendarSourcesResponse: {
             /** Sources */
             sources: components["schemas"]["CalendarSourceResponse"][];
+        };
+        /**
+         * CategoryReadingResponse
+         * @description One category's row: what it was allotted, and what it actually held.
+         */
+        CategoryReadingResponse: {
+            /**
+             * Actualminutes
+             * @description Minutes this category really held, over the CONFIRMED days of the period only, with off-plan spans excluded entirely. A skipped block contributes nothing, a partial contributes the minutes it reported, and a moved block contributes the interval it happened in.
+             */
+            actualMinutes: number;
+            /**
+             * Areaid
+             * @description The Area this row is about, or NULL for the vacancy: discretionary time covered by no block carrying an Area. The vacancy is a category rather than an absence, and it is never a negative Area figure.
+             */
+            areaId: string | null;
+            /**
+             * Targetminutes
+             * @description The Area's floor plus its share of the discretionary time its floors leave, for this week. Null when the week holds no plan of record, because a target divides a denominator that week does not have. For the vacancy it is what the Areas' own targets leave.
+             */
+            targetMinutes: number | null;
         };
         /**
          * CheckReading
@@ -3669,6 +3875,39 @@ export interface components {
             projects: components["schemas"]["ProjectResponse"][];
         };
         /**
+         * ProposalBasis
+         * @description Why one category's proposal is what it is.
+         *
+         *     A closed vocabulary rather than free prose, so a caller may group rows by reason and a
+         *     renderer's sentence for each is one table rather than a formatting decision per row.
+         * @enum {string}
+         */
+        ProposalBasis: "floor_holds_it" | "never_met" | "sustained_under" | "sustained_over" | "already_there";
+        /**
+         * ProposedShareResponse
+         * @description One row of the proposed revision: what is declared, what happened, and what to declare.
+         */
+        ProposedShareResponse: {
+            /**
+             * Areaid
+             * @description The Area this row is about, or NULL for the vacancy: discretionary time covered by no block carrying an Area. The vacancy is a category rather than an absence, and it is never a negative Area figure.
+             */
+            areaId: string | null;
+            /** @description Why this row's proposal is what it is. */
+            basis: components["schemas"]["ProposalBasis"];
+            /** @description The share this category declares now, which is what behaviour is compared against. For the vacancy it is the share the Areas have not claimed. */
+            declaredPercent: components["schemas"]["WireDecimal"];
+            /** @description What this category actually held across the fully confirmed weeks, as a share of their discretionary time, to a tenth of a point. */
+            observedPercent: components["schemas"]["WireDecimal"];
+            /** @description The share to declare: the declared one moved HALF the distance to the observed one, truncated, and bounded to 0..100. Half rather than the whole, because a budget that ratifies whatever happened cannot starve an Area, which is what it exists to prevent. */
+            proposedPercent: components["schemas"]["WireDecimal"];
+            /**
+             * Statement
+             * @description The same reason as a sentence, for a caller that renders.
+             */
+            statement: string;
+        };
+        /**
          * RampReading
          * @description How much of the sealed ramp this tenant's Areas are using.
          *
@@ -3824,6 +4063,40 @@ export interface components {
          * @enum {string}
          */
         ReviewCadence: "on_demand" | "quarterly";
+        /**
+         * ReviewDayCounts
+         * @description How many of a period's days were answered for, left unanswered, and declared away.
+         *
+         *     The three are separate quantities. Off-plan days are reported SEPARATELY from unconfirmed days
+         *     because an off-plan day is one the user declared away rather than one they failed to answer for,
+         *     and counting a holiday as a lapse is what US-REV-04 exists to prevent.
+         *
+         *     They need not sum to the period's length: a day holding no block is none of the three, since
+         *     there is nothing to answer for and counting it would report a backlog of days on which nothing
+         *     was planned.
+         */
+        ReviewDayCounts: {
+            /**
+             * Confirmed
+             * @description Days every block of which carries a confirmation.
+             */
+            confirmed: number;
+            /**
+             * Offplan
+             * @description Days covered end to end by a declared off-plan period. Not unconfirmed: there was nothing to answer for.
+             */
+            offPlan: number;
+            /**
+             * Statement
+             * @description Why the charts for this period hold nothing, stated when no day of it was confirmed. Null otherwise.
+             */
+            statement?: string | null;
+            /**
+             * Unconfirmed
+             * @description Days holding blocks that have not been answered for. These contribute nothing to any figure in this payload.
+             */
+            unconfirmed: number;
+        };
         /** @enum {string} */
         RevisionReason: "auto_applied_fill" | "user_approved" | "tradeoff_approved" | "anchor_delta" | "materialized" | "horizon_advanced";
         /** @enum {string} */
@@ -4621,6 +4894,23 @@ export interface components {
         TravelOverridesResponse: {
             /** Overrides */
             overrides: components["schemas"]["TravelOverrideResponse"][];
+        };
+        /**
+         * TrendWeekResponse
+         * @description One week of the trend, which renders as one stacked bar.
+         *
+         *     Never a line: the Area ramp is sealed to a wedge fill and a bar fill, so a time series drawn as
+         *     a line has no legal ink at all.
+         */
+        TrendWeekResponse: {
+            days: components["schemas"]["ReviewDayCounts"];
+            /**
+             * Period
+             * @description The ISO week this bar covers, such as '2026-W07'.
+             */
+            period: string;
+            /** Slices */
+            slices: components["schemas"]["CategoryReadingResponse"][];
         };
         /** Format: time */
         WallTime: string;
@@ -9018,6 +9308,125 @@ export interface operations {
             };
             /** @description Conflict with the current state */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_budget_review_api_v1_reviews_budget_get: {
+        parameters: {
+            query: {
+                /** @description The ISO week the review is anchored at, such as '2026-W07'. Composition and deviation are that week's; the trend and the proposal are the quarter ending with it. */
+                period: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetReviewResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    apply_budget_review_api_v1_reviews_budget_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BudgetApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetApplyResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

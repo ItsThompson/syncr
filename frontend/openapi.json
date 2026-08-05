@@ -744,6 +744,28 @@
         "title": "AnchorsResponse",
         "type": "object"
       },
+      "AppliedShare": {
+        "additionalProperties": false,
+        "description": "One Area's share, as a caller asks for it to be declared.",
+        "properties": {
+          "areaId": {
+            "description": "The Area to declare this share on. The vacancy has no row here: it is not an Area, so its share follows from the Areas' own.",
+            "format": "uuid",
+            "title": "Areaid",
+            "type": "string"
+          },
+          "budgetPercent": {
+            "$ref": "#/components/schemas/WireDecimal",
+            "description": "The share to declare. Shares summing past 100 across Areas are accepted and reported as oversubscription, never rejected."
+          }
+        },
+        "required": [
+          "areaId",
+          "budgetPercent"
+        ],
+        "title": "AppliedShare",
+        "type": "object"
+      },
       "AreaBudgetReading": {
         "description": "One Area's row of the report.\n\n``targetMinutes`` is the Area's floor plus its share of what the floors leave. It is gross:\nnetted against nothing, because it is a reporting figure rather than a reservation.",
         "properties": {
@@ -1479,6 +1501,106 @@
           }
         ]
       },
+      "BudgetApplyRequest": {
+        "additionalProperties": false,
+        "description": "The shares to declare, whether they are the proposal's own or adjusted ones.\n\nThere is no \"apply wholly\" flag, and the absence is the contract. A caller applying the\nproposal sends the proposal's figures; a caller adjusting it sends its own. One path, so an\nadjusted revision cannot take a route a whole one does not.\n\nAn Area the request does not name is left alone, which is what makes rejecting one row of a\nproposal expressible without restating the rest.",
+        "properties": {
+          "percentages": {
+            "description": "At least one Area's share. An empty list is refused rather than applied as a no-op: it is a request that states nothing, and answering 200 to one would report a revision nobody made.",
+            "items": {
+              "$ref": "#/components/schemas/AppliedShare"
+            },
+            "minItems": 1,
+            "title": "Percentages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "percentages"
+        ],
+        "title": "BudgetApplyRequest",
+        "type": "object"
+      },
+      "BudgetApplyResponse": {
+        "description": "What one apply changed, and the two figures the caller needs immediately afterwards.",
+        "properties": {
+          "applied": {
+            "description": "How many Areas' shares this call changed. A share replaced by the value it already held is not one of them, so nothing was written and no solve was invalidated.",
+            "title": "Applied",
+            "type": "integer"
+          },
+          "changedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the change was applied, or null when nothing changed.",
+            "title": "Changedat"
+          },
+          "declared": {
+            "description": "The Areas whose share this call changed, so a caller can render exactly what moved.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Declared",
+            "type": "array"
+          },
+          "statement": {
+            "description": "What was applied, in one sentence.",
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applied",
+          "declared",
+          "statement"
+        ],
+        "title": "BudgetApplyResponse",
+        "type": "object"
+      },
+      "BudgetProposalResponse": {
+        "description": "The proposed revision, or the count that says why there is not one yet.\n\n``shares`` is empty exactly when ``confirmedWeeks`` is below ``requiredWeeks``. Both counts are\npresent either way, because the count is the answer to \"why is this empty\" and a caller that had\nto infer it from an empty list would be inferring it.",
+        "properties": {
+          "confirmedWeeks": {
+            "description": "How many weeks of the quarter were FULLY confirmed. A partly confirmed week is reported in the day counts but is not evidence: its actuals cover some days and its denominator covers all seven.",
+            "title": "Confirmedweeks",
+            "type": "integer"
+          },
+          "requiredWeeks": {
+            "description": "How many fully confirmed weeks a proposal needs. A quarter, which is 13.",
+            "title": "Requiredweeks",
+            "type": "integer"
+          },
+          "shares": {
+            "description": "One row per Area, then the vacancy. Empty until the quarter's worth of confirmed weeks exists.",
+            "items": {
+              "$ref": "#/components/schemas/ProposedShareResponse"
+            },
+            "title": "Shares",
+            "type": "array"
+          },
+          "statement": {
+            "description": "What the proposal rests on, or how much evidence is missing. Always present: both readings are something the reader needs.",
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmedWeeks",
+          "requiredWeeks",
+          "shares",
+          "statement"
+        ],
+        "title": "BudgetProposalResponse",
+        "type": "object"
+      },
       "BudgetResponse": {
         "description": "One period's discretionary time, and how the Areas divide it.",
         "properties": {
@@ -1540,6 +1662,126 @@
           "areas"
         ],
         "title": "BudgetResponse",
+        "type": "object"
+      },
+      "BudgetReviewResponse": {
+        "description": "One period's pie review: the figures, the categories, the trend, and the proposal.",
+        "properties": {
+          "categories": {
+            "description": "One row per declared Area, then the vacancy, in the order the wedges are drawn. This is the NAMED WEEK's composition and its actual against target.",
+            "items": {
+              "$ref": "#/components/schemas/CategoryReadingResponse"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "days": {
+            "$ref": "#/components/schemas/ReviewDayCounts",
+            "description": "The named week's own day counts."
+          },
+          "discretionaryMinutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The denominator every share here is measured against, taken from the week's own plan of record, which is the figure the week was solved against. Null when the week holds no plan.",
+            "title": "Discretionaryminutes"
+          },
+          "offPlanMinutes": {
+            "description": "How many of the period's minutes were declared off-plan, clipped to the period.",
+            "title": "Offplanminutes",
+            "type": "integer"
+          },
+          "offPlanStatement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why every figure above is zero, stated when the period was off-plan from end to end. Null otherwise.",
+            "title": "Offplanstatement"
+          },
+          "oversubscriptionMinutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How far the Area targets exceed discretionary time. Zero when they fit. A SEPARATE quantity from unallocatedMinutes, and never rendered as a negative one. Null with no plan of record.",
+            "title": "Oversubscriptionminutes"
+          },
+          "period": {
+            "description": "The ISO week the review is anchored at, such as '2026-W07'.",
+            "title": "Period",
+            "type": "string"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/BudgetProposalResponse"
+          },
+          "quarterDays": {
+            "$ref": "#/components/schemas/ReviewDayCounts",
+            "description": "The whole reviewed quarter's day counts, summed from the trend's weeks."
+          },
+          "span": {
+            "$ref": "#/components/schemas/PeriodSpan"
+          },
+          "statement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the figures above are null, stated when the week holds no plan of record. Null otherwise.",
+            "title": "Statement"
+          },
+          "trend": {
+            "description": "The quarter by week, oldest first, ending with the named week.",
+            "items": {
+              "$ref": "#/components/schemas/TrendWeekResponse"
+            },
+            "title": "Trend",
+            "type": "array"
+          },
+          "unallocatedMinutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Discretionary minutes covered by NO confirmed block carrying an Area. Never negative, and not zero merely because the shares sum to 100. Null with no plan of record.",
+            "title": "Unallocatedminutes"
+          }
+        },
+        "required": [
+          "period",
+          "span",
+          "discretionaryMinutes",
+          "unallocatedMinutes",
+          "oversubscriptionMinutes",
+          "offPlanMinutes",
+          "days",
+          "quarterDays",
+          "categories",
+          "trend",
+          "proposal"
+        ],
+        "title": "BudgetReviewResponse",
         "type": "object"
       },
       "CadenceKind": {
@@ -1769,6 +2011,48 @@
           "sources"
         ],
         "title": "CalendarSourcesResponse",
+        "type": "object"
+      },
+      "CategoryReadingResponse": {
+        "description": "One category's row: what it was allotted, and what it actually held.",
+        "properties": {
+          "actualMinutes": {
+            "description": "Minutes this category really held, over the CONFIRMED days of the period only, with off-plan spans excluded entirely. A skipped block contributes nothing, a partial contributes the minutes it reported, and a moved block contributes the interval it happened in.",
+            "title": "Actualminutes",
+            "type": "integer"
+          },
+          "areaId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Area this row is about, or NULL for the vacancy: discretionary time covered by no block carrying an Area. The vacancy is a category rather than an absence, and it is never a negative Area figure.",
+            "title": "Areaid"
+          },
+          "targetMinutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Area's floor plus its share of the discretionary time its floors leave, for this week. Null when the week holds no plan of record, because a target divides a denominator that week does not have. For the vacancy it is what the Areas' own targets leave.",
+            "title": "Targetminutes"
+          }
+        },
+        "required": [
+          "areaId",
+          "targetMinutes",
+          "actualMinutes"
+        ],
+        "title": "CategoryReadingResponse",
         "type": "object"
       },
       "CheckReading": {
@@ -4297,6 +4581,67 @@
         "title": "ProjectsResponse",
         "type": "object"
       },
+      "ProposalBasis": {
+        "description": "Why one category's proposal is what it is.\n\nA closed vocabulary rather than free prose, so a caller may group rows by reason and a\nrenderer's sentence for each is one table rather than a formatting decision per row.",
+        "enum": [
+          "floor_holds_it",
+          "never_met",
+          "sustained_under",
+          "sustained_over",
+          "already_there"
+        ],
+        "title": "ProposalBasis",
+        "type": "string"
+      },
+      "ProposedShareResponse": {
+        "description": "One row of the proposed revision: what is declared, what happened, and what to declare.",
+        "properties": {
+          "areaId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Area this row is about, or NULL for the vacancy: discretionary time covered by no block carrying an Area. The vacancy is a category rather than an absence, and it is never a negative Area figure.",
+            "title": "Areaid"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/ProposalBasis",
+            "description": "Why this row's proposal is what it is."
+          },
+          "declaredPercent": {
+            "$ref": "#/components/schemas/WireDecimal",
+            "description": "The share this category declares now, which is what behaviour is compared against. For the vacancy it is the share the Areas have not claimed."
+          },
+          "observedPercent": {
+            "$ref": "#/components/schemas/WireDecimal",
+            "description": "What this category actually held across the fully confirmed weeks, as a share of their discretionary time, to a tenth of a point."
+          },
+          "proposedPercent": {
+            "$ref": "#/components/schemas/WireDecimal",
+            "description": "The share to declare: the declared one moved HALF the distance to the observed one, truncated, and bounded to 0..100. Half rather than the whole, because a budget that ratifies whatever happened cannot starve an Area, which is what it exists to prevent."
+          },
+          "statement": {
+            "description": "The same reason as a sentence, for a caller that renders.",
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "areaId",
+          "declaredPercent",
+          "observedPercent",
+          "proposedPercent",
+          "basis",
+          "statement"
+        ],
+        "title": "ProposedShareResponse",
+        "type": "object"
+      },
       "RampReading": {
         "description": "How much of the sealed ramp this tenant's Areas are using.\n\nReported on the list and on every mutation, because both change it. ``statement`` is\nnon-null exactly when two Areas hold one step, which is what a thirteenth Area produces:\nthe ramp repeats rather than inventing a thirteenth ink, and the interface has to say so.",
         "properties": {
@@ -4556,6 +4901,45 @@
         ],
         "title": "ReviewCadence",
         "type": "string"
+      },
+      "ReviewDayCounts": {
+        "description": "How many of a period's days were answered for, left unanswered, and declared away.\n\nThe three are separate quantities. Off-plan days are reported SEPARATELY from unconfirmed days\nbecause an off-plan day is one the user declared away rather than one they failed to answer for,\nand counting a holiday as a lapse is what US-REV-04 exists to prevent.\n\nThey need not sum to the period's length: a day holding no block is none of the three, since\nthere is nothing to answer for and counting it would report a backlog of days on which nothing\nwas planned.",
+        "properties": {
+          "confirmed": {
+            "description": "Days every block of which carries a confirmation.",
+            "title": "Confirmed",
+            "type": "integer"
+          },
+          "offPlan": {
+            "description": "Days covered end to end by a declared off-plan period. Not unconfirmed: there was nothing to answer for.",
+            "title": "Offplan",
+            "type": "integer"
+          },
+          "statement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the charts for this period hold nothing, stated when no day of it was confirmed. Null otherwise.",
+            "title": "Statement"
+          },
+          "unconfirmed": {
+            "description": "Days holding blocks that have not been answered for. These contribute nothing to any figure in this payload.",
+            "title": "Unconfirmed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confirmed",
+          "unconfirmed",
+          "offPlan"
+        ],
+        "title": "ReviewDayCounts",
+        "type": "object"
       },
       "RevisionReason": {
         "enum": [
@@ -5845,6 +6229,33 @@
           "overrides"
         ],
         "title": "TravelOverridesResponse",
+        "type": "object"
+      },
+      "TrendWeekResponse": {
+        "description": "One week of the trend, which renders as one stacked bar.\n\nNever a line: the Area ramp is sealed to a wedge fill and a bar fill, so a time series drawn as\na line has no legal ink at all.",
+        "properties": {
+          "days": {
+            "$ref": "#/components/schemas/ReviewDayCounts"
+          },
+          "period": {
+            "description": "The ISO week this bar covers, such as '2026-W07'.",
+            "title": "Period",
+            "type": "string"
+          },
+          "slices": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryReadingResponse"
+            },
+            "title": "Slices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "period",
+          "slices",
+          "days"
+        ],
+        "title": "TrendWeekResponse",
         "type": "object"
       },
       "WallTime": {
@@ -11431,6 +11842,153 @@
         "summary": "Change a name, deadline, or status",
         "tags": [
           "areas"
+        ]
+      }
+    },
+    "/api/v1/reviews/budget": {
+      "get": {
+        "description": "One quarter's pie review, anchored at ``period``. Writes nothing.",
+        "operationId": "read_budget_review_api_v1_reviews_budget_get",
+        "parameters": [
+          {
+            "description": "The ISO week the review is anchored at, such as '2026-W07'. Composition and deviation are that week's; the trend and the proposal are the quarter ending with it.",
+            "in": "query",
+            "name": "period",
+            "required": true,
+            "schema": {
+              "description": "The ISO week the review is anchored at, such as '2026-W07'. Composition and deviation are that week's; the trend and the proposal are the quarter ending with it.",
+              "title": "Period",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Composition, trend, deviation, and the proposed percentages",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/reviews/budget/apply": {
+      "post": {
+        "description": "Declare the shares the caller sent. The proposal's own figures, or its own edits of them.",
+        "operationId": "apply_budget_review_api_v1_reviews_budget_apply_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetApplyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Apply proposed percentages, wholly or adjusted",
+        "tags": [
+          "reviews"
         ]
       }
     },
