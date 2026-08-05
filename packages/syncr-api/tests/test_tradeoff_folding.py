@@ -31,19 +31,23 @@ from syncr_api.plans.folding import FOLDED_FIELDS, Concessions, fold
 from syncr_api.plans.tradeoffs import Offer, offered_tradeoffs
 from syncr_domain.feasibility import DeadlineDemand, ShortfallKind, probe
 from syncr_domain.fixtures import elastic_sleep
-from syncr_domain.plan import AdjustmentKind
+from syncr_domain.identity import BindingRef
+from syncr_domain.plan import AdjustmentKind, Block
 from syncr_domain.preferences import PreferenceOwner, PreferenceOwnerKind
 from syncr_solver.inputs import AreaBudget, EligibleTask, FrameEntry, SolveInputs, WeekAdjustment
 from tests.assembly_fakes import (
+    A_REASON,
     MINUTES_PER_HOUR,
     NOW,
     WEEK,
     FakeAdjustments,
     FakeAreas,
     FakeOffPlan,
+    FakePlacements,
     FakePreferences,
     FakeRoutines,
     FakeTasks,
+    a_plan,
     a_preference,
     a_routine,
     a_task,
@@ -501,3 +505,64 @@ async def test_dropping_and_excusing_one_task_compose_to_one_answer_in_either_or
     assert forward.deadline_demands == ()
     assert forward.eligible_tasks == backward.eligible_tasks
     assert forward.deadline_demands == backward.deadline_demands
+
+
+async def test_a_reduction_frees_nothing_the_live_plan_still_commits_that_night_to() -> None:
+    # A measurement rather than a rule, recorded because the direction is not obvious and the figure
+    # is what a reader would otherwise assume.
+    #
+    # The frame arrives shortened by the fold, so the week's occupancy releases the twenty minutes.
+    # The live plan still holds THAT NIGHT'S BLOCK at its declared length, and free capacity
+    # subtracts every placement, so the released span stays committed until the solve this
+    # request asks for re-places it. The concession's stated recovery is the minutes it hands
+    # back to the week, which is true; the gap moves when the plan catches up.
+    #
+    # This is not the double-subtraction shape: one set is subtracted once by each of two
+    # quantities that answer different questions. `placed` is what the week has committed and the
+    # frame is what it reserves, and the pair is what the next solve reconciles. A frame block
+    # carries no Area, by the document's own rule, so no Area figure is involved either way.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(95))
+    sleep = _elastic_sleep()
+    tuesday = elastic_sleep.TUESDAY
+    committed = FakePlacements(
+        live_plan=a_plan(
+            blocks=[
+                Block(
+                    iso_week=WEEK,
+                    interval=elastic_sleep.TUESDAY_NIGHT,
+                    binding=BindingRef.for_routine(sleep.id, on=tuesday),
+                    title=elastic_sleep.TITLE,
+                    reason=A_REASON,
+                )
+            ]
+        )
+    )
+    assembler = an_assembler(
+        areas=FakeAreas([fitness]), routines=FakeRoutines([sleep]), placements=committed
+    )
+    before = await assembler.assemble(WEEK, elastic_sleep.NOW)
+    offer = next(
+        one
+        for one in offered_tradeoffs(before, probe(before.for_probe()))
+        if one.tradeoff.kind is AdjustmentKind.REDUCE_ROUTINE
+    )
+
+    after = await assembler.assemble(
+        WEEK, elastic_sleep.NOW, offer.as_candidate(adjustment_id=uuid4())
+    )
+
+    # The frame really is shorter, and the whole-week denominator really does grow by the reduction.
+    tuesday_night = next(
+        entry for entry in after.frame if entry.occurrence_key == tuesday.isoformat()
+    )
+    assert tuesday_night.interval.total_minutes() == elastic_sleep.DURATION_MINUTES - 20
+    assert (
+        probe(after.for_probe()).discretionary_minutes
+        - probe(before.for_probe()).discretionary_minutes
+        == offer.recovers
+    )
+    # And the gap falls by the two nights the plan does NOT hold a block for, not by all three: the
+    # Tuesday block still commits its own twenty minutes.
+    held = minutes_of(probe(before.for_probe()), ShortfallKind.FLOORS_EXCEED_CAPACITY)
+    left = minutes_of(probe(after.for_probe()), ShortfallKind.FLOORS_EXCEED_CAPACITY)
+    assert held - left == offer.recovers - 20
