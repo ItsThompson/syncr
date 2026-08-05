@@ -39,12 +39,15 @@ Every instant is a **literal**, as in the other fixtures here, and
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.intervals import Interval
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from syncr_domain.zones import Date
 
 WEEK: Final = IsoWeek(2026, 7)
@@ -71,11 +74,15 @@ WEDNESDAY: Final[Date] = date(2026, 2, 11)
 THURSDAY: Final[Date] = date(2026, 2, 12)
 
 # The nights a concession would name, earliest first, as the enumerator would distribute the gap.
-REDUCTIONS: Final[dict[Date, int]] = {
-    TUESDAY: REDUCTION_EACH,
-    WEDNESDAY: REDUCTION_EACH,
-    THURSDAY: REDUCTION_EACH,
-}
+# Read-only in fact rather than by convention: two packages' suites share this object, and `Final`
+# stops a rebinding while leaving a mutation open.
+REDUCTIONS: Final[Mapping[Date, int]] = MappingProxyType(
+    {
+        TUESDAY: REDUCTION_EACH,
+        WEDNESDAY: REDUCTION_EACH,
+        THURSDAY: REDUCTION_EACH,
+    }
+)
 
 # How the label reads, which names the nights because the concession stores them.
 LABEL: Final = "Reduce Sleep by 20m on Tue, Wed and Thu"
