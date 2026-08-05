@@ -88,7 +88,7 @@ REASONS
   dominant       20   at most 1 per block
   floor          20   at most 1 per block
   clauses       115   over 61 blocks
-  widest          5   Gym · Pull
+  widest          5   Gym · Pull, Gym · Push, Placement Admin
 
 OBJECTIVE
   deadline_risk        0.000000

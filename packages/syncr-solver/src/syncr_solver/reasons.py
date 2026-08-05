@@ -33,12 +33,9 @@ clauses describe, because a choice was made about it.
 
 ## The share a ``dominant`` clause renders is the PLAN's
 
-Three of the seven objective terms have no per-block reading: an Area's budget deviation is a
-week's gap, churn counts moves across the whole document, and staleness is measured over
-occurrences the plan does not hold at all. A per-block share would need an attribution rule for
-each, invented to satisfy a sentence rather than to answer a question the objective asks. The
-breakdown already answers "which term carried this week, and by how much", so that is what the
-clause names, and every block of one plan carries the same one.
+Three of the seven objective terms have no per-block reading at all, so the share is the term's
+fraction of what the whole plan costs and every block of one plan carries the same one. The
+argument for that lives on :class:`syncr_domain.reasons.Dominant`, which owns the field.
 
 ## The two floor figures a clause renders are over two different sets, deliberately
 
@@ -95,11 +92,14 @@ if TYPE_CHECKING:
     from syncr_solver.reading import DemandKey
 
 # The objective term whose clause names the plan it was measured against. The only term of the
-# seven that is a difference from another document rather than a fact about this one.
+# seven that is a difference from another document rather than a fact about this one. Crossed
+# against the objective's own vocabulary by a test, because this is a second spelling of a name
+# `weights.OBJECTIVE_TERMS` owns.
 CHURN: Final = "churn"
 
 # How many refused windows one block reports, read from the budget rather than restated: the log
-# is bounded per binding by the same figure, and a third row could never be rendered.
+# is bounded per binding by the same figure, through the same derivation in
+# :data:`syncr_solver.attempt.ROWS_PER_BINDING`, so neither can be raised without the other.
 BLOCKED_PER_BLOCK: Final = CLAUSE_BUDGET[Blocked]
 
 
@@ -119,13 +119,15 @@ def assemble(
     a share of zero.
 
     Pure, and it performs no lookup. The refusals are indexed by demand once for the whole plan
-    rather than scanned per block, so the cost is the assembly itself.
+    rather than scanned per block, and the ``dominant`` clause is built once for the same reason:
+    it names the plan, so it is the same clause for every block that carries one.
     """
     refusals = _by_demand(blocked_log)
     pinned = {pin.binding: pin for pin in pins}
     floors = {area.area_id: area for area in areas}
+    dominant = _dominant_clause(breakdown)
     return tuple(
-        ReasonRecord(_clauses_for(block, refusals, pinned, floors, breakdown))
+        ReasonRecord(_clauses_for(block, refusals, pinned, floors, dominant))
         for block in plan.blocks
     )
 
@@ -159,7 +161,7 @@ def _clauses_for(
     refusals: Mapping[DemandKey, tuple[BlockedCandidate, ...]],
     pinned: Mapping[BindingRef, Pin],
     floors: Mapping[AreaId, AreaBudget],
-    breakdown: ObjectiveBreakdown | None,
+    dominant: tuple[Clause, ...],
 ) -> tuple[Clause, ...]:
     """Every clause this block's record holds: its own determinant, the user's, and the solve's.
 
@@ -176,11 +178,11 @@ def _clauses_for(
     return (
         *_bound_clauses(block),
         *_pin_clauses(pin),
-        *(() if _was_determined(block) else _weighed_clauses(block, refusals, floors, breakdown)),
+        *(() if _was_determined(block) else _weighed_clauses(block, refusals, floors, dominant)),
     )
 
 
-def _bound_clauses(block: Block) -> tuple[Clause, ...]:
+def _bound_clauses(block: Block) -> tuple[Bound, ...]:
     """The clauses naming what determined this block, which are the ones it brought with it."""
     return tuple(clause for clause in block.reason.clauses if isinstance(clause, Bound))
 
@@ -191,6 +193,14 @@ def _pin_clauses(pin: Pin | None) -> tuple[Clause, ...]:
     Both halves of ``instead of`` or neither, which is the same pairing ``Block.pinned`` is set
     from: a pin on content the solve had nothing to move states no superseded placement, so the
     record says the user placed it and claims no trade.
+
+    **``at`` is the pin's own span rather than the block's**, and the two agree because
+    :func:`syncr_solver.inheritance.inherited` seeds a pinned block at the pin. That precedence is
+    contradicted by :mod:`syncr_solver.immovability`'s own prose for a binding that has already
+    begun, and which of the two is right is ticket 1333's question. The clause renders the user's
+    edit either way; a test asserts the two spans agree for a started-and-pinned binding, so a
+    reconciliation there fails loudly here rather than silently renders a span the week does not
+    hold.
     """
     if pin is None:
         return ()
@@ -204,12 +214,12 @@ def _weighed_clauses(
     block: Block,
     refusals: Mapping[DemandKey, tuple[BlockedCandidate, ...]],
     floors: Mapping[AreaId, AreaBudget],
-    breakdown: ObjectiveBreakdown | None,
+    dominant: tuple[Clause, ...],
 ) -> tuple[Clause, ...]:
     """The three clauses that describe a choice, for the content the solver chose to place."""
     return (
         *_blocked_clauses(block, refusals),
-        *_dominant_clause(breakdown),
+        *dominant,
         *_floor_clause(block, floors),
     )
 
@@ -246,9 +256,10 @@ def _dominant_clause(breakdown: ObjectiveBreakdown | None) -> tuple[Clause, ...]
 def _baseline_of(term: str, breakdown: ObjectiveBreakdown) -> ChurnBaseline | None:
     """The plan churn was measured against, for the one term that is measured against a plan.
 
-    Named for churn and for nothing else. A charged churn always names an approved revision and
-    the instant of assent -- the breakdown refuses one that does not -- so the clause cannot claim
-    a comparison that never happened, and a week nobody approved has zero churn and no clause.
+    Named for churn and for nothing else. A charged churn names an approved revision and the
+    instant of assent, because ``ChurnBaseline`` refuses a plan no revision names and the objective
+    refuses a charge with no plan, so the clause cannot claim a comparison that never happened. A
+    week nobody approved has zero churn and no clause at all.
     """
     if term != CHURN:
         return None
@@ -283,11 +294,7 @@ def _was_determined(block: Block) -> bool:
     solver bound into a window. So the partition is the block's own statement about itself rather
     than a second list of the kinds that are derived.
     """
-    return any(
-        isinstance(clause.source, DerivationSource)
-        for clause in _bound_clauses(block)
-        if isinstance(clause, Bound)
-    )
+    return any(isinstance(clause.source, DerivationSource) for clause in _bound_clauses(block))
 
 
 def _by_demand(

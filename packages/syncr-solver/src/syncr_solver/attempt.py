@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Final
 
 from syncr_domain.intervals import IntervalSet
 from syncr_domain.plan import PlanDocument
+from syncr_domain.reasons import CLAUSE_BUDGET, Blocked
 from syncr_solver.chunking import numbered
 from syncr_solver.figures import claimed_intervals, week_figures
 from syncr_solver.ordering import block_key, slot_key
@@ -54,9 +55,11 @@ if TYPE_CHECKING:
     from syncr_solver.reading import DemandKey
     from syncr_solver.state import Sizing
 
-# How many refused windows the log keeps per binding. The clause budget renders two per block, so
-# a third row could never be read and would only grow a document that is appended forever.
-ROWS_PER_BINDING: Final = 2
+# How many refused windows the log keeps per binding, read from the clause budget rather than
+# restated: the record renders two per block, so a third row could never be read and would only
+# grow a document that is appended forever. Derived rather than crossed by a test, so the two
+# figures cannot be raised apart.
+ROWS_PER_BINDING: Final = CLAUSE_BUDGET[Blocked]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

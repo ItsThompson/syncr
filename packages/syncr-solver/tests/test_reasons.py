@@ -38,16 +38,21 @@ from syncr_domain.reasons import (
     InsteadOf,
     Pinned,
 )
+from syncr_solver.attempt import ROWS_PER_BINDING
 from syncr_solver.constraints import Blocked as Rejection
 from syncr_solver.constraints import BlockedCandidate, ConstraintRule
 from syncr_solver.materialize import materialize
 from syncr_solver.metrics import MaterializeCause
-from syncr_solver.reasons import assemble, explained
+from syncr_solver.reasons import BLOCKED_PER_BLOCK, CHURN, assemble, explained
+from syncr_solver.state import PartialPlan
+from syncr_solver.weights import OBJECTIVE_TERMS
 from tests.materialized_weeks import (
     CAREER,
     FITNESS,
+    a_block,
     a_concrete_entry,
     a_frame_entry,
+    a_live_plan,
     a_pin,
     a_prep_block,
     a_slot,
@@ -253,17 +258,17 @@ class TestTheInstrumentFailsOnAFabricatedClause:
 
     def test_a_real_record_is_traceable(self) -> None:
         """The other half of the control: the reading accepts what the solve did compute."""
-        result = a_solved_week(areas=(a_floored_area(target_minutes=60),))
-        week = result.document
+        area = a_floored_area(target_minutes=60)
+        result = a_solved_week(areas=(area,))
 
-        for block in week.blocks:
+        for block in result.document.blocks:
             assert (
                 untraceable(
                     block,
                     log=result.blocked_log,
                     breakdown=result.objective_breakdown,
                     pins=(),
-                    areas=(a_floored_area(target_minutes=60),),
+                    areas=(area,),
                 )
                 == []
             ), block.title
@@ -709,6 +714,39 @@ class TestThePinClauses:
         assert "InsteadOf" not in kinds_in(block.reason)
         assert block.pinned is False
 
+    def test_the_span_the_clause_names_is_the_span_the_week_holds_the_block_at(self) -> None:
+        """For a binding that has BEGUN and is pinned elsewhere, which is where the two could part.
+
+        The clause renders the pin's own interval. It agrees with the block's because the inherited
+        set seeds a pinned block at the pin unconditionally, and ``immovability``'s prose describes
+        the opposite precedence for this exact input: a started binding whose pin is refused. Which
+        module is right is ticket 1333's question, and this assertion is what makes the answer
+        visible here instead of silently rendering a span the week does not hold.
+        """
+        occurrence = an_occurrence(habit_id=A_HABIT, index=0, minutes=60, area_id=FITNESS)
+        began = between(9, 10)
+        pinned_at = between(15, 16)
+        week = a_week(
+            now=began.end,
+            habit_occurrences=(occurrence,),
+            live_plan=a_live_plan(
+                a_block(binding=occurrence.binding, interval=began, title=occurrence.title)
+            ),
+            pins=(a_pin(binding=occurrence.binding, interval=pinned_at),),
+        )
+        result = solved(week)
+        block = next(
+            block for block in result.document.blocks if block.binding == occurrence.binding
+        )
+        clause = only(Pinned, block.reason.clauses)
+
+        # The precondition, asserted rather than assumed: without it this is a test about an
+        # ordinary pin and the precedence it exists for is never reached.
+        assert occurrence.binding in PartialPlan.of(week).started
+        assert isinstance(clause, Pinned)
+        assert clause.at == block.interval
+        assert clause.at == pinned_at
+
     def test_the_pin_glyph_and_the_instead_of_clause_are_the_same_pairing(self) -> None:
         """``Block.pinned`` is set from the pair, so the two cannot report different things."""
         occurrence = an_occurrence(habit_id=A_HABIT, index=0, minutes=60, area_id=FITNESS)
@@ -827,6 +865,23 @@ class TestWhatABoundaryInputDoesToTheBudget:
         assert [
             clause.window for clause in reversed_record.clauses if isinstance(clause, Blocked)
         ] == [second.window, first.window]
+
+
+class TestWhatTheModuleIsBoundedBy:
+    """The two figures and the one term name this module shares with something that owns them."""
+
+    def test_the_log_keeps_exactly_as_many_rows_as_a_block_may_report(self) -> None:
+        """Both derive from the clause budget, so neither can be raised without the other.
+
+        The log's bound exists BECAUSE the record renders two, which the attempt's own comment
+        states. Stated in two modules and asserted here, a third row could be kept and never read.
+        """
+        assert BLOCKED_PER_BLOCK == ROWS_PER_BINDING == CLAUSE_BUDGET[Blocked]
+
+    def test_the_term_the_baseline_is_named_for_is_one_the_objective_computes(self) -> None:
+        """A second spelling of a name the weight set owns, crossed rather than trusted."""
+        assert CHURN in OBJECTIVE_TERMS
+        assert CHURN in a_breakdown().costs()
 
 
 # --------------------------------------------------------------------------------------

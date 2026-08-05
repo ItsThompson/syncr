@@ -19,6 +19,10 @@ block would add sixty lines whose values repeat, because the ``dominant`` clause
 the ``floor`` clause names an Area: what changes when an attachment rule changes is the COUNT per
 kind and the widest record, so those are what the file holds. The clauses of the blocks that carry
 more than one are asserted here instead, where the assertion can name the block.
+
+**The widest record is recorded as every title that ties for it**, sorted, because two blocks of
+this week carry five clauses each: taking the first would make a reordering of the document rewrite
+this line while nothing about the records changed.
 """
 
 from __future__ import annotations
@@ -128,10 +132,11 @@ def rendered(result: SolveResult) -> str:
         f"  {clause_label(kind):12} {census[kind.__name__]:4}   at most {allowed} per block"
         for kind, allowed in CLAUSE_BUDGET.items()
     ]
-    widest = max(document.blocks, key=lambda block: len(block.reason.clauses))
+    widest = max(len(block.reason.clauses) for block in document.blocks)
+    tied = sorted({block.title for block in document.blocks if len(block.reason.clauses) == widest})
     lines += [
         f"  {'clauses':12} {sum(census.values()):4}   over {len(document.blocks)} blocks",
-        f"  widest       {len(widest.reason.clauses):4}   {widest.title}",
+        f"  widest       {widest:4}   {', '.join(tied)}",
     ]
     lines += ["", "OBJECTIVE"]
     lines += [
