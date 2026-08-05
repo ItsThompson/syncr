@@ -5,14 +5,15 @@
  * verdict. The paint is a browser's business and the declarations are the stylesheet tests'. */
 
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import { EmptyWeek } from "../EmptyWeek";
 import { SummaryStrip } from "../SummaryStrip";
 import { TimeAxis } from "../TimeAxis";
 import { WeekGrid } from "../WeekGrid";
-import { GRID_H_PX } from "../metrics";
+import { DAY_HEADER_H_PX, GRID_H_PX } from "../metrics";
 import type { ReactElement } from "react";
 
 import type { Extent, GridBlock, StripReadings, WeekDay } from "..";
@@ -50,6 +51,10 @@ function day(date: string, blocks: readonly GridBlock[] = []): WeekDay {
     bands: [],
   };
 }
+
+/** The one canvas a single-column grid draws, whose height is where a clamped zoom is observable. */
+const canvasHeightOf = (container: Element): string =>
+  (container.querySelector(".week-day__canvas") as HTMLElement).style.height;
 
 /* Both of the empty week's destinations are routes this application owns, so both are `Link`s and both need a router:
  * a raw `href` would reload the document to reach a screen already in memory. */
@@ -376,5 +381,98 @@ describe("the week with no plan", () => {
     );
 
     expect(container.innerHTML).not.toMatch(/spin|shimmer|skeleton|pulse|progress/i);
+  });
+
+  /* THE REPAIR ARRIVES AT THE SCREEN RATHER THAN RELOADING THE DOCUMENT, asserted by taking it.
+   *
+   * Both destinations are routes this application owns. A raw `<a href>` and a `Link` are indistinguishable by role,
+   * by href and by name, which is why the first version of these tests could not see that the repairs shipped as raw
+   * anchors: what separates them is that only one of the two NAVIGATES inside the application. Driven through a real
+   * router, so the assertion is that the destination rendered. */
+  it.each([
+    ["setup_incomplete" as const, "Finish setting up", "the setup screen"],
+    ["outside_horizon" as const, "Extend the horizon", "the settings screen"],
+  ])("reaches %s's destination without reloading", async (reason, label, destination) => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/week"]}>
+        <Routes>
+          <Route
+            element={
+              <EmptyWeek
+                {...actions}
+                extendHorizonHref="/settings"
+                reason={reason}
+                setupHref="/setup"
+                statement="No plan yet."
+              />
+            }
+            path="/week"
+          />
+          <Route element={<p>the setup screen</p>} path="/setup" />
+          <Route element={<p>the settings screen</p>} path="/settings" />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("link", { name: label }));
+
+    expect(screen.getByText(destination)).toBeInTheDocument();
+  });
+});
+
+/* THE CLAMP IS THE GRID'S, AGAINST THE HEIGHT IT MEASURES.
+ *
+ * Nothing is laid out in a headless DOM, so the arithmetic falls back to the reference display's grid and every other
+ * test in this file reads that fallback. What these two assert is the WIRING: a measured height reaches the clamp, so
+ * a 27 inch reader's stored 24 renders at 24 and a short window's does not render at a level the modal block cannot
+ * hold. Clamping above this component made both impossible, and no test could see it because the constant and the
+ * fallback are the same number.
+ *
+ * `clientHeight` is stubbed on the prototype rather than mocked on an instance, because the hook reads it through the
+ * ref it observes and there is no instance to reach before the effect runs. */
+describe("the clamp against a measured height", () => {
+  function renderMeasuring(heightPx: number, visibleHours: number): string {
+    const original = Object.getOwnPropertyDescriptor(Element.prototype, "clientHeight");
+    Object.defineProperty(Element.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return heightPx;
+      },
+    });
+    try {
+      const { container } = render(
+        <WeekGrid
+          days={[day(DATES[0])]}
+          extent={EXTENT}
+          labels={[DATES[0]]}
+          nowMs={null}
+          visibleHours={visibleHours}
+        />,
+      );
+      return canvasHeightOf(container);
+    } finally {
+      if (original === undefined)
+        delete (Element.prototype as { clientHeight?: unknown }).clientHeight;
+      else Object.defineProperty(Element.prototype, "clientHeight", original);
+    }
+  }
+
+  it("offers the whole range on a display tall enough for it, rather than the reference cap", () => {
+    /* A 27 inch grid measures 1136px, whose honest cap is 24. Clamped against the reference constant this renders at
+     * 16, which is a third of the range taken away from the reader who paid for the display. */
+    const grid = 1136 + DAY_HEADER_H_PX;
+    const atTwentyFour = ((EXTENT.endMin - EXTENT.startMin) * (1136 / (24 * 60))).toFixed(3);
+
+    expect(renderMeasuring(grid, 24)).toBe(`${atTwentyFour}px`);
+  });
+
+  it("caps a short window below the reference cap, where the modal block would lose its title", () => {
+    /* 500px of grid caps at 13 hours: floor(500 * 30 / (19 * 60)). Clamped against the reference constant this would
+     * render at 16, and a thirty-minute block would be 15.6px, below the 19px label floor. */
+    const grid = 500 + DAY_HEADER_H_PX;
+    const atThirteen = ((EXTENT.endMin - EXTENT.startMin) * (500 / (13 * 60))).toFixed(3);
+
+    expect(renderMeasuring(grid, 24)).toBe(`${atThirteen}px`);
   });
 });

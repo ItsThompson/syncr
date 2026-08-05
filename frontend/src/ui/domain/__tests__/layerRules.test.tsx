@@ -324,3 +324,45 @@ describe("the layer's stylesheets", () => {
     expect(dead).toEqual([]);
   });
 });
+
+/* A COMPONENT THAT NAVIGATES TO A ROUTE THIS APPLICATION OWNS RENDERS A `Link`, NOT A RAW ANCHOR.
+ *
+ * A raw `<a href>` to an in-app route reloads the document: it discards the cache and re-runs the gate and the bundle
+ * to reach a screen already in memory. The empty week's two repairs shipped that way, and no test could see it,
+ * because an `<a href>` is a link by role exactly as a `Link` is.
+ *
+ * THE RULE IS ABOUT A LITERAL IN-APP PATH, and it has to be. A notice's action href arrives as DATA and may point
+ * anywhere, including at an account page this product does not serve, so `NoticePanel` and `NoticeStrip` are right to
+ * draw a raw anchor and this file cannot judge where they lead. What IS judgeable is a path written in the source. */
+describe("the layer navigates without reloading", () => {
+  /** An `href` whose value is a literal path this application routes, rather than a prop that could lead anywhere. */
+  const LITERAL_IN_APP_HREF = /<a\s[^>]*href=\{?"\//;
+
+  it("writes no raw anchor to a path of its own, anywhere in the layer", async () => {
+    const raw = (await layerSources(domainDir))
+      .filter((file) => LITERAL_IN_APP_HREF.test(file.text))
+      .map((file) => file.name);
+
+    expect(raw).toEqual([]);
+  });
+
+  it("leaves a notice's own action a raw anchor, because its destination is data", async () => {
+    const anchored = (await layerSources(domainDir))
+      .filter((file) => /<a\s[^>]*href=\{notice\./.test(file.text))
+      .map((file) => file.name);
+
+    expect(anchored.toSorted()).toEqual(["notices/NoticePanel.tsx", "notices/NoticeStrip.tsx"]);
+  });
+
+  it("reaches an in-app route through react-router's own Link", async () => {
+    const sources = await layerSources(domainDir);
+    const linking = sources.filter((file) => /<Link\b/.test(file.text));
+
+    expect(linking.map((file) => file.name)).toContain("week-grid/EmptyWeek.tsx");
+    for (const file of linking) {
+      expect(file.text, `${file.name} draws a Link without importing one`).toMatch(
+        /import \{[^}]*\bLink\b[^}]*\} from "react-router"/,
+      );
+    }
+  });
+});
