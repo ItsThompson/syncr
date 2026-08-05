@@ -120,8 +120,22 @@ class RecordingSources:
         self.saved.append((source_id, state))
 
 
+@dataclass
+class RecordingCollisions:
+    """Records whether the pass asked for a detection, which only a change may do."""
+
+    asked: list[datetime] = field(default_factory=list)
+
+    async def detect(self, *, now: datetime) -> object:
+        self.asked.append(now)
+        return ()
+
+
 def syncer(
-    adapter: StubAdapter, anchors: RecordingAnchors, sources: RecordingSources
+    adapter: StubAdapter,
+    anchors: RecordingAnchors,
+    sources: RecordingSources,
+    collisions: RecordingCollisions | None = None,
 ) -> SourceSyncer:
     return SourceSyncer(
         sources=sources,  # type: ignore[arg-type]  # a fake over the one method a pass calls
@@ -130,6 +144,7 @@ def syncer(
         # method a pass calls.
         adapters={ICS: adapter},
         anchors=anchors,
+        collisions=collisions or RecordingCollisions(),
         clock=lambda: NOW,
     )
 
@@ -327,3 +342,90 @@ async def test_a_failing_anchor_writer_propagates_and_records_no_partial_state()
     # The invariant that matters: no PARTIAL state. A state written before the anchors it counts
     # would claim a successful sync of rows that were then rolled back.
     assert sources.saved == []
+
+
+# --------------------------------------------------------------------------------
+# When a pass asks for a collision detection.
+#
+# A conflict is detected when the commitment arrives rather than found later by a solve, so the
+# pass that ingested it is what asks. The condition is what matters: a poll runs every fifteen
+# minutes and most of them change nothing, so asking on every attempt would read every horizon
+# week's plan and every commitment in it for no possible answer.
+# --------------------------------------------------------------------------------
+
+
+@dataclass
+class DeltaAnchors:
+    """An anchor writer answering with a stated tally, whichever path it was asked for."""
+
+    delta: AnchorDelta
+
+    async def reconcile(self, source: CalendarSourceRecord, outcome: FetchOutcome) -> AnchorDelta:
+        del source, outcome
+        return self.delta
+
+    async def confirm(self, source: CalendarSourceRecord) -> AnchorDelta:
+        del source
+        return self.delta
+
+    async def mark_possibly_stale(self, source: CalendarSourceRecord) -> AnchorDelta:
+        del source
+        return self.delta
+
+
+@pytest.mark.parametrize(
+    ("delta", "asks"),
+    [
+        (AnchorDelta(created=1, current=1), True),
+        (AnchorDelta(updated=1, current=7), True),
+        (AnchorDelta(removed=2, current=5), False),
+        (AnchorDelta(marked_stale=7, current=7), False),
+        (AnchorDelta(scrubbed=3, current=7), False),
+        (AnchorDelta(current=7), False),
+    ],
+    ids=["created", "updated", "removed-only", "marked-stale", "scrubbed-only", "nothing-changed"],
+)
+async def test_a_detection_is_asked_for_exactly_when_a_commitment_arrived_or_moved(
+    delta: AnchorDelta, asks: bool
+) -> None:
+    collisions = RecordingCollisions()
+    outcome, state = a_read(events=1)
+
+    await syncer(
+        StubAdapter(outcome, state),
+        DeltaAnchors(delta),  # type: ignore[arg-type]  # a writer over the three a pass calls
+        RecordingSources(),
+        collisions,
+    ).sync(a_source())
+
+    assert (collisions.asked == [NOW]) is asks
+
+
+async def test_an_excluded_source_asks_for_no_detection() -> None:
+    # It is not fetched at all, so nothing about the tenant's commitments changed.
+    collisions = RecordingCollisions()
+    outcome, state = a_read(events=3)
+
+    await syncer(
+        StubAdapter(outcome, state), RecordingAnchors(), RecordingSources(), collisions
+    ).sync(a_source(included=False))
+
+    assert collisions.asked == []
+
+
+async def test_a_detection_runs_after_the_sync_state_is_written() -> None:
+    # Both are inside the pass's own transaction, and the order is what makes a raise in the
+    # detection leave a state that says the feed was read: the two land together or neither does.
+    collisions = RecordingCollisions()
+    sources = RecordingSources()
+    outcome, state = a_read(events=1)
+
+    await syncer(
+        StubAdapter(outcome, state),
+        DeltaAnchors(AnchorDelta(created=1, current=1)),  # type: ignore[arg-type]
+        sources,
+        collisions,
+    ).sync(a_source())
+
+    assert sources.saved
+    assert collisions.asked == [NOW]

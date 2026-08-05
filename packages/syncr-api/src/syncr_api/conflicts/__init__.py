@@ -13,6 +13,7 @@ directory, because an index a reader cannot trust is worse than none.
 | ``declarations.py`` | the answer a caller chose, as one value |
 | ``overlapped.py`` | which block a conflict names, and who can move it |
 | ``pins.py`` | the pin release the ``moved`` answer needs, declared where it is needed |
+| ``ingest.py`` | detecting the overlaps a calendar sync just created, against the live plan |
 | ``service.py`` | ``ConflictService``: the read, and what each of the three answers does |
 | ``views.py`` | the pair a resolution answers with: the record, and the solve that reads it |
 | ``schemas.py`` | the wire shapes the two routes read and answer with |

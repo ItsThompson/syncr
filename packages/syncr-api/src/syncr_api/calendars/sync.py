@@ -55,6 +55,7 @@ if TYPE_CHECKING:
 
     from syncr_api.calendars.adapters import CalendarAdapter
     from syncr_api.calendars.anchor_writing import AnchorDelta, AnchorWriter
+    from syncr_api.calendars.collisions import CollisionDetection
     from syncr_api.calendars.config import CalendarProvider
     from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
     from syncr_api.calendars.repository import CalendarSourceRepository
@@ -115,12 +116,14 @@ class SourceSyncer:
         operations: OperationLifecycle,
         adapters: Mapping[CalendarProvider, CalendarAdapter],
         anchors: AnchorWriter,
+        collisions: CollisionDetection,
         clock: Clock,
     ) -> None:
         self._sources = sources
         self._operations = operations
         self._adapters = adapters
         self._anchors = anchors
+        self._collisions = collisions
         self._clock = clock
 
     @property
@@ -145,6 +148,13 @@ class SourceSyncer:
         outcome, state = await self._adapters[source.provider].fetch(source)
         delta = await self._reconciled(source, outcome, state)
         await self._sources.save_sync_state(source.id, delta.recorded_on(state))
+        # After the state is written, and inside the same transaction: a commitment that arrived
+        # or moved is what can land on a planned block, and a conflict is detected when it
+        # arrives rather than found later by a solve, which is what lets the notice name the
+        # block. A pass that removed anchors and a pass that changed nothing both frees space or
+        # nothing, so neither can raise one.
+        if delta.created or delta.updated:
+            await self._collisions.detect(now=self._clock())
         return outcome, state
 
     async def _reconciled(

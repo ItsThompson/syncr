@@ -38,11 +38,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_api.calendars.config import GOOGLE
-from syncr_api.calendars.injection import (
-    build_write_target_adapter,
-    read_horizon_days,
-    read_zone_profile_of,
-)
+from syncr_api.calendars.horizons import read_horizon_days
+from syncr_api.calendars.injection import build_write_target_adapter, read_zone_profile_of
 from syncr_api.calendars.projection_errors import ProjectionFailed, ProjectionRefused
 from syncr_api.calendars.projection_metrics import FAILED, SUCCEEDED, observed
 from syncr_api.calendars.projection_state import (

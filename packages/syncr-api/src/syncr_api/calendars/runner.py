@@ -40,9 +40,11 @@ from syncr_api.anchors.repository import AnchorRepository
 from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.calendars.feeds import create_feed_client
 from syncr_api.calendars.google_transport import create_google_read_client
-from syncr_api.calendars.injection import build_adapters, read_ingest_horizon
+from syncr_api.calendars.horizons import read_ingest_horizon
+from syncr_api.calendars.injection import build_adapters
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.calendars.sync import SourceSyncer, SyncPass
+from syncr_api.conflicts.ingest import IngestConflicts
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
@@ -184,6 +186,7 @@ class CalendarSyncRunner:
             anchors=AnchorReconciler(
                 AnchorRepository(session, tenant_id), AnchorTypeRepository(session, tenant_id)
             ),
+            collisions=IngestConflicts(session, tenant_id),
             clock=self._clock,
         )
         return await syncer.sync_due(now=now)

@@ -136,8 +136,21 @@ def syncer(sources: FakeSources, fetcher: RecordedFetcher, clock: MovableClock) 
         operations=None,  # type: ignore[arg-type]  # a scheduled pass enqueues no operation
         adapters={ICS: adapter},
         anchors=SilentAnchors(),
+        collisions=SilentCollisions(),
         clock=clock,
     )
+
+
+class SilentCollisions:
+    """A collision detection that does nothing, for the tests about the SCHEDULE.
+
+    What a pass asks it and when is asserted in ``test_anchor_sync_routing.py``, against a
+    detection that records the call.
+    """
+
+    async def detect(self, *, now: datetime) -> object:
+        del now
+        return ()
 
 
 class SilentAnchors:

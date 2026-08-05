@@ -48,7 +48,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from syncr_api.calendars.injection import read_horizon_days
+from syncr_api.calendars.horizons import read_horizon_days
 from syncr_api.concessions.config import ISO_WEEK_FIELD
 from syncr_api.core.errors import Conflict
 from syncr_api.core.iso_weeks import require_an_iso_week

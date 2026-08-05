@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_api.areas.repository import AreaRepository
-from syncr_api.calendars.injection import read_horizon_days
+from syncr_api.calendars.horizons import read_horizon_days
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.horizon.weeks import horizon_weeks
 from syncr_api.learned.repository import WeightSetRepository
