@@ -44,11 +44,7 @@ from syncr_api.core.errors import NotFound
 from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
-from syncr_api.outcomes.config import (
-    BLOCK_RESOURCE,
-    MAX_CONFIRM_RANGE_DAYS,
-    UNCONFIRMED_LOOKBACK_DAYS,
-)
+from syncr_api.outcomes.config import BLOCK_RESOURCE, UNCONFIRMED_LOOKBACK_DAYS
 from syncr_api.outcomes.days import ONE_DAY
 from syncr_api.outcomes.ledger import (
     Backfill,
@@ -61,11 +57,9 @@ from syncr_api.outcomes.ledger import (
 from syncr_api.outcomes.planned_days import spanning
 from syncr_api.outcomes.rules import (
     DATE_FIELD,
-    FROM_FIELD,
-    refuse_a_date_that_does_not_exist,
-    refuse_a_day_that_has_not_begun,
-    refuse_a_range_that_is_too_wide,
-    refuse_a_range_that_runs_backward,
+    require_a_dated_span,
+    require_a_day_that_has_begun,
+    require_a_range_that_can_be_confirmed,
     stated_rejection,
 )
 from syncr_api.plans.stored_documents import plan_document
@@ -174,9 +168,9 @@ class OutcomeService:
         require_scope(principal, Scope.PLAN_WRITE)
         profile = await self._profile()
         now = self._clock()
-        _require_a_day_that_has_begun(on, profile, now, field=DATE_FIELD)
+        require_a_day_that_has_begun(on, profile, now, field=DATE_FIELD)
 
-        recorded = await self._settle(await self._planned(on, on, profile), at=now)
+        recorded = await self._settle(await self._days.read(on, on, profile), at=now)
         _log.info(
             "outcomes.day.confirmed",
             tenant_id=str(principal.tenant_id),
@@ -197,9 +191,9 @@ class OutcomeService:
         require_scope(principal, Scope.PLAN_WRITE)
         profile = await self._profile()
         now = self._clock()
-        _require_a_range_that_can_be_confirmed(first, last, profile, now)
+        require_a_range_that_can_be_confirmed(first, last, profile, now)
 
-        planned = await self._planned(first, last, profile)
+        planned = await self._days.read(first, last, profile)
         outstanding = await self._outstanding(planned)
         recorded = await self._settle(outstanding, at=now)
         _log.info(
@@ -223,23 +217,23 @@ class OutcomeService:
             (await self._settings.read()).home_zone, as_domain(await self._overrides.list_all())
         )
 
-    async def _planned(
-        self, first: Date, last: Date, profile: ZoneProfile
-    ) -> tuple[PlannedDay, ...]:
-        """The days of a range, with each week's plan of record read once."""
-        return await self._days.read(first, last, profile)
-
     async def _ledger(self, on: Date, *, profile: ZoneProfile) -> DayLedger:
-        """One day's rows, its header figures, and how many days are outstanding."""
+        """One day's rows, its header figures, and how many days are outstanding.
+
+        The span is required first, so a date the tenant's zones do not hold is refused before any
+        read: the alternative is an empty ledger, which reads as a day with no plan.
+        """
         now = self._clock()
-        planned = _the_one_day(await self._planned(on, on, profile), on, profile)
-        recorded = {row.block_id: row for row in await self._outcomes.for_span(planned.span)}
-        rows = ledger_rows(planned.blocks, outcomes=recorded, area_names=await self._area_names())
+        span = require_a_dated_span(on, profile, field=DATE_FIELD)
+        planned = await self._days.read(on, on, profile)
+        blocks = planned[0].blocks if planned else ()
+        recorded = {row.block_id: row for row in await self._outcomes.for_span(span)}
+        rows = ledger_rows(blocks, outcomes=recorded, area_names=await self._area_names())
         behind, ahead = split_at(rows, now)
         return DayLedger(
             on=on,
             zone=active_zone(profile, on),
-            span=planned.span,
+            span=span,
             behind=behind,
             ahead=ahead,
             confirmed_at=settled_at([row.outcome for row in rows]),
@@ -277,7 +271,7 @@ class OutcomeService:
         """
         today = local_date(now, profile.home_zone)
         first = today - ONE_DAY * UNCONFIRMED_LOOKBACK_DAYS
-        return len(await self._outstanding(await self._planned(first, today - ONE_DAY, profile)))
+        return len(await self._outstanding(await self._days.read(first, today - ONE_DAY, profile)))
 
     async def _area_names(self) -> Mapping[AreaId, str]:
         """The Areas' names, for the chip each row renders."""
@@ -304,30 +298,3 @@ class OutcomeService:
                 "dropped the content leaves the id naming nothing."
             )
         return (revision, found)
-
-
-def _the_one_day(planned: Sequence[PlannedDay], on: Date, profile: ZoneProfile) -> PlannedDay:
-    """The single day a read named, or the 422 a date that names no day carries."""
-    if not planned:
-        raise refuse_a_date_that_does_not_exist(on, active_zone(profile, on), field=DATE_FIELD)
-    return planned[0]
-
-
-def _require_a_day_that_has_begun(
-    on: Date, profile: ZoneProfile, now: datetime, *, field: str
-) -> None:
-    today = local_date(now, profile.home_zone)
-    if on > today:
-        raise refuse_a_day_that_has_not_begun(on, today, field=field)
-
-
-def _require_a_range_that_can_be_confirmed(
-    first: Date, last: Date, profile: ZoneProfile, now: datetime
-) -> None:
-    """The three bounds a backfill's range has to satisfy, in the order a caller would hit them."""
-    if last < first:
-        raise refuse_a_range_that_runs_backward(first, last)
-    if (last - first).days + 1 > MAX_CONFIRM_RANGE_DAYS:
-        raise refuse_a_range_that_is_too_wide(first, last)
-    _require_a_day_that_has_begun(first, profile, now, field=FROM_FIELD)
-    _require_a_day_that_has_begun(last, profile, now, field=DATE_FIELD)
