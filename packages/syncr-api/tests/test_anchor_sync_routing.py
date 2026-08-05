@@ -42,6 +42,8 @@ EARLIER = NOW - timedelta(hours=3)
 RECONCILED = "reconcile"
 CONFIRMED = "confirm"
 MARKED_STALE = "mark_possibly_stale"
+# The one step of a pass that is not an anchor path: what it asks for once the anchors are written.
+DETECTED = "detect"
 
 # What each recorded call answers with, so a test can tell the count came from the writer rather
 # than from the parser's event list.
@@ -122,12 +124,20 @@ class RecordingSources:
 
 @dataclass
 class RecordingCollisions:
-    """Records whether the pass asked for a detection, which only a change may do."""
+    """Records whether the pass asked for a detection, which only a change may do.
+
+    ``log`` is shared with the anchor writer by the test that asserts the ORDER of the two. Two
+    independent "it happened" lists cannot say which happened first, and the order is the whole
+    claim: a detection that ran before the reconciliation would read the commitments as they were
+    before the feed moved them.
+    """
 
     asked: list[datetime] = field(default_factory=list)
+    log: list[str] = field(default_factory=list)
 
     async def detect(self, *, now: datetime) -> object:
         self.asked.append(now)
+        self.log.append(DETECTED)
         return ()
 
 
@@ -359,9 +369,11 @@ class DeltaAnchors:
     """An anchor writer answering with a stated tally, whichever path it was asked for."""
 
     delta: AnchorDelta
+    log: list[str] = field(default_factory=list)
 
     async def reconcile(self, source: CalendarSourceRecord, outcome: FetchOutcome) -> AnchorDelta:
         del source, outcome
+        self.log.append(RECONCILED)
         return self.delta
 
     async def confirm(self, source: CalendarSourceRecord) -> AnchorDelta:
@@ -413,19 +425,21 @@ async def test_an_excluded_source_asks_for_no_detection() -> None:
     assert collisions.asked == []
 
 
-async def test_a_detection_runs_after_the_sync_state_is_written() -> None:
-    # Both are inside the pass's own transaction, and the order is what makes a raise in the
-    # detection leave a state that says the feed was read: the two land together or neither does.
-    collisions = RecordingCollisions()
-    sources = RecordingSources()
+async def test_a_detection_runs_after_the_anchors_are_reconciled() -> None:
+    # The order that is load-bearing, and the only one: a detection reads the commitments the pass
+    # just wrote, so running it first would read the week as it was before the feed moved anything
+    # and would raise nothing. One shared log, because two "it happened" lists cannot say which.
+    #
+    # The sync-state write's position is deliberately NOT asserted: it is in the same transaction,
+    # so nothing about atomicity or about what the detection sees depends on where it falls.
+    log: list[str] = []
     outcome, state = a_read(events=1)
 
     await syncer(
         StubAdapter(outcome, state),
-        DeltaAnchors(AnchorDelta(created=1, current=1)),  # type: ignore[arg-type]
-        sources,
-        collisions,
+        DeltaAnchors(AnchorDelta(created=1, current=1), log),  # type: ignore[arg-type]
+        RecordingSources(),
+        RecordingCollisions(log=log),
     ).sync(a_source())
 
-    assert sources.saved
-    assert collisions.asked == [NOW]
+    assert log == [RECONCILED, DETECTED]

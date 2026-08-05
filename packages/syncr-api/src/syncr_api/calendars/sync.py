@@ -148,11 +148,11 @@ class SourceSyncer:
         outcome, state = await self._adapters[source.provider].fetch(source)
         delta = await self._reconciled(source, outcome, state)
         await self._sources.save_sync_state(source.id, delta.recorded_on(state))
-        # After the state is written, and inside the same transaction: a commitment that arrived
-        # or moved is what can land on a planned block, and a conflict is detected when it
-        # arrives rather than found later by a solve, which is what lets the notice name the
-        # block. A pass that removed anchors and a pass that changed nothing both frees space or
-        # nothing, so neither can raise one.
+        # Asked for after the anchors are written, because a detection reads the commitments this
+        # pass just reconciled: run first, it would read the week as it was before the feed moved
+        # anything. A commitment that arrived or moved is what can land on a planned block; a pass
+        # that only removed commitments frees space, and one that changed nothing changes no
+        # occupancy, so neither can raise a conflict and neither pays for the read.
         if delta.created or delta.updated:
             await self._collisions.detect(now=self._clock())
         return outcome, state
