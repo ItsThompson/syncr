@@ -16,7 +16,7 @@ import { AreasRoute } from "./AreasRoute";
 import { BacklogRoute } from "./BacklogRoute";
 import { LearnedRoute } from "./LearnedRoute";
 import { NotFoundRoute } from "./NotFoundRoute";
-import { SettingsRoute } from "./SettingsRoute";
+import { SettingsRoute } from "./settings";
 import { SetupRoute } from "./SetupRoute";
 import { SignInRoute } from "./SignInRoute";
 import { TemplatesRoute } from "./templates";

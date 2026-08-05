@@ -3,7 +3,7 @@
  * `not ready` is an answer and not a failure: only a response the contract does not describe, or
  * a request that never arrives, becomes an error state. */
 
-import { renderHook, screen, waitFor } from "@testing-library/react";
+import { renderHook, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { apiServer } from "../../testing/apiServer";
@@ -16,11 +16,14 @@ import {
 } from "../../testing/apiStub";
 import { FreshCache, renderAt, renderSignedInAt } from "../../testing/renderRoute";
 import { UNEXPECTED_PROBLEM_TYPE, UNREACHABLE_PROBLEM_TYPE } from "../../contract";
+import { API_READING_LABEL } from "../../routes/ApiReading";
 import { unreadyChecks, useReadiness } from "./useReadiness";
 
 /* The row is in the DOM from the first paint, so an assertion has to wait for the VALUE to settle
- * rather than for the element to appear. */
-const reading = (): string => screen.getByRole("definition").textContent ?? "";
+ * rather than for the element to appear. Scoped to the api reading's own list, because the screen it
+ * sits on states several readings and an unscoped query would answer for whichever came first. */
+const reading = (): string =>
+  within(screen.getByLabelText(API_READING_LABEL)).getByRole("definition").textContent ?? "";
 
 describe("useReadiness", () => {
   it("reads a ready api as ready", async () => {
