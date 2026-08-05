@@ -25,7 +25,9 @@ subtracted, so the statement and the figure it explains cannot disagree.
 **The span is the week's real span.** It comes from ``week_span`` over the tenant's own zone
 profile, so a transition week is 167 or 169 hours and a travel week resolves two zones across
 its days. Every figure derives from ``span.total_minutes()``, so no figure needs a special case
-for either.
+for either. The zone active on each day inside the week is resolved from the same profile and
+carried on the view, because the two are one question asked twice and a second reader of the
+profile in one request would be a second answer to how long that week was.
 
 The read writes nothing at all: no row, no version bump, and no verdict.
 """
@@ -44,9 +46,11 @@ from syncr_api.user_settings.zone_reading import as_domain, stated_rejection, zo
 from syncr_common.metrics import measured
 from syncr_domain.budgets import budget_report
 from syncr_domain.discretionary import discretionary_intervals
-from syncr_domain.weeks import week_span
+from syncr_domain.weeks import active_zone_by_date, week_span
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.budgets.occupancy import WeekOccupancyReader
     from syncr_api.core.principal import Principal
@@ -55,14 +59,22 @@ if TYPE_CHECKING:
     from syncr_domain.budgets import BudgetReport
     from syncr_domain.intervals import Interval
     from syncr_domain.weeks import IsoWeek
+    from syncr_domain.zones import Date, ZoneId, ZoneProfile
 
 
 @dataclass(frozen=True, slots=True)
 class BudgetView:
-    """One period's budget report, the span its denominator was derived from, and time off."""
+    """One period's budget report, the span its denominator was derived from, and time off.
+
+    ``zone_by_date`` is beside the span because the two are one resolution asked twice: the span
+    resolves the two Mondays bounding the week and this resolves the days inside it. The report
+    itself needs neither, and a second caller does: the week view renders the active zone per day
+    and a profile read twice in one request is two answers to how long that week was.
+    """
 
     period: IsoWeek
     span: Interval
+    zone_by_date: Mapping[Date, ZoneId]
     report: BudgetReport
     off_plan: OffPlanReading
 
@@ -87,7 +99,8 @@ class BudgetService:
         """The budget report for ``period``, which is an ISO week identifier."""
         require_scope(principal, Scope.PLAN_READ)
         iso_week = _require_an_iso_week(period)
-        span = await self._span_of(iso_week)
+        profile = await self._profile()
+        span = week_span(iso_week, profile)
         held = await self._occupancy.read(iso_week, span)
         declared = await self._areas.list_all()
 
@@ -102,17 +115,17 @@ class BudgetService:
         return BudgetView(
             period=iso_week,
             span=span,
+            zone_by_date=active_zone_by_date(iso_week, profile),
             report=report,
             off_plan=off_plan_reading(span, held.off_plan),
         )
 
-    async def _span_of(self, iso_week: IsoWeek) -> Interval:
-        """The week's real span, bounded by the zone active on each of its two Mondays."""
+    async def _profile(self) -> ZoneProfile:
+        """The tenant's zone profile, which every wall time in the week resolves against."""
         settings = await self._settings.read()
         overrides = await self._overrides.list_all()
         with stated_rejection(field="home zone"):
-            profile = zone_profile(settings.home_zone, as_domain(overrides))
-        return week_span(iso_week, profile)
+            return zone_profile(settings.home_zone, as_domain(overrides))
 
 
 def _require_an_iso_week(period: str) -> IsoWeek:

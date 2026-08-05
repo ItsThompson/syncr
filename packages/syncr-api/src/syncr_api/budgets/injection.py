@@ -16,11 +16,15 @@ other four sets empty, which is still the honest reading for them. There is no r
 or forbidden-window table, and the plan document's interior shape is not defined, so no Area's
 blocks can be read out of one. Whoever brings one of those online replaces this reader with one
 that composes theirs with off-plan's rather than editing off-plan's to know about theirs.
+
+**Two endpoints are composed from the factory below**, and that is deliberate: the week view's
+``readings`` are this service's own figures, so the summary strip and the pie review divide one
+denominator computed from one occupancy read. Replacing the reader therefore reaches both at once.
 """
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends
 
@@ -34,14 +38,29 @@ from syncr_api.offplan.occupancy import OffPlanOccupancy
 from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from syncr_domain.identifiers import TenantId
+
 
 def get_budget_service(principal: PrincipalDep, transaction: TransactionDep) -> BudgetService:
     """The budget service, wired for this request and scoped to this tenant."""
+    return build_budget_service(transaction, principal.tenant_id)
+
+
+def build_budget_service(transaction: AsyncSession, tenant_id: TenantId) -> BudgetService:
+    """One budget service, scoped to ``tenant_id``. The one place its four seams are decided.
+
+    Split from the dependency above because a second caller composes one: the week view's readings
+    are this service's own figures, so a strip figure cannot disagree with the same figure in the
+    review. A copy of the list below is exactly how the two would come to read different occupancy.
+    """
     return BudgetService(
-        areas=AreaRepository(transaction, principal.tenant_id),
-        settings=SettingsRepository(transaction, principal.tenant_id),
-        overrides=TravelOverrideRepository(transaction, principal.tenant_id),
-        occupancy=OffPlanOccupancy(OffPlanPeriodRepository(transaction, principal.tenant_id)),
+        areas=AreaRepository(transaction, tenant_id),
+        settings=SettingsRepository(transaction, tenant_id),
+        overrides=TravelOverrideRepository(transaction, tenant_id),
+        occupancy=OffPlanOccupancy(OffPlanPeriodRepository(transaction, tenant_id)),
     )
 
 
