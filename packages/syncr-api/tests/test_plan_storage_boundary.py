@@ -424,9 +424,11 @@ def test_only_the_two_sanctioned_tables_have_a_retention_path(source_root: Path)
         "events are facts about weeks that happened, and each is read by a review, a retro, a "
         "fitter, or a product metric. Only terminal operations and idempotency keys are pruned."
     )
-    assert found == {"idempotency": ["sweep"]}, (
-        f"{found}. The operations sweep arrives with the worker loop that runs it; until then "
-        "the idempotency sweep is the only retention path in the product."
+    assert found == {"idempotency": ["sweep"], "solving": ["sweep"]}, (
+        f"{found}. Two retention paths exist and there are two things to prune: idempotency keys, "
+        "and terminal operations at 30 days for a success or a supersession and 90 for a failure. "
+        "Each is telemetry rather than a fact about a plan, and each is swept by the duty that "
+        "owns it."
     )
 
 

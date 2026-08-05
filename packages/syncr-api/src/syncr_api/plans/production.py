@@ -134,6 +134,8 @@ class WeekProducer:
                 "creates a tenant, so a tenant without one was not created by this application"
             )
         operation = await self._operations.enqueue(kind=MATERIALIZE, iso_week=iso_week)
+        # Due now, which is what the coordinator's own `immediate` argument means: the maintainer
+        # bypasses the debounce window, because nothing is being coalesced with anything.
         await self._operations.claim(operation.id)
 
         inputs = await self._assembler.assemble(iso_week, now)

@@ -4,13 +4,13 @@
 
 An operation shows `running` and does not change. Either of these is how you find out:
 
-- `syncr_operations_non_terminal` sits above zero for a week that should be current, or the Week
-  screen reads `solving` and stays there.
 - `GET /api/v1/operations?status=running` returns a row whose `startedAt` is minutes old.
+- The Week screen reads `solving` and stays there.
 
 Nothing pages for this on its own. A stuck operation resolves itself within the lease, and the
 alerts that would fire are `SolveFailing` if the retries then fail, and `HorizonNotMaintained` if the
-week in question was one the plan horizon maintainer was bringing into range.
+week in question was one the plan horizon maintainer was bringing into range. The latter watches
+`syncr_horizon_weeks_without_plan`, which is exported today.
 
 ## What it means
 
