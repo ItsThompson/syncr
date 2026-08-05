@@ -1,4 +1,4 @@
-"""The hard constraints: the closed vocabulary, the table, and the occupancy rules.
+"""The hard constraints: the closed vocabulary, the table, the state, and the checker.
 
 A plan violating any of the thirteen rules is invalid. The checker answers with **which rule
 rejected a candidate and over what window**, because that pair is the ``blocked`` reason clause
@@ -7,17 +7,14 @@ knew.
 
 ## The whole vocabulary is here from the start, and only some of it is implemented
 
-:class:`ConstraintRule` names all thirteen rules and :data:`HARD_CONSTRAINTS` is the table, so
-the rules that check occupancy are added as BEHAVIOUR rather than as vocabulary: a later slice
-appends a rule function and the enum, the table, and the reason clause already speak its name.
-:data:`OCCUPANCY_RULES` is the subset in force, which is what a derived plan needs: it places
-nothing over an anchor, an absolute forbidden window, the circadian frame, or a block already
-placed.
+:class:`ConstraintRule` names all thirteen rules and :data:`HARD_CONSTRAINTS` is the table, so a
+rule that nothing checks yet is added as BEHAVIOUR rather than as vocabulary: a rule function
+lands beside the four in :mod:`syncr_solver.occupancy`, and the enum, the table and the reason
+clause already speak its name.
 
-The four rules absent from that subset are not silently unenforced. A rule is a row of the
-table whether or not a checker is holding it, and :data:`OCCUPANCY_RULES` is a tuple a caller
-passes, so what is being checked is a value at the call site rather than a hidden state of the
-module.
+Which rules are in force is neither a mode of this module nor a default. :class:`ConstraintCheck`
+is constructed with the tuple, so what is being checked is a value at the call site. The rules a
+derived plan needs are ``syncr_solver.occupancy.OCCUPANCY_RULES``.
 
 ## Two numbers are missing and the gaps are enumerated
 
@@ -34,6 +31,14 @@ so two of them overlapping is a state of the week rather than a choice a solve m
 placed unchecked and everything else is checked against them, which is the reading of H3 and H4
 that lets a routine overlap its own next occurrence and a double-booked calendar keep both
 commitments.
+
+## Every ordering key reads the whole of the value it orders
+
+:meth:`PartialPlan.of` sorts each collection, so a candidate overlapping two members names the
+earlier one whatever order the inputs arrived in, and a document holds its windows in an order
+its inputs cannot change. That holds only while a key can separate two unequal values, so each
+key below reads every field its type carries, or ends in an identity that makes the rest
+unreachable.
 """
 
 from __future__ import annotations
@@ -41,8 +46,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
-
-from syncr_domain.gaps import ForbiddenScope
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -53,11 +56,6 @@ if TYPE_CHECKING:
     from syncr_domain.intervals import Instant, Interval
     from syncr_domain.plan import Block
     from syncr_solver.inputs import Anchor, FrameEntry, SolveInputs
-
-# What a rejection names when the span that rejected a candidate is a routine occurrence the
-# preceding week owns. It carries no title of its own: the week that owns the occurrence holds
-# the whole interval and materializes the one block, so this week has the span and not the name.
-INHERITED_FRAME: Final = "a routine the preceding week owns"
 
 
 class ConstraintRule(StrEnum):
@@ -253,71 +251,17 @@ accepted placement has to say. A caller that must not lose a rejection reads ``i
 """
 
 
-def _anchor_overlap(candidate: Placement, state: PartialPlan) -> Blocked | None:
-    """H1. An anchor is an immovable external fact, so a candidate gives way to it."""
-    for anchor in state.anchors:
-        if anchor.interval.overlaps(candidate.interval):
-            return Blocked(ConstraintRule.ANCHOR_OVERLAP, candidate.interval, anchor.title)
-    return None
-
-
-def _forbidden_window(candidate: Placement, state: PartialPlan) -> Blocked | None:
-    """H2. A window forbidding every Area forbids this candidate whatever Area it carries.
-
-    A window scoped to named Areas is H13's, and it is deliberately not read here: the two
-    readings of one window drifting apart is the defect that split the field they arrive in.
-    """
-    for window in state.forbidden_windows:
-        if window.scope is not ForbiddenScope.ALL:
-            continue
-        if window.interval.overlaps(candidate.interval):
-            return Blocked(ConstraintRule.FORBIDDEN_WINDOW, candidate.interval, window.label)
-    return None
-
-
-def _frame_overlap(candidate: Placement, state: PartialPlan) -> Blocked | None:
-    """H3. The frame bounds the day, at the effective duration the assembler clamped it to."""
-    for entry in state.frame:
-        if entry.interval.overlaps(candidate.interval):
-            return Blocked(ConstraintRule.FRAME_OVERLAP, candidate.interval, entry.title)
-    for span in state.inherited:
-        if span.overlaps(candidate.interval):
-            return Blocked(ConstraintRule.FRAME_OVERLAP, candidate.interval, INHERITED_FRAME)
-    return None
-
-
-def _block_overlap(candidate: Placement, state: PartialPlan) -> Blocked | None:
-    """H4. A solve never creates an overlap, which binds the solve rather than the plan.
-
-    A user-authored overlap and an anchor landing on a planned block are both legitimate
-    contents of a week. What this forbids is one placement of this solve overlapping another.
-    """
-    for placement in state.placed:
-        if placement.interval.overlaps(candidate.interval):
-            return Blocked(ConstraintRule.BLOCK_OVERLAP, candidate.interval, placement.title)
-    return None
-
-
-# The rules in force for a derived plan, in the table's own order, so the rejection a candidate
-# reports is the first row it breaks rather than whichever check ran first.
-OCCUPANCY_RULES: Final[tuple[Rule, ...]] = (
-    _anchor_overlap,
-    _forbidden_window,
-    _frame_overlap,
-    _block_overlap,
-)
-
-
 class ConstraintCheck:
     """The rules a candidate is judged against, held as the tuple a caller chose.
 
-    Which rules are in force is a value rather than a mode: a slice that adds the remaining nine
-    passes a longer tuple, and no caller of this one changes.
+    Which rules are in force is a value rather than a mode, and it carries no default: a caller
+    states what it is checking, so a slice adding the remaining nine passes a longer tuple and no
+    caller of this class changes.
     """
 
     __slots__ = ("_rules",)
 
-    def __init__(self, rules: Sequence[Rule] = OCCUPANCY_RULES) -> None:
+    def __init__(self, rules: Sequence[Rule]) -> None:
         self._rules = tuple(rules)
 
     def check(self, candidate: Placement, state: PartialPlan) -> Blocked | None:
@@ -340,13 +284,42 @@ def _span_key(interval: Interval) -> tuple[Instant, Instant]:
 
 
 def _frame_key(entry: FrameEntry) -> tuple[Instant, Instant, str, str, RoutineId]:
-    """Span order, ending in the occurrence's own identity so no two entries tie."""
+    """Span order, ending in the occurrence's own identity so no two entries tie.
+
+    The two fields it does not read, the minimum duration and the flex band, cannot separate two
+    entries this key ties: such entries share a routine and an occurrence key, so they are one
+    occurrence declared twice, they derive one block id, and a document refuses the pair.
+    """
     return (*_span_key(entry.interval), entry.title, entry.occurrence_key, entry.routine_id)
 
 
 def _anchor_key(anchor: Anchor) -> tuple[Instant, Instant, str, AnchorId]:
+    """Span order, the title, then the commitment's identity. Every field an anchor carries."""
     return (*_span_key(anchor.interval), anchor.title, anchor.anchor_id)
 
 
-def _window_key(window: ForbiddenWindow) -> tuple[Instant, Instant, str, AnchorId]:
-    return (*_span_key(window.interval), window.label, window.anchor_id)
+# What the window order reads, which is every field a window carries. The anchor is NOT an identity
+# here: one commitment casts up to four windows, so two of them can share a span, a label and an
+# anchor while differing in kind, in scope, or in the Areas they forbid. A key stopping at the
+# anchor would order such a pair by input arrival, and the document holds the windows in this order.
+WINDOW_ORDER_FIELDS: Final = (
+    "interval",
+    "kind",
+    "scope",
+    "label",
+    "forbidden_area_ids",
+    "anchor_id",
+)
+
+
+def _window_key(
+    window: ForbiddenWindow,
+) -> tuple[Instant, Instant, str, str, str, tuple[AreaId, ...], AnchorId]:
+    return (
+        *_span_key(window.interval),
+        window.kind.value,
+        window.scope.value,
+        window.label,
+        window.forbidden_area_ids,
+        window.anchor_id,
+    )
