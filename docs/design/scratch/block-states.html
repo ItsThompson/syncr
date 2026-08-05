@@ -8,6 +8,10 @@
      value cannot drift between the record and the build. The chained @import inside
      index.css resolves over file:// in Chrome, Safari and Firefox. -->
 <link rel="stylesheet" href="../../../frontend/src/tokens/index.css">
+<!-- The week grid's own geometry moved out of the token layer and beside the component that owns
+     it, so this sheet links both halves of what it renders from. Linked, not copied either way:
+     `just tokens-validate` resolves every var() below against the files this sheet links. -->
+<link rel="stylesheet" href="../../../frontend/src/ui/domain/week-grid/tokens.css">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

@@ -38,21 +38,16 @@
   --icon-join: round;
 
   /* ------------------------------------------------------------------------
-     THE TIME GRID.
+     THE TIME GRID, AND WHAT IS LEFT OF IT HERE.
 
-     Pixels per minute is DERIVED, not fixed. The user chooses how many hours are visible
-     at once, from 6 to 24, defaulting to 12, and separately declares when their own day
-     starts and ends. The app measures the grid's height and recomputes --px-per-min from
-     the two. The default below is 12 hours in 700px of grid, which is what a 1440x900
-     display yields once the page band, summary strip and day header are subtracted.
+     The geometry itself has moved: `ui/domain/week-grid/tokens.css` now declares
+     --visible-hours, --grid-h, --px-per-min, --axis-w, --day-header-h, the --grid-* line
+     weights, the --block-h-* ladder, --block-pad-* and the --overlap-* pair, beside the
+     component that owns them. Section 14's token table places them there, and the move was a
+     rename of location rather than of value.
 
-     THE AXIS ALWAYS EXPANDS TO CONTAIN EVERY BLOCK IN THE VISIBLE WEEK. Day bounds set
-     the default extent, never a crop. A block hidden by the axis is a scheduling error
-     the user cannot see.
+     What stays is what something other than the grid reads.
      ------------------------------------------------------------------------ */
-  --visible-hours: 12;
-  --grid-h: 626px;
-  --px-per-min: calc(var(--grid-h) / (var(--visible-hours) * 60));
 
   /* The zoom range, and its clamp. The user picks anywhere from 6 to 24 visible hours, but
      the upper end is clamped per display so that a thirty-minute block -- the modal duration
@@ -66,25 +61,10 @@
   --zoom-min: 6;
   --zoom-max: 24;
 
-  /* WHY 626px, AND WHAT IT EXPOSES.
-     626px is the grid a 13-inch 1440x900 display yields: a 790px CSS viewport less the
-     72px page band, the 64px summary strip and the 28px day header. Designing to the
-     tight case is correct, and it makes the tier arithmetic visible rather than theoretical.
-     At --block-h-label 19px:
-
-       display              grid    15m at 12h      30m at 12h    zoom cap
-       13" 1440x900         626px   13px sliver     26px label    16h
-       16" 1728x1117        836px   17px sliver     35px label    22h
-       27" 2560x1440       1136px   24px label      47px label    24h
-
-     The label tier a block lands in is a function of visible hours AND display height. A
-     fifteen-minute block therefore slivers at the 12-hour default on anything smaller than
-     a 27-inch, which is accepted: those blocks are the circadian frame and are read from
-     position. A thirty-minute block never does, which is what the zoom cap protects. */
-
-  --snap: 15;         /* minutes. every start and end lands on a quarter hour */
-  --axis-w: 56px;     /* the time axis column */
-  --day-header-h: 28px;
+  --snap: 15;         /* minutes. every start and end lands on a quarter hour, and
+                         `ui/primitives/quarterHour.ts` reads this one: a primitive may not
+                         reach a layer 2 sheet, so the snap stays here while the grid's own
+                         --grid-minor, which must equal it, sits beside the grid */
   --strip-h: 64px;    /* the pinned summary and verdict strip above the grid */
 
   /* THE VERDICT PANEL'S HEIGHT IS FIXED, AND IT MUST NOT TRACK ROW COUNT. A panel that grew
@@ -99,99 +79,6 @@
      three sheets had independently chosen 60px, 64px and 76px before this was a token. That
      is the drift the inherited language warned about, so the value lives here now. */
   --clause-label-w: 76px;
-
-  /* Grid lines. THE QUARTER HOUR IS DRAWN AT REST, BECAUSE THE SNAP IS FIFTEEN MINUTES AND
-     THE GRID SHOULD SHOW WHERE A BLOCK CAN LAND.
-
-     The weight distribution is what makes that legible rather than busy, and it took two
-     rounds to find. A first draft drew --rule at every half hour and --rule-faint at every
-     quarter, while each block also drew four --rule-strong edges: four lines an hour, two of
-     them at cobalt weight, and the blocks vanished into the corduroy.
-
-     The remedy was not to delete the subdivision. It was to halve the cobalt: the hour alone
-     carries --rule, the three quarters carry --rule-faint, and a block draws three edges
-     instead of four. Same line count as the rejected version, half the cobalt weight.
-
-     During a drag the quarters step up to hour weight, so the snap targets sharpen at the one
-     moment the user is aiming at them. That is a discrete state change, not motion. */
-  --grid-major: 60;   /* minutes between hour lines */
-  --grid-minor: 15;   /* minutes between quarter lines. equals --snap, and must */
-  --grid-line-hour: var(--rule);           /* the hour, at rest and during a drag */
-  --grid-line-quarter: var(--rule-faint);  /* the quarter, at rest */
-  --grid-line-quarter-drag: var(--rule);   /* the quarter, while a drag is in progress */
-  --grid-inset: 1px;  /* horizontal inset of a block from its column edges, so a block's
-                         own rule never lands on top of the column divider */
-
-  /* THE LABEL TIER LADDER. A block's height is proportional to its duration, and at high
-     zoom levels a short block falls below the height its own title needs. The block
-     degrades rather than the axis lying:
-
-       >= --block-h-label    title at --fs-block, wrapping to as many lines as fit
-       >= --block-h-compact  title at --fs-block-compact, one line, no top padding
-       >= --block-h-sliver   no title. the origin glyph and the Area top rule survive
-       <  --block-h-sliver   a bounded hairline sliver. Area top rule only
-
-     The title is always available on selection, at every tier.
-
-     THE COMPACT TIER EXISTS BECAUSE THE THREE-TIER LADDER WAS REJECTED IN REVIEW. A first
-     draft went straight from title to glyph at 19px, on the reasoning that the blocks that
-     fall through are the circadian frame and are read from position. Rendered, an unlabeled
-     `Wake Up` reads as a rendering fault rather than as a deliberate tier. The compact tier
-     keeps a title down to 12.5px, which covers a fifteen-minute block at the agreed
-     twelve-hour default on the smallest supported display. Above twelve hours the user is
-     explicitly trading labels for range, which is a choice rather than a defect.
-
-     THE HAIRLINE TIER IS UNREACHABLE ON ANY SUPPORTED DISPLAY, given the zoom clamp below:
-     the smallest a fifteen-minute block gets is 9.8px on a 13-inch at its 16h cap. It is
-     kept as a defensive floor for a viewport shorter than anything supported, not as a state
-     a user will meet.
-
-     THE FLOOR IS THE SUM OF WHAT HAS TO FIT, NOT A ROUND NUMBER:
-
-       label tier                        compact tier
-       2   the Area top rule             2   the Area top rule
-       2   --block-pad-t                 0   no top padding: there is no room
-      13.8 --fs-block at --lh-block      9.5 --fs-block-compact at --lh-block-compact
-       1   the bottom rule               1   the bottom rule
-      ----                              ----
-      18.8 inside a 19px floor          12.5 inside a 13px floor
-
-     Padding is asymmetric even where it exists. The bottom is zero, because a title is
-     top-aligned in a calendar block and paying for symmetry would cost another zoom step.
-
-     THE ZOOM RANGE IS CLAMPED BY THE MODAL DURATION, NOT THE SHORTEST ONE. Thirty minutes
-     is the most common block length by a wide margin, so the 6-24 hour range is clamped so
-     that a thirty-minute block always keeps a title. See --zoom-min and --zoom-max above
-     for the derivation.
-
-     THE TITLE WRAPS TO WHATEVER FITS; IT DOES NOT TRUNCATE AT ONE LINE. A first draft set
-     white-space: nowrap, and a measured ledger over one real week showed 4 of 37 distinct
-     titles becoming AMBIGUOUS under end-ellipsis: `Amazon Interview Prep` and
-     `Amazon Interview Prep - Behavioral` both collapse to `Amazon Interview P...`, as do
-     `Visual Computing Lab` and `Visual Computing Lecture`. End-ellipsis discards precisely
-     the tail that distinguishes a title from its sibling, which is the one part that had to
-     survive.
-
-     Those blocks run 60 to 150 minutes, so they are 52 to 130px tall and have room for
-     several lines. The line count is therefore computed per block from its own height:
-
-       lines = floor( (height - 2 area rule - 2 pad-top - 1 bottom rule) / --lh-block-px )
-
-     and the title is clamped to that count, so a clip lands on a line boundary rather than
-     mid-glyph. The compact tier is always one line. The 17-character floor in the width
-     policy below therefore governs the single-line tiers only. */
-  --block-h-label: 19px;
-  --block-h-compact: 13px;
-  --block-h-sliver: 8px;
-  --block-pad-x: 5px;
-  --block-pad-t: 2px;
-  --block-pad-b: 0;
-
-  /* Overlap. Even split up to depth 3, then stagger with the later start on top and a
-     fixed indent, plus a count marker in the frontmost block. Even splitting past 3
-     leaves no column to write in. */
-  --overlap-max-split: 3;
-  --overlap-indent: 18px;
 
   /* The now rule. A horizontal 2px --ink-bright line across the day column at the current
      minute, with the time in the axis gutter. This is the only marker of what is past:
