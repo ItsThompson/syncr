@@ -50,6 +50,8 @@ from syncr_solver.offering import offer_at, refusal_of
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from syncr_domain.identifiers import AreaId, TemplateEntryId
+    from syncr_domain.intervals import Instant
     from syncr_solver.attempt import Attempt
     from syncr_solver.candidates import Candidate
     from syncr_solver.constraints import BlockedCandidate
@@ -120,7 +122,7 @@ def _slots(entries: Sequence[MaterializedEntry]) -> tuple[MaterializedEntry, ...
     return tuple(entry for entry in entries if entry.kind is TemplateEntryKind.SLOT)
 
 
-def _entry_key(entry: MaterializedEntry) -> tuple[object, ...]:
+def _entry_key(entry: MaterializedEntry) -> tuple[Instant, Instant, AreaId, TemplateEntryId, str]:
     """Span order, then the Area and the entry's own identity so no two slots tie."""
     return (
         entry.interval.start,
