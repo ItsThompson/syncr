@@ -17,6 +17,7 @@ it exercises.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 import pytest
@@ -709,6 +710,32 @@ def test_the_ideal_is_capped_by_the_work_a_task_still_owes() -> None:
     assert breakdown.fragmentation == 0.0
 
 
+def test_a_started_chunk_is_not_charged_against_a_demand_that_already_nets_it() -> None:
+    """The netting rule again, on the term that reads the same demand for its ideal.
+
+    ``remaining_minutes`` arrives net of the started blocks and the pins, and the ideal a piece is
+    measured against is capped by it. So the pieces measured are the ones the demand still owes: an
+    hour already begun was subtracted from the demand, and charging it as a short session as well
+    would charge one placement against a figure that had already accounted for it.
+
+    The control is the second reading: with ``now`` before the same block, nothing has started, the
+    piece is measured, and it is charged the thirty minutes it falls short by.
+    """
+    started = a_task_block(start=8, end=8.5)
+    week = inputs(
+        now=at(12),
+        eligible_tasks=(an_eligible_task(remaining_minutes=120),),
+        preferences=(a_preference(preferred_duration_minutes=60),),
+        live_plan=a_live_plan(started),
+    )
+    movable = dataclasses.replace(week, now=at(0))
+
+    assert evaluate(a_live_plan(started), inputs=week, weights=flat_weights()).fragmentation == 0.0
+    assert evaluate(
+        a_live_plan(started), inputs=movable, weights=flat_weights()
+    ).fragmentation == pytest.approx(30 / week.span.total_minutes())
+
+
 def test_fragmentation_never_charges_for_keeping_a_piece_at_its_minimum_chunk() -> None:
     """An ideal BELOW a minimum chunk charges the minimum nothing, so nothing pushes below H7.
 
@@ -853,6 +880,27 @@ def test_a_dropped_block_is_churn_and_an_added_one_is_not() -> None:
 
     assert dropped == pytest.approx(0.5)
     assert added == 0.0
+
+
+def test_a_move_and_a_drop_are_two_requirements_rather_than_one() -> None:
+    """The two sets are disjoint, so they add. A maximum of the two would count the pair as one.
+
+    Two blocks approved, one moved and one dropped: two moves against a tolerance of two, which is
+    exactly the knee. Counted as the larger of the two figures instead, it would be one move at half
+    the tolerance, and a plan that both moved and dropped work would read as cheap as one that only
+    moved it.
+    """
+    moved = a_task_block(start=10, end=11)
+    doomed = an_occurrence_block(start=12)
+    week = inputs(churn_baseline=an_approved_baseline(moved, doomed))
+
+    cost = evaluate(
+        a_live_plan(a_task_block(start=15, end=16)),
+        inputs=week,
+        weights=flat_weights(churn_tolerance=2.0),
+    ).churn
+
+    assert cost == pytest.approx(0.5)
 
 
 def churn_of(moves: int, weights: WeightSet) -> float:
