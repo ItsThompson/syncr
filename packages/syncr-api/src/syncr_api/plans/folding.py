@@ -34,19 +34,28 @@ A concession is unique per week, kind, and target, which the storage index enfor
 twice does not apply it twice. That covers stored rows only: a candidate being evaluated is an
 argument rather than a row, so a candidate and a stored concession on one kind and target both
 apply. :func:`fold` carries the whole statement, including what that means for the figure.
+
+**``delta_minutes`` is an INCREMENT, not an absolute figure.** It is how much this one concession
+lowers the figure it names, and it is computed against the week as it stands: the enumerator reads
+an already-folded assembly, so a second breach of a floor that already carries one is offered
+against what is left of it. Compounding is therefore correct arithmetic rather than a defect, and
+the alternative reading would make one column mean two things depending on whether a stored
+concession exists. The enumerator never produces the pair, because a concession already applied
+this week is not offered again; what makes the pair reachable at all is a caller building a
+candidate by hand.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING, Final, assert_never
 
 from syncr_api.plans.materialization import reduced_frame_entry
 from syncr_domain.identity import date_occurrence_key
 from syncr_domain.plan import AdjustmentKind
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from uuid import UUID
 
     from syncr_api.plans.demand import TaskDemand
@@ -67,6 +76,28 @@ class Concessions:
     areas: tuple[AreaBudget, ...]
 
 
+# What each kind's approval modifies, named as the ``SolveInputs`` field it lands in, and dotted
+# with the member field where the collection keeps its members and changes one of their values.
+#
+# Declared rather than described, because the defect this table exists against was a row of prose
+# naming one field of a pair: three of the four kinds touch two quantities, since the solver's
+# reading and the probe's reading of one concession are separate fields. A test folds one
+# concession of each kind through a real assembly, observes which fields moved, and compares the
+# observation against this table in both directions.
+#
+# ``preferences`` is the entry no prose table names. Preferences are resolved over the FOLDED
+# eligibility, so a dropped task takes its resolved window with it, which is right: a task nothing
+# will schedule this week needs no window.
+FOLDED_FIELDS: Final[Mapping[AdjustmentKind, frozenset[str]]] = {
+    AdjustmentKind.DROP_ITEM: frozenset({"eligible_tasks", "deadline_demands", "preferences"}),
+    AdjustmentKind.REDUCE_ROUTINE: frozenset({"frame.interval"}),
+    AdjustmentKind.BREACH_FLOOR: frozenset(
+        {"areas.floor_minutes", "areas.floor_reservation_minutes"}
+    ),
+    AdjustmentKind.ACCEPT_PARTIAL: frozenset({"eligible_tasks.deadline", "deadline_demands"}),
+}
+
+
 def fold(adjustments: Sequence[WeekAdjustment], into: Concessions) -> Concessions:
     """``into`` with every concession applied, in the order the concessions arrive.
 
@@ -76,9 +107,9 @@ def fold(adjustments: Sequence[WeekAdjustment], into: Concessions) -> Concession
     **Two concessions on one kind and one target COMPOUND.** The storage index makes that
     unreachable for two stored concessions, and it does not cover a candidate being evaluated,
     because a candidate is an argument rather than a row. So a stored breach of 60 minutes plus a
-    candidate breach of 120 lowers a 300-minute floor to 120. Whether the enumerator offers an
-    increment or an absolute figure is the enumerator's question, which is ticket 1255; what is
-    stated here is what this pass does.
+    candidate breach of 120 lowers a 300-minute floor to 120, because each ``delta_minutes`` is an
+    increment against the figure as it stands rather than an absolute target. The module docstring
+    states why that is the reading, and why the enumerator never offers the pair.
     """
     folded = into
     for adjustment in adjustments:
