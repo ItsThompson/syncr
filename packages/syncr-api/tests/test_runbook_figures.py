@@ -126,3 +126,21 @@ class TestTheSolveFailingRunbook:
     def test_it_states_the_fallback_for_a_week_with_no_plan(self) -> None:
         """The horizon is never left with a hole: materialization's second permanent job."""
         assert "the horizon is never left with a hole" in read(SOLVE_FAILING)
+
+    def test_it_does_not_claim_the_reproduction_runs_today(self) -> None:
+        """The callout is the sentence a reader under pressure trusts, so it must not overclaim.
+
+        It claimed the procedure was "complete" while its own "Still to be written" listed the first
+        step. An operator following it reached a script that prints ``null`` with no explanation.
+        """
+        text = read(SOLVE_FAILING)
+
+        assert "reproduction's FIRST step is unwritten" in text
+        assert "nothing writes a snapshot yet" in text.lower()
+        assert "reproduction procedure is complete" not in text
+
+    def test_it_warns_where_the_null_snapshot_will_be_met(self) -> None:
+        """Beside the script that prints it, not only in the callout at the top."""
+        _before, _, after = read(SOLVE_FAILING).partition("### Read the snapshot")
+
+        assert "expected rather than a lost snapshot" in after.split("###")[0]
