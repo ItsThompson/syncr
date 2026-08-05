@@ -91,6 +91,7 @@ IMPORTS_ALLOWED: Final = frozenset(
         "itertools",
         "math",
         "prometheus_client",
+        "sys",
         "syncr_common",
         "syncr_domain",
         "syncr_solver",

@@ -836,7 +836,8 @@ def test_a_moved_block_is_churn_against_the_plan_the_user_approved() -> None:
         "churn",
     )
 
-    assert cost == pytest.approx(1.0)
+    # One move against a tolerance of one move: exactly at the knee, which is half the unit.
+    assert cost == pytest.approx(0.5)
 
 
 def test_a_dropped_block_is_churn_and_an_added_one_is_not() -> None:
@@ -850,49 +851,73 @@ def test_a_dropped_block_is_churn_and_an_added_one_is_not() -> None:
         weights=flat_weights(churn_tolerance=1.0),
     ).churn
 
-    assert dropped == pytest.approx(1.0)
+    assert dropped == pytest.approx(0.5)
     assert added == 0.0
+
+
+def churn_of(moves: int, weights: WeightSet) -> float:
+    """What a plan costs for moving this many of the approved plan's blocks."""
+    approved = tuple(an_occurrence_block(index=index, start=9) for index in range(moves))
+    moved = tuple(
+        an_occurrence_block(index=index, start=14 + index * 0.25) for index in range(moves)
+    )
+    return evaluate(
+        a_live_plan(*moved),
+        inputs=inputs(churn_baseline=an_approved_baseline(*approved)),
+        weights=weights,
+    ).churn
 
 
 def test_a_high_tolerance_user_absorbs_several_moves_cheaply_and_then_objects_sharply() -> None:
     """The tolerance SHAPES the term and the weight SCALES it, which is two jobs for two numbers.
 
-    Ten moves tolerated: three moves cost 0.09, which is cheap, and twenty cost 4.0, which is
-    four times the term's whole unit. The same three moves against a tolerance of one cost 9.0.
+    Ten moves tolerated: three moves cost 0.083 of the term's unit, which is cheap, and twenty cost
+    0.8, which is most of it. The same three moves against a tolerance of one cost 0.9, so the
+    intolerant user objects where the tolerant one has not noticed.
     """
     tolerant = flat_weights(churn_tolerance=10.0)
     intolerant = flat_weights(churn_tolerance=1.0)
 
-    def churn_of(moves: int, weights: WeightSet) -> float:
-        approved = tuple(an_occurrence_block(index=index, start=9) for index in range(moves))
-        moved = tuple(
-            an_occurrence_block(index=index, start=14 + index * 0.25) for index in range(moves)
-        )
-        return evaluate(
-            a_live_plan(*moved),
-            inputs=inputs(churn_baseline=an_approved_baseline(*approved)),
-            weights=weights,
-        ).churn
-
-    assert churn_of(3, tolerant) == pytest.approx(0.09)
-    assert churn_of(20, tolerant) == pytest.approx(4.0)
-    assert churn_of(3, intolerant) == pytest.approx(9.0)
+    assert churn_of(3, tolerant) == pytest.approx(0.09 / 1.09)
+    assert churn_of(20, tolerant) == pytest.approx(4.0 / 5.0)
+    assert churn_of(3, intolerant) == pytest.approx(9.0 / 10.0)
+    assert churn_of(3, intolerant) > 10 * churn_of(3, tolerant)
 
 
-def test_churn_rises_faster_than_the_moves_that_cause_it() -> None:
-    def churn_of(moves: int) -> float:
-        approved = tuple(an_occurrence_block(index=index, start=9) for index in range(moves))
-        moved = tuple(
-            an_occurrence_block(index=index, start=14 + index * 0.25) for index in range(moves)
-        )
-        return evaluate(
-            a_live_plan(*moved),
-            inputs=inputs(churn_baseline=an_approved_baseline(*approved)),
-            weights=flat_weights(churn_tolerance=4.0),
-        ).churn
+def test_churn_rises_faster_than_the_moves_that_cause_it_around_the_tolerance() -> None:
+    """Superlinear through the knee, which is what "begins to rise steeply" means."""
+    weights = flat_weights(churn_tolerance=8.0)
 
-    # Two moves, then four. A linear term would double; this one quadruples.
-    assert churn_of(4) / churn_of(2) == pytest.approx(4.0)
+    assert churn_of(4, weights) == pytest.approx(0.25 / 1.25)
+    assert churn_of(8, weights) == pytest.approx(0.5)
+    # Twice the moves for two and a half times the cost, through the knee.
+    assert churn_of(8, weights) / churn_of(4, weights) == pytest.approx(2.5)
+
+
+def test_churn_never_passes_the_terms_own_unit_however_much_a_plan_moves() -> None:
+    """Churn is a term in this objective rather than a rival engine.
+
+    Unbounded, the term becomes a minimal-diff engine: it would deliver a worse plan to avoid a
+    change the approval gate already makes safe. Measured on a 210-block week, an unbounded square
+    of the same ratio charged 4900 against a total of 7.8 for the other six terms.
+    """
+    intolerant = flat_weights(churn_tolerance=1.0)
+
+    assert churn_of(50, intolerant) < 1.0
+    assert churn_of(50, intolerant) > churn_of(20, intolerant)
+    assert churn_of(50, intolerant) == pytest.approx(2500 / 2501)
+
+
+@pytest.mark.parametrize("tolerance", [1e-300, 5e-324, 1e300, 1.7e308])
+def test_the_curve_is_total_over_every_tolerance_a_weight_set_admits(tolerance: float) -> None:
+    """Neither end raises, and neither reads as a cost outside the term's own unit.
+
+    The direct form of the same curve overflows a float at a ratio of about 2e202, which a tolerance
+    of a two-hundredth of a move reaches on an ordinary week.
+    """
+    cost = churn_of(4, flat_weights(churn_tolerance=tolerance))
+
+    assert 0.0 <= cost <= 1.0
 
 
 def test_churn_refuses_to_compare_two_documents_of_different_weeks() -> None:

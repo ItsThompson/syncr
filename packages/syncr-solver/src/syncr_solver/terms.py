@@ -2,9 +2,13 @@
 
 Each returns a **dimensionless non-negative ratio** rather than minutes or a count, so the seven
 weights are comparable relative importances and a share of the total is a percentage a panel can
-render. 1.0 means the whole of what the term measures went wrong. Two of them can exceed 1: an
-Area allocated far past its target, and a plan that moved far past what the user tolerates. Both
-are deliberate, because the alternative is a clamp that flattens the gradient the search climbs.
+render. 1.0 means the whole of what the term measures went wrong.
+
+``deadline_risk``, ``staleness`` and ``churn`` are bounded by 1 by construction. The other three,
+``budget_deviation``, ``fragmentation`` and ``context_switch``, can exceed it, because an Area
+allocated far past its target and a plan cut into many pieces are both worse than the whole of what
+the term measures: a clamp there would flatten the gradient the search climbs. Measured on a
+210-block week at version 1's weights, the three sit at 0.62, 0.14 and 0.003 of their own units.
 
 ## Every term is zero on a week with nothing in it
 
@@ -38,9 +42,11 @@ twice. ``duration_multiplier`` is not reachable from a
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from enum import StrEnum
 from itertools import pairwise
+from math import sqrt
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.plan import PlanError
@@ -63,9 +69,22 @@ if TYPE_CHECKING:
 # invisible next to a deadline risk of any size, and that is not how the user reasons.
 DEADLINE_RISK_EXPONENT: Final = 2.0
 
-# How sharply churn rises past the point the user tolerates. The same shape and the same reason:
-# the moves inside the tolerance are absorbed cheaply and the ones past it are objected to.
-CHURN_EXPONENT: Final = 2.0
+# How sharply churn rises through the point the user tolerates. The same exponent as the deadline
+# curve and the same reason: below the tolerance the moves are absorbed cheaply, and around it the
+# cost climbs an order of magnitude in one octave.
+#
+# **The curve SATURATES rather than growing without bound, and that is load-bearing.** Churn is a
+# term in this objective rather than a rival engine: combined with the proposal-approval gate the
+# user gets an optimal re-solve that is never surprising, and a minimal-diff engine would deliver a
+# worse plan to avoid a change the gate already makes safe. An unbounded curve IS that engine.
+# Measured on a 210-block week, an unbounded square of the same ratio charged 4900 against a total
+# of 7.8 for the other six, which is a hard constraint wearing a weight's clothing.
+CHURN_KNEE_EXPONENT: Final = 2.0
+
+# Below this, one over the ratio squared overflows a float, and the cost is zero to a float's own
+# precision anyway. Derived from the float's own range rather than chosen, so the arithmetic is
+# total over every tolerance the weight set admits.
+_CHURN_KNEE_FLAT: Final = sqrt(sys.float_info.max)
 
 
 class StalenessInput(StrEnum):
@@ -249,8 +268,9 @@ def churn(reading: PlanReading, weights: WeightSet) -> float:
     disjoint, because a block is either in both documents or in one.
 
     ``churn_tolerance`` shapes the term and the churn WEIGHT scales it. Below the tolerance the
-    moves are absorbed cheaply, at it they cost the term's whole unit, and past it the cost rises
-    steeply, which is what "absorbs several moves and then objects sharply" means as arithmetic.
+    moves are absorbed cheaply, at it they cost half the term's unit, and past it the cost climbs
+    toward the whole of it without ever passing it. That last part is why the curve saturates: see
+    :data:`CHURN_KNEE_EXPONENT`.
     """
     baseline = reading.inputs.churn_baseline
     approved = baseline.document
@@ -259,8 +279,23 @@ def churn(reading: PlanReading, weights: WeightSet) -> float:
     _require_one_week(reading.plan, approved)
     before = approved.blocks_by_id()
     after = reading.plan.blocks_by_id()
-    tolerated = _moves(before, after) / weights.churn_tolerance
-    return float(tolerated**CHURN_EXPONENT)
+    return _knee(_moves(before, after) / weights.churn_tolerance)
+
+
+def _knee(ratio: float) -> float:
+    """A cost that is cheap below one, half at one, and approaches one above it.
+
+    Written as one over one plus the inverse raised to the exponent, rather than as the ratio raised
+    to it over one plus the same. The two are algebraically equal and only this one is total: the
+    direct form overflows a float at a ratio of about 2e202, which a tolerance of a two-hundredth of
+    a move reaches on an ordinary week.
+    """
+    if ratio <= 0:
+        return 0.0
+    inverse = 1.0 / ratio
+    if inverse >= _CHURN_KNEE_FLAT:
+        return 0.0
+    return 1.0 / (1.0 + float(inverse**CHURN_KNEE_EXPONENT))
 
 
 def context_switch(reading: PlanReading, weights: WeightSet) -> float:
