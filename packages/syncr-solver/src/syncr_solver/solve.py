@@ -20,6 +20,10 @@ of last resort when a solve fails terminally, which is why it is not scaffolding
 deletes. Its refusals are carried into this log rather than re-derived, because the check that
 already knew is the one that recorded them.
 
+After phase 5 the reason records are assembled and every block carries its own. That is a
+projection of the four phases above rather than a sixth phase: :mod:`syncr_solver.reasons` reads
+the log, the breakdown, the pins and the Area figures, and computes nothing the solve did not.
+
 ## Determinism, and where each mechanism lives
 
 | Mechanism | Where |
@@ -60,6 +64,7 @@ from syncr_solver.metrics import (
     MaterializeCause,
     SolveOutcome,
 )
+from syncr_solver.reasons import explained
 from syncr_solver.search import improve
 from syncr_solver.verdicts import verdict_of
 
@@ -142,8 +147,19 @@ def _result(found: Improved) -> SolveResult:
 
     The breakdown is the search's own rather than a fresh evaluation, because it is the cost of the
     plan being returned and computing it again would be the same arithmetic on the same document.
+
+    The document is the one every block's reason record has been assembled onto, so what a caller
+    stores explains itself. Left to a later caller, a record would have to be assembled from a log,
+    a breakdown and an input snapshot that only this function holds together.
     """
-    document = found.attempt.document()
+    attempt = found.attempt
+    document = explained(
+        attempt.document(),
+        blocked_log=attempt.log.rows,
+        breakdown=found.breakdown,
+        pins=attempt.inputs.pins,
+        areas=attempt.inputs.areas,
+    )
     SOLVE_BLOCKS_PLACED.observe(len(document.blocks))
     SOLVE_ITERATIONS.observe(found.iterations)
     for reason in EmptySlotReason:
@@ -153,7 +169,7 @@ def _result(found: Improved) -> SolveResult:
     return SolveResult(
         document=document,
         objective_breakdown=found.breakdown,
-        verdict=verdict_of(found.attempt),
-        blocked_log=found.attempt.log.rows,
+        verdict=verdict_of(attempt),
+        blocked_log=attempt.log.rows,
         iterations=found.iterations,
     )

@@ -41,6 +41,7 @@ directory in both directions, because an index a reader cannot trust is worse th
 | ``moves.py`` | the four move kinds, each as a candidate plan the objective judges |
 | ``search.py`` | phase 4: bounded descent, accepting only a strict improvement |
 | ``verdicts.py`` | phase 5: the probe's shortfalls plus the packing failures the attempt found |
+| ``reasons.py`` | the record every block carries, projected from what the solve already decided |
 | ``budget.py`` | how much work one solve may do, and where a caller may stop it |
 | ``solve.py`` | the second entry point, its result, and the five phases in order |
 | ``metrics.py`` | the families this package publishes, on the shared registry |

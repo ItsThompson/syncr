@@ -209,14 +209,24 @@ def an_area_budget(
     floor_minutes: int = 0,
     name: str = "Fitness",
     max_per_day_minutes: int | None = None,
+    floor_reservation_minutes: int | None = None,
+    placed_minutes: int = 0,
 ) -> AreaBudget:
+    """One Area's figures for the week, with the two floor quantities equal by default.
+
+    They are equal on a week that holds no placement at all, which is what an empty fixture is: the
+    solver's floor nets the immovable placements and the probe's reservation nets every placement,
+    so both net nothing. A test about the difference between them states both.
+    """
     return AreaBudget(
         area_id=area_id,
         name=name,
         floor_minutes=floor_minutes,
-        floor_reservation_minutes=floor_minutes,
+        floor_reservation_minutes=(
+            floor_minutes if floor_reservation_minutes is None else floor_reservation_minutes
+        ),
         target_minutes=target_minutes,
-        placed_minutes=0,
+        placed_minutes=placed_minutes,
         max_per_day_minutes=max_per_day_minutes,
     )
 
@@ -320,12 +330,19 @@ def a_live_plan(*blocks: Block) -> PlanDocument:
 
 
 def a_pin(
-    *, binding: BindingRef | None = None, interval: Interval | None = None, day: int = 0
+    *,
+    binding: BindingRef | None = None,
+    interval: Interval | None = None,
+    day: int = 0,
+    superseded_placement: Interval | None = None,
+    objective_delta: float | None = None,
 ) -> Pin:
     return Pin(
         binding=binding or BindingRef.for_task(A_TASK),
         interval=interval or between(10, 11),
         pinned_on=on(day),
+        superseded_placement=superseded_placement,
+        objective_delta=objective_delta,
     )
 
 

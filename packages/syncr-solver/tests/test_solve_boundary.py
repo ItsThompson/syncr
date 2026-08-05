@@ -6,8 +6,8 @@ guard fails on anything new.
 
 - every field of ``SolveInputs`` the five phases read, which is the drift-catcher for the two
   quantities the solver must not confuse;
-- every module the phases are made of, so a sibling's module joining the package cannot silently
-  widen the inventory above;
+- every module the phases are made of, plus the projection that explains their result, so a
+  sibling's module joining the package cannot silently widen the inventory above;
 - the seed, which nothing here reads, because the comparator breaks every tie.
 
 Each reading carries a control, because a reading that finds nothing passes every assertion made
@@ -22,8 +22,9 @@ from typing import Final
 from syncr_solver.budget import SolveBudget
 from tests.test_objective_boundary import code_of, package_directory, source_of
 
-# The modules the five phases are made of. Named rather than globbed, for the reason the objective's
-# own inventory is: these are claims about THIS work.
+# The modules the five phases are made of, and the projection that turns their result into the
+# record every block carries. Named rather than globbed, for the reason the objective's own
+# inventory is: these are claims about THIS work.
 SOLVE_MODULES: Final = (
     "solve.py",
     "candidates.py",
@@ -37,6 +38,7 @@ SOLVE_MODULES: Final = (
     "moves.py",
     "search.py",
     "verdicts.py",
+    "reasons.py",
     "budget.py",
 )
 
@@ -51,9 +53,15 @@ SOLVE_MODULES: Final = (
 # `for_probe` is the projection the verdict phase runs the probe over. It is how the probe's own
 # demands reach a solver verdict, and it is the only route: the projection carries them verbatim,
 # and no phase here reads them.
+#
+# `areas` is read to explain a result rather than to reach one: the `floor` clause renders an Area's
+# figures, and it renders the SOLVER's floor beside the probe's reservation with the netting of each
+# stated at the point of construction. The pair is no more interchangeable there than it is in H9,
+# which is why this inventory covers the projection as well as the phases.
 FIELDS_READ: Final = frozenset(
     {
         "adjustments",
+        "areas",
         "eligible_tasks",
         "for_probe",
         "habit_occurrences",
