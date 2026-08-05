@@ -27,8 +27,10 @@ OPERATION_RESOURCE: Final = "operation"
 
 type OperationKind = Literal["solve", "materialize", "calendar_sync", "projection"]
 SOLVE: Final[OperationKind] = "solve"
+MATERIALIZE: Final[OperationKind] = "materialize"
 CALENDAR_SYNC: Final[OperationKind] = "calendar_sync"
-OPERATION_KINDS: Final = ("solve", "materialize", "calendar_sync", "projection")
+PROJECTION: Final[OperationKind] = "projection"
+OPERATION_KINDS: Final = (SOLVE, MATERIALIZE, CALENDAR_SYNC, PROJECTION)
 
 type OperationStatus = Literal["pending", "running", "succeeded", "failed", "superseded"]
 PENDING: Final[OperationStatus] = "pending"

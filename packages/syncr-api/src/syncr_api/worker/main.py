@@ -19,6 +19,10 @@ its own scheduling. One iteration is:
 
 A runner owns its own cadence and decides per tick whether it has work. The tick is
 the loop's resolution, not any runner's schedule.
+
+The five duties and their order are :data:`WORKER_DUTIES`, which is declared as data so
+the structure is one table rather than a comment: a duty whose runner does not exist yet
+is a row with no runner rather than a commented-out line, and a test reads the table.
 """
 
 from __future__ import annotations
@@ -36,7 +40,9 @@ from syncr_api.calendars.runner import CalendarSyncRunner
 from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_database
 from syncr_api.core.settings import WORKER_SERVICE, ServiceSettings, build_service_settings
+from syncr_api.horizon.runner import PlanHorizonRunner
 from syncr_api.oauth.cleanup import SWEEP_INTERVAL, OAuthSweepRunner
+from syncr_api.solving.maintenance import MAINTENANCE_INTERVAL, OperationMaintenanceRunner
 from syncr_common.logging import (
     bind_correlation_id,
     clear_context,
@@ -78,18 +84,54 @@ class WorkerContext:
 # returning, not by raising.
 type Runner = Callable[[WorkerContext], Awaitable[None]]
 
+
+@dataclass(frozen=True, slots=True)
+class Duty:
+    """One duty of the iteration, and the runner that performs it once a body exists.
+
+    ``name`` is what the duty IS, so the structure reads the same before and after a body
+    arrives. ``runner`` is ``None`` for a duty whose body a later slice fills in, which keeps
+    the declaration honest: nothing pretends to run.
+    """
+
+    name: str
+    runner: Runner | None = None
+
+
 # ---------------------------------------------------------------------------
-# THE RUNNER REGISTRY. APPEND ONLY.
+# THE ITERATION STRUCTURE.
 #
-# One line per duty, added at the END of this tuple: the solve runner, the calendar
-# sync scheduler, the projection writer, the plan horizon maintainer. Written
-# multi-line while empty so the first appending ticket adds a line rather than
-# reformatting the one every later ticket then edits.
+# Five duties, in the order one tick runs them. The order is the pipeline's: a solve
+# produces a plan, the maintainer produces the plans nothing else would, a calendar sync
+# brings in the facts a plan is built around, a projection writes a plan out, and
+# maintenance tidies up after all four.
+#
+# A duty whose runner is `None` has no body yet. It is declared here rather than left as a
+# comment so the structure is data a test can read, and so filling one in is a change to
+# one row: the solve runner's body needs the solve coordinator's claim and the solver, and
+# the projection runner's needs the write target.
+#
+# The solve runner deliberately does NOT claim yet. Claiming an operation it cannot finish
+# would leave it `running` until its lease expired, and the reaper would then retry it into
+# its attempt bound: a duty with no body must do nothing rather than something harmful.
 # ---------------------------------------------------------------------------
+WORKER_DUTIES: tuple[Duty, ...] = (
+    Duty(name="solve"),
+    Duty(name="plan_horizon_maintainer", runner=PlanHorizonRunner(clock=utc_now)),
+    Duty(name="calendar_sync", runner=CalendarSyncRunner(interval=SYNC_INTERVAL, clock=utc_now)),
+    Duty(name="projection"),
+    Duty(
+        name="maintenance",
+        runner=OperationMaintenanceRunner(interval=MAINTENANCE_INTERVAL, clock=utc_now),
+    ),
+)
+
+# The OAuth expiry sweep is not one of the five. It is not part of the plan pipeline at all:
+# it removes the Authorization Server's expired rows, and it runs on the loop because the
+# loop is where periodic work happens rather than because it is a duty of the plan.
 RUNNERS: tuple[Runner, ...] = (
-    # run_solve_runner,
+    *(duty.runner for duty in WORKER_DUTIES if duty.runner is not None),
     OAuthSweepRunner(interval=SWEEP_INTERVAL, clock=utc_now),
-    CalendarSyncRunner(interval=SYNC_INTERVAL, clock=utc_now),
 )
 
 _log = get_logger(WORKER_SERVICE)

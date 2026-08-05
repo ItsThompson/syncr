@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import functools
+from datetime import UTC, datetime
 
 import pytest
 
 from syncr_api.core.db import create_database
 from syncr_api.core.settings import WORKER_SERVICE, EnvSettings, build_service_settings
-from syncr_api.worker.main import RUNNERS, Runner, WorkerContext, run_forever, run_iteration
+from syncr_api.worker.main import (
+    RUNNERS,
+    WORKER_DUTIES,
+    Runner,
+    WorkerContext,
+    run_forever,
+    run_iteration,
+)
 from syncr_common.logging import current_correlation_id
 from syncr_common.metrics import REGISTRY
 
@@ -45,6 +53,59 @@ def _failure_count(runner: str) -> float:
 def test_every_registered_runner_is_callable() -> None:
     # The registry is append-only, so this holds for every runner a later slice adds.
     assert all(callable(runner) for runner in RUNNERS)
+
+
+# The five duties one tick runs, in order, and which of them have a body. Spelled out here rather
+# than derived from the declaration, because that declaration IS what this asserts: the structure is
+# the ticket's own, and a duty renamed, reordered or dropped has to fail rather than be re-read.
+ITERATION = [
+    ("solve", False),
+    ("plan_horizon_maintainer", True),
+    ("calendar_sync", True),
+    ("projection", False),
+    ("maintenance", True),
+]
+
+
+def test_the_iteration_runs_the_five_duties_in_the_documented_order() -> None:
+    assert [duty.name for duty in WORKER_DUTIES] == [name for name, _built in ITERATION]
+
+
+def test_a_duty_with_no_body_yet_declares_no_runner() -> None:
+    """The solve runner and the projection runner are filled in by the slices that own them.
+
+    Declared as a row with no runner rather than as a commented-out line, so the structure is data a
+    test reads. The solve runner deliberately does not claim yet either: claiming an operation it
+    could not finish would leave it running until its lease expired, and the reaper would then spend
+    its attempts.
+    """
+    built = {duty.name: duty.runner is not None for duty in WORKER_DUTIES}
+
+    assert built == dict(ITERATION)
+
+
+def test_the_registry_is_the_duties_that_have_a_body() -> None:
+    """Plus the OAuth expiry sweep, which is periodic work rather than a duty of the plan."""
+    from syncr_api.oauth.cleanup import SWEEP_INTERVAL, OAuthSweepRunner
+
+    sweep = OAuthSweepRunner(interval=SWEEP_INTERVAL, clock=lambda: datetime.now(UTC))
+    named = {getattr(runner, "__name__", repr(runner)) for runner in RUNNERS}
+    duties = {
+        runner.__name__
+        for duty in WORKER_DUTIES
+        if (runner := duty.runner) is not None and hasattr(runner, "__name__")
+    }
+
+    assert duties <= named
+    assert named - duties == {sweep.__name__}
+
+
+def test_each_runner_that_has_a_body_carries_a_stable_name() -> None:
+    # The loop labels its failure counter with this. A runner whose name changed per instance would
+    # spread one duty's failures over a growing label set.
+    for duty in WORKER_DUTIES:
+        if duty.runner is not None:
+            assert getattr(duty.runner, "__name__", None), duty.name
 
 
 async def test_one_iteration_runs_every_runner_in_declaration_order(
