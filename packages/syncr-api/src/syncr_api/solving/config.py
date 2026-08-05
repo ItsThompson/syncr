@@ -32,6 +32,11 @@ CALENDAR_SYNC: Final[OperationKind] = "calendar_sync"
 PROJECTION: Final[OperationKind] = "projection"
 OPERATION_KINDS: Final = (SOLVE, MATERIALIZE, CALENDAR_SYNC, PROJECTION)
 
+# The two kinds that PRODUCE a week's plan, which is what the plan's currency is derived from. A
+# projection writes an existing plan out to a calendar and a sync reads commitments in, so neither
+# changes what the grid holds: a week whose projection is still queued has a current plan.
+PLAN_KINDS: Final = (SOLVE, MATERIALIZE)
+
 type OperationStatus = Literal["pending", "running", "succeeded", "failed", "superseded"]
 PENDING: Final[OperationStatus] = "pending"
 RUNNING: Final[OperationStatus] = "running"

@@ -43,6 +43,7 @@ from syncr_api.solving.transitions import statuses_that_may_become
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import datetime
     from uuid import UUID
 
@@ -114,12 +115,41 @@ class OperationRepository(TenantScopedRepository):
 
     async def in_flight(self, iso_week: IsoWeek, *, kind: OperationKind) -> OperationRecord | None:
         """The week's non-terminal operation of this kind, or ``None``."""
+        return await self.in_flight_of(iso_week, kinds=(kind,))
+
+    async def in_flight_of(
+        self, iso_week: IsoWeek, *, kinds: Sequence[OperationKind]
+    ) -> OperationRecord | None:
+        """The week's non-terminal operation of any of these kinds, the most recent first.
+
+        One kind is the single-flight case and answers at most one row by the partial unique index.
+        Several kinds can answer more than one, so the order is the table's own: what a caller
+        asking "is anything still working on this week" wants is the newest of them.
+        """
         found = await self._session.scalar(
-            self.scoped_select(Operation).where(
+            self._ordered()
+            .where(
                 Operation.iso_week == str(iso_week),
-                Operation.kind == kind,
+                Operation.kind.in_(sorted(kinds)),
                 Operation.status.in_(NON_TERMINAL_STATUSES),
             )
+            .limit(1)
+        )
+        return as_record(found) if found is not None else None
+
+    async def latest_of(
+        self, iso_week: IsoWeek, *, kinds: Sequence[OperationKind]
+    ) -> OperationRecord | None:
+        """The week's most recently scheduled operation of any of these kinds, or ``None``.
+
+        Whatever its status, because the caller that wants it is asking what happened LAST: a
+        method that filtered to the terminal ones would answer the same question twice with
+        :meth:`in_flight_of` and leave the caller to reconcile two readings of one row set.
+        """
+        found = await self._session.scalar(
+            self._ordered()
+            .where(Operation.iso_week == str(iso_week), Operation.kind.in_(sorted(kinds)))
+            .limit(1)
         )
         return as_record(found) if found is not None else None
 
