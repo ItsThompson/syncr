@@ -10,6 +10,7 @@ import {
   NO_PREFERENCE,
   asClock,
   bodyOf,
+  capRefusal,
   draftOf,
   preferenceCellText,
   windowPhrase,
@@ -88,7 +89,7 @@ describe("a draft of a preference", () => {
     expect(draft.windows.map((window) => window.start)).toEqual(["05:30"]);
     expect(draft.strength).toBe("strong");
     expect(draft.preferredDurationMinutes).toBe(90);
-    expect(draft.maxPerDayMinutes).toBe(180);
+    expect(draft.maxPerDayMinutes).toBe("180");
   });
 
   it("opens empty and soft for an Area that has declared none", () => {
@@ -97,7 +98,7 @@ describe("a draft of a preference", () => {
     expect(draft.windows).toEqual([]);
     expect(draft.strength).toBe("soft");
     expect(draft.preferredDurationMinutes).toBeNull();
-    expect(draft.maxPerDayMinutes).toBeNull();
+    expect(draft.maxPerDayMinutes).toBe("");
   });
 
   it("gives every window an identity the wire does not carry", () => {
@@ -148,7 +149,7 @@ describe("a draft of a preference", () => {
   it("carries the strength, the ideal duration and the cap the reader chose", () => {
     const draft = withCap(
       withIdealDuration(withStrength(draftOf(buildPreference()), "soft"), null),
-      45,
+      "45",
     );
 
     expect(bodyOf(draft)).toMatchObject({
@@ -156,5 +157,23 @@ describe("a draft of a preference", () => {
       preferredDurationMinutes: null,
       maxPerDayMinutes: 45,
     });
+  });
+
+  it("holds the cap as the reader's own text, like every other figure field on this screen", () => {
+    /* A number-shaped draft round-trips each keystroke through text, which swallows a trailing point as it is
+     * typed. The two sibling forms hold text for that reason and this one did not. */
+    const draft = withCap(draftOf(buildPreference()), "100.");
+
+    expect(draft.maxPerDayMinutes).toBe("100.");
+    expect(bodyOf(draft).maxPerDayMinutes).toBe(100);
+  });
+
+  it("refuses a cap that is not a figure rather than sending none", () => {
+    /* `3,5` posted as null would drop a HARD constraint the reader typed, with a 200 and nothing said. */
+    const draft = withCap(draftOf(buildPreference()), "1,5");
+
+    expect(capRefusal(draft)).toContain("A daily cap is a number");
+    expect(capRefusal(withCap(draft, "100"))).toBeNull();
+    expect(capRefusal(withCap(draft, ""))).toBeNull();
   });
 });

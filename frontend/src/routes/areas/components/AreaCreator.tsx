@@ -14,24 +14,24 @@
  * once, so it is where a reader meets the collision; the statement is rendered rather than paraphrased so
  * that whichever way 1201 resolves, this panel says what the product says.
  *
- * THE TWO BUDGET FIELDS ARE PLAIN FIGURES AND NOT STEPPERS, and that is a correction. `NumberStepper` snaps
- * every commit to its measure's step and both of its measures count minutes, so with the ledger's five-minute
- * step a declared three-hour floor was POSTed as five and a 33% share as 35%. A weekly floor is a HARD solver
- * constraint and this panel is the only surface in the product that declares one, so a control that inflated
- * one by two thirds was the worst instance of that defect. Both figures are stored as `NUMERIC(5, 2)`, which
- * holds a floor to the hundredth of an hour, so no step is the right one: neither field has a grid.
+ * THE TWO BUDGET FIELDS ARE PLAIN FIGURES AND NOT STEPPERS, because both are stored as `NUMERIC(5, 2)`, which
+ * holds a floor to the hundredth of an hour: neither field has a grid for a step to land on, and
+ * `NumberStepper` snaps every commit to its measure's step. A weekly floor is a HARD solver constraint and this
+ * panel is the only surface in the product that declares one.
  *
- * THE FIELDS HOLD THE READER'S OWN TEXT until they submit. A number would rewrite `3.` under the caret, and
- * the point of this change is that the figure written is the figure typed.
+ * THE FIELDS HOLD THE READER'S OWN TEXT until they submit, because a number rewrites `3.` under the caret.
  *
- * A FLOOR AND A SHARE ARE BOTH OPTIONAL, because an Area with neither is a legitimate declaration: it holds
- * time and reports a zero target rather than an absent one. So a blank field is null rather than zero. */
+ * A FLOOR AND A SHARE ARE BOTH OPTIONAL, because an Area with neither is a legitimate declaration: it holds time
+ * and reports a zero target rather than an absent one. So a blank field declares nothing.
+ *
+ * TEXT THAT IS NOT A FIGURE IS REFUSED HERE rather than read as blank: `3,5` posted as null would create the
+ * Area and leave the constraint the reader typed silently absent. */
 
 import { useState } from "react";
 
 import { Button, Input } from "../../../ui/primitives";
 import { FormRow, Panel } from "../../../ui/layout";
-import { parseFigure } from "../figures";
+import { figureOf, figureRefusal, readFigure } from "../figures";
 import type { AreaDeclarationBody, Ramp } from "../../../api/hooks/useAreas";
 import type { Write } from "../../../api/hooks/useWrite";
 
@@ -54,15 +54,21 @@ function bodyOf(draft: Draft): AreaDeclarationBody {
   return {
     name: draft.name,
     parentId: null,
-    budgetPercent: parseFigure(draft.budgetPercent),
-    floorHours: parseFigure(draft.floorHours),
+    budgetPercent: figureOf(readFigure(draft.budgetPercent)),
+    floorHours: figureOf(readFigure(draft.floorHours)),
   };
 }
 
 export function AreaCreator({ ramp, write }: AreaCreatorProps) {
   const [draft, setDraft] = useState<Draft>(EMPTY);
 
+  const floorRefusal = figureRefusal(draft.floorHours, "A weekly floor");
+  const shareRefusal = figureRefusal(draft.budgetPercent, "A share of the remainder");
+
   const submit = async () => {
+    /* Nothing is sent while a field holds text the wire cannot carry. Posting the readable half would create
+     * the Area with the other half silently absent, which for a floor is a hard constraint nobody declared. */
+    if (floorRefusal !== null || shareRefusal !== null) return;
     if (await write.submit(bodyOf(draft))) setDraft(EMPTY);
   };
 
@@ -104,6 +110,7 @@ export function AreaCreator({ ramp, write }: AreaCreatorProps) {
         <FormRow
           label="Floor / wk"
           hint="A weekly minimum in hours the solver treats as a constraint, up to 168. Blank declares none."
+          error={floorRefusal ?? undefined}
         >
           {(field) => (
             <Input
@@ -112,6 +119,7 @@ export function AreaCreator({ ramp, write }: AreaCreatorProps) {
               measure="figure"
               value={draft.floorHours}
               onValueChange={(floorHours) => setDraft({ ...draft, floorHours })}
+              isInvalid={floorRefusal !== null}
               label="Weekly floor in hours"
             />
           )}
@@ -120,6 +128,7 @@ export function AreaCreator({ ramp, write }: AreaCreatorProps) {
         <FormRow
           label="Share of remainder"
           hint="A percentage of the discretionary time the floors leave. Shares past 100 in total are reported, never refused."
+          error={shareRefusal ?? undefined}
         >
           {(field) => (
             <Input
@@ -128,6 +137,7 @@ export function AreaCreator({ ramp, write }: AreaCreatorProps) {
               measure="figure"
               value={draft.budgetPercent}
               onValueChange={(budgetPercent) => setDraft({ ...draft, budgetPercent })}
+              isInvalid={shareRefusal !== null}
               label="Share of the remainder, as a percentage"
             />
           )}

@@ -58,22 +58,40 @@ export function asWeekLabel(period: string): string {
 }
 
 /**
- * What a reader typed, as the figure the api takes, or null for nothing.
+ * What a reader typed, read as one of three answers rather than two.
  *
- * NOTHING IS ROUNDED AND NOTHING IS CLAMPED HERE. Every figure this screen authors is stored as
- * `NUMERIC(5, 2)`: the api's own comment says that holds every legal percentage and every legal floor to the
- * hundredth of an hour, and the domain's `floor_minutes` says a floor authored to the hundredth converts
- * deterministically. So a share of 33.5 and a floor of 3.5 are both legal declarations, and a control that
- * snapped either to a grid would write a budget the reader did not author. The api's own bounds refuse a
- * figure out of range, and its 422 names the field.
+ * NOTHING IS ROUNDED AND NOTHING IS CLAMPED. Every figure this screen authors is stored as `NUMERIC(5, 2)`: the
+ * api's own comment says that holds every legal percentage and every legal floor to the hundredth of an hour, and
+ * the domain's `floor_minutes` says a floor authored to the hundredth converts deterministically. So 33.5 and 3.5
+ * are legal declarations, and a control that snapped either to a grid would write a budget the reader did not
+ * author. The api's own bounds refuse a figure out of range, and its 422 names the field.
  *
- * Blank is null rather than zero, because a reader who cleared the box stated nothing rather than none.
+ * BLANK AND UNREADABLE ARE DIFFERENT ANSWERS, and collapsing them was a defect of the same class as the rounding
+ * this replaced. Blank declares nothing, which is legal: an Area with no floor and no share is a real declaration.
+ * `3,5` or `three` declares something the wire cannot carry, and reading it as blank posted a successful 201 with a
+ * HARD solver constraint the reader typed silently absent. So it is refused here and the form says which field.
  */
-export function parseFigure(text: string): number | null {
+export type FigureReading =
+  | { readonly kind: "none" }
+  | { readonly kind: "figure"; readonly figure: number }
+  | { readonly kind: "unreadable" };
+
+export function readFigure(text: string): FigureReading {
   const trimmed = text.trim();
-  if (trimmed === "") return null;
+  if (trimmed === "") return { kind: "none" };
   const figure = Number(trimmed);
-  return Number.isFinite(figure) ? figure : null;
+  return Number.isFinite(figure) ? { kind: "figure", figure } : { kind: "unreadable" };
+}
+
+/** The figure a reading carries, or null for a blank one. Unreadable text is refused before this is called. */
+export function figureOf(reading: FigureReading): number | null {
+  return reading.kind === "figure" ? reading.figure : null;
+}
+
+/** Why a field cannot be sent, in the reader's words, or null when it can. */
+export function figureRefusal(text: string, subject: string): string | null {
+  if (readFigure(text).kind !== "unreadable") return null;
+  return `${subject} is a number, and ${text.trim()} is not one. Use a point for a decimal, as in 3.5.`;
 }
 
 /** A figure as the field shows it back: the reader's own text, or empty for nothing declared. */

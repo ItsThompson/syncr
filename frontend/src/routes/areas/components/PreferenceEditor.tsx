@@ -9,13 +9,11 @@
  * that could carry one would be an override that could relax one. The api refuses the field at the boundary;
  * this form does not offer it at all, which is the same rule one layer earlier.
  *
- * THE IDEAL SESSION STEPS AND THE DAILY CAP DOES NOT, and the two controls differ because the api's two rules
- * differ. An ideal duration OWES the quarter-hour grid: `syncr_domain.preferences` refuses one that is not a
- * multiple of it, so a stepper on the snap is exactly right and a figure off the grid would be a 422. A cap does
- * NOT owe the grid: ticket 21 settled that a cap is a budget figure rather than a geometry, so 100 minutes is
- * legal and admits six blocks. A stepper snaps every commit, so it wrote 105 for a typed 100, which is a hard
- * constraint the reader did not declare. The cap is therefore a plain figure with the api's own bounds stated
- * beside it.
+ * THE IDEAL SESSION STEPS AND THE DAILY CAP DOES NOT, because the api's two rules differ. An ideal duration
+ * OWES the quarter-hour grid: `syncr_domain.preferences` refuses one that is not a multiple of it, so a stepper
+ * on the snap is exactly right and a figure off the grid is a 422. A cap does NOT: a cap is a budget figure
+ * rather than a geometry, so 100 minutes is legal and admits six blocks, and a stepper snapping every commit
+ * would write a hard constraint the reader did not declare.
  *
  * AN EMPTY WINDOW LIST IS A STATEMENT, NOT AN OMISSION. Removing the last window and saving declares that this
  * Area names no time of day, which is a real declaration: the strength then weighs nothing. That is why the
@@ -31,9 +29,9 @@ import { useId, useState } from "react";
 
 import { Button, Input, NumberStepper, Select, TimeRangeInput } from "../../../ui/primitives";
 import { FormRow } from "../../../ui/layout";
-import { asFieldText, parseFigure } from "../figures";
 import {
   bodyOf,
+  capRefusal,
   draftOf,
   withAnotherWindow,
   withCap,
@@ -58,10 +56,11 @@ const STRENGTHS = [
   { value: "strong", label: "strong" },
 ] as const;
 
-/** The bounds the api accepts, so a control cannot offer a figure it would refuse. */
+/** The bounds the api accepts on the cap, so a control cannot offer a figure it would refuse. */
 const CAP_MIN_MINUTES = 15;
 const CAP_MAX_MINUTES = 1440;
-const IDEAL_MAX_MINUTES = 480;
+/* The api's own ceiling for an ideal session, which is a whole day: longer than that stops describing a session. */
+const IDEAL_MAX_MINUTES = 1440;
 
 export interface PreferenceEditorProps {
   readonly areaId: string;
@@ -87,8 +86,12 @@ export function PreferenceEditor({
   const [draft, setDraft] = useState(() => draftOf(preference));
   const [added, setAdded] = useState(0);
   const refusal = declare.problem ?? remove.problem;
+  const capUnreadable = capRefusal(draft);
 
   const save = async () => {
+    /* Nothing is sent while the cap holds text the wire cannot carry: sending null instead would drop a hard
+     * constraint the reader typed, with a 200 and no statement anywhere. */
+    if (capUnreadable !== null) return;
     if (await declare.submit({ areaId, preference: bodyOf(draft) })) onClose();
   };
   const clear = async () => {
@@ -169,16 +172,18 @@ export function PreferenceEditor({
           label="Daily cap"
           hint={
             "A hard constraint, and an Area's alone: an override cannot carry one, so it can never relax " +
-            `this. ${CAP_MIN_MINUTES} to ${CAP_MAX_MINUTES} minutes, and it owes no grid. Blank for none.`
+            `this. ${CAP_MIN_MINUTES} to ${CAP_MAX_MINUTES} whole minutes, and it owes no grid. Blank for none.`
           }
+          error={capUnreadable ?? undefined}
         >
           {(field) => (
             <Input
               id={field.id}
               describedBy={field.describedBy}
               measure="figure"
-              value={asFieldText(draft.maxPerDayMinutes)}
-              onValueChange={(text) => setDraft(withCap(draft, parseFigure(text)))}
+              value={draft.maxPerDayMinutes}
+              onValueChange={(text) => setDraft(withCap(draft, text))}
+              isInvalid={capUnreadable !== null}
               label="Daily cap in minutes"
             />
           )}

@@ -25,6 +25,7 @@ import type {
   PreferenceStrength,
   PreferenceWindow,
 } from "../../api/hooks/usePreferences";
+import { asFieldText, figureOf, figureRefusal, readFigure } from "./figures";
 
 /** U+00B7 MIDDLE DOT, which is how this product joins two readings inside one cell. */
 const JOIN = " \u00b7 ";
@@ -40,12 +41,17 @@ export interface WindowDraft {
   readonly end: string;
 }
 
-/** A preference as the form holds it: every field the api replaces, and the windows with their ids. */
+/** A preference as the form holds it: every field the api replaces, and the windows with their ids.
+ *
+ * THE CAP IS TEXT LIKE EVERY OTHER FIGURE FIELD ON THIS SCREEN. A number-shaped draft round-trips each keystroke
+ * through `text -> number -> text`, which swallows a trailing point as it is typed and clears a mistyped letter
+ * rather than showing it: the reader cannot see themselves typing. It is parsed once, on submit.
+ */
 export interface PreferenceDraft {
   readonly windows: readonly WindowDraft[];
   readonly strength: PreferenceStrength;
   readonly preferredDurationMinutes: number | null;
-  readonly maxPerDayMinutes: number | null;
+  readonly maxPerDayMinutes: string;
 }
 
 export const DAYPARTS: readonly {
@@ -95,7 +101,7 @@ export function draftOf(preference: Preference | undefined): PreferenceDraft {
       })) ?? [],
     strength: declared?.strength ?? "soft",
     preferredDurationMinutes: declared?.preferredDurationMinutes ?? null,
-    maxPerDayMinutes: declared?.maxPerDayMinutes ?? null,
+    maxPerDayMinutes: asFieldText(declared?.maxPerDayMinutes ?? null),
   };
 }
 
@@ -105,8 +111,13 @@ export function bodyOf(draft: PreferenceDraft): AreaPreferenceBody {
     windows: draft.windows.map((window) => ({ start: window.start, end: window.end })),
     strength: draft.strength,
     preferredDurationMinutes: draft.preferredDurationMinutes,
-    maxPerDayMinutes: draft.maxPerDayMinutes,
+    maxPerDayMinutes: figureOf(readFigure(draft.maxPerDayMinutes)),
   };
+}
+
+/** Why the cap cannot be sent, in the reader's words, or null when it can. */
+export function capRefusal(draft: PreferenceDraft): string | null {
+  return figureRefusal(draft.maxPerDayMinutes, "A daily cap");
 }
 
 /** A draft with one window's bounds replaced, which is what editing a clock field produces. */
@@ -140,9 +151,9 @@ export function withStrength(
   return { ...draft, strength };
 }
 
-/** A draft with another daily cap, or none. A cap is an Area's alone, which is why it lives here. */
-export function withCap(draft: PreferenceDraft, minutes: number | null): PreferenceDraft {
-  return { ...draft, maxPerDayMinutes: minutes };
+/** A draft with another daily cap, as the reader typed it. A cap is an Area's alone, which is why it lives here. */
+export function withCap(draft: PreferenceDraft, text: string): PreferenceDraft {
+  return { ...draft, maxPerDayMinutes: text };
 }
 
 /** A draft with another ideal session length, or none. */
