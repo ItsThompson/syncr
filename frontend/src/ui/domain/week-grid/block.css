@@ -23,7 +23,7 @@
  *   the block exists  fill               --paper-raised
  *   external anchor   fill as an image   a hatch over that fill, on its own layer
  *   hover             fill as a colour   --ink-wash, from states.css, so it COMPOSES with the hatch
- *   proposal target   no fill            the one state without one
+ *   proposal target   no fill            the one state without one, plus a dashed BOTTOM rule as redundancy
  *   conflict          3px left rule      --signal-oxide, which wins the pixel over selected while it lasts
  *   selected          3px left rule      --ink-deep
  *   split             1px left rule      --rule, replaced by the state rule when both apply
@@ -203,17 +203,19 @@
   border-left-width: var(--state-selected-border);
 }
 
-/* A PROPOSAL TARGET IS THE ONE STATE WITH NO FILL, and dashed alone was rejected for it: a dashed border already
-   means `disabled` on a control, and one visual carrying two meanings is what this system forbids. Absence of
-   fill is unclaimed and unambiguous, and it survives forced colors where a fill is dropped anyway. The dashed
-   edge is kept as well, so that in forced colors the missing fill stops being the only difference: it is also
-   the one state that closes the box, because a rectangle with no fill needs an edge to be a rectangle. The left
-   rule is re-reserved after it, so the state channel is not spent by the dash. */
+/* A PROPOSAL TARGET IS THE ONE STATE WITH NO FILL, and dashed alone was rejected as its carrier: a dashed border
+   already means `disabled` on a control, and one visual carrying two meanings is what this system forbids. Absence
+   of fill is unclaimed and unambiguous, and it survives forced colors where a fill is dropped anyway. The dashed
+   edge is kept as a REDUNDANCY, so that in forced colors the missing fill stops being the only difference.
+
+   IT IS THE BOTTOM RULE THAT DASHES, and that is a correction to `block-states.html`'s first rendering, which used
+   the `border` shorthand. The shorthand set all four edges, so a proposal target lost the Area's 2px top rule to a
+   1px dashed one and gained a right border: two channel collisions for one redundancy. Area identity is the top rule
+   and nothing else, the left rule stays reserved for state, and there is no right border at any state. */
 .week-block[data-proposal] {
-  border: var(--hairline) dashed var(--ink-deep);
-  border-left: var(--state-selected-border) solid transparent;
+  border-bottom-color: var(--ink-deep);
+  border-bottom-style: dashed;
   background-color: transparent;
-  background-image: none;
 }
 
 /* Lifted so the ring, drawn at a 2px OUTSET offset by base.css, is not clipped by the block below it. The ring

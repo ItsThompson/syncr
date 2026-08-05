@@ -198,6 +198,10 @@
   --container-sidebar: var(--w-sidebar);
   --container-detail: var(--w-detail);
   --container-detail-closed: var(--w-detail-closed);
+  /* The narrowest day column that still holds 17 characters, which is the width policy's floor. Mapped so the week
+     grid can name it in a `max-narrow:` utility: below --bp-compact the grid scrolls at this width per day rather
+     than narrowing all seven columns below legibility at once. */
+  --container-col-min: var(--col-min);
 
   /* THE WIDTH POLICY'S TWO THRESHOLDS, as literals, because a media query cannot read a custom
      property: `var(--bp-wide)` inside `@media` compiles to a query no browser evaluates.

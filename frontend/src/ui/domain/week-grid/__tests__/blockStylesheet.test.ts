@@ -72,10 +72,16 @@ describe("the block draws three edges, not four", () => {
     expect(await properties("block.css", ".week-block")).not.toContain("border-left");
   });
 
-  it("names no right border anywhere in the sheet, at any state", async () => {
-    const rights = (await declarationsOf(domainDir, "border-right")).filter(({ sheet: name }) =>
-      name.startsWith("week-grid/block"),
-    );
+  it("names no right border at any state, read as an EDGE rather than as a longhand", async () => {
+    /* The first draft asserted the `border-right` longhand and would have passed a `border` shorthand, which is how
+     * a proposal target came to draw one in `block-states.html`. The shorthand is expanded here, so the question is
+     * which EDGES the sheet sets rather than which property names it writes. */
+    const rights: string[] = [];
+    parse(await sheet("block.css")).walkDecls((declaration) => {
+      if (/^border(-right)?(-color|-style|-width)?$/.test(declaration.prop)) {
+        rights.push(`${declaration.parent?.toString().split("{")[0].trim()} ${declaration.prop}`);
+      }
+    });
 
     expect(rights).toEqual([]);
   });
@@ -155,7 +161,7 @@ describe("one state, one channel", () => {
       "[data-dragging] -> border-top-color",
       '[data-origin="anchor"] -> border-top-color',
       '[data-origin="frame"] -> background-color',
-      "[data-proposal] -> border, border-left, background-color, background-image",
+      "[data-proposal] -> border-bottom-color, border-bottom-style, background-color",
       "[data-selected] -> border-left-color",
       "[data-selected] -> border-left-width",
       "[data-split] -> border-left",
@@ -164,6 +170,14 @@ describe("one state, one channel", () => {
       '[data-tier="compact"] -> padding-top, font-size, line-height',
       '[data-tier="hairline"] -> padding, border-bottom-width',
     ]);
+  });
+
+  it("keeps the Area's top rule on a proposal target, because identity is not a state's to spend", async () => {
+    const proposal = await rule("block.css", ".week-block[data-proposal]");
+
+    expect(proposal.map(([property]) => property)).not.toContain("border-top");
+    expect(proposal.map(([property]) => property)).not.toContain("border-top-color");
+    expect(proposal.map(([property]) => property)).not.toContain("border-left");
   });
 
   it("gives conflict the pixel over selected, by declaring it second", async () => {

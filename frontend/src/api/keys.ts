@@ -40,3 +40,9 @@ export const offPlanKey = (): string => "/api/v1/off-plan";
  * separate key from the sources it belongs to: a reconnect changes this and not the source list, and a
  * source's inclusion changes the list and not this. */
 export const googleConnectionKey = (): string => "/api/v1/calendar-sources/google/connection";
+
+/* The week is part of the key, because two weeks are two plans. Every write on the Week screen names it: a
+ * pin, an approval, a requested solve and a tradeoff each change one week, and a blanket revalidation would
+ * refetch a whole week's plan because a setting changed, which is slow and is a source of flicker on a
+ * surface with no animation to hide it. */
+export const weekKey = (isoWeek: string): string => `/api/v1/weeks/${isoWeek}`;

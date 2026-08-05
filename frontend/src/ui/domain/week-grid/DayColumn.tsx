@@ -42,7 +42,7 @@ export function DayColumn({
   const across = placeOverlaps(day.blocks.map((block) => block.span));
 
   return (
-    <div className="week-day">
+    <div className="week-day max-narrow:shrink-0 max-narrow:grow-0 max-narrow:basis-col-min">
       <div className="week-day__head">
         {label}
         <span className="week-day__count">{day.blocks.length}</span>

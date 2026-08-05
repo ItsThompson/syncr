@@ -257,7 +257,7 @@ describe("the summary strip", () => {
 });
 
 describe("the week with no plan", () => {
-  const actions = { onSolveNow: vi.fn<() => void>(), onExtendHorizon: vi.fn<() => void>() };
+  const actions = { onSolveNow: vi.fn<() => void>(), extendHorizonHref: "/settings" };
 
   it("offers the horizon's two repairs, and states the server's own sentence", () => {
     render(
@@ -272,7 +272,10 @@ describe("the week with no plan", () => {
     expect(
       screen.getByText("This week is beyond your 14-day planning horizon."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Extend the horizon" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Extend the horizon" })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
     expect(screen.getByRole("button", { name: "Solve this week now" })).toBeInTheDocument();
   });
 

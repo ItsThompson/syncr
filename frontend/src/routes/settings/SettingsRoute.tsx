@@ -65,7 +65,7 @@ import { SourceAddition } from "./components/SourceAddition";
 import { SourcesPanel } from "./components/SourcesPanel";
 import { WriteTargetPanel } from "./components/WriteTargetPanel";
 import { ZonePanel } from "./components/ZonePanel";
-import { statedInstant } from "./format";
+import { statedAge } from "./format";
 import { gridHeightFor } from "./geometry";
 import { sleepRoutineOf } from "./sleepFloor";
 import { sourcePanelNotices } from "./sourceNotices";
@@ -121,9 +121,7 @@ export function SettingsRoute() {
           <NoticePanel
             key={notice.id}
             notice={notice}
-            /* `since` reads after the kit's own word, so the instant is what belongs there: `since 4 days` is not
-               a sentence, and the duration is already in the detail the api composed. */
-            formatSince={(instant) => statedInstant(instant, activeZone)}
+            formatSince={(instant) => statedAge(instant, now)}
           />
         ))}
 

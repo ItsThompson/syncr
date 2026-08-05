@@ -182,10 +182,12 @@ table.led code{font-size:9.5px}
 .blk[data-conflict]{border-left-color:var(--state-conflict-color)}
 .blk[data-pinned] .pin{display:inline}
 .pin{display:none}
-/* proposal: the one state with NO fill. Outline only. */
+/* proposal: the one state with NO fill. The DASHED EDGE IS THE BOTTOM RULE and not the whole border, which is a
+   correction to this sheet's first rendering: the shorthand set all four edges, so a proposal target lost the Area's
+   2px top rule to a 1px dashed one and gained a right border it is not allowed to have. Two channel collisions for
+   one redundancy. Area identity is the top rule and nothing else, and there is no right border at any state. */
 .blk[data-proposal]{background:transparent;background-image:none;
-  border:var(--hairline) dashed var(--ink-deep);
-  border-left:var(--state-selected-border) solid transparent;color:var(--ink-soft)}
+  border-bottom:var(--hairline) dashed var(--ink-deep);color:var(--ink-soft)}
 .blk[data-proposal]::after{content:'';position:absolute;inset:0;pointer-events:none}
 /* the source block a proposal wants to vacate */
 .blk[data-source] .g{color:var(--ink-deep)}
@@ -357,7 +359,7 @@ table.led code{font-size:9.5px}
     <div class="kv" style="margin-bottom:9px">What each end carries</div>
     <table class="led"><tbody>
       <tr><td>source, 05:30</td><td>keeps its fill. takes <code>&#8594;</code> in the glyph slot</td></tr>
-      <tr><td>target, 13:00</td><td><b>no fill.</b> dashed <code>--ink-deep</code> outline, <code>--ink-soft</code> text</td></tr>
+      <tr><td>target, 13:00</td><td><b>no fill.</b> the Area's own top rule survives, the bottom rule dashes to <code>--ink-deep</code>, text <code>--ink-soft</code></td></tr>
       <tr><td>notification</td><td><b>none.</b> a proposal waits quietly and is visible when the user looks</td></tr>
       <tr><td>resolution</td><td>one approve action. proposals supersede each other, so only the latest exists</td></tr>
     </tbody></table>

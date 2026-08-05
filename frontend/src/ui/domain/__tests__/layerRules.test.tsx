@@ -117,7 +117,7 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   EmptyState: () => <domain.EmptyState title="Nothing yet" detail="Press n to capture one." />,
   EmptyWeek: () => (
     <domain.EmptyWeek
-      onExtendHorizon={vi.fn<() => void>()}
+      extendHorizonHref="/settings"
       onSolveNow={vi.fn<() => void>()}
       reason="outside_horizon"
       setupHref="/setup"
