@@ -10,7 +10,7 @@
  *
  * THE PROGRESS-BAR CLAIM IS ASSERTED BY ROLE, so a bar added later fails it whichever component drew one. */
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -378,18 +378,20 @@ describe("the grid geometry panel", () => {
   });
 
   /* The wall time that reaches the api names no zone and carries no seconds: the zone comes from the day being
-   * rendered, and a column with no offset would drop one in silence. The snap happens on blur, which is what
-   * pressing the button does. */
+   * rendered, and a column with no offset would drop one in silence.
+   *
+   * `fireEvent.change` RATHER THAN `userEvent.type`, and that is the whole point of the case. The kit's time input
+   * snaps on blur, so a typed value is already on the grid by the time a click reaches the button and this panel's
+   * own snap would be a no-op the test could not see. Changing the value without focusing it is what leaves an
+   * unsnapped figure in state, which is the state a submit has to correct. */
   it("sends the day bounds as bare wall times, snapped to the quarter hour", async () => {
     const patch = recordingHandler("patch", SETTINGS, { status: 200, body: buildSettings() });
     apiServer.use(patch.handler, ...settingsHandlers());
     renderAt("/settings");
     await settled();
 
-    const from = screen.getByLabelText("Day bounds, from");
-    await userEvent.clear(from);
-    await userEvent.type(from, "06:07");
-    await userEvent.click(screen.getByRole("button", { name: "Set the day bounds" }));
+    fireEvent.change(screen.getByLabelText("Day bounds, from"), { target: { value: "06:07" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set the day bounds" }));
 
     await waitFor(() => expect(patch.bodies).toEqual([{ dayStart: "06:00", dayEnd: "23:00" }]));
   });
@@ -526,7 +528,10 @@ describe("the off-plan panel", () => {
   });
 
   /* An arbitrary span, not whole days: Friday afternoon to Monday morning is the case the feature exists for, and
-   * the times snap to the quarter hour because every bound in this product does. */
+   * the times snap to the quarter hour because every bound in this product does.
+   *
+   * `fireEvent.change` on the times for the reason the day-bounds case states: the kit's input snaps on blur, so a
+   * typed figure would already be on the grid and this form's own snap would be untested. */
   it("declares an arbitrary span from two dates and two times, snapped to the quarter hour", async () => {
     const declare = recordingHandler("post", OFF_PLAN, {
       status: 201,
@@ -543,14 +548,10 @@ describe("the off-plan panel", () => {
     const to = within(panel).getByRole("textbox", { name: "To" });
     await userEvent.clear(to);
     await userEvent.type(to, "2026-08-10");
-    const start = within(panel).getByLabelText("Times, from");
-    await userEvent.clear(start);
-    await userEvent.type(start, "14:07");
-    const end = within(panel).getByLabelText("Times, to");
-    await userEvent.clear(end);
-    await userEvent.type(end, "09:00");
+    fireEvent.change(within(panel).getByLabelText("Times, from"), { target: { value: "14:07" } });
+    fireEvent.change(within(panel).getByLabelText("Times, to"), { target: { value: "09:00" } });
 
-    await userEvent.click(within(panel).getByRole("button", { name: "Declare off plan" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Declare off plan" }));
 
     await waitFor(() =>
       expect(declare.bodies).toEqual([
