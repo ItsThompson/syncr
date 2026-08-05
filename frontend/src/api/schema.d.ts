@@ -628,6 +628,46 @@ export interface paths {
         patch: operations["update_off_plan_period_api_v1_off_plan__period_id__patch"];
         trace?: never;
     };
+    "/api/v1/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List tracked operations, most recently scheduled first
+         * @description One page of this tenant's operations.
+         */
+        get: operations["list_operations_api_v1_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one operation's current status
+         * @description The operation's current truth, so a client that missed a push is not left with a stuck UI.
+         */
+        get: operations["read_operation_api_v1_operations__operation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -2592,6 +2632,11 @@ export interface components {
             scheduledFor: string;
             /** Startedat */
             startedAt?: string | null;
+            /**
+             * Statement
+             * @description One sentence naming what this status means and what still works. A superseded operation states that a later change of your own displaced it and that a follow-up is running, which is not a failure.
+             */
+            statement: string;
             status: components["schemas"]["OperationStatus"];
             /** Supersededby */
             supersededBy?: string | null;
@@ -2614,6 +2659,22 @@ export interface components {
              * @description The calendar source a sync is for.
              */
             sourceId?: string | null;
+        };
+        /**
+         * OperationsResponse
+         * @description One page of tracked operations, most recently scheduled first.
+         *
+         *     Cursor-paginated rather than offset-paginated. An operation created while a client is paging
+         *     shifts every offset after it, which would silently skip a row.
+         */
+        OperationsResponse: {
+            /**
+             * Nextcursor
+             * @description Pass back as `cursor` to read the next page. Null when this is the last page. A page holds up to `limit` operations, 50 by default and 200 at most.
+             */
+            nextCursor?: string | null;
+            /** Operations */
+            operations: components["schemas"]["OperationResponse"][];
         };
         /**
          * OverridePreferenceRequest
@@ -7167,6 +7228,147 @@ export interface operations {
             };
             /** @description Conflict with the current state */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_operations_api_v1_operations_get: {
+        parameters: {
+            query?: {
+                /** @description Only operations in this status. */
+                status?: string | null;
+                /** @description Only operations of this kind. */
+                kind?: string | null;
+                /** @description The `nextCursor` a previous page handed back. */
+                cursor?: string | null;
+                /** @description How many operations one page holds. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_operation_api_v1_operations__operation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -2757,6 +2757,11 @@
             ],
             "title": "Startedat"
           },
+          "statement": {
+            "description": "One sentence naming what this status means and what still works. A superseded operation states that a later change of your own displaced it and that a follow-up is running, which is not a failure.",
+            "title": "Statement",
+            "type": "string"
+          },
           "status": {
             "$ref": "#/components/schemas/OperationStatus"
           },
@@ -2782,7 +2787,8 @@
           "status",
           "target",
           "scheduledFor",
-          "attempt"
+          "attempt",
+          "statement"
         ],
         "title": "OperationResponse",
         "type": "object"
@@ -2827,6 +2833,35 @@
           }
         },
         "title": "OperationTarget",
+        "type": "object"
+      },
+      "OperationsResponse": {
+        "description": "One page of tracked operations, most recently scheduled first.\n\nCursor-paginated rather than offset-paginated. An operation created while a client is paging\nshifts every offset after it, which would silently skip a row.",
+        "properties": {
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass back as `cursor` to read the next page. Null when this is the last page. A page holds up to `limit` operations, 50 by default and 200 at most.",
+            "title": "Nextcursor"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/OperationResponse"
+            },
+            "title": "Operations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "operations"
+        ],
+        "title": "OperationsResponse",
         "type": "object"
       },
       "OverridePreferenceRequest": {
@@ -8938,6 +8973,232 @@
         "summary": "Move a bound, rename a span, or change keepFrame",
         "tags": [
           "off-plan"
+        ]
+      }
+    },
+    "/api/v1/operations": {
+      "get": {
+        "description": "One page of this tenant's operations.",
+        "operationId": "list_operations_api_v1_operations_get",
+        "parameters": [
+          {
+            "description": "Only operations in this status.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only operations in this status.",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Only operations of this kind.",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only operations of this kind.",
+              "title": "Kind"
+            }
+          },
+          {
+            "description": "The `nextCursor` a previous page handed back.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The `nextCursor` a previous page handed back.",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "How many operations one page holds.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "How many operations one page holds.",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "List tracked operations, most recently scheduled first",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/operations/{operation_id}": {
+      "get": {
+        "description": "The operation's current truth, so a client that missed a push is not left with a stuck UI.",
+        "operationId": "read_operation_api_v1_operations__operation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Read one operation's current status",
+        "tags": [
+          "operations"
         ]
       }
     },
