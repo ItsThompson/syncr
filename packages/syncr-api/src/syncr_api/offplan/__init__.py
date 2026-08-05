@@ -19,6 +19,7 @@ Import layout, so a reader knows where to look:
 | ``declarations.py`` | what a request asked to declare or change, three-valued per field |
 | ``rules.py`` | the status each domain rejection carries |
 | ``weeks.py`` | which ISO weeks a span touches, and therefore what a mutation invalidates |
+| ``segments.py`` | the local day segments a span holds, which is what the projection writes |
 | ``occupancy.py`` | the spans a week holds, as the budget report asks for them |
 | ``reading.py`` | how many off-plan minutes a week had, and whether to say why |
 | ``schemas.py`` | the wire shapes |
