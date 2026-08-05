@@ -140,6 +140,8 @@ class ConcessionService:
         found = await self._adjustments.find(adjustment_id)
         if found is None or found.iso_week != week:
             raise NotFound(f"No {CONCESSION_RESOURCE} of that week matches that identifier.")
+        # Defense in depth rather than the check producing that 404: `find` is scoped to this
+        # principal's own tenant, so another tenant's identifier already read as absent above.
         authorize_tenant(principal, found.tenant_id, resource=CONCESSION_RESOURCE)
 
         await self._adjustments.remove(adjustment_id)

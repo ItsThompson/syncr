@@ -39,7 +39,7 @@ _CONCESSION_RESPONSES: Mapping[int | str, dict[str, Any]] = {
 
 
 def build_concessions_router() -> APIRouter:
-    """The `/api/v1/weeks/{isoWeek}` tradeoff and concession routes."""
+    """The `/api/v1/weeks/{iso_week}` tradeoff and concession routes."""
     router = APIRouter(
         tags=[CONCESSIONS_TAG],
         dependencies=[Depends(require_trusted_origin)],

@@ -40,9 +40,16 @@ lowers the figure it names, and it is computed against the week as it stands: th
 an already-folded assembly, so a second breach of a floor that already carries one is offered
 against what is left of it. Compounding is therefore correct arithmetic rather than a defect, and
 the alternative reading would make one column mean two things depending on whether a stored
-concession exists. The enumerator never produces the pair, because a concession already applied
-this week is not offered again; what makes the pair reachable at all is a caller building a
-candidate by hand.
+concession exists.
+
+**What makes the pair unreachable today is OFFER-TIME suppression, not this pass.** The enumerator
+drops any kind and target the assembly already carries, and the request path refuses a concession it
+did not offer, so no candidate reaching this fold shares a kind and target with a stored row.
+Nothing here prevents it. A caller that folds a candidate against a concession stored AFTER the
+request was made would compound the two, which becomes reachable once a worker reads a candidate off
+an operation and an approval can land between the two. Whether a superseded solve's follow-up
+carries its candidate forward is the coordinator's design, and that is where the interleaving has to
+be answered.
 """
 
 from __future__ import annotations

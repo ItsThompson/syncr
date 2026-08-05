@@ -6,8 +6,8 @@ no pattern of its own that could drift from ``IsoWeek.parse``, and the 422 a mal
 is worded once rather than per caller.
 
 The field name is passed in because it is the caller's own wire spelling, and a field error naming
-``period`` on a route whose parameter is ``isoWeek`` sends the client looking for a field it never
-sent.
+``period`` on a route whose parameter is ``iso_week`` sends the client looking for a field it never
+sent. Every path parameter this api declares is snake_cased, which is what these callers pass.
 """
 
 from __future__ import annotations
