@@ -60,6 +60,14 @@ everything. The capacity after a deadline is read over the whole week's free cap
 per Area, which is an upper bound on what the floors can absorb later, so the reserved figure is
 a lower bound: this check under-reports rather than over-reports, which is the only direction a
 necessary-condition test may err in.
+
+**A competitor's whole-week figure is discounted before it meets a per-Area capacity set.** Both
+per-Area checks compare a figure from other Areas against the capacity THIS Area may claim, and the
+moment a scoped window names this Area the two are over different sets: its capacity has the window
+removed and the other Areas' work does not have to avoid it. So the figure is reduced by the
+capacity the others may use and this one may not, which is what keeps a week holding a valid
+assignment from reporting a gap. The discount is optimistic about where the other work lands, and
+that is deliberately the same direction as the reservation above.
 """
 
 from __future__ import annotations
@@ -172,17 +180,24 @@ def _demands_against_their_deadlines(week: _Week) -> tuple[Shortfall, ...]:
 
     ``claimed`` accumulates what the earlier deadlines took, so two tasks sharing one deadline
     are not each told the whole capacity is theirs, and a Tuesday deadline consumes the hours a
-    Friday one would otherwise count on. A deadline at or before ``now`` has zero capacity and
-    its whole remaining demand is the gap, which is correct rather than degenerate: work due
-    yesterday that is not done cannot be fitted anywhere.
+    Friday one would otherwise count on. It is a whole-week figure, so it is discounted by the
+    capacity those earlier deadlines may use and this Area may not before the two meet.
+
+    A deadline at or before ``now`` has zero capacity and its whole remaining demand is the gap,
+    which is correct rather than degenerate: work due yesterday that is not done cannot be fitted
+    anywhere.
     """
     found: list[Shortfall] = []
     claimed = 0
     claimed_labels: list[str] = []
     for demand in sorted(week.inputs.deadline_demands, key=_earliest_first):
-        capacity = week.free_for(demand.area_id).before(demand.deadline).total_minutes()
+        claimable = week.free_for(demand.area_id).before(demand.deadline)
         reserved = _reserved_before(week, demand.deadline, for_area=demand.area_id)
-        available = max(0, capacity - reserved.minutes - claimed)
+        competing = _competing_minutes(
+            claimed, claimable=claimable, jointly=week.free.before(demand.deadline)
+        )
+        capacity = claimable.total_minutes()
+        available = max(0, capacity - reserved.minutes - competing)
         if available < demand.remaining_minutes:
             found.append(
                 Shortfall(
@@ -209,7 +224,8 @@ def _floors_against_their_own_areas(week: _Week) -> tuple[Shortfall, ...]:
 
     This is where a scoped window bites: it reduces capacity for the Areas it names and for no
     others, so an Area forbidden from every recovery window in a heavy week can be unable to
-    reach a floor the week as a whole has room for.
+    reach a floor the week as a whole has room for. The other Areas' demands are a whole-week
+    figure, so they are discounted by the capacity they may use and this Area may not.
     """
     demands = week.inputs.deadline_demands
     found: list[Shortfall] = []
@@ -219,7 +235,8 @@ def _floors_against_their_own_areas(week: _Week) -> tuple[Shortfall, ...]:
         claimable = week.free_for(reservation.area_id)
         elsewhere = tuple(demand for demand in demands if demand.area_id != reservation.area_id)
         demanded = sum(demand.remaining_minutes for demand in elsewhere)
-        available = max(0, claimable.total_minutes() - demanded)
+        competing = _competing_minutes(demanded, claimable=claimable, jointly=week.free)
+        available = max(0, claimable.total_minutes() - competing)
         if reservation.reserved_minutes <= available:
             continue
         found.append(
@@ -275,6 +292,24 @@ def _reserved_before(week: _Week, deadline: Instant, *, for_area: AreaId) -> _Re
             for reservation in others
         ),
     )
+
+
+def _competing_minutes(minutes: int, *, claimable: IntervalSet, jointly: IntervalSet) -> int:
+    """How much of another Area's work really competes for the capacity this Area may claim.
+
+    The two per-Area checks each compare a whole-week figure from OTHER Areas against a per-Area
+    capacity set, and the moment a scoped window names this Area the two are over different sets:
+    this Area's capacity has the window removed and the other Areas' work does not have to avoid
+    it. Charging the whole figure here reports a gap on a week where a valid assignment exists,
+    which is the one direction capacity arithmetic may not err in.
+
+    So the figure is discounted by the capacity the others may use and this Area may not. That is
+    optimistic about where the other work lands, which is the safe direction: the result is a lower
+    bound on the competition and therefore an upper bound on what is available. With no scoped
+    window naming this Area the discount is zero and this is the whole figure, unchanged.
+    """
+    elsewhere_only = jointly.subtract(claimable).total_minutes()
+    return max(0, minutes - elsewhere_only)
 
 
 def _occupancy_honored(inputs: ProbeInputs) -> tuple[str, ...]:

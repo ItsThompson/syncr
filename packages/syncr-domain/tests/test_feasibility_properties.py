@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import timedelta
+from itertools import combinations
 from typing import TYPE_CHECKING
 
 from hypothesis import assume, given
@@ -42,13 +43,14 @@ from syncr_domain.feasibility import (
     DeadlineDemand,
     FloorReservation,
     ProbeInputs,
+    ScopedWindow,
     ShortfallKind,
     probe,
 )
 from syncr_domain.fixtures import partial_progress, recovery_scopes
 from syncr_domain.intervals import Interval, IntervalSet
 from tests.instants import MONDAY
-from tests.interval_strategies import interval_sets
+from tests.interval_strategies import interval_sets, intervals
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -62,6 +64,7 @@ WEEK_MINUTES = 7 * 24 * 60
 
 FITNESS: AreaId = partial_progress.FITNESS
 CAREER: AreaId = partial_progress.CAREER
+NAMES = {FITNESS: "Fitness", CAREER: "Career"}
 
 type Gaps = Mapping[tuple[str, str, str], int]
 
@@ -91,15 +94,36 @@ def no_gap_fell(before: Verdict, after: Verdict) -> bool:
 
 
 @st.composite
-def weeks(draw: st.DrawFn, *, with_room_before_the_deadline: bool = False) -> ProbeInputs:
-    """A week with occupancy, one demand, and a floor in each of two Areas.
+def weeks(
+    draw: st.DrawFn,
+    *,
+    with_room_before_the_deadline: bool = False,
+    demands: int = 2,
+    smaller_obligations: bool = False,
+) -> ProbeInputs:
+    """A week with occupancy, a floor in each of two Areas, a demand in each, and scoped windows.
 
-    One demand rather than several, because the accumulation across demands is a rule of its own
-    and these properties are about one gap at a time. The generated occupancy is real: every
-    property here has to hold over a week whose capacity is broken into pieces.
+    Every shape here is drawn because a property is stated over it, and two of them were added
+    after a reviewer proved the generator could not reach the case the arithmetic got wrong:
 
-    ``with_room_before_the_deadline`` places the deadline at least ten hours after ``now``, for
-    the properties that have to pin minutes into the capacity before it. Left false, a deadline
+    *Two demands in two Areas.* The accumulation across deadlines is what makes one demand's
+    capacity depend on another's, and a generator with one demand cannot produce a competitor at
+    all. The second demand's Area is the OTHER one, so the pair is always cross-Area.
+
+    *Scoped windows naming the week's own Areas.* A window naming an Area nothing in the week holds
+    is inert: it changes no figure, so a property injecting one asserts nothing. These name Career
+    or Fitness, which are the Areas the floors and the demands carry.
+
+    ``demands=1`` drops the competitor, for the one property that is an exact equality on a single
+    demand's gap. With a competitor that property is about something else: capacity moving between
+    two demands, which conserves the total rather than leaving one figure alone. The example that
+    shows it lands beside the property.
+
+    ``smaller_obligations`` draws floors and demands small enough that a week holding all of its
+    work is an ordinary draw, for the one property that is stated over such a week.
+
+    ``with_room_before_the_deadline`` places the first deadline at least ten hours after ``now``,
+    for the properties that have to pin minutes into the capacity before it. Left false, a deadline
     lands anywhere in the week including behind ``now``, which is the overdue case every
     monotonicity rule must also hold over.
     """
@@ -109,6 +133,19 @@ def weeks(draw: st.DrawFn, *, with_room_before_the_deadline: bool = False) -> Pr
     deadline_minutes = draw(st.integers(min_value=earliest_deadline, max_value=WEEK_MINUTES))
     now = MONDAY + timedelta(minutes=now_minutes)
     deadline = MONDAY + timedelta(minutes=deadline_minutes)
+    measured = draw(st.sampled_from((CAREER, FITNESS)))
+    competitor = FITNESS if measured == CAREER else CAREER
+    owed = 600 if smaller_obligations else 3600
+    reserved = 120 if smaller_obligations else 600
+    competing = (
+        DeadlineDemand(
+            deadline=MONDAY
+            + timedelta(minutes=draw(st.integers(min_value=1, max_value=WEEK_MINUTES))),
+            remaining_minutes=draw(st.integers(min_value=0, max_value=owed // 2)),
+            area_id=competitor,
+            labels=("Kim's Game Project",),
+        ),
+    )
     return ProbeInputs(
         span=WEEK,
         now=now,
@@ -117,43 +154,64 @@ def weeks(draw: st.DrawFn, *, with_room_before_the_deadline: bool = False) -> Pr
         frame=draw(interval_sets(max_size=3)),
         anchors=draw(interval_sets(max_size=2)),
         absolute_forbidden=draw(interval_sets(max_size=2)),
+        scoped_forbidden=draw(scoped_windows(measured, competitor)),
         off_plan=draw(interval_sets(max_size=1)),
         placed=draw(interval_sets(max_size=3)),
         area_floor_reservations=(
             FloorReservation(
-                area_id=CAREER,
-                reserved_minutes=draw(st.integers(min_value=0, max_value=600)),
-                label="Career",
+                area_id=measured,
+                reserved_minutes=draw(st.integers(min_value=0, max_value=reserved)),
+                label=NAMES[measured],
             ),
             FloorReservation(
-                area_id=FITNESS,
-                reserved_minutes=draw(st.integers(min_value=0, max_value=600)),
-                label="Fitness",
+                area_id=competitor,
+                reserved_minutes=draw(st.integers(min_value=0, max_value=reserved)),
+                label=NAMES[competitor],
             ),
         ),
         deadline_demands=(
             DeadlineDemand(
                 deadline=deadline,
-                # Up to two and a half days of work, so a week whose capacity before the deadline
-                # cannot hold it is an ordinary draw rather than a rare one: a property about how
-                # a gap moves is worthless over inputs that mostly have no gap.
-                remaining_minutes=draw(st.integers(min_value=1, max_value=3600)),
-                area_id=CAREER,
+                # Up to two and a half days of work by default, so a week whose capacity before
+                # the deadline cannot hold it is an ordinary draw rather than a rare one: a
+                # property about how a gap moves is worthless over inputs that mostly have no gap.
+                remaining_minutes=draw(st.integers(min_value=1, max_value=owed)),
+                area_id=measured,
                 labels=("F&F Past Papers",),
             ),
+            *(competing if demands > 1 else ()),
         ),
     )
 
 
+@st.composite
+def scoped_windows(draw: st.DrawFn, *areas: AreaId) -> tuple[ScopedWindow, ...]:
+    """Up to two recovery windows, each forbidding one of the Areas the week actually holds.
+
+    A window naming an Area no floor and no demand carries cannot change a figure, so a strategy
+    that drew one would be generating inert inputs: every property over it would hold whatever the
+    arithmetic did with a scope.
+    """
+    return tuple(
+        ScopedWindow(interval=interval, forbidden_area_ids=(draw(st.sampled_from(areas)),))
+        for interval in draw(st.lists(intervals(), max_size=2))
+    )
+
+
+def measured_demand(week: ProbeInputs) -> DeadlineDemand:
+    """The demand every property here is stated about, which is the first one the week carries."""
+    return week.deadline_demands[0]
+
+
 def free_before(week: ProbeInputs, deadline: Instant) -> IntervalSet:
-    """The capacity a demand in Career has before its deadline, as the probe derives it.
+    """The capacity the measured demand's Area has before ``deadline``, as the probe derives it.
 
     Derived here to CHOOSE an interval to pin rather than to predict a figure: a property about
-    invariance under pinning has to pin minutes the week really had.
+    invariance under pinning has to pin minutes the week really had, in capacity that Area may use.
     """
     occupied = week.frame.union(week.anchors).union(week.absolute_forbidden).union(week.off_plan)
     free = IntervalSet([week.span]).subtract(occupied).after(week.now).subtract(week.placed)
-    return free.subtract(week.scoped_against(CAREER)).before(deadline)
+    return free.subtract(week.scoped_against(measured_demand(week).area_id)).before(deadline)
 
 
 def a_window_to_pin_into(free: IntervalSet, minutes: int) -> Interval | None:
@@ -171,15 +229,15 @@ def a_window_to_pin_into(free: IntervalSet, minutes: int) -> Interval | None:
 
 
 def pinning_toward(week: ProbeInputs, pinned: Interval) -> ProbeInputs:
-    """The week after the user pins ``pinned`` minutes of the Career demand's own work.
+    """The week after the user pins ``pinned`` minutes of the measured demand's own work.
 
     The assembler's three consequences, restated: the committed time gains the span, the demand
-    falls by its minutes because they are now placed before the deadline, and Career's floor
-    reservation falls by them too because the block lands in Career. All three come from one
-    placement, which is why the probe must not move.
+    falls by its minutes because they are now placed before the deadline, and that Area's floor
+    reservation falls by them too because the block lands in it. All three come from one placement,
+    which is why the probe must not move.
     """
     minutes = pinned.total_minutes()
-    demand = week.deadline_demands[0]
+    demand = measured_demand(week)
     return dataclasses.replace(
         week,
         placed=week.placed.union(IntervalSet([pinned])),
@@ -187,45 +245,58 @@ def pinning_toward(week: ProbeInputs, pinned: Interval) -> ProbeInputs:
             dataclasses.replace(
                 demand, remaining_minutes=max(0, demand.remaining_minutes - minutes)
             ),
+            *week.deadline_demands[1:],
         ),
-        area_floor_reservations=tuple(
-            dataclasses.replace(
-                reservation, reserved_minutes=max(0, reservation.reserved_minutes - minutes)
-            )
-            if reservation.area_id == CAREER
-            else reservation
-            for reservation in week.area_floor_reservations
-        ),
+        area_floor_reservations=_lowering(week, demand.area_id, minutes),
     )
 
 
 def pinning_elsewhere(week: ProbeInputs, pinned: Interval) -> ProbeInputs:
-    """The week after the user pins work that no demand here is waiting on.
+    """The week after the user pins work no demand being measured here is waiting on.
 
-    Fitness work, so the demand is untouched and Fitness's own reservation falls: the shape of
-    every pin that is not progress toward the deadline being measured.
+    Work in the other Area, so the measured demand is untouched and the other Area's own reservation
+    falls: the shape of every pin that is not progress toward the deadline being measured.
     """
-    minutes = pinned.total_minutes()
+    other = _competitor_of(week)
     return dataclasses.replace(
         week,
         placed=week.placed.union(IntervalSet([pinned])),
-        area_floor_reservations=tuple(
-            dataclasses.replace(
-                reservation, reserved_minutes=max(0, reservation.reserved_minutes - minutes)
-            )
-            if reservation.area_id == FITNESS
-            else reservation
-            for reservation in week.area_floor_reservations
-        ),
+        area_floor_reservations=_lowering(week, other, pinned.total_minutes()),
     )
 
 
+def _lowering(week: ProbeInputs, area_id: AreaId, minutes: int) -> tuple[FloorReservation, ...]:
+    """The reservations with one Area's lowered by the minutes now placed in it, clamped."""
+    return tuple(
+        dataclasses.replace(
+            reservation, reserved_minutes=max(0, reservation.reserved_minutes - minutes)
+        )
+        if reservation.area_id == area_id
+        else reservation
+        for reservation in week.area_floor_reservations
+    )
+
+
+def _competitor_of(week: ProbeInputs) -> AreaId:
+    """The Area the measured demand competes with, which is the other one the week holds."""
+    measured = measured_demand(week).area_id
+    return FITNESS if measured == CAREER else CAREER
+
+
 def deadline_gap(week: ProbeInputs) -> int:
-    """The minutes the Career demand is short by, or none."""
+    """The minutes the MEASURED demand is short by, or none.
+
+    Keyed by that demand's own deadline and Area rather than summed over every deadline gap: the
+    week holds a second demand in another Area, and a pin before one deadline moves the other's
+    reading too. A property about one gap has to read one gap.
+    """
+    demand = measured_demand(week)
     return sum(
         shortfall.minutes
         for shortfall in probe(week).shortfalls
         if shortfall.kind is ShortfallKind.DEADLINE_CAPACITY
+        and shortfall.deadline == demand.deadline
+        and shortfall.area_id == demand.area_id
     )
 
 
@@ -239,19 +310,19 @@ def floors_gap(verdict: Verdict) -> int:
 
 
 def available_to(week: ProbeInputs) -> int:
-    """A lower bound on what the Career demand could take before its deadline.
+    """A lower bound on what the measured demand could take before its deadline.
 
     A pin larger than what the demand had takes capacity from something else: from the other
     Areas' floors, or from an earlier deadline. That is a real edit and it is a different
     property, because the minutes it frees for this demand were never this demand's to lose.
     Derived from the gap rather than recomputed: a demand short by ``g`` had ``remaining - g``.
     """
-    demand = week.deadline_demands[0]
+    demand = measured_demand(week)
     return max(0, demand.remaining_minutes - deadline_gap(week))
 
 
 @given(
-    week=weeks(with_room_before_the_deadline=True),
+    week=weeks(with_room_before_the_deadline=True, demands=1),
     take=st.integers(min_value=1, max_value=120),
 )
 def test_pinning_work_toward_a_demand_leaves_its_shortfall_exactly_as_it_was(
@@ -260,7 +331,11 @@ def test_pinning_work_toward_a_demand_leaves_its_shortfall_exactly_as_it_was(
     # Progress is never punished. The pin removes the span from free capacity AND removes the
     # same minutes from the demand, so the comparison is unchanged: an earlier reading that
     # netted only one side reported a gap that the pin itself had caused.
-    deadline = week.deadline_demands[0].deadline
+    #
+    # One demand, because with a competitor the pin can take capacity an EARLIER deadline was
+    # counting on, and then the gap moves between the two demands rather than staying put. That is
+    # conservation rather than invariance, and it has its own example below.
+    deadline = measured_demand(week).deadline
     free = free_before(week, deadline)
     assume(available_to(week) >= take)
     pinned = a_window_to_pin_into(free, take)
@@ -268,6 +343,51 @@ def test_pinning_work_toward_a_demand_leaves_its_shortfall_exactly_as_it_was(
     assert pinned is not None
 
     assert deadline_gap(pinning_toward(week, pinned)) == deadline_gap(week)
+
+
+def test_pinning_into_capacity_an_earlier_deadline_needed_moves_the_gap_not_closes_it() -> None:
+    # Why the equality above is stated over a week with one demand. Free capacity runs from 03:07
+    # on the Monday; Fitness owes 257 minutes by 07:24, which is exactly what it has, and Career
+    # owes 157 by 10:00 against the 156 that are left after Fitness's claim, so Career is a minute
+    # short.
+    #
+    # Pinning one minute of CAREER's work at 03:07 puts it inside the window Fitness needed. Career
+    # now fits and Fitness does not: the minute moved between the two demands, and the week is
+    # still short by exactly one. That is the arithmetic being right rather than the property being
+    # violated, so the property is stated where it is an invariance and this is stated where it is
+    # a conservation.
+    career_due = MONDAY + timedelta(hours=10)
+    fitness_due = MONDAY + timedelta(hours=7, minutes=24)
+    week = ProbeInputs(
+        span=WEEK,
+        now=MONDAY,
+        computed_at=MONDAY,
+        input_version=1,
+        placed=IntervalSet([Interval(MONDAY, MONDAY + timedelta(hours=3, minutes=7))]),
+        deadline_demands=(
+            DeadlineDemand(
+                deadline=career_due,
+                remaining_minutes=157,
+                area_id=CAREER,
+                labels=("F&F Past Papers",),
+            ),
+            DeadlineDemand(
+                deadline=fitness_due,
+                remaining_minutes=257,
+                area_id=FITNESS,
+                labels=("Gym",),
+            ),
+        ),
+    )
+    pinned = Interval(
+        MONDAY + timedelta(hours=3, minutes=7), MONDAY + timedelta(hours=3, minutes=8)
+    )
+
+    before = {(gap.area_id, gap.minutes) for gap in probe(week).shortfalls}
+    after = {(gap.area_id, gap.minutes) for gap in probe(pinning_toward(week, pinned)).shortfalls}
+
+    assert before == {(CAREER, 1)}
+    assert after == {(FITNESS, 1)}
 
 
 @given(
@@ -286,7 +406,7 @@ def test_pinning_anything_else_can_only_make_the_reading_worse(
     # progress toward the Fitness floor, so an unreachable-floor gap that the pin satisfies closes.
     # A property stated over every gap in the verdict fails on exactly that case, which is a
     # property that has read "pinning anything else" as "pinning anything at all".
-    free = free_before(week, week.deadline_demands[0].deadline)
+    free = free_before(week, measured_demand(week).deadline)
     pinned = a_window_to_pin_into(free, take)
     assume(pinned is not None)
     assert pinned is not None
@@ -301,11 +421,12 @@ def test_pinning_anything_else_can_only_make_the_reading_worse(
 def test_work_becoming_outstanding_again_never_reduces_a_gap(week: ProbeInputs, extra: int) -> None:
     # What an outcome on a past block can do to the arithmetic: change what is attributed to the
     # task, in the direction of more work outstanding. Capacity cannot move, so no gap may fall.
-    demand = week.deadline_demands[0]
+    demand = measured_demand(week)
     gross = dataclasses.replace(
         week,
         deadline_demands=(
             dataclasses.replace(demand, remaining_minutes=demand.remaining_minutes + extra),
+            *week.deadline_demands[1:],
         ),
     )
 
@@ -369,17 +490,133 @@ def test_a_scoped_window_is_never_worth_more_to_an_area_than_an_absolute_one(
     # Areas it named, nothing, because they were already forbidden; from every other Area, the
     # whole window. A figure that moved the other way would be subtracting a scoped window from
     # a whole-week total, which manufactures a gap the week does not have.
-    scoped = dataclasses.replace(week, scoped_forbidden=(recovery_scopes.SCOPED,))
+    #
+    # The windows converted are the week's OWN, which name Areas the week holds a floor and a
+    # demand in. An injected window naming an Area nothing in the week carries is inert: it changes
+    # no figure, so the property would hold whatever the arithmetic did with a scope.
+    assume(week.scoped_forbidden)
     absolute = dataclasses.replace(
         week,
         scoped_forbidden=(),
         absolute_forbidden=week.absolute_forbidden.union(
-            IntervalSet([recovery_scopes.SCOPED.interval])
+            IntervalSet(window.interval for window in week.scoped_forbidden)
         ),
     )
 
-    assert probe(absolute).discretionary_minutes <= probe(scoped).discretionary_minutes
-    assert no_gap_fell(probe(scoped), probe(absolute))
+    assert probe(absolute).discretionary_minutes <= probe(week).discretionary_minutes
+    assert no_gap_fell(probe(week), probe(absolute))
+
+
+@given(
+    reserved=st.integers(min_value=1, max_value=600), owed=st.integers(min_value=1, max_value=600)
+)
+def test_the_recovery_windows_two_declarations_cost_the_area_they_name(
+    reserved: int, owed: int
+) -> None:
+    # The shared fixture's own window, over a week whose Areas are the fixture's, so the scope it
+    # declares actually binds. The two declarations differ in scope and in nothing else, which is
+    # what the fixture exists for.
+    study = recovery_scopes.STUDY
+    week = ProbeInputs(
+        span=recovery_scopes.SPAN,
+        now=recovery_scopes.SPAN.start,
+        computed_at=recovery_scopes.SPAN.start,
+        input_version=1,
+        area_floor_reservations=(
+            FloorReservation(area_id=study, reserved_minutes=reserved, label="Study"),
+        ),
+        deadline_demands=(
+            DeadlineDemand(
+                deadline=recovery_scopes.SPAN.end,
+                remaining_minutes=owed,
+                area_id=study,
+                labels=("F&F Past Papers",),
+            ),
+        ),
+        scoped_forbidden=(recovery_scopes.SCOPED,),
+    )
+    absolute = dataclasses.replace(
+        week,
+        scoped_forbidden=(),
+        absolute_forbidden=IntervalSet([recovery_scopes.RECOVERY]),
+    )
+
+    # The scoped form stays in the denominator and the absolute form leaves it, by exactly the
+    # window's 75 minutes. Neither form is capacity for Study, so no gap of its falls.
+    assert probe(week).discretionary_minutes - probe(absolute).discretionary_minutes == (
+        recovery_scopes.RECOVERY_MINUTES
+    )
+    assert no_gap_fell(probe(week), probe(absolute))
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Obligation:
+    """Minutes one Area must find, and the capacity it may find them in.
+
+    A demand is one of these before its deadline; a floor reservation is one over the whole week.
+    Two obligations of the same Area double-count what one placement can serve, which makes the
+    oracle below conservative rather than wrong: it declares fewer weeks feasible than really are.
+    """
+
+    minutes: int
+    capacity: IntervalSet
+
+
+def obligations(week: ProbeInputs) -> tuple[Obligation, ...]:
+    """Everything the week owes, with the capacity each may be satisfied in."""
+    occupied = week.frame.union(week.anchors).union(week.absolute_forbidden).union(week.off_plan)
+    free = IntervalSet([week.span]).subtract(occupied).after(week.now).subtract(week.placed)
+    owed = [
+        Obligation(
+            demand.remaining_minutes,
+            free.subtract(week.scoped_against(demand.area_id)).before(demand.deadline),
+        )
+        for demand in week.deadline_demands
+    ]
+    owed += [
+        Obligation(
+            reservation.reserved_minutes, free.subtract(week.scoped_against(reservation.area_id))
+        )
+        for reservation in week.area_floor_reservations
+    ]
+    return tuple(one for one in owed if one.minutes)
+
+
+def every_subset_fits(owed: tuple[Obligation, ...]) -> bool:
+    """Whether an assignment of minutes exists that satisfies every obligation at once.
+
+    Hall's condition over the obligations: a set of them fits if and only if no subset asks for
+    more minutes than the union of the capacity that subset may use. Written here as an independent
+    oracle, deliberately: it shares no expression with the probe, so a property comparing the two
+    compares two derivations rather than one applied twice.
+
+    Exact for divisible minutes, which is what the probe measures. A minimum chunk is the solver's
+    question, and the kind of failure the probe structurally cannot find.
+    """
+    for size in range(1, len(owed) + 1):
+        for combination in combinations(owed, size):
+            claimable = IntervalSet()
+            for one in combination:
+                claimable = claimable.union(one.capacity)
+            if sum(one.minutes for one in combination) > claimable.total_minutes():
+                return False
+    return True
+
+
+@given(week=weeks(smaller_obligations=True))
+def test_a_week_that_can_hold_all_of_its_work_is_reported_with_no_gap_at_all(
+    week: ProbeInputs,
+) -> None:
+    # The invariant the whole module rests on, stated against an independent oracle rather than
+    # against the probe's own expressions: capacity arithmetic may under-report and may never
+    # over-report, so a week where an assignment exists must report nothing.
+    #
+    # This is the property that sees a whole-week competitor charged against a per-Area capacity
+    # set. Both reproductions in the example suite satisfy Hall's condition and were reported as
+    # gaps, and this property finds that shape by itself.
+    assume(every_subset_fits(obligations(week)))
+
+    assert probe(week).shortfalls == ()
 
 
 @given(week=weeks())

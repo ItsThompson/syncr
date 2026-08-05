@@ -35,6 +35,8 @@ from tests.probe_weeks import (
 )
 
 if TYPE_CHECKING:
+    from syncr_domain.feasibility import ProbeInputs
+    from syncr_domain.identifiers import AreaId
     from syncr_domain.intervals import Instant
 
 FRIDAY_MORNING = at(9, day=4)
@@ -340,6 +342,79 @@ def test_another_areas_deadline_work_is_counted_against_a_floor_it_competes_with
     )
     assert unreachable.minutes == 60
     assert "F&F Past Papers" in unreachable.honoring
+
+
+# --- work another Area must do inside a window this Area cannot use ---------------------------
+#
+# Both per-Area checks compare a whole-week quantity from OTHER Areas against the capacity THIS
+# Area may claim, and the two operands are over different sets the moment a scoped window names
+# this Area: its capacity has the window removed and the other Areas' work does not have to avoid
+# it. Charging the whole of that work here reports a gap on a week where a valid assignment exists,
+# which is the one error direction capacity arithmetic may not take.
+#
+# Both cases below hold three hours of free capacity, two of which are forbidden to one Area, and
+# in both a valid assignment exists.
+
+SCOPED_MORNING = Interval(at(9, day=0), at(11, day=0))
+OPEN_HOUR = Interval(at(11, day=0), at(12, day=0))
+REST_OF_THE_WEEK = Interval(at(12, day=0), at(0, day=7))
+
+
+def a_week_of_three_hours(forbidden_to: AreaId, **overrides: object) -> ProbeInputs:
+    """Monday 09:00 to 12:00 and nothing else, with the first two hours forbidden to one Area."""
+    stated: dict[str, object] = {
+        "now": at(9, day=0),
+        "off_plan": occupying(REST_OF_THE_WEEK),
+        "scoped_forbidden": (
+            ScopedWindow(interval=SCOPED_MORNING, forbidden_area_ids=(forbidden_to,)),
+        ),
+    }
+    stated.update(overrides)
+    return a_week(**stated)
+
+
+def test_an_earlier_deadline_that_can_use_a_window_this_area_cannot_does_not_charge_it() -> None:
+    # Fitness owes two hours by Wednesday and may use the whole three; Career owes one hour by
+    # Thursday and may use only the open hour. Fitness in the window, Career in the hour outside
+    # it: the week holds both, so the honest answer is no gap.
+    week = a_week_of_three_hours(
+        CAREER,
+        deadline_demands=(
+            a_demand(FITNESS, 2 * 60, at(9, day=2), label="Gym"),
+            a_demand(CAREER, 60, at(9, day=3), label="Leetcode"),
+        ),
+    )
+
+    assert probe(week).shortfalls == ()
+
+
+def test_another_areas_work_inside_a_window_this_area_cannot_use_does_not_block_its_floor() -> None:
+    # The same asymmetry in the per-Area check. Career owes two hours by 11:00, which only the
+    # forbidden window can hold; Fitness needs one hour of floor, which the open hour holds.
+    week = a_week_of_three_hours(
+        FITNESS,
+        area_floor_reservations=(a_reservation(FITNESS, 60),),
+        deadline_demands=(a_demand(CAREER, 2 * 60, at(11, day=0), label="Leetcode"),),
+    )
+
+    assert probe(week).shortfalls == ()
+
+
+def test_the_discount_is_bounded_by_what_the_other_areas_can_really_place_elsewhere() -> None:
+    # The control on the correction, so it cannot become "other Areas never compete". Career owes
+    # three hours by Thursday against the same three hours of capacity, of which Fitness may claim
+    # only the last one: two of Career's hours fit the window Fitness cannot use and the third
+    # takes Fitness's own hour, so the Fitness floor really is unreachable by that hour.
+    week = a_week_of_three_hours(
+        FITNESS,
+        area_floor_reservations=(a_reservation(FITNESS, 60),),
+        deadline_demands=(a_demand(CAREER, 3 * 60, at(9, day=3), label="Leetcode"),),
+    )
+
+    unreachable = next(
+        gap for gap in probe(week).shortfalls if gap.kind is ShortfallKind.AREA_FLOOR_UNREACHABLE
+    )
+    assert unreachable.minutes == 60
 
 
 # --- what a shortfall says -------------------------------------------------------------------
