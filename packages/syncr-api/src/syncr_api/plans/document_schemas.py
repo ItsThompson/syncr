@@ -1,0 +1,186 @@
+"""The wire shape of a stored plan document: the blocks a week holds, and the two kinds of gap.
+
+The Week screen's whole read is one request, so a block arrives with the reason that explains it
+rather than behind a second call per block. The six clause shapes are ``clause_schemas.py``.
+
+**Three of the document's own fields are deliberately absent**, and they are the three minute
+figures: ``discretionary_minutes``, ``unallocated_minutes``, and ``oversubscription_minutes``. Each
+was computed against the inputs the solve read, so a period declared off-plan afterwards moves the
+real figure and not the stored one. The week view carries all three as ``readings``, live, from the
+arithmetic the budget report divides, which is what stops one payload from spelling one figure
+twice and disagreeing with itself.
+
+**A block's identity, its origin, and its chunk number are derived, and they are still on the
+wire.** None has a field on the domain value, because a stored id is a cache of a hash and an
+origin is a second reading of a binding kind. On the wire they are what a client pairs a selection,
+a drag, and an outcome on, so they are rendered from the derivation rather than asking every client
+to repeat it.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Self
+from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
+
+from pydantic import Field
+
+from syncr_api.core.schemas import WireModel, WireSpan
+from syncr_api.plans.clause_schemas import ReasonResponse
+
+# Runtime imports: each is a closed vocabulary a response field is annotated with, and pydantic
+# resolves those annotations while the app is being built.
+from syncr_domain.gaps import EmptySlotReason, ForbiddenKind, ForbiddenScope  # noqa: TC001
+from syncr_domain.identity import BindingKind, Origin  # noqa: TC001
+
+if TYPE_CHECKING:
+    from syncr_domain.gaps import EmptySlot, ForbiddenWindow
+    from syncr_domain.identity import BindingRef
+    from syncr_domain.plan import Block, PlanDocument
+
+
+class BindingResponse(WireModel):
+    """What a block's content IS: the identity six mechanisms pair on."""
+
+    kind: BindingKind
+    entity_id: UUID = Field(description="The row this block's content comes from.")
+    occurrence_key: str = Field(
+        description="Which occurrence of that row: a date, a zero-padded index, or a transit leg."
+    )
+    split_index: int | None = Field(
+        default=None, description="Which chunk of a divided task this is. Null when it is whole."
+    )
+
+    @classmethod
+    def of(cls, binding: BindingRef) -> Self:
+        return cls(
+            kind=binding.kind,
+            entity_id=binding.entity_id,
+            occurrence_key=binding.occurrence_key,
+            split_index=binding.split_index,
+        )
+
+
+class BlockResponse(WireModel):
+    """One thing that happens in the week, and why it is where it is."""
+
+    id: str = Field(
+        description="A hash of the week and the binding, derived on read, so it is stable across "
+        "reads and cannot name content it does not hold."
+    )
+    interval: WireSpan
+    binding: BindingResponse
+    origin: Origin = Field(description="What this block is to the reader, read from the binding.")
+    title: str
+    reason: ReasonResponse
+    area_id: UUID | None = Field(
+        default=None,
+        description="The Area this block is charged to. Null for the frame and for an imported "
+        "anchor: one defines how much time exists and the other is time the product does not own.",
+    )
+    pinned: bool = Field(
+        description="True only for the user's own edit. A block whose time was fixed by "
+        "derivation is not pinned and carries no pin glyph, even where the solver cannot move it."
+    )
+    superseded_placement: WireSpan | None = Field(
+        default=None, description="Where a pinned block would otherwise have been."
+    )
+    objective_delta: float | None = Field(
+        default=None, description="What overriding that placement cost."
+    )
+    split_count: int | None = Field(
+        default=None, description="How many chunks the divided task was split into."
+    )
+
+    @classmethod
+    def of(cls, block: Block) -> Self:
+        return cls(
+            id=block.id,
+            interval=WireSpan.of(block.interval),
+            binding=BindingResponse.of(block.binding),
+            origin=block.origin,
+            title=block.title,
+            reason=ReasonResponse.of(block.reason),
+            area_id=block.area_id,
+            pinned=block.pinned,
+            superseded_placement=(
+                None
+                if block.superseded_placement is None
+                else WireSpan.of(block.superseded_placement)
+            ),
+            objective_delta=block.objective_delta,
+            split_count=block.split_count,
+        )
+
+
+class ForbiddenWindowResponse(WireModel):
+    """A span work is forbidden in, and what forbade it."""
+
+    interval: WireSpan
+    kind: ForbiddenKind
+    scope: ForbiddenScope = Field(
+        description="Whether the window forbids every Area, or only the ones it names."
+    )
+    forbidden_area_ids: list[UUID]
+    label: str
+    anchor_id: UUID = Field(description="The commitment whose type cast this window.")
+
+    @classmethod
+    def of(cls, window: ForbiddenWindow) -> Self:
+        return cls(
+            interval=WireSpan.of(window.interval),
+            kind=window.kind,
+            scope=window.scope,
+            forbidden_area_ids=list(window.forbidden_area_ids),
+            label=window.label,
+            anchor_id=window.anchor_id,
+        )
+
+
+class EmptySlotResponse(WireModel):
+    """Discretionary time an Area was offered, and nothing filled."""
+
+    interval: WireSpan
+    area_id: UUID
+    reason: EmptySlotReason = Field(description="Why the slot holds nothing.")
+
+    @classmethod
+    def of(cls, slot: EmptySlot) -> Self:
+        return cls(interval=WireSpan.of(slot.interval), area_id=slot.area_id, reason=slot.reason)
+
+
+class PlanDocumentResponse(WireModel):
+    """One week's plan, in full, as the grid renders it."""
+
+    iso_week: str
+    zone_by_date: dict[str, str] = Field(
+        description="The active zone per day, captured when the plan was produced, so a travel "
+        "override declared afterwards cannot silently re-read a stored week. All seven dates, "
+        "keyed by ISO date."
+    )
+    blocks: list[BlockResponse]
+    forbidden_windows: list[ForbiddenWindowResponse]
+    empty_slots: list[EmptySlotResponse]
+    adjustments: list[UUID] = Field(
+        description="The approved concessions this plan was solved under, so a week never looks "
+        "feasible for a reason the user cannot see."
+    )
+
+    @classmethod
+    def of(cls, document: PlanDocument) -> Self:
+        """The wire shape of one rebuilt document, in the order the domain holds it.
+
+        The zone mapping is emitted in date order rather than in the order the document's keys
+        happened to arrive, so two reads of one week are byte-identical.
+        """
+        return cls(
+            iso_week=str(document.iso_week),
+            zone_by_date={
+                day.isoformat(): zone for day, zone in sorted(document.zone_by_date.items())
+            },
+            blocks=[BlockResponse.of(block) for block in document.blocks],
+            forbidden_windows=[
+                ForbiddenWindowResponse.of(window) for window in document.forbidden_windows
+            ],
+            empty_slots=[EmptySlotResponse.of(slot) for slot in document.empty_slots],
+            adjustments=list(document.adjustments),
+        )
