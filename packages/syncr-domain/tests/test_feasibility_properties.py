@@ -5,6 +5,9 @@ each exists because the opposite direction was reachable at some point in this d
 
 - making progress must never manufacture a gap, so pinning work toward a demand leaves that
   demand's gap exactly where it was: both sides of the comparison fall by the same amount;
+- pinning anything else cannot reduce that demand's gap, or the whole-week floor gap. It CAN close
+  the floor gap of the Area it is pinned in, because work in an Area is progress toward that Area's
+  floor, so non-improvement is a rule about one measurement rather than about every gap at once;
 - not doing the work must never improve the verdict, so an outcome recorded on a past block
   cannot reduce a gap, and a past span cannot be returned to capacity at all;
 - time passing must never improve the verdict, which is what makes a mid-week transition from
@@ -153,12 +156,18 @@ def free_before(week: ProbeInputs, deadline: Instant) -> IntervalSet:
     return free.subtract(week.scoped_against(CAREER)).before(deadline)
 
 
-def first_minutes(free: IntervalSet, minutes: int) -> Interval:
-    """The earliest ``minutes`` of a free set, as one interval inside one of its members."""
+def a_window_to_pin_into(free: IntervalSet, minutes: int) -> Interval | None:
+    """The earliest ``minutes`` of one member of a free set, or nothing if no member is that long.
+
+    A pin is one block, so pinning half an hour needs half an hour of unbroken capacity rather than
+    two quarters of it: free capacity totalling more than the pin is not the same as free capacity
+    that can hold it. Returning nothing rather than raising is what lets the property state that
+    precondition as an assumption instead of a failure.
+    """
     for member in free:
         if member.total_minutes() >= minutes:
             return Interval(member.start, member.start + timedelta(minutes=minutes))
-    raise AssertionError("no member of the free set is long enough to pin into")
+    return None
 
 
 def pinning_toward(week: ProbeInputs, pinned: Interval) -> ProbeInputs:
@@ -220,6 +229,15 @@ def deadline_gap(week: ProbeInputs) -> int:
     )
 
 
+def floors_gap(verdict: Verdict) -> int:
+    """The minutes every floor together is short by, or none."""
+    return sum(
+        shortfall.minutes
+        for shortfall in verdict.shortfalls
+        if shortfall.kind is ShortfallKind.FLOORS_EXCEED_CAPACITY
+    )
+
+
 def available_to(week: ProbeInputs) -> int:
     """A lower bound on what the Career demand could take before its deadline.
 
@@ -244,10 +262,10 @@ def test_pinning_work_toward_a_demand_leaves_its_shortfall_exactly_as_it_was(
     # netted only one side reported a gap that the pin itself had caused.
     deadline = week.deadline_demands[0].deadline
     free = free_before(week, deadline)
-    assume(free.total_minutes() >= take)
     assume(available_to(week) >= take)
-
-    pinned = first_minutes(free, take)
+    pinned = a_window_to_pin_into(free, take)
+    assume(pinned is not None)
+    assert pinned is not None
 
     assert deadline_gap(pinning_toward(week, pinned)) == deadline_gap(week)
 
@@ -259,14 +277,24 @@ def test_pinning_work_toward_a_demand_leaves_its_shortfall_exactly_as_it_was(
 def test_pinning_anything_else_can_only_make_the_reading_worse(
     week: ProbeInputs, take: int
 ) -> None:
-    # The honest general property is non-improvement. A pin that is not progress toward this
-    # demand takes capacity from it and gives it nothing back.
+    # The honest general property is non-improvement, and it is per measurement rather than per
+    # verdict. A pin that is not progress toward this demand takes capacity from it and gives it
+    # nothing back, so its gap cannot fall; and the whole-week floor gap cannot fall either,
+    # because the reservation it is compared against falls by at most the pinned minutes.
+    #
+    # **The pinned Area's OWN floor gap may fall, and that is correct.** Work pinned in Fitness is
+    # progress toward the Fitness floor, so an unreachable-floor gap that the pin satisfies closes.
+    # A property stated over every gap in the verdict fails on exactly that case, which is a
+    # property that has read "pinning anything else" as "pinning anything at all".
     free = free_before(week, week.deadline_demands[0].deadline)
-    assume(free.total_minutes() >= take)
+    pinned = a_window_to_pin_into(free, take)
+    assume(pinned is not None)
+    assert pinned is not None
 
-    pinned = first_minutes(free, take)
+    after = pinning_elsewhere(week, pinned)
 
-    assert no_gap_fell(probe(week), probe(pinning_elsewhere(week, pinned)))
+    assert deadline_gap(after) >= deadline_gap(week)
+    assert floors_gap(probe(after)) >= floors_gap(probe(week))
 
 
 @given(week=weeks(), extra=st.integers(min_value=1, max_value=600))
@@ -368,8 +396,8 @@ def test_the_half_done_task_stays_exactly_as_short_when_more_of_it_is_pinned(tak
     week = partial_progress.PARTIAL_PROGRESS
     free = free_before(week, partial_progress.DEADLINE)
     assume(available_to(week) >= take)
-
-    pinned = first_minutes(free, take)
+    pinned = a_window_to_pin_into(free, take)
+    assert pinned is not None
 
     assert deadline_gap(pinning_toward(week, pinned)) == deadline_gap(week)
 
