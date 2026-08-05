@@ -1,9 +1,12 @@
 /* THE WEEK GRID. Seven proportional columns and one axis, and the geometry every one of them is drawn from.
  *
- * PIXELS PER MINUTE IS DERIVED FROM A MEASUREMENT. The grid observes its own height and recomputes, so the axis is
- * proportional to whatever the viewport gives it rather than to an assumed height. The day header is subtracted,
- * because the measurement the arithmetic wants is the canvas the blocks are drawn in: the reference figure, 626px
- * on a 13 inch display, is a 790px viewport less the page band, the summary strip and that header.
+ * PIXELS PER MINUTE AND THE ZOOM CLAMP BOTH COME FROM THE SAME MEASURED HEIGHT, and they have to. The grid observes
+ * its own height and subtracts the day header, because the figure the arithmetic wants is the canvas the blocks are
+ * drawn in: the reference figure, 626px on a 13 inch display, is a 790px viewport less the page band, the summary
+ * strip and that header. The CLAMP IS APPLIED HERE rather than by the caller for the same reason: a caller has no
+ * measurement, so clamping above this component would cap every display at the reference display's own cap. On a 27
+ * inch display that renders a stored 24 as 16, and on a window shorter than the reference it offers a level at which
+ * the modal thirty-minute block loses its title, which is the one thing the clamp exists to prevent.
  *
  * NO VIRTUALIZATION. Roughly 210 absolutely positioned blocks across seven columns sits well inside a frame
  * budget, and virtualizing a surface with no scroll-driven mount would add complexity for nothing.
@@ -18,9 +21,10 @@
 
 import { useRef } from "react";
 
-import { canvasHeightPx, pxPerMinute } from "./geometry";
+import { canvasHeightPx, gridHeightPx, pxPerMinute } from "./geometry";
 import { DAY_HEADER_H_PX } from "./metrics";
 import { useObservedHeight } from "./useObservedHeight";
+import { clampVisibleHours } from "./zoom";
 import { DayColumn } from "./DayColumn";
 import { TimeAxis } from "./TimeAxis";
 import type { Extent, WeekDay } from "./types";
@@ -29,7 +33,7 @@ import "./grid.css";
 export interface WeekGridProps {
   readonly days: readonly WeekDay[];
   readonly extent: Extent;
-  /** The visible-hours setting, already brought inside the range this display offers. */
+  /** The visible-hours setting as the reader stored it. Brought inside this display's own range here. */
   readonly visibleHours: number;
   /** What each column's header says, in the same order as `days`. */
   readonly labels: readonly string[];
@@ -41,8 +45,9 @@ const MILLISECONDS_IN_MINUTE = 60_000;
 
 export function WeekGrid({ days, extent, visibleHours, labels, nowMs }: WeekGridProps) {
   const viewport = useRef<HTMLDivElement>(null);
-  const viewportHeightPx = useObservedHeight(viewport);
-  const pxPerMin = pxPerMinute(Math.max(0, viewportHeightPx - DAY_HEADER_H_PX), visibleHours);
+  const measuredHeightPx = gridHeightPx(useObservedHeight(viewport) - DAY_HEADER_H_PX);
+  const hours = clampVisibleHours(visibleHours, measuredHeightPx);
+  const pxPerMin = pxPerMinute(measuredHeightPx, hours);
   const canvasPx = canvasHeightPx(extent, pxPerMin);
 
   return (

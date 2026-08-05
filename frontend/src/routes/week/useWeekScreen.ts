@@ -17,7 +17,7 @@ import {
   type WeekView,
 } from "../../api/hooks/useWeek";
 import { parseClock } from "../../ui/primitives";
-import { clampVisibleHours, GRID_H_PX, type Extent, type WeekDay } from "../../ui/domain";
+import type { Extent, WeekDay } from "../../ui/domain";
 import type { Problem } from "../../contract";
 import { bandOfEmptySlot, bandOfOffPlanPeriod, bandOfWindow, type WeekBand } from "./bands";
 import { areaIndexOf, weekBlockOf } from "./blocks";
@@ -69,9 +69,11 @@ export function useWeekScreen(isoWeek: string): WeekScreenState {
       blocks: view.live.blocks.map((block) => weekBlockOf(block, areaIndexOf(areas.data.areas))),
       bands: bandsOf(view),
     }),
-    /* The setting is brought inside the range this display offers before it reaches the grid, so a 24-hour setting
-     * on a 13 inch display renders at that display's own cap rather than slivering the modal block. */
-    visibleHours: clampVisibleHours(settings.data.visibleHours, GRID_H_PX),
+    /* The setting travels as the reader stored it. `WeekGrid` brings it inside the range its OWN measured height
+     * offers, because this hook has no measurement: clamping here would cap every display at the reference
+     * display's, which renders a 27 inch reader's stored 24 as 16 and, on a window shorter than the reference,
+     * offers a level at which the modal block loses its title. */
+    visibleHours: settings.data.visibleHours,
     readings: view.readings,
   };
 }

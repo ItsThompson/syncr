@@ -4,7 +4,11 @@
  * three rows are the test: a 13 inch display caps at 16 hours, a 16 inch at 22, and a 27 inch at the full 24. A
  * formula that produced 15, 21 and 24 would satisfy every other property here and still be wrong. */
 
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+
+import { srcDir } from "../../../../testing/compileTheme";
 
 import { ZOOM_MAX_HOURS, ZOOM_MIN_HOURS } from "../metrics";
 import { MODAL_DURATION_MINUTES, clampVisibleHours, zoomCap, zoomLevels } from "../zoom";
@@ -103,5 +107,82 @@ describe("the setting brought inside the range", () => {
   it("keeps a wide display's own deeper setting, which is what the per-display cap is for", () => {
     expect(clampVisibleHours(22, 836)).toBe(22);
     expect(clampVisibleHours(22, 626)).toBe(16);
+  });
+});
+
+/* THE ARITHMETIC IS STATED ONCE, AND BOTH SCREENS READ IT.
+ *
+ * It was stated twice for a while: this module and `routes/settings/geometry.ts` each computed the cap, each held its
+ * own `zoomLevels` and its own `ZoomLevel` shape, and the two answered differently at one point because Settings
+ * derived the height from the window while the Week screen used the reference constant. Settings offered 22 on a 16
+ * inch display where the Week screen drew 16, which is exactly what offering a level as unavailable with a stated
+ * reason exists to prevent.
+ *
+ * Settings now reads this module. What that leaves it is the one thing it genuinely owns and this module cannot know:
+ * the height a grid would get in a window it has no grid to measure. The assertions below are what stop a second copy
+ * reappearing, in either direction. */
+describe("one statement of the clamp", () => {
+  const sourceDir = path.join(srcDir, "..", "src");
+
+  async function sources(): Promise<{ name: string; text: string }[]> {
+    const entries = await readdir(sourceDir, { withFileTypes: true, recursive: true });
+    const files = entries
+      .filter(
+        (entry) => entry.isFile() && /\.tsx?$/.test(entry.name) && !entry.name.includes(".test."),
+      )
+      .map((entry) => path.join(entry.parentPath, entry.name));
+    return Promise.all(
+      files.map(async (file) => ({
+        name: path.relative(sourceDir, file),
+        text: await readFile(file, "utf8"),
+      })),
+    );
+  }
+
+  it("declares the cap, the levels and the clamp in exactly one file", async () => {
+    const files = await sources();
+    const here = path.join("ui", "domain", "week-grid", "zoom.ts");
+
+    for (const name of ["zoomCap", "zoomLevels", "clampVisibleHours"]) {
+      const declaring = files
+        .filter((file) => file.text.includes(`export function ${name}`))
+        .map((file) => file.name);
+
+      expect(declaring, `${name} is declared more than once`).toEqual([here]);
+    }
+  });
+
+  it("is what every consumer imports, rather than a formula of its own", async () => {
+    const consumers = (await sources()).filter((file) =>
+      /\bzoomCap\(|\bzoomLevels\(|\bclampVisibleHours\(/.test(file.text),
+    );
+
+    expect(consumers.length).toBeGreaterThan(1);
+    for (const file of consumers) {
+      if (file.name === path.join("ui", "domain", "week-grid", "zoom.ts")) continue;
+      /* A sibling inside the family imports it as `./zoom`; anything outside names the family. Both are reading
+       * this module rather than restating it, which is the whole of the claim. */
+      expect(file.text, `${file.name} states the cap rather than reading it`).toMatch(
+        /from "(\.\/zoom|[^"]*week-grid\/zoom)"/,
+      );
+    }
+  });
+
+  it("holds the modal duration in one constant, not two", async () => {
+    const declaring = (await sources())
+      .filter((file) => /MODAL_[A-Z_]*MINUTES =/.test(file.text))
+      .map((file) => file.name);
+
+    expect(declaring).toEqual([path.join("ui", "domain", "week-grid", "zoom.ts")]);
+  });
+
+  it("is read by BOTH screens, so neither can answer the question alone", async () => {
+    const reading = (await sources())
+      .filter((file) => /from "(\.\/zoom|[^"]*week-grid\/zoom)"/.test(file.text))
+      .map((file) => file.name);
+
+    expect(reading).toContain(path.join("routes", "settings", "geometry.ts"));
+    expect(reading).toContain(path.join("routes", "settings", "components", "GeometryPanel.tsx"));
+    expect(reading).toContain(path.join("ui", "domain", "week-grid", "WeekGrid.tsx"));
   });
 });

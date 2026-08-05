@@ -220,11 +220,16 @@ describe("the week the reader asked for", () => {
     expect(screen.getByText("SUN 15")).toBeInTheDocument();
   });
 
-  /* THE SETTING IS BROUGHT INSIDE THE DISPLAY'S OWN CAP BEFORE IT REACHES THE GRID. A 24-hour setting on the 13 inch
-   * reference display would draw a thirty-minute block at 13px, below the label floor, which is the one thing the
-   * clamp exists to prevent. The canvas height is where that is observable: pixels per minute is the grid height over
-   * the VISIBLE minutes, so a clamped setting produces a taller canvas for the same extent. */
-  it("renders a 24-hour setting at the display's own cap of 16 hours", async () => {
+  /* THE SETTING TRAVELS UNCLAMPED AND THE GRID BRINGS IT INSIDE ITS OWN MEASURED RANGE. A 24-hour setting would draw
+   * a thirty-minute block at 13px, below the label floor, which is the one thing the clamp exists to prevent. The
+   * canvas height is where that is observable: pixels per minute is the grid height over the VISIBLE minutes, so a
+   * clamped setting produces a taller canvas for the same extent.
+   *
+   * The clamp is the GRID's, against the height it measures, which is why this asserts the rendering rather than a
+   * prop: in a headless DOM nothing is laid out, so the measurement falls back to the reference display's grid and
+   * the cap is that display's 16. In a browser the cap is the real display's, which is the whole point of moving the
+   * clamp down here: clamping above the grid capped a 27 inch reader at the 13 inch reference. */
+  it("renders a 24-hour setting at the measured display's own cap of 16 hours", async () => {
     installReads(weekView());
     apiServer.use(
       jsonHandler("/api/v1/settings", { status: 200, body: { ...SETTINGS, visibleHours: 24 } }),

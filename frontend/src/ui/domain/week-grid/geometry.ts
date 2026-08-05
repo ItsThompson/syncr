@@ -57,16 +57,25 @@ export function extentOf(bounds: Extent, spans: readonly OffsetSpan[]): Extent {
 }
 
 /**
+ * The grid height the arithmetic runs on: the measurement, or the reference display's until one exists.
+ *
+ * Stated once, because two questions need the same answer: how many pixels a minute is, and which zoom levels this
+ * display can offer. Answering them from different heights is how a screen comes to draw a level it also refuses.
+ * A measurement of zero is what a first paint and a headless DOM both report.
+ */
+export function gridHeightPx(measuredHeightPx: number): number {
+  return measuredHeightPx > 0 ? measuredHeightPx : GRID_H_PX;
+}
+
+/**
  * Pixels per minute, from the grid's MEASURED height and the visible-hours setting.
  *
- * A measurement of zero is what a first paint and a headless DOM both report, so the reference display's grid
- * height stands in until an element has been laid out. Returning zero instead would collapse every block in
- * the week to nothing and read as a rendering fault rather than as an unmeasured frame.
+ * Returning zero on an unmeasured grid would collapse every block in the week and read as a rendering fault rather
+ * than as an unmeasured frame, which is why the HEIGHT falls back and the answer does not.
  */
 export function pxPerMinute(measuredHeightPx: number, visibleHours: number): number {
-  const height = measuredHeightPx > 0 ? measuredHeightPx : GRID_H_PX;
   const hours = visibleHours > 0 ? visibleHours : VISIBLE_HOURS_DEFAULT;
-  return height / (hours * MINUTES_IN_HOUR);
+  return gridHeightPx(measuredHeightPx) / (hours * MINUTES_IN_HOUR);
 }
 
 /** How tall the canvas is, which is the whole extent rather than the visible window. */
