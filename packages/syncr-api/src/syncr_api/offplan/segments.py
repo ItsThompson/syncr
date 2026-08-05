@@ -70,18 +70,14 @@ def off_plan_segments(
 def _segments_of(period: OffPlanPeriodRecord, *, profile: ZoneProfile) -> Iterator[OffPlanSegment]:
     """One segment per local day the period covers, in date order.
 
-    The last date is the one holding the final instant the period COVERS rather than the one
-    holding ``end``: the bounds are half-open, so a period ending at a Monday's local midnight
-    reaches nothing inside Monday and contributes no Monday segment.
+    The last date walked is the one ``end`` falls on, and the day it contributes may be empty: the
+    bounds are half-open, so a period ending at a Monday's local midnight covers nothing inside
+    Monday and the clip below answers with nothing for it. Stating that through the clip rather than
+    by stepping the date back is one rule instead of two, and the two cannot then disagree.
     """
     home = profile.home_zone
-    first = local_date(period.interval.start, home)
-    # `end` itself is excluded, so a period ending exactly at local midnight ends on the previous
-    # day. Stepping back by the shortest representable amount rather than by a fixed quantum keeps
-    # that true for a period whose end is not on the grid, which storage forbids and this does not
-    # require.
-    last = local_date(period.interval.end - timedelta(microseconds=1), home)
-    on = first
+    on = local_date(period.interval.start, home)
+    last = local_date(period.interval.end, home)
     while on <= last:
         segment = _day_span(on, profile).clipped_to(period.interval)
         if segment is not None:
@@ -98,10 +94,14 @@ def _segments_of(period: OffPlanPeriodRecord, *, profile: ZoneProfile) -> Iterat
 def _day_span(on: Date, profile: ZoneProfile) -> Interval:
     """The whole local day ``on``, in the zone active on it and on the day after.
 
-    Each end resolves against its own date's zone, so a transition day is 23 or 25 hours rather
-    than 24. The same reading :mod:`syncr_api.calendars.day_spans` gives a published all-day event,
-    and it is stated separately here because that one takes a day COUNT from a provider payload
-    while this one walks the days of a span syncr stored.
+    Each end resolves against its OWN date's zone, which is what makes the span as long as that day
+    really was: a day whose successor is in another zone -- the last day before a trip, the last day
+    of one -- is shorter or longer than 24 hours, and reading one zone for both ends would place the
+    segment's end at the wrong instant by the offset between them.
+
+    The same reading :mod:`syncr_api.calendars.day_spans` gives a published all-day event, and it is
+    stated separately here because that one takes a day COUNT from a provider payload while this one
+    walks the days of a span syncr stored.
     """
     tomorrow = on + _ONE_DAY
     return Interval(

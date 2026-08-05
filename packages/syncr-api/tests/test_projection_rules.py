@@ -30,7 +30,7 @@ nothing rather than a sentence assembled from a clause kind this has no wording 
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -65,7 +65,7 @@ from syncr_domain.reasons import (
     ReasonRecord,
 )
 from syncr_domain.weeks import IsoWeek
-from syncr_domain.zones import ZoneProfile
+from syncr_domain.zones import TravelOverride, ZoneProfile
 from tests.plan_documents import (
     A_BOUND_REASON,
     CAREER,
@@ -82,6 +82,7 @@ if TYPE_CHECKING:
     from syncr_domain.fixtures.dst_weeks import DstWeek
     from syncr_domain.plan import Block
     from syncr_domain.reasons import BoundSource
+    from syncr_domain.zones import ZoneId
 
 # The spec's what-projects table, as one expectation per origin. Written out rather than derived
 # from the mapping under test, which would assert the mapping against itself.
@@ -375,6 +376,35 @@ def test_a_segment_outside_the_horizon_is_left_out() -> None:
     )
 
     assert [segment.on.isoformat() for segment in segments] == ["2026-02-14"]
+
+
+def test_a_segment_ends_at_the_next_days_own_midnight_across_a_travel_boundary() -> None:
+    """A day whose successor is in another zone is not 24 hours long.
+
+    The bite check found this: reading one zone for both ends of a segment passed every test,
+    because a daylight-saving transition changes the OFFSET and not the zone identifier. Only a
+    travel override makes the two ends resolve against different zones, and it moves the segment's
+    end by the difference between them.
+    """
+    auckland: ZoneId = "Pacific/Auckland"
+    travelling = ZoneProfile(
+        home_zone=LONDON,
+        travel_overrides=(
+            TravelOverride(zone=auckland, start_date=date(2026, 2, 15), end_date=date(2026, 2, 20)),
+        ),
+    )
+    # Two days in London's reading, the second of which is the trip's first date.
+    period = a_period(datetime(2026, 2, 14, tzinfo=UTC), datetime(2026, 2, 16, tzinfo=UTC))
+
+    saturday, *rest = off_plan_segments([period], horizon=A_WIDE_HORIZON, profile=travelling)
+
+    # Auckland is 13 hours ahead in February, so the 15th begins there 13 hours before it begins in
+    # London: the Saturday segment is 11 hours long rather than 24.
+    assert saturday.interval.end == datetime(2026, 2, 14, 11, tzinfo=UTC)
+    assert saturday.interval.total_minutes() == 11 * 60
+    # And the same span therefore covers three local days rather than two, which is the other half
+    # of the same fact: the days are the traveller's, not the home zone's.
+    assert [segment.on.isoformat() for segment in rest] == ["2026-02-15", "2026-02-16"]
 
 
 def test_an_unlabelled_period_still_says_why_the_calendar_is_empty() -> None:
