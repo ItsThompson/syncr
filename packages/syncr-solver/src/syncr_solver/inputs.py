@@ -368,6 +368,12 @@ class WeekAdjustment:
     ``reductions`` carries per-date minutes for a routine reduction and is empty for the
     other three kinds. The enumerator chose the distribution, so the concession stores the
     result rather than a rule for re-deriving it against inputs that have since changed.
+
+    ``delta_minutes`` is an INCREMENT: how much this concession lowers the figure it names,
+    against that figure as it stands, rather than an absolute target it should end at. Set
+    for ``breach_floor`` and null for the other three. Three components read the column and
+    the reading has to be one: the enumerator computes it over an already-folded assembly,
+    so a second concession on one target lowers what the first left.
     """
 
     adjustment_id: WeekAdjustmentId
