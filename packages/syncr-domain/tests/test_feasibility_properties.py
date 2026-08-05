@@ -34,8 +34,9 @@ import dataclasses
 from datetime import timedelta
 from itertools import combinations
 from typing import TYPE_CHECKING
+from uuid import UUID
 
-from hypothesis import assume, given
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from syncr_domain.discretionary import discretionary_time
@@ -64,7 +65,24 @@ WEEK_MINUTES = 7 * 24 * 60
 
 FITNESS: AreaId = partial_progress.FITNESS
 CAREER: AreaId = partial_progress.CAREER
-NAMES = {FITNESS: "Fitness", CAREER: "Career"}
+# A third Area, so the competition is a sum over more than one competitor and a scoped window can
+# forbid an Area that neither the measured demand nor its competitor carries. The first two are the
+# shared fixture's, so the properties seeded from it and the generated ones name the same Areas.
+STUDY: AreaId = UUID("bbbbbbbb-0000-4000-8000-000000000003")
+NAMES = {FITNESS: "Fitness", CAREER: "Career", STUDY: "Study"}
+
+# What the Hall property draws, and it needs its own figure rather than the default.
+#
+# Measured over fresh runs with the hypothesis database cleared, so nothing stored is replayed. At
+# the default sample size a reverted site of the competitor class reddens this property in about
+# half to three quarters of runs, because its counterexamples live in a narrow band and the oracle
+# filters some draws out. At 600 three of the four sites reddened 5 runs of 5 and one reddened 4.
+# At 1200 all four reddened 5 of 5, and the file costs 6.7 s rather than 4.5 s.
+#
+# **A probabilistic guard on the ticket's central arithmetic is worth two seconds.** CI keeps no
+# hypothesis database, so CI sees the fresh-run rate rather than a replayed counterexample, and a
+# green run under a reintroduced site is the outcome this figure exists to prevent.
+HALL_EXAMPLES = 1200
 
 type Gaps = Mapping[tuple[str, str, str], int]
 
@@ -180,15 +198,20 @@ def weeks(
 
 @st.composite
 def scoped_windows(draw: st.DrawFn, *areas: AreaId) -> tuple[ScopedWindow, ...]:
-    """Up to two recovery windows, each forbidding one of the Areas the week actually holds.
+    """Up to three recovery windows, each forbidding one of the Areas the week actually holds.
 
     A window naming an Area no floor and no demand carries cannot change a figure, so a strategy
     that drew one would be generating inert inputs: every property over it would hold whatever the
-    arithmetic did with a scope.
+    arithmetic did with a scope. An Area may be offered more than once by a caller that wants it
+    forbidden more often.
+
+    Up to three rather than two, and none is a legitimate draw: the per-Area discount is zero unless
+    something is forbidden to the Area being measured, and the fourth site of the competitor class
+    needs a week with no window at all, so both ends of that range earn their place.
     """
     return tuple(
         ScopedWindow(interval=interval, forbidden_area_ids=(draw(st.sampled_from(areas)),))
-        for interval in draw(st.lists(intervals(), max_size=2))
+        for interval in draw(st.lists(intervals(), max_size=3))
     )
 
 
@@ -633,8 +656,15 @@ def every_subset_fits(owed: tuple[Obligation, ...]) -> bool:
 
     Hall's condition over the obligations: a set of them fits if and only if no subset asks for
     more minutes than the union of the capacity that subset may use. Written here as an independent
-    oracle, deliberately: it shares no expression with the probe, so a property comparing the two
-    compares two derivations rather than one applied twice.
+    oracle, deliberately: it shares none of the five derivations the probe contests, so a property
+    comparing the two compares two derivations rather than one applied twice.
+
+    **What it does share, stated so the sentence above can be read literally:** the input fields,
+    the interval algebra, and one expression, ``ScopedWindow.forbids``. That one is measured rather
+    than argued: mutating it moves both sides together and leaves this property green, while four
+    examples in the arithmetic suite catch it. Mutating the reading the PROBE uses,
+    ``scoped_against``, reddens this property, which is the fault that matters and the reason the
+    capacity above is derived from ``forbids`` rather than through that method.
 
     Exact for divisible minutes, which is what the probe measures. A minimum chunk is the solver's
     question, and the kind of failure the probe structurally cannot find.
@@ -659,8 +689,20 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
     claim. The floor is drawn to land in the band where a per-Area capacity set and a whole-week
     figure disagree, which is the shape a blind draw almost never produces.
 
-    The scoped windows and the second Area are the point: they are what make one Area's capacity
-    differ from the week's, which is the shape the arithmetic has to get right.
+    Three Areas, three floors, and three demands, two of them in one Area. Every one of those shapes
+    was added after a review round found a site of the competitor class the previous shape could not
+    reach, so the list is a record of the class rather than a wish: scoped windows naming the week's
+    own Areas, a second Area with a demand, a competitor holding a floor AND a demand, a third Area,
+    and two deadlines inside the measured Area.
+
+    Measured over 400 draws through the ``@given`` path the property uses, which is the figure that
+    matters because ``strategy.example()`` samples differently, and over four such measurements
+    because the rates move from run to run: 240 to 268 weeks satisfy the oracle and so run the
+    property's body, 175 to 212 hold a competitor with both a floor and a demand, 96 to 170 hold two
+    demands in the measured Area, 328 to 348 give the third Area a floor, 104 to 182 forbid some
+    capacity to the measured Area, and 314 to 350 draw the competitor's deadline before the measured
+    one. A figure quoted from one run of a generator without a fixed seed is not reproducible, so
+    what is quoted here is the range and the path.
     """
     now_minutes = draw(st.integers(min_value=0, max_value=WEEK_MINUTES // 2))
     now = MONDAY + timedelta(minutes=now_minutes)
@@ -671,7 +713,10 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
     placed = draw(interval_sets(max_size=2))
     measured = draw(st.sampled_from((CAREER, FITNESS)))
     competitor = FITNESS if measured == CAREER else CAREER
-    windows = draw(scoped_windows(measured, competitor))
+    # The measured Area is offered twice, so a window forbids it in about two draws in five rather
+    # than one: the per-Area check's discount is zero unless some capacity is forbidden to the Area
+    # being measured, so a generator that rarely forbids it rarely reaches that check's boundary.
+    windows = draw(scoped_windows(measured, measured, competitor, STUDY))
 
     occupied = frame.union(anchors).union(absolute_forbidden).union(off_plan)
     free = IntervalSet([WEEK]).subtract(occupied).after(now).subtract(placed)
@@ -681,12 +726,13 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
             IntervalSet(window.interval for window in windows if window.forbids(area_id))
         )
 
-    mine, theirs = claimable(measured), claimable(competitor)
-    # The competitor's deadline is the EARLIER one, because the fault this property exists to see
-    # needs the competitor to have already claimed capacity by the time the measured demand is
-    # checked. The measured deadline is drawn at the week's end as often as anywhere after it, so
-    # that the capacity able to absorb a floor LATER is nil in a fair share of weeks: without that,
-    # a competitor's floor never has to land before the deadline and its two figures never overlap.
+    mine, theirs, theirs_too = claimable(measured), claimable(competitor), claimable(STUDY)
+    # Both deadline orders are drawn from one range, and the measured one lands at the week's end
+    # in half of draws, so the competitor's is the earlier one in most weeks and not all of them.
+    # The fault this property exists to see needs the competitor to have claimed capacity before
+    # the measured demand is checked, and the other order has to hold too. The measured deadline at
+    # the week's end is what leaves no capacity able to absorb a floor LATER, without which a
+    # competitor's floor never has to land before the deadline and its two figures never overlap.
     theirs_due = MONDAY + timedelta(
         minutes=draw(st.integers(min_value=now_minutes, max_value=WEEK_MINUTES))
     )
@@ -698,6 +744,12 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
             )
         )
     )
+    # A second demand in the MEASURED Area, with its own deadline. Two deadlines in one Area are two
+    # distinct sets of tasks and really do need two lots of minutes, so this is the shape that
+    # exercises the measured Area's own accumulated claim, which its floor is excluded from.
+    mine_due_first = MONDAY + timedelta(
+        minutes=draw(st.integers(min_value=now_minutes, max_value=WEEK_MINUTES))
+    )
     # The competitor's demand is drawn up to ALL of the capacity it may use rather than half of it,
     # and its floor is drawn rather than fixed at zero, because an Area holding both is the shape
     # the fourth site of the competitor defect needed: its floor and its own earlier work are one
@@ -708,15 +760,21 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
     reserved_by_them = draw(
         st.integers(min_value=0, max_value=max(owed_by_them, theirs.total_minutes()))
     )
-    # What the competitor really has to place before the measured deadline: the larger of the two,
-    # never their sum. Derived here so the measured demand can be drawn against the boundary the
-    # arithmetic should allow, which is where the two readings differ.
+    reserved_by_study = draw(st.integers(min_value=0, max_value=theirs_too.total_minutes()))
+    # What the competitors really have to place before the measured deadline: per Area the larger of
+    # its two figures, never their sum. Derived here so the measured demand can be drawn against the
+    # boundary the arithmetic should allow, which is where two readings of it differ.
     absorbed_later = free.after(mine_due).total_minutes()
-    committed_by_them = max(owed_by_them, max(0, reserved_by_them - absorbed_later))
-    together = mine.union(theirs).total_minutes()
-    at_least = max(0, mine.total_minutes() - committed_by_them)
+    committed_by_others = max(owed_by_them, max(0, reserved_by_them - absorbed_later)) + max(
+        0, reserved_by_study - absorbed_later
+    )
+    together = mine.union(theirs).union(theirs_too).total_minutes()
+    at_least = max(0, mine.total_minutes() - committed_by_others)
     reserved_by_me = draw(
-        st.integers(min_value=at_least, max_value=max(at_least, together - committed_by_them))
+        st.integers(min_value=at_least, max_value=max(at_least, together - committed_by_others))
+    )
+    owed_by_me_first = draw(
+        st.integers(min_value=0, max_value=mine.before(mine_due_first).total_minutes())
     )
     return ProbeInputs(
         span=WEEK,
@@ -736,6 +794,7 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
             FloorReservation(
                 area_id=competitor, reserved_minutes=reserved_by_them, label=NAMES[competitor]
             ),
+            FloorReservation(area_id=STUDY, reserved_minutes=reserved_by_study, label=NAMES[STUDY]),
         ),
         deadline_demands=(
             DeadlineDemand(
@@ -745,12 +804,20 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
                         min_value=0,
                         max_value=max(
                             0,
-                            mine.before(mine_due).total_minutes() - committed_by_them,
+                            mine.before(mine_due).total_minutes()
+                            - committed_by_others
+                            - owed_by_me_first,
                         ),
                     )
                 ),
                 area_id=measured,
                 labels=("F&F Past Papers",),
+            ),
+            DeadlineDemand(
+                deadline=mine_due_first,
+                remaining_minutes=owed_by_me_first,
+                area_id=measured,
+                labels=("Leetcode",),
             ),
             DeadlineDemand(
                 deadline=theirs_due,
@@ -763,6 +830,7 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
 
 
 @given(week=weeks_that_can_hold_their_work())
+@settings(max_examples=HALL_EXAMPLES)
 def test_a_week_that_can_hold_all_of_its_work_is_reported_with_no_gap_at_all(
     week: ProbeInputs,
 ) -> None:
@@ -771,8 +839,8 @@ def test_a_week_that_can_hold_all_of_its_work_is_reported_with_no_gap_at_all(
     # over-report, so a week where an assignment exists must report nothing.
     #
     # This is the property that sees a whole-week competitor charged against a per-Area capacity
-    # set. Both reproductions in the example suite satisfy Hall's condition and were reported as
-    # gaps, and this property finds that shape by itself.
+    # set. Four sites of that class have been found; this one holds all four, and it needs its own
+    # sample size to hold them on every run rather than most runs.
     assume(every_subset_fits(obligations(week)))
 
     assert probe(week).shortfalls == ()
