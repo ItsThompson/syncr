@@ -31,7 +31,7 @@ from hypothesis import strategies as st
 
 from syncr_domain.gaps import ForbiddenKind, ForbiddenScope
 from syncr_domain.identity import BindingKind, BindingRef, TransitLeg
-from syncr_domain.intervals import Interval, IntervalSet
+from syncr_domain.intervals import Instant, Interval, IntervalSet
 from syncr_domain.snap import SNAP, is_on_snap_grid
 from syncr_solver.constraints import Blocked, ConstraintCheck, ConstraintRule
 from syncr_solver.occupancy import DERIVED_FROM_AN_ANCHOR
@@ -551,16 +551,55 @@ BINDINGS = (
 )
 
 
+STEPS_IN_A_WEEK = 7 * 24 * 4
+
+
+def _step_of(moment: Instant) -> int:
+    """Which quarter-hour step of the week an instant falls on."""
+    return (moment - at(0)) // SNAP
+
+
+def notable_steps(week: SolveInputs) -> tuple[int, ...]:
+    """The steps at which the week's OWN spans begin, derived from the week rather than listed.
+
+    A generator drawing uniformly over 672 steps reaches a five-step recovery window about one
+    example in eighty, so at any budget whether it reaches a thin rule is a lottery. Measured: with
+    H2 stubbed out and a reproducible draw, the property passed at 200 and at 800 examples and
+    failed at 400, 1200 and 2000, which is an instrument whose green means nothing.
+
+    Biasing the draw toward the spans the week actually holds is the cure, and reading them off the
+    week is what keeps it from going stale: a span added to the fixture is drawn at without anyone
+    remembering to list its step here.
+    """
+    blocks = () if week.live_plan is None else week.live_plan.blocks
+    spans = (
+        *(entry.interval for entry in week.frame),
+        *(anchor.interval for anchor in week.anchors),
+        *(window.interval for window in week.forbidden_windows),
+        *(period.interval for period in week.off_plan),
+        *(shadow.interval for shadow in week.shadow_blocks),
+        *(pin.interval for pin in week.pins),
+        *(block.interval for block in blocks),
+    )
+    return tuple(sorted({_step_of(span.start) for span in spans}))
+
+
 def candidates() -> st.SearchStrategy[Placement]:
-    """One candidate anywhere in the week, sometimes off the grid and sometimes too short.
+    """One candidate somewhere in the week, sometimes off the grid and sometimes too short.
 
     Drawn in quarter-hour steps with a deliberate minute offset some of the time, because a
     generator that only ever lands on the grid could not reach H14, and one that always placed a
     demand whole could not reach H6 or H7.
+
+    Half the draws start on one of the week's own spans and half anywhere at all. Uniform draws
+    alone reach a thin rule by luck: see :func:`notable_steps` for the measurement that says so.
     """
     return st.builds(
         _a_drawn_candidate,
-        step=st.integers(min_value=0, max_value=7 * 24 * 4 - 1),
+        step=st.one_of(
+            st.sampled_from(notable_steps(RICH_WEEK)),
+            st.integers(min_value=0, max_value=STEPS_IN_A_WEEK - 1),
+        ),
         steps_long=st.integers(min_value=1, max_value=8),
         offset=st.sampled_from((0, 0, 0, 7)),
         area_id=st.sampled_from((FITNESS, CAREER, None)),
@@ -603,7 +642,7 @@ def _a_drawn_candidate(
 
 
 @given(offered=st.lists(candidates(), min_size=1, max_size=12))
-@settings(max_examples=200, deadline=None)
+@settings(max_examples=200, deadline=None, derandomize=True)
 @pytest.mark.parametrize("rule", list(ConstraintRule), ids=[rule.value for rule in ConstraintRule])
 def test_no_plan_of_generated_candidates_violates_any_rule(
     rule: ConstraintRule, offered: list[Placement]
@@ -623,9 +662,12 @@ def a_deterministic_sample(count: int) -> tuple[Placement, ...]:
     asserted over a stream this suite can name.
     """
     random = Random(20260207)  # noqa: S311 - a fixed draw of test candidates, not a secret
+    steps = notable_steps(RICH_WEEK)
     return tuple(
         _a_drawn_candidate(
-            step=random.randrange(7 * 24 * 4),
+            step=(
+                random.choice(steps) if random.random() < 0.5 else random.randrange(STEPS_IN_A_WEEK)
+            ),
             steps_long=random.randrange(1, 9),
             offset=random.choice((0, 0, 0, 7)),
             area_id=random.choice((FITNESS, CAREER, None)),
@@ -638,23 +680,40 @@ def a_deterministic_sample(count: int) -> tuple[Placement, ...]:
     )
 
 
-# How many candidates the reach and share measurements below draw. Large enough that every rule a
-# random draw can reach is reached: the thinnest is the scoped window, which covers one Area for one
-# hour of the week and is refused once at this size.
+# How many candidates the reach and share measurements below draw.
 SAMPLE = 2000
+
+
+def reached(offered: Sequence[Placement], state: PartialPlan) -> set[ConstraintRule]:
+    """Which rules would refuse something in this stream, each asked on its own.
+
+    Asked per rule rather than through the checker, because the checker reports the FIRST row a
+    candidate breaks and the table's order therefore masks the later rows: a Fitness candidate
+    inside a window forbidding Fitness is refused by the daily cap first once that day is full, so
+    H13 goes unreached in a measurement taken through the composed checker even though the stream
+    reaches it. The state still grows through the full checker, so each rule is asked about a real
+    week.
+    """
+    check = ConstraintCheck(HARD_RULES)
+    found: set[ConstraintRule] = set()
+    for candidate in offered:
+        found.update(
+            name for name, rule in RULE_BY_NAME.items() if rule(candidate, state) is not None
+        )
+        if check.check(candidate, state) is None:
+            state = state.with_placed(candidate)
+    return found
 
 
 def test_the_generated_stream_reaches_every_rule_but_the_one_this_week_cannot_break() -> None:
     # A property over a stream that never reaches a rule is vacuous for that rule, so the reach is
     # asserted as an exact set rather than assumed. H9 is the one exception and it is structural:
     # this week holds three hours of floors against a hundred and sixty of claimable time, so no
-    # sequence of non-overlapping placements can leave a floor unreachable. Its violation IS
+    # sequence of placements can leave a floor unreachable and H9 refuses nothing. Its violation IS
     # reachable, and the scenario above proves it over a week whose whole capacity is three hours.
-    attempt = place(a_deterministic_sample(SAMPLE), PartialPlan.of(RICH_WEEK), HARD_RULES)
-
-    assert {rejection.rule for rejection in attempt.refused} == set(ConstraintRule) - {
-        ConstraintRule.AREA_FLOOR
-    }
+    assert reached(a_deterministic_sample(SAMPLE), PartialPlan.of(RICH_WEEK)) == set(
+        ConstraintRule
+    ) - {ConstraintRule.AREA_FLOOR}
 
 
 def test_the_rich_week_admits_a_measurable_share_of_what_it_is_offered() -> None:
