@@ -35,7 +35,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from syncr_api.core.errors import FieldError, ValidationFailed
+from syncr_api.budgets.config import PERIOD_PARAMETER
+from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.offplan.reading import off_plan_reading
@@ -43,7 +44,7 @@ from syncr_api.user_settings.zone_reading import as_domain, stated_rejection, zo
 from syncr_common.metrics import measured
 from syncr_domain.budgets import budget_report
 from syncr_domain.discretionary import discretionary_intervals
-from syncr_domain.weeks import IsoWeek, IsoWeekError, week_span
+from syncr_domain.weeks import week_span
 
 if TYPE_CHECKING:
     from syncr_api.areas.repository import AreaRepository
@@ -53,6 +54,7 @@ if TYPE_CHECKING:
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
     from syncr_domain.budgets import BudgetReport
     from syncr_domain.intervals import Interval
+    from syncr_domain.weeks import IsoWeek
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,18 +118,7 @@ class BudgetService:
 def _require_an_iso_week(period: str) -> IsoWeek:
     """``period`` as an ISO week, or a 422 naming the parameter and the shape it takes.
 
-    Parsed by the domain, which is the only reader of the identifier's shape, so the route
-    declares no pattern of its own that could drift from it.
+    The reading is shared with the week and concession routes, which address the same identifier as
+    a path segment: one parse, one wording, and the field name each caller's own.
     """
-    try:
-        return IsoWeek.parse(period)
-    except IsoWeekError as error:
-        raise ValidationFailed(
-            f"The period was not accepted: {error}. Nothing was changed, and every other "
-            "period still reports as it did.",
-            errors=[_period_error(str(error))],
-        ) from error
-
-
-def _period_error(message: str) -> FieldError:
-    return FieldError(field="period", message=message)
+    return require_an_iso_week(period, field=PERIOD_PARAMETER)
