@@ -55,6 +55,11 @@ if TYPE_CHECKING:
 # stops a deployment that stopped resolving them from turning a read into an unbounded one.
 LIST_LIMIT = 200
 
+# The two orders a bounded read of this table takes, and the id settles a tie either way: two
+# commitments can meet two blocks at one instant, and a page has to be reproducible.
+_AS_THEY_OCCUR = (PlanConflict.overlap_starts_at, PlanConflict.id)
+_NEWEST_FIRST = (PlanConflict.overlap_starts_at.desc(), PlanConflict.id.desc())
+
 
 class PlanConflictRepository(TenantScopedRepository):
     """One tenant's conflicts: raised once, listed, and answered for."""
@@ -91,18 +96,24 @@ class PlanConflictRepository(TenantScopedRepository):
     async def list_all(
         self, *, resolved: bool | None = None, limit: int = LIST_LIMIT
     ) -> tuple[ConflictRecord, ...]:
-        """This tenant's conflicts, earliest overlap first, optionally narrowed by state.
+        """This tenant's conflicts, optionally narrowed by state, bounded either way.
 
         ``resolved`` is a tri-state on purpose: the open set is what the banner reads, the resolved
         set is what a repeated collision is computed over, and both together are what a week view
         renders. Answering only the open ones would make the retained rows unreachable.
+
+        **The order follows which of those reads it is.** The open set is read in the order the
+        overlaps occur, because that is the order a banner lists what is coming, and the set is
+        small: each member holds a banner until it is answered. Any read that can include resolved
+        rows is a page of a history that is never pruned, so it is read newest first, for the reason
+        a revision history is: a page of the oldest 200 rows of a permanent table can never reach
+        the recent end, and the recent end is where a repetition is.
         """
-        statement = self.scoped_select(PlanConflict).order_by(
-            PlanConflict.overlap_starts_at, PlanConflict.id
-        )
+        statement = self.scoped_select(PlanConflict)
         if resolved is not None:
             statement = statement.where(PlanConflict.resolved_at.is_not(None) == resolved)
-        rows = await self._session.scalars(statement.limit(limit))
+        order = _AS_THEY_OCCUR if resolved is False else _NEWEST_FIRST
+        rows = await self._session.scalars(statement.order_by(*order).limit(limit))
         return tuple(_as_record(row) for row in rows)
 
     async def for_week(

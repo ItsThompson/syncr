@@ -55,6 +55,7 @@ LATER = NOW + timedelta(minutes=30)
 
 LEETCODE = BindingRef.for_task(uuid4())
 GYM = BindingRef.for_habit(uuid4(), index=0)
+SLEEP = BindingRef.for_routine(uuid4(), on=WEEK.monday())
 
 
 def between(start_hour: float, end_hour: float) -> Interval:
@@ -306,6 +307,48 @@ async def test_the_open_list_is_ordered_by_when_the_overlap_happens(
         held = await PlanConflictRepository(session, owner.tenant_id).list_all(resolved=False)
 
     assert [conflict.overlap for conflict in held] == [between(9, 10), between(17, 18)]
+
+
+async def test_a_read_that_can_include_retained_rows_is_newest_first(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # The retained set is a permanent history, and a repetition is at its recent end. Read oldest
+    # first, a bounded page of it could never reach that end.
+    raised = await raise_all(
+        sessions,
+        owner.tenant_id,
+        detected(uuid4(), binding=GYM, overlap=between(9, 10)),
+        detected(uuid4(), binding=LEETCODE, overlap=between(17, 18)),
+    )
+    for conflict in raised:
+        await resolve(sessions, owner.tenant_id, conflict, KEPT_BOTH_RESOLUTION)
+
+    async with sessions() as session:
+        conflicts = PlanConflictRepository(session, owner.tenant_id)
+        answered = await conflicts.list_all(resolved=True)
+        every = await conflicts.list_all()
+
+    assert [conflict.overlap for conflict in answered] == [between(17, 18), between(9, 10)]
+    assert [conflict.overlap for conflict in every] == [between(17, 18), between(9, 10)]
+
+
+async def test_a_bounded_read_of_the_retained_set_keeps_its_recent_end(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # Driven through the bound rather than asserting the constant: a page shorter than the history
+    # has to hold the newest rows, because that is where a repeated collision is.
+    await raise_all(
+        sessions,
+        owner.tenant_id,
+        detected(uuid4(), binding=GYM, overlap=between(9, 10)),
+        detected(uuid4(), binding=LEETCODE, overlap=between(13, 14)),
+        detected(uuid4(), binding=SLEEP, overlap=between(17, 18)),
+    )
+
+    async with sessions() as session:
+        page = await PlanConflictRepository(session, owner.tenant_id).list_all(limit=2)
+
+    assert [conflict.overlap for conflict in page] == [between(17, 18), between(13, 14)]
 
 
 async def test_one_weeks_conflicts_are_read_by_the_week_they_were_raised_in(

@@ -174,7 +174,8 @@ class WeekViewResponse(WireModel):
     )
     pins: list[None] = Field(description="Always empty: nothing records a pin in this deployment.")
     conflicts: list[None] = Field(
-        description="Always empty: nothing records a conflict in this deployment.",
+        description="Always empty: the conflicts a week holds are read through the conflicts route "
+        "in this deployment.",
     )
     verdict: None = Field(description="Always null: no read computes a verdict in this deployment.")
     off_plan: list[OffPlanPeriodResponse] = Field(

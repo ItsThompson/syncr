@@ -55,11 +55,15 @@ class Movability(StrEnum):
     NOBODY = "nobody"
 
 
-# Who decides where a block of each origin goes. Total over the vocabulary, so a block of a
-# new origin is answered by a decision rather than by whichever branch a default fell into.
+# Who decides where a block of each origin goes. Read twice, so its completeness is not a claim
+# beside it: a test asserts every member of the vocabulary is a key, because a hand-kept set going
+# stale would otherwise surface as a `KeyError` on a request rather than as a red test.
 #
-# An imported commitment is here for completeness rather than because a conflict can name one:
-# the detector never raises a conflict against an anchor block, because two genuine commitments
+# `Movability.THE_USER` is deliberately not a value here. A pin is what put the block where it is,
+# whatever the origin says about where it would otherwise have gone, so the pin is read first.
+#
+# An imported commitment is a key for completeness rather than because a conflict can name one: the
+# detector never raises a conflict against an anchor block, because two genuine commitments
 # overlapping is not something the product owns either.
 MOVABILITY_BY_ORIGIN: Final[Mapping[Origin, Movability]] = {
     Origin.HABIT: Movability.THE_SOLVER,

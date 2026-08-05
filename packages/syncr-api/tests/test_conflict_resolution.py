@@ -24,6 +24,10 @@ for the same reason and by the same rule.
 rather than raising a 404 about a conflict that exists.
 
 **Another tenant's conflict is a 404**, and answering it changes nothing.
+
+**Who can move a block is answered for every origin there is**, asserted over the vocabulary itself
+rather than trusted from a comment: an origin added later fails a test rather than raising a
+``KeyError`` on a request.
 """
 
 from __future__ import annotations
@@ -41,6 +45,7 @@ from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.conflicts.declarations import ChosenResolution
+from syncr_api.conflicts.overlapped import MOVABILITY_BY_ORIGIN, Movability, overlapped_block
 from syncr_api.conflicts.service import ConflictService
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.errors import Conflict, Forbidden, NotFound, ValidationFailed
@@ -61,11 +66,11 @@ from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import SOLVE
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
-from syncr_domain.identity import BindingRef, TransitLeg
+from syncr_domain.identity import BindingRef, Origin, TransitLeg
 from syncr_domain.intervals import Interval
 from tests.anchor_specifications import INTERVIEW as INTERVIEW_TYPE
 from tests.live_tenants import delete_tenant, seed_owner
-from tests.plan_documents import WEEK, a_block_holding, a_document, between
+from tests.plan_documents import WEEK, a_block, a_block_holding, a_document, between
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -580,3 +585,43 @@ class TestAuthorization:
             service = a_service(session, writer)
             with pytest.raises(Forbidden, match=Scope.PLAN_READ.value):
                 await service.list_all(writer, resolved=False)
+
+
+class TestWhoCanMoveABlockIsAnsweredForEveryOrigin:
+    """The map's completeness, asserted over the vocabulary rather than claimed beside it.
+
+    A hand-kept set going stale is this epic's most-measured defect, and the failure here would be
+    a ``KeyError`` at request time: loud, but in production rather than in a test.
+    """
+
+    def test_every_origin_has_an_answer(self) -> None:
+        assert set(MOVABILITY_BY_ORIGIN) == set(Origin)
+
+    def test_the_map_answers_two_of_the_three_and_the_pin_answers_the_third(self) -> None:
+        # The floor beside the completeness check: a map answering every origin with one member
+        # would satisfy the assertion above while collapsing the table's rows into one. `THE_USER`
+        # is deliberately not an origin's answer, because a pin is what put the block where it is,
+        # whatever the origin says about where it would otherwise have gone.
+        assert set(MOVABILITY_BY_ORIGIN.values()) == {Movability.THE_SOLVER, Movability.NOBODY}
+
+    @pytest.mark.parametrize("origin", list(Origin))
+    def test_a_pinned_block_of_any_origin_is_the_users_to_move(self, origin: Origin) -> None:
+        # The pin-before-origin order, over the whole vocabulary rather than over one row of it.
+        held = pinned(a_block(origin, interval=between(9, 10)))
+        document = a_document(blocks=(held,))
+
+        assert overlapped_block(document, held.id).movable_by is Movability.THE_USER
+
+    @pytest.mark.parametrize("origin", list(Origin))
+    def test_an_unpinned_block_of_any_origin_is_answered_without_a_lookup(
+        self, origin: Origin
+    ) -> None:
+        # Driven through the function the service calls, so the answer comes from the same path a
+        # request takes rather than from the mapping alone.
+        held = a_block(origin, interval=between(9, 10))
+        document = a_document(blocks=(held,))
+
+        overlapped = overlapped_block(document, held.id)
+
+        assert overlapped.movable_by is MOVABILITY_BY_ORIGIN[origin]
+        assert overlapped.origin is origin

@@ -6697,7 +6697,7 @@
             "description": "Always null: a candidate concession rides on an operation and is not read back into this view yet."
           },
           "conflicts": {
-            "description": "Always empty: nothing records a conflict in this deployment.",
+            "description": "Always empty: the conflicts a week holds are read through the conflicts route in this deployment.",
             "items": {
               "type": "null"
             },

@@ -5256,7 +5256,7 @@ export interface components {
             candidateAdjustment: components["schemas"]["AdjustmentResponse"] | null;
             /**
              * Conflicts
-             * @description Always empty: nothing records a conflict in this deployment.
+             * @description Always empty: the conflicts a week holds are read through the conflicts route in this deployment.
              */
             conflicts: null[];
             /** @description Why live is null. Null exactly when live is populated. */
