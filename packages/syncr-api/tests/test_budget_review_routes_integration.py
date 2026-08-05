@@ -563,6 +563,26 @@ def test_an_adjusted_revision_takes_the_same_route_as_a_whole_one(
     assert set(body["declared"]) == {str(first), str(second)}
 
 
+def test_a_fractional_share_is_applied_as_the_caller_sent_it(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    """A share is stored as ``NUMERIC(5, 2)`` and bounded by range alone, so it owes no grid.
+
+    Every other case on this route uses a whole percentage, which left the rule stated in the
+    field's own description and asserted nowhere on the apply path. Ticket 47's adjust control
+    rests on it: it is a plain figure field rather than a stepper, precisely because a hundredth
+    of a point is a legal declaration and a stepper would have written 35 for a typed 33.5.
+    """
+    area_id = declare_area(http, signed_in, budget_percent=30)
+
+    status, body = apply_shares(http, signed_in, [{"areaId": str(area_id), "budgetPercent": 33.5}])
+
+    assert status == HTTPStatus.OK, body
+    assert body["applied"] == 1
+    stored = http.get(f"{AREAS_PREFIX}/{area_id}", headers=signed_in).json()
+    assert Decimal(str(stored["budgetPercent"])) == Decimal("33.5")
+
+
 def test_an_area_the_request_does_not_name_is_left_alone(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:

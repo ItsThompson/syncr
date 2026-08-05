@@ -130,6 +130,23 @@ class TestP3TheDailyCapIsAnAreasAlone:
         assert MIN_MAX_PER_DAY_MINUTES == SNAP_MINUTES
         assert a_preference(AREA, max_per_day_minutes=SNAP_MINUTES).max_per_day_minutes == 15
 
+    @pytest.mark.parametrize("minutes", [100, 16, 61, MAX_MAX_PER_DAY_MINUTES - 1])
+    def test_a_cap_owes_no_grid_at_all(self, minutes: int) -> None:
+        """A cap is a budget figure rather than a geometry, so it lands wherever the user put it.
+
+        Every other case in this class happens to use a multiple of the snap, which left the rule
+        stated in prose and asserted nowhere: a snap check added to this field tomorrow would pass
+        the whole suite. 100 minutes admits six blocks and says "at most this much", which is what a
+        cap is for; the ideal duration is the field that owes the grid, and it is refused off it two
+        classes down.
+
+        Ticket 47's Areas screen rests on this: it authors the cap through a plain figure field
+        rather than a quarter-hour stepper, and a stepper wrote 105 for a typed 100.
+        """
+        # A floor on the parametrization: a multiple of the snap here would make the case vacuous.
+        assert minutes % SNAP_MINUTES != 0
+        assert a_preference(AREA, max_per_day_minutes=minutes).max_per_day_minutes == minutes
+
 
 class TestP5AnOverrideReplacesWholly:
     def test_an_override_wins_over_its_area(self) -> None:
