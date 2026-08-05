@@ -9,34 +9,30 @@
  * the link, declares the thing on the screen that owns it, and comes back to a ledger whose caret has moved. That
  * is the same act on the second sitting as on the first, which is what makes it resumable with no draft to keep.
  *
- * A BLOCKED STEP OFFERS NO LINK. Its own predecessor is what a reader has to do next, and a control that led to a
- * screen where the work cannot be done yet would be an invitation to fail. */
+ * A PANEL IS ONLY EVER DRAWN FOR THE CURRENT STEP, and the prop's type says so. A blocked step cannot be the
+ * current one, because the caret is promoted from a WAITING status and a blocked step is neither: the ledger row is
+ * where a blocked step is read, and it offers nothing to follow. Taking `CurrentSetupStep` rather than `SetupStep`
+ * is what keeps that from being a branch here that no reader can reach. */
 
 import { Link } from "react-router";
 
 import { Panel } from "../../../ui/layout";
 import { Button } from "../../../ui/primitives";
-import type { SetupStep } from "../steps";
+import type { CurrentSetupStep } from "../steps";
 
 export interface StepPanelProps {
-  readonly step: SetupStep;
+  readonly step: CurrentSetupStep;
 }
 
 export function StepPanel({ step }: StepPanelProps) {
   return (
     <Panel title={step.label} headerEnd={<span>{step.note}</span>}>
       <p className="text-base text-ink-soft">{step.statement}</p>
-      {step.status === "blocked" ? (
-        <p className="text-sm text-text-muted">
-          {`This step cannot be started yet: ${step.note}.`}
-        </p>
-      ) : (
-        <div>
-          <Button asChild rank="secondary">
-            <Link to={step.href}>{step.actionLabel}</Link>
-          </Button>
-        </div>
-      )}
+      <div>
+        <Button asChild rank="secondary">
+          <Link to={step.href}>{step.actionLabel}</Link>
+        </Button>
+      </div>
     </Panel>
   );
 }

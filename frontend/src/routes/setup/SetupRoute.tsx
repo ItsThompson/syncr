@@ -1,6 +1,6 @@
 /* `/setup`: first run, as a route rather than a modal.
  *
- * A ROUTE BECAUSE CONFIGURATION SPANS SITTINGS. That is the whole reason US-ONB-01 exists: a reader who has to
+ * A ROUTE BECAUSE CONFIGURATION SPANS SITTINGS. A reader who has to
  * connect a feed, think about their Areas, and come back tomorrow must not have that trapped in a dialog they
  * cannot leave. Progress is server state, so navigating away and back preserves it with no draft to hold.
  *
@@ -23,7 +23,7 @@ import { Link } from "react-router";
 
 import { RouteBand } from "../RouteBand";
 import { StepPanel } from "./components/StepPanel";
-import { setupSteps } from "./steps";
+import { isCurrent, setupSteps } from "./steps";
 import { useSetupReads } from "./useSetupReads";
 
 const STATEMENT = "Four things have to exist before syncr can solve.";
@@ -54,11 +54,13 @@ export function SetupRoute() {
   }
 
   const steps = setupSteps(reads.data);
-  const current = steps.find((step) => step.status === "current") ?? null;
+  const current = steps.find(isCurrent) ?? null;
 
   return (
     <RouteBand title="Setup" sub="first run">
       <Pane label="Setup">
+        {/* The kit ships two plates, an armillary sphere and an astrolabe, and both are the instrument family the
+            illustration policy names. The design sheet's own line asks for an orrery, which the kit does not have. */}
         <Plate name="armillary" fit="band" />
         <p className="text-base text-ink-soft">{STATEMENT}</p>
         <Panel title="Steps">

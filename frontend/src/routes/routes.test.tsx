@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { apiServer } from "../testing/apiServer";
 import { readyz } from "../testing/apiStub";
 import { renderAt } from "../testing/renderRoute";
+import { MINIMUM_DECLARED, setupHandlers } from "./setup/__tests__/handlers";
 import { SCREENS, SETUP_PATH } from "../ui/domain/shell/navigation";
 import { DEFAULT_RETURN_PATH } from "../app/signIn";
 import { routes } from ".";
@@ -48,7 +49,11 @@ describe("rendering each screen", () => {
     },
   );
 
-  it("redirects the root to the week", async () => {
+  /* The root's decision needs a read, so this case installs it. Without handlers it would still land on the week,
+   * through the REFUSED-read branch, and read as though it had asserted the ready path. The three other answers
+   * the root gives are `__tests__/RootRedirect.test.tsx`'s. */
+  it("redirects the root to the week once a plan can exist", async () => {
+    apiServer.use(...setupHandlers(MINIMUM_DECLARED));
     renderAt("/");
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Week");
     expect(DEFAULT_RETURN_PATH).toBe("/week");

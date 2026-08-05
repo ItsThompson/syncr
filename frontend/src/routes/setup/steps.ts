@@ -8,7 +8,7 @@
  * can exist for it, which is `syncr_api.plans.readiness`'s own reading, and this module agrees with it BY
  * CONSTRUCTION rather than by coincidence: a day shape counts as declared when the WEEK PATTERN is declared, which
  * is exactly what the api checks. Counting templates instead would let this screen call setup complete while
- * `POST /solve` refused it naming the day shape, which is the disagreement US-ONB-02 exists to prevent.
+ * `POST /solve` refused it naming the day shape, which is the disagreement this agreement exists to prevent.
  *
  * BLOCKED AND WAITING ARE TWO STATUSES because the dependency between steps is the thing a first-run reader has to
  * see. A day shape charges its slots to Areas, so declaring one before an Area exists is not something to attempt:
@@ -24,7 +24,14 @@
 
 import type { WizardStep, WizardStepStatus } from "../../ui/domain";
 
-/** What each step asks for, in the order the ledger lists them. */
+/**
+ * What each step asks for, in the order the ledger lists them.
+ *
+ * These are this screen's own keys, so they are spelled for a reader of this module. The api's `MissingInput`
+ * spells the second one `day_shape`: the two agree on which inputs the minimum is and on the order they are
+ * reported in, which is what a reader needs, and nothing maps one spelling onto the other because nothing yet
+ * consumes the api's list. A consumer that does should map rather than assume.
+ */
 export type SetupStepId = "source" | "areas" | "day-shape" | "bounds";
 
 /** What the four steps are decided from: one count or one presence per step. */
@@ -49,10 +56,24 @@ export interface SetupStep extends WizardStep {
   readonly actionLabel: string;
 }
 
+/**
+ * The step whose panel is drawn, which is the only step a panel is ever drawn for.
+ *
+ * A separate type because a blocked step is never current: `withCaret` promotes a WAITING step, and a blocked one
+ * is neither. Narrowing the panel's own prop is what makes that the compiler's business instead of a dead branch a
+ * reader has to reason about.
+ */
+export type CurrentSetupStep = SetupStep & { readonly status: "current" };
+
+/** Narrows a step to the current one, so `find` answers with the type the panel takes. */
+export function isCurrent(step: SetupStep): step is CurrentSetupStep {
+  return step.status === "current";
+}
+
 const REQUIRED_TO_SOLVE = "required to solve";
 const OPTIONAL = "optional";
 
-/** Which inputs the api reports missing, in setup order, so the two agree on the word `missing`. */
+/** Which inputs the api reports missing, in setup order, so the two agree on WHICH inputs and on their order. */
 export function missingMinimum(reads: SetupReads): readonly SetupStepId[] {
   const missing: SetupStepId[] = [];
   if (reads.areaCount === 0) missing.push("areas");
@@ -78,7 +99,7 @@ export function setupSteps(reads: SetupReads): readonly SetupStep[] {
   const statuses: Record<SetupStepId, WizardStepStatus> = {
     source: reads.sourceCount > 0 ? "done" : "waiting",
     areas: areasDone ? "done" : "waiting",
-    "day-shape": shapeDone ? "done" : areasDone ? "waiting" : "blocked",
+    "day-shape": dayShapeStatus({ shapeDone, areasDone }),
     bounds: reads.writeTargetName === null ? "waiting" : "done",
   };
 
@@ -132,6 +153,9 @@ export function setupSteps(reads: SetupReads): readonly SetupStep[] {
       id: "bounds",
       label: "Set the day bounds and the write target",
       status: withCaret("bounds"),
+      /* The calendar's name rather than a count, which is where this note differs from the other three. One
+         calendar may hold the role, so `1 write target` would be a count that can only ever read one way, and
+         the name is what a reader checks the claim against. */
       note: reads.writeTargetName ?? OPTIONAL,
       href: "/settings",
       actionLabel: "Open Settings",
@@ -141,6 +165,19 @@ export function setupSteps(reads: SetupReads): readonly SetupStep[] {
         "until a write target exists the plan simply stays inside syncr.",
     },
   ];
+}
+
+/** A day shape cannot be built before an Area exists to charge its slots to, which is a third state. */
+function dayShapeStatus({
+  shapeDone,
+  areasDone,
+}: {
+  shapeDone: boolean;
+  areasDone: boolean;
+}): WizardStepStatus {
+  if (shapeDone) return "done";
+  if (!areasDone) return "blocked";
+  return "waiting";
 }
 
 function plural(count: number, unit: string): string {

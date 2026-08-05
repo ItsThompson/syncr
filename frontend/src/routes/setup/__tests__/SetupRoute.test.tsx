@@ -115,10 +115,10 @@ describe("the current step's panel", () => {
     expect(link).toHaveAttribute("href", "/areas");
   });
 
-  it("offers no link on a blocked step, because the work cannot be done yet", async () => {
-    /* Areas absent blocks the day shape. Reaching that panel needs the two steps before it settled, which is a
-       tenant with a source and no Areas: the caret then sits on Areas, so the day-shape panel is not the current
-       one. What this asserts instead is that the ledger's own blocked row offers nothing to follow. */
+  /* A blocked step never reaches `StepPanel`: the caret is promoted from a WAITING status, and a blocked step is
+   * neither, which the panel's own prop type now states. So the ledger row is where a blocked step is read, and
+   * what this asserts is that the row offers nothing to follow. */
+  it("offers nothing to follow on a blocked ledger row", async () => {
     apiServer.use(...setupHandlers(NOTHING_DECLARED));
     renderAt("/setup");
 
