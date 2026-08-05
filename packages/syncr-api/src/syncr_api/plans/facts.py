@@ -233,6 +233,10 @@ class WeekAdjustment(Base, TenantScoped):
     # enumerator chose the distribution, so the row stores the result rather than a rule
     # for re-deriving it against inputs that have since changed.
     reductions: Mapped[JsonObject] = mapped_column(JSONB, nullable=False)
+    # How much this concession lowers the figure it names, against that figure as it stands:
+    # an INCREMENT rather than an absolute target. Set for `breach_floor` and null for the
+    # other three kinds. The enumerator computes it over an already-folded assembly, so a
+    # second concession on one target lowers what the first left.
     delta_minutes: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # No foreign key: the operation that produced this concession is pruned at 30 days and
