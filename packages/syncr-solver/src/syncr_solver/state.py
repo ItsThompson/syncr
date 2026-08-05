@@ -39,7 +39,7 @@ ends in an identity that makes the rest unreachable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.discretionary import absolute_forbidden, discretionary_intervals
@@ -206,7 +206,12 @@ class PartialPlan:
     # A field rather than a call, because H9 asks for it once per candidate and it is the same
     # answer every time: measured on a 152-block week, deriving it per candidate cost 1.1 s of a
     # 2.5 s solve. Ticket 33 left it a call and named this measurement as what a field needed.
-    claimable: IntervalSet = field(default_factory=IntervalSet)
+    #
+    # **It carries no default, and that is not symmetry with the fields above.** An empty claimable
+    # set makes H9's free capacity zero, which makes the week read as already short of its floors,
+    # which makes the rule return nothing for every candidate: a default would turn a hard
+    # constraint into a no-op silently. `of` is the one builder and the one that supplies this.
+    claimable: IntervalSet
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "started", dict(self.started))
@@ -248,6 +253,11 @@ class PartialPlan:
 
         Read from the field the state was built with rather than derived here, because the answer is
         the same for every candidate a week is offered: see :attr:`claimable`.
+
+        **Kept as a method rather than collapsed into the field**, which is otherwise the reading a
+        pass-through invites. Three of ticket 33's test modules ask the state this question by name,
+        and their being byte-unchanged is what says the performance work preserved the arithmetic; a
+        rename would have edited the crossing that proves it.
         """
         return self.claimable
 
