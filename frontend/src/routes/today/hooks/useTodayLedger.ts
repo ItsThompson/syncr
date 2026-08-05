@@ -1,16 +1,29 @@
 /* The Today screen's state, its writes, and the keys that reach them.
  *
  * THE ROUTE IS COMPOSITION AND THIS IS THE BEHAVIOUR. Everything that is not "where does this sit on the
- * page" lives here: the two reads, the one piece of state, the four bare keys, and the three writes.
+ * page" lives here: the two reads, the two pieces of state, the four bare keys, and the three writes.
  *
  * ONE OPEN FORM, AND THE ROW A KEY ACTS ON IS THE FOCUSED ONE. A ledger has no cursor: the design language
  * gives a row no channel for one, and inventing a focus ring outside the kit would be a second definition of
  * a state the kit already assigns. So the row a bare keystroke lands on is the row whose controls hold
- * focus, claimed by the row itself as focus enters it.
+ * focus, claimed as focus enters the row and RELEASED AS FOCUS LEAVES IT. The release is half of the rule
+ * rather than tidiness: without it the row a key acts on is the last row focus ever entered, which never
+ * expires, so a keystroke meant for nothing would skip a block the reader had moved away from.
  *
- * A KEY WITH NO FOCUSED ROW DOES NOTHING, deliberately. The alternative is defaulting to a row the reader
- * was not looking at, and skipping the wrong block is a correction they have to notice before they can make
- * it. The premise panel states which row the keys act on. */
+ * A KEY WITH NO FOCUSED ROW DOES NOTHING, deliberately. The alternative is defaulting to a row the reader was
+ * not looking at, and skipping the wrong block is a correction they have to notice before they can make it.
+ * The premise panel states which row the keys act on.
+ *
+ * `c` APPLIES THE RULE ITS OWN BUTTON APPLIES. Confirming a day with no block stores nothing and confirming
+ * one that has not been read cannot know what it is answering for, and both bump the solve-input version of
+ * this week and every later one, so the key is guarded on the same condition that disables the control.
+ *
+ * THE CLOCK IS READ DURING RENDER, and the review's suggestion to pin it at mount is declined for one
+ * reason: `dayStanding` compares it against the day's own span, and that comparison is the only thing that
+ * tells a reader a tab left open past midnight is showing yesterday. A frozen clock would never make it.
+ * Keying it to the day's arrival instead is what the hook lint refuses, because a memo whose callback does
+ * not read its dependency is not a memo. Two renders of one commit can differ by a second, which a displayed
+ * clock and a span comparison both absorb. */
 
 import { useState } from "react";
 
@@ -49,7 +62,7 @@ export type LedgerReads = {
 export interface TodayLedger {
   /** The date the ledger is addressed by, held still while the screen is open. */
   readonly date: string;
-  /** The instant the screen was drawn at, which is what the sections are read against. */
+  /** The instant the screen was drawn at, which is what the day's own span is compared against. */
   readonly nowIso: string;
   readonly reading: Reading<LedgerReads>;
   /** The form open on one row, or null when none is. */
@@ -79,7 +92,7 @@ export function useTodayLedger(): TodayLedger {
   const backfill = useBackfill(date);
 
   const isoWeek = isoWeekOf(date);
-  const zone = held?.zone ?? "UTC";
+  const nowIso = new Date().toISOString();
 
   const record = (row: DayRow, body: OutcomeBody | null): void => {
     setForm(null);
@@ -96,19 +109,27 @@ export function useTodayLedger(): TodayLedger {
     onSkip: (row) => record(row, stateBody("skipped", isoWeek)),
     onPresume: (row) => record(row, stateBody("presumed", isoWeek)),
     onPartial: (row) => setForm(partialFormFor(row)),
-    onMoved: (row) => setForm(movedFormFor(row, zone)),
+    /* The zone is the day's, never a default: `instants.ts` resolves a wall time against it, and a
+     * fallback would resolve one in a zone the reader is not in. No row exists before the day does. */
+    onMoved: (row) => {
+      if (held !== null) setForm(movedFormFor(row, held.zone));
+    },
     onDraft: setForm,
     onCancel: () => setForm(null),
     onEnter: setCurrent,
+    onLeave: () => setCurrent(null),
     onRecord: () => {
-      if (form === null) return;
+      if (form === null || held === null) return;
       const row = rowOf(form.blockId);
       if (row === undefined) return;
-      record(row, bodyFor(form, { date, zone, isoWeek }));
+      record(row, bodyFor(form, { date, zone: held.zone, isoWeek }));
     },
   };
 
-  const confirm = (): void => void confirmation.submit();
+  const confirm = (): void => {
+    if (held === null || held.blockCount === 0) return;
+    void confirmation.submit();
+  };
 
   useKeyBinding({ key: "x" }, () => {
     if (current !== null) actions.onSkip(current);
@@ -124,7 +145,7 @@ export function useTodayLedger(): TodayLedger {
 
   return {
     date,
-    nowIso: new Date().toISOString(),
+    nowIso,
     reading: readingOf<LedgerReads>({ day, Areas: areas }),
     form,
     actions,

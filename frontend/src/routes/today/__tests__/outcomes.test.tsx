@@ -14,14 +14,18 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { apiServer } from "../../../testing/apiServer";
+import { readyz } from "../../../testing/apiStub";
+import { renderSignedInAt } from "../../../testing/renderRoute";
 import type { Problem } from "../../../contract";
 import { clockIn } from "../instants";
 import { isoWeekOf } from "../isoWeek";
 import {
   BLOCK_GYM,
   ZONE,
+  buildAreas,
   buildBackfill,
   buildDay,
+  buildEmptyDay,
   buildGymRow,
   buildOutcome,
   buildOutcomeRejection,
@@ -129,7 +133,51 @@ describe("skipping a row", () => {
     expect(sent.paths).toEqual([BLOCK_GYM]);
   });
 
-  it("does nothing on x while no row is focused", async () => {
+  /* The rule the module's own header states, and the path that actually breaks it: focus ENTERED a row and
+     then left it. A test that never focused anything passes whether or not the row is ever released, so it
+     defends nothing. */
+  it("does nothing on x once focus has left the row it was on", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const sent = stubRecording();
+    await focusRow(GYM);
+    const user = userEvent.setup();
+
+    screen.getByRole("button", { name: /Confirm the day/ }).focus();
+    await user.keyboard("x");
+
+    expect(sent.bodies).toEqual([]);
+  });
+
+  it("does nothing on x once focus has left the ledger entirely", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const sent = stubRecording();
+    const row = await focusRow(GYM);
+    const user = userEvent.setup();
+
+    (document.activeElement as HTMLElement).blur();
+    await user.keyboard("x");
+
+    expect(sent.bodies).toEqual([]);
+    expect(within(row).getByText("presumed")).toBeInTheDocument();
+  });
+
+  /* The counterpart, so the release cannot be implemented by never claiming a row at all: focus moving from
+     one control of a row to another has not left the row. */
+  it("keeps the row while focus moves between its own controls", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const sent = stubRecording();
+    const row = await rowOf(GYM);
+    const user = userEvent.setup();
+
+    within(row).getByRole("button", { name: /skip/ }).focus();
+    await user.tab();
+    await user.tab();
+    await user.keyboard("x");
+
+    await waitFor(() => expect(sent.paths).toEqual([BLOCK_GYM]));
+  });
+
+  it("does nothing on x while no row has ever been focused", async () => {
     await renderToday(onHostToday(buildDay()));
     const sent = stubRecording();
     await screen.findByText(GYM);
@@ -178,6 +226,57 @@ describe("the minutes a block really took", () => {
     expect(field).toHaveValue(60);
     expect(field).toHaveAttribute("step", "5");
     expect(screen.getByText("min of 60m planned")).toBeInTheDocument();
+  });
+
+  /* The keystroke that asks for a figure has to leave the reader on the field that holds it. The control that
+     opened the form unmounted with it, so without the handoff focus falls to the document and the value can
+     be entered only with a pointer. */
+  it("puts focus on the field it just opened", async () => {
+    await renderToday(onHostToday(buildDay()));
+    await focusRow(GYM);
+
+    await userEvent.setup().keyboard("{Shift>}X{/Shift}");
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText(`actual minutes for ${GYM}`)),
+    );
+  });
+
+  /* Enter in the field is the browser's own submit rather than a keystroke this screen interprets, so
+     `Shift+X` then Enter records the planned duration as a partial. Stepping the figure with the arrow keys
+     is the browser's own too, and jsdom does not implement it: the arrow path is asserted in Chrome, and the
+     stepper's own buttons cover the step here. */
+  it("records what the field holds when Enter is pressed in it", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const sent = stubRecording();
+    await focusRow(GYM);
+    const user = userEvent.setup();
+
+    await user.keyboard("{Shift>}X{/Shift}");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText(`actual minutes for ${GYM}`)),
+    );
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(sent.bodies).toHaveLength(1));
+    expect(sent.bodies[0]).toEqual({
+      isoWeek: isoWeekOf(hostToday()),
+      state: "partial",
+      actualMinutes: 60,
+    });
+  });
+
+  it("gives focus back to the row when the form closes", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const row = await focusRow(GYM);
+    const user = userEvent.setup();
+
+    await user.keyboard("{Shift>}X{/Shift}");
+    await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(row).getByRole("button", { name: /skip/ })),
+    );
   });
 
   /* The common case in two keystrokes: open the stepper, step down once, record. */
@@ -254,14 +353,16 @@ describe("the minutes a block really took", () => {
 });
 
 describe("the interval a block really ran in", () => {
-  it("opens on m prefilled with the planned interval", async () => {
+  it("opens on m prefilled with the planned interval, on the field the reader types into", async () => {
     await renderToday(onHostToday(buildDay()));
     await focusRow(GYM);
 
     await userEvent.setup().keyboard("m");
 
-    expect(await screen.findByLabelText(`when ${GYM} really happened, from`)).toHaveValue("07:00");
+    const start = await screen.findByLabelText(`when ${GYM} really happened, from`);
+    expect(start).toHaveValue("07:00");
     expect(screen.getByLabelText(`when ${GYM} really happened, to`)).toHaveValue("08:00");
+    await waitFor(() => expect(document.activeElement).toBe(start));
   });
 
   it("records the interval as instants in the day's own zone, and creates no pin", async () => {
@@ -354,6 +455,45 @@ describe("a refused recording", () => {
 });
 
 describe("confirming the day", () => {
+  /* `c` applies the rule its own button applies. Confirming a day with no block stores nothing, and
+     confirming a day the screen has not read cannot know what it is answering for; both bump the solve-input
+     version of this week and every later one, so neither is a no-op on the server. */
+  it("does nothing on c while the day holds no block, which is when the control is disabled", async () => {
+    await renderToday(onHostToday(buildEmptyDay()));
+    const dates: string[] = [];
+    apiServer.use(
+      http.post(CONFIRM, ({ params }) => {
+        dates.push(String(params.date));
+        return HttpResponse.json(buildEmptyDay());
+      }),
+    );
+    await screen.findByText("No blocks are planned for this day");
+
+    await userEvent.setup().keyboard("c");
+
+    expect(dates).toEqual([]);
+    expect(screen.getByRole("button", { name: /Confirm the day/ })).toBeDisabled();
+  });
+
+  it("does nothing on c while the ledger has not arrived", async () => {
+    const dates: string[] = [];
+    apiServer.use(
+      readyz(),
+      http.get(`${origin}/api/v1/areas`, () => HttpResponse.json(buildAreas())),
+      http.get(`${origin}/api/v1/days/:date`, () => new Promise<never>(() => {})),
+      http.post(CONFIRM, ({ params }) => {
+        dates.push(String(params.date));
+        return HttpResponse.json(buildDay());
+      }),
+    );
+    await renderSignedInAt("/today");
+    await screen.findByText("Reading today");
+
+    await userEvent.setup().keyboard("c");
+
+    expect(dates).toEqual([]);
+  });
+
   it("confirms on c, and every row reads as recorded before the api answers", async () => {
     const stub = await renderToday(onHostToday(buildDay()));
     const { held, release } = heldResponse();

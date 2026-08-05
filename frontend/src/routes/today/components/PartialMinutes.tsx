@@ -3,9 +3,24 @@
  * THE STEP IS THE KIT'S ONE EXCEPTION and it is named rather than passed: a recorded actual is a
  * measurement, and nothing about a measurement lands on the fifteen-minute grid every placement does.
  *
+ * THE FIELD TAKES FOCUS WHEN THE FORM OPENS, so the keystroke that asked for a figure lands on the field
+ * that holds it: `Shift+X`, a step, then Enter. Without it focus falls to the document when the control that
+ * opened the form unmounts, and the reader has to traverse the page to reach what they just opened.
+ *
+ * ENTER RECORDS THROUGH A REAL FORM, which is what makes `Shift+X`, a step, then Enter the whole of a
+ * partial: the browser's own submit rather than a keystroke this screen interprets.
+ *
+ * THERE IS NO ESCAPE BINDING, and it is a gap rather than a choice. A bare Escape yields to the field a
+ * reader is typing into, which is by design in the shell's keyboard module, and the kit's fields accept no
+ * key handler, so the only place left is a container: the a11y lint refuses a key handler on one and it is
+ * right to, since the handler belongs on the focusable element. Cancelling is the cancel control, which Tab
+ * reaches from the field. Raised as ticket 1455.
+ *
  * A FIGURE OUTSIDE THE API'S BOUNDS DISABLES THE RECORD BUTTON AND SAYS SO. The stepper hands a typed value
  * back unsnapped and unclamped on purpose, so the surface that knows the bounds is the one that judges it,
  * and a stated bound beats a 422 the reader has to read to learn the same thing. */
+
+import { useEffect, useRef, type FormEvent } from "react";
 
 import { Button, NumberStepper } from "../../../ui/primitives";
 import { MAX_ACTUAL_MINUTES, MIN_ACTUAL_MINUTES, isSendable } from "../drafts";
@@ -21,12 +36,26 @@ export interface PartialMinutesProps {
 
 export function PartialMinutes({ row, form, actions }: PartialMinutesProps) {
   const canRecord = isSendable(form);
+  const field = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    field.current?.focus();
+  }, []);
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    if (canRecord) actions.onRecord();
+  };
 
   return (
-    /* No group label: the stepper's own field is named for the row, and one form is open at a time, so
-       `record partial` is unambiguous on the page. A second name here would be read out twice. */
-    <span className="flex items-center gap-2">
+    /* A real form, so Enter in the field is the browser's own submit rather than a keystroke this screen
+       interprets. `noValidate` because the browser's own validity is not the rule that applies here: the
+       kit's stepper takes `min` as the step BASE, so with a floor of 1 and a step of 5 every figure it
+       produces is a step mismatch and the submit event would never fire. `isSendable` is the bound that
+       matters, it is the api's own, and the control states it. */
+    <form className="flex items-center gap-2" onSubmit={onSubmit} noValidate>
       <NumberStepper
+        ref={field}
         value={form.minutes}
         onValueChange={(minutes) => actions.onDraft({ ...form, minutes })}
         measure="actual-minutes"
@@ -36,7 +65,7 @@ export function PartialMinutes({ row, form, actions }: PartialMinutesProps) {
         label={`actual minutes for ${row.title}`}
         unit={`min of ${minutesRead(row.durationMinutes)} planned`}
       />
-      <Button size="sm" isDisabled={!canRecord} onClick={actions.onRecord}>
+      <Button type="submit" size="sm" isDisabled={!canRecord}>
         record partial
       </Button>
       <Button rank="quiet" size="sm" onClick={actions.onCancel}>
@@ -50,6 +79,6 @@ export function PartialMinutes({ row, form, actions }: PartialMinutesProps) {
           {`${MIN_ACTUAL_MINUTES} to ${MAX_ACTUAL_MINUTES} minutes`}
         </span>
       )}
-    </span>
+    </form>
   );
 }

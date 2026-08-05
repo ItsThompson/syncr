@@ -45,4 +45,6 @@ export interface RowActions {
   readonly onCancel: () => void;
   /** The row a bare keystroke would act on, claimed by focusing anything inside it. */
   readonly onEnter: (row: DayRow) => void;
+  /** Focus has left the row, so no bare keystroke acts on it until another claims it. */
+  readonly onLeave: () => void;
 }
