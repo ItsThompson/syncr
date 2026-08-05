@@ -180,8 +180,8 @@ def _floor_breached(into: Concessions, *, area_id: UUID, by_minutes: int | None)
 
     A figure at or below zero lowers nothing either, and that guard is not defensive: subtracting a
     negative would RAISE the floor, so a concession whose whole meaning is to relax a hard
-    constraint would tighten one. Nothing writes the column yet and it carries no check constraint,
-    so the fold is where the absurd state stops.
+    constraint would tighten one. No production path writes the column yet and it carries no check
+    constraint, so the fold is where the absurd state stops.
     """
     if by_minutes is None or by_minutes <= 0:
         return into
