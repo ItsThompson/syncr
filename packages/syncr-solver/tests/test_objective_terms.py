@@ -531,7 +531,8 @@ def test_only_one_of_the_two_declared_strengths_can_apply_to_one_block() -> None
     owner behind three unique indexes, a preference carries one strength, and an override replaces
     its Area's declaration wholly. So a block has strong windows or soft ones, never both, and the
     week below -- an Area declaring strong and the task itself declaring soft -- is charged the
-    task's soft component alone. Ticket 1344 carries the correction.
+    task's soft component alone. The design's own rationale table already counts the declared
+    windows as ONE component of three, so this reconciles two statements in one section. See 1344.
     """
     week = inputs(
         preferences=(

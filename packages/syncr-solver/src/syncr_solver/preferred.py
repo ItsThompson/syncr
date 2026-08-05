@@ -71,9 +71,12 @@ MISFIT_MAX: Final = MISFIT_STRONG + MISFIT_FITTED_FITNESS + MISFIT_FITTED_SKIP
 **The two declared components cannot both fire, so the maximum is not their sum.** A preference
 carries one strength, one preference exists per owner (three unique indexes in the api enforce
 it), and an override replaces its Area's declaration wholly. So exactly one declared preference
-applies to any block, and the most it can charge is the strong component. The design's own
-formula adds a strong term to a soft term, and that sum has two mutually exclusive addends: it is
-a selection written as a sum, and the correction is filed as ticket 1344.
+applies to any block, and the most it can charge is the strong component.
+
+The design's formula box adds a strong term to a soft term, and that sum has two mutually exclusive
+addends: it is a selection written as a sum. **Its own rationale table already agrees with the
+ceiling above**, counting the declared windows as ONE component of three rather than as two, so this
+reconciles two statements in one section rather than overruling either. Ticket 1344 carries it.
 
 The arithmetic below still charges both where both are present, rather than picking one. A
 producer that emitted two strengths for one owner would then read above 1.0 rather than silently
