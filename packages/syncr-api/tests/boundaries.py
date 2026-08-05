@@ -29,6 +29,7 @@ from typing import (
 )
 
 from syncr_api.core.principal import Principal
+from syncr_api.core.settings import API_PREFIX
 from syncr_api.core.tenancy import IDENTITY_TABLES
 
 if TYPE_CHECKING:
@@ -98,6 +99,29 @@ def api_routes(app: FastAPI) -> list[RouteView]:
 def route_identity(route: RouteView) -> set[tuple[str, str]]:
     """The ``(method, path)`` pairs this route answers."""
     return {(method.upper(), route.path) for method in route.methods}
+
+
+def read_paths(app: FastAPI, *, parameterized: bool) -> list[str]:
+    """Every GET path under the api prefix, split by whether it carries a path parameter.
+
+    Bounded by the app's own route table rather than by a list, so a read route added by a
+    later feature module is driven by whichever caller wants its half without that ticket
+    remembering to extend one.
+
+    The split exists because driving a parameterized read needs a value invented for the
+    parameter, and which value is meaningful is the addressed resource's own business: a week
+    identifier, an anchor id, a period. So the two halves have two callers. The rule they serve
+    is the same one, that a read is not a mutation, and stating the predicate once is what keeps
+    the halves from overlapping or leaving a route in neither.
+    """
+    return sorted(
+        {
+            path
+            for route in api_routes(app)
+            for method, path in route_identity(route)
+            if method == "GET" and path.startswith(API_PREFIX) and ("{" in path) == parameterized
+        }
+    )
 
 
 def resolved_dependencies(route: RouteView) -> set[Callable[..., object]]:

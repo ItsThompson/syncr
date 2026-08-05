@@ -52,7 +52,6 @@ from syncr_api.core.db import (
     create_sessionmaker,
 )
 from syncr_api.core.settings import (
-    API_PREFIX,
     DEV_ALLOWED_ORIGINS,
     WORKER_SERVICE,
     EnvSettings,
@@ -79,7 +78,7 @@ from syncr_common.metrics import REGISTRY
 from syncr_domain.plan import RevisionReason
 from syncr_domain.templates import WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
-from tests.boundaries import api_routes, route_identity
+from tests.boundaries import read_paths
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -813,19 +812,12 @@ def http(live_database_url: str, settings: ServiceSettings) -> Iterator[TestClie
 def parameterless_reads(settings: ServiceSettings) -> list[str]:
     """Every GET route under the api prefix that needs no path parameter.
 
-    Bounded by the app's own route table rather than by a list here, so a read route added by a
-    later feature module is driven by this without that ticket remembering to extend it. A route
-    WITH a parameter is left out because a value has to be invented for it; the week view is the
-    one that matters most and it arrives with its own suite, which owes this same assertion.
+    The predicate is ``tests.boundaries.read_paths``, so this half and the parameterized half
+    cannot overlap or leave a route in neither. A route WITH a parameter is left out here because a
+    value has to be invented for it; the week view is the one that matters most and it drives its
+    own half in ``test_week_routes_integration.py``.
     """
-    return sorted(
-        {
-            path
-            for route in api_routes(create_app(settings))
-            for method, path in route_identity(route)
-            if method == "GET" and path.startswith(API_PREFIX) and "{" not in path
-        }
-    )
+    return read_paths(create_app(settings), parameterized=False)
 
 
 async def test_no_read_route_creates_an_operation_or_appends_a_revision(
