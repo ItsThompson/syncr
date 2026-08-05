@@ -23,6 +23,10 @@ directory in both directions, because an index a reader cannot trust is worse th
 | ``allocation.py`` | the two rules about what an Area's own budget allows |
 | ``immovability.py`` | the three rules about what may not move and what may not be intruded on |
 | ``weights.py`` | the seven term weights and the four fitted parameters the objective applies |
+| ``objective.py`` | ``evaluate``, the breakdown it returns, and how a raw term becomes a cost |
+| ``terms.py`` | the seven raw measurements, each a fraction of something the week holds |
+| ``preferred.py`` | whose preference applies to a block, and the four components of the misfit |
+| ``reading.py`` | one reading of a plan the seven terms share, so no two of them derive it twice |
 | ``figures.py`` | the minute figures a document carries, over the inputs and the blocks |
 | ``metrics.py`` | the families this package publishes, on the shared registry |
 | ``errors.py`` | what a malformed resolved input is refused with |
