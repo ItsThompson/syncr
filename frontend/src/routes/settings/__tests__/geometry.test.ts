@@ -1,78 +1,59 @@
-/* The zoom clamp, against the three displays section 15 tabulates.
+/* The grid height this screen supplies to the grid's own zoom range, and why it agrees with `--grid-h`.
  *
- * THE THREE ROWS ARE THE MEASUREMENT, not an example. Section 15 records a 13 inch display at a 626px grid capping
- * at 16 hours, a 16 inch at 836px capping at 22, and a 27 inch at 1136px capping at 24. Asserting the formula
- * against those three is what makes this a claim about the product rather than about arithmetic. */
+ * THE CAP AND THE LEVELS ARE NOT TESTED HERE. They are `ui/domain/week-grid/zoom.ts`'s, and `zoom.test.ts` pins
+ * them against the three reference displays. A second suite over the same functions would be a second place for
+ * that claim to be stated, which is the defect this file's own module had before.
+ *
+ * WHAT IS TESTED HERE IS THE PIN. The allowance is derived from `--grid-h` at the reference window, so the two
+ * cannot drift; the first case is what makes a change to either side redden rather than move the cap by one level
+ * on ten window heights in every thirty-eight. */
 
 import { describe, expect, it } from "vitest";
 
+import { GRID_H_PX, ZOOM_MIN_HOURS } from "../../../ui/domain/week-grid/metrics";
+import { zoomCap } from "../../../ui/domain/week-grid/zoom";
 import {
+  REFERENCE_WINDOW_HEIGHT_PX,
   WEEK_CHROME_ALLOWANCE_PX,
-  ZOOM_MAX_HOURS,
-  ZOOM_MIN_HOURS,
   capStatement,
   gridHeightFor,
-  zoomCapHours,
-  zoomLevels,
 } from "../geometry";
 
-describe("the zoom cap", () => {
-  it("matches the three displays section 15 tabulates", () => {
-    expect(zoomCapHours(626)).toBe(16);
-    expect(zoomCapHours(836)).toBe(22);
-    expect(zoomCapHours(1136)).toBe(24);
-  });
-
-  it("never exceeds the stored range, however tall the display", () => {
-    expect(zoomCapHours(4000)).toBe(ZOOM_MAX_HOURS);
-  });
-
-  it("never falls below the stored range, however short the display", () => {
-    expect(zoomCapHours(0)).toBe(ZOOM_MIN_HOURS);
-    expect(zoomCapHours(120)).toBe(ZOOM_MIN_HOURS);
-  });
-});
-
 describe("the grid height a window leaves", () => {
-  it("is the window less the chrome above and below a grid", () => {
-    expect(gridHeightFor(900)).toBe(900 - WEEK_CHROME_ALLOWANCE_PX);
+  /* THE PIN. `--grid-h` is the grid a 1440x900 window really gets, mirrored from the token and asserted against it
+   * by `metrics.test.ts`. This screen has no grid to measure, so it takes the difference at that window: if either
+   * side moves, this reddens. */
+  it("equals --grid-h at the window --grid-h is stated against", () => {
+    expect(gridHeightFor(REFERENCE_WINDOW_HEIGHT_PX)).toBe(GRID_H_PX);
+  });
+
+  it("caps at 16 hours on the 13 inch reference display, which is the recorded figure", () => {
+    expect(zoomCap(gridHeightFor(REFERENCE_WINDOW_HEIGHT_PX))).toBe(16);
+  });
+
+  /* The five bands measured directly in Chrome sum to 264px. The token says the chrome is 274px, so the part-sum is
+   * short: it names five bands and the shell has more. Taking the token means the chrome is OVERSTATED against the
+   * measurement, which understates the grid and offers one level fewer, which is the safe direction. */
+  it("is the larger reading of the chrome than the bands measured directly", () => {
+    const measuredBands = 43 + 63 + 66 + 64 + 28;
+
+    expect(WEEK_CHROME_ALLOWANCE_PX).toBeGreaterThanOrEqual(measuredBands);
+  });
+
+  it("is the window less the chrome", () => {
+    expect(gridHeightFor(1117)).toBe(1117 - WEEK_CHROME_ALLOWANCE_PX);
   });
 
   it("is never negative, so a tiny window still yields the shallow end rather than a nonsense cap", () => {
     expect(gridHeightFor(100)).toBe(0);
-    expect(zoomCapHours(gridHeightFor(100))).toBe(ZOOM_MIN_HOURS);
+    expect(zoomCap(gridHeightFor(100))).toBe(ZOOM_MIN_HOURS);
   });
 
-  /* The 13 inch reference display is the one section 15 measures, and its row is the check on the allowance: a
-   * 900px window has to leave a grid that caps where section 15 says a 13 inch display caps, which is 16 hours. */
-  it("leaves the 13 inch reference window capping where section 15 says it does", () => {
-    expect(gridHeightFor(900)).toBe(636);
-    expect(zoomCapHours(gridHeightFor(900))).toBe(16);
-  });
-});
-
-describe("the levels a select offers", () => {
-  it("offers every level in the stored range, in order", () => {
-    const levels = zoomLevels(626);
-
-    expect(levels.at(0)?.hours).toBe(ZOOM_MIN_HOURS);
-    expect(levels.at(-1)?.hours).toBe(ZOOM_MAX_HOURS);
-    expect(levels).toHaveLength(ZOOM_MAX_HOURS - ZOOM_MIN_HOURS + 1);
-  });
-
-  /* Section 15's rule: a level past the cap is offered as unavailable rather than hidden, so the reader
-   * understands the range rather than wondering where the rest went. */
-  it("marks the levels past the cap unavailable rather than dropping them", () => {
-    const levels = zoomLevels(626);
-    const deepestAvailable = levels.findLast((level) => level.isAvailable);
-
-    expect(deepestAvailable?.hours).toBe(16);
-    expect(levels.find((level) => level.hours === 17)?.isAvailable).toBe(false);
-    expect(levels.find((level) => level.hours === 24)?.isAvailable).toBe(false);
-  });
-
-  it("marks every level available where the display carries the whole range", () => {
-    expect(zoomLevels(1136).every((level) => level.isAvailable)).toBe(true);
+  /* The band the review found: at 916px the two figures disagreed, and this is where a re-divergence would show. */
+  it("agrees with the grid on a window height either side of a cap boundary", () => {
+    for (const height of [900, 916, 930, 976, 1117]) {
+      expect(zoomCap(gridHeightFor(height))).toBe(zoomCap(height - WEEK_CHROME_ALLOWANCE_PX));
+    }
   });
 });
 
@@ -81,7 +62,7 @@ describe("the reason the range stops where it does", () => {
     const statement = capStatement(626);
 
     expect(statement).toContain("16 hours");
-    expect(statement).toContain("thirty-minute block");
+    expect(statement).toContain("30-minute block");
   });
 
   it("says the range is whole where nothing is capped, rather than naming a cap that did not apply", () => {

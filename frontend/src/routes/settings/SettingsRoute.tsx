@@ -86,10 +86,12 @@ export function SettingsRoute() {
   const readiness = useReadiness();
 
   const patch = useSettingsPatch();
-  /* A SECOND INSTANCE, DELIBERATELY. A write hook holds the last refusal, and the refusal belongs to the control
-     that caused it: one instance shared by the zone panel and the geometry panel would render a rejected day bound
-     under the home-zone field as well. Both invalidate the same key by name, so the reading stays one reading. */
-  const geometryPatch = useSettingsPatch();
+  /* A WRITE HOOK PER CONTROL, DELIBERATELY. The hook holds the last refusal, and a refusal belongs to the control
+     that caused it: one instance shared across the zone panel and the geometry panel's two fields renders a
+     rejected day bound under the home-zone select as well. All three invalidate the same key by name, so the
+     reading stays one reading. */
+  const hoursPatch = useSettingsPatch();
+  const boundsPatch = useSettingsPatch();
   const travelDeclaration = useTravelOverrideDeclaration();
   const travelRemoval = useTravelOverrideRemoval();
   const sourceAddition = useSourceAddition();
@@ -166,7 +168,8 @@ export function SettingsRoute() {
               <GeometryPanel
                 settings={read.settings}
                 gridHeightPx={gridHeightFor(viewportHeight)}
-                patch={geometryPatch}
+                hoursPatch={hoursPatch}
+                boundsPatch={boundsPatch}
               />
             </>
           )}

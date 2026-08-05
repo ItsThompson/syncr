@@ -10,7 +10,13 @@
  * A block hidden by an axis is a scheduling error the reader cannot see, which is why the rule exists and why the
  * panel says it in words rather than implying it by calling the field a range.
  *
- * A LEVEL PAST THE DISPLAY'S CAP IS OFFERED AS UNAVAILABLE. See `../geometry.ts` for the cap and the reason.
+ * A LEVEL PAST THE DISPLAY'S CAP IS OFFERED AS UNAVAILABLE. The range, the cap and the per-level reason are the
+ * grid's own, in `ui/domain/week-grid/zoom.ts`; what this screen supplies is the height, because it has no grid to
+ * measure. See `../geometry.ts`.
+ *
+ * TWO WRITE INSTANCES, ONE PER CONTROL. A write hook holds the last refusal, and a refusal belongs to the control
+ * that caused it: one instance would mark the day bounds invalid because a visible-hours change was refused. Both
+ * invalidate the same key by name, so the reading stays one reading.
  *
  * BOTH TAKE EFFECT ON THE NEXT RENDER WITH NO RELOAD. The write invalidates the settings key by name, the reading
  * on this panel is the same resource the Week grid derives from, and one refetch redraws both. There is nothing
@@ -24,9 +30,9 @@ import { useState } from "react";
 
 import { FormRow, Panel } from "../../../ui/layout";
 import { Button, Select, TimeRangeInput, snapClock, type TimeRange } from "../../../ui/primitives";
-import { capStatement, zoomLevels } from "../geometry";
+import { zoomLevels } from "../../../ui/domain/week-grid/zoom";
+import { capStatement } from "../geometry";
 import { FieldGroup } from "./FieldGroup";
-import { Refusal } from "./Refusal";
 import type { Settings, SettingsPatchBody } from "../../../api/hooks/useSettings";
 import type { Write } from "../../../api/hooks/useWrite";
 
@@ -34,7 +40,9 @@ export interface GeometryPanelProps {
   readonly settings: Settings;
   /** The grid height this display would give the Week screen, which is what caps the zoom range. */
   readonly gridHeightPx: number;
-  readonly patch: Write<SettingsPatchBody>;
+  /** Writes the visible hours. Its own instance, so its refusal cannot appear under the day bounds. */
+  readonly hoursPatch: Write<SettingsPatchBody>;
+  readonly boundsPatch: Write<SettingsPatchBody>;
 }
 
 /** `07:00:00` from the api is a wall time; the control's value is `HH:MM`. */
@@ -42,7 +50,12 @@ function asClock(wallTime: string): string {
   return wallTime.slice(0, 5);
 }
 
-export function GeometryPanel({ settings, gridHeightPx, patch }: GeometryPanelProps) {
+export function GeometryPanel({
+  settings,
+  gridHeightPx,
+  hoursPatch,
+  boundsPatch,
+}: GeometryPanelProps) {
   const [bounds, setBounds] = useState<TimeRange | null>(null);
   const shown = bounds ?? { start: asClock(settings.dayStart), end: asClock(settings.dayEnd) };
 
@@ -54,7 +67,7 @@ export function GeometryPanel({ settings, gridHeightPx, patch }: GeometryPanelPr
     const dayStart = snapClock(shown.start);
     const dayEnd = snapClock(shown.end);
     if (dayStart === null || dayEnd === null) return;
-    const applied = await patch.submit({ dayStart, dayEnd });
+    const applied = await boundsPatch.submit({ dayStart, dayEnd });
     if (applied) setBounds(null);
   };
 
@@ -63,18 +76,21 @@ export function GeometryPanel({ settings, gridHeightPx, patch }: GeometryPanelPr
       <FormRow
         label="Visible hours"
         hint={`How much of a day the Week grid shows at once. ${capStatement(gridHeightPx)}`}
+        error={hoursPatch.problem === null ? undefined : hoursPatch.problem.detail}
       >
         {(field) => (
           <Select
             id={field.id}
             describedBy={field.describedBy}
             value={String(settings.visibleHours)}
-            onValueChange={(next) => void patch.submit({ visibleHours: Number(next) })}
+            onValueChange={(next) => void hoursPatch.submit({ visibleHours: Number(next) })}
+            isInvalid={hoursPatch.problem !== null}
             options={levels.map((level) => ({
               value: String(level.hours),
-              label: level.isAvailable
-                ? `${level.hours} hours`
-                : `${level.hours} hours \u00b7 unavailable on this display`,
+              label:
+                level.unavailableReason === null
+                  ? `${level.hours} hours`
+                  : `${level.hours} hours \u00b7 unavailable on this display`,
               isDisabled: !level.isAvailable,
             }))}
           />
@@ -86,6 +102,7 @@ export function GeometryPanel({ settings, gridHeightPx, patch }: GeometryPanelPr
           "Where the Week grid's axis STARTS by default, never where it stops: a block outside these hours " +
           "widens the axis rather than being hidden. Wall time, in whichever zone is active on the day."
         }
+        error={boundsPatch.problem === null ? undefined : boundsPatch.problem.detail}
       >
         {(field) => (
           <span className="flex flex-wrap items-center gap-3.25">
@@ -94,7 +111,7 @@ export function GeometryPanel({ settings, gridHeightPx, patch }: GeometryPanelPr
               describedBy={field.describedBy}
               value={shown}
               onValueChange={setBounds}
-              isInvalid={patch.problem !== null}
+              isInvalid={boundsPatch.problem !== null}
             />
             <Button rank="secondary" onClick={() => void applyBounds()}>
               Set the day bounds
@@ -108,7 +125,6 @@ export function GeometryPanel({ settings, gridHeightPx, patch }: GeometryPanelPr
           `${asClock(settings.dayEnd)} and expands to contain every block in the week being read. Both ` +
           "take effect on the next render, with no reload."}
       </p>
-      <Refusal problem={patch.problem} />
     </Panel>
   );
 }
