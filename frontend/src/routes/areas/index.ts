@@ -1,0 +1,1 @@
+export { AreasRoute } from "./AreasRoute";
