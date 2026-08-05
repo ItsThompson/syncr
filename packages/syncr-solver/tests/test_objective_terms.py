@@ -420,6 +420,26 @@ def test_a_floor_is_read_by_no_objective_term() -> None:
     assert breakdown.total() == 0.0
 
 
+def test_a_deviation_larger_than_the_terms_own_unit_is_not_clamped() -> None:
+    """The module states the three unclamped terms are deliberate. This is what pins it.
+
+    A clamp reads as safety and removes the gradient where it matters most: an Area given ten times
+    its target and one given eleven times would cost the same, so the search would have nothing to
+    climb. Measured: 60 minutes of target against 600 placed reads 9.00 and against 660 reads 10.00,
+    and clamped both read 1.00.
+    """
+    week = inputs(areas=(a_budget(target_minutes=60),))
+    ten_fold = evaluate(
+        a_live_plan(a_task_block(start=8, end=18)), inputs=week, weights=flat_weights()
+    ).budget_deviation
+    eleven_fold = evaluate(
+        a_live_plan(a_task_block(start=8, end=19)), inputs=week, weights=flat_weights()
+    ).budget_deviation
+
+    assert ten_fold == pytest.approx(9.0)
+    assert eleven_fold == pytest.approx(10.0)
+
+
 # --------------------------------------------------------------------------------------
 # time_of_day_misfit
 # --------------------------------------------------------------------------------------
@@ -867,6 +887,34 @@ def test_an_occurrences_smallest_length_also_bounds_what_a_gap_could_hold() -> N
     assert breakdown.fragmentation == 0.0
 
 
+def test_fragmentation_above_the_terms_own_unit_is_not_clamped() -> None:
+    """A plan cut into many pieces is worse than the whole of what the term measures.
+
+    A short week, a long ideal session, and four pieces: each piece is charged its whole shortfall,
+    so the deficits sum past the discretionary time they are divided by. A clamp would make eight
+    pieces cost what four do.
+    """
+    week = inputs(
+        span=between(9, 13),
+        eligible_tasks=(an_eligible_task(remaining_minutes=240, min_chunk_minutes=15),),
+        preferences=(a_preference(preferred_duration_minutes=240),),
+    )
+    plan = a_live_plan(
+        *(
+            a_chunk_block(index=index, of=4, interval=between(9 + index, 9.25 + index))
+            for index in range(4)
+        )
+    )
+
+    cost = only_charges(evaluate(plan, inputs=week, weights=flat_weights()), "fragmentation")
+
+    # Four pieces of 15 minutes against a 240-minute ideal, over the 240 minutes the week holds. The
+    # gaps between them are 45 minutes and the task's minimum chunk is 15, so nothing here is an
+    # unusable gap: the whole figure is the split component.
+    assert cost > 1.0
+    assert cost == pytest.approx(4 * 225 / 240)
+
+
 # --------------------------------------------------------------------------------------
 # churn
 # --------------------------------------------------------------------------------------
@@ -1155,6 +1203,36 @@ def test_a_block_carrying_no_area_is_not_an_area_the_user_changed_to() -> None:
     breakdown = evaluate(plan, inputs=week, weights=flat_weights(context_switch_cost=30.0))
 
     assert breakdown.context_switch == 0.0
+
+
+def test_a_context_switch_charge_above_the_terms_own_unit_is_not_clamped() -> None:
+    """A day of abutting changes at a high price costs more than the week has minutes.
+
+    The price is in minutes and it is charged per change, so a week of many short abutting blocks in
+    alternating Areas charges more than its own discretionary time. A clamp would make a plan that
+    changed Area every fifteen minutes cost what one changing twice does.
+    """
+    week = inputs(span=between(9, 13))
+    plan = a_live_plan(
+        *(
+            a_block(
+                binding=BindingRef.for_habit(A_HABIT, index=index),
+                interval=between(9 + index * 0.25, 9.25 + index * 0.25),
+                area_id=FITNESS if index % 2 else CAREER,
+                title="Gym",
+            )
+            for index in range(16)
+        )
+    )
+
+    cost = only_charges(
+        evaluate(plan, inputs=week, weights=flat_weights(context_switch_cost=60.0)),
+        "context_switch",
+    )
+
+    # Fifteen abutting changes at 60 minutes each, over 240 minutes of week.
+    assert cost > 1.0
+    assert cost == pytest.approx(15 * 60 / 240)
 
 
 # --------------------------------------------------------------------------------------
