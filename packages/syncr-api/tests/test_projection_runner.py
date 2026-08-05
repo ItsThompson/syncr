@@ -53,18 +53,16 @@ from syncr_api.areas.repository import AreaRepository
 from syncr_api.calendars.config import GOOGLE, HORIZON_DAYS_DEFAULT, ICS
 from syncr_api.calendars.google_events import DELETE, PATCH, POST, SYNCR_KEY_PROPERTY
 from syncr_api.calendars.injection import build_adapters
-from syncr_api.calendars.projection_metrics import FAILED, SUCCEEDED
+from syncr_api.calendars.projection_errors import ProjectionRefused
+from syncr_api.calendars.projection_metrics import FAILED, PROJECTION_OUTCOMES, SUCCEEDED
 from syncr_api.calendars.projection_notices import (
     BANNER_NOTICE_ID,
     OPERATION,
     PANEL_NOTICE_ID,
     projection_failure_notices,
 )
-from syncr_api.calendars.projection_runner import (
-    NO_WRITE_TARGET,
-    UNWRITABLE_TARGET,
-    ProjectionRunner,
-)
+from syncr_api.calendars.projection_pass import UNWRITABLE_TARGET
+from syncr_api.calendars.projection_runner import ProjectionRunner
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_database, create_db_engine, create_sessionmaker
@@ -99,8 +97,10 @@ from syncr_api.templates.repository import DayTypeRepository, WeekPatternReposit
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.worker.main import RUNNERS, WorkerContext
 from syncr_common.metrics import REGISTRY
+from syncr_domain.intervals import Interval
 from syncr_domain.templates import WeekPattern
 from syncr_domain.weeks import Weekday
+from syncr_domain.zones import ZoneProfile
 from tests.fake_google import (
     ACCESS_TOKEN,
     CLIENT_ID,
@@ -494,16 +494,51 @@ async def test_an_event_the_user_created_by_hand_is_removed_and_counted(
 ) -> None:
     await declare_a_planned_week(sessions, context, owner.tenant_id)
     calendar.add_by_hand("evt-dentist", summary="Dentist", start=NOW + timedelta(days=1))
+    # The SUM rather than the count: a histogram's `_count` is the number of observations, and every
+    # reconciliation observes every action including the zeroes, so `_count` moves whether or not
+    # anything was deleted. Read as a delta, because other tests in this file observe it too.
+    before = sample("syncr_projection_events_sum", action="foreign_deleted")
 
     await drain(context, calendar)
 
     assert "evt-dentist" not in calendar.events
-    assert sample("syncr_projection_events_count", action="foreign_deleted") > 0
+    assert sample("syncr_projection_events_sum", action="foreign_deleted") == before + 1
 
 
 # --------------------------------------------------------------------------------
 # Coalescing
 # --------------------------------------------------------------------------------
+
+
+async def test_a_span_reaching_into_the_horizon_from_the_previous_week_is_kept(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    calendar: FakeCalendar,
+) -> None:
+    """The sleep in progress at local midnight belongs to the week that is ending.
+
+    Its interval overlaps the horizon and Google's own window-bounded read returns it, so read over
+    the horizon's own weeks alone the diff would find it under syncr's key, not desired, and delete
+    it: every Monday morning the in-progress sleep event would leave the phone while the live plan
+    still held it. The week list therefore reaches one week back.
+    """
+    await declare_the_minimum(sessions, owner.tenant_id)
+    await declare_a_write_target(sessions, owner.tenant_id)
+    await store_a_grant(sessions, owner.tenant_id)
+    # Plan last week as well as this one, by running the maintainer a week earlier: only a week that
+    # HAS a plan can contribute a block, and last week's is the one under test.
+    await PlanHorizonRunner(clock=clock_at(NOW - timedelta(days=7))).plan(
+        context, now=NOW - timedelta(days=7)
+    )
+    await PlanHorizonRunner(clock=clock_at()).plan(context, now=NOW)
+
+    await drain(context, calendar)
+
+    # Sunday 23:00 London to Monday 07:00, which is 2026-W06's last frame occurrence and covers the
+    # instant the horizon begins at.
+    starts = {str(held["start"]["dateTime"]) for held in calendar.events.values()}
+    assert "2026-02-08T23:00:00+00:00" in starts, sorted(starts)[:4]
 
 
 async def test_twelve_queued_projections_cost_one_reconciliation(
@@ -565,10 +600,12 @@ async def test_a_tenant_with_no_write_target_drains_its_queue_without_writing(
     assert calendar.requests == []
     statuses = {row.status for row in await projections_of(sessions, owner.tenant_id)}
     assert statuses == {OPERATION_SUCCEEDED}
-    assert NO_WRITE_TARGET
+    # And no attempt is recorded against any source, because none was made: there is nothing to
+    # record one on.
+    assert await write_target_of(sessions, owner.tenant_id) is None
 
 
-async def test_an_ics_write_target_is_a_stated_failure_rather_than_a_crash(
+async def test_an_ics_write_target_is_a_stated_refusal_rather_than_a_crash(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
     context: WorkerContext,
@@ -584,6 +621,26 @@ async def test_an_ics_write_target_is_a_stated_failure_rather_than_a_crash(
     target = await write_target_of(sessions, owner.tenant_id)
     assert target.sync_state.last_error is not None
     assert UNWRITABLE_TARGET.format(provider=ICS)[:40] in target.sync_state.last_error
+
+
+async def test_an_unwritable_target_is_not_retried_because_retrying_cannot_clear_it(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    calendar: FakeCalendar,
+) -> None:
+    """A source's provider is immutable, so every attempt reaches the first one's conclusion.
+
+    Classified as a failure it would spend three attempts and two backoffs per plan change to say
+    what it already knew, and the runbook's own table says the repair is to designate a different
+    calendar rather than to wait.
+    """
+    await declare_a_planned_week(sessions, context, owner.tenant_id, provider=ICS)
+
+    await drain(context, calendar)
+
+    rows = await projections_of(sessions, owner.tenant_id)
+    assert {row.error_code for row in rows} == {ProjectionRefused.code}
 
 
 # --------------------------------------------------------------------------------
@@ -841,7 +898,58 @@ async def test_a_refusal_is_reported_as_a_failed_outcome(
     assert sample("syncr_projection_duration_seconds_count", outcome=FAILED) == before + 1
     assert calendar.writes == []
     rows = await projections_of(sessions, owner.tenant_id)
-    assert all(row.error_code == "projection_refused" for row in rows)
+    assert all(row.error_code == ProjectionRefused.code for row in rows)
+
+
+async def test_the_outcome_label_set_stays_the_two_the_vocabulary_names(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    calendar: FakeCalendar,
+) -> None:
+    """A third value would make ``ProjectionFailing`` silent for a deployment that will not write.
+
+    Read off the exposition rather than trusted, so a member added later has to move this line.
+    """
+    await declare_a_planned_week(sessions, context, owner.tenant_id)
+    await drain(context, calendar)
+    await drain(
+        WorkerContext(settings=worker_settings(writes=False), database=context.database), calendar
+    )
+
+    observed = {
+        one.labels["outcome"]
+        for family in REGISTRY.collect()
+        if family.name == "syncr_projection_duration_seconds"
+        for one in family.samples
+    }
+
+    assert observed == set(PROJECTION_OUTCOMES)
+
+
+async def test_the_arming_state_is_exported_whether_or_not_anything_is_due(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    calendar: FakeCalendar,
+) -> None:
+    """The term an alert inhibits on has to be present, or the alert is silent or always firing.
+
+    Set on every pass rather than where a write is composed, so an idle deployment still exports it:
+    a deployment with writes off produces a failure per plan change, and this is what lets ticket 54
+    state ``ProjectionFailing`` as "failures AND writes enabled" instead of choosing between an
+    alert that never fires and one that always does.
+    """
+    await declare_the_minimum(sessions, owner.tenant_id)
+
+    await drain(
+        WorkerContext(settings=worker_settings(writes=False), database=context.database), calendar
+    )
+    assert sample("syncr_projection_writes_enabled") == 0
+
+    await drain(context, calendar)
+    assert sample("syncr_projection_writes_enabled") == 1
+    assert calendar.requests == [], "nothing was due, and the gauge is set regardless"
 
 
 async def test_a_deployment_that_will_not_write_says_so_in_the_banner(
@@ -890,8 +998,10 @@ def test_the_projection_is_composed_by_the_worker_and_by_nothing_else(source_roo
                 built[construction].add(path.name)
 
     assert built["GoogleEventWriter("] == {"injection.py"}
-    assert built["build_write_target_adapter("] == {"projection_runner.py"}
-    assert built["ProjectionWriter("] == {"projection_runner.py"}
+    # The duty claims and contains a fault; the pass performs the write. Both are the worker's, and
+    # nothing on a request path is in either set.
+    assert built["build_write_target_adapter("] == {"projection_pass.py"}
+    assert built["ProjectionWriter("] == {"projection_pass.py"}
 
 
 async def test_the_adapter_a_request_composes_cannot_write(
@@ -902,10 +1012,6 @@ async def test_the_adapter_a_request_composes_cannot_write(
     Driven through the adapter's own contract rather than by reading the arm off it: what matters is
     that a caller reaching ``reconcile`` from a request is refused, and refused before it reads.
     """
-    from syncr_api.calendars.projection_errors import ProjectionRefused
-    from syncr_domain.intervals import Interval
-    from syncr_domain.zones import ZoneProfile
-
     await declare_a_write_target(sessions, owner.tenant_id)
     async with sessions() as session, httpx.AsyncClient() as client:
         adapters, _reader = build_adapters(
