@@ -68,10 +68,8 @@ def area_key(area: AreaBudget) -> AreaId:
     return area.area_id
 
 
-# What the window order reads, which is every field a window carries. The anchor is NOT an identity
-# here: one commitment casts up to four windows, so two of them can share a span, a label and an
-# anchor while differing in kind, in scope, or in the Areas they forbid. A key stopping at the
-# anchor would order such a pair by input arrival, and the document holds the windows in this order.
+# The fields the window order reads, declared so a test can cross them against the type's own
+# inventory: a seventh field on a window fails until this order reads it.
 WINDOW_ORDER_FIELDS: Final = (
     "interval",
     "kind",
@@ -85,6 +83,13 @@ WINDOW_ORDER_FIELDS: Final = (
 def window_key(
     window: ForbiddenWindow,
 ) -> tuple[Instant, Instant, str, str, str, tuple[AreaId, ...], AnchorId]:
+    """Span order, then every other field a window carries. The one key with no identity to end in.
+
+    The anchor is not a per-window identity: one commitment casts up to four windows, so two of them
+    can share a span, a label and an anchor while differing in kind, in scope, or in the Areas they
+    forbid. A key stopping at the anchor would order such a pair by input arrival, and a document
+    holds its windows in this order.
+    """
     return (
         *span_key(window.interval),
         window.kind.value,
