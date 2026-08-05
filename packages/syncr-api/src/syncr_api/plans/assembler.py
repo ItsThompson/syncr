@@ -40,15 +40,19 @@ assemble(iso_week, now, extra_adjustment=None)
   ├── collect eligible tasks, netting recorded minutes and IMMOVABLE placements only
   ├── compute the demand per deadline, netting EVERY placement falling before it
   ├── compute per-Area floor minutes, floor reservations, gross targets, and daily caps
-  ├── resolve preferences down the Area to Habit or Task override chain, windows to instants
-  └── FOLD approved concessions, plus a candidate when one is being evaluated,
-        as a POST-PASS over the six resolved quantities above that they modify
+  ├── FOLD approved concessions, plus a candidate when one is being evaluated,
+  │     as a POST-PASS over the six resolved quantities above that they modify
+  └── resolve preferences down the Area to Habit or Task override chain, windows to instants,
+        over the FOLDED eligibility, so a dropped task's window goes with it
 ```
 
-**Folding is last and it is one code path.** Every quantity a concession changes is resolved
-before it runs, so a reader asking what a concession touches reads one function rather than
-tracing a pipeline. A candidate concession being evaluated is an argument rather than a table
-read, which is what keeps a tradeoff request from persisting anything.
+**Folding is a post-pass, and the one resolution after it reads its output.** Every quantity a
+concession changes is resolved before the fold runs, so a reader asking what a concession touches
+reads one function rather than tracing a pipeline. Preferences follow rather than precede it,
+because a window resolved for a task this week will not schedule is a window with no consumer.
+
+A candidate concession being evaluated is an argument rather than a table read, which is what keeps
+a tradeoff request from persisting anything.
 
 **One collaborator is read twice, and it is the concession table.** The week being assembled and
 the week before it each have their own approved concessions, and the inherited occurrence has to
