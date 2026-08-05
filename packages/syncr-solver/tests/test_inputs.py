@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from syncr_domain.identity import date_occurrence_key
 from syncr_domain.intervals import Interval, IntervalError, IntervalSet
 from syncr_domain.plan import PlanError
 from syncr_domain.templates import BindingTarget, TemplateEntryKind
@@ -289,7 +290,7 @@ def test_an_inherited_span_that_fills_the_whole_week_is_accepted() -> None:
 def an_entry(kind: TemplateEntryKind, **overrides: object) -> MaterializedEntry:
     stated: dict[str, object] = {
         "entry_id": uuid4(),
-        "occurrence_key": "2026-02-09",
+        "occurrence_key": date_occurrence_key(WEEK.monday()),
         "kind": kind,
         "interval": Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(minutes=15)),
         "flex_band_minutes": 0,
@@ -348,7 +349,7 @@ def test_an_entry_of_either_kind_carries_the_area_its_minutes_are_charged_to() -
     with pytest.raises(TypeError):
         MaterializedEntry(  # type: ignore[call-arg]
             entry_id=uuid4(),
-            occurrence_key="2026-02-09",
+            occurrence_key=date_occurrence_key(WEEK.monday()),
             kind=TemplateEntryKind.SLOT,
             interval=Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(minutes=15)),
             flex_band_minutes=0,

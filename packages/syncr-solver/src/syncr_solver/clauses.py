@@ -16,9 +16,9 @@ clause can name. Four pieces of the upstream examples are absent from those inpu
 therefore absent here: the day type a shape belongs to, a routine's day-type association, which
 does not exist at all because a routine materializes on every date, the calendar and access role
 an anchor was read from, and the name of the anchor type that cast a buffer along with the title
-of the commitment it was cast by, which is reachable only through a join that is not total: an
-evening buffer for a Monday-morning commitment is cast by an anchor that this week's span does
-not hold.
+of the commitment it was cast by, which is reachable INSIDE THIS STRUCT only through a join that
+is not total: an evening buffer for a Monday-morning commitment is cast by an anchor that this
+week's span does not hold.
 
 So each label states the determinant's own name plus the geometry the block was derived at, and
 a clause never renders a value that depends on whether an unrelated collection happens to carry

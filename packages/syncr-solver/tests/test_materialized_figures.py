@@ -50,12 +50,13 @@ PHASE1 = MaterializeCause.PHASE1
 HOUR = 60
 
 
-def stored(document: PlanDocument) -> bytes:
-    """A document as the bytes a stored revision would hold.
+def canonical(document: PlanDocument) -> bytes:
+    """A document as one canonical text, so two of them can be compared byte for byte.
 
-    Compared as text rather than by equality, because equality between two mappings ignores the
-    order their keys are held in and the stored form does not: a document that round-trips to the
-    same value in a different order is not the same document.
+    Text rather than value equality, because equality between two mappings ignores the order their
+    keys are held in and a document's own order is part of what determinism means here. It is the
+    value's ``repr`` rather than a stored form: nothing serializes a document yet, so this states
+    what it can honestly state, which is that two builds are the same value in the same order.
     """
     return repr(document).encode("utf-8")
 
@@ -315,7 +316,29 @@ def a_dense_week() -> SolveInputs:
 def test_materializing_the_same_inputs_twice_yields_byte_identical_documents() -> None:
     week = a_dense_week()
 
-    assert stored(materialize(week, cause=PHASE1)) == stored(materialize(week, cause=PHASE1))
+    assert canonical(materialize(week, cause=PHASE1)) == canonical(materialize(week, cause=PHASE1))
+
+
+def test_a_document_holds_the_windows_of_one_commitment_in_an_order_its_inputs_cannot_change() -> (
+    None
+):
+    # The windows reach the document in the order the state holds them, and one commitment casts up
+    # to four, so a key stopping at the anchor would order two of them by input arrival. Recovery is
+    # the one kind whose scope the user chooses, which is what makes this pair constructible.
+    absolute = a_recovery_window(interval=between(11, 12))
+    scoped = a_recovery_window(
+        interval=between(11, 12),
+        scope=ForbiddenScope.AREAS,
+        forbidden_area_ids=(FITNESS,),
+        anchor_id=absolute.anchor_id,
+        label=absolute.label,
+    )
+
+    forwards = materialize(inputs(forbidden_windows=(absolute, scoped)), cause=PHASE1)
+    backwards = materialize(inputs(forbidden_windows=(scoped, absolute)), cause=PHASE1)
+
+    assert canonical(forwards) == canonical(backwards)
+    assert len(forwards.forbidden_windows) == 2
 
 
 def test_two_blocks_alike_in_span_and_title_are_held_in_an_order_their_identities_decide() -> None:
@@ -329,7 +352,7 @@ def test_two_blocks_alike_in_span_and_title_are_held_in_an_order_their_identitie
     forwards = materialize(inputs(anchors=(first, second)), cause=PHASE1)
     backwards = materialize(inputs(anchors=(second, first)), cause=PHASE1)
 
-    assert stored(forwards) == stored(backwards)
+    assert canonical(forwards) == canonical(backwards)
     assert len(forwards.blocks) == 2
 
 
@@ -359,7 +382,9 @@ def test_permuting_every_input_list_changes_nothing_about_the_document(seed: Ran
         }
     )
 
-    assert stored(materialize(shuffled, cause=PHASE1)) == stored(materialize(week, cause=PHASE1))
+    assert canonical(materialize(shuffled, cause=PHASE1)) == canonical(
+        materialize(week, cause=PHASE1)
+    )
 
 
 @given(

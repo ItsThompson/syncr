@@ -1,4 +1,4 @@
-"""The four minute figures a plan document carries, over one week's inputs and its blocks.
+"""The three minute figures a plan document carries, over one week's inputs and its blocks.
 
 Every figure beside the document is derived from the document, so these are computed once, here,
 from the same arithmetic the budget report uses. A wrong answer is a plausible-looking report
