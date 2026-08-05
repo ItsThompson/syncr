@@ -23,7 +23,14 @@ from syncr_domain.gaps import (
     ForbiddenScope,
     ForbiddenWindow,
 )
-from syncr_domain.identity import BindingKind, BindingRef, Origin, TransitLeg, binding_kind_of
+from syncr_domain.identity import (
+    BindingKind,
+    BindingRef,
+    Origin,
+    TransitLeg,
+    binding_kind_of,
+    origin_of,
+)
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import Block, PlanDocument
 from syncr_domain.reasons import Bound, DerivationSource, ReasonRecord
@@ -87,6 +94,15 @@ def a_block(origin: Origin = Origin.HABIT, **overrides: Any) -> Block:
         "area_id": None if origin in ORIGINS_WITHOUT_AN_AREA else CAREER,
     }
     return Block(**(fields | overrides))
+
+
+def a_block_holding(binding: BindingRef, interval: Interval, **overrides: Any) -> Block:
+    """One block of the content ``binding`` names, at ``interval``.
+
+    The origin follows from the binding's kind through the domain's own mapping, so a suite
+    pairing two documents states the identity once and the block's own vocabulary is derived.
+    """
+    return a_block(origin_of(binding.kind), binding=binding, interval=interval, **overrides)
 
 
 def a_window(**overrides: Any) -> ForbiddenWindow:
