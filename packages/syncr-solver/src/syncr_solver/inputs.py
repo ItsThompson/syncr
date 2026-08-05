@@ -393,11 +393,25 @@ class ChurnBaseline:
     "The last plan the user saw" is not a persistable definition, so churn is measured
     against the last plan the user APPROVED. A week that has never been approved has zero
     churn and says so, rather than silently comparing against a proposal nobody approved.
+
+    ``document`` is the plan those minutes are compared with, and it is here rather than on
+    ``SolveInputs`` beside ``live_plan`` because the two are DIFFERENT documents:
+    ``live_plan`` is the newest revision whatever its status, and an ``applied`` revision can
+    be newer than the newest ``approved`` one. Measured against ``live_plan``, churn would be
+    measured against a plan the user never signed off, which is the definition this baseline
+    exists to refuse.
+
+    It is optional, and its absence is not a third kind of baseline: a named revision whose
+    document this deployment cannot read yields the same zero churn as a week with no approved
+    revision at all. Nothing populates it yet, because reading a stored document back through
+    the domain constructors is ticket 1222's and the week placement reader is ticket 1251's, so
+    churn is structurally zero until those land. Ticket 1340 carries that.
     """
 
     reason: str
     revision_id: PlanRevisionId | None = None
     approved_at: Instant | None = None
+    document: PlanDocument | None = None
 
     APPROVED_REVISION = "approved-revision"
     NEVER_APPROVED = "never-approved"
@@ -408,13 +422,29 @@ class ChurnBaseline:
         return cls(reason=cls.NEVER_APPROVED)
 
     @classmethod
-    def approved(cls, revision_id: PlanRevisionId, approved_at: Instant) -> ChurnBaseline:
-        """The baseline naming the revision the user approved, and when."""
+    def approved(
+        cls,
+        revision_id: PlanRevisionId,
+        approved_at: Instant,
+        document: PlanDocument | None = None,
+    ) -> ChurnBaseline:
+        """The baseline naming the revision the user approved, when, and its plan."""
         return cls(
             reason=cls.APPROVED_REVISION,
             revision_id=revision_id,
             approved_at=as_instant(approved_at),
+            document=document,
         )
+
+    @property
+    def is_measured(self) -> bool:
+        """Whether there is a plan for churn to be the difference from.
+
+        The document rather than the revision id, because a revision this deployment can name
+        but not read gives the term nothing to compare against. A caller rendering the reason
+        reads ``reason``, which still distinguishes the two.
+        """
+        return self.document is not None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
