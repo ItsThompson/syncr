@@ -74,6 +74,7 @@ def _next_candidate(attempt: Attempt, exhausted: set[BindingRef]) -> Candidate |
             for candidate in candidates_for(
                 attempt.inputs,
                 placed_minutes=attempt.placed_minutes(),
+                held_demands=attempt.held_demands(),
                 floor_shortfalls=attempt.floor_shortfalls(),
             )
             if candidate.binding not in exhausted

@@ -91,13 +91,19 @@ def inherited(inputs: SolveInputs, derived: Sequence[Block]) -> tuple[Placed, ..
 
 def _placed(block: Block, pin: Pin | None) -> Placed:
     """This block where the week holds it, which is the pin's interval when one names it."""
-    if pin is None or pin.interval == block.interval:
+    if pin is None:
         return Placed.of(block, sizing=_sizing_of(block), chosen=False)
     return Placed.of(_moved_to(block, pin), sizing=_sizing_of(block), chosen=False)
 
 
 def _moved_to(block: Block, pin: Pin) -> Block:
-    """The block at the interval the user put it at, stating what it replaced where it can."""
+    """The block at the interval the user put it at, stating what it replaced where it can.
+
+    The interval is set whether or not it already matches, because a pin on a block that is already
+    where the user wants it is still the user's own placement: it renders a pin glyph, it is a
+    training label, and H4 excepts it. Read only as a move, a pin on content the solve had nothing
+    to move would silently lose all three.
+    """
     if pin.superseded_placement is None or pin.objective_delta is None:
         return replace(block, interval=pin.interval)
     return replace(

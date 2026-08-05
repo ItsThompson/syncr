@@ -91,6 +91,7 @@ def _eligible_for(entry: MaterializedEntry, attempt: Attempt) -> tuple[Candidate
         for candidate in candidates_for(
             attempt.inputs,
             placed_minutes=attempt.placed_minutes(),
+            held_demands=attempt.held_demands(),
             floor_shortfalls=attempt.floor_shortfalls(),
         )
         if candidate.area_id == entry.area_id

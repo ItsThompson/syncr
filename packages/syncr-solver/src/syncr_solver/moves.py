@@ -257,6 +257,7 @@ def _candidate_of(held: Placed, rest: Attempt) -> Candidate | None:
             for candidate in candidates_for(
                 rest.inputs,
                 placed_minutes=rest.placed_minutes(),
+                held_demands=rest.held_demands(),
                 floor_shortfalls=rest.floor_shortfalls(),
             )
             if demand_key(candidate.binding) == wanted
@@ -274,6 +275,7 @@ def _candidate_of_binding(candidate: Candidate, rebuilt: Attempt) -> Candidate |
             for found in candidates_for(
                 rebuilt.inputs,
                 placed_minutes=rebuilt.placed_minutes(),
+                held_demands=rebuilt.held_demands(),
                 floor_shortfalls=rebuilt.floor_shortfalls(),
             )
             if demand_key(found.binding) == wanted

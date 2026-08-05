@@ -117,14 +117,23 @@ def candidates_for(
     inputs: SolveInputs,
     *,
     placed_minutes: Mapping[DemandKey, int],
+    held_demands: frozenset[DemandKey] = frozenset(),
     floor_shortfalls: Mapping[AreaId, int],
 ) -> tuple[Candidate, ...]:
     """Every demand still to place, in tie-break order.
 
-    ``placed_minutes`` is what this attempt has already placed per demand, keyed the way
-    :func:`~syncr_solver.reading.demand_key` keys it: a task's chunks all count toward one demand,
-    and a habit's four occurrences are four of them. ``floor_shortfalls`` is each Area's unmet floor
-    as the round found it.
+    ``placed_minutes`` is what this attempt has already placed per demand, NET of what the demand's
+    own figure already nets, which is the figure a task's remaining work is compared against.
+    ``held_demands`` is every demand the plan holds a block for, GROSS, which is what an
+    occurrence's eligibility asks.
+
+    **The two questions cannot share one figure.** A task's demand arrives net of the pins, so
+    counting a pinned piece's minutes again would place a four-hour task at three; an occurrence's
+    demand is the occurrence itself, so NOT counting a pinned one offers it a second window and has
+    H11 refuse it there. Measured on the reference week: two refusals and one Gym session offered
+    twice.
+
+    ``floor_shortfalls`` is each Area's unmet floor as the round found it.
 
     The tasks are ordered first and the occurrences after them, because a queue occurrence's
     content is the highest-ordered open task in its Area and that ordering is the same one, taken
@@ -133,7 +142,7 @@ def candidates_for(
     tasks = _task_candidates(inputs.eligible_tasks, placed_minutes, floor_shortfalls)
     occurrences = _occurrence_candidates(
         inputs.habit_occurrences,
-        placed_minutes,
+        held_demands,
         floor_shortfalls,
         backlog=_task_candidates(inputs.eligible_tasks, {}, floor_shortfalls),
     )
@@ -182,20 +191,20 @@ def _task_candidates(
 
 def _occurrence_candidates(
     occurrences: Sequence[HabitOccurrence],
-    placed_minutes: Mapping[DemandKey, int],
+    held_demands: frozenset[DemandKey],
     floor_shortfalls: Mapping[AreaId, int],
     *,
     backlog: Sequence[Candidate],
 ) -> tuple[Candidate, ...]:
     """One candidate per due occurrence the plan does not hold yet.
 
-    An occurrence is one block, so an occurrence with any minutes placed is done. It is not
+    An occurrence is one block, so an occurrence the plan holds anywhere is done. It is not
     divided and it is not placed twice: the cadence says how many occurrences the week owes, and
     each of them is its own candidate with its own identity.
     """
     found = []
     for occurrence in occurrences:
-        if placed_minutes.get(demand_key(occurrence.binding), 0) > 0:
+        if demand_key(occurrence.binding) in held_demands:
             continue
         content = _content_of(occurrence, backlog)
         if content is None:

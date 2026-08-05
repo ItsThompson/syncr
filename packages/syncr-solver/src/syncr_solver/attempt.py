@@ -220,6 +220,16 @@ class Attempt:
             found[key] = found.get(key, 0) + held.block.interval.total_minutes()
         return found
 
+    def held_demands(self) -> frozenset[DemandKey]:
+        """Every demand this attempt holds a block for, GROSS.
+
+        The question an occurrence's eligibility asks, which is not the question a task's is: an
+        occurrence is one block, so a pinned one is placed and its minutes are not a quantity
+        anything subtracts. Netted the way :meth:`placed_minutes` is, a pinned occurrence would be
+        offered a second window and H11 would refuse it there.
+        """
+        return frozenset(demand_key(held.block.binding) for held in self.placements)
+
     def spans_in(self, area_id: AreaId) -> IntervalSet:
         """The time this attempt's blocks cover in one Area, unioned so an overlap counts once."""
         return IntervalSet(
