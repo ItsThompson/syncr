@@ -41,7 +41,7 @@ def derive_key(command: tuple[str, ...], arguments: dict[str, object]) -> str:
     than serialized: an argument the user did not state and an argument they stated as null are
     the same request, and carrying the distinction would give one request two keys.
     """
-    stated = {name: value for name, value in sorted(arguments.items()) if value is not None}
+    stated = {name: value for name, value in arguments.items() if value is not None}
     canonical = json.dumps(
         {"command": list(command), "arguments": stated},
         sort_keys=True,

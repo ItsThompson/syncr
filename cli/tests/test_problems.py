@@ -9,6 +9,7 @@ application answers HTML.
 from __future__ import annotations
 
 import json
+from typing import Final
 
 import pytest
 
@@ -21,8 +22,43 @@ from syncr_cli.problems import (
     read_problem,
 )
 
+# What each condition exits with, written from the documented table rather than read from the one
+# under test. A parametrization over `EXIT_CODE_BY_PROBLEM_TYPE` would be the mapping asserting
+# itself: it passes for any mapping at all, including a wrong one. Stated here, a change to the
+# code has to be a deliberate change to a test named after the rule as well.
+DOCUMENTED: Final[dict[str, ExitCode]] = {
+    "syncr:malformed-request": ExitCode.USAGE,
+    "syncr:unauthorized": ExitCode.NOT_AUTHENTICATED,
+    "syncr:forbidden": ExitCode.INSUFFICIENT_SCOPE,
+    "syncr:origin-rejected": ExitCode.FAILURE,
+    "syncr:not-found": ExitCode.NOT_FOUND,
+    "syncr:conflict": ExitCode.CONFLICT,
+    "syncr:idempotency-request-in-flight": ExitCode.CONFLICT,
+    "syncr:validation-failed": ExitCode.VALIDATION_FAILED,
+    "syncr:rate-limited": ExitCode.API_UNAVAILABLE,
+    "syncr:dependency-unavailable": ExitCode.API_UNAVAILABLE,
+    "syncr:internal-error": ExitCode.FAILURE,
+    "syncr:oauth-invalid-request": ExitCode.USAGE,
+    "syncr:oauth-invalid-grant": ExitCode.NOT_AUTHENTICATED,
+    "syncr:oauth-invalid-token": ExitCode.NOT_AUTHENTICATED,
+    "syncr:oauth-invalid-client": ExitCode.FAILURE,
+    "syncr:oauth-unsupported-grant-type": ExitCode.FAILURE,
+    "syncr:cli-usage": ExitCode.USAGE,
+    "syncr:cli-not-authenticated": ExitCode.NOT_AUTHENTICATED,
+    "syncr:cli-api-unreachable": ExitCode.API_UNAVAILABLE,
+    "syncr:cli-timed-out": ExitCode.TIMED_OUT,
+    "syncr:cli-failure": ExitCode.FAILURE,
+    "syncr:cli-malformed-response": ExitCode.FAILURE,
+}
 
-@pytest.mark.parametrize(("problem_type", "expected"), sorted(EXIT_CODE_BY_PROBLEM_TYPE.items()))
+
+def test_the_documented_types_are_exactly_the_types_the_table_maps() -> None:
+    # The other direction: a type added to the code with no documented expectation, or an
+    # expectation for a type the code no longer maps.
+    assert set(DOCUMENTED) == set(EXIT_CODE_BY_PROBLEM_TYPE)
+
+
+@pytest.mark.parametrize(("problem_type", "expected"), sorted(DOCUMENTED.items()))
 def test_each_known_problem_type_exits_with_its_own_code(
     problem_type: str, expected: ExitCode
 ) -> None:

@@ -19,11 +19,13 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 
+import syncr_cli
 from syncr_cli.api_client import ApiClient
 from syncr_cli.auth.discovery import DISCOVERY_PATH
 from syncr_cli.auth.storage import CREDENTIALS_FILE_NAME
@@ -38,7 +40,6 @@ from tests.fake_api import Answer, FakeApi
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 WEEK_PATH = f"/api/v1/weeks/{payloads.ISO_WEEK}"
 AREAS_PATH = "/api/v1/areas"
@@ -148,6 +149,20 @@ def test_the_process_exits_with_the_documented_code(expected: ExitCode, tmp_path
     assert list(document) == ["ok", "data", "verdict", "operation", "problem"]
 
 
+def test_the_child_process_runs_the_tree_this_test_imported(tmp_path: Path) -> None:
+    # The instrument's own precondition. A subprocess that resolved the package through the
+    # interpreter's editable install would measure another checkout, and every case here would pass
+    # for the wrong reason.
+    with FakeApi() as api:
+        _serving()(api)
+        _seed_credential(tmp_path, api.base_url)
+        completed = _run(("week", "show", "--no-such-flag"), api.base_url, tmp_path)
+
+    expected = str(Path(syncr_cli.__file__).resolve().parent.parent)
+    assert completed.returncode == int(ExitCode.USAGE)
+    assert Path(expected, "syncr_cli", "main.py").exists()
+
+
 def test_a_closed_port_also_exits_eleven(tmp_path: Path) -> None:
     # The other way the API is unavailable, and the one a wrong `api_url` produces.
     with FakeApi() as api:
@@ -224,7 +239,13 @@ def _seed_credential(home: Path, api_url: str) -> None:
 
 
 def _run(argv: tuple[str, ...], api_url: str, home: Path) -> subprocess.CompletedProcess[str]:
-    """Run the console script itself, with an environment that reaches nothing on this machine."""
+    """Run the console script itself, with an environment that reaches nothing on this machine.
+
+    ``PYTHONPATH`` names the source tree this test imported from, so the child runs the same code
+    the parent is asserting about. Without it the child resolves the package through whatever the
+    interpreter's editable install points at, which is a different tree whenever this suite is run
+    from a second checkout: the instrument would then read green while measuring something else.
+    """
     return subprocess.run(  # noqa: S603 - fixed argv, no shell
         [sys.executable, "-m", "syncr_cli", *argv],
         capture_output=True,
@@ -232,6 +253,7 @@ def _run(argv: tuple[str, ...], api_url: str, home: Path) -> subprocess.Complete
         check=False,
         env={
             "PATH": os.environ.get("PATH", ""),
+            "PYTHONPATH": str(Path(syncr_cli.__file__).resolve().parent.parent),
             "HOME": str(home),
             "XDG_CONFIG_HOME": str(home / ".config"),
             "SYNCR_API_URL": api_url,
