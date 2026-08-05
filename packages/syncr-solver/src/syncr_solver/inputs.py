@@ -72,6 +72,7 @@ from typing import TYPE_CHECKING
 from syncr_domain.feasibility import DeadlineDemand as DeadlineDemand
 from syncr_domain.feasibility import FloorReservation, ProbeInputs, ScopedWindow
 from syncr_domain.gaps import ForbiddenScope
+from syncr_domain.identity import BindingKind, BindingRef
 from syncr_domain.intervals import IntervalSet, as_instant
 from syncr_domain.plan import PlanError, require_a_zone_for_every_day
 from syncr_domain.templates import TemplateEntryKind
@@ -90,7 +91,6 @@ if TYPE_CHECKING:
         TemplateEntryId,
         WeekAdjustmentId,
     )
-    from syncr_domain.identity import BindingRef
     from syncr_domain.intervals import Instant, Interval
     from syncr_domain.off_plan import OffPlanPeriod
     from syncr_domain.plan import AdjustmentKind, PlanDocument
@@ -126,6 +126,16 @@ class FrameEntry:
     min_duration_minutes: int
     flex_band_minutes: int
     title: str
+
+    @property
+    def block_binding(self) -> BindingRef:
+        """The identity the block this occurrence materializes into carries.
+
+        Spelled here rather than at each reader, because two of them exist: the module that builds
+        the block, and the checker's index of what the solver may not move. A second spelling would
+        let the identity a rejection names differ from the identity the block takes.
+        """
+        return BindingRef(BindingKind.ROUTINE, self.routine_id, self.occurrence_key)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -178,6 +188,16 @@ class MaterializedEntry:
 
     def __post_init__(self) -> None:
         _require_content_matching_the_kind(self.kind, self.binding, self.title)
+
+    @property
+    def block_binding(self) -> BindingRef:
+        """The identity the block this entry materializes into carries.
+
+        Distinct from ``binding``, which names the CONTENT: which of a habit's occurrences a
+        concrete entry claims is decided when content is bound, so a block of an entry is keyed by
+        the entry and the date instead.
+        """
+        return BindingRef(BindingKind.TEMPLATE_ENTRY, self.entry_id, self.occurrence_key)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

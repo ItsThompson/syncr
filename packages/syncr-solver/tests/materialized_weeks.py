@@ -21,9 +21,12 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from syncr_domain.gaps import ForbiddenKind, ForbiddenScope, ForbiddenWindow
+from syncr_domain.habits import BindingSource
 from syncr_domain.identity import BindingRef, TransitLeg, date_occurrence_key
 from syncr_domain.intervals import Interval
 from syncr_domain.off_plan import OffPlanPeriod
+from syncr_domain.plan import Block, PlanDocument
+from syncr_domain.reasons import Bound, ReasonRecord
 from syncr_domain.templates import BindingTarget, TemplateEntryKind
 from syncr_domain.weeks import IsoWeek
 from syncr_solver.inputs import (
@@ -32,9 +35,11 @@ from syncr_solver.inputs import (
     EntryBinding,
     FrameEntry,
     MaterializedEntry,
+    Pin,
     ShadowBlock,
     SolveInputs,
 )
+from syncr_solver.state import SIZED_KINDS, PartialPlan, Placement, Sizing
 
 if TYPE_CHECKING:
     from syncr_domain.identifiers import AreaId
@@ -49,6 +54,11 @@ WEEK_MINUTES = 7 * 24 * 60
 
 FITNESS: AreaId = UUID("00000000-0000-4000-8000-000000000001")
 CAREER: AreaId = UUID("00000000-0000-4000-8000-000000000002")
+
+# One content identity every generic candidate carries. A candidate's own content is not what most
+# rules read, so it is stated once rather than per test.
+A_TASK = UUID("00000000-0000-4000-8000-0000000000aa")
+A_HABIT = UUID("00000000-0000-4000-8000-0000000000ab")
 
 
 def at(hour: float, *, day: int = 0) -> datetime:
@@ -198,6 +208,7 @@ def an_area_budget(
     target_minutes: int = 0,
     floor_minutes: int = 0,
     name: str = "Fitness",
+    max_per_day_minutes: int | None = None,
 ) -> AreaBudget:
     return AreaBudget(
         area_id=area_id,
@@ -206,11 +217,14 @@ def an_area_budget(
         floor_reservation_minutes=floor_minutes,
         target_minutes=target_minutes,
         placed_minutes=0,
+        max_per_day_minutes=max_per_day_minutes,
     )
 
 
-def an_off_plan_period(*, interval: Interval, keep_frame: bool = False) -> OffPlanPeriod:
-    return OffPlanPeriod(interval=interval, keep_frame=keep_frame)
+def an_off_plan_period(
+    *, interval: Interval, keep_frame: bool = False, label: str | None = None
+) -> OffPlanPeriod:
+    return OffPlanPeriod(interval=interval, keep_frame=keep_frame, label=label)
 
 
 def inputs(**overrides: Any) -> SolveInputs:
@@ -224,3 +238,97 @@ def inputs(**overrides: Any) -> SolveInputs:
     }
     stated.update(overrides)
     return SolveInputs(**stated)
+
+
+# --------------------------------------------------------------------------------
+# What the constraint checker judges: a candidate, and the state it is judged against
+# --------------------------------------------------------------------------------
+
+
+def a_sizing(
+    *,
+    whole_minutes: int = 60,
+    min_chunk_minutes: int = 15,
+    splittable: bool = True,
+) -> Sizing:
+    return Sizing(
+        whole_minutes=whole_minutes,
+        min_chunk_minutes=min_chunk_minutes,
+        splittable=splittable,
+    )
+
+
+def a_candidate(
+    interval: Interval | None = None,
+    *,
+    title: str = "Shoulder & Arms",
+    area_id: AreaId | None = FITNESS,
+    binding: BindingRef | None = None,
+    sizing: Sizing | None = None,
+) -> Placement:
+    """A candidate that breaks no rule on its own: a divisible task, on the grid, at its whole size.
+
+    The sizing follows the span by default, so a test that varies only the span does not
+    accidentally drive a sizing rule. A test driving one states its own.
+    """
+    span = interval or between(10, 11)
+    reference = binding or BindingRef.for_task(A_TASK)
+    return Placement(
+        binding=reference,
+        interval=span,
+        title=title,
+        area_id=area_id,
+        sizing=_sizing_for(reference, span, sizing),
+    )
+
+
+def _sizing_for(binding: BindingRef, span: Interval, stated: Sizing | None) -> Sizing | None:
+    """The sizing a candidate of this kind carries: the caller's, a default, or none at all."""
+    if stated is not None or binding.kind not in SIZED_KINDS:
+        return stated
+    return a_sizing(whole_minutes=span.total_minutes())
+
+
+def a_block(
+    *,
+    binding: BindingRef,
+    interval: Interval | None = None,
+    title: str = "Leetcode",
+    area_id: AreaId | None = FITNESS,
+) -> Block:
+    """One block of this week's live plan, carrying the one clause a document requires."""
+    return Block(
+        iso_week=WEEK,
+        interval=interval or between(10, 11),
+        binding=binding,
+        title=title,
+        reason=ReasonRecord((Bound(source=BindingSource.QUEUE, selected=title),)),
+        area_id=area_id,
+    )
+
+
+def a_live_plan(*blocks: Block) -> PlanDocument:
+    """The plan the week currently holds, with figures a document will accept."""
+    return PlanDocument(
+        iso_week=WEEK,
+        zone_by_date=zones(),
+        discretionary_minutes=WEEK_MINUTES,
+        unallocated_minutes=WEEK_MINUTES,
+        oversubscription_minutes=0,
+        blocks=blocks,
+    )
+
+
+def a_pin(
+    *, binding: BindingRef | None = None, interval: Interval | None = None, day: int = 0
+) -> Pin:
+    return Pin(
+        binding=binding or BindingRef.for_task(A_TASK),
+        interval=interval or between(10, 11),
+        pinned_on=on(day),
+    )
+
+
+def a_state(**overrides: Any) -> PartialPlan:
+    """The state one week's inputs describe, which is what every rule is driven against."""
+    return PartialPlan.of(inputs(**overrides))

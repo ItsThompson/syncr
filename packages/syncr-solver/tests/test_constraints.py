@@ -1,73 +1,30 @@
-"""The hard-constraint vocabulary, the table it is crossed against, and the occupancy rules.
+"""The hard-constraint inventory, and the checker that reads a tuple of it.
 
-Two kinds of test are here and they fail for different reasons. The vocabulary tests are stated
-over the INVENTORY: the enum, the table, and the withdrawn numbers are compared with each other in
-both directions, so a rule added without a name fails, a name added without a rule fails, and a
-number that is both declared and withdrawn fails. That is what lets a later slice add the nine
-rules a derived plan does not need as behaviour rather than as vocabulary.
+Stated over the INVENTORY rather than over behaviour: the enum, the table and the withdrawn numbers
+are compared with each other in both directions, so a rule added without a name fails, a name added
+without a rule fails, and a number that is both declared and withdrawn fails. That is what lets a
+later slice add the rules a derived plan does not need as behaviour rather than as vocabulary.
 
-The rule tests drive each occupancy rule at the boundary it exists for, and each asserts the
-rejection's rule, window and detail rather than only that something was refused: the triple is
-what the ``blocked`` clause renders, and a rejection that cannot say what rejected it teaches the
-user nothing.
+Each rule is driven at the boundary it exists for in the module named after what it reads, starting
+with ``test_occupancy`` for the ones about a span already spent.
 """
 
 from __future__ import annotations
 
-import dataclasses
-from typing import TYPE_CHECKING
-from uuid import UUID
-
-import pytest
-
-from syncr_domain.gaps import ForbiddenKind, ForbiddenScope, ForbiddenWindow
-from syncr_domain.identity import BindingRef
 from syncr_solver.constraints import (
     HARD_CONSTRAINTS,
-    WINDOW_ORDER_FIELDS,
     WITHDRAWN_RULES,
     BlockedCandidate,
     ConstraintCheck,
     ConstraintRule,
-    PartialPlan,
-    Placement,
 )
-from syncr_solver.occupancy import INHERITED_FRAME, OCCUPANCY_RULES
-from tests.materialized_weeks import (
-    CAREER,
-    FITNESS,
-    a_frame_entry,
-    a_recovery_window,
-    an_anchor,
-    between,
-    inputs,
-)
-
-if TYPE_CHECKING:
-    from syncr_domain.identifiers import AreaId
-    from syncr_domain.intervals import Interval
+from syncr_solver.occupancy import OCCUPANCY_RULES
+from syncr_solver.state import PartialPlan
+from tests.materialized_weeks import a_candidate, a_frame_entry, an_anchor, between, inputs
 
 # The highest number the table reaches. Two of the fifteen were withdrawn, and the numbering is
 # preserved rather than compacted, so this is not the count of rules.
 HIGHEST_NUMBER = 15
-
-# One content identity every candidate here carries. A candidate's own content is not what any of
-# these rules read, so it is stated once rather than per test.
-A_TASK = UUID("00000000-0000-4000-8000-0000000000aa")
-
-
-def a_candidate(
-    interval: Interval | None = None,
-    *,
-    title: str = "Shoulder & Arms",
-    area_id: AreaId = FITNESS,
-) -> Placement:
-    return Placement(
-        binding=BindingRef.for_task(A_TASK),
-        interval=interval or between(10, 11),
-        title=title,
-        area_id=area_id,
-    )
 
 
 def a_check() -> ConstraintCheck:
@@ -105,7 +62,7 @@ def test_the_numbering_covers_every_number_once_as_a_rule_or_as_a_withdrawal() -
 
 def test_the_rules_in_force_are_the_occupancy_subset_and_the_others_are_vocabulary_only() -> None:
     # What a derived plan needs: it places nothing over a commitment, an absolute window, the
-    # frame, or something it already placed. The remaining nine are named by the enum and checked
+    # frame, or something it already placed. The remaining rules are named by the enum and checked
     # by nothing yet, which is a value at the call site rather than a hidden state of the module.
     space = PartialPlan.of(inputs(anchors=(an_anchor(),)))
     reported = {
@@ -118,105 +75,6 @@ def test_the_rules_in_force_are_the_occupancy_subset_and_the_others_are_vocabula
     assert reported == {ConstraintRule.ANCHOR_OVERLAP}
 
 
-def test_a_candidate_over_an_anchor_is_rejected_by_the_commitment_that_holds_the_time() -> None:
-    anchor = an_anchor(interval=between(10, 11), title="Kontron Placement Interview")
-    candidate = a_candidate(between(10.5, 11.5))
-
-    rejection = a_check().check(candidate, PartialPlan.of(inputs(anchors=(anchor,))))
-
-    assert rejection is not None
-    assert (rejection.rule, rejection.window, rejection.detail) == (
-        ConstraintRule.ANCHOR_OVERLAP,
-        candidate.interval,
-        "Kontron Placement Interview",
-    )
-
-
-def test_a_candidate_over_an_absolute_window_is_rejected_and_a_scoped_one_is_not() -> None:
-    # H2 reads only the windows that forbid every Area. A window scoped to named Areas is H13's,
-    # and reading it here would be the two readings of one window drifting apart again.
-    absolute = a_recovery_window(interval=between(11, 12), label="recovery · Lecture")
-    scoped = a_recovery_window(
-        interval=between(11, 12), scope=ForbiddenScope.AREAS, forbidden_area_ids=(FITNESS,)
-    )
-    candidate = a_candidate(between(11, 11.5))
-
-    refused = a_check().check(candidate, PartialPlan.of(inputs(forbidden_windows=(absolute,))))
-    allowed = a_check().check(candidate, PartialPlan.of(inputs(forbidden_windows=(scoped,))))
-
-    assert refused is not None
-    assert (refused.rule, refused.detail) == (
-        ConstraintRule.FORBIDDEN_WINDOW,
-        "recovery · Lecture",
-    )
-    assert allowed is None
-
-
-def test_an_unattributed_buffer_forbids_a_candidate_of_every_area() -> None:
-    # A prep buffer whose type named no Area became a window rather than a block, so there is no
-    # Area to scope it to and nothing may be placed inside it.
-    buffer = ForbiddenWindow(
-        between(9, 9.5),
-        ForbiddenKind.PREP_UNATTRIBUTED,
-        ForbiddenScope.ALL,
-        (),
-        "prep · Lecture",
-        an_anchor().anchor_id,
-    )
-
-    rejection = a_check().check(
-        a_candidate(between(9, 10), area_id=CAREER),
-        PartialPlan.of(inputs(forbidden_windows=(buffer,))),
-    )
-
-    assert rejection is not None
-    assert rejection.rule is ConstraintRule.FORBIDDEN_WINDOW
-
-
-def test_a_candidate_over_the_frame_is_rejected_by_the_routine_that_bounds_the_day() -> None:
-    entry = a_frame_entry(interval=between(23, 31), title="Sleep")
-
-    rejection = a_check().check(
-        a_candidate(between(23.5, 24)), PartialPlan.of(inputs(frame=(entry,)))
-    )
-
-    assert rejection is not None
-    assert (rejection.rule, rejection.detail) == (ConstraintRule.FRAME_OVERLAP, "Sleep")
-
-
-def test_a_candidate_over_an_inherited_frame_span_is_rejected_without_naming_a_routine() -> None:
-    # The week that owns a boundary-crossing occurrence holds the whole interval and materializes
-    # the one block, so this week carries the span and not the name. The rejection says so rather
-    # than borrowing a title from a different occurrence.
-    overhang = between(0, 7)
-
-    rejection = a_check().check(
-        a_candidate(between(6, 8)), PartialPlan.of(inputs(frame_overhang=(overhang,)))
-    )
-
-    assert rejection is not None
-    assert (rejection.rule, rejection.detail) == (ConstraintRule.FRAME_OVERLAP, INHERITED_FRAME)
-
-
-def test_a_candidate_over_something_already_placed_is_rejected_by_what_holds_the_span() -> None:
-    placed = Placement(
-        binding=BindingRef.for_anchor_prep(an_anchor().anchor_id),
-        interval=between(8, 9),
-        title="Interview prep",
-        area_id=CAREER,
-    )
-
-    rejection = a_check().check(
-        a_candidate(between(8.5, 9.5)), PartialPlan.of(inputs()).with_placed(placed)
-    )
-
-    assert rejection is not None
-    assert (rejection.rule, rejection.detail) == (
-        ConstraintRule.BLOCK_OVERLAP,
-        "Interview prep",
-    )
-
-
 def test_a_candidate_that_breaks_nothing_is_accepted_with_nothing_to_report() -> None:
     # Acceptance is the absence of a rejection rather than a value: there is nothing an accepted
     # placement has to say, and a caller that must not lose a rejection reads `is not None`.
@@ -225,15 +83,6 @@ def test_a_candidate_that_breaks_nothing_is_accepted_with_nothing_to_report() ->
     )
 
     assert a_check().check(a_candidate(between(12, 13)), state) is None
-
-
-def test_a_candidate_abutting_a_commitment_is_not_overlapping_it() -> None:
-    # The boundary the whole occupancy half rests on: a transit block that ends exactly when its
-    # commitment starts is the ordinary case, not a collision.
-    state = PartialPlan.of(inputs(anchors=(an_anchor(interval=between(10, 11)),)))
-
-    assert a_check().check(a_candidate(between(9.5, 10)), state) is None
-    assert a_check().check(a_candidate(between(11, 11.5)), state) is None
 
 
 def test_the_first_rule_a_candidate_breaks_is_the_one_reported() -> None:
@@ -253,25 +102,6 @@ def test_the_first_rule_a_candidate_breaks_is_the_one_reported() -> None:
     assert rejection.rule is ConstraintRule.ANCHOR_OVERLAP
 
 
-def test_the_state_holds_its_members_in_span_order_whatever_order_they_arrived_in() -> None:
-    # Two members overlapping one candidate would otherwise be reported by whichever the inputs
-    # happened to list first, so permuting an input list would change a reason clause while
-    # changing no placement.
-    early = an_anchor(interval=between(9, 11), title="Lecture")
-    late = an_anchor(interval=between(10, 12), title="Kontron Placement Interview")
-
-    forwards = a_check().check(
-        a_candidate(between(10.5, 10.75)), PartialPlan.of(inputs(anchors=(early, late)))
-    )
-    backwards = a_check().check(
-        a_candidate(between(10.5, 10.75)), PartialPlan.of(inputs(anchors=(late, early)))
-    )
-
-    assert forwards is not None
-    assert forwards == backwards
-    assert forwards.detail == "Lecture"
-
-
 def test_a_rejection_becomes_a_log_row_naming_the_binding_that_was_refused() -> None:
     # The block was never placed, so the row carries the binding rather than a block: what the log
     # has to answer later is which content could not be placed and why.
@@ -285,89 +115,3 @@ def test_a_rejection_becomes_a_log_row_naming_the_binding_that_was_refused() -> 
         rule=rejection.rule,
         detail=rejection.detail,
     )
-
-
-# --------------------------------------------------------------------------------
-# The window order, which is the one key whose trailing field is not an identity
-# --------------------------------------------------------------------------------
-
-AN_ANCHOR_ID = UUID("00000000-0000-4000-8000-0000000000bb")
-ANOTHER_ANCHOR_ID = UUID("00000000-0000-4000-8000-0000000000cc")
-
-# Two windows differing in exactly one field, per field a window carries. A commitment casts up to
-# four windows, so every one of these pairs is a pair one anchor can produce.
-WINDOWS_DIFFERING_IN_ONE_FIELD: list[tuple[str, ForbiddenWindow, ForbiddenWindow]] = [
-    (
-        "interval",
-        a_recovery_window(interval=between(11, 12), anchor_id=AN_ANCHOR_ID),
-        a_recovery_window(interval=between(11, 12.5), anchor_id=AN_ANCHOR_ID),
-    ),
-    (
-        "kind",
-        a_recovery_window(anchor_id=AN_ANCHOR_ID),
-        ForbiddenWindow(
-            between(11, 12),
-            ForbiddenKind.PREP_UNATTRIBUTED,
-            ForbiddenScope.ALL,
-            (),
-            "recovery · Kontron Placement Interview",
-            AN_ANCHOR_ID,
-        ),
-    ),
-    (
-        "label",
-        a_recovery_window(anchor_id=AN_ANCHOR_ID, label="recovery · Lecture"),
-        a_recovery_window(anchor_id=AN_ANCHOR_ID, label="recovery · Seminar"),
-    ),
-    (
-        "anchor_id",
-        a_recovery_window(anchor_id=AN_ANCHOR_ID),
-        a_recovery_window(anchor_id=ANOTHER_ANCHOR_ID),
-    ),
-    (
-        "scope",
-        a_recovery_window(anchor_id=AN_ANCHOR_ID),
-        a_recovery_window(
-            anchor_id=AN_ANCHOR_ID,
-            scope=ForbiddenScope.AREAS,
-            forbidden_area_ids=(FITNESS,),
-        ),
-    ),
-    (
-        "forbidden_area_ids",
-        a_recovery_window(
-            anchor_id=AN_ANCHOR_ID,
-            scope=ForbiddenScope.AREAS,
-            forbidden_area_ids=(FITNESS,),
-        ),
-        a_recovery_window(
-            anchor_id=AN_ANCHOR_ID,
-            scope=ForbiddenScope.AREAS,
-            forbidden_area_ids=(CAREER,),
-        ),
-    ),
-]
-
-
-def test_the_window_order_reads_every_field_a_window_carries() -> None:
-    # Bounded by the inventory rather than by the fields anyone thought of: the anchor is not a
-    # per-window identity, because one commitment casts up to four windows, so the order has to read
-    # the whole value. A seventh field on a window fails here until this key reads it.
-    assert set(WINDOW_ORDER_FIELDS) == {field.name for field in dataclasses.fields(ForbiddenWindow)}
-
-
-@pytest.mark.parametrize(
-    ("field", "one", "other"),
-    [(case[0], case[1], case[2]) for case in WINDOWS_DIFFERING_IN_ONE_FIELD],
-    ids=[case[0] for case in WINDOWS_DIFFERING_IN_ONE_FIELD],
-)
-def test_two_windows_one_anchor_cast_are_ordered_by_the_field_they_differ_in(
-    field: str, one: ForbiddenWindow, other: ForbiddenWindow
-) -> None:
-    # Ordered by input arrival, a document's windows would depend on which of a pair the producer
-    # listed first while describing the same week, and the byte-identity property would be false.
-    forwards = PartialPlan.of(inputs(forbidden_windows=(one, other))).forbidden_windows
-    backwards = PartialPlan.of(inputs(forbidden_windows=(other, one))).forbidden_windows
-
-    assert one != other, field
-    assert forwards == backwards

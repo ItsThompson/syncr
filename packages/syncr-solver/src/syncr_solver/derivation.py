@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from syncr_domain.gaps import EmptySlot, EmptySlotReason
-from syncr_domain.identity import BindingKind, BindingRef, date_occurrence_key
+from syncr_domain.identity import BindingRef, date_occurrence_key
 from syncr_domain.plan import Block
 from syncr_domain.reasons import ReasonRecord
 from syncr_domain.templates import TemplateEntryKind
@@ -72,7 +72,7 @@ def frame_blocks(
     return tuple(
         _block(
             iso_week=iso_week,
-            binding=BindingRef(BindingKind.ROUTINE, entry.routine_id, entry.occurrence_key),
+            binding=entry.block_binding,
             interval=entry.interval,
             title=entry.title,
             clause=bound_to_routine(entry, zone=_zone_of(entry.occurrence_key, zones, "routine")),
@@ -164,7 +164,7 @@ def _entry_block(
     zone = _zone_of(entry.occurrence_key, zones, "template_entry")
     return _block(
         iso_week=iso_week,
-        binding=BindingRef(BindingKind.TEMPLATE_ENTRY, entry.entry_id, entry.occurrence_key),
+        binding=entry.block_binding,
         interval=entry.interval,
         title=title,
         area_id=entry.area_id,

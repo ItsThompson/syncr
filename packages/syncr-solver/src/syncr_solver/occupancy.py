@@ -23,7 +23,8 @@ from syncr_domain.gaps import ForbiddenScope
 from syncr_solver.constraints import Blocked, ConstraintRule
 
 if TYPE_CHECKING:
-    from syncr_solver.constraints import PartialPlan, Placement, Rule
+    from syncr_solver.constraints import Rule
+    from syncr_solver.state import PartialPlan, Placement
 
 # What a rejection names when the span that rejected a candidate is a routine occurrence the
 # preceding week owns. It carries no title of its own: the week that owns the occurrence holds the

@@ -1,16 +1,17 @@
-"""The hard constraints: the closed vocabulary, the table, the state, and the checker.
+"""The hard constraints: the closed vocabulary, the table, and the checker.
 
 A plan violating any of the thirteen rules is invalid. The checker answers with **which rule
 rejected a candidate and over what window**, because that pair is the ``blocked`` reason clause
 the panel renders, and reconstructing it later would mean re-running the check that already
 knew.
 
-## The whole vocabulary is here from the start, and only some of it is implemented
+## The vocabulary and the table are two statements of one inventory
 
-:class:`ConstraintRule` names all thirteen rules and :data:`HARD_CONSTRAINTS` is the table, so a
-rule that nothing checks yet is added as BEHAVIOUR rather than as vocabulary: a rule function
-lands beside the four in :mod:`syncr_solver.occupancy`, and the enum, the table and the reason
-clause already speak its name.
+:class:`ConstraintRule` names the thirteen rules and :data:`HARD_CONSTRAINTS` is the table. A test
+crosses the two in both directions, so a rule cannot exist without a name and a name cannot exist
+without a rule. That is what lets a slice add a rule as BEHAVIOUR rather than as vocabulary: a rule
+function lands beside the ones already in force, and the enum, the table and the reason clause
+already speak its name.
 
 Which rules are in force is neither a mode of this module nor a default. :class:`ConstraintCheck`
 is constructed with the tuple, so what is being checked is a value at the call site. The rules a
@@ -32,13 +33,7 @@ placed unchecked and everything else is checked against them, which is the readi
 that lets a routine overlap its own next occurrence and a double-booked calendar keep both
 commitments.
 
-## Every ordering key reads the whole of the value it orders
-
-:meth:`PartialPlan.of` sorts each collection, so a candidate overlapping two members names the
-earlier one whatever order the inputs arrived in, and a document holds its windows in an order
-its inputs cannot change. That holds only while a key can separate two unequal values, so each
-key below reads every field its type carries, or ends in an identity that makes the rest
-unreachable.
+The candidate and the state a rule reads live in :mod:`syncr_solver.state`.
 """
 
 from __future__ import annotations
@@ -50,12 +45,9 @@ from typing import TYPE_CHECKING, Final
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
-    from syncr_domain.gaps import ForbiddenWindow
-    from syncr_domain.identifiers import AnchorId, AreaId, RoutineId
     from syncr_domain.identity import BindingRef
-    from syncr_domain.intervals import Instant, Interval
-    from syncr_domain.plan import Block
-    from syncr_solver.inputs import Anchor, FrameEntry, SolveInputs
+    from syncr_domain.intervals import Interval
+    from syncr_solver.state import PartialPlan, Placement
 
 
 class ConstraintRule(StrEnum):
@@ -156,34 +148,6 @@ class Blocked:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Placement:
-    """A candidate span, and enough of what would sit in it for every rule to judge it.
-
-    The title is here because a rejection names what rejected a candidate, so a placed member of
-    the state has to be able to say what it is. The Area is here because two rules read one.
-    """
-
-    binding: BindingRef
-    interval: Interval
-    title: str
-    area_id: AreaId | None = None
-
-    @classmethod
-    def of(cls, block: Block) -> Placement:
-        """The candidate a built block offers, which is the block without its reason.
-
-        A block carries everything a rule reads and a reason besides, so the two are one value
-        seen twice rather than two things to keep in step.
-        """
-        return cls(
-            binding=block.binding,
-            interval=block.interval,
-            title=block.title,
-            area_id=block.area_id,
-        )
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
 class BlockedCandidate:
     """One rejection, as the log row a solve keeps: what was refused, and by which rule.
 
@@ -207,42 +171,6 @@ class BlockedCandidate:
         )
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
-class PartialPlan:
-    """What a candidate is checked against: the space the week already spends, and what is placed.
-
-    Every collection is held in span order, so a candidate overlapping two members is rejected by
-    naming the earlier one whatever order the inputs arrived in. Without that, permuting an input
-    list would change a reason clause while changing no placement.
-    """
-
-    frame: tuple[FrameEntry, ...] = ()
-    inherited: tuple[Interval, ...] = ()
-    anchors: tuple[Anchor, ...] = ()
-    forbidden_windows: tuple[ForbiddenWindow, ...] = ()
-    placed: tuple[Placement, ...] = ()
-
-    @classmethod
-    def of(cls, inputs: SolveInputs) -> PartialPlan:
-        """The space one week's inputs describe, with nothing placed in it yet."""
-        return cls(
-            frame=tuple(sorted(inputs.frame, key=_frame_key)),
-            inherited=tuple(sorted(inputs.frame_overhang, key=_span_key)),
-            anchors=tuple(sorted(inputs.anchors, key=_anchor_key)),
-            forbidden_windows=tuple(sorted(inputs.forbidden_windows, key=_window_key)),
-        )
-
-    def with_placed(self, placement: Placement) -> PartialPlan:
-        """This state plus one placement, which the next candidate is checked against."""
-        return PartialPlan(
-            frame=self.frame,
-            inherited=self.inherited,
-            anchors=self.anchors,
-            forbidden_windows=self.forbidden_windows,
-            placed=(*self.placed, placement),
-        )
-
-
 type Rule = Callable[[Placement, PartialPlan], Blocked | None]
 """One hard constraint, as the check of it: a rejection, or nothing to report.
 
@@ -255,7 +183,7 @@ class ConstraintCheck:
     """The rules a candidate is judged against, held as the tuple a caller chose.
 
     Which rules are in force is a value rather than a mode, and it carries no default: a caller
-    states what it is checking, so a slice adding the remaining nine passes a longer tuple and no
+    states what it is checking, so a slice adding the remaining rules passes a longer tuple and no
     caller of this class changes.
     """
 
@@ -276,50 +204,3 @@ class ConstraintCheck:
             if rejection is not None:
                 return rejection
         return None
-
-
-def _span_key(interval: Interval) -> tuple[Instant, Instant]:
-    """Span order. Instants rather than their text, so two zones' spellings compare as instants."""
-    return (interval.start, interval.end)
-
-
-def _frame_key(entry: FrameEntry) -> tuple[Instant, Instant, str, str, RoutineId]:
-    """Span order, ending in the occurrence's own identity so no two entries tie.
-
-    The two fields it does not read, the minimum duration and the flex band, cannot separate two
-    entries this key ties: such entries share a routine and an occurrence key, so they are one
-    occurrence declared twice, they derive one block id, and a document refuses the pair.
-    """
-    return (*_span_key(entry.interval), entry.title, entry.occurrence_key, entry.routine_id)
-
-
-def _anchor_key(anchor: Anchor) -> tuple[Instant, Instant, str, AnchorId]:
-    """Span order, the title, then the commitment's identity. Every field an anchor carries."""
-    return (*_span_key(anchor.interval), anchor.title, anchor.anchor_id)
-
-
-# What the window order reads, which is every field a window carries. The anchor is NOT an identity
-# here: one commitment casts up to four windows, so two of them can share a span, a label and an
-# anchor while differing in kind, in scope, or in the Areas they forbid. A key stopping at the
-# anchor would order such a pair by input arrival, and the document holds the windows in this order.
-WINDOW_ORDER_FIELDS: Final = (
-    "interval",
-    "kind",
-    "scope",
-    "label",
-    "forbidden_area_ids",
-    "anchor_id",
-)
-
-
-def _window_key(
-    window: ForbiddenWindow,
-) -> tuple[Instant, Instant, str, str, str, tuple[AreaId, ...], AnchorId]:
-    return (
-        *_span_key(window.interval),
-        window.kind.value,
-        window.scope.value,
-        window.label,
-        window.forbidden_area_ids,
-        window.anchor_id,
-    )

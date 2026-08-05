@@ -14,7 +14,8 @@ directory in both directions, because an index a reader cannot trust is worse th
 | ``materialize.py`` | the entry point, what is placed unchecked, and the order candidates take |
 | ``derivation.py`` | one block per determined placement, and one empty slot per Area slot |
 | ``clauses.py`` | the ``bound`` clause a derived block carries, and the labels it renders |
-| ``constraints.py`` | the hard-constraint vocabulary, the table, the state, and the checker |
+| ``constraints.py`` | the hard-constraint vocabulary, the table, and the checker |
+| ``state.py`` | a candidate placement, and the state of the week every rule judges it against |
 | ``occupancy.py`` | the four rules a plan derived from nothing else can break |
 | ``figures.py`` | the minute figures a document carries, over the inputs and the blocks |
 | ``metrics.py`` | the families this package publishes, on the shared registry |

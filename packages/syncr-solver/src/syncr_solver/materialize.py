@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_domain.plan import PlanDocument
-from syncr_solver.constraints import BlockedCandidate, ConstraintCheck, PartialPlan, Placement
+from syncr_solver.constraints import BlockedCandidate, ConstraintCheck
 from syncr_solver.derivation import (
     anchor_blocks,
     empty_slots,
@@ -60,6 +60,7 @@ from syncr_solver.derivation import (
 from syncr_solver.figures import week_figures
 from syncr_solver.metrics import MATERIALIZE_TOTAL, MaterializeCause
 from syncr_solver.occupancy import OCCUPANCY_RULES
+from syncr_solver.state import PartialPlan, Placement
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
