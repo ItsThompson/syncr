@@ -133,6 +133,11 @@ class Tradeoff:
     ``label`` is rendered text because the wording is per kind and per target ("Reduce sleep by
     20m on Tue, Wed and Thu" names the nights, because the concession stores them).
 
+    ``delta_minutes`` is what a concession would recover, in minutes, and it is an **upper bound**
+    on the movement it produces rather than an exact figure: the component that enumerates these
+    states the three cases where it can promise more than approving it delivers. Never less, which
+    is the direction a panel can safely be wrong in.
+
     **Nothing in this package builds one, and a probe verdict carries none.** Enumeration needs the
     identity of the task, routine, or Area a concession would act on, and capacity arithmetic reads
     no identifier: the caller that renders a verdict enumerates over the same assembly the probe
