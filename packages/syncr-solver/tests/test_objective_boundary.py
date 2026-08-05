@@ -92,6 +92,10 @@ IMPORTS_ALLOWED: Final = frozenset(
         "bisect",
         "collections",
         "dataclasses",
+        # A sentinel instant for a candidate with no deadline, so the tie-break's key stays one
+        # shape, and a duration a length is added to a start as. Both in `syncr_solver.tiebreak`
+        # and `syncr_solver.offering`; nothing here reads a clock.
+        "datetime",
         "enum",
         "hashlib",
         "itertools",

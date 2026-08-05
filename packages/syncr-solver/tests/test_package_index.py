@@ -49,11 +49,17 @@ def test_the_reading_finds_the_rows_rather_than_every_double_backtick_in_the_doc
     assert modules_on_disk()
 
 
-def test_the_entry_point_and_the_label_its_caller_needs_are_the_package_root_s_whole_surface() -> (
+def test_the_two_entry_points_and_the_labels_their_callers_need_are_the_root_s_whole_surface() -> (
     None
 ):
-    # One entry point today and one enum, because the caller has to name which of the three causes
-    # asked. `solve` is the second entry point and lands with the search phases; `derive` is not an
-    # entry point, so it is imported from the module that defines it.
-    assert set(syncr_solver.__all__) == {"MaterializeCause", "materialize"}
+    # Two entry points and two enums. Each caller has to name which of the three causes asked for a
+    # materialization and how a solve ended, and `SolveResult` is what a solve answers with.
+    # `derive` is not an entry point, so it is imported from the module that defines it.
+    assert set(syncr_solver.__all__) == {
+        "MaterializeCause",
+        "SolveOutcome",
+        "SolveResult",
+        "materialize",
+        "solve",
+    }
     assert all(hasattr(syncr_solver, name) for name in syncr_solver.__all__)
