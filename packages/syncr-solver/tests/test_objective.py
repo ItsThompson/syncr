@@ -34,6 +34,7 @@ from tests.materialized_weeks import (
     inputs,
 )
 from tests.objective_weeks import (
+    A_HABIT,
     A_REVISION,
     A_TASK,
     ANOTHER_TASK,
@@ -63,6 +64,16 @@ def a_task_block(
         binding=BindingRef.for_task(task_id),
         interval=between(start, end, day=day),
         area_id=FITNESS,
+    )
+
+
+def an_occurrence_block(*, start: float = 10) -> Block:
+    """One block placed for a habit occurrence, in the Fitness Area."""
+    return a_block(
+        binding=BindingRef.for_habit(A_HABIT, index=0),
+        interval=between(start, start + 0.5),
+        area_id=FITNESS,
+        title="Gym",
     )
 
 
@@ -197,13 +208,21 @@ def a_week_where_every_term_fires() -> SolveInputs:
             an_eligible_task(remaining_minutes=240, deadline=at(16), min_chunk_minutes=60),
         ),
         areas=(a_budget(target_minutes=600), a_budget(area_id=CAREER, target_minutes=60)),
-        habit_occurrences=(an_occurrence(minutes=60),),
+        habit_occurrences=(an_occurrence(minutes=60), an_occurrence(index=1, minutes=60)),
         preferences=(a_preference(windows=(a_window(6, 8),), preferred_duration_minutes=180),),
         churn_baseline=ChurnBaseline.approved(A_REVISION, NOW, a_live_plan(a_task_block())),
     )
 
 
 def a_plan_that_charges_every_term() -> PlanDocument:
+    """A plan charging all seven, and **holding a tie**: two Area blocks over one interval.
+
+    The tie is what lets the permutation test below draw the case it exists to catch. Two blocks
+    of different Areas over one span is a legitimate week, because a user-authored overlap is
+    preserved: that is what H4 binds and what `minutes_in` unions for. It is also the only shape in
+    which the identity that makes `in_start_order` total can be observed, since without a tie every
+    permutation of the blocks already sorts to one order.
+    """
     return a_live_plan(
         a_task_block(start=9, end=10),
         a_block(
@@ -212,6 +231,7 @@ def a_plan_that_charges_every_term() -> PlanDocument:
             area_id=CAREER,
             title="Dissertation",
         ),
+        an_occurrence_block(start=10.5),
     )
 
 
@@ -296,6 +316,13 @@ def test_two_evaluations_of_one_plan_are_equal() -> None:
 
 
 def test_permuting_the_order_of_every_input_list_changes_no_cost() -> None:
+    """Including the order of the plan's own blocks, over a plan that HOLDS A TIE.
+
+    The tie is the point. Two blocks equal on span are the only case in which an ordering key can
+    be ambiguous, so a week without one cannot distinguish a total order from a stable sort of a
+    partial one, and this test would pass whatever `in_start_order` keyed on. Measured: with the
+    identity dropped from that key, the plan below costs 0.125 forward and 0.250 reversed.
+    """
     week = a_week_where_every_term_fires()
     reversed_week = dataclasses.replace(
         week,
@@ -306,10 +333,27 @@ def test_permuting_the_order_of_every_input_list_changes_no_cost() -> None:
     )
     plan = a_plan_that_charges_every_term()
     shuffled = dataclasses.replace(plan, blocks=tuple(reversed(plan.blocks)))
+    # A price that the gaps in this plan do not absorb whole. At version 1's one minute the only
+    # pairs charging anything are the abutting ones, and both orders hold exactly one of those, so
+    # the tie below would be invisible: the fixture would hold its case and the weights would hide
+    # it. Measured under the mutation with this price: 90/480 forward against 60/480 reversed.
+    weights = flat_weights(context_switch_cost=60.0)
 
-    assert evaluate(plan, inputs=week, weights=hand_tuned_weights()) == evaluate(
-        shuffled, inputs=reversed_week, weights=hand_tuned_weights()
+    assert _a_tie_exists_in(plan), "the fixture must hold two Area blocks over one interval"
+    assert evaluate(plan, inputs=week, weights=weights) == evaluate(
+        shuffled, inputs=reversed_week, weights=weights
     )
+
+
+def _a_tie_exists_in(plan: PlanDocument) -> bool:
+    """Whether two of this plan's Area-carrying blocks cover one interval.
+
+    Asserted rather than assumed, because the invariance above is only about ties and a fixture that
+    lost its tie would leave the test passing while measuring nothing. That is ticket 29's failure
+    mode, and this is the cheapest form of the check that catches it.
+    """
+    spans = [block.interval for block in plan.blocks if block.area_id is not None]
+    return len(spans) != len(set(spans))
 
 
 def test_two_plans_that_cost_the_same_are_reported_as_costing_the_same() -> None:
