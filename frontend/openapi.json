@@ -30,6 +30,97 @@
         "title": "AddCalendarSourceRequest",
         "type": "object"
       },
+      "AdjustmentKind": {
+        "description": "The four concessions an approved tradeoff can persist for one week.\n\nHere rather than beside the storage table for the same reason ``RevisionReason`` is: the\nweek assembler folds a concession into a solve input and a reason clause cites one, so\nboth readers are stated over a pure vocabulary and the column's tuple is derived from it.\n\nEach kind names what its approval modifies, and three of the four modify TWO resolved\nquantities rather than one, because the solver's reading and the probe's reading of one\nconcession are separate fields:\n\n| Kind | What an approval modifies |\n|---|---|\n| ``drop_item`` | the task leaves eligibility, AND every demand naming it goes |\n| ``reduce_routine`` | that routine's effective duration on each named date |\n| ``breach_floor`` | that Area's floor minutes AND its floor reservation |\n| ``accept_partial`` | the task's deadline on its eligibility AND its demands |\n\nA kind that modified only one of a pair would leave the concession half applied: the\npanel would go quiet while the objective still strained against the excused deadline, or\nthe breach would not close the shortfall it was offered for.",
+        "enum": [
+          "drop_item",
+          "reduce_routine",
+          "breach_floor",
+          "accept_partial"
+        ],
+        "title": "AdjustmentKind",
+        "type": "string"
+      },
+      "AdjustmentResponse": {
+        "description": "One concession a week holds, as the verdict panel lists it.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdByOperationId": {
+            "description": "The operation whose proposal this concession was approved with.",
+            "format": "uuid",
+            "title": "Createdbyoperationid",
+            "type": "string"
+          },
+          "deltaMinutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How much this concession lowers the figure it names, in minutes: an increment against that figure as it stands rather than an absolute target. Set for breach_floor, null otherwise.",
+            "title": "Deltaminutes"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "isoWeek": {
+            "title": "Isoweek",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AdjustmentKind"
+          },
+          "reductions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Per-date minutes, for reduce_routine only, keyed by the local date the occurrence materializes on. Empty for the other three kinds. The enumerator chose the distribution, so this is the record of which nights the concession touched.",
+            "title": "Reductions",
+            "type": "object"
+          },
+          "targetId": {
+            "format": "uuid",
+            "title": "Targetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "isoWeek",
+          "kind",
+          "targetId",
+          "createdAt",
+          "createdByOperationId"
+        ],
+        "title": "AdjustmentResponse",
+        "type": "object"
+      },
+      "AdjustmentsResponse": {
+        "description": "Every concession one week holds, in the order the assembler folds them.",
+        "properties": {
+          "adjustments": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentResponse"
+            },
+            "title": "Adjustments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "adjustments"
+        ],
+        "title": "AdjustmentsResponse",
+        "type": "object"
+      },
       "AnchorResponse": {
         "description": "One imported commitment. Read-only in syncr, and it says so.\n\nNo location field, deliberately. See the module docstring.",
         "properties": {
@@ -4592,6 +4683,28 @@
           "end"
         ],
         "title": "TimeWindowResponse",
+        "type": "object"
+      },
+      "TradeoffRequest": {
+        "additionalProperties": false,
+        "description": "A request to solve one week against one concession. Persists nothing.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/AdjustmentKind",
+            "description": "Which concession to solve against. One of the four the verdict panel offers: drop_item, reduce_routine, breach_floor, or accept_partial."
+          },
+          "targetId": {
+            "description": "What the concession acts on: a task for drop_item and accept_partial, a routine for reduce_routine, an Area for breach_floor. It must be one this week's verdict offers that kind for; anything else is a 422.",
+            "format": "uuid",
+            "title": "Targetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "targetId"
+        ],
+        "title": "TradeoffRequest",
         "type": "object"
       },
       "TravelOverrideRequest": {
@@ -12170,6 +12283,298 @@
         "summary": "Replace the whole mapping. All seven weekdays required",
         "tags": [
           "templates"
+        ]
+      }
+    },
+    "/api/v1/weeks/{iso_week}/adjustments": {
+      "get": {
+        "description": "Every approved concession for the week. Writes nothing.",
+        "operationId": "list_adjustments_api_v1_weeks__iso_week__adjustments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustmentsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "The concessions this week has absorbed",
+        "tags": [
+          "concessions"
+        ]
+      }
+    },
+    "/api/v1/weeks/{iso_week}/adjustments/{adjustment_id}": {
+      "delete": {
+        "description": "Remove a concession, so the next plan is one the week was not conceded anything for.",
+        "operationId": "revoke_adjustment_api_v1_weeks__iso_week__adjustments__adjustment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "adjustment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Adjustment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Revoke one concession. Bumps the week's input version and re-solves",
+        "tags": [
+          "concessions"
+        ]
+      }
+    },
+    "/api/v1/weeks/{iso_week}/tradeoffs": {
+      "post": {
+        "description": "Ask for a proposal that honors one concession. Nothing is conceded until it is approved.",
+        "operationId": "request_tradeoff_api_v1_weeks__iso_week__tradeoffs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TradeoffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Solve this week against one tradeoff. Persists nothing; returns an operation",
+        "tags": [
+          "concessions"
         ]
       }
     },

@@ -1056,6 +1056,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/weeks/{iso_week}/adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The concessions this week has absorbed
+         * @description Every approved concession for the week. Writes nothing.
+         */
+        get: operations["list_adjustments_api_v1_weeks__iso_week__adjustments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/weeks/{iso_week}/adjustments/{adjustment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one concession. Bumps the week's input version and re-solves
+         * @description Remove a concession, so the next plan is one the week was not conceded anything for.
+         */
+        delete: operations["revoke_adjustment_api_v1_weeks__iso_week__adjustments__adjustment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/weeks/{iso_week}/tradeoffs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Solve this week against one tradeoff. Persists nothing; returns an operation
+         * @description Ask for a proposal that honors one concession. Nothing is conceded until it is approved.
+         */
+        post: operations["request_tradeoff_api_v1_weeks__iso_week__tradeoffs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -1260,6 +1320,81 @@ export interface components {
              */
             externalId: string;
             provider: components["schemas"]["CalendarProvider"];
+        };
+        /**
+         * AdjustmentKind
+         * @description The four concessions an approved tradeoff can persist for one week.
+         *
+         *     Here rather than beside the storage table for the same reason ``RevisionReason`` is: the
+         *     week assembler folds a concession into a solve input and a reason clause cites one, so
+         *     both readers are stated over a pure vocabulary and the column's tuple is derived from it.
+         *
+         *     Each kind names what its approval modifies, and three of the four modify TWO resolved
+         *     quantities rather than one, because the solver's reading and the probe's reading of one
+         *     concession are separate fields:
+         *
+         *     | Kind | What an approval modifies |
+         *     |---|---|
+         *     | ``drop_item`` | the task leaves eligibility, AND every demand naming it goes |
+         *     | ``reduce_routine`` | that routine's effective duration on each named date |
+         *     | ``breach_floor`` | that Area's floor minutes AND its floor reservation |
+         *     | ``accept_partial`` | the task's deadline on its eligibility AND its demands |
+         *
+         *     A kind that modified only one of a pair would leave the concession half applied: the
+         *     panel would go quiet while the objective still strained against the excused deadline, or
+         *     the breach would not close the shortfall it was offered for.
+         * @enum {string}
+         */
+        AdjustmentKind: "drop_item" | "reduce_routine" | "breach_floor" | "accept_partial";
+        /**
+         * AdjustmentResponse
+         * @description One concession a week holds, as the verdict panel lists it.
+         */
+        AdjustmentResponse: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /**
+             * Createdbyoperationid
+             * Format: uuid
+             * @description The operation whose proposal this concession was approved with.
+             */
+            createdByOperationId: string;
+            /**
+             * Deltaminutes
+             * @description How much this concession lowers the figure it names, in minutes: an increment against that figure as it stands rather than an absolute target. Set for breach_floor, null otherwise.
+             */
+            deltaMinutes?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Isoweek */
+            isoWeek: string;
+            kind: components["schemas"]["AdjustmentKind"];
+            /**
+             * Reductions
+             * @description Per-date minutes, for reduce_routine only, keyed by the local date the occurrence materializes on. Empty for the other three kinds. The enumerator chose the distribution, so this is the record of which nights the concession touched.
+             */
+            reductions?: {
+                [key: string]: number;
+            };
+            /**
+             * Targetid
+             * Format: uuid
+             */
+            targetId: string;
+        };
+        /**
+         * AdjustmentsResponse
+         * @description Every concession one week holds, in the order the assembler folds them.
+         */
+        AdjustmentsResponse: {
+            /** Adjustments */
+            adjustments: components["schemas"]["AdjustmentResponse"][];
         };
         /**
          * AnchorResponse
@@ -3695,6 +3830,20 @@ export interface components {
              * @description Wall time, no date and no zone: '05:30' means 05:30 wherever the user is, resolved against the zone active on the date the window is read for. Minute resolution, on the quarter hour, and an offset is refused.
              */
             start: string;
+        };
+        /**
+         * TradeoffRequest
+         * @description A request to solve one week against one concession. Persists nothing.
+         */
+        TradeoffRequest: {
+            /** @description Which concession to solve against. One of the four the verdict panel offers: drop_item, reduce_routine, breach_floor, or accept_partial. */
+            kind: components["schemas"]["AdjustmentKind"];
+            /**
+             * Targetid
+             * Format: uuid
+             * @description What the concession acts on: a task for drop_item and accept_partial, a routine for reduce_routine, an Area for breach_floor. It must be one this week's verdict offers that kind for; anything else is a 422.
+             */
+            targetId: string;
         };
         /**
          * TravelOverrideRequest
@@ -9756,6 +9905,237 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WeekPatternResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_adjustments_api_v1_weeks__iso_week__adjustments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdjustmentsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revoke_adjustment_api_v1_weeks__iso_week__adjustments__adjustment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+                adjustment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    request_tradeoff_api_v1_weeks__iso_week__tradeoffs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TradeoffRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationResponse"];
                 };
             };
             /** @description Authentication required */
