@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.repository import AreaRepository
@@ -60,7 +60,6 @@ from syncr_api.core.settings import (
 )
 from syncr_api.horizon.config import MAINTAINER_INTERVAL, MaintainerDuty
 from syncr_api.horizon.maintainer import HorizonPass, PlanHorizonMaintainer
-from syncr_api.horizon.metrics import HORIZON_WEEKS_WITHOUT_PLAN
 from syncr_api.horizon.runner import PlanHorizonRunner
 from syncr_api.horizon.weeks import next_local_midnight
 from syncr_api.learned.repository import WeightSetRepository
@@ -73,8 +72,10 @@ from syncr_api.solving.config import MATERIALIZE, PENDING, PROJECTION, SUCCEEDED
 from syncr_api.solving.models import Operation
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
+from syncr_api.user_settings.models import Settings
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.worker.main import WorkerContext
+from syncr_common.metrics import REGISTRY
 from syncr_domain.plan import RevisionReason
 from syncr_domain.templates import WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
@@ -256,6 +257,22 @@ async def a_pass(
 ) -> datetime:
     """One maintainer pass over every tenant, at one instant read from the clock."""
     return await PlanHorizonRunner(clock=clock).plan(context, now=now or clock())
+
+
+def weeks_without_a_plan() -> float:
+    """The gauge, read as a scraper reads it rather than through a private attribute."""
+    return _sample("syncr_horizon_weeks_without_plan")
+
+
+def tenant_pass_failures() -> float:
+    """The contained-fault counter, read the same way."""
+    return _sample("syncr_horizon_tenant_failures_total")
+
+
+def _sample(family: str) -> float:
+    sample = REGISTRY.get_sample_value(family)
+    assert sample is not None, f"{family} is not in the registry"
+    return sample
 
 
 # --------------------------------------------------------------------------------
@@ -538,7 +555,7 @@ async def test_the_gauge_sits_at_zero_once_every_horizon_week_is_planned(
 
     await a_pass(context, clock)
 
-    assert HORIZON_WEEKS_WITHOUT_PLAN._value.get() == 0
+    assert weeks_without_a_plan() == 0
 
 
 async def test_the_gauge_counts_a_week_no_plan_can_exist_for(
@@ -557,7 +574,7 @@ async def test_the_gauge_counts_a_week_no_plan_can_exist_for(
 
     await a_pass(context, clock)
 
-    assert HORIZON_WEEKS_WITHOUT_PLAN._value.get() > 0
+    assert weeks_without_a_plan() > 0
 
 
 async def test_the_tick_is_timed_under_its_own_duty(
@@ -567,8 +584,6 @@ async def test_the_tick_is_timed_under_its_own_duty(
     clock: Ticking,
 ) -> None:
     """Labeled by duty, because the second duty's cost is unrelated to this one's."""
-    from syncr_common.metrics import REGISTRY
-
     await declare_the_minimum(sessions, owner.tenant_id)
     runner = PlanHorizonRunner(clock=clock)
     await runner(context)  # the first tick schedules
@@ -615,7 +630,7 @@ async def test_a_tenant_whose_week_raises_does_not_stop_another_tenants(
 
     assert len(await revisions_of(sessions, owner.tenant_id)) == 2, "a fault stopped a good tenant"
     assert await revisions_of(sessions, other_owner.tenant_id) == []
-    assert HORIZON_WEEKS_WITHOUT_PLAN._value.get() == 2, "the broken tenant's two horizon weeks"
+    assert weeks_without_a_plan() == 2, "the broken tenant's two horizon weeks"
 
 
 async def test_the_gauge_does_not_grow_across_passes(
@@ -633,10 +648,10 @@ async def test_the_gauge_does_not_grow_across_passes(
         await WeightSetRepository(session, owner.tenant_id).seed_hand_tuned(at=NOW)
 
     await a_pass(context, clock)
-    after_one = HORIZON_WEEKS_WITHOUT_PLAN._value.get()
+    after_one = weeks_without_a_plan()
     await a_pass(context, clock)
 
-    assert HORIZON_WEEKS_WITHOUT_PLAN._value.get() == after_one
+    assert weeks_without_a_plan() == after_one
     assert after_one > 0, "the assertion above would hold at zero for the wrong reason"
 
 
@@ -955,3 +970,64 @@ def test_the_row_counts_read_the_tables_the_duty_writes() -> None:
     """A control on the two helpers: they read the two tables the duty writes, and no others."""
     assert PlanRevision.__tablename__ == "plan_revisions"
     assert Operation.__tablename__ == "operations"
+
+
+async def test_a_tenant_whose_zone_cannot_be_read_does_not_stop_another_tenants_pass(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    other_owner: UserRecord,
+    context: WorkerContext,
+    clock: Ticking,
+) -> None:
+    """The one fault that sits BEFORE the per-week boundary, so it needs its own.
+
+    ``local_date`` resolves the stored ``home_zone`` through the zone layer, which refuses an
+    identifier it does not know. Uncontained, that read aborts the pass: the tenants after it are
+    never visited and, worse, ``HORIZON_WEEKS_WITHOUT_PLAN.set(...)`` is never reached. On a fresh
+    process the gauge then reads zero and ``HorizonNotMaintained``, which fires above zero, cannot
+    fire for a duty that fails on every pass. That is an alert inverted by a failure path.
+    """
+    await declare_the_minimum(sessions, owner.tenant_id)
+    await declare_the_minimum(sessions, other_owner.tenant_id)
+    async with sessions() as session, session.begin():
+        # Written past the boundary that would have refused it, which is the only way this state
+        # exists: the settings route validates a zone before storing one.
+        await session.execute(
+            update(Settings)
+            .where(Settings.tenant_id == other_owner.tenant_id)
+            .values(home_zone="Mars/Olympus_Mons")
+        )
+    before = tenant_pass_failures()
+
+    await a_pass(context, clock)
+
+    assert len(await revisions_of(sessions, owner.tenant_id)) == 2, "a fault stopped a good tenant"
+    assert await revisions_of(sessions, other_owner.tenant_id) == []
+    assert tenant_pass_failures() == before + 1
+    assert weeks_without_a_plan() > 0, (
+        "the gauge has to be set from what the pass DID reach, or the alert cannot fire for a "
+        "tenant whose weeks are never planned"
+    )
+
+
+async def test_a_tenant_whose_zone_cannot_be_read_still_leaves_the_pass_due_again(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    clock: Ticking,
+) -> None:
+    """No midnight is knowable for that tenant, so the interval is the only bound left.
+
+    A pass that answered with no due instant at all would never run again.
+    """
+    await declare_the_minimum(sessions, owner.tenant_id)
+    async with sessions() as session, session.begin():
+        await session.execute(
+            update(Settings)
+            .where(Settings.tenant_id == owner.tenant_id)
+            .values(home_zone="Mars/Olympus_Mons")
+        )
+
+    due = await a_pass(context, clock, now=NOW)
+
+    assert due == NOW + MAINTAINER_INTERVAL

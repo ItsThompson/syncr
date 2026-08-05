@@ -2,11 +2,9 @@
 
 ``syncr_horizon_weeks_without_plan`` should sit at zero. A sustained non-zero value means the
 maintainer is not keeping up or is failing, and that failure would otherwise present to the user as
-a
-calendar that goes blank at a week boundary: the projector reads revisions, so a horizon week with
-no
-revision is a week with nothing to project. ``HorizonNotMaintained`` alerts on it above zero for two
-hours, which is eight ticks.
+a calendar that goes blank at a week boundary: the projector reads revisions, so a horizon week with
+no revision is a week with nothing to project. ``HorizonNotMaintained`` alerts on it above zero for
+two hours, which is eight ticks.
 
 **The gauge is SET at the end of a pass rather than incremented per week**, because it measures a
 state rather than counting events: a gauge nudged per week would drift permanently the first time a
@@ -14,10 +12,12 @@ pass raised between two weeks. Setting it from the pass's own tally means a cont
 the number honest, and a pass that never completed leaves the previous value, which the alert reads
 as unresolved.
 
-**A week whose minimum inputs are missing counts as without a plan, deliberately.** The maintainer
-cannot plan it, and it is genuinely a week inside the horizon with nothing to project: the honest
-gauge reading is the one that says so. What tells an operator the two apart is the log line naming
-what is missing, and the user is told by the Week screen's own empty state.
+**A week whose minimum inputs are missing counts as without a plan, deliberately**, and so does a
+tenant whose horizon could not be read at all. The maintainer cannot plan either, and both are
+genuinely weeks inside the horizon with nothing to project: the honest gauge reading is the one that
+says so, and it is also the only reading under which ``HorizonNotMaintained`` can fire for a duty
+that fails every pass. What tells an operator the cases apart is the log line naming what is
+missing, and the user is told by the Week screen's own empty state.
 
 ``syncr_maintainer_tick_duration_seconds`` is labeled by duty because the second duty probes every
 week WITH a plan while this one plans the weeks without: the two costs are unrelated, and a

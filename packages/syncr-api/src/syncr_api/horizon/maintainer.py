@@ -15,10 +15,9 @@ for each tenant:
 ```
 
 **``now`` is read once and passed down.** A tick that read the clock per week could compute a
-horizon
-from one date and a week's inputs from another, and at 00:00 the two would differ by a day: the week
-brought in would not be the week planned. Every decision a tick makes is evaluated against one
-instant, and the assembler stamps that same instant onto its output, so a tick is reproducible.
+horizon from one date and a week's inputs from another, and at 00:00 the two would differ by a day:
+the week brought in would not be the week planned. Every decision a tick makes is evaluated against
+one instant, and the assembler stamps that same instant onto its output, so a tick is reproducible.
 
 **Chronological order matters on first run.** Three weeks with no plan are planned oldest first, so
 the week the user is looking at exists before the two they are not.
@@ -73,13 +72,14 @@ _log = get_logger("syncr.horizon")
 
 @dataclass(frozen=True, slots=True)
 class HorizonPass:
-    """What one tenant's pass found and did, so one log line says it and the gauge is set once."""
+    """What one pass found and did, so one log line says it and the gauge is set once."""
 
     weeks: int = 0
     planned: int = 0
     already_planned: int = 0
     not_ready: int = 0
     failed: int = 0
+    tenants_failed: int = 0
 
     @property
     def without_a_plan(self) -> int:
@@ -88,8 +88,14 @@ class HorizonPass:
         A week the maintainer could not plan and a week it failed to plan are both weeks inside the
         horizon with nothing to project, so both count: the gauge measures the hole rather than the
         cause, and the cause is in the log line beside it.
+
+        **A tenant whose horizon could not be read at all counts as one week.** How many weeks it
+        really has is unknowable, because the read that would have said so is the read that failed,
+        and one is the honest lower bound. Reporting zero for it would leave the gauge at zero for a
+        tenant whose weeks are never planned, and ``HorizonNotMaintained`` fires above zero, so the
+        alert would be silent for exactly the failure it exists to catch.
         """
-        return self.not_ready + self.failed
+        return self.not_ready + self.failed + self.tenants_failed
 
     def plus(self, other: HorizonPass) -> HorizonPass:
         return HorizonPass(
@@ -98,6 +104,7 @@ class HorizonPass:
             already_planned=self.already_planned + other.already_planned,
             not_ready=self.not_ready + other.not_ready,
             failed=self.failed + other.failed,
+            tenants_failed=self.tenants_failed + other.tenants_failed,
         )
 
     def as_log_fields(self) -> dict[str, int]:
@@ -107,6 +114,7 @@ class HorizonPass:
             "already_planned": self.already_planned,
             "not_ready": self.not_ready,
             "failed": self.failed,
+            "tenants_failed": self.tenants_failed,
         }
 
 

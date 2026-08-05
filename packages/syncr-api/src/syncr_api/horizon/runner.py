@@ -12,10 +12,15 @@ computed at the END of a pass, when every tenant's zone has already been read, s
 costs nothing: the earliest midnight across tenants is the one that matters, because a tick serves
 all of them.
 
-**One transaction and one failure boundary per week.** A week whose assembly raises is counted and
-the weeks after it still run, and a week's revision and its version bump either both land or neither
-does. Counted rather than only logged, because a contained fault answers with a tally and a week
-failing every tick would otherwise leave every counter at zero while the duty reported healthy.
+**One transaction and one failure boundary per week, and one per TENANT.** A week whose assembly
+raises is counted and the weeks after it still run, and a week's revision and its version bump
+either both land or neither does. A tenant whose zone or horizon cannot be read is counted too, and
+the tenants after it still run: without that boundary one corrupt stored ``home_zone`` would abort
+the pass before it reached the gauge, leaving the gauge at whatever it last held. On a fresh process
+that is zero, and ``HorizonNotMaintained`` fires above zero, so the alert could not fire for a duty
+failing on every pass. Counted rather than only logged, because a contained fault answers with a
+tally and a week or a tenant failing every tick would otherwise leave every counter at zero while
+the duty reported healthy.
 
 **The FIRST tick schedules rather than plans.** A process that restarts often would otherwise run a
 pass on every boot, and a pass reads a revision per horizon week per tenant.
@@ -25,12 +30,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from prometheus_client import Counter
+
 from syncr_api.accounts.repository import TenantRepository
 from syncr_api.horizon.config import MAINTAINER_INTERVAL, MaintainerDuty
 from syncr_api.horizon.maintainer import HorizonPass, PlanHorizonMaintainer
 from syncr_api.horizon.metrics import HORIZON_WEEKS_WITHOUT_PLAN, MAINTAINER_TICK_DURATION
 from syncr_api.horizon.weeks import next_local_midnight
 from syncr_common.logging import get_logger
+from syncr_common.metrics import REGISTRY
 
 if TYPE_CHECKING:
     from datetime import datetime, timedelta
@@ -39,6 +47,15 @@ if TYPE_CHECKING:
     from syncr_api.worker.main import WorkerContext
     from syncr_domain.identifiers import TenantId
     from syncr_domain.weeks import IsoWeek
+
+# A tenant whose horizon could not be read at all. Contained, so it reaches neither the loop's own
+# failure counter nor `measured`: a fault that answers with a tally is invisible unless something
+# counts it. `18-observability.md` defines no alert on this family yet, which ticket 54 owns.
+TENANT_PASS_FAILURES = Counter(
+    "syncr_horizon_tenant_failures_total",
+    "Plan horizon passes that raised for one tenant before reaching its weeks.",
+    registry=REGISTRY,
+)
 
 _log = get_logger("syncr.horizon")
 
@@ -85,25 +102,37 @@ class PlanHorizonRunner:
         for tenant_id in tenants:
             tally, midnight = await self._tenant(context, tenant_id, now=now)
             total = total.plus(tally)
-            midnights.append(midnight)
+            if midnight is not None:
+                midnights.append(midnight)
 
         HORIZON_WEEKS_WITHOUT_PLAN.set(total.without_a_plan)
-        if total.weeks:
+        if total.weeks or total.tenants_failed:
             _log.info("horizon.pass.completed", **total.as_log_fields())
         return min([now + self._interval, *midnights])
 
     async def _tenant(
         self, context: WorkerContext, tenant_id: TenantId, *, now: datetime
-    ) -> tuple[HorizonPass, datetime]:
+    ) -> tuple[HorizonPass, datetime | None]:
         """One tenant's horizon, week by week, and when its local date next changes.
 
         The zone and the week list are read in a session of their own and each week is then planned
         in a transaction of its own, so a week that fails rolls back its own write and nothing else.
+
+        That read is contained too, and it is the one fault that would otherwise abort the whole
+        pass: ``local_date`` resolves the stored ``home_zone`` through the zone layer, which refuses
+        an identifier it does not know. Answers with no midnight in that case, because a tenant
+        whose zone cannot be read has no knowable midnight either, so the interval is the only bound
+        left.
         """
-        async with context.database.sessionmaker() as reader:
-            maintainer = PlanHorizonMaintainer(reader, tenant_id, self._clock)
-            zone = await maintainer.home_zone()
-            weeks = await maintainer.weeks_in_the_horizon(now=now, zone=zone)
+        try:
+            async with context.database.sessionmaker() as reader:
+                maintainer = PlanHorizonMaintainer(reader, tenant_id, self._clock)
+                zone = await maintainer.home_zone()
+                weeks = await maintainer.weeks_in_the_horizon(now=now, zone=zone)
+        except Exception:  # noqa: BLE001 - one tenant's fault must not stop the others
+            TENANT_PASS_FAILURES.inc()
+            _log.exception("horizon.tenant.failed", tenant_id=str(tenant_id))
+            return HorizonPass(tenants_failed=1), None
 
         total = HorizonPass()
         for iso_week in weeks:

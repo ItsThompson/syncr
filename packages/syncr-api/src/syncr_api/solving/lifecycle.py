@@ -2,8 +2,9 @@
 
 The lifecycle has one home so the state machine has one enforcement. Four callers step an operation
 today -- a forced calendar sync that does its own work inline, the plan horizon maintainer, the
-reaper, and the retry -- and the solve coordinator makes five. Each of them carrying its own reading
-of the machine is a machine that holds until two of them disagree.
+reaper, and the retry -- and the solve coordinator makes five. Which steps exist, and why the reaper
+needs no step of its own, are :mod:`syncr_api.solving.transitions`, which owns the machine and
+states that argument once.
 
 **It takes no principal, and that is why it is not the module's service.** Every caller is either
 the worker, which has no credential, or a request-facing service that has already authorized the
@@ -49,7 +50,7 @@ from syncr_api.solving.config import (
     SUPERSEDED,
     OperationKind,
 )
-from syncr_api.solving.errors import IllegalTransition
+from syncr_api.solving.errors import OperationMovedOn, OperationNotFound
 from syncr_api.solving.outcomes import Failed, Outcome, Succeeded, Superseded
 from syncr_api.solving.transitions import may_retry
 from syncr_common.logging import get_logger
@@ -195,8 +196,11 @@ class OperationLifecycle:
     async def _held(self, operation_id: OperationId) -> OperationRecord:
         held = await self._operations.find(operation_id)
         if held is None:
-            raise IllegalTransition(
-                f"operation {operation_id} is not one of this tenant's, so it cannot be stepped"
+            raise OperationNotFound(
+                f"operation {operation_id} is not one of this tenant's, so it cannot be stepped",
+                operation_id=operation_id,
+                held=None,
+                attempted=FAILED,
             )
         return held
 
@@ -205,15 +209,26 @@ class OperationLifecycle:
     ) -> OperationRecord:
         """The stepped row, or a stated refusal naming the status the row was actually in.
 
-        The write is what decides legality, so this reads the row only to REPORT a refusal: a step
-        that applied to nothing is either a race, which the status names, or a step the machine
-        does not have, which is a defect in the caller.
+        The write is what decides legality, so this reads the row only to REPORT a refusal, and the
+        two refusals are different types because a caller can usually tell them apart: an absent row
+        was never raced into existence, and a row holding another status may have been stepped by
+        something else since this caller read it.
         """
         if stepped is not None:
             return stepped
         held = await self._operations.find(operation_id)
-        at = "no row of this tenant" if held is None else repr(held.status)
-        raise IllegalTransition(
-            f"operation {operation_id} cannot become {to!r} from {at}: the status set is a state "
-            "machine, and a step it does not name would overwrite a state something else committed"
+        if held is None:
+            raise OperationNotFound(
+                f"operation {operation_id} cannot become {to!r}: this tenant has no such row",
+                operation_id=operation_id,
+                held=None,
+                attempted=to,
+            )
+        raise OperationMovedOn(
+            f"operation {operation_id} cannot become {to!r} from {held.status!r}: the status set "
+            "is a state machine, and a step it does not name would overwrite a state something "
+            "else committed",
+            operation_id=operation_id,
+            held=held.status,
+            attempted=to,
         )

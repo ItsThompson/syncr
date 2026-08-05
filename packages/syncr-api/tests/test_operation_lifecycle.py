@@ -47,9 +47,9 @@ from syncr_api.solving.config import (
     SUCCEEDED_RETENTION,
     SUPERSEDED,
 )
-from syncr_api.solving.errors import IllegalTransition
+from syncr_api.solving.errors import IllegalTransition, OperationMovedOn, OperationNotFound
 from syncr_api.solving.lifecycle import OperationLifecycle
-from syncr_api.solving.maintenance import OperationMaintenance
+from syncr_api.solving.maintenance import OperationMaintenance, maintenance_for
 from syncr_api.solving.outcomes import Failed, Succeeded, Superseded
 from syncr_api.solving.reporting import STATEMENT_BY_STATUS, statement
 from syncr_api.solving.repository import OperationRepository
@@ -243,7 +243,7 @@ async def test_a_pending_operation_cannot_succeed_without_running(
 ) -> None:
     created = await enqueued(sessions, lifecycle)
 
-    with pytest.raises(IllegalTransition, match=f"cannot become '{SUCCEEDED}' from '{PENDING}'"):
+    with pytest.raises(OperationMovedOn, match=f"cannot become '{SUCCEEDED}' from '{PENDING}'"):
         await stepped(sessions, lifecycle, lambda one: one.finish(created.id, Succeeded()))
 
 
@@ -254,7 +254,7 @@ async def test_a_succeeded_operation_cannot_be_claimed_again(
     await stepped(sessions, lifecycle, lambda one: one.claim(created.id))
     await stepped(sessions, lifecycle, lambda one: one.finish(created.id, Succeeded()))
 
-    with pytest.raises(IllegalTransition, match=f"from '{SUCCEEDED}'"):
+    with pytest.raises(OperationMovedOn, match=f"from '{SUCCEEDED}'"):
         await stepped(sessions, lifecycle, lambda one: one.claim(created.id))
 
 
@@ -275,7 +275,8 @@ async def test_a_pending_operation_may_be_superseded_by_an_immediate_request(
 async def test_another_tenants_operation_cannot_be_stepped(
     sessions: async_sessionmaker[AsyncSession], lifecycle: Lifecycle
 ) -> None:
-    with pytest.raises(IllegalTransition, match="no row of this tenant"):
+    """An absent row is a caller defect and has its own type: nothing races one into existence."""
+    with pytest.raises(OperationNotFound, match="this tenant has no such row"):
         await stepped(sessions, lifecycle, lambda one: one.claim(uuid4()))
 
 
@@ -427,7 +428,7 @@ async def test_an_abandoned_claim_comes_back_with_its_attempt_raised(
     clock.advance(LEASE + timedelta(seconds=1))
 
     async with sessions() as session, session.begin():
-        swept = await OperationMaintenance(session, clock).sweep()
+        swept = await maintenance_for(session, owner.tenant_id, clock).sweep()
 
     assert swept.reaped == 1
     reaped = await held(sessions, owner, created.id)
@@ -446,7 +447,7 @@ async def test_a_claim_inside_its_lease_is_left_alone(
     clock.advance(LEASE - timedelta(seconds=1))
 
     async with sessions() as session, session.begin():
-        swept = await OperationMaintenance(session, clock).sweep()
+        swept = await maintenance_for(session, owner.tenant_id, clock).sweep()
 
     assert swept.reaped == 0
     still_claimed = await held(sessions, owner, created.id)
@@ -469,14 +470,17 @@ async def test_an_abandoned_claim_on_its_last_attempt_stops_retrying(
         await stepped(sessions, lifecycle, lambda one: one.claim(created.id))
         clock.advance(LEASE + timedelta(seconds=1))
         async with sessions() as session, session.begin():
-            await OperationMaintenance(session, clock).sweep()
+            await maintenance_for(session, owner.tenant_id, clock).sweep()
 
     spent = await held(sessions, owner, created.id)
     assert (spent.status, spent.attempt) == (FAILED, MAX_ATTEMPTS)
 
 
 async def test_the_sweep_prunes_a_succeeded_operation_past_thirty_days(
-    sessions: async_sessionmaker[AsyncSession], lifecycle: Lifecycle, clock: Ticking
+    sessions: async_sessionmaker[AsyncSession],
+    lifecycle: Lifecycle,
+    clock: Ticking,
+    owner: UserRecord,
 ) -> None:
     created = await enqueued(sessions, lifecycle)
     await stepped(sessions, lifecycle, lambda one: one.claim(created.id))
@@ -484,13 +488,16 @@ async def test_the_sweep_prunes_a_succeeded_operation_past_thirty_days(
     clock.advance(SUCCEEDED_RETENTION + timedelta(seconds=1))
 
     async with sessions() as session, session.begin():
-        swept = await OperationMaintenance(session, clock).sweep()
+        swept = await maintenance_for(session, owner.tenant_id, clock).sweep()
 
     assert swept.pruned == 1
 
 
 async def test_the_sweep_keeps_a_failure_for_ninety_days(
-    sessions: async_sessionmaker[AsyncSession], lifecycle: Lifecycle, clock: Ticking
+    sessions: async_sessionmaker[AsyncSession],
+    lifecycle: Lifecycle,
+    clock: Ticking,
+    owner: UserRecord,
 ) -> None:
     """A failure is diagnostic, so it outlives a success by two months rather than by nothing."""
     created = await enqueued(sessions, lifecycle)
@@ -504,10 +511,10 @@ async def test_the_sweep_keeps_a_failure_for_ninety_days(
     clock.advance(SUCCEEDED_RETENTION + timedelta(days=1))
 
     async with sessions() as session, session.begin():
-        kept = await OperationMaintenance(session, clock).sweep()
+        kept = await maintenance_for(session, owner.tenant_id, clock).sweep()
     clock.advance(FAILED_RETENTION - SUCCEEDED_RETENTION)
     async with sessions() as session, session.begin():
-        taken = await OperationMaintenance(session, clock).sweep()
+        taken = await maintenance_for(session, owner.tenant_id, clock).sweep()
 
     assert (kept.pruned, taken.pruned) == (0, 1)
 
@@ -523,7 +530,7 @@ async def test_the_sweep_prunes_nothing_that_is_not_terminal(
     clock.advance(FAILED_RETENTION * 2)
 
     async with sessions() as session, session.begin():
-        swept = await OperationMaintenance(session, clock).sweep()
+        swept = await maintenance_for(session, owner.tenant_id, clock).sweep()
 
     assert swept.pruned == 0
     async with sessions() as session:
@@ -541,3 +548,140 @@ async def test_the_sweep_takes_only_the_statuses_the_windows_name(
     async with sessions() as session, session.begin():
         sweeps = OperationSweeps(session, owner.tenant_id)
         assert await sweeps.delete_finished_before(clock.at, statuses=(PENDING, RUNNING)) == 0
+
+
+# --------------------------------------------------------------------------------
+# Two callers racing on one row
+# --------------------------------------------------------------------------------
+
+
+async def test_only_one_of_two_concurrent_claimers_gets_the_operation(
+    sessions: async_sessionmaker[AsyncSession], lifecycle: Lifecycle, owner: UserRecord
+) -> None:
+    """The ticket's central atomicity claim, driven rather than reasoned about.
+
+    Legality is the ``WHERE`` clause of the step's own statement, so under READ COMMITTED Postgres
+    re-evaluates the qualification after taking the row lock: the loser matches zero rows. Asserted
+    over TWO SESSIONS, because a sequential pair of steps cannot tell that apart from a check
+    performed before the write, which is the shape this design exists to avoid.
+    """
+    created = await enqueued(sessions, lifecycle)
+
+    async with sessions() as first, sessions() as second:
+        async with first.begin():
+            winner = await lifecycle(first).claim(created.id)
+        with pytest.raises(OperationMovedOn) as refused:
+            async with second.begin():
+                await lifecycle(second).claim(created.id)
+
+    assert winner.status == RUNNING
+    assert refused.value.held == RUNNING, "the loser is told what the row actually holds"
+    assert refused.value.attempted == RUNNING
+    assert refused.value.operation_id == created.id
+
+
+async def test_only_one_of_two_concurrent_finishers_closes_the_operation(
+    sessions: async_sessionmaker[AsyncSession], lifecycle: Lifecycle, owner: UserRecord
+) -> None:
+    """The same property on the terminal step, which is the one the reaper races on."""
+    created = await enqueued(sessions, lifecycle)
+    await stepped(sessions, lifecycle, lambda one: one.claim(created.id))
+
+    async with sessions() as first, sessions() as second:
+        async with first.begin():
+            await lifecycle(first).finish(created.id, Succeeded())
+        with pytest.raises(OperationMovedOn) as refused:
+            async with second.begin():
+                await lifecycle(second).finish(created.id, Succeeded())
+
+    assert refused.value.held == SUCCEEDED
+    assert (await held(sessions, owner, created.id)).status == SUCCEEDED
+
+
+def test_the_two_refusals_are_different_types() -> None:
+    """Ticket 40's claim scan branches on this: a lost race is a skip, not a failure.
+
+    Both remain an ``IllegalTransition``, so a caller that does not care catches one type.
+    """
+    assert issubclass(OperationMovedOn, IllegalTransition)
+    assert issubclass(OperationNotFound, IllegalTransition)
+    assert not issubclass(OperationMovedOn, OperationNotFound)
+
+
+class MovedOnSweeps:
+    """A scan whose answer is already stale, which is what a lost race looks like from inside.
+
+    The race is a row changing between the reaper's scan and its write, and nothing outside a method
+    that owns both can interleave them. The scan is a database read, so substituting it is the
+    external boundary this suite is allowed to substitute; the prune goes to the real one, because
+    the assertion is that the prune still happens.
+    """
+
+    def __init__(self, real: OperationSweeps, stale: OperationRecord) -> None:
+        self._real = real
+        self._stale = stale
+
+    async def running_since_before(self, cutoff: datetime) -> list[OperationRecord]:
+        return [self._stale]
+
+    async def delete_finished_before(
+        self, cutoff: datetime, *, statuses: tuple[OperationStatus, ...]
+    ) -> int:
+        return await self._real.delete_finished_before(cutoff, statuses=statuses)
+
+
+async def test_a_reaper_that_loses_the_race_does_not_roll_back_the_prune(
+    sessions: async_sessionmaker[AsyncSession],
+    lifecycle: Lifecycle,
+    clock: Ticking,
+    owner: UserRecord,
+) -> None:
+    """The failure mode the runbook itself makes reachable: two concurrent sweeps.
+
+    `stuck-operation.md` tells an operator to run the sweep inside the live worker during an
+    incident, which is a second reaper by construction. Without a boundary per operation the loser's
+    refusal raises out of the whole transaction, taking every tenant's prune with it, and the
+    operator sees a traceback caused by following the instruction.
+    """
+    prunable = await enqueued(sessions, lifecycle)
+    await stepped(sessions, lifecycle, lambda one: one.claim(prunable.id))
+    await stepped(sessions, lifecycle, lambda one: one.finish(prunable.id, Succeeded()))
+    clock.advance(SUCCEEDED_RETENTION + timedelta(seconds=1))
+
+    # Already succeeded, so the reaper's write cannot apply to it: the state the other sweep left.
+    moved_on = await held(sessions, owner, prunable.id)
+
+    async with sessions() as session, session.begin():
+        swept = await OperationMaintenance(
+            MovedOnSweeps(OperationSweeps(session, owner.tenant_id), moved_on),  # type: ignore[arg-type]
+            OperationLifecycle(OperationRepository(session, owner.tenant_id), clock),
+            clock,
+        ).sweep()
+
+    assert swept.races_lost == 1, "the lost race is counted rather than raised"
+    assert swept.reaped == 0
+    assert swept.pruned == 1, "the prune still happened, which is what the boundary buys"
+
+
+async def test_the_reaper_race_test_would_fail_without_the_stale_answer(
+    sessions: async_sessionmaker[AsyncSession],
+    lifecycle: Lifecycle,
+    clock: Ticking,
+    owner: UserRecord,
+) -> None:
+    """The control: with the REAL scan the same row is not returned at all, so no race is driven.
+
+    Without this, a substituted scan that answered with nothing would make the test above pass while
+    asserting nothing about containment.
+    """
+    prunable = await enqueued(sessions, lifecycle)
+    await stepped(sessions, lifecycle, lambda one: one.claim(prunable.id))
+    await stepped(sessions, lifecycle, lambda one: one.finish(prunable.id, Succeeded()))
+    clock.advance(LEASE + timedelta(seconds=1))
+
+    async with sessions() as session:
+        expired = await OperationSweeps(session, owner.tenant_id).running_since_before(
+            clock.at - LEASE
+        )
+
+    assert expired == [], "a succeeded row is not running, so the real scan cannot return it"
