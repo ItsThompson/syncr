@@ -32,6 +32,7 @@ directory in both directions, because an index a reader cannot trust is worse th
 | ``candidates.py`` | the two kinds of content that bind late, and the demand each carries |
 | ``tiebreak.py`` | the total order candidates are offered in, ending in an identity |
 | ``attempt.py`` | what one solve has placed, left unfilled, and refused, and the log's bound |
+| ``chunking.py`` | how a divided task's pieces are numbered, and when each half is decided |
 | ``inheritance.py`` | the placements a solve inherits: derived, begun, and pinned |
 | ``elastic.py`` | how long an elastic occurrence is placed for, and what bounds the choice |
 | ``offering.py`` | one candidate plus one window into a checked, scored placement |

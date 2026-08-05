@@ -38,7 +38,8 @@ from syncr_domain.intervals import Interval
 from syncr_domain.plan import Block
 from syncr_domain.reasons import ReasonRecord
 from syncr_domain.snap import SNAP, SNAP_MINUTES, is_on_snap_grid, snap_to_grid
-from syncr_solver.attempt import Placed, chunk_ordinal
+from syncr_solver.attempt import Placed
+from syncr_solver.chunking import chunk_ordinal
 from syncr_solver.constraints import BlockedCandidate, ConstraintCheck
 from syncr_solver.elastic import sizes_for
 from syncr_solver.objective import evaluate

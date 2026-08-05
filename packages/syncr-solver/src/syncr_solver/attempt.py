@@ -21,14 +21,11 @@ Two rows per binding, which is exactly the clause budget's own figure for reject
 the bindings are the week's own content. So the log cannot grow with the number of windows tried,
 and the bound needs no arbitrary total: it is the week's content times two.
 
-## A divided task's chunk numbers are decided as pieces are placed, and one case is settled late
+## A divided task's chunk numbers are :mod:`syncr_solver.chunking`'s
 
-A chunk's number is the lowest one no piece of that task has taken, so the numbers are stable as
-the division grows and a pinned chunk keeps the number it already had. The one case placement
-cannot decide is a task that ends with a single piece: one chunk is the whole task, which the
-domain spells by carrying no chunk number at all, and whether a second piece follows is not known
-until the round after the first. So the number is dropped when the division turns out to hold one
-piece, and that is the only adjustment the document build makes.
+They are decided in two halves at two moments, one as a piece is placed and one when the document is
+built, and both live beside each other there rather than here: it is a distinct responsibility with
+its own question, and holding it here put two of them in one file.
 """
 
 from __future__ import annotations
@@ -36,9 +33,9 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final
 
-from syncr_domain.identity import BindingKind, BindingRef
 from syncr_domain.intervals import IntervalSet
-from syncr_domain.plan import MIN_SPLIT_COUNT, PlanDocument
+from syncr_domain.plan import PlanDocument
+from syncr_solver.chunking import numbered
 from syncr_solver.figures import claimed_intervals, week_figures
 from syncr_solver.ordering import block_key, slot_key
 from syncr_solver.reading import demand_key
@@ -49,6 +46,7 @@ if TYPE_CHECKING:
 
     from syncr_domain.gaps import EmptySlot
     from syncr_domain.identifiers import AreaId
+    from syncr_domain.identity import BindingRef
     from syncr_domain.intervals import Interval
     from syncr_domain.plan import Block
     from syncr_solver.constraints import BlockedCandidate
@@ -180,8 +178,8 @@ class Attempt:
         return replace(self, log=self.log.with_rows(rows))
 
     def blocks(self) -> tuple[Block, ...]:
-        """This attempt's blocks, with a lone chunk's number dropped, in span order."""
-        return tuple(sorted(_numbered(self.placements), key=block_key))
+        """This attempt's blocks, with each division's numbers settled, in span order."""
+        return tuple(sorted(numbered(self.placements), key=block_key))
 
     def document(self) -> PlanDocument:
         """The plan this attempt describes, with the three figures taken over it."""
@@ -272,94 +270,3 @@ class Attempt:
         """
         claimed = claimed_intervals([held.block for held in self.placements])
         return self.state.discretionary().subtract(claimed).after(self.inputs.now).members
-
-
-def chunk_ordinal(placements: Sequence[Placed], binding: BindingRef) -> int:
-    """The number the next piece of this task takes: the lowest no piece of it has taken.
-
-    Lowest rather than next, so a pin holding chunk 2 does not push the pieces a solve places
-    around it to 3 and 4, and so re-placing one task twice in a search produces the same numbers.
-
-    **A piece carrying no number occupies number zero.** One chunk is the whole task, which the
-    domain spells by carrying no number at all, so a piece placed beside such a block has to start
-    at one: read as unoccupied, the two would derive one identity between them and the document
-    would refuse the pair.
-    """
-    wanted = demand_key(binding)
-    taken = {
-        0 if held.block.binding.split_index is None else held.block.binding.split_index
-        for held in placements
-        if demand_key(held.block.binding) == wanted
-    }
-    ordinal = 0
-    while ordinal in taken:
-        ordinal += 1
-    return ordinal
-
-
-def _numbered(placements: Sequence[Placed]) -> tuple[Block, ...]:
-    """These blocks, with a lone chunk's number dropped because one chunk is the whole task.
-
-    Only a placement THIS solve chose is renumbered. An inherited block keeps its stored identity
-    and its stored count, which is the whole point of inheriting one: rewriting a pinned chunk's
-    binding would change its id, and the pin would stop naming the block it pins.
-
-    So this settles the one thing placement could not know, which is whether a second piece
-    followed. A piece placed first carries no number, because most tasks are placed whole; it gains
-    number zero once a second piece exists.
-    """
-    pieces = _pieces_per_task(placements)
-    highest = _highest_chunk(placements)
-    return tuple(_renumbered(held, pieces, highest) for held in placements)
-
-
-def _pieces_per_task(placements: Sequence[Placed]) -> Mapping[DemandKey, int]:
-    found: dict[DemandKey, int] = {}
-    for held in placements:
-        if held.block.binding.kind is not BindingKind.TASK:
-            continue
-        key = demand_key(held.block.binding)
-        found[key] = found.get(key, 0) + 1
-    return found
-
-
-def _highest_chunk(placements: Sequence[Placed]) -> Mapping[DemandKey, int]:
-    found: dict[DemandKey, int] = {}
-    for held in placements:
-        index = held.block.binding.split_index
-        if index is None:
-            continue
-        key = demand_key(held.block.binding)
-        found[key] = max(found.get(key, 0), index)
-    return found
-
-
-def _renumbered(
-    held: Placed, pieces: Mapping[DemandKey, int], highest: Mapping[DemandKey, int]
-) -> Block:
-    """One block as the document holds it: numbered where the task turned out to be divided.
-
-    ``split_count`` is the highest number the division occupies rather than the number of pieces it
-    holds. The two are equal wherever the numbers run from zero, and they differ when a pin holds a
-    high chunk while the pieces around it were re-placed, which renders a sparse count: ticket 1370
-    carries that.
-    """
-    block = held.block
-    if not held.chosen or block.binding.kind is not BindingKind.TASK:
-        return block
-    key = demand_key(block.binding)
-    if pieces.get(key, 0) < MIN_SPLIT_COUNT:
-        return (
-            block
-            if block.binding.split_index is None
-            else replace(
-                block, binding=BindingRef.for_task(block.binding.entity_id), split_count=None
-            )
-        )
-    index = block.binding.split_index or 0
-    count = max(highest.get(key, 0) + 1, pieces[key])
-    return replace(
-        block,
-        binding=BindingRef.for_task(block.binding.entity_id, split_index=index),
-        split_count=count,
-    )
