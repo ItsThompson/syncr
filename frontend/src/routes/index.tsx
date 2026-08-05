@@ -20,7 +20,7 @@ import { SettingsRoute } from "./settings";
 import { SetupRoute } from "./setup";
 import { SignInRoute } from "./SignInRoute";
 import { TemplatesRoute } from "./templates";
-import { TodayRoute } from "./TodayRoute";
+import { TodayRoute } from "./today";
 import { WeekRoute } from "./WeekRoute";
 
 export const routes: RouteObject[] = [
