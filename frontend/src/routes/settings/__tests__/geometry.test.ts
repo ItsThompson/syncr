@@ -43,13 +43,11 @@ describe("the grid height a window leaves", () => {
     expect(zoomCapHours(gridHeightFor(100))).toBe(ZOOM_MIN_HOURS);
   });
 
-  /* The 13 inch reference display is the one section 15 measures, so the allowance has to leave a grid that caps
-   * where section 15 says it does. This is what pins the constant to something other than taste. */
-  it("leaves the 13 inch reference display capping inside the range section 15 records", () => {
-    const cap = zoomCapHours(gridHeightFor(900));
-
-    expect(cap).toBeGreaterThanOrEqual(ZOOM_MIN_HOURS);
-    expect(cap).toBeLessThanOrEqual(16);
+  /* The 13 inch reference display is the one section 15 measures, and its row is the check on the allowance: a
+   * 900px window has to leave a grid that caps where section 15 says a 13 inch display caps, which is 16 hours. */
+  it("leaves the 13 inch reference window capping where section 15 says it does", () => {
+    expect(gridHeightFor(900)).toBe(636);
+    expect(zoomCapHours(gridHeightFor(900))).toBe(16);
   });
 });
 

@@ -28,19 +28,35 @@ import {
 const MODAL_BLOCK_MINUTES = 30;
 const MINUTES_IN_HOUR = 60;
 
+/* WHAT THE WEEK SCREEN'S CHROME COSTS, above and below the grid, part by part.
+ *
+ * Every figure is measured in Chrome at a 1440x900 viewport against the shell as it stands, or read from the token
+ * that sets it. A sum by parts rather than one number, so a reader can check each one and see which changed when a
+ * band's height does.
+ *
+ * The sum is checkable against section 15's own table: a 900px window leaves a 636px grid, which caps at 16 hours,
+ * and 16 is what section 15 records for the 13 inch reference display. `__tests__/geometry.test.ts` asserts that. */
+
+/** The top bar: `--h-control` for the notice slot, `py-2` either side, and its bottom hairline. */
+const TOP_BAR_PX = 26 + 8 + 8 + 1;
+/** The page band: the serif title at `--fs-title` and `--lh-tight`, `py-2.75` either side, and its hairline. */
+const PAGE_BAND_PX = 40 + 11 + 11 + 1;
+/** The main region's own `py-5`, and the route band's body `py-3.25`. */
+const ROUTE_PADDING_PX = 20 + 20 + 13 + 13;
+/** `--strip-h`: the summary and verdict strip, pinned above the grid at a reserved height. */
+const STRIP_PX = 64;
+/** `--day-header-h`: the seven day headers above the columns. */
+const DAY_HEADER_PX = 28;
+
 /**
- * What the Week screen's chrome costs, above and below the grid, in CSS pixels.
+ * What the window loses to chrome before a grid is drawn in it.
  *
- * MEASURED in Chrome at a 1440x900 viewport against the shell as it stands: the top bar at 44px, the page band
- * at 61px, the summary strip at `--strip-h`, the day-header row at `--day-header-h`, and the main region's own
- * vertical padding. Recorded as one figure because it is one question, "how much of the window is not grid",
- * and because a sum of five tokens read from TypeScript would be five more mirrors to keep true.
- *
- * It is deliberately the LARGER reading of the chrome. Overstating it understates the cap, which offers one
- * zoom level fewer than the display could carry; understating it would offer a level at which the modal block
- * loses its title, which is the thing the cap exists to prevent.
+ * It is deliberately the LARGER reading. Overstating it understates the cap, which offers one zoom level fewer than
+ * the display could carry; understating it would offer a level at which the modal block loses its title, which is
+ * the thing the cap exists to prevent.
  */
-export const WEEK_CHROME_ALLOWANCE_PX = 274;
+export const WEEK_CHROME_ALLOWANCE_PX =
+  TOP_BAR_PX + PAGE_BAND_PX + ROUTE_PADDING_PX + STRIP_PX + DAY_HEADER_PX;
 
 /**
  * The deepest zoom a grid of this height can carry with a thirty-minute block still labelled.
