@@ -34,7 +34,7 @@ product, because the token source records the expiry where it discovers it.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import httpx
@@ -44,7 +44,7 @@ from syncr_api.calendars.config import GOOGLE, WRITE_TARGET
 from syncr_api.calendars.google_adapter import GoogleAdapter
 from syncr_api.calendars.google_backoff import BackoffPolicy
 from syncr_api.calendars.google_client import GoogleCalendarClient
-from syncr_api.calendars.google_config import MAX_PAGE_BYTES
+from syncr_api.calendars.google_config import MAX_PAGE_BYTES, WRITE_DEADLINE_SECONDS
 from syncr_api.calendars.google_events import (
     DELETE,
     PATCH,
@@ -140,17 +140,25 @@ def theirs(identifier: str = "evt-theirs") -> dict[str, object]:
     )
 
 
-def a_writer(transport: RecordedGoogleWrites) -> GoogleEventWriter:
+def a_writer(
+    transport: RecordedGoogleWrites, *, tokens: FixedTokens | None = None
+) -> GoogleEventWriter:
+    """A writer whose waits are injected: a real one would sleep out a backoff under a defect."""
+
     async def sleep(_seconds: float) -> None:
         return None
 
     return GoogleEventWriter(
-        transport=transport, tokens=FixedTokens(), backoff=BackoffPolicy(), sleep=sleep
+        transport=transport, tokens=tokens or FixedTokens(), backoff=BackoffPolicy(), sleep=sleep
     )
 
 
 def an_adapter(
-    reads: Sequence[GoogleResponse], writes: EventWriting, *, tokens: FixedTokens | None = None
+    reads: Sequence[GoogleResponse],
+    writes: EventWriting,
+    *,
+    tokens: FixedTokens | None = None,
+    write_deadline_seconds: float = WRITE_DEADLINE_SECONDS,
 ) -> GoogleAdapter:
     async def sleep(_seconds: float) -> None:
         return None
@@ -166,6 +174,7 @@ def an_adapter(
         horizon=HORIZON,
         clock=lambda: NOW,
         writes=writes,
+        write_deadline_seconds=write_deadline_seconds,
     )
 
 
@@ -454,7 +463,7 @@ async def test_a_dead_grant_refuses_the_write_and_names_the_repair() -> None:
     written = RecordedGoogleWrites()
     google = an_adapter(
         [ok(events_page(mine(identifier="evt-stale")))],
-        GoogleEventWriter(transport=written, tokens=tokens),
+        a_writer(written, tokens=tokens),
     )
 
     with pytest.raises(ProjectionFailed, match="granted again"):
@@ -468,7 +477,7 @@ async def test_every_write_asks_for_a_token_of_its_own() -> None:
     """A pass two hundred events long must not run its last write on a token that expired."""
     tokens = FixedTokens()
     written = RecordedGoogleWrites()
-    google = an_adapter([ok(events_page())], GoogleEventWriter(transport=written, tokens=tokens))
+    google = an_adapter([ok(events_page())], a_writer(written, tokens=tokens))
 
     await google.reconcile(TARGET, [intended(), intended(OTHER_KEY, title="Leetcode", hour=20)])
 
@@ -488,6 +497,75 @@ async def test_either_shape_of_success_counts_as_applied(answer: GoogleResponse)
     result = await google.reconcile(TARGET, [intended()])
 
     assert result.inserted == 1
+
+
+async def test_a_reconciliation_that_overruns_its_deadline_states_what_it_applied() -> None:
+    """The pass most likely to reach the deadline is the first projection of a full horizon.
+
+    Left uncaught, a ``TimeoutError`` here reaches the runner's contained-fault boundary: no error
+    on the write target, therefore no banner, no duration and no event observation, and the counts
+    that landed discarded. The read path's own deadline states its failure, and so does this one.
+    """
+    written = RecordedGoogleWrites(stall_after=1, stall_seconds=0.2)
+    google = an_adapter([ok(events_page())], a_writer(written), write_deadline_seconds=0.05)
+
+    with pytest.raises(ProjectionFailed, match="stopped after 0s without finishing") as failure:
+        await google.reconcile(TARGET, [intended(), intended(OTHER_KEY, title="Leetcode", hour=20)])
+
+    # The first insert landed and is reported; the second was still in flight when time ran out.
+    assert failure.value.applied.inserted == 1
+    assert PREVIOUS_PROJECTION_STANDS in str(failure.value)
+
+
+async def test_a_reconciliation_inside_its_deadline_is_not_stopped() -> None:
+    """The control on the assertion above: the same stall, under a deadline that accommodates it."""
+    written = RecordedGoogleWrites(stall_after=1, stall_seconds=0.01)
+    google = an_adapter([ok(events_page())], a_writer(written), write_deadline_seconds=5.0)
+
+    result = await google.reconcile(
+        TARGET, [intended(), intended(OTHER_KEY, title="Leetcode", hour=20)]
+    )
+
+    assert result.inserted == 2
+
+
+# --------------------------------------------------------------------------------
+# An event on the target whose span syncr cannot read
+# --------------------------------------------------------------------------------
+
+
+def unreadable(identifier: str, *, key: str | None = None) -> dict[str, Any]:
+    """One event the provider states with a timestamp syncr refuses.
+
+    A naive date-time is the dangerous case rather than an absurd one: Python parses it, and
+    reading it as UTC would misplace the event by up to thirteen hours, so the read path refuses it.
+    """
+    payload = event(identifier, start="2026-02-09T18:00:00", end="2026-02-09T19:00:00")
+    if key is not None:
+        payload["extendedProperties"] = {"private": {SYNCR_KEY_PROPERTY: key}}
+    return payload
+
+
+async def test_an_event_with_an_unreadable_span_and_no_key_is_removed_as_drift() -> None:
+    google, written = projecting(unreadable("evt-odd"))
+
+    result = await google.reconcile(TARGET, [])
+
+    assert written.methods() == [DELETE]
+    assert result.foreign_deleted == 1
+
+
+async def test_an_event_with_an_unreadable_span_and_syncrs_key_is_rewritten() -> None:
+    """It carries the key, so it is the event syncr means; the span it holds is not one syncr can
+    compare, so it cannot match what syncr intends and is patched back to it."""
+    google, written = projecting(unreadable("evt-odd", key=KEY))
+
+    result = await google.reconcile(TARGET, [intended()])
+
+    assert written.methods() == [PATCH]
+    assert written.writes[0].url.endswith("/evt-odd")
+    assert result.patched == 1
+    assert result.unchanged == 0
 
 
 # --------------------------------------------------------------------------------

@@ -19,6 +19,7 @@ against itself; the tests count what the adapter produced.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -201,6 +202,10 @@ class RecordedGoogleWrites:
     fail_after: int | None = None
     failure: GoogleResponse = field(default_factory=lambda: failed(503))
     raises: Exception | None = None
+    # How long each write past `stall_after` takes. A reconciliation that overruns its deadline part
+    # way through a destructive write has its own stated failure, and this is what drives it.
+    stall_after: int | None = None
+    stall_seconds: float = 0.0
     writes: list[Write] = field(default_factory=list)
 
     async def send(
@@ -209,6 +214,8 @@ class RecordedGoogleWrites:
         self.writes.append(Write(method=method, url=url, token=token, body=body))
         if self.raises is not None:
             raise self.raises
+        if self.stall_after is not None and len(self.writes) > self.stall_after:
+            await asyncio.sleep(self.stall_seconds)
         if self.fail_after is not None and len(self.writes) > self.fail_after:
             return self.failure
         if method in self.by_method:

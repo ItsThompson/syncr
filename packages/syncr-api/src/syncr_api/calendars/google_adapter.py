@@ -128,12 +128,17 @@ class GoogleAdapter:
         horizon: Interval,
         clock: Clock,
         writes: EventWriting,
+        write_deadline_seconds: float = WRITE_DEADLINE_SECONDS,
     ) -> None:
         self._client = client
         self._profile = profile
         self._horizon = horizon
         self._clock = clock
         self._writes = writes
+        # A parameter for the same reason the read client's deadline is one: the deadline is
+        # behaviour under test, and a test that had to wait out the real one would spend ninety
+        # seconds per assertion.
+        self._write_deadline = write_deadline_seconds
 
     @measured("google_adapter")
     async def list_calendars(self) -> CalendarsAnswer:
@@ -226,37 +231,62 @@ class GoogleAdapter:
         Sequential rather than concurrent, deliberately. Concurrency would make the set of writes
         that landed before a failure non-deterministic, and this is the one path in the product
         whose partial state is a real calendar on a real phone.
+
+        **The deadline has a stated failure, exactly as the read's does.** Left uncaught, a
+        reconciliation stopped part way through a destructive write would raise past every arm that
+        records anything: no error on the target, so no banner; no duration and no event
+        observation, so the projection's own metrics would say nothing; and the counts that DID land
+        discarded, which is the one figure a partially written calendar is diagnosed from. The pass
+        most likely to reach it is the FIRST projection of a full horizon, a couple of hundred
+        sequential writes.
         """
         counts = dict.fromkeys(ProjectionAction, 0)
-        calendar_id = target.external_id
-        async with asyncio.timeout(WRITE_DEADLINE_SECONDS):
-            for patch in plan.patches:
-                await self._one(
-                    writer.patch(calendar_id, patch.event_id, patch.intended),
-                    counts,
-                    ProjectionAction.PATCHED,
-                    plan,
-                    started,
-                )
-            for insert in plan.inserts:
-                await self._one(
-                    writer.insert(calendar_id, insert),
-                    counts,
-                    ProjectionAction.INSERTED,
-                    plan,
-                    started,
-                )
-            for removal in plan.deletes:
-                await self._one(
-                    writer.delete(calendar_id, removal.event_id),
-                    counts,
-                    ProjectionAction.FOREIGN_DELETED
-                    if removal.foreign
-                    else ProjectionAction.DELETED,
-                    plan,
-                    started,
-                )
+        try:
+            async with asyncio.timeout(self._write_deadline):
+                await self._sent(plan, counts, writer=writer, target=target, started=started)
+        except TimeoutError:
+            raise ProjectionFailed(
+                f"the reconciliation was stopped after {self._write_deadline:.0f}s without "
+                "finishing, so part of the plan reached the calendar and part did not.",
+                applied=_result(counts, plan, started),
+            ) from None
         return _result(counts, plan, started)
+
+    async def _sent(
+        self,
+        plan: ReconciliationPlan,
+        counts: dict[ProjectionAction, int],
+        *,
+        writer: GoogleEventWriter,
+        target: CalendarSourceRecord,
+        started: float,
+    ) -> None:
+        """The plan's three arms, in the order it states them, counting each write as it lands."""
+        calendar_id = target.external_id
+        for patch in plan.patches:
+            await self._one(
+                writer.patch(calendar_id, patch.event_id, patch.intended),
+                counts,
+                ProjectionAction.PATCHED,
+                plan,
+                started,
+            )
+        for insert in plan.inserts:
+            await self._one(
+                writer.insert(calendar_id, insert),
+                counts,
+                ProjectionAction.INSERTED,
+                plan,
+                started,
+            )
+        for removal in plan.deletes:
+            await self._one(
+                writer.delete(calendar_id, removal.event_id),
+                counts,
+                ProjectionAction.FOREIGN_DELETED if removal.foreign else ProjectionAction.DELETED,
+                plan,
+                started,
+            )
 
     async def _one(
         self,
