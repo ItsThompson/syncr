@@ -21,6 +21,16 @@ export interface Write<Body> {
   readonly submit: (body: Body) => Promise<boolean>;
   /** The last refusal, or null when nothing has been refused since the last successful write. */
   readonly problem: Problem | null;
+  /**
+   * Forget the last refusal, for a caller whose ONE write serves several rows.
+   *
+   * A refusal is the last one whatever produced it, which is right for a form: it stands until the reader fixes
+   * the member it names. It is wrong for a table where one write serves every row, because the refusal outlives
+   * the row that caused it and then appears inside another row's editor, naming an Area the reader never
+   * touched. The caller that knows which row is open is the one that can say when the refusal stopped being
+   * true, so this is a control the caller reaches for rather than a rule the hook invents.
+   */
+  readonly clear: () => void;
 }
 
 /**
@@ -39,7 +49,7 @@ export function useWrite<Body>(perform: (body: Body) => Promise<Problem | null>)
     return refusal === null;
   };
 
-  return { submit, problem };
+  return { submit, problem, clear: () => setProblem(null) };
 }
 
 /**

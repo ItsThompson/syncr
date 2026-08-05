@@ -29,5 +29,8 @@ export function writeDouble<Body>(problem: Problem | null = null): WriteDouble<B
     bodies.push(body);
     return problem === null;
   });
-  return { write: { submit, problem }, bodies };
+  /* `clear` is a no-op here rather than mutable state: the double stands in for the SEAM, and what a form can
+   * get wrong is the body it submits. Which caller forgets a refusal is the route's decision, asserted where
+   * the route is. */
+  return { write: { submit, problem, clear: () => {} }, bodies };
 }

@@ -18,7 +18,9 @@
  * which is why the hooks return a discriminated reading rather than independent booleans.
  *
  * WHICH PREFERENCE CELL IS OPEN IS THE ONLY STATE THIS SCREEN HOLDS. One at a time, held as the Area's id or
- * null rather than as a boolean per row, so two open editors are not representable. */
+ * null rather than as a boolean per row, so two open editors are not representable. Changing the open row also
+ * FORGETS the last refusal: the two preference writes are one hook each, shared by every row, so a refusal about
+ * one Area would otherwise appear inside the next Area's editor, naming something the reader never touched. */
 
 import { useState, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
@@ -58,6 +60,14 @@ export function AreasRoute() {
   const applyRevision = useBudgetRevision(period);
 
   const reading = readingOf({ Areas: areas, review, preferences });
+
+  /* The route owns which row is open, so it is the one place that knows when a refusal has stopped being about
+   * the row on screen. */
+  const openRow = (areaId: string | null) => {
+    declarePreference.clear();
+    removePreference.clear();
+    setEditingAreaId(areaId);
+  };
 
   /* The band is drawn above whatever the state is, so the destination names itself while the figures are still
    * coming. The mode gets none of it: its own header is what a mode has instead. */
@@ -114,7 +124,7 @@ export function AreasRoute() {
       review={reviewed}
       preferences={declaredPreferences}
       editingAreaId={editingAreaId}
-      onEdit={setEditingAreaId}
+      onEdit={openRow}
       declarePreference={declarePreference}
       removePreference={removePreference}
       declareArea={declareArea}
