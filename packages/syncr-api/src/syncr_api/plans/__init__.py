@@ -13,6 +13,7 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``records.py`` | the frozen views the repositories return |
 | ``repository.py`` | ``PlanRepository``: append and reads, and no other write path |
 | ``proposals.py`` | the single pending slot, replaced by upsert |
+| ``conflicts.py`` | the conflict record: raised once per commitment and block, and retained |
 | ``versions.py`` | the input-version counter and the conditional-write guard |
 | ``adjustments.py`` | approved tradeoff concessions, one per kind and target |
 | ``reality.py`` | the outcome log: one row per block, recorded and corrected in place |
