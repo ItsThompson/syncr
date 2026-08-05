@@ -13,6 +13,7 @@ planner: it translates intent into commands and reads results back, and it never
 schedule. Placement is deterministic code behind the API, so identical inputs produce identical
 plans and no model sits in the placement loop. That is what lets this product have an AI story
 with none of the correctness risk one usually brings.
+
 ## What this package holds
 
 Every module in this package appears in the table below.

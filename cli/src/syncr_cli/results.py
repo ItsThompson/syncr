@@ -78,6 +78,10 @@ class CliResult:
     verdict: Verdict | None = None
     operation: Operation | None = None
     problem: Problem | None = None
+    # Whether the operation is this invocation's work rather than one it merely read. A read that
+    # happens to see a week's in-flight solve reports it, and must not exit by its status: the
+    # command succeeded, and the status belongs to work nobody here asked for.
+    operation_is_this_invocations: bool = False
 
     @classmethod
     def succeeded(
@@ -87,8 +91,33 @@ class CliResult:
         verdict: Verdict | None = None,
         operation: Operation | None = None,
     ) -> CliResult:
-        """A command that did what it was asked. It may still exit non-zero."""
+        """A command that did what it was asked. It may still exit non-zero.
+
+        Any operation here is informational: it is reported so a caller can follow it, and it does
+        not decide the exit code.
+        """
         return cls(ok=True, data=data, verdict=verdict, operation=operation)
+
+    @classmethod
+    def dispatched(
+        cls,
+        operation: Operation,
+        *,
+        data: Rendered | None = None,
+        verdict: Verdict | None = None,
+    ) -> CliResult:
+        """A command that dispatched work, or waited on work it dispatched.
+
+        The operation's terminal status is the outcome of what this invocation asked for, so it
+        decides the exit code: 0, 1, or 9 naming the successor.
+        """
+        return cls(
+            ok=True,
+            data=data,
+            verdict=verdict,
+            operation=operation,
+            operation_is_this_invocations=True,
+        )
 
     @classmethod
     def failed(cls, problem: Problem) -> CliResult:
@@ -100,15 +129,16 @@ class CliResult:
         """The number this result exits with.
 
         Three readings in order, and the order is what each one means. A problem is why the
-        command failed, so it wins. An operation's terminal status is what happened to the work
-        that was dispatched, so it outranks the verdict of the plan that work did not replace. An
-        infeasible verdict is last and is not a failure: the command succeeded and the week cannot
-        hold its commitments.
+        command failed, so it wins. An operation this invocation dispatched outranks the verdict of
+        the plan that work did not replace. An infeasible verdict is last and is not a failure: the
+        command succeeded and the week cannot hold its commitments.
         """
         if self.problem is not None:
             return self.problem.exit_code
-        if self.operation is not None and self.operation.exit_code is not ExitCode.SUCCESS:
-            return self.operation.exit_code
+        if self.operation_is_this_invocations and self.operation is not None:
+            dispatched = self.operation.exit_code
+            if dispatched is not ExitCode.SUCCESS:
+                return dispatched
         if self.verdict is not None and self.verdict.is_infeasible:
             return ExitCode.INFEASIBLE
         return ExitCode.SUCCESS

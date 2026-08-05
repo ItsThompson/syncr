@@ -17,7 +17,7 @@ rather than sitting until its timeout.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Final, Self
@@ -49,9 +49,13 @@ _REFUSAL_PAGE = (
 
 @dataclass(frozen=True, slots=True)
 class Redirected:
-    """What the Authorization Server sent back to the listener."""
+    """What the Authorization Server sent back to the listener.
 
-    code: str | None
+    The code is kept out of the repr for the same reason the tokens are: it is a single-use
+    credential, and a default repr is a write waiting for its first caller.
+    """
+
+    code: str | None = field(repr=False)
     state: str | None
     error: str | None
     error_description: str | None

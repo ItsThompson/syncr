@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 REQUEST_TIMEOUT_SECONDS: Final = 30.0
 
 # What every request identifies itself as, so an operator reading an access log can tell this
-# client from the browser. The version is the package's, so it is not a second thing to bump.
+# client from the browser.
 USER_AGENT: Final = "syncr-cli"
 
 _SUCCESS = range(200, 300)

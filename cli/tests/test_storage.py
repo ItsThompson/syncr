@@ -188,6 +188,35 @@ def test_no_partial_file_is_left_when_a_write_cannot_finish(
     assert list(tmp_path.glob(".credentials-*")) == []
 
 
+def test_the_credential_files_own_permissions_are_stated_when_they_are_broader(
+    tmp_path: Path, notices: Notices
+) -> None:
+    # A file this store did not write may be anything. The discipline is that a secret-storage
+    # property is announced rather than inferred, so "the file was NOT 0600" is announced too.
+    keyring.set_keyring(NoKeychain())
+    path = tmp_path / "credentials.json"
+    path.write_text(json.dumps({ACCOUNT: TOKEN}), encoding="utf-8")
+    path.chmod(0o644)
+
+    assert store(tmp_path, notices).read() == TOKEN
+
+    stated = " ".join(notices.stated)
+    assert "0644" in stated
+    assert str(path) in stated
+    assert "chmod 600" in stated
+
+
+def test_a_file_at_the_right_mode_says_nothing_about_it(tmp_path: Path, notices: Notices) -> None:
+    # The other direction, so the notice discriminates rather than always firing.
+    keyring.set_keyring(NoKeychain())
+    keeping = store(tmp_path, notices)
+    keeping.write(TOKEN)
+    before = len(notices.stated)
+
+    assert keeping.read() == TOKEN
+    assert len(notices.stated) == before
+
+
 def test_the_credentials_file_sits_beside_the_configuration_rather_than_inside_it() -> None:
     # A configuration file is one a user edits and pastes. A credential must not be in it.
     path = credentials_path(Path("/home/someone/.config/syncr/config.toml"))

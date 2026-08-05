@@ -104,10 +104,11 @@ class WaitTimedOut(CliError):
 
 
 class ApiRefused(CliError):
-    """The API answered with problem details of its own, which are reported verbatim."""
+    """The API answered with problem details of its own, which are reported verbatim.
 
-    problem_type = "syncr:cli-api-refused"
-    title = "The API refused the request"
+    The only subclass that states no ``problem_type`` or ``title``: it carries the api's problem
+    rather than minting one, so a type of its own would be a value nothing reads and nothing maps.
+    """
 
     def __init__(self, problem: Problem) -> None:
         self._problem = problem

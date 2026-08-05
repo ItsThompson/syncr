@@ -8,6 +8,7 @@ reading are all the real ones.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import keyring
@@ -17,6 +18,7 @@ from syncr_cli.auth.discovery import CLIENT_ID, DISCOVERY_PATH, REQUESTED_SCOPES
 from syncr_cli.auth.pkce import derive_challenge
 from syncr_cli.auth.storage import KEYCHAIN_LOCATION, KEYRING_SERVICE
 from syncr_cli.exit_codes import ExitCode
+from syncr_cli.rendering.auth_views import UNKNOWN_EXPIRY
 from tests import payloads
 from tests.browsers import CODE, approving_browser, authorize_parameters, refusing_browser
 from tests.fake_api import Answer, FakeApi
@@ -231,6 +233,46 @@ def test_status_reports_the_principal_and_the_granted_scopes(
     assert data["userId"] == payloads.USER_ID
     assert data["scopes"] == list(REQUESTED_SCOPES)
     assert data["clientId"] == CLIENT_ID
+
+
+def test_the_one_instant_this_cli_mints_carries_an_explicit_offset(
+    tmp_path: Path, in_memory_keychain: InMemoryKeyring
+) -> None:
+    # `accessTokenExpiresAt` is the only instant the CLI authors rather than passes through, so it
+    # is where the wire's own convention has to be applied here rather than inherited.
+    with FakeApi() as api:
+        authorization_server(api)
+        in_memory_keychain.stored[(KEYRING_SERVICE, api.base_url)] = STORED_REFRESH
+
+        ran = drive(["auth", "status"], base_url=api.base_url, home=tmp_path)
+
+    stated = ran.document["data"]["accessTokenExpiresAt"]
+    assert stated == "2026-02-02T02:55:00+00:00"
+    assert datetime.fromisoformat(stated).utcoffset() == timedelta(0)
+
+
+def test_a_token_that_states_no_expiry_says_so_rather_than_printing_none(
+    tmp_path: Path, in_memory_keychain: InMemoryKeyring
+) -> None:
+    # A rendered `None` reads as a value rather than as its absence.
+    claims = payloads.access_token()
+    header, _, signature = claims.split(".")
+    without_expiry = f"{header}.{payloads.claims_without('exp')}.{signature}"
+
+    with FakeApi() as api:
+        authorization_server(api)
+        api.answer(
+            "POST",
+            "/oauth/token",
+            Answer.json(payloads.token_response(refresh=ROTATED_REFRESH, access=without_expiry)),
+        )
+        in_memory_keychain.stored[(KEYRING_SERVICE, api.base_url)] = STORED_REFRESH
+
+        ran = drive(["auth", "status"], base_url=api.base_url, home=tmp_path, stdout_is_tty=True)
+
+    assert ran.code is ExitCode.SUCCESS
+    assert UNKNOWN_EXPIRY in ran.stdout
+    assert "None" not in ran.stdout
 
 
 def test_status_refreshes_the_stored_grant_and_stores_the_successor(

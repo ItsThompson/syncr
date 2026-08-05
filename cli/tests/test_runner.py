@@ -159,22 +159,16 @@ def test_no_command_ever_waits_for_input(
 
 
 @pytest.mark.parametrize("command", COMMANDS)
-def test_every_commands_help_carries_examples_and_the_exit_code_table(command: list[str]) -> None:
-    # An agent needs no external documentation to orient itself.
+def test_every_commands_help_states_its_examples_and_the_exit_code_table(
+    command: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    # An agent needs no external documentation to orient itself, so the table is printed rather than
+    # filed. Asserted on what `--help` writes, not merely on its exit code.
     with pytest.raises(SystemExit) as exited:
         build_parser().parse_args([*command, "--help"])
 
-    assert exited.value.code == 0
-
-
-@pytest.mark.parametrize("command", COMMANDS)
-def test_the_help_text_states_the_examples_and_the_table(
-    command: list[str], capsys: pytest.CaptureFixture[str]
-) -> None:
-    with pytest.raises(SystemExit):
-        build_parser().parse_args([*command, "--help"])
-
     printed = capsys.readouterr().out
+    assert exited.value.code == 0
     assert "examples:" in printed
     assert exit_code_table() in printed
     assert f"{PROGRAM} {command[0]}" in printed

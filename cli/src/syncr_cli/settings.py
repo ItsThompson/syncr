@@ -68,10 +68,6 @@ class Settings:
     week: IsoWeek
     output: OutputFormat
 
-    @property
-    def renders_json(self) -> bool:
-        return self.output is OutputFormat.JSON
-
 
 def resolve_settings(
     *,

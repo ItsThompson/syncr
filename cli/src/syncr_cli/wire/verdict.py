@@ -61,7 +61,7 @@ class Shortfall:
     @classmethod
     def read(cls, payload: JsonMapping, path: str) -> Self:
         return cls(
-            minutes=integer(payload, "minutes", path),
+            minutes=_gap_minutes(payload, path),
             against=_names(payload, "against", path),
             honoring=_names(payload, "honoring", path),
             deadline=_optional_instant(payload, "deadline", path),
@@ -138,6 +138,23 @@ class Verdict:
     def tag(self) -> str:
         """Where this verdict came from, in the words the ledger prints."""
         return PROVENANCE_TAGS[self.provenance]
+
+
+def _gap_minutes(payload: JsonMapping, path: str) -> int:
+    """A shortfall's gap, refused here rather than by the renderer that would print it.
+
+    The domain refuses a gap of none or less at construction, and the duration renderer refuses a
+    negative figure, so a payload carrying one would fault inside the human renderer while the JSON
+    renderer answered normally: the one place the two renderings could disagree about whether a
+    response is usable. Refused where the payload is read, like every other unusable value.
+    """
+    minutes = integer(payload, "minutes", path)
+    if minutes <= 0:
+        raise MalformedResponse(
+            f"{path}.minutes is {minutes}, and a shortfall is a gap of something: enough capacity "
+            "reports nothing rather than a gap of none. Nothing was changed."
+        )
+    return minutes
 
 
 def _provenance(payload: JsonMapping, path: str) -> Provenance:

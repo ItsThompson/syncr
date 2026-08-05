@@ -1,15 +1,16 @@
 """Every documented exit code, observed from a real process.
 
 **A table asserting a table proves nothing.** So each case here makes the condition happen against a
-real server and reads the number a real process exited with. The console script is what is run, not
-a function in this interpreter, so what is asserted is what a shell and an agent see.
+real server and reads the number a real process exited with. ``python -m syncr_cli`` is what is run,
+which is the entry point the ``syncr`` console script calls, not a function in this interpreter, so
+what is asserted is what a shell and an agent see.
 
 The case table is bounded by ``ExitCode`` itself: a member with no case fails a test, which is what
 stops the documented table from rotting as the code grows.
 
 Two codes are reached in this interpreter rather than through the script, and the reason is stated
-where each is: no command in this slice dispatches long-running work, so the wait that produces a
-timeout has no command to hang off yet. Both still run the real loop against a real server.
+where each is: no command in this slice dispatches long-running work, and an operation a read merely
+saw does not decide that read's exit code. Both still run the real loop against a real server.
 """
 
 from __future__ import annotations
@@ -102,30 +103,16 @@ CASES: dict[ExitCode, Case] = {
         argv=("week", "show"),
         routes=_serving(week=Answer.json(payloads.week(week_verdict=payloads.verdict()))),
     ),
-    # The week route reserves this field for work that has not finished, so a superseded operation
-    # arriving on it is a payload this deployment would not send. It is the shape used here because
-    # no command in this slice dispatches work, and what is under test is that the process exits 9
-    # for a superseded operation wherever the result carries one.
-    ExitCode.SUPERSEDED: Case(
-        argv=("week", "show"),
-        routes=_serving(
-            week=Answer.json(
-                payloads.week(
-                    week_operation=payloads.operation(
-                        status="superseded", superseded_by=payloads.SUCCESSOR_ID
-                    )
-                )
-            )
-        ),
-    ),
     ExitCode.API_UNAVAILABLE: Case(
         argv=("week", "show"), routes=_serving(week=_refusal("syncr:dependency-unavailable", 503))
     ),
 }
 
-# Reached in this interpreter, because a wait needs a command that dispatches work and this slice
-# ships none. The loop, the server, and the error are all the real ones.
-CODES_REACHED_WITHOUT_THE_SCRIPT = frozenset({ExitCode.TIMED_OUT})
+# Reached in this interpreter, because both need a command that dispatches long-running work and
+# this slice ships none. An operation a read merely saw does not decide that read's exit code -- a
+# successful read must not report the status of work nobody asked for -- so neither code can be
+# provoked through a shipped command. The loop, the server, and the codes are the real ones.
+CODES_REACHED_WITHOUT_THE_SCRIPT = frozenset({ExitCode.SUPERSEDED, ExitCode.TIMED_OUT})
 
 
 def test_every_documented_exit_code_has_a_case() -> None:
@@ -150,17 +137,23 @@ def test_the_process_exits_with_the_documented_code(expected: ExitCode, tmp_path
 
 
 def test_the_child_process_runs_the_tree_this_test_imported(tmp_path: Path) -> None:
-    # The instrument's own precondition. A subprocess that resolved the package through the
-    # interpreter's editable install would measure another checkout, and every case here would pass
-    # for the wrong reason.
-    with FakeApi() as api:
-        _serving()(api)
-        _seed_credential(tmp_path, api.base_url)
-        completed = _run(("week", "show", "--no-such-flag"), api.base_url, tmp_path)
+    # The instrument's own precondition, asserted by asking the child where it imported from. A
+    # subprocess that resolved the package through the interpreter's editable install would measure
+    # another checkout, and every case in this file would pass for the wrong reason.
+    resolved = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import pathlib, syncr_cli; print(pathlib.Path(syncr_cli.__file__).resolve())",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=_child_environment("http://127.0.0.1:1", tmp_path),
+    )
 
-    expected = str(Path(syncr_cli.__file__).resolve().parent.parent)
-    assert completed.returncode == int(ExitCode.USAGE)
-    assert Path(expected, "syncr_cli", "main.py").exists()
+    assert resolved.returncode == 0, resolved.stderr
+    assert Path(resolved.stdout.strip()) == Path(syncr_cli.__file__).resolve()
 
 
 def test_a_closed_port_also_exits_eleven(tmp_path: Path) -> None:
@@ -211,9 +204,10 @@ def test_a_wait_that_runs_out_exits_ten(tmp_path: Path) -> None:
     assert int(ExitCode.TIMED_OUT) == 10
 
 
-def test_a_superseded_operation_read_from_the_api_names_its_successor() -> None:
+def test_a_superseded_operation_read_from_the_api_exits_nine_and_names_its_successor() -> None:
     # Nine is only useful if it comes with the successor: an agent follows the chain rather than
-    # dispatching another solve onto it.
+    # dispatching another solve onto it. Read from a real server, and the code comes off the same
+    # result the runner would exit by.
     with FakeApi() as api, httpx.Client(timeout=5.0) as client:
         api.answer(
             "GET",
@@ -226,8 +220,30 @@ def test_a_superseded_operation_read_from_the_api_names_its_successor() -> None:
 
     superseded = Operation.read(body, "operation")
 
-    assert superseded.exit_code is ExitCode.SUPERSEDED
+    assert CliResult.dispatched(superseded).exit_code is ExitCode.SUPERSEDED
     assert superseded.superseded_by == payloads.SUCCESSOR_ID
+    assert payloads.SUCCESSOR_ID in superseded.summary
+
+
+def test_an_operation_a_read_only_saw_does_not_decide_that_reads_exit_code(
+    tmp_path: Path,
+) -> None:
+    # The other half of the same rule, driven through the process: a week carrying a failed
+    # operation is still a successful read, and the operation is still reported.
+    failed = payloads.week(
+        week_operation=payloads.operation(
+            status="failed", error={"code": "solver_fault", "message": "the solver raised"}
+        )
+    )
+    with FakeApi() as api:
+        _serving(week=Answer.json(failed))(api)
+        _seed_credential(tmp_path, api.base_url)
+        completed = _run(("week", "show"), api.base_url, tmp_path)
+
+    assert completed.returncode == int(ExitCode.SUCCESS), completed.stderr
+    document = json.loads(completed.stdout)
+    assert document["ok"] is True
+    assert document["operation"]["status"] == "failed"
 
 
 def _seed_credential(home: Path, api_url: str) -> None:
@@ -238,28 +254,36 @@ def _seed_credential(home: Path, api_url: str) -> None:
     path.chmod(0o600)
 
 
-def _run(argv: tuple[str, ...], api_url: str, home: Path) -> subprocess.CompletedProcess[str]:
-    """Run the console script itself, with an environment that reaches nothing on this machine.
+def _child_environment(api_url: str, home: Path) -> dict[str, str]:
+    """The environment every child of this file runs in.
 
     ``PYTHONPATH`` names the source tree this test imported from, so the child runs the same code
     the parent is asserting about. Without it the child resolves the package through whatever the
     interpreter's editable install points at, which is a different tree whenever this suite is run
     from a second checkout: the instrument would then read green while measuring something else.
+
+    One function rather than a literal per call site, so the precondition test and the cases it
+    guards cannot be given different environments.
     """
+    return {
+        "PATH": os.environ.get("PATH", ""),
+        "PYTHONPATH": str(Path(syncr_cli.__file__).resolve().parent.parent),
+        "HOME": str(home),
+        "XDG_CONFIG_HOME": str(home / ".config"),
+        "SYNCR_API_URL": api_url,
+        # The week is stated rather than left to the machine's clock: the routes this test serves
+        # are for one week, and a subprocess reads the real date.
+        "SYNCR_WEEK": payloads.ISO_WEEK,
+        **NO_KEYCHAIN,
+    }
+
+
+def _run(argv: tuple[str, ...], api_url: str, home: Path) -> subprocess.CompletedProcess[str]:
+    """Run the CLI's entry point itself, in an environment that reaches nothing on this machine."""
     return subprocess.run(  # noqa: S603 - fixed argv, no shell
         [sys.executable, "-m", "syncr_cli", *argv],
         capture_output=True,
         text=True,
         check=False,
-        env={
-            "PATH": os.environ.get("PATH", ""),
-            "PYTHONPATH": str(Path(syncr_cli.__file__).resolve().parent.parent),
-            "HOME": str(home),
-            "XDG_CONFIG_HOME": str(home / ".config"),
-            "SYNCR_API_URL": api_url,
-            # The week is stated rather than left to the machine's clock: the routes this test
-            # serves are for one week, and a subprocess reads the real date.
-            "SYNCR_WEEK": payloads.ISO_WEEK,
-            **NO_KEYCHAIN,
-        },
+        env=_child_environment(api_url, home),
     )

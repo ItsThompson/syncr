@@ -10,6 +10,9 @@ a success does, so ``--json`` answers with a document whatever happened.
 | A response this build cannot read | ``syncr:cli-malformed-response``, exit 1 |
 | A domain rule refusing a value the api sent | the same, exit 1 |
 
+The boundary covers rendering as well as the command, because a renderer reaches the domain and a
+value the domain refuses is a boundary input like any other.
+
 **A failure before the command line is understood is rendered in the format the machine implies.**
 The flags are what a parse produces, so a parse that failed has none of them: the format is then
 the configured one where the configuration is readable, and the terminal test where it is not.
@@ -77,11 +80,32 @@ def run(argv: Sequence[str], *, host: Host, transport: Transport) -> ExitCode:
 
 
 def _write(result: CliResult, *, host: Host, output: OutputFormat) -> ExitCode:
-    """Render the result to stdout, and answer with the code it asks for."""
-    rendered = render_json(result) if output is OutputFormat.JSON else render_human(result)
+    """Render the result to stdout, and answer with the code it asks for.
+
+    Rendering is inside the error boundary, not beside it. A renderer reaches the domain -- a
+    duration's wording, a week's day bounds, a zone -- so a value the domain refuses would otherwise
+    escape as a traceback with no wrapper, and only in the human format, which is the one place the
+    two renderings could disagree about whether a response is usable.
+
+    The second render cannot fail for the same reason the first did: a failed result carries no data
+    and no verdict, so nothing in it reaches the domain at all.
+    """
+    try:
+        rendered = _render(result, output)
+    except (CliError, DomainError) as error:
+        result = CliResult.failed(
+            MalformedResponse(
+                f"the API sent a value this CLI cannot print: {error}. Nothing was changed."
+            ).problem
+        )
+        rendered = _render(result, output)
     host.stdout.write(rendered)
     host.stdout.flush()
     return result.exit_code
+
+
+def _render(result: CliResult, output: OutputFormat) -> str:
+    return render_json(result) if output is OutputFormat.JSON else render_human(result)
 
 
 def _early_format(host: Host) -> OutputFormat:

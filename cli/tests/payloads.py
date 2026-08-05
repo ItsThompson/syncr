@@ -364,5 +364,26 @@ def _segment(claims: dict[str, Any]) -> str:
     return _encode(json.dumps(claims, separators=(",", ":")).encode("utf-8"))
 
 
+def claims_without(claim: str) -> str:
+    """The claim set an access token carries, less one claim, as its own segment.
+
+    For the readings that have to hold when a deployment's claim set is not this one: a status is a
+    display reading of someone else's document, so a claim this build does not find is reported as
+    absent rather than faulted over.
+    """
+    claims = {
+        "iss": "http://localhost",
+        "sub": USER_ID,
+        "aud": "http://localhost/api/v1",
+        "iat": ACCESS_TOKEN_EXPIRES_AT - 900,
+        "exp": ACCESS_TOKEN_EXPIRES_AT,
+        "tid": TENANT_ID,
+        "scope": "plan:read plan:write",
+        "client_id": "syncr-cli",
+    }
+    del claims[claim]
+    return _segment(claims)
+
+
 def _encode(raw: bytes) -> str:
     return urlsafe_b64encode(raw).decode("ascii").rstrip("=")

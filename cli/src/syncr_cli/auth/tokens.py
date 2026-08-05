@@ -16,7 +16,7 @@ one instruction that fixes it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Self
 
 from syncr_cli.auth.discovery import CLIENT_ID
@@ -38,10 +38,16 @@ RE_AUTHORIZE = "Run 'syncr auth login' to authorize this machine again."
 
 @dataclass(frozen=True, slots=True)
 class TokenSet:
-    """What one exchange handed back. The access token lives as long as this object does."""
+    """What one exchange handed back. The access token lives as long as this object does.
 
-    access_token: str
-    refresh_token: str
+    **Neither token appears in this object's repr.** A default dataclass repr is a write waiting for
+    its first caller: a test's assertion diff, an f-string in a future error message, or any log
+    line. The module claims the access token is never written anywhere, and ``repr=False`` is what
+    makes that a property of the type rather than of every caller's care.
+    """
+
+    access_token: str = field(repr=False)
+    refresh_token: str = field(repr=False)
     expires_in: int
     scopes: tuple[str, ...]
 

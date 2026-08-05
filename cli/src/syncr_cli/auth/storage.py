@@ -12,13 +12,15 @@ store it is actually using.
 
 **The file is created 0600 and written atomically.** Created with the mode rather than chmodded
 afterwards, so there is no window where it is readable; replaced rather than truncated, so an
-interrupted write cannot leave a half-written credential where a whole one was.
+interrupted write cannot leave a half-written credential where a whole one was. A file this store
+did not write and whose mode is broader is reported on the read, for the same reason a fallback is.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import stat
 import tempfile
 from contextlib import suppress
 from pathlib import Path
@@ -50,7 +52,7 @@ class RefreshTokenStore:
 
     def __init__(self, *, account: str, file_path: Path, notices: Notices) -> None:
         self._account = account
-        self._file = _FileStore(file_path)
+        self._file = _FileStore(file_path, notices)
         self._notices = notices
         self._using_file = False
 
@@ -110,14 +112,24 @@ class RefreshTokenStore:
 
 
 class _FileStore:
-    """The fallback: one JSON object keyed by API URL, mode 0600."""
+    """The fallback: one JSON object keyed by API URL, mode 0600.
 
-    def __init__(self, path: Path) -> None:
+    Every write normalizes the mode, so a file this store has written is 0600. A file it did not
+    write may be anything, and a mode broader than 0600 is stated on the read rather than inferred:
+    the discipline of this module is that a secret-storage property is announced, and "the file was
+    NOT 0600" is exactly as worth announcing as "the file is".
+    """
+
+    def __init__(self, path: Path, notices: Notices) -> None:
         self.path = path
+        self._notices = notices
 
     def read(self, account: str) -> str | None:
         stored = self._all()
         value = stored.get(account)
+        if value is None:
+            return None
+        self._state_a_broad_mode()
         return value if isinstance(value, str) else None
 
     def write(self, account: str, token: str) -> None:
@@ -160,6 +172,24 @@ class _FileStore:
         except BaseException:
             Path(temporary).unlink(missing_ok=True)
             raise
+
+    def _state_a_broad_mode(self) -> None:
+        """Say so when the file holding a credential is readable by more than its owner.
+
+        Stated rather than tightened, because the file is the user's: a store that silently changed
+        the permissions of a file it did not create would be acting outside what it was asked to do,
+        and the next write normalizes the mode anyway.
+        """
+        try:
+            mode = stat.S_IMODE(self.path.stat().st_mode)
+        except OSError:
+            return
+        if mode & ~CREDENTIALS_FILE_MODE:
+            self._notices.state(
+                f"{self.path} holds a refresh token and its permissions are {mode:04o}, which is "
+                f"broader than {CREDENTIALS_FILE_MODE:04o}: anyone who can read it can act as you. "
+                "Run 'chmod 600' on it, or 'syncr auth logout' and authorize again."
+            )
 
 
 def credentials_path(config_path: Path) -> Path:

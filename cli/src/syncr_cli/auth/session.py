@@ -28,11 +28,15 @@ BEARER_SCHEME = "Bearer"
 
 
 class Session:
-    """The bearer credential a command presents, obtained lazily and at most once.
+    """The bearer credential a command presents, obtained lazily and held for the invocation.
 
-    Lazily, because a command that answers from its arguments needs no credential, and at most
-    once, because a refresh consumes the stored token: two refreshes in one process would present
-    the successor's predecessor and look exactly like a replay.
+    Lazily, because a command that answers from its arguments needs no credential. Once, because one
+    invocation needs one credential: the pair is cached, so nothing here refreshes twice and the
+    stored token is consumed exactly once per run.
+
+    **The access token this holds has a fixed life and is not renewed.** A command that outlives it
+    presents an expired token and is refused; a command that intends to run longer than that has to
+    obtain its credential again.
     """
 
     def __init__(

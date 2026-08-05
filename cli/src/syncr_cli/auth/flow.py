@@ -73,13 +73,15 @@ def log_in(
         )
         _open(url, notices, open_browser=open_browser)
         received = receiver.wait(timeout_seconds=consent_timeout_seconds)
-        require_expected_state(received, state)
         if received.error is not None:
+            # Read before the state, so a server that refused states its own reason. Nothing is
+            # exchanged on this path, so no code can be redeemed from a redirect that reached it.
             raise Failure(
                 f"the API refused the authorization request ({received.error}"
                 f"{f': {received.error_description}' if received.error_description else ''}). "
                 "Nothing was authorized and nothing was stored."
             )
+        require_expected_state(received, state)
         if received.code is None:
             raise Failure(
                 "the browser came back with neither a code nor an error, so nothing was "

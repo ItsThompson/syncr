@@ -17,6 +17,7 @@ from tests.fake_api import Answer, FakeApi
 from tests.harness import drive
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
     from tests.keyrings import InMemoryKeyring
@@ -73,16 +74,33 @@ def test_the_json_carries_the_apis_own_payload_under_the_wrapper(
 def test_every_duration_in_the_json_is_an_integer_count_of_minutes(
     tmp_path: Path, in_memory_keychain: InMemoryKeyring
 ) -> None:
+    # Every member of the document, not just the strip's: `data` is the api's own object, so this is
+    # the whole statement of the criterion rather than one nested part of it.
+    sent = payloads.week(week_verdict=payloads.verdict(), week_operation=payloads.operation())
     with FakeApi() as api:
-        api_serving(api)
+        api_serving(api, week=sent)
         in_memory_keychain.stored[(KEYRING_SERVICE, api.base_url)] = STORED_REFRESH
 
         ran = drive(["week", "show"], base_url=api.base_url, home=tmp_path)
 
-    readings = ran.document["data"]["readings"]
-    for name, value in readings.items():
-        if name.endswith("Minutes"):
-            assert isinstance(value, int), name
+    durations = dict(_minute_members(ran.document))
+    assert durations, "expected the document to carry at least one duration"
+    for name, value in durations.items():
+        assert isinstance(value, int), f"{name} is {value!r}"
+        assert not isinstance(value, bool), name
+
+
+def _minute_members(payload: object, path: str = "") -> Iterator[tuple[str, object]]:
+    """Every member of a document whose name says it is a duration in minutes."""
+    if isinstance(payload, dict):
+        for name, value in payload.items():
+            where = f"{path}.{name}" if path else name
+            if name.endswith("Minutes"):
+                yield where, value
+            yield from _minute_members(value, where)
+    elif isinstance(payload, list):
+        for index, value in enumerate(payload):
+            yield from _minute_members(value, f"{path}[{index}]")
 
 
 def test_the_human_ledger_and_the_json_come_from_one_read(
@@ -178,6 +196,28 @@ def test_areas_that_cannot_be_read_leave_the_column_empty_rather_than_losing_the
     assert ran.code is ExitCode.SUCCESS
     assert "the Areas could not be read" in ran.stderr
     assert "2026-W07" in ran.stdout
+
+
+def test_a_shortfall_the_domain_refuses_is_reported_in_both_formats(
+    tmp_path: Path, in_memory_keychain: InMemoryKeyring
+) -> None:
+    # A gap of none or less is a value the domain's duration renderer refuses, and rendering is the
+    # place the CLI reaches the domain. Refused at read time, so both formats agree the response is
+    # unusable rather than one faulting and the other answering.
+    broken = payloads.week(
+        week_verdict=payloads.verdict(shortfalls=[payloads.shortfall(minutes=-5)])
+    )
+    with FakeApi() as api:
+        api_serving(api, week=broken)
+        in_memory_keychain.stored[(KEYRING_SERVICE, api.base_url)] = STORED_REFRESH
+
+        as_json = drive(["week", "show"], base_url=api.base_url, home=tmp_path)
+        as_human = drive(["week", "show"], base_url=api.base_url, home=tmp_path, stdout_is_tty=True)
+
+    assert as_json.code is as_human.code is ExitCode.FAILURE
+    assert "week.verdict.shortfalls[0].minutes" in as_json.document["problem"]["detail"]
+    assert "shortfalls[0].minutes" in as_human.stdout
+    assert "Traceback" not in as_human.stdout
 
 
 def test_a_week_flag_beats_the_machines_current_week(
