@@ -5,7 +5,7 @@
  * twice on 25 October 2026. Pacific/Kiritimati is here because +14 puts the same instant on a different
  * date from the host's, which is the case a helper reading the host's zone renders wrongly. */
 
-import { beforeAll, afterAll, describe, expect, it } from "vitest";
+import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
 
 import { clockIn, hostDateOf, instantAt } from "../instants";
 
@@ -36,13 +36,15 @@ describe("hostDateOf", () => {
   /* THE ZONE IS PINNED FOR THIS ONE CLAIM, because the claim is about the host's zone and the suite has to
      be able to make it on any machine. Under Paris, 23:30 on the 8th in UTC is already the 9th locally, so a
      derivation reading the date off `toISOString` answers with the day before: the day the reader has
-     already finished. */
-  const hostZone = process.env.TZ;
+     already finished.
+
+     `stubEnv` rather than reading the value and putting it back: a host with no `TZ` set would be restored
+     to the string "undefined", which is a zone nothing resolves. */
   beforeAll(() => {
-    process.env.TZ = "Europe/Paris";
+    vi.stubEnv("TZ", "Europe/Paris");
   });
   afterAll(() => {
-    process.env.TZ = hostZone;
+    vi.unstubAllEnvs();
   });
 
   it("takes the host's own calendar date rather than the date in UTC", () => {
