@@ -13,17 +13,24 @@ block is, its Area, its title, and what its ``bound`` clause says determined it.
 The tests beside the golden file are the ones a stored file cannot make: that the composition is the
 one the fixture's table claims, that the eight shapes the fixture exists for are all present in the
 output, and that solving it twice produces the same text.
+
+**The reason records are rendered as a census rather than block by block.** Every clause of every
+block would add sixty lines whose values repeat, because the ``dominant`` clause names the plan and
+the ``floor`` clause names an Area: what changes when an attachment rule changes is the COUNT per
+kind and the widest record, so those are what the file holds. The clauses of the blocks that carry
+more than one are asserted here instead, where the assertion can name the block.
 """
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.feasibility import Provenance
 from syncr_domain.identity import BindingRef, Origin
-from syncr_domain.reasons import Bound
+from syncr_domain.reasons import CLAUSE_BUDGET, MAX_CLAUSES, Blocked, Bound, Floor
 from syncr_solver import solve
 from tests.objective_weeks import hand_tuned_weights
 from tests.reference_week import (
@@ -32,6 +39,7 @@ from tests.reference_week import (
     GYM,
     INTERVIEW,
     LONDON,
+    PAST_PAPERS,
     PINS,
     STUDY,
     TIMED_BLOCKS,
@@ -40,9 +48,14 @@ from tests.reference_week import (
 
 if TYPE_CHECKING:
     from syncr_domain.plan import Block
+    from syncr_domain.reasons import Clause
     from syncr_solver.solve import SolveResult
 
 GOLDEN: Final = Path(__file__).with_name("reference_week_golden.txt")
+
+# A clause kind as the design language names it: the spec's rows read `instead of`, not the type's
+# own spelling. Split on the capitals rather than mapped, so a seventh kind would need no table.
+_CAMEL_BOUNDARY: Final = re.compile(r"(?<!^)(?=[A-Z])")
 
 _AREAS: Final = {FITNESS: "Fitness", CAREER: "Career", STUDY: "Study"}
 
@@ -72,6 +85,18 @@ def clause_of(block: Block) -> str:
     return f"bound {clause.source.value} · {clause.selected}"
 
 
+def clause_census(result: SolveResult) -> Counter[str]:
+    """How many clauses of each kind the week's records hold in all."""
+    counted: Counter[str] = Counter()
+    for block in result.document.blocks:
+        counted.update(type(clause).__name__ for clause in block.reason.clauses)
+    return counted
+
+
+def clause_label(kind: type[Clause]) -> str:
+    return _CAMEL_BOUNDARY.sub(" ", kind.__name__).lower()
+
+
 def rendered(result: SolveResult) -> str:
     """This result as the golden file holds it: the plan, the gaps, the refusals, and the cost."""
     document = result.document
@@ -97,6 +122,17 @@ def rendered(result: SolveResult) -> str:
     ] or ["  none"]
     lines += ["", "BLOCKED"]
     lines += [f"  {row.rule.value:22} {row.detail}" for row in result.blocked_log] or ["  none"]
+    lines += ["", "REASONS"]
+    census = clause_census(result)
+    lines += [
+        f"  {clause_label(kind):12} {census[kind.__name__]:4}   at most {allowed} per block"
+        for kind, allowed in CLAUSE_BUDGET.items()
+    ]
+    widest = max(document.blocks, key=lambda block: len(block.reason.clauses))
+    lines += [
+        f"  {'clauses':12} {sum(census.values()):4}   over {len(document.blocks)} blocks",
+        f"  widest       {len(widest.reason.clauses):4}   {widest.title}",
+    ]
     lines += ["", "OBJECTIVE"]
     lines += [
         f"  {term:20} {cost:.6f}" for term, cost in result.objective_breakdown.costs().items()
@@ -286,6 +322,109 @@ def test_every_overlap_the_week_holds_is_the_users_own_or_two_commitments() -> N
 def test_every_block_carries_at_least_one_clause() -> None:
     for block in solved_reference().document.blocks:
         assert block.reason.clauses, block.title
+
+
+# --------------------------------------------------------------------------------------
+# The reason records, over a real week
+# --------------------------------------------------------------------------------------
+
+
+def test_no_block_of_the_week_exceeds_any_clause_kind_s_budget() -> None:
+    """The budget, per kind, over every block of the golden week rather than over a fixture."""
+    for block in solved_reference().document.blocks:
+        for kind, allowed in CLAUSE_BUDGET.items():
+            held = sum(1 for clause in block.reason.clauses if type(clause) is kind)
+            assert held <= allowed, (block.title, kind.__name__, held)
+        assert len(block.reason.clauses) <= MAX_CLAUSES, block.title
+
+
+def test_the_census_the_golden_file_holds_is_the_one_the_records_carry() -> None:
+    # The control for the rendered census: a reading that counted nothing would still render.
+    census = clause_census(solved_reference())
+
+    assert census["Bound"] == TIMED_BLOCKS
+    assert sum(census.values()) > TIMED_BLOCKS
+
+
+def test_every_derived_block_carries_its_determinant_and_nothing_else() -> None:
+    """Its placement was determined, so there is nothing else about it to report."""
+    chosen = {Origin.HABIT, Origin.TASK}
+
+    for block in solved_reference().document.blocks:
+        if block.origin in chosen:
+            continue
+        assert len(block.reason.clauses) == 1, (block.title, block.reason.clauses)
+        assert isinstance(block.reason.clauses[0], Bound)
+
+
+def test_the_pinned_habit_reports_the_pin_and_what_it_replaced() -> None:
+    pin = PINS[0]
+    block = next(
+        block for block in solved_reference().document.blocks if block.binding == pin.binding
+    )
+    kinds = [type(clause).__name__ for clause in block.reason.clauses]
+
+    assert kinds == ["Bound", "Pinned", "InsteadOf", "Dominant", "Floor"]
+
+
+def test_every_chunk_of_the_divided_task_reports_the_demand_s_refused_windows() -> None:
+    """The refusals were recorded against the demand, and a chunk is one piece of that demand.
+
+    Paired by binding rather than by demand they would reach the first chunk and no other, so a
+    reader selecting the second piece of a task would be told nothing about what was tried for it.
+    """
+    chunks = [
+        block
+        for block in solved_reference().document.blocks
+        if block.binding.entity_id == PAST_PAPERS
+    ]
+    refused = {_refused_windows(block) for block in chunks}
+
+    assert len(chunks) > 1
+    assert len(refused) == 1
+    assert refused != {()}
+
+
+def test_the_floor_clause_agrees_with_the_probes_reservation_for_the_same_area() -> None:
+    """``of`` less ``placed`` IS the reservation, over every Area the week's blocks are charged to.
+
+    The two figures come from one netting set, which is what stops the clause disagreeing with the
+    figure a reader compares it against. Crossed against the probe's own projection rather than
+    against the inputs, because the projection is what a verdict is read from.
+    """
+    reserved = {
+        reservation.area_id: reservation.reserved_minutes
+        for reservation in reference_week().for_probe().area_floor_reservations
+    }
+    floors = [
+        clause
+        for block in solved_reference().document.blocks
+        for clause in block.reason.clauses
+        if isinstance(clause, Floor)
+    ]
+
+    assert floors
+    for clause in floors:
+        assert clause.of - clause.placed == reserved[clause.area_id], clause
+
+
+def test_no_clause_names_a_rule_outside_the_checkers_vocabulary() -> None:
+    """Every ``blocked`` clause names a window and a rule the log holds, and the log is bounded."""
+    result = solved_reference()
+    recorded = {(row.window, row.rule, row.detail) for row in result.blocked_log}
+
+    for block in result.document.blocks:
+        for clause in block.reason.clauses:
+            if isinstance(clause, Blocked):
+                assert (clause.window, clause.rule, clause.detail) in recorded, clause
+
+
+def _refused_windows(block: Block) -> tuple[tuple[object, str], ...]:
+    return tuple(
+        (clause.window, clause.rule)
+        for clause in block.reason.clauses
+        if isinstance(clause, Blocked)
+    )
 
 
 def test_the_document_holds_one_block_per_identity() -> None:

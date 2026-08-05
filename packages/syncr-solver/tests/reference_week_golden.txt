@@ -80,6 +80,16 @@ BLOCKED
   below_min_chunk        Placement Admin is placed in 60m at least, and this is 15m
   below_min_chunk        Placement Admin is placed in 60m at least, and this is 45m
 
+REASONS
+  bound          61   at most 1 per block
+  pinned          1   at most 1 per block
+  instead of      1   at most 1 per block
+  blocked        12   at most 2 per block
+  dominant       20   at most 1 per block
+  floor          20   at most 1 per block
+  clauses       115   over 61 blocks
+  widest          5   Gym · Pull
+
 OBJECTIVE
   deadline_risk        0.000000
   budget_deviation     0.550000
