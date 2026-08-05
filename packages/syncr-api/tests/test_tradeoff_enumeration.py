@@ -650,9 +650,9 @@ async def test_a_demand_whose_task_has_no_eligible_row_is_answered_with_nothing(
     # the demand standing. Neither task-targeted kind can name a task eligibility does not carry.
     #
     # Recorded rather than fixed here: closing it needs the demand to carry its tasks' identities,
-    # which is a field on a probe input struct that four reviews have corrected, and it is the same
-    # field the recovery-figure bound wants. What ships is that the gap is answered with nothing and
-    # SAYS so, because a panel reporting a gap with no button is otherwise invisible in production.
+    # which is a field on the probe's own input struct and the same field the recovery-figure bounds
+    # want. What ships is that the gap is answered with nothing and SAYS so, because a panel
+    # reporting a gap with no button is otherwise invisible in production.
     career = an_area(name="Career")
     task = a_task(
         task_id=CAREER_TASK,

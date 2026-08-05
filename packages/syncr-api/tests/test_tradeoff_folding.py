@@ -287,9 +287,14 @@ async def test_a_breach_can_state_more_than_a_deadline_gap_can_fall_by() -> None
     # off-plan declaration that leaves capacity AFTER the later deadline.
     #
     # The deadline check subtracts `max(claimed, reserved - absorbed_later)` rather than the
-    # reservation, so a floor that partly fits after the deadline is charged for part of itself and
-    # a breach of the whole reservation cannot lower the competition by the whole of it. `_breaches`
-    # caps at the reservation, which is blind to that split.
+    # reservation, and BOTH terms overstate what a breach can move. `_breaches` caps at the
+    # reservation, which is blind to either.
+    #
+    # This fixture's zero comes from the FIRST term. The Gym block is due an hour earlier in the
+    # same Area, so `claimed` is 300 by the time the later deadline is measured, while five hours of
+    # capacity after it leave `early` at 420 - 300 = 120. Breaching by 240 takes `early` to zero and
+    # leaves `max(300, 0) = 300` unchanged, so the gap does not move at all. With no earlier claim
+    # the same week would move by 120 against a stated 240: still an overstatement, and not a zero.
     #
     # The figure is therefore an UPPER bound on the gap movement, which is the safe direction for a
     # panel to be wrong in only because the alternative is worse: a row promising less than it
