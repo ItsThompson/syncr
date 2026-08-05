@@ -16,3 +16,13 @@ from syncr_domain.errors import DomainError
 
 class MaterializeError(DomainError):
     """A resolved input cannot be turned into the block or the slot it describes."""
+
+
+class SolveError(DomainError):
+    """A resolved input names something a solve cannot place, and correcting it would hide why.
+
+    One case reaches it today: a pin naming content the week holds nowhere. The assembler drops a
+    pin whose occurrence a reduced cadence no longer produces, so such a pin arriving here is a
+    producer that answered wrongly, and honoring nothing while reporting nothing would leave a
+    stored pin the plan silently never keeps.
+    """
