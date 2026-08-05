@@ -20,6 +20,7 @@ a set of shortfall kinds. Their shape is enforced by the Pydantic model that wri
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Final
 from uuid import UUID, uuid4
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String
@@ -41,6 +42,8 @@ from syncr_api.plans.config import (
     PARTIAL_OUTCOME,
     PINS_TABLE,
     PLAN_REVISIONS_TABLE,
+    UNANSWERED_CONFLICT,
+    UNANSWERED_CONFLICT_INDEX,
     VERDICT_EVENTS_TABLE,
     VERDICT_PROVENANCES,
     VERDICT_SURFACES,
@@ -50,6 +53,11 @@ from syncr_api.plans.stored_documents import BINDING, ENTITY_ID, KIND
 
 STATE_LENGTH = 16
 KIND_LENGTH = 24
+
+# The columns one unanswered conflict is unique over, read twice: as the index the table declares
+# and as the conflict target the raise infers. A block id is a digest of the week and the binding,
+# so the week follows from the columns rather than being one of them.
+UNANSWERED_CONFLICT_COLUMNS: Final = (TENANT_ID_COLUMN, "anchor_id", "block_id")
 
 # A nullable column's closed vocabulary needs no `IS NULL` disjunct: `NULL IN (...)`
 # evaluates to NULL, and a check constraint rejects only what is false.
@@ -207,6 +215,12 @@ class PlanConflict(Base, TenantScoped):
     Named ``PlanConflict`` rather than ``Conflict`` because
     :class:`syncr_api.core.errors.Conflict` is the 409 a service raises, and a module
     holding both meanings of the word pays that reading cost on every line.
+
+    ``binding`` is denormalized onto the row for the reason ``block_outcomes`` carries one: a
+    conflict is retained forever, and ``block_id`` is a digest of the week and the identity, so
+    four collisions with one task in four weeks hold four unrelated ids. The weekly session's
+    repeated-collision item is stated over the binding, so without it the retention computes
+    nothing.
     """
 
     __tablename__ = CONFLICTS_TABLE
@@ -217,6 +231,7 @@ class PlanConflict(Base, TenantScoped):
     # after a resolution regardless of what happened to the anchor that raised it.
     anchor_id: Mapped[UUID] = mapped_column(nullable=False)
     block_id: Mapped[str] = mapped_column(String(BLOCK_ID_MAX_LENGTH), nullable=False)
+    binding: Mapped[JsonObject] = mapped_column(JSONB, nullable=False)
     overlap_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     overlap_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -232,6 +247,17 @@ class PlanConflict(Base, TenantScoped):
         ),
         CheckConstraint("overlap_starts_at < overlap_ends_at", name="overlap_is_half_open"),
         Index("ix_conflicts_tenant_id_iso_week", TENANT_ID_COLUMN, "iso_week"),
+        # One question per commitment and block, for as long as that question is unanswered or
+        # its answer was to accept the overlap. Detection runs on every sync that moved an
+        # anchor and on every solve's commit path, so the same overlap is presented many times
+        # and the raise has to be idempotent by construction rather than by a read-then-insert.
+        # The week is absent because a block id is a digest of it.
+        Index(
+            UNANSWERED_CONFLICT_INDEX,
+            *UNANSWERED_CONFLICT_COLUMNS,
+            unique=True,
+            postgresql_where=UNANSWERED_CONFLICT,
+        ),
     )
 
 

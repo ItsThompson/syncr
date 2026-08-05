@@ -27,7 +27,7 @@ from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.learned.config import FIRST_WEIGHT_SET_VERSION, HAND_TUNED, P0_WEIGHTS
 from syncr_api.learned.models import WeightSet
 from syncr_api.learned.repository import WeightSetRepository
-from syncr_api.plans.config import APPLIED
+from syncr_api.plans.config import APPLIED, UNANSWERED_CONFLICT_INDEX
 from syncr_api.plans.facts import BlockOutcome, EditEvent, Pin, PlanConflict, VerdictEvent
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_binding
@@ -132,6 +132,23 @@ def outcome(tenant_id: TenantId, revision: PlanRevisionId, **overrides: Any) -> 
         **overrides,
     }
     return BlockOutcome(**values)
+
+
+def a_conflict(tenant_id: TenantId, **overrides: Any) -> PlanConflict:
+    """An open conflict over the one derived identity this module builds every row against."""
+    values: dict[str, Any] = {
+        "id": uuid4(),
+        "tenant_id": tenant_id,
+        "iso_week": str(WEEK),
+        "anchor_id": uuid4(),
+        "block_id": BLOCK_ID,
+        "binding": BINDING,
+        "overlap_starts_at": NOW,
+        "overlap_ends_at": LATER,
+        "detected_at": NOW,
+        **overrides,
+    }
+    return PlanConflict(**values)
 
 
 # --------------------------------------------------------------------------------
@@ -314,27 +331,56 @@ async def test_a_resolved_conflict_states_both_when_and_how(
 ) -> None:
     # A resolved conflict is retained, and the weekly session reads repeated collisions out
     # of these rows. A resolution instant with no resolution would be a row nobody can report.
-    def conflict(**overrides: Any) -> PlanConflict:
-        values: dict[str, Any] = {
-            "id": uuid4(),
-            "tenant_id": owner.tenant_id,
-            "iso_week": str(WEEK),
-            "anchor_id": uuid4(),
-            "block_id": BLOCK_ID,
-            "overlap_starts_at": NOW,
-            "overlap_ends_at": LATER,
-            "detected_at": NOW,
-            **overrides,
-        }
-        return PlanConflict(**values)
-
-    await refuses(sessions, conflict(resolved_at=LATER), "resolution_states_when")
-    await refuses(sessions, conflict(resolution="moved"), "resolution_states_when")
     await refuses(
-        sessions, conflict(resolved_at=LATER, resolution="ignored"), "resolution_is_known"
+        sessions, a_conflict(owner.tenant_id, resolved_at=LATER), "resolution_states_when"
     )
-    await accepts(sessions, conflict())
-    await accepts(sessions, conflict(resolved_at=LATER, resolution="kept-both"))
+    await refuses(
+        sessions, a_conflict(owner.tenant_id, resolution="moved"), "resolution_states_when"
+    )
+    await refuses(
+        sessions,
+        a_conflict(owner.tenant_id, resolved_at=LATER, resolution="ignored"),
+        "resolution_is_known",
+    )
+    await accepts(sessions, a_conflict(owner.tenant_id))
+    await accepts(sessions, a_conflict(owner.tenant_id, resolved_at=LATER, resolution="kept-both"))
+
+
+async def test_one_commitment_and_block_hold_one_unanswered_conflict(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # Detection runs on every sync that moved an anchor and on every solve's commit path, so the
+    # same overlap is presented many times. The index is what makes the raise idempotent rather
+    # than a read the next writer races.
+    anchor_id = uuid4()
+    await accepts(sessions, a_conflict(owner.tenant_id, anchor_id=anchor_id))
+
+    await refuses(
+        sessions,
+        a_conflict(owner.tenant_id, anchor_id=anchor_id),
+        UNANSWERED_CONFLICT_INDEX,
+    )
+
+
+async def test_an_accepted_overlap_is_not_raised_again_and_a_moved_one_is(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # `kept-both` is the user saying the overlap is fine, so it never returns. `moved` asked for a
+    # change, so the same collision afterwards is a new event the user has to see.
+    accepted, asked_to_move = uuid4(), uuid4()
+    await accepts(
+        sessions,
+        a_conflict(owner.tenant_id, anchor_id=accepted, resolved_at=LATER, resolution="kept-both"),
+    )
+    await accepts(
+        sessions,
+        a_conflict(owner.tenant_id, anchor_id=asked_to_move, resolved_at=LATER, resolution="moved"),
+    )
+
+    await refuses(
+        sessions, a_conflict(owner.tenant_id, anchor_id=accepted), UNANSWERED_CONFLICT_INDEX
+    )
+    await accepts(sessions, a_conflict(owner.tenant_id, anchor_id=asked_to_move))
 
 
 async def test_a_feasible_verdict_cannot_carry_a_shortfall(

@@ -1,4 +1,4 @@
-"""Plan storage's structural rules: append-only, the three partial indexes, and the reads.
+"""Plan storage's structural rules: append-only, the partial indexes, and the reads.
 
 Four rules live here, and none of them can be enforced by a test of behavior.
 
@@ -11,9 +11,10 @@ rule is stated over the whole public surface, inherited members included.
 every read of that week would silently miss it. So the signature is asserted, not the write.
 
 **The invariants that live in indexes have to be declared to exist.** The single-flight
-solve, the one active weight set, and the one adjustment per kind and target are all
-partial or unique indexes. The integration tier asserts each one BITES; this asserts each
-one is declared, which is what fails when a later migration drops one.
+solve, the one active weight set, the one adjustment per kind and target, and the one
+unanswered conflict per commitment and block are all partial or unique indexes. The
+integration tier asserts each one BITES; this asserts each one is declared, which is what
+fails when a later migration drops one.
 
 **Every table needs the index its dominant query reads.** Storage growth is around 16 MB per
 user-year, so nothing here is about size; what a missing index costs is a sequential scan on
@@ -48,9 +49,13 @@ from syncr_api.plans.config import (
     BLOCK_OUTCOMES_TABLE,
     CONFLICTS_TABLE,
     EDIT_EVENTS_TABLE,
+    KEPT_BOTH_RESOLUTION,
+    MOVED_RESOLUTION,
     PENDING_PROPOSALS_TABLE,
     PINS_TABLE,
     PLAN_REVISIONS_TABLE,
+    RETYPED_RESOLUTION,
+    UNANSWERED_CONFLICT_INDEX,
     VERDICT_EVENTS_TABLE,
     WEEK_ADJUSTMENTS_TABLE,
     WEEK_INPUT_VERSIONS_TABLE,
@@ -303,6 +308,26 @@ def test_one_adjustment_per_week_kind_and_target_is_a_unique_index() -> None:
         "kind",
         "target_id",
     ]
+
+
+def test_one_unanswered_conflict_per_commitment_and_block_is_a_partial_unique_index() -> None:
+    # Detection runs on every sync that moved an anchor and on every solve's commit path, so the
+    # same overlap is presented many times and the raise is idempotent by construction rather
+    # than by a read the next writer races. The week is deliberately absent from the columns: a
+    # block id is a digest of it.
+    index = named_index(CONFLICTS_TABLE, UNANSWERED_CONFLICT_INDEX)
+    predicate = partial_predicate(index)
+
+    assert index.unique is True
+    assert [column.name for column in index.columns] == [
+        TENANT_ID_COLUMN,
+        "anchor_id",
+        "block_id",
+    ]
+    assert "resolved_at IS NULL" in predicate
+    assert f"resolution = '{KEPT_BOTH_RESOLUTION}'" in predicate
+    for asks_for_a_change in (MOVED_RESOLUTION, RETYPED_RESOLUTION):
+        assert asks_for_a_change not in predicate, predicate
 
 
 def test_one_outcome_per_block_is_a_unique_index() -> None:

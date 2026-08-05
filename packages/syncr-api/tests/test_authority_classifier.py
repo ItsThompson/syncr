@@ -42,6 +42,7 @@ from tests.plan_documents import (
     CAREER,
     FITNESS,
     INTERVIEW,
+    WEEK,
     a_block,
     a_document,
     a_slot,
@@ -351,11 +352,10 @@ class TestWhatCollides:
 
         assert found == (
             DetectedConflict(
-                anchor_id=INTERVIEW,
-                block_id=block(GYM, between(9, 12)).id,
-                overlap=between(9.5, 10),
+                anchor_id=INTERVIEW, iso_week=WEEK, binding=GYM, overlap=between(9.5, 10)
             ),
         )
+        assert found[0].block_id == block(GYM, between(9, 12)).id
 
     def test_a_buffer_pinned_elsewhere_does_not_collide_with_its_own_fresh_geometry(self) -> None:
         live = a_week(pinned(block(TRANSIT, between(15, 16))))

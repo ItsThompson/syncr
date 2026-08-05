@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
+from sqlalchemy import text
+
 from syncr_domain import plan as plan_document
 from syncr_domain.identity import BLOCK_ID_LENGTH
 
@@ -59,6 +61,19 @@ MOVED_OUTCOME: Final = "moved"
 
 # `kept-both` is a legitimate resolution: users multitask.
 CONFLICT_RESOLUTIONS: Final = ("moved", "kept-both", "retyped")
+MOVED_RESOLUTION: Final = "moved"
+KEPT_BOTH_RESOLUTION: Final = "kept-both"
+RETYPED_RESOLUTION: Final = "retyped"
+type ConflictResolution = Literal["moved", "kept-both", "retyped"]
+
+# One question per commitment and block, and the two states that answer "already asked". An open
+# conflict is waiting for an answer, and one the user answered by accepting the overlap is never
+# re-raised; a `moved` or a `retyped` asked for a change, so the same collision afterwards is a new
+# event rather than the same question. Stated once and read twice, as the partial unique index the
+# table declares and as the conflict target the raise infers, so an insert cannot claim to be
+# idempotent over a predicate the index does not hold.
+UNANSWERED_CONFLICT_INDEX: Final = "uq_conflicts_tenant_id_anchor_id_block_id"
+UNANSWERED_CONFLICT: Final = text(f"resolved_at IS NULL OR resolution = '{KEPT_BOTH_RESOLUTION}'")
 
 # A verdict's provenance. `probe` proves infeasibility only; `solver` is authoritative.
 VERDICT_PROVENANCES: Final = ("probe", "solver")

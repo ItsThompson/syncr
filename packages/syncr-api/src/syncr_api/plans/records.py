@@ -29,9 +29,16 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from syncr_api.core.columns import JsonObject
-    from syncr_api.plans.config import AdjustmentKind, RevisionReason, RevisionStatus
+    from syncr_api.plans.config import (
+        AdjustmentKind,
+        ConflictResolution,
+        RevisionReason,
+        RevisionStatus,
+    )
     from syncr_domain.identifiers import (
+        AnchorId,
         BlockOutcomeId,
+        ConflictId,
         OperationId,
         PlanRevisionId,
         TenantId,
@@ -93,6 +100,36 @@ class WeekAdjustmentRecord:
     delta_minutes: int | None
     created_at: datetime
     created_by_operation_id: OperationId
+
+
+@dataclass(frozen=True, slots=True)
+class ConflictRecord:
+    """One overlap the user has to answer for, or has answered for, as persistence knows it.
+
+    The record carries a rebuilt ``BindingRef`` and an ``Interval`` where the table carries a JSONB
+    object and two columns, for the reason :class:`BlockOutcomeRecord` does: every reader wants the
+    identity as one value and the span as one, and rebuilding either in a second place is how two
+    readers would come to disagree about which block a row names.
+
+    ``block_id`` is what the week view pairs a conflict with a rendered block on, and it is stored
+    rather than derived here because a row already holds it: this record describes a row.
+    """
+
+    id: ConflictId
+    tenant_id: TenantId
+    iso_week: IsoWeek
+    anchor_id: AnchorId
+    block_id: BlockId
+    binding: BindingRef
+    overlap: Interval
+    detected_at: datetime
+    resolved_at: datetime | None
+    resolution: ConflictResolution | None
+
+    @property
+    def is_resolved(self) -> bool:
+        """Whether this conflict has been answered for. A resolved one is retained, not gone."""
+        return self.resolved_at is not None
 
 
 @dataclass(frozen=True, slots=True)

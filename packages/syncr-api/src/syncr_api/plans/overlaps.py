@@ -48,15 +48,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from syncr_domain.identity import Origin
+from syncr_domain.identity import Origin, block_id
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from syncr_domain.identifiers import AnchorId
-    from syncr_domain.identity import BlockId
+    from syncr_domain.identity import BindingRef, BlockId
     from syncr_domain.intervals import Instant, Interval
     from syncr_domain.plan import Block, PlanDocument
+    from syncr_domain.weeks import IsoWeek
     from syncr_solver.inputs import Anchor, ShadowBlock
 
 
@@ -67,11 +68,22 @@ class DetectedConflict:
     The pure half of a stored conflict. It carries no identifier and no instant of detection,
     because a value computed from two documents mints neither: the repository that raises the row
     supplies both.
+
+    The block is named by the week and the binding rather than by an id, the way every other
+    reference to a block in this product is: the id is derived from that pair, and one that could
+    be supplied could be supplied wrongly. The binding is also what makes the retained row useful
+    afterwards, since a digest cannot be compared across weeks.
     """
 
     anchor_id: AnchorId
-    block_id: BlockId
+    iso_week: IsoWeek
+    binding: BindingRef
     overlap: Interval
+
+    @property
+    def block_id(self) -> BlockId:
+        """The block this conflict is about, derived from the week and the binding."""
+        return block_id(self.iso_week, self.binding)
 
 
 def detected_conflicts(
@@ -140,7 +152,9 @@ def _conflict(anchor_id: AnchorId, block: Block, arriving: Interval) -> Detected
     overlap = arriving.clipped_to(block.interval)
     if overlap is None:
         return None
-    return DetectedConflict(anchor_id=anchor_id, block_id=block.id, overlap=overlap)
+    return DetectedConflict(
+        anchor_id=anchor_id, iso_week=block.iso_week, binding=block.binding, overlap=overlap
+    )
 
 
 def _order(conflict: DetectedConflict) -> tuple[Interval, BlockId, str]:
