@@ -26,10 +26,11 @@ import pytest
 from syncr_domain.gaps import EmptySlotReason, ForbiddenScope, SlotContext, gutter_label
 from syncr_domain.identity import BindingKind, Origin, TransitLeg, block_id
 from syncr_domain.reasons import Bound, DerivationSource
-from syncr_solver import Materialization, derive, materialize
+from syncr_solver import materialize
 from syncr_solver.constraints import ConstraintRule
 from syncr_solver.errors import MaterializeError
 from syncr_solver.inputs import FrameEntry
+from syncr_solver.materialize import Materialization, derive
 from syncr_solver.metrics import MATERIALIZE_TOTAL, MaterializeCause
 from tests.materialized_weeks import (
     CAREER,
@@ -151,6 +152,19 @@ def test_each_cause_counts_its_own_materializations() -> None:
         MaterializeCause.CHECKPOINT: 1,
         MaterializeCause.SOLVE_FAILED: 1,
     }
+
+
+def test_a_materialization_that_produced_no_document_is_counted_by_nothing() -> None:
+    # The count is what tells a degraded plan from an outage, so counting a refusal inverts the one
+    # reading the `solve_failed` alert rests on: a fallback that produced nothing IS the outage.
+    before = {cause: _counted(cause) for cause in MaterializeCause}
+
+    with pytest.raises(MaterializeError):
+        materialize(
+            a_week(frame=(_keyed_against_another_week(),)), cause=MaterializeCause.CHECKPOINT
+        )
+
+    assert {cause: _counted(cause) for cause in MaterializeCause} == before
 
 
 def _counted(cause: MaterializeCause) -> float:
@@ -405,7 +419,7 @@ def test_a_prep_buffer_and_the_two_transit_legs_each_say_which_buffer_they_are()
 
     document = materialize(week, cause=MaterializeCause.PHASE1)
 
-    assert {rendered(bound_clause(block)) for block in document.blocks if block.area_id} <= {
+    assert {rendered(bound_clause(block)) for block in document.blocks if block.area_id} == {
         "anchor_type · Interview prep · prep, 1h",
         "anchor_type · Leave for Uni · transit out, 30m",
         "anchor_type · Go Home · transit back, 15m",
@@ -443,7 +457,13 @@ def test_an_occurrence_keyed_against_another_week_is_refused_rather_than_read_ag
 ):
     # Which week owns an occurrence is the producer's question. Answering it here, by reading a
     # neighbouring day's zone, would hide a producer that answered it wrongly.
-    foreign = FrameEntry(
+    with pytest.raises(MaterializeError, match="names no date of this week"):
+        materialize(a_week(frame=(_keyed_against_another_week(),)), cause=MaterializeCause.PHASE1)
+
+
+def _keyed_against_another_week() -> FrameEntry:
+    """A frame occurrence keyed by a date this week does not hold, which no producer emits."""
+    return FrameEntry(
         routine_id=an_anchor().anchor_id,
         occurrence_key="2026-03-01",
         interval=between(23, 31),
@@ -451,9 +471,6 @@ def test_an_occurrence_keyed_against_another_week_is_refused_rather_than_read_ag
         flex_band_minutes=0,
         title="Sleep",
     )
-
-    with pytest.raises(MaterializeError, match="names no date of this week"):
-        materialize(a_week(frame=(foreign,)), cause=MaterializeCause.PHASE1)
 
 
 # --------------------------------------------------------------------------------
@@ -631,10 +648,11 @@ def test_the_fixed_elements_of_a_week_are_the_frame_the_commitments_and_the_buff
     assert zone_by_date == tuple(document.zone_by_date.items())
 
 
-def test_phase_one_is_shared_so_materializing_twice_fixes_the_same_elements() -> None:
-    # The contract a solve is held to, asserted here against the only caller that exists. When the
-    # search phases land they run this same phase first, and their document is compared with this
-    # reading rather than with a second definition of it.
+def test_the_fixed_elements_are_the_same_whichever_cause_asked_for_them() -> None:
+    # The contract a solve is held to, asserted here against the only caller that exists: the label
+    # a caller passes changes a counter and nothing about the week. When the search phases land they
+    # run this same phase first, and their document is compared with this reading rather than with a
+    # second definition of it.
     week = a_week()
 
     assert fixed_elements(materialize(week, cause=MaterializeCause.PHASE1)) == fixed_elements(

@@ -36,7 +36,8 @@ with a materialized entry is a conflict the user resolves rather than one this f
 
 No content is bound, so no habit occurrence and no task appears. No pin is honoured and no past
 block is carried: a pin is the user's own choice about a placement, and reporting one needs the
-two clauses a chosen placement carries. Every block here carries exactly one clause, the ``bound``
+two clauses a chosen placement carries. For the fallback job the omission costs nothing, because a
+week with no plan has no pins to honour. Every block here carries exactly one clause, the ``bound``
 clause naming its determinant, so a derived plan satisfies the reason-record minimum with no
 exception carved out for it.
 """
@@ -58,6 +59,7 @@ from syncr_solver.derivation import (
 )
 from syncr_solver.figures import week_figures
 from syncr_solver.metrics import MATERIALIZE_TOTAL, MaterializeCause
+from syncr_solver.occupancy import OCCUPANCY_RULES
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -99,11 +101,12 @@ def materialize(inputs: SolveInputs, *, cause: MaterializeCause) -> PlanDocument
 def derive(inputs: SolveInputs, *, cause: MaterializeCause) -> Materialization:
     """``materialize``, plus what the occupancy rules refused along the way.
 
-    The counter is incremented here rather than in ``materialize``, because both entry points
-    materialize a week, and a count only one of them reached would report a fraction of the weeks
-    derived.
+    The counter is incremented once the document exists rather than on the way in, so a refusal is
+    not counted as a materialization: a fallback that produced nothing is the outage the
+    ``solve_failed`` count exists to distinguish a degraded plan from. It is incremented here rather
+    than in ``materialize``, because both entry points materialize a week and a count only one of
+    them reached would report a fraction of the weeks derived.
     """
-    MATERIALIZE_TOTAL.labels(cause=cause.value).inc()
     zones = zone_by_occurrence(inputs.iso_week, inputs.zone_by_date)
     space = PartialPlan.of(inputs)
     fixed = (
@@ -113,20 +116,19 @@ def derive(inputs: SolveInputs, *, cause: MaterializeCause) -> Materialization:
     placed, blocked = _place(_candidates(inputs, zones), space)
     blocks = tuple(sorted((*fixed, *placed), key=_block_key))
     figures = week_figures(inputs, blocks)
-    return Materialization(
-        document=PlanDocument(
-            iso_week=inputs.iso_week,
-            zone_by_date=_zones_of_this_week(inputs),
-            discretionary_minutes=figures.discretionary_minutes,
-            unallocated_minutes=figures.unallocated_minutes,
-            oversubscription_minutes=figures.oversubscription_minutes,
-            blocks=blocks,
-            forbidden_windows=space.forbidden_windows,
-            empty_slots=_slots(inputs.template_entries),
-            adjustments=tuple(adjustment.adjustment_id for adjustment in inputs.adjustments),
-        ),
-        blocked=blocked,
+    document = PlanDocument(
+        iso_week=inputs.iso_week,
+        zone_by_date=_zones_of_this_week(inputs),
+        discretionary_minutes=figures.discretionary_minutes,
+        unallocated_minutes=figures.unallocated_minutes,
+        oversubscription_minutes=figures.oversubscription_minutes,
+        blocks=blocks,
+        forbidden_windows=space.forbidden_windows,
+        empty_slots=_slots(inputs.template_entries),
+        adjustments=tuple(adjustment.adjustment_id for adjustment in inputs.adjustments),
     )
+    MATERIALIZE_TOTAL.labels(cause=cause.value).inc()
+    return Materialization(document=document, blocked=blocked)
 
 
 def _candidates(inputs: SolveInputs, zones: Mapping[str, ZoneId]) -> tuple[Block, ...]:
@@ -155,7 +157,7 @@ def _place(
     would each be a placement decision, and derivation decides nothing: what it can say is that
     the span its determinant named was already spent, and by what.
     """
-    check = ConstraintCheck()
+    check = ConstraintCheck(OCCUPANCY_RULES)
     state = space
     placed: list[Block] = []
     blocked: list[BlockedCandidate] = []
@@ -202,5 +204,6 @@ def _block_key(block: Block) -> tuple[Instant, Instant, str, str, BlockId]:
     )
 
 
-def _slot_key(slot: EmptySlot) -> tuple[Instant, Instant, AreaId]:
-    return (slot.interval.start, slot.interval.end, slot.area_id)
+def _slot_key(slot: EmptySlot) -> tuple[Instant, Instant, AreaId, str]:
+    """Span order, the Area, then the reason. Every field an empty slot carries."""
+    return (slot.interval.start, slot.interval.end, slot.area_id, slot.reason.value)
