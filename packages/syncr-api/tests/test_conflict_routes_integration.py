@@ -33,6 +33,7 @@ from syncr_api.plans.overlaps import DetectedConflict
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_domain.identity import BindingRef
+from syncr_domain.intervals import Interval
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 from tests.plan_documents import WEEK, a_block_holding, a_document, between
 
@@ -97,13 +98,19 @@ def _sign_in(http: TestClient, email: str) -> dict[str, str]:
 def seed_conflict(
     database_url: str, tenant_id: TenantId, *, binding: BindingRef = GYM, block: Block | None = None
 ) -> str:
-    """A live plan holding ``block`` and one open conflict against ``binding``, on its own loop."""
+    """A live plan holding ``block`` and one open conflict against ``binding``, on its own loop.
+
+    The overlap is the second half of the block's own span, so the seeded pair is one the detector
+    could really have produced: a fixture that is internally impossible is a trap for whoever reads
+    it next looking for what a real row holds.
+    """
 
     async def seed() -> str:
         database = create_database(database_url)
         try:
             async with database.sessionmaker() as session, session.begin():
                 held = block if block is not None else a_block_holding(binding, between(9, 10))
+                overlap = Interval(_midpoint(held.interval), held.interval.end)
                 await PlanRepository(session, tenant_id).append(
                     document=stored_document(a_document(blocks=(held,))),
                     objective_breakdown={"budget_deviation": 1.0},
@@ -119,7 +126,7 @@ def seed_conflict(
                             anchor_id=uuid4(),
                             iso_week=WEEK,
                             binding=binding,
-                            overlap=between(9.5, 10),
+                            overlap=overlap,
                         ),
                     ),
                     at=NOW,
@@ -129,6 +136,10 @@ def seed_conflict(
             await database.engine.dispose()
 
     return run(seed())
+
+
+def _midpoint(interval: Interval) -> datetime:
+    return interval.start + interval.duration / 2
 
 
 def stored_conflicts(database_url: str, tenant_id: TenantId) -> list[Any]:

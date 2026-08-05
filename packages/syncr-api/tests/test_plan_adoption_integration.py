@@ -30,7 +30,7 @@ import pytest
 from sqlalchemy import func, select
 
 from syncr_api.core.db import create_db_engine, create_sessionmaker
-from syncr_api.plans.adoption import Candidate, PlanAdoption
+from syncr_api.plans.adoption import AUTO_APPLIED_REASONS, Candidate, PlanAdoption
 from syncr_api.plans.authority import Classification, classify
 from syncr_api.plans.conflicts import PlanConflictRepository
 from syncr_api.plans.errors import ClassificationRejected, RevisionRejected
@@ -40,6 +40,7 @@ from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_proposals import ADDED, MOVED, REMOVED
 from syncr_domain.identity import BindingRef
+from syncr_domain.plan import RevisionReason
 from syncr_domain.proposals import BlockChange, ProposalDiff
 from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import delete_tenant, seed_owner
@@ -72,6 +73,10 @@ A_VERDICT: dict[str, Any] = {"feasible": True, "shortfall_minutes": 0, "provenan
 WEIGHT_SET_VERSION = 1
 
 A_FILL: StoredReason = "auto_applied_fill"
+
+# Every reason a revision may carry that this write may NOT append under, derived from the one
+# vocabulary rather than listed a second time beside the pair the module allows.
+NOT_AN_AUTO_APPLICATION = {reason.value for reason in RevisionReason} - AUTO_APPLIED_REASONS
 
 
 @pytest.fixture
@@ -341,10 +346,12 @@ class TestTheConflictsAreRaisedWithIt:
 
 
 class TestWhatTheWriteRefuses:
-    @pytest.mark.parametrize("reason", ["user_approved", "tradeoff_approved", "materialized"])
+    @pytest.mark.parametrize("reason", sorted(NOT_AN_AUTO_APPLICATION))
     async def test_a_reason_that_is_not_an_auto_application_is_refused(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord, reason: str
     ) -> None:
+        # The complement is DERIVED from the vocabulary rather than listed here, so a seventh
+        # reason arrives as a case this test drives instead of as one nobody wrote down.
         live = a_week()
         candidate = a_week(a_block_holding(LEETCODE, between(14, 15)))
 
@@ -359,20 +366,15 @@ class TestWhatTheWriteRefuses:
 
         assert await revisions_held(sessions, owner.tenant_id) == 0
 
-    async def test_the_horizon_maintainers_own_reason_is_refused_here_too(
-        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
-    ) -> None:
-        live = a_week()
-        candidate = a_week(a_block_holding(LEETCODE, between(14, 15)))
-
-        with pytest.raises(RevisionRejected):
-            await adopt(
-                sessions,
-                owner.tenant_id,
-                classified(live, candidate),
-                a_candidate(candidate),
-                reason="horizon_advanced",
-            )
+    def test_the_complement_names_the_four_reasons_that_are_not_an_adoption(self) -> None:
+        # The floor beside the derivation: an empty complement would make the parametrize above
+        # drive nothing while reading as a passing test.
+        assert {
+            "user_approved",
+            "tradeoff_approved",
+            "materialized",
+            "horizon_advanced",
+        } == NOT_AN_AUTO_APPLICATION
 
     async def test_a_classification_of_another_week_is_refused(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord

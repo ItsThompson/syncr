@@ -64,13 +64,11 @@ from syncr_domain.weeks import week_span
 from syncr_solver.inputs import Anchor, ShadowBlock
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_api.plans.records import ConflictRecord
     from syncr_domain.identifiers import TenantId
-    from syncr_domain.intervals import Interval
+    from syncr_domain.intervals import Instant, Interval
     from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import ZoneProfile
@@ -98,7 +96,7 @@ class IngestConflicts:
         self._tenant_id = tenant_id
 
     @measured("conflicts")
-    async def detect(self, *, now: datetime) -> tuple[ConflictRecord, ...]:
+    async def detect(self, *, now: Instant) -> tuple[ConflictRecord, ...]:
         """Every conflict raised by this pass, over every horizon week that holds a plan.
 
         Answers with what was newly raised rather than with every overlap that exists, because the
@@ -126,7 +124,7 @@ class IngestConflicts:
         return tuple(raised)
 
     async def _detected(
-        self, week: IsoWeek, *, profile: ZoneProfile, now: datetime
+        self, week: IsoWeek, *, profile: ZoneProfile, now: Instant
     ) -> tuple[ConflictRecord, ...]:
         """One week's conflicts, or nothing when the week holds no plan to collide with."""
         live = await self._live(week)
