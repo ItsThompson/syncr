@@ -131,11 +131,21 @@ class Blocked:
 class Dominant:
     """The objective term with the largest share of the PLAN's total cost.
 
-    The plan's, not this block's. The objective measures a whole week: three of its seven terms
-    have no per-block reading at all, because an Area's budget deviation is a week's gap, churn
-    counts moves across the document, and staleness is over occurrences the plan does not hold.
+    The plan's, not this block's. The objective measures a whole week and three of its seven terms
+    have no per-block reading at all:
+
+    - ``budget_deviation`` is an Area's gap against a whole-week target, divided by the total of
+      those targets, so it is a fraction of something no single block is part of;
+    - ``staleness`` counts the minutes of occurrences the plan places NOWHERE, so there is no block
+      for it to attach to;
+    - ``churn`` is a saturating curve over the number of moves against a tolerance, which is not
+      decomposable per block even in principle: two blocks that each moved cost less together than
+      twice what one costs alone.
+
     So the share is ``cost of the term / cost of the plan``, which is the figure the breakdown
-    already answers and the same figure for every block of one plan.
+    already answers, and every block of one plan carries the same one. A per-block share would need
+    an attribution rule invented for each of the three, to satisfy a sentence rather than to answer
+    a question the objective asks.
     """
 
     term: str
