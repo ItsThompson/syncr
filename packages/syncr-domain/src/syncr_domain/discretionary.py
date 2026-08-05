@@ -44,8 +44,9 @@ from typing import TYPE_CHECKING, Final
 from syncr_domain.intervals import IntervalSet
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
+    from syncr_domain.gaps import ForbiddenWindow
     from syncr_domain.intervals import Interval
 
 
@@ -121,6 +122,19 @@ SUBTRAHEND_BY_KIND: Final[Mapping[OccupancyKind, Subtrahend]] = {
 def is_subtracted(kind: OccupancyKind) -> bool:
     """Whether spans of this kind leave the discretionary-time denominator."""
     return kind in SUBTRAHEND_BY_KIND
+
+
+def absolute_forbidden(windows: Iterable[ForbiddenWindow]) -> IntervalSet:
+    """The forbidden windows that leave the denominator, as the set the subtraction takes.
+
+    Stated here rather than at each caller, because it reads the table above: a window scoped to
+    named Areas stays in, since every other Area may still claim that time, and a window that
+    forbids everything comes out. Two callers testing a scope themselves is how the solver's
+    reading of a window and the denominator's came apart before the scope was a field.
+    """
+    return IntervalSet(
+        window.interval for window in windows if is_subtracted(window.occupancy_kind)
+    )
 
 
 def discretionary_intervals(

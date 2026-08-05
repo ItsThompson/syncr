@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_domain.budgets import oversubscription_minutes, unallocated_minutes
-from syncr_domain.discretionary import discretionary_intervals, is_subtracted
+from syncr_domain.discretionary import absolute_forbidden, discretionary_intervals
 from syncr_domain.intervals import IntervalSet
 
 if TYPE_CHECKING:
@@ -57,7 +57,7 @@ def week_figures(inputs: SolveInputs, blocks: Sequence[Block]) -> WeekFigures:
         inputs.span,
         frame=inputs.frame_occupancy(),
         anchors=IntervalSet(anchor.interval for anchor in inputs.anchors),
-        absolute_forbidden=_absolute_forbidden(inputs),
+        absolute_forbidden=absolute_forbidden(inputs.forbidden_windows),
         off_plan=IntervalSet(period.interval for period in inputs.off_plan),
     )
     return WeekFigures(
@@ -66,20 +66,6 @@ def week_figures(inputs: SolveInputs, blocks: Sequence[Block]) -> WeekFigures:
         oversubscription_minutes=oversubscription_minutes(
             (area.target_minutes for area in inputs.areas), discretionary.total_minutes()
         ),
-    )
-
-
-def _absolute_forbidden(inputs: SolveInputs) -> IntervalSet:
-    """The windows that leave the denominator, which each window's own kind decides.
-
-    Read through the subtraction table rather than by testing a scope here, so the one statement
-    of what leaves the denominator has one reader. A recovery window scoped to named Areas stays
-    in, because every other Area may still claim that time.
-    """
-    return IntervalSet(
-        window.interval
-        for window in inputs.forbidden_windows
-        if is_subtracted(window.occupancy_kind)
     )
 
 

@@ -14,6 +14,7 @@ suite pass while the arithmetic underneath it was wrong.
 from __future__ import annotations
 
 import inspect
+from uuid import UUID
 
 import pytest
 from hypothesis import given
@@ -23,10 +24,12 @@ from syncr_domain.discretionary import (
     SUBTRAHEND_BY_KIND,
     OccupancyKind,
     Subtrahend,
+    absolute_forbidden,
     discretionary_intervals,
     discretionary_time,
     is_subtracted,
 )
+from syncr_domain.gaps import ForbiddenKind, ForbiddenScope, ForbiddenWindow
 from syncr_domain.intervals import Interval, IntervalSet
 from tests.instants import at
 from tests.interval_strategies import interval_sets, intervals
@@ -177,6 +180,70 @@ def test_every_subtrahend_the_table_names_is_a_parameter_of_the_denominator() ->
 
     assert {subtrahend.value for subtrahend in Subtrahend} == parameters
     assert set(SUBTRAHEND_BY_KIND.values()) == set(Subtrahend)
+
+
+# --------------------------------------------------------------------------------
+# The windows the subtraction takes, read through the table rather than by scope
+# --------------------------------------------------------------------------------
+
+AN_ANCHOR = UUID("dddddddd-0000-4000-8000-00000000000a")
+STUDY = UUID("dddddddd-0000-4000-8000-000000000001")
+
+
+def a_window(
+    interval: Interval,
+    *,
+    kind: ForbiddenKind = ForbiddenKind.RECOVERY,
+    scope: ForbiddenScope = ForbiddenScope.ALL,
+    forbidden_area_ids: tuple[UUID, ...] = (),
+) -> ForbiddenWindow:
+    return ForbiddenWindow(
+        interval, kind, scope, forbidden_area_ids, "recovery · Kontron Interview", AN_ANCHOR
+    )
+
+
+def test_a_window_forbidding_every_area_is_taken_and_a_scoped_one_is_left() -> None:
+    # The one question the table answers, asked over the values a week actually carries: no Area
+    # can claim the first, and every Area but Study can claim the second.
+    absolute = a_window(Interval(at(9), at(10)))
+    scoped = a_window(
+        Interval(at(11), at(12)), scope=ForbiddenScope.AREAS, forbidden_area_ids=(STUDY,)
+    )
+
+    assert absolute_forbidden([absolute, scoped]) == IntervalSet([Interval(at(9), at(10))])
+
+
+def test_an_unattributed_buffer_is_taken_because_it_has_no_area_to_be_claimed_by() -> None:
+    buffer = a_window(Interval(at(9), at(9, 30)), kind=ForbiddenKind.TRANSIT_UNATTRIBUTED)
+
+    assert absolute_forbidden([buffer]) == IntervalSet([Interval(at(9), at(9, 30))])
+
+
+def test_two_windows_covering_one_span_are_taken_once() -> None:
+    # Two adjacent commitments casting a shared window do not double-subtract, which is the
+    # normalization the whole denominator rests on rather than a property of this projection.
+    span = Interval(at(9), at(10))
+
+    assert absolute_forbidden([a_window(span), a_window(span)]).total_minutes() == 60
+
+
+def test_the_projection_answers_for_every_kind_a_window_can_hold() -> None:
+    # Bounded by the inventory of windows rather than by the kinds anyone listed: a fourth
+    # ForbiddenKind fails here until this states which side of the subtraction it falls on.
+    every = [
+        a_window(Interval(at(hour), at(hour + 1)), kind=kind, scope=scope, forbidden_area_ids=areas)
+        for hour, (kind, scope, areas) in enumerate(
+            (
+                (ForbiddenKind.RECOVERY, ForbiddenScope.ALL, ()),
+                (ForbiddenKind.RECOVERY, ForbiddenScope.AREAS, (STUDY,)),
+                (ForbiddenKind.PREP_UNATTRIBUTED, ForbiddenScope.ALL, ()),
+                (ForbiddenKind.TRANSIT_UNATTRIBUTED, ForbiddenScope.ALL, ()),
+            )
+        )
+    ]
+
+    assert {window.kind for window in every} == set(ForbiddenKind)
+    assert absolute_forbidden(every).total_minutes() == 3 * 60
 
 
 # --------------------------------------------------------------------------------
