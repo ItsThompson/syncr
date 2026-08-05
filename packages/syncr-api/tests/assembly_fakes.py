@@ -78,7 +78,7 @@ if TYPE_CHECKING:
     from syncr_api.plans.config import AdjustmentKind
     from syncr_api.plans.placements import WeekPlacementReader
     from syncr_domain.identifiers import AreaId, HabitId, TaskId
-    from syncr_domain.outcomes import HabitOutcome
+    from syncr_domain.outcomes import HabitOutcome, RecordedOutcome
     from syncr_domain.zones import Date
 
 TENANT = UUID("11111111-1111-4111-8111-111111111111")
@@ -564,10 +564,18 @@ class FakeOffPlan(OffPlanPeriodRepository):
 
 
 class FakePlacements:
-    """The placement seam, with content: a live plan and the pins bound to it."""
+    """The placement seam, with content: a live plan, its pins, and the outcomes recorded on it."""
 
-    def __init__(self, *, live_plan: PlanDocument | None = None, pins: Sequence[Pin] = ()) -> None:
-        self._placements = WeekPlacements(live_plan=live_plan, pins=tuple(pins))
+    def __init__(
+        self,
+        *,
+        live_plan: PlanDocument | None = None,
+        pins: Sequence[Pin] = (),
+        outcomes: Sequence[RecordedOutcome] = (),
+    ) -> None:
+        self._placements = WeekPlacements(
+            live_plan=live_plan, pins=tuple(pins), outcomes=tuple(outcomes)
+        )
 
     async def read(self, iso_week: IsoWeek) -> WeekPlacements:
         return self._placements

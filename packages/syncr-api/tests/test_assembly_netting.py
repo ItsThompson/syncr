@@ -20,6 +20,7 @@ import pytest
 from syncr_api.plans.netting import PlacedTime, placements
 from syncr_domain.identity import BindingRef
 from syncr_domain.intervals import Interval
+from syncr_domain.outcomes import MISS_STATE, OutcomeState, RecordedOutcome
 from tests.assembly_fakes import (
     NOW,
     a_habit_block,
@@ -46,9 +47,10 @@ def placed_time(
     *,
     live_plan: PlanDocument | None = None,
     pins: tuple[Pin, ...] | list[Pin] = (),
+    outcomes: tuple[RecordedOutcome, ...] | list[RecordedOutcome] = (),
     now: datetime = NOW,
 ) -> PlacedTime:
-    return PlacedTime(placements(live_plan, pins, now=now), now=now)
+    return PlacedTime(placements(live_plan, pins, now=now, outcomes=outcomes), now=now)
 
 
 def test_a_block_that_has_not_started_is_movable_and_nets_from_neither_quantity() -> None:
@@ -295,3 +297,142 @@ def test_placements_are_emitted_in_one_order_whatever_order_they_arrived_in() ->
 
     assert forward == backward
     assert [item.interval for item in forward] == [early.interval, late.interval]
+
+
+# --------------------------------------------------------------------------------
+# What an outcome changes, and the column of the table that is uniform
+# --------------------------------------------------------------------------------
+
+FRIDAY_09 = at(9, day=4)
+
+
+def a_past_task_hour() -> PlanDocument:
+    """Monday 09:00-10:00 of Career work on ``TASK``, an hour behind ``now``."""
+    return a_plan(
+        blocks=[a_task_block(task_id=TASK, area_id=CAREER, interval=between(9, 10, day=1))]
+    )
+
+
+def an_outcome(
+    state: OutcomeState,
+    *,
+    actual_minutes: int | None = None,
+    actual_interval: Interval | None = None,
+) -> RecordedOutcome:
+    return RecordedOutcome(
+        binding=BindingRef.for_task(TASK),
+        state=state,
+        actual_minutes=actual_minutes,
+        actual_interval=actual_interval,
+    )
+
+
+def test_a_skipped_past_block_stops_counting_toward_its_task() -> None:
+    # Ticket 1290's answer. The user said the work was not done, so the hour is no longer
+    # attributed and the demand this figure is subtracted from rises by it. Without this the
+    # product counts work the user explicitly denied doing.
+    plan = a_past_task_hour()
+
+    presumed = placed_time(live_plan=plan)
+    skipped = placed_time(live_plan=plan, outcomes=[an_outcome(MISS_STATE)])
+
+    assert presumed.attributed_to_task_before(TASK, FRIDAY_09).past == 60
+    assert skipped.attributed_to_task_before(TASK, FRIDAY_09).past == 0
+
+
+def test_a_partial_past_block_is_attributed_the_minutes_it_reports() -> None:
+    plan = a_past_task_hour()
+
+    placed = placed_time(
+        live_plan=plan, outcomes=[an_outcome(OutcomeState.PARTIAL, actual_minutes=20)]
+    )
+
+    assert placed.attributed_to_task_before(TASK, FRIDAY_09).past == 20
+
+
+def test_a_moved_block_is_attributed_where_it_really_happened() -> None:
+    # The half a minute count cannot see, and the reason `moved` carries an interval rather than a
+    # length: the work planned for Monday really happened on Saturday, which does no work due on
+    # Friday. Attributing 60 minutes because the span was an hour long would credit the deadline
+    # with work done after it.
+    plan = a_past_task_hour()
+    saturday = between(9, 10, day=5)
+
+    placed = placed_time(
+        live_plan=plan, outcomes=[an_outcome(OutcomeState.MOVED, actual_interval=saturday)]
+    )
+
+    before_friday = placed.attributed_to_task_before(TASK, FRIDAY_09)
+    whole_week = placed.attributed_to_task_before(TASK, at(9, day=6))
+    assert (before_friday.past, before_friday.future) == (0, 0)
+    assert whole_week.future == 60
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        None,
+        OutcomeState.PRESUMED,
+        OutcomeState.COMPLETED,
+        OutcomeState.PARTIAL,
+        OutcomeState.SKIPPED,
+        OutcomeState.MOVED,
+    ],
+    ids=["no row", "presumed", "completed", "partial", "skipped", "moved"],
+)
+def test_no_outcome_returns_a_span_to_capacity_or_makes_a_past_block_movable(
+    outcome: OutcomeState | None,
+) -> None:
+    # The uniform column of section 09's table, asserted over the whole vocabulary rather than
+    # over the one state that tempted it. If `skipped` returned its hour to capacity, skipping
+    # work would make the week read as MORE feasible, which is the inversion the split between
+    # attribution and capacity exists to prevent.
+    plan = a_past_task_hour()
+    recorded = (
+        []
+        if outcome is None
+        else [
+            an_outcome(
+                outcome,
+                actual_minutes=20 if outcome is OutcomeState.PARTIAL else None,
+                actual_interval=between(9, 10, day=5) if outcome is OutcomeState.MOVED else None,
+            )
+        ]
+    )
+
+    placed = placed_time(live_plan=plan, outcomes=recorded)
+
+    assert placed.minutes_of_area(CAREER) == 60
+    assert placed.immovable_minutes_of_area(CAREER) == 60
+    assert placed.immovable_minutes_of_task(TASK) == 60
+
+
+def test_an_outcome_naming_a_binding_no_placement_holds_changes_nothing() -> None:
+    # O8 at this layer: the row is retained because it is a fact about a week that happened, and a
+    # week whose plan no longer holds the block has nothing for it to change.
+    plan = a_past_task_hour()
+    stale = RecordedOutcome(binding=BindingRef.for_task(OTHER_TASK), state=MISS_STATE)
+
+    placed = placed_time(live_plan=plan, outcomes=[stale])
+
+    assert placed.attributed_to_task_before(TASK, FRIDAY_09).past == 60
+    assert placed.minutes_of_area(CAREER) == 60
+
+
+def test_an_outcome_is_read_against_the_pins_interval_rather_than_the_plans() -> None:
+    # A pin is where the block IS, so a partial reported on a pinned block reports minutes of the
+    # pinned hour. Read against the plan's interval instead, the reported minutes would be
+    # attributed to a span the block no longer occupies.
+    plan = a_plan(
+        blocks=[a_task_block(task_id=TASK, area_id=CAREER, interval=between(9, 10, day=3))]
+    )
+    pin = a_pin(binding=BindingRef.for_task(TASK), interval=between(9, 10, day=1))
+
+    placed = placed_time(
+        live_plan=plan,
+        pins=[pin],
+        outcomes=[an_outcome(OutcomeState.PARTIAL, actual_minutes=30)],
+    )
+
+    attributed = placed.attributed_to_task_before(TASK, FRIDAY_09)
+    assert (attributed.past, attributed.future) == (30, 0)

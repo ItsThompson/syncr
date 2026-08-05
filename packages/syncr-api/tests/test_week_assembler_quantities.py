@@ -30,6 +30,7 @@ from syncr_api.plans.config import ADJUSTMENT_KINDS
 from syncr_common.logging import configure_logging
 from syncr_domain.habits import Duration
 from syncr_domain.identity import BindingRef, date_occurrence_key
+from syncr_domain.outcomes import MISS_STATE, RecordedOutcome
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.preferences import PreferenceStrength
 from syncr_solver.inputs import AreaBudget, ResolvedPreference, WeekAdjustment
@@ -245,6 +246,56 @@ async def test_a_confirmed_outcome_longer_than_the_block_carries_the_truth() -> 
     ).assemble(WEEK, NOW)
 
     assert [demand.remaining_minutes for demand in inputs.deadline_demands] == [150]
+
+
+async def test_a_confirmed_skip_raises_the_demand_for_the_task_it_was_placed_for() -> None:
+    # Ticket 1290, end to end through the assembly. The user's Monday hour was placed and then
+    # marked skipped, so the four-hour task still owes four hours rather than three: the demand
+    # RISES by the hour the user said they did not work, which is the truth and the opposite of
+    # what the netting formula alone produced.
+    area = an_area()
+    task = a_task(area_id=area.id, estimate_minutes=FOUR_HOURS, deadline=at(9, day=4))
+    plan = a_plan(
+        blocks=[a_task_block(task_id=task.id, area_id=area.id, interval=between(9, 10, day=1))]
+    )
+    skipped = RecordedOutcome(binding=BindingRef.for_task(task.id), state=MISS_STATE)
+
+    presumed_inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        tasks=FakeTasks([task]),
+        placements=FakePlacements(live_plan=plan),
+    ).assemble(WEEK, NOW)
+    skipped_inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        tasks=FakeTasks([task]),
+        placements=FakePlacements(live_plan=plan, outcomes=[skipped]),
+    ).assemble(WEEK, NOW)
+
+    assert [demand.remaining_minutes for demand in presumed_inputs.deadline_demands] == [
+        3 * MINUTES_PER_HOUR
+    ]
+    assert [demand.remaining_minutes for demand in skipped_inputs.deadline_demands] == [FOUR_HOURS]
+
+
+async def test_a_confirmed_skip_leaves_the_solvers_own_figure_where_it_was() -> None:
+    # The asymmetry, pinned so it is not read as a rule. The solver's remaining work nets what it
+    # cannot RE-PLACE, and a past hour stays unmovable whatever the user said happened in it. The
+    # two readings genuinely disagree here and only the probe's is settled; ticket 1320 owns
+    # whether the solver's should read the log too.
+    area = an_area()
+    task = a_task(area_id=area.id, estimate_minutes=FOUR_HOURS, deadline=at(9, day=4))
+    plan = a_plan(
+        blocks=[a_task_block(task_id=task.id, area_id=area.id, interval=between(9, 10, day=1))]
+    )
+    skipped = RecordedOutcome(binding=BindingRef.for_task(task.id), state=MISS_STATE)
+
+    inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        tasks=FakeTasks([task]),
+        placements=FakePlacements(live_plan=plan, outcomes=[skipped]),
+    ).assemble(WEEK, NOW)
+
+    assert [entry.remaining_minutes for entry in inputs.eligible_tasks] == [3 * MINUTES_PER_HOUR]
 
 
 async def test_a_task_with_no_deadline_demands_nothing() -> None:

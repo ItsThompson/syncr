@@ -21,6 +21,15 @@ pin's interval wins, because that is where the block is. Counted twice, a pinned
 twice out of every quantity that reads it, and the effect would be invisible: every figure would
 merely be lower than the truth.
 
+**Attribution and capacity are two separate readings of one placement, and this module carries
+both.** A placement's own interval is what capacity and every Area figure count, whatever the
+user said happened in it: a past span sits before ``now`` and cannot hold new work, so returning
+it to capacity is what would make skipping work improve a verdict. What a placement attributes to
+the CONTENT it holds is the outcome's reading of it, and it comes from
+:func:`syncr_domain.outcomes.attributed_span`, which owns that table. A skipped hour therefore
+stays out of capacity and stops counting toward the task, which raises the demand by the hour the
+user said they did not work.
+
 **Immovability is decided against ``now``, and ``now`` is the assembler's stamp.** A block that
 has started is immovable whether or not it has finished, which is the reading H10 takes. So a
 block starting exactly at ``now`` is immovable, and one starting a minute later is not.
@@ -38,26 +47,35 @@ from typing import TYPE_CHECKING
 
 from syncr_domain.identity import BindingKind
 from syncr_domain.intervals import Interval, IntervalSet
+from syncr_domain.outcomes import attributed_span
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
     from uuid import UUID
 
     from syncr_domain.identifiers import AreaId, TaskId
     from syncr_domain.identity import BindingRef
     from syncr_domain.intervals import Instant
+    from syncr_domain.outcomes import RecordedOutcome
     from syncr_domain.plan import PlanDocument
     from syncr_solver.inputs import Pin
 
 
 @dataclass(frozen=True, slots=True)
 class Placement:
-    """One committed block: what it holds, when, whose Area, and whether it can move."""
+    """One committed block: what it holds, when, whose Area, and whether it can move.
+
+    ``attributed`` is the span this placement contributes to the CONTENT it holds, which is its
+    own interval unless an outcome said otherwise, and ``None`` when the user said the work was
+    not done. Every other field reads the placement as time that is committed, which no outcome
+    changes.
+    """
 
     binding: BindingRef
     interval: Interval
     area_id: AreaId | None
     immovable: bool
+    attributed: Interval | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,26 +93,38 @@ class AttributedMinutes:
 
 
 def placements(
-    live_plan: PlanDocument | None, pins: Sequence[Pin], *, now: Instant
+    live_plan: PlanDocument | None,
+    pins: Sequence[Pin],
+    *,
+    now: Instant,
+    outcomes: Sequence[RecordedOutcome] = (),
 ) -> tuple[Placement, ...]:
     """Every committed block of one week, one per binding, in binding order.
 
     A pin replaces the live-plan block of the same binding, at the pin's own interval. A pin
     naming a binding the plan does not hold is a placement of its own: the user's edit outlives
     a re-solve that dropped the block.
+
+    An outcome is applied to the placement's FINAL interval, so a pinned block the user marked
+    partial attributes its reported minutes from where the pin put it rather than from where the
+    solver had. An outcome naming a binding no placement holds is ignored here and retained in
+    the log: it is a fact about a week that happened, and there is no longer a placement for it
+    to change.
     """
+    recorded = {outcome.binding: outcome for outcome in outcomes}
     committed: dict[BindingRef, Placement] = {}
     blocks = () if live_plan is None else live_plan.blocks
     for block in blocks:
-        committed[block.binding] = Placement(
+        committed[block.binding] = _placed(
             binding=block.binding,
             interval=block.interval,
             area_id=block.area_id,
             immovable=_has_started(block.interval, now),
+            outcome=recorded.get(block.binding),
         )
     for pin in pins:
         placed = committed.get(pin.binding)
-        committed[pin.binding] = Placement(
+        committed[pin.binding] = _placed(
             binding=pin.binding,
             interval=pin.interval,
             # A pin carries no Area of its own, so a pin whose binding the live plan no longer
@@ -104,6 +134,7 @@ def placements(
             # entity, neither of which exists while nothing writes a pin. Ticket 1251 owns it.
             area_id=None if placed is None else placed.area_id,
             immovable=True,
+            outcome=recorded.get(pin.binding),
         )
     return tuple(sorted(committed.values(), key=_placement_order))
 
@@ -119,13 +150,21 @@ class PlacedTime:
 
     def __init__(self, placed: Sequence[Placement], *, now: Instant) -> None:
         self._now = now
-        self._all_by_task = _by_task(placed)
-        self._immovable_by_task = _by_task(item for item in placed if item.immovable)
+        self._all_by_task = _by_task(placed, span=_attributed_span)
+        self._immovable_by_task = _by_task(
+            (item for item in placed if item.immovable), span=_own_span
+        )
         self._all_by_area = _by_area(placed)
         self._immovable_by_area = _by_area(item for item in placed if item.immovable)
 
     def immovable_minutes_of_task(self, task_id: TaskId) -> int:
-        """Minutes placed for this task the solver cannot re-place. The SOLVER's set."""
+        """Minutes placed for this task the solver cannot re-place. The SOLVER's set.
+
+        Taken over each placement's OWN span rather than over what it attributes, so an outcome
+        does not change this figure. Whether it should is not settled: a skipped past block is
+        time the solver cannot re-place AND work that was not done, so the two readings disagree
+        and only one of them is the probe's. Ticket 1320 owns the question.
+        """
         return _minutes(self._immovable_by_task.get(task_id))
 
     def minutes_of_area(self, area_id: AreaId) -> int:
@@ -137,12 +176,16 @@ class PlacedTime:
         return _minutes(self._immovable_by_area.get(area_id))
 
     def attributed_to_task_before(self, task_id: TaskId, deadline: Instant) -> AttributedMinutes:
-        """Minutes placed for this task before ``deadline``, split at ``now``. EVERY placement.
+        """Minutes attributed to this task before ``deadline``, split at ``now``. EVERY placement.
 
         A placement straddling the deadline contributes the part of it that falls before:
         an hour begun before a deadline and finished after it did half an hour of the work.
         The same clip applies at ``now``, so a block running across the current instant is
         past for the minutes that have elapsed and future for the rest.
+
+        What each placement contributes is the outcome's reading of it, which is why an hour
+        moved to Saturday satisfies a Friday deadline no more than an hour planned there would:
+        the clip is applied to the span the user gave rather than to the span that was planned.
         """
         placed = self._all_by_task.get(task_id)
         if placed is None:
@@ -152,6 +195,34 @@ class PlacedTime:
             past=_minutes(_clipped_before(before, self._now)),
             future=_minutes(_clipped_after(before, self._now)),
         )
+
+
+def _placed(
+    *,
+    binding: BindingRef,
+    interval: Interval,
+    area_id: AreaId | None,
+    immovable: bool,
+    outcome: RecordedOutcome | None,
+) -> Placement:
+    """One placement, with the attribution table applied to its final interval."""
+    return Placement(
+        binding=binding,
+        interval=interval,
+        area_id=area_id,
+        immovable=immovable,
+        attributed=attributed_span(interval, outcome),
+    )
+
+
+def _own_span(placed: Placement) -> Interval | None:
+    """The time this placement occupies, which is what capacity and every Area figure count."""
+    return placed.interval
+
+
+def _attributed_span(placed: Placement) -> Interval | None:
+    """The time this placement counts toward its content, which an outcome decides."""
+    return placed.attributed
 
 
 def _has_started(interval: Interval, now: Instant) -> bool:
@@ -169,12 +240,20 @@ def _placement_order(placed: Placement) -> tuple[Instant, Instant, str, str]:
     )
 
 
-def _by_task(placed: Iterable[Placement]) -> Mapping[UUID, IntervalSet]:
-    """The placements of each task, unioned. A chunk of a divided task is that task's."""
+def _by_task(
+    placed: Iterable[Placement], *, span: Callable[[Placement], Interval | None]
+) -> Mapping[UUID, IntervalSet]:
+    """The placements of each task, unioned. A chunk of a divided task is that task's.
+
+    ``span`` is the caller's reading of a placement, injected rather than branched on, because the
+    two readings exist for opposite reasons: the solver's figure counts time it cannot re-place
+    and the probe's counts work that was done. A placement whose span reads as nothing under the
+    caller's reading contributes nothing.
+    """
     return _grouped(
-        (item.binding.entity_id, item.interval)
+        (item.binding.entity_id, taken)
         for item in placed
-        if item.binding.kind is BindingKind.TASK
+        if item.binding.kind is BindingKind.TASK and (taken := span(item)) is not None
     )
 
 

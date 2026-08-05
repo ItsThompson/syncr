@@ -10,8 +10,8 @@ outcome log's reader are: the concern that stores these rows owns its own storag
 assembly should acquire that answer rather than reach into another module's table.
 
 ``NoPlacements`` answers with nothing, and that is the correct reading of this deployment
-rather than a placeholder for one. Both halves of the answer need the same missing
-capability, which is why they are one seam and not two:
+rather than a placeholder for one. All three parts of the answer need the same missing
+capability, which is why they are one seam and not three:
 
 *The live plan.* ``plan_revisions`` stores a document as JSONB and nothing yet reads its
 interior. A revision's blocks carry a binding, an interval, and an Area, and no code names the
@@ -20,6 +20,11 @@ keys a stored block holds, so no revision in this deployment can be read back as
 *The pins.* ``pins`` exists and carries a ``binding`` column, and nothing writes one: there is
 no pin write path yet, and the interior of a stored ``BindingRef`` is undefined for the same
 reason. A read of the table could not attribute a row to the task or Area it pins.
+
+*The outcomes.* ``block_outcomes`` is written and readable, so this half could be answered
+today. It is not, because an outcome only changes what a PLACEMENT attributes: with no live
+plan there is no placement to attribute, so supplying the rows alone would change no figure.
+Whoever supplies the live plan supplies these in the same read.
 
 So the honest answer today is that no week holds a placement: every task's remaining work is
 its corrected estimate less recorded minutes, every Area's two floor quantities are equal, and
@@ -42,6 +47,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from syncr_domain.outcomes import RecordedOutcome
     from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
     from syncr_solver.inputs import Pin
@@ -49,24 +55,25 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class WeekPlacements:
-    """The plan of record for one week, and the pins bound to it.
+    """The plan of record for one week, the pins bound to it, and what happened to its blocks.
 
-    Two fields rather than one flattened placement list, because the two are read for
-    different reasons as well as netted together: the document is what the churn term is
-    measured against, and the pins are hard constraints the solver may not move. Which
-    placement set each netting rule counts is the assembler's own statement, in one place,
-    over both of these.
+    Three fields rather than one flattened placement list, because each is read for reasons of
+    its own as well as netted together: the document is what the churn term is measured against,
+    the pins are hard constraints the solver may not move, and the outcomes say how many of a
+    past block's minutes count toward the content it holds. Which placement set each netting rule
+    counts is the assembler's own statement, in one place, over all three.
     """
 
     live_plan: PlanDocument | None = None
     pins: tuple[Pin, ...] = ()
+    outcomes: tuple[RecordedOutcome, ...] = ()
 
 
 class WeekPlacementReader(Protocol):
     """What an assembly asks for the capacity a week has already committed."""
 
     async def read(self, iso_week: IsoWeek) -> WeekPlacements:
-        """The live plan of ``iso_week`` and its pins. Writes nothing.
+        """The live plan of ``iso_week``, its pins, and the outcomes recorded on it. Writes nothing.
 
         **The live plan is the plan of record, not a pending proposal.** A proposal nobody
         has approved has committed no capacity, so netting against one would report work as
@@ -78,9 +85,16 @@ class WeekPlacementReader(Protocol):
         means. Returning a pin for a binding the document does not hold is legitimate: the
         user's edit outlives a re-solve that dropped the block.
 
-        The order of neither collection is part of the contract. Every quantity derived from
-        them is a minute count or an interval union, and neither depends on the order it was
-        taken in.
+        **At most one outcome per binding.** An outcome says what happened to one content
+        instance in this week, and two rows for one binding would attribute it twice. The
+        write path holds that by keying a row on the block, whose id is a digest of the week
+        and the binding; a reader composing rows some other way owes the same property.
+        An outcome for a binding the document does not hold is legitimate and attributes
+        nothing: the row is retained because it is a fact about a week that happened.
+
+        The order of none of the three collections is part of the contract. Every quantity
+        derived from them is a minute count or an interval union, and neither depends on the
+        order it was taken in.
         """
         ...
 

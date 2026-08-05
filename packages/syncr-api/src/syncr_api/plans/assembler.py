@@ -263,7 +263,9 @@ class WeekAssembler:
         input_version = await self._versions.current(iso_week) or UNVERSIONED_WEEK
         churn_baseline = _churn_baseline(await self._revisions.latest_approved(iso_week))
         held = await self._placements.read(iso_week)
-        placed = PlacedTime(placements(held.live_plan, held.pins, now=now), now=now)
+        placed = PlacedTime(
+            placements(held.live_plan, held.pins, now=now, outcomes=held.outcomes), now=now
+        )
         # Both weeks in one read. The inherited occurrence is judged against the periods of the
         # week that owns it, and reading only this week's would suppress it by a period this week
         # holds or fail to suppress it by one the week before does.
