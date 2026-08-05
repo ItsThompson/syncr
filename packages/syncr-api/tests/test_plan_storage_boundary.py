@@ -92,7 +92,14 @@ WRITING_VERBS = frozenset(
 # plan-side table is permanent: a review, a retro, a fitter, or a product metric reads it, and
 # a fact not captured when it happened cannot be reconstructed.
 PACKAGES_ALLOWED_A_RETENTION_PATH = frozenset({"idempotency", "solving"})
-PRUNING_VERBS = frozenset({"prune", "sweep", "purge", "expire"})
+
+# The verbs that name a method removing rows by age. `delete` is here because it is what the
+# statement that actually DELETES is called: without it the rule matched only the duty wrapping
+# the delete, so a package could gain a `delete_events_before` and stay green while the sweep it
+# belongs to lived somewhere the walk never looked. `remove` is deliberately absent: a targeted
+# removal of one named row is not retention, which is why `plans/adjustments.py:remove` is not a
+# finding.
+PRUNING_VERBS = frozenset({"prune", "sweep", "purge", "expire", "delete"})
 
 PLAN_PACKAGES = ("plans", "solving", "learned", "idempotency")
 
@@ -400,7 +407,12 @@ def test_a_vocabulary_member_carrying_a_quote_is_refused() -> None:
 
 
 def pruning_methods(source_root: Path) -> dict[str, list[str]]:
-    """Every method in a plan-side package whose name says it removes rows by age."""
+    """Every method in a plan-side package whose name says it removes rows by age.
+
+    The leading underscore is stripped before the verb is read. Without that, `_prune` split on
+    ``_`` yields an empty first element and matches nothing, so a private pruner was invisible to a
+    rule stated over every module of four packages.
+    """
     found: dict[str, list[str]] = {}
     for package in PLAN_PACKAGES:
         for module in sorted((source_root / package).glob("*.py")):
@@ -409,11 +421,29 @@ def pruning_methods(source_root: Path) -> dict[str, list[str]]:
                 node.name
                 for node in ast.walk(tree)
                 if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef)
-                and node.name.split("_")[0] in PRUNING_VERBS
+                and node.name.lstrip("_").split("_")[0] in PRUNING_VERBS
             )
             if names:
                 found.setdefault(package, []).extend(names)
     return found
+
+
+# Every method the walk should find, per package, named so a new one is read against a list rather
+# than against a count. Two things are pruned and there are two duties that prune them:
+#
+#   idempotency  `sweep`                  the whole duty, one statement inside it
+#   solving      `_prune`                 the two retention windows, 30 days and 90
+#                `sweep` (maintenance)    one tenant's pass: reap, then prune
+#                `sweep` (the runner)     every tenant, each contained
+#                `delete_finished_before` the statement that actually DELETES
+#
+# The last of those is why the verb set names `delete`. Before it did, the rule matched only the
+# duties and the delete itself was invisible: `solving` was admitted on the strength of a method
+# called `sweep` while nothing checked what the sweep ran.
+SANCTIONED_PRUNERS = {
+    "idempotency": ["sweep"],
+    "solving": ["_prune", "sweep", "sweep", "delete_finished_before"],
+}
 
 
 def test_only_the_two_sanctioned_tables_have_a_retention_path(source_root: Path) -> None:
@@ -424,12 +454,23 @@ def test_only_the_two_sanctioned_tables_have_a_retention_path(source_root: Path)
         "events are facts about weeks that happened, and each is read by a review, a retro, a "
         "fitter, or a product metric. Only terminal operations and idempotency keys are pruned."
     )
-    assert found == {"idempotency": ["sweep"], "solving": ["sweep"]}, (
+    assert found == SANCTIONED_PRUNERS, (
         f"{found}. Two retention paths exist and there are two things to prune: idempotency keys, "
         "and terminal operations at 30 days for a success or a supersession and 90 for a failure. "
-        "Each is telemetry rather than a fact about a plan, and each is swept by the duty that "
-        "owns it."
+        "Each is telemetry rather than a fact about a plan. A method here that is not in the list "
+        "above is a third retention path, whatever it is called."
     )
+
+
+def test_the_retention_walk_sees_the_statement_that_deletes(source_root: Path) -> None:
+    # The control on the verb set. `delete_finished_before` is the only statement in a plan-side
+    # package that removes rows by age, and a walk that could not see it would admit `solving` on
+    # the strength of the duty wrapping it while the delete went unchecked. That is what this rule
+    # exists to prevent, so it is asserted rather than assumed.
+    found = pruning_methods(source_root)
+
+    assert "delete_finished_before" in found["solving"]
+    assert "_prune" in found["solving"], "a private pruner is a pruner"
 
 
 def test_the_retention_walk_reads_the_packages_it_claims_to(source_root: Path) -> None:
