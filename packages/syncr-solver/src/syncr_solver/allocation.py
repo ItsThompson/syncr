@@ -84,13 +84,14 @@ A hard constraint that may not prove feasibility can only safely err in that dir
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_domain.intervals import IntervalSet
 from syncr_solver.constraints import Blocked, ConstraintRule
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from syncr_domain.identifiers import AreaId
     from syncr_solver.inputs import AreaBudget
@@ -135,18 +136,26 @@ def area_floor(candidate: Placement, state: PartialPlan) -> Blocked | None:
     candidate is not what did it and refusing it would empty the week.
 
     The claimable set is read once and passed to both readings. It is a fact about the space rather
-    than about the placements, so it does not change between them. The per-Area scan does run twice,
-    once per reading, and it stays that way deliberately: deriving the second figure from the first
-    plus a delta would replace two direct readings with one piece of arithmetic, which is the shape
-    every netting defect in this module has taken. The cost is ticket 37's budget to measure.
+    than about the placements, so it does not change between them.
+
+    **The two readings are taken over the same set of placements, read once.** The netting filter
+    and the per-Area union are what cost, and neither depends on which reading is being taken: the
+    second differs only by holding one more placement, and that is expressed as the placement
+    joining a set rather than as a figure adjusted by a delta. The distinction is the one every
+    netting defect in this module has turned on, and it is preserved: nothing here subtracts a
+    minute count from a minute count.
+
+    Measured, because ticket 33 handed the cost to this ticket's budget: on a 152-block week the
+    rule cost 2.06 ms per candidate and 2.2 s of a 2.5 s solve, reading the placements six times a
+    call.
     """
     if candidate.area_id is None or state.holds(candidate):
         return None
-    claimable = state.discretionary()
-    if _shortfall(claimable, state, offered=None) > 0:
+    reading = _Reading.of(state)
+    if _shortfall(reading, offered=None) > 0:
         return None
-    owing = _unmet(state, offered=candidate)
-    free = _free(claimable, state, offered=candidate)
+    owing = _unmet(reading, offered=candidate)
+    free = _free(reading, offered=candidate)
     shortfall = sum(owed for _, owed in owing) - free
     if shortfall <= 0:
         return None
@@ -161,46 +170,85 @@ def area_floor(candidate: Placement, state: PartialPlan) -> Blocked | None:
     )
 
 
-def _shortfall(claimable: IntervalSet, state: PartialPlan, *, offered: Placement | None) -> int:
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _Reading:
+    """One reading of the placements both of H9's comparisons are taken over.
+
+    Three sets, each read once per candidate rather than once per Area per comparison: the claimable
+    space, the time every placement covers, and the time the placements the Area figures have NOT
+    already netted cover, per Area.
+
+    The netting is applied here and nowhere else in this rule, so the set the assembler subtracted
+    before ``floor_minutes`` arrived has one statement, read through the checker's own answer to
+    which placements those are.
+    """
+
+    claimable: IntervalSet
+    claimed: IntervalSet
+    owed_spans: Mapping[AreaId, IntervalSet]
+    areas: tuple[AreaBudget, ...]
+
+    @classmethod
+    def of(cls, state: PartialPlan) -> _Reading:
+        movable = [held for held in state.placed if not state.already_netted(held.binding)]
+        return cls(
+            claimable=state.discretionary(),
+            claimed=_spans(state.placed),
+            owed_spans={
+                area.area_id: _spans(movable, area_id=area.area_id) for area in state.areas
+            },
+            areas=state.areas,
+        )
+
+    def owed_in(self, area_id: AreaId, offered: Placement | None) -> IntervalSet:
+        """This Area's netted placements, with ``offered`` among them where it belongs to the Area.
+
+        A set joining a set rather than a figure adjusted by a delta. The offered candidate is never
+        one the figures already netted: a candidate whose binding has started or is pinned never
+        reaches this rule, because :meth:`PartialPlan.holds` covers both.
+        """
+        held = self.owed_spans[area_id]
+        if offered is None or offered.area_id != area_id:
+            return held
+        return held.union(IntervalSet([offered.interval]))
+
+
+def _shortfall(reading: _Reading, *, offered: Placement | None) -> int:
     """How far the Areas' unmet floors exceed the claimable time left for them. Negative is slack.
 
     One figure over two sets that count different things, which is the asymmetry the module
     docstring states: the floors are summed across Areas because each needs its own minutes, and
     the time is unioned because one free minute serves one Area.
     """
-    owing = _unmet(state, offered=offered)
-    return sum(owed for _, owed in owing) - _free(claimable, state, offered=offered)
+    owing = _unmet(reading, offered=offered)
+    return sum(owed for _, owed in owing) - _free(reading, offered=offered)
 
 
-def _free(claimable: IntervalSet, state: PartialPlan, *, offered: Placement | None) -> int:
+def _free(reading: _Reading, *, offered: Placement | None) -> int:
     """Minutes of claimable time no Area's placement covers, counting ``offered`` as placed."""
-    return claimable.subtract(_spans(state.placed, including=offered)).total_minutes()
+    claimed = reading.claimed
+    if offered is not None and offered.area_id is not None:
+        claimed = claimed.union(IntervalSet([offered.interval]))
+    return reading.claimable.subtract(claimed).total_minutes()
 
 
-def _unmet(state: PartialPlan, *, offered: Placement | None) -> tuple[Unmet, ...]:
+def _unmet(reading: _Reading, *, offered: Placement | None) -> tuple[Unmet, ...]:
     """Each Area that would still owe minutes of its floor, and how many, in identity order."""
     return tuple(
-        (area, owed) for area in state.areas if (owed := _owed(area, state, offered=offered)) > 0
+        (area, owed)
+        for area in reading.areas
+        if (owed := _owed(area, reading, offered=offered)) > 0
     )
 
 
-def _owed(area: AreaBudget, state: PartialPlan, *, offered: Placement | None) -> int:
+def _owed(area: AreaBudget, reading: _Reading, *, offered: Placement | None) -> int:
     """Minutes of this Area's floor that would still be unplaced once ``offered`` is placed.
 
-    Netted through :meth:`~syncr_solver.state.PartialPlan.already_netted`, which is the one
-    statement of the set the assembler subtracted before ``floor_minutes`` arrived.
-
-    The filter runs over the offered candidate as well, and reaches nothing: a candidate whose
-    binding has started or is pinned never gets here, because :meth:`PartialPlan.holds` covers both.
-    It is written over the whole collection rather than over the placements alone so that one rule
-    nets one set, which is the property this arithmetic is shaped to keep.
+    Netted through :meth:`~syncr_solver.state.PartialPlan.already_netted`, which the reading applied
+    once: it is the one statement of the set the assembler subtracted before ``floor_minutes``
+    arrived.
     """
-    counted = (*state.placed, *(() if offered is None else (offered,)))
-    placed = _spans(
-        [item for item in counted if not state.already_netted(item.binding)],
-        area_id=area.area_id,
-    )
-    return max(0, area.floor_minutes - placed.total_minutes())
+    return max(0, area.floor_minutes - reading.owed_in(area.area_id, offered).total_minutes())
 
 
 def _budget_of(areas: Sequence[AreaBudget], area_id: AreaId | None) -> AreaBudget | None:
