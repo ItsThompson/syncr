@@ -166,9 +166,14 @@ table.led code{font-size:9.5px}
 .blk.frame{background:var(--frame-wash);color:var(--ink-soft)}
 /* An external anchor is opaque busy time the product does not own. Hatched in cobalt at
    hairline weight so it reads as foreign without spending a signal. */
+/* An external anchor is opaque busy time the product does not own. Hatched in cobalt at
+   hairline weight so it reads as foreign without spending a signal, and its TOP RULE IS THE
+   FULL 2px at --ink-deep: an anchor has no Area, so the one ink that is not a pigment carries
+   its identity where a pigment carries everyone else's. At hairline weight it read as an
+   unstyled block rather than as the same channel every other block spends. */
 .blk.anchor{background-color:var(--paper-raised);
   background-image:repeating-linear-gradient(135deg,var(--rule) 0 1px,transparent 1px 7px);
-  border-top-color:var(--ink-deep)}
+  border-top:var(--rule-emphasis) solid var(--ink-deep)}
 
 /* THE FIVE STATE CHANNELS. One state per channel, so combinations add. Never reassign. */
 .blk.h,.blk:hover{background-color:var(--state-hover)}
@@ -337,7 +342,8 @@ table.led code{font-size:9.5px}
 
 <!-- ==================== 5 ==================== -->
 <h2 class="sec" id="s5"><span><a href="#s5">5</a> &middot; The combination matrix</span><em>every combination of the five row-level channels. this is the view that rejects a system</em></h2>
-<div class="note"><b>Validate every state in combination, never in isolation.</b> In the language syncr inherits, four plausible state systems each looked correct on a single state and produced two pixel-identical rows here while meaning different things. Read down this list looking for any two rows you cannot tell apart. <b>Rows 14 and 15 are the deliberate collision</b>: conflict and selected sharing the left rule.</div>
+<div class="note"><b>Validate every state in combination, never in isolation.</b> In the language syncr inherits, four plausible state systems each looked correct on a single state and produced two pixel-identical rows here while meaning different things. Read down this list looking for any two rows you cannot tell apart. <b>Rows 14 and 15 are the deliberate collision</b>: conflict and selected sharing the left rule.
+<br><br><b>Rows 19 to 25 are the pairs section 15's own combination table settles and this matrix did not render.</b> Each is a channel shared with something: the pin glyph against the oxide rule, the split's 1px rule against the 3px state rule, the origin glyph against the pin glyph at the sliver tier, and the anchor's hatch against both the oxide rule and the hover fill. <b>The anchor pair is the one to read closely</b>: hatch is a background IMAGE and hover is a background COLOR, so hovering an anchor steps the fill beneath the texture rather than erasing it. Had both spent <code>background</code>, hovering would have deleted the one mark that says the product does not own that time.</div>
 <div id="matrix"></div>
 
 <!-- ==================== 6 ==================== -->
@@ -397,6 +403,8 @@ table.led code{font-size:9.5px}
   <tr><td>proposal</td><td>no fill</td><td class="pass">survives via the dashed outline</td></tr>
   <tr><td>pinned</td><td>glyph</td><td class="pass">survives, glyphs are text</td></tr>
   <tr><td>Area identity</td><td>2px top rule</td><td class="fail">lost. hatch and the Area name carry it</td></tr>
+  <tr><td>frame identity</td><td>fill</td><td class="fail">lost. the origin glyph and the block's own title carry it, and both are text</td></tr>
+  <tr><td>anchor identity</td><td>fill as an image, plus a 2px top rule</td><td class="pass">the hatch is lost and the --ink-deep top rule survives, which is why that rule is structural rather than decorative</td></tr>
 </tbody></table>
 
 <div class="note" style="border-top:var(--hairline) solid var(--rule-strong);border-bottom:0;color:var(--text-muted)">
@@ -624,12 +632,22 @@ document.getElementById('t-fc').addEventListener('click', ev => {
 });
 
 /* ---------- 4 and 5, isolation and the matrix ----------
-   One 30 minute block at the default zoom: 29px, which is the size the system must work at. */
+   One 30 minute block at the default zoom: 29px, which is the size the system must work at.
+
+   A ROW MAY NAME ITS OWN SHAPE, because six of the combinations section 15's table settles are not
+   about a 30 minute task at all: two are about an ANCHOR, which has no Area and a hatched fill, one
+   is about a SPLIT block, which is a task at an overlap depth, and one is about the SLIVER tier,
+   which only exists below the label floor. Rendering those on the default shape produced rows that
+   looked right and tested nothing. */
 const SOLO = {s:'19:00', e:'19:30', t:'36 South Application', o:'task', area:'Career'};
-function soloHTML(opts, label, sub){
-  const px = parseFloat(raw('--grid-h')) / (12 * 60);
-  const h = 30 * px;
-  const b = {...SOLO, sel:0, conflict:0, pin:0};
+const ANCHOR = {s:'16:00', e:'16:30', t:'Kontron Placement Interview', o:'anchor'};
+const FRAME = {s:'23:00', e:'23:30', t:'Sleep', o:'frame'};
+function soloHTML(opts, label, sub, shape = {}){
+  const hours = shape.hours ?? 12;
+  const minutes = shape.minutes ?? 30;
+  const px = parseFloat(raw('--grid-h')) / (hours * 60);
+  const h = minutes * px;
+  const b = {...(shape.base ?? SOLO), sel:0, conflict:0, pin:0};
   const inner = blockHTML(b, px, {...opts, style:`;position:relative;top:auto;height:${h}px`});
   return `<div class="strip"><div class="n"><b>${label}</b>${sub||''}</div>`
     + `<div class="s"><div class="solo" style="height:${h+2}px">${inner}</div></div></div>`;
@@ -642,10 +660,13 @@ const ISO = [
   [{conflict:1}, 'conflict', '3px --signal-oxide left rule'],
   [{pin:1}, 'pinned', '&#9635; in the glyph slot'],
   [{proposal:1}, 'proposal target', 'no fill. dashed --ink-deep'],
-  [{source:1}, 'proposal source', 'keeps fill, takes &rarr;']
+  [{source:1}, 'proposal source', 'keeps fill, takes &rarr;'],
+  [{}, 'anchor', 'hatch over the fill, 2px --ink-deep top rule', {base:ANCHOR}],
+  [{}, 'frame', '--frame-wash, no Area ink at all', {base:FRAME}],
+  [{}, 'sliver tier', 'no title. the origin glyph and the Area rule', {base:SOLO, minutes:15, hours:16}]
 ];
 document.getElementById('isolated').innerHTML =
-  ISO.map(([o,l,s]) => soloHTML(o, l, '<br>'+s)).join('');
+  ISO.map(([o,l,s,shape]) => soloHTML(o, l, '<br>'+s, shape)).join('');
 
 const COMBOS = [
   [{}, 'rest'], [{h:1}, 'hover'], [{f:1}, 'focus'], [{sel:1}, 'selected'],
@@ -658,10 +679,22 @@ const COMBOS = [
   [{f:1,sel:1,conflict:1}, 'focus + selected + conflict &#9670; the collision'],
   [{h:1,proposal:1}, 'hover + proposal'],
   [{f:1,proposal:1}, 'focus + proposal'],
-  [{proposal:1,pin:1}, 'proposal + pinned &#9670; can this happen?']
+  [{proposal:1,pin:1}, 'proposal + pinned &#9670; can this happen?'],
+  /* The six section 15's own combination table settles and this matrix did not render. Each is a
+     pair that shares a channel with something, which is the only kind of combination worth a row:
+     the pin against the oxide rule, the split rule against the state rule, the origin glyph against
+     the pin glyph, and the anchor's hatch against both the oxide rule and the hover fill. */
+  [{pin:1,conflict:1}, 'pinned + conflict'],
+  [{split:1,sel:1}, 'split + selected'],
+  [{split:1,conflict:1}, 'split + conflict'],
+  [{pin:1}, 'sliver + pinned &#9670; the pin takes the origin glyph\'s slot',
+    {base:SOLO, minutes:15, hours:16}],
+  [{conflict:1}, 'anchor + conflict &#9670; the anchor is the cause', {base:ANCHOR}],
+  [{h:1}, 'anchor + hover &#9670; the hatch survives the fill change', {base:ANCHOR}],
+  [{count:5}, 'overlap count at depth 5']
 ];
-document.getElementById('matrix').innerHTML = COMBOS.map(([o,l],i) =>
-  soloHTML(o, String(i+1).padStart(2,'0') + ' &middot; ' + l)).join('');
+document.getElementById('matrix').innerHTML = COMBOS.map(([o,l,shape],i) =>
+  soloHTML(o, String(i+1).padStart(2,'0') + ' &middot; ' + l, '', shape)).join('');
 
 /* ---------- 6, the proposal pair ---------- */
 gridHTML('prop', [{label:'Tue 11', blocks:[
