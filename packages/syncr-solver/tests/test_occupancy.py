@@ -13,14 +13,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from syncr_domain.fixtures import recovery_scopes as scopes
 from syncr_domain.gaps import ForbiddenKind, ForbiddenScope, ForbiddenWindow
 from syncr_domain.identity import BindingRef, TransitLeg
 from syncr_solver.constraints import ConstraintCheck, ConstraintRule
-from syncr_solver.occupancy import INHERITED_FRAME, OCCUPANCY_RULES
+from syncr_solver.occupancy import (
+    INHERITED_FRAME,
+    OCCUPANCY_RULES,
+    forbidden_area,
+    forbidden_window,
+)
 from syncr_solver.state import PartialPlan, Placement
 from tests.materialized_weeks import (
     CAREER,
     FITNESS,
+    WEEK,
     a_block,
     a_candidate,
     a_frame_entry,
@@ -164,6 +171,70 @@ def test_a_candidate_carrying_no_area_is_refused_by_no_scoped_window() -> None:
     )
 
     assert a_check().check(commitment, PartialPlan.of(inputs(forbidden_windows=(window,)))) is None
+
+
+# --------------------------------------------------------------------------------
+# The two scopes crossed against the fixture the denominator and the probe already read
+# --------------------------------------------------------------------------------
+
+
+def test_the_fixture_describes_the_same_week_this_suite_does() -> None:
+    # The crossing below is only a crossing if the two are talking about one week. The fixture is
+    # `Europe/London` 2026-W07 and so is this suite, so the spans coincide and neither side has to
+    # restate the other's geometry.
+    assert scopes.WEEK == WEEK
+    assert inputs().span == scopes.SPAN
+
+
+def test_the_scoped_form_of_the_fixtures_window_forbids_study_and_leaves_fitness_free() -> None:
+    # One commitment, one recovery span, and the scope is the only thing that varies. The fixture is
+    # the value the denominator's subtraction table and the probe's projection are both stated over,
+    # so reading it here is what makes the three answer about the SAME two spans rather than about
+    # three descriptions of one.
+    state = PartialPlan.of(inputs(forbidden_windows=(scopes.FORBIDDING_STUDY,)))
+    study = a_candidate(scopes.RECOVERY, area_id=scopes.STUDY, title="Dissertation")
+    fitness = a_candidate(scopes.RECOVERY, area_id=scopes.FITNESS, title="Shoulder & Arms")
+
+    refused = a_check().check(study, state)
+    allowed = a_check().check(fitness, state)
+
+    assert refused is not None
+    assert (refused.rule, refused.window, refused.detail) == (
+        ConstraintRule.FORBIDDEN_AREA,
+        scopes.RECOVERY,
+        scopes.LABEL,
+    )
+    assert allowed is None
+
+
+def test_the_absolute_form_of_the_same_window_forbids_the_area_the_scoped_form_left_free() -> None:
+    # The asymmetry the fixture exists for, read as legality rather than as capacity: converting the
+    # scoped form to the absolute one may only take capacity away. From Study, nothing, because
+    # Study was already forbidden; from every other Area, the whole span.
+    absolute = PartialPlan.of(inputs(forbidden_windows=(scopes.FORBIDDING_EVERY_AREA,)))
+    scoped = PartialPlan.of(inputs(forbidden_windows=(scopes.FORBIDDING_STUDY,)))
+    fitness = a_candidate(scopes.RECOVERY, area_id=scopes.FITNESS, title="Shoulder & Arms")
+    study = a_candidate(scopes.RECOVERY, area_id=scopes.STUDY, title="Dissertation")
+
+    for candidate in (fitness, study):
+        rejection = a_check().check(candidate, absolute)
+        assert rejection is not None
+        assert (rejection.rule, rejection.detail) == (
+            ConstraintRule.FORBIDDEN_WINDOW,
+            scopes.LABEL,
+        )
+    assert a_check().check(study, scoped) is not None
+    assert a_check().check(fitness, scoped) is None
+
+
+def test_the_scoped_form_is_invisible_to_the_rule_that_reads_the_absolute_one() -> None:
+    # The split that keeps the two readings of one window from drifting: H2 sees only the windows
+    # that forbid every Area, so the scoped form reaches the candidate through H13 or not at all.
+    scoped = PartialPlan.of(inputs(forbidden_windows=(scopes.FORBIDDING_STUDY,)))
+    study = a_candidate(scopes.RECOVERY, area_id=scopes.STUDY, title="Dissertation")
+
+    assert forbidden_window(study, scoped) is None
+    assert forbidden_area(study, scoped) is not None
 
 
 # --------------------------------------------------------------------------------
