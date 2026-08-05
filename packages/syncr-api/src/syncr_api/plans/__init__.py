@@ -35,4 +35,5 @@ one resolved ``SolveInputs``:
 | ``resolved_preferences.py`` | the override chain, and the declared windows out to instants |
 | ``calendar_occupancy.py`` | what a week's commitments occupy, and what their types cast in it |
 | ``folding.py`` | the concession post-pass: one code path, four kinds |
+| ``verdicts.py`` | the live verdict on the request path, and the caller-labeled histogram |
 """
