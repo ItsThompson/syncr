@@ -31,7 +31,7 @@ from uuid import uuid4
 
 import pytest
 
-from syncr_api.plans.authority import Classification, classify
+from syncr_api.plans.authority import IDS_IN_A_REFUSAL, Classification, classify
 from syncr_api.plans.errors import ClassificationRejected
 from syncr_api.plans.overlaps import DetectedConflict, detected_conflicts
 from syncr_domain.identity import BindingKind, BindingRef, Origin, TransitLeg
@@ -236,40 +236,121 @@ class TestAutoApplicationIsAllOrNothing:
 
 
 class TestThePastIsNotClassified:
+    def test_a_block_the_week_has_reached_is_in_no_class_when_both_documents_agree(self) -> None:
+        # AC1's own statement: the block is in both documents at one placement, so nothing is
+        # proposed about it, while the fill beside it is classified normally.
+        started = block(GYM, between(9, 10))
+        live = a_week(started)
+        candidate = a_week(started, block(LEETCODE, between(14, 15)))
+
+        classification = classify(live, candidate, now=at(9.5))
+
+        assert [change.after for change in classification.auto_applicable] == [between(14, 15)]
+        assert classification.proposal_diff.is_empty()
+        assert classification.applies_immediately()
+
     def test_a_new_block_that_has_started_is_in_no_class(self) -> None:
-        live = a_week(block(GYM, between(9, 10)))
-        candidate = a_week(block(GYM, between(9, 10)), block(LEETCODE, between(14, 15)))
+        # The candidate places it in the past and the live plan holds it there too, so there is
+        # nothing to auto-apply: a fill is space the week has not spent yet.
+        started = block(LEETCODE, between(14, 15))
+        live = a_week(block(GYM, between(9, 10)), started)
+        candidate = a_week(block(GYM, between(9, 10)), started)
 
-        classification = classify(live, candidate, now=at(14))
+        assert classify(live, candidate, now=at(14)).is_empty()
 
-        assert classification.is_empty()
+    def test_a_started_block_is_in_no_class_even_when_it_is_pinned(self) -> None:
+        # Which is what keeps this module out of the question of what authority means over a block
+        # that has started and is pinned: such a block is not classified at all.
+        held = pinned(block(GYM, between(9, 10)))
+        live = a_week(held)
 
-    def test_a_live_block_that_has_started_is_never_proposed_as_a_removal(self) -> None:
-        live = a_week(block(GYM, between(9, 10)))
-
-        classification = classify(live, a_week(), now=at(9))
-
-        assert classification.is_empty()
-
-    def test_a_block_that_has_started_is_never_proposed_as_a_move(self) -> None:
-        live = a_week(block(GYM, between(9, 10)))
-
-        classification = classify(live, a_week(block(GYM, between(17, 18))), now=at(9.5))
-
-        assert classification.is_empty()
-
-    def test_a_candidate_that_would_move_a_block_into_the_past_is_not_classified(self) -> None:
-        live = a_week(block(GYM, between(17, 18)))
-
-        classification = classify(live, a_week(block(GYM, between(9, 10))), now=at(12))
-
-        assert classification.is_empty()
+        assert classify(live, a_week(held), now=at(9.5)).is_empty()
 
     def test_a_block_starting_exactly_now_has_started(self) -> None:
         live = a_week(block(GYM, between(9, 10)))
 
-        assert classify(live, a_week(), now=at(9)).is_empty()
-        assert not classify(live, a_week(), now=at(8.75)).is_empty()
+        with pytest.raises(ClassificationRejected, match="dropped"):
+            classify(live, a_week(), now=at(9))
+        assert len(classify(live, a_week(), now=at(8.75)).proposal_diff.removed) == 1
+
+
+class TestThePastMayNotBeRestated:
+    """The guard the three classes cannot be, because what persists is the document.
+
+    Each case below partitions into nothing the classes can see -- zero removals, zero moves -- and
+    would replace the plan of record with a week whose past happened differently. The fill in three
+    of them is what makes the write reachable: without it the classification would be empty and
+    nothing would be appended.
+    """
+
+    def test_a_candidate_that_drops_a_started_block_while_filling_a_gap_is_refused(self) -> None:
+        live = a_week(block(GYM, between(8, 9)))
+        candidate = a_week(block(LEETCODE, between(14, 15)))
+
+        with pytest.raises(ClassificationRejected, match="states a past the live plan does not"):
+            classify(live, candidate, now=at(10))
+
+    def test_a_candidate_that_moves_a_started_block_while_filling_a_gap_is_refused(self) -> None:
+        started = block(GYM, between(8, 9))
+        live = a_week(started)
+        candidate = a_week(
+            replace(started, interval=between(6, 7)), block(LEETCODE, between(14, 15))
+        )
+
+        with pytest.raises(ClassificationRejected, match="moved"):
+            classify(live, candidate, now=at(10))
+
+    def test_a_candidate_that_invents_a_block_in_the_past_is_refused(self) -> None:
+        live = a_week(block(GYM, between(8, 9)))
+        candidate = a_week(block(GYM, between(8, 9)), block(LEETCODE, between(6, 7)))
+
+        with pytest.raises(ClassificationRejected, match="invented"):
+            classify(live, candidate, now=at(10))
+
+    def test_a_candidate_that_moves_a_future_block_into_the_past_is_refused(self) -> None:
+        live = a_week(block(GYM, between(17, 18)))
+
+        with pytest.raises(ClassificationRejected, match="invented"):
+            classify(live, a_week(block(GYM, between(9, 10))), now=at(12))
+
+    def test_a_rewritten_past_is_refused_even_with_nothing_else_in_the_diff(self) -> None:
+        # Previously this classified as empty, which wrote nothing and said nothing. A candidate
+        # that disagrees with the past is a producer defect, and a defect that writes nothing is
+        # still one worth failing the solve over.
+        live = a_week(block(GYM, between(8, 9)))
+
+        with pytest.raises(ClassificationRejected):
+            classify(live, a_week(), now=at(10))
+
+    def test_the_refusal_names_the_blocks_it_disagrees_about_and_bounds_the_list(self) -> None:
+        held = [block(_a_habit(index), between(index, index + 0.5)) for index in range(6)]
+        live = a_week(*held)
+
+        with pytest.raises(ClassificationRejected, match="and 3 more") as refused:
+            classify(live, a_week(), now=at(12))
+
+        named = [one for one in held if one.id in str(refused.value)]
+        assert len(named) == IDS_IN_A_REFUSAL
+
+    def test_a_week_with_no_live_plan_may_state_a_past_of_its_own(self) -> None:
+        # The first plan for a week that is half elapsed. There is no previous plan of record to
+        # rewrite, so its elapsed days are the week as this plan describes it, and only the part of
+        # it the week has not reached is a fill.
+        candidate = a_week(block(GYM, between(8, 9)), block(LEETCODE, between(14, 15)))
+
+        classification = classify(None, candidate, now=at(10))
+
+        assert [change.after for change in classification.auto_applicable] == [between(14, 15)]
+        assert classification.proposal_diff.is_empty()
+
+    def test_a_pair_that_agrees_about_the_past_is_classified_normally(self) -> None:
+        # The positive control for every refusal above: the guard fires on a disagreement, not on
+        # the presence of a started block.
+        started = block(GYM, between(8, 9))
+        live = a_week(started)
+        candidate = a_week(started, block(LEETCODE, between(14, 15)))
+
+        assert classify(live, candidate, now=at(10)).applies_immediately()
 
 
 class TestWhatCollides:
@@ -436,6 +517,23 @@ class TestTheClassificationIsAValue:
 
         with pytest.raises(ClassificationRejected, match="applies without asking"):
             Classification(auto_applicable=(replace(displacing, before=between(9, 10)),))
+
+    def test_one_block_may_not_be_in_two_authority_classes(self) -> None:
+        # A hand-built classification, because `classify` partitions and cannot produce one. The
+        # value refuses it anyway: applied and asked about is two answers for one block.
+        arriving = block(LEETCODE, between(14, 15))
+
+        with pytest.raises(ClassificationRejected, match="is also held for assent"):
+            Classification(
+                auto_applicable=(BlockChange.added(arriving),),
+                proposal_diff=ProposalDiff(removed=(BlockChange.removed(arriving),)),
+            )
+
+    def test_one_block_may_not_appear_twice_among_the_fills(self) -> None:
+        arriving = BlockChange.added(block(LEETCODE, between(14, 15)))
+
+        with pytest.raises(ClassificationRejected, match="is also held for assent"):
+            Classification(auto_applicable=(arriving, arriving))
 
     def test_an_empty_classification_applies_nothing(self) -> None:
         empty = Classification()

@@ -33,7 +33,7 @@ from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.plans.adoption import Candidate, PlanAdoption
 from syncr_api.plans.authority import Classification, classify
 from syncr_api.plans.conflicts import PlanConflictRepository
-from syncr_api.plans.errors import RevisionRejected
+from syncr_api.plans.errors import ClassificationRejected, RevisionRejected
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.overlaps import DetectedConflict
 from syncr_api.plans.proposals import PendingProposalRepository
@@ -60,6 +60,8 @@ pytestmark = pytest.mark.integration
 
 BEFORE_THE_WEEK = datetime(2026, 2, 8, tzinfo=UTC)
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
+# Mid-morning on the week's Monday, so a block at 08:00 has been reached and one at 14:00 has not.
+MID_MORNING = datetime(2026, 2, 9, 10, 0, tzinfo=UTC)
 
 GYM = BindingRef.for_habit(uuid4(), index=0)
 LEETCODE = BindingRef.for_task(uuid4())
@@ -405,6 +407,71 @@ class TestWhatTheWriteRefuses:
 
         async with sessions() as session:
             assert await PlanConflictRepository(session, owner.tenant_id).list_all() == ()
+
+
+class TestThePastMayNotBeRewrittenByAWrite:
+    """The write's own side of the past rule, asserted by counting rows.
+
+    The classifier refuses the pair, so no `Classification` describing a rewritten past can be
+    built by the one function that builds them. These two assert the consequence at the table: the
+    revision that would have carried the rewritten document is never appended.
+    """
+
+    async def test_a_fill_beside_a_dropped_started_block_appends_nothing(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        started = a_block_holding(GYM, between(8, 9))
+        live = a_week(started)
+        candidate = a_week(a_block_holding(LEETCODE, between(14, 15)))
+
+        with pytest.raises(ClassificationRejected, match="dropped"):
+            await adopt(
+                sessions,
+                owner.tenant_id,
+                classify(live, candidate, now=MID_MORNING),
+                a_candidate(candidate),
+            )
+
+        assert await revisions_held(sessions, owner.tenant_id) == 0
+        assert await proposal_held(sessions, owner.tenant_id) is None
+
+    async def test_a_fill_beside_a_moved_started_block_appends_nothing(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        started = a_block_holding(GYM, between(8, 9))
+        live = a_week(started)
+        candidate = a_week(
+            replace(started, interval=between(6, 7)), a_block_holding(LEETCODE, between(14, 15))
+        )
+
+        with pytest.raises(ClassificationRejected, match="moved"):
+            await adopt(
+                sessions,
+                owner.tenant_id,
+                classify(live, candidate, now=MID_MORNING),
+                a_candidate(candidate),
+            )
+
+        assert await revisions_held(sessions, owner.tenant_id) == 0
+
+    async def test_a_candidate_that_keeps_the_past_appends_its_fill(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        # The positive control: the same shape with the started block left where the week had it.
+        started = a_block_holding(GYM, between(8, 9))
+        live = a_week(started)
+        candidate = a_week(started, a_block_holding(LEETCODE, between(14, 15)))
+
+        adopted = await adopt(
+            sessions,
+            owner.tenant_id,
+            classify(live, candidate, now=MID_MORNING),
+            a_candidate(candidate),
+        )
+
+        assert adopted.revision is not None
+        assert len(adopted.revision.document["blocks"]) == 2
+        assert await revisions_held(sessions, owner.tenant_id) == 1
 
 
 class TestTheSlotIsNotClearedWhenTheLivePlanAdvances:

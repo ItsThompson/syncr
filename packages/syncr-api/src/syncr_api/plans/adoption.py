@@ -36,6 +36,15 @@ enqueue nothing to replace it.
 a concurrent mutation is the solve coordinator's, and it wraps this call rather than living inside
 it: this module's whole job is that the three writes agree with one classification.
 
+**It does not check the candidate against the past, and that is a boundary rather than an
+oversight.** The document written here carries the whole candidate, including the days the week has
+already lived, so the rule that protects them is real and load-bearing; it lives in
+:func:`~syncr_api.plans.authority.classify`, which holds both documents and the instant the rule is
+decided against, and which refuses the pair outright. Repeating it here would need a second copy of
+the live plan and a second reference instant, and a write-time instant later than the
+classification's would refuse a candidate over a block that started while the solve ran, which is a
+supersession for the version guard to answer rather than a defect.
+
 **It does not serialize a verdict or a concession.** The plan document and the proposal diff have
 stored forms in this package and are written from their values here. The verdict and the candidate
 adjustment reach the slot as the objects their own owners produced, exactly as the pending
@@ -239,11 +248,15 @@ def _require_one_week(classification: Classification, candidate: PlanDocument) -
     The week is what is checkable and it is the one that matters: a diff is stored under the week
     its document names, so a diff of another week would hold changes naming blocks this week's
     document does not contain, and the grid would render a proposal target against nothing.
+
+    Every class is read, the fills included. Those are not stored as a diff, but a classification
+    of another week is a mispaired call whichever collection reveals it, and a guard that read only
+    two of the three would report the pairing as sound whenever the third was the only one filled.
     """
     foreign = sorted(
         {
             str(change.iso_week)
-            for change in classification.proposal_diff.changes()
+            for change in (*classification.auto_applicable, *classification.proposal_diff.changes())
             if change.iso_week != candidate.iso_week
         }
         | {

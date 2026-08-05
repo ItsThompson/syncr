@@ -29,12 +29,29 @@ moves, so nothing auto-applies, so no revision is appended and no projection is 
 destructive calendar reconciliations during one session would be both slow and visible on the
 user's phone, and this falls out of the rule rather than needing a session-specific case.
 
-## The past is not classified at all
+## The past is not classified, and a candidate may not restate it
 
 A block the week has already reached appears in no output class, whatever authority would say
 about it. The reference instant is an argument rather than something read here, for the reason the
 solver's own past-block rule takes one: without it the rule has nothing to be decided against, and
 a classification computed from a clock would not be reproducible from its inputs.
+
+**Filtering the three classes is not enough to protect the past, and this is the trap the rule
+invites.** What persists is the candidate DOCUMENT: an appended revision carries it whole, and so
+does the pending slot, whose document becomes the plan of record when it is approved. So a candidate
+that drops a block the week has reached reports no removal, satisfies every class-level rule, and
+still replaces the plan of record with a week whose past is different. A guard reading only the
+three lists cannot see that, so the pair of documents is checked directly: **when a live plan
+exists, both documents state the same past, exactly.**
+
+A well-behaved candidate satisfies it for free, because the solver may not move a block that has
+started, so a disagreement is a producer defect rather than anything a request carried. It is
+refused rather than repaired: a solve answering with a rewritten history fails with a stated cause,
+the previous plan stays live and stays projected, and the fault is visible instead of being silently
+absorbed into an append-only table.
+
+A week with **no** live plan has no past to restate, so a first plan for a week that is half elapsed
+is classified as it stands: every block of it fills space nothing occupied.
 
 Filtering here is also what keeps this module out of the question of what authority means over a
 block that has started and is pinned. It means nothing, because such a block is not classified.
@@ -50,7 +67,7 @@ emitting its blocks in a different order.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from syncr_api.anchors.shadow_products import DERIVED_ORIGINS
 from syncr_api.plans.errors import ClassificationRejected
@@ -67,6 +84,10 @@ if TYPE_CHECKING:
     from syncr_domain.identity import BlockId
     from syncr_domain.intervals import Instant, Interval
     from syncr_domain.plan import Block, PlanDocument
+
+# How many block ids a refusal names before it counts the rest. A week holds hundreds of blocks and
+# a message that listed every disagreeing one would be a log line nobody reads.
+IDS_IN_A_REFUSAL: Final = 3
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -87,6 +108,7 @@ class Classification:
         object.__setattr__(self, "conflicts", tuple(self.conflicts))
         for change in self.auto_applicable:
             _require_a_fill(change)
+        _require_one_class_per_block(self.auto_applicable, self.proposal_diff)
 
     def is_empty(self) -> bool:
         """Whether this candidate changes nothing and collides with nothing.
@@ -113,10 +135,14 @@ def classify(live: PlanDocument | None, candidate: PlanDocument, *, now: Instant
     collide with.
 
     Raises :class:`~syncr_api.plans.errors.ClassificationRejected` when the two documents describe
-    different weeks. Pairing them would compare ids derived against different weeks, so every block
-    would read as dropped and every one as added, and the whole week would be proposed as new.
+    different weeks, and when they state a different past. Pairing documents of two weeks would
+    compare ids derived against different weeks, so every block would read as dropped and every one
+    as added; a candidate restating the past would replace the plan of record with a week that
+    happened differently, and no class-level rule can see that, because what persists is the
+    document rather than the diff.
     """
     _require_one_week(live, candidate)
+    _require_an_unchanged_past(live, candidate, now=now)
     held = {} if live is None else live.blocks_by_id()
     wanted = candidate.blocks_by_id()
     occupied = IntervalSet(block.interval for block in (() if live is None else live.blocks))
@@ -246,6 +272,83 @@ def _require_one_week(live: PlanDocument | None, candidate: PlanDocument) -> Non
         f"{candidate.iso_week}: an id is derived against the week, so every block would read as "
         "dropped and every one as added, and the whole week would be proposed as new"
     )
+
+
+def _require_an_unchanged_past(
+    live: PlanDocument | None, candidate: PlanDocument, *, now: Instant
+) -> None:
+    """Both documents state the same past, exactly, or the candidate is not classifiable.
+
+    The guard the three classes cannot be: each of them skips a block the week has reached, and
+    what persists is the document. So a candidate that drops or moves such a block partitions into
+    nothing at all and still becomes the plan of record.
+
+    Symmetric, because both directions rewrite history: a block missing from the candidate is one
+    the week lived and the plan no longer places, and a block the candidate holds in the past that
+    the live plan does not is time the user is told they spent on something nobody scheduled.
+    """
+    if live is None:
+        return
+    settled = _settled(live, now)
+    restated = _settled(candidate, now)
+    stated = ", ".join(
+        filter(
+            None,
+            (
+                _named("dropped", sorted(settled.keys() - restated.keys())),
+                _named("invented", sorted(restated.keys() - settled.keys())),
+                _named("moved", sorted(_relocated_in_the_past(settled, restated))),
+            ),
+        )
+    )
+    if not stated:
+        return
+    raise ClassificationRejected(
+        f"the candidate for {candidate.iso_week} states a past the live plan does not: {stated}. "
+        "A block the week has reached is not a change this product may make, and the document is "
+        "what becomes the plan of record, so the diff skipping such a block cannot protect it"
+    )
+
+
+def _settled(document: PlanDocument, now: Instant) -> Mapping[BlockId, Interval]:
+    """Where this document puts every block the week has already reached."""
+    return {
+        block.id: block.interval for block in document.blocks if _has_started(block.interval, now)
+    }
+
+
+def _relocated_in_the_past(
+    settled: Mapping[BlockId, Interval], restated: Mapping[BlockId, Interval]
+) -> list[BlockId]:
+    return [one for one in settled.keys() & restated.keys() if settled[one] != restated[one]]
+
+
+def _named(verb: str, ids: list[BlockId]) -> str:
+    """``verb`` and the blocks it happened to, bounded, because a week holds hundreds."""
+    if not ids:
+        return ""
+    shown = ", ".join(ids[:IDS_IN_A_REFUSAL])
+    more = "" if len(ids) <= IDS_IN_A_REFUSAL else f" and {len(ids) - IDS_IN_A_REFUSAL} more"
+    return f"{verb} {shown}{more}"
+
+
+def _require_one_class_per_block(
+    auto_applicable: tuple[BlockChange, ...], proposal_diff: ProposalDiff
+) -> None:
+    """A block is in one authority class, so a reader is never told two things about it.
+
+    The diff already refuses to name one block twice within itself. This is the other pair: a
+    change that both applies on its own and waits for assent would be applied and asked about.
+    """
+    waiting = {change.block_id for change in proposal_diff.changes()}
+    seen: set[BlockId] = set()
+    for change in auto_applicable:
+        if change.block_id in waiting or change.block_id in seen:
+            raise ClassificationRejected(
+                f"{change.title!r} applies without asking and is also held for assent: a block is "
+                "in one authority class, or the plan both moves it and asks about moving it"
+            )
+        seen.add(change.block_id)
 
 
 def _require_a_fill(change: BlockChange) -> None:
