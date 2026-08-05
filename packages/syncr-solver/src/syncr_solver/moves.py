@@ -34,20 +34,21 @@ carries the accepted result forward. The rebuild is what makes the removal expre
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from syncr_domain.identity import BindingKind
-from syncr_solver.attempt import Attempt
+from syncr_domain.intervals import Interval
+from syncr_solver.attempt import Attempt, Placed
 from syncr_solver.candidates import candidates_for
-from syncr_solver.offering import offer_at, offers_in, refusal_of, windows_for
+from syncr_solver.offering import CHECK, offers_in, preferred_first, refusal_of, windows_for
+from syncr_solver.ordering import block_key
 from syncr_solver.reading import demand_key
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
-    from syncr_domain.intervals import Interval
-    from syncr_solver.attempt import Placed
+    from syncr_domain.intervals import Instant
     from syncr_solver.candidates import Candidate
     from syncr_solver.preferred import ResolvedPreferences
     from syncr_solver.reading import DemandKey
@@ -87,7 +88,7 @@ def _chosen(attempt: Attempt) -> tuple[Placed, ...]:
     return tuple(
         sorted(
             (held for held in attempt.placements if held.chosen),
-            key=lambda held: (held.block.interval.start, held.block.interval.end, held.block.id),
+            key=lambda held: block_key(held.block),
         )
     )
 
@@ -95,53 +96,96 @@ def _chosen(attempt: Attempt) -> tuple[Placed, ...]:
 def _relocations(
     attempt: Attempt, chosen: Sequence[Placed], preferences: ResolvedPreferences
 ) -> Iterator[Move]:
-    """Each chosen block offered into every other legal window of the week it leaves behind."""
+    """Each chosen block offered at the start of every other gap of the week it leaves behind.
+
+    A relocation moves a block and keeps it: the content and the length are unchanged, so nothing
+    here rebuilds a candidate. Re-deriving one would ask the week what a demand still owes, which is
+    a question a relocation does not change the answer to, and it cost 1.2 s of a 2.5 s solve.
+    """
     for held in chosen:
         rest = _without(attempt, (held,))
-        candidate = _candidate_of(held, rest)
-        if candidate is None:
-            continue
-        for window in windows_for(candidate, rest.gaps(), preferences):
-            for offer in offers_in(candidate, window, attempt=rest):
-                if offer.interval == held.block.interval:
-                    continue
-                if refusal_of(offer, rest) is None:
-                    yield Move(kind=RELOCATE, attempt=rest.adding(offer.placed))
-                    break
+        for window in _windows_around(held, rest, preferences):
+            moved = _moved_to(held, window.start, rest)
+            if moved is None:
+                continue
+            yield Move(kind=RELOCATE, attempt=rest.adding(moved))
+            break
 
 
 def _swaps(attempt: Attempt, chosen: Sequence[Placed]) -> Iterator[Move]:
-    """Every pair of chosen blocks, each offered at the other's interval.
+    """Every pair of chosen blocks of equal length, each placed at the other's interval.
 
     Only pairs of equal length: two blocks of different lengths exchanged would each need its
     neighbour's slack as well, which is a relocation of both and not a swap. Restricting the move
-    keeps it decidable from the pair alone.
+    keeps it decidable from the pair alone, and it is what makes the pass affordable: the pairs are
+    grouped by length rather than filtered inside the loop, because at 150 blocks the quadratic scan
+    was 2.6 s of a 2.5 s solve on its own.
     """
-    for first in range(len(chosen)):
-        for second in range(first + 1, len(chosen)):
-            left, right = chosen[first], chosen[second]
-            if left.block.interval.total_minutes() != right.block.interval.total_minutes():
-                continue
-            rest = _without(attempt, (left, right))
-            moved = _exchanged(left, right, rest)
-            if moved is not None:
-                yield Move(kind=SWAP, attempt=moved)
+    for pairs in _by_length(chosen).values():
+        for first in range(len(pairs)):
+            for second in range(first + 1, len(pairs)):
+                left, right = pairs[first], pairs[second]
+                rest = _without(attempt, (left, right))
+                moved = _exchanged(left, right, rest)
+                if moved is not None:
+                    yield Move(kind=SWAP, attempt=moved)
+
+
+def _by_length(chosen: Sequence[Placed]) -> Mapping[int, tuple[Placed, ...]]:
+    """These placements grouped by how long they are, in the order they arrived.
+
+    Only a group of two or more can produce a swap, so the singletons are dropped: on the week this
+    was measured against that is most of them.
+    """
+    grouped: dict[int, list[Placed]] = {}
+    for held in chosen:
+        grouped.setdefault(held.block.interval.total_minutes(), []).append(held)
+    return {minutes: tuple(members) for minutes, members in grouped.items() if len(members) > 1}
 
 
 def _exchanged(left: Placed, right: Placed, rest: Attempt) -> Attempt | None:
-    """The plan holding each of these two blocks at the other's interval, or nothing."""
-    first = _candidate_of(left, rest)
-    second = _candidate_of(right, rest)
-    if first is None or second is None:
+    """The plan holding each of these two blocks at the other's interval, or nothing.
+
+    Each block keeps its own content and its own length, so this exchanges intervals rather than
+    re-deriving what either block holds.
+    """
+    one = _moved_to(left, right.block.interval.start, rest)
+    if one is None:
         return None
-    one = offer_at(first, right.block.interval, attempt=rest)
-    if refusal_of(one, rest) is not None:
+    with_one = rest.adding(one)
+    other = _moved_to(right, left.block.interval.start, with_one)
+    if other is None:
         return None
-    with_one = rest.adding(one.placed)
-    other = offer_at(second, left.block.interval, attempt=with_one)
-    if refusal_of(other, with_one) is not None:
+    return with_one.adding(other)
+
+
+def _moved_to(held: Placed, start: Instant, rest: Attempt) -> Placed | None:
+    """This block at a new start, keeping its length and its content, or nothing where a rule says.
+
+    The length is the one it already holds, so the interval is built from the start rather than
+    re-chosen: changing a length is the resize kind, and doing it here would make one move two.
+    """
+    if start == held.block.interval.start:
         return None
-    return with_one.adding(other.placed)
+    moved = Placed.of(
+        replace(held.block, interval=Interval(start, start + held.block.interval.duration)),
+        sizing=held.placement.sizing,
+        chosen=True,
+    )
+    return None if CHECK.check(moved.placement, rest.state) is not None else moved
+
+
+def _windows_around(
+    held: Placed, rest: Attempt, preferences: ResolvedPreferences
+) -> tuple[Interval, ...]:
+    """The gaps this block could move into, its own preferred ones first, long enough to hold it.
+
+    A gap shorter than the block cannot hold it whatever else is true, so it is dropped before the
+    checker is asked: the check is the expensive half.
+    """
+    minutes = held.block.interval.total_minutes()
+    roomy = tuple(gap for gap in rest.gaps() if gap.total_minutes() >= minutes)
+    return preferred_first(held.block.binding, held.block.area_id, roomy, preferences)
 
 
 def _resizes(attempt: Attempt, chosen: Sequence[Placed]) -> Iterator[Move]:

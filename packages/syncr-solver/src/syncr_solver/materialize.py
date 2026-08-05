@@ -60,15 +60,13 @@ from syncr_solver.derivation import (
 from syncr_solver.figures import week_figures
 from syncr_solver.metrics import MATERIALIZE_TOTAL, MaterializeCause
 from syncr_solver.occupancy import OCCUPANCY_RULES
+from syncr_solver.ordering import block_key, slot_key
 from syncr_solver.state import PartialPlan, Placement
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from syncr_domain.gaps import EmptySlot
-    from syncr_domain.identifiers import AreaId
-    from syncr_domain.identity import BlockId
-    from syncr_domain.intervals import Instant
     from syncr_domain.plan import Block
     from syncr_domain.zones import Date, ZoneId
     from syncr_solver.inputs import MaterializedEntry, SolveInputs
@@ -115,7 +113,7 @@ def derive(inputs: SolveInputs, *, cause: MaterializeCause) -> Materialization:
         *anchor_blocks(inputs.anchors, iso_week=inputs.iso_week),
     )
     placed, blocked = _place(_candidates(inputs, zones), space)
-    blocks = tuple(sorted((*fixed, *placed), key=_block_key))
+    blocks = tuple(sorted((*fixed, *placed), key=block_key))
     figures = week_figures(inputs, blocks)
     document = PlanDocument(
         iso_week=inputs.iso_week,
@@ -141,10 +139,10 @@ def _candidates(inputs: SolveInputs, zones: Mapping[str, ZoneId]) -> tuple[Block
     pair.
     """
     return (
-        *sorted(shadow_blocks(inputs.shadow_blocks, iso_week=inputs.iso_week), key=_block_key),
+        *sorted(shadow_blocks(inputs.shadow_blocks, iso_week=inputs.iso_week), key=block_key),
         *sorted(
             entry_blocks(inputs.template_entries, iso_week=inputs.iso_week, zones=zones),
-            key=_block_key,
+            key=block_key,
         ),
     )
 
@@ -175,7 +173,7 @@ def _place(
 
 def _slots(entries: Sequence[MaterializedEntry]) -> tuple[EmptySlot, ...]:
     """The week's unfilled Area slots, in span order."""
-    return tuple(sorted(empty_slots(entries), key=_slot_key))
+    return tuple(sorted(empty_slots(entries), key=slot_key))
 
 
 def _zones_of_this_week(inputs: SolveInputs) -> Mapping[Date, ZoneId]:
@@ -187,24 +185,3 @@ def _zones_of_this_week(inputs: SolveInputs) -> Mapping[Date, ZoneId]:
     the document carries.
     """
     return {day: inputs.zone_by_date[day] for day in inputs.iso_week.dates()}
-
-
-def _block_key(block: Block) -> tuple[Instant, Instant, str, str, BlockId]:
-    """The order a document's blocks are held in: the day as it runs, ending in an identity.
-
-    The identity is what makes the order total, exactly as the solver's own tie-breaking ends in
-    an entity id: without it two blocks equal on span, origin and title would be ordered by
-    whatever their inputs happened to do.
-    """
-    return (
-        block.interval.start,
-        block.interval.end,
-        block.origin.value,
-        block.title,
-        block.id,
-    )
-
-
-def _slot_key(slot: EmptySlot) -> tuple[Instant, Instant, AreaId, str]:
-    """Span order, the Area, then the reason. Every field an empty slot carries."""
-    return (slot.interval.start, slot.interval.end, slot.area_id, slot.reason.value)

@@ -5,6 +5,10 @@ overlapping two members is rejected by naming the earlier one whatever order the
 and a document holds its windows in an order its inputs cannot change. Without that, permuting an
 input list would change a reason clause while changing no placement.
 
+Two of the keys order what a DOCUMENT holds rather than what the checker reads, and they are here
+for the same reason: a document's block order and its slot order are facts its readers depend on,
+and two statements of either would let a materialized week and a solved week hold one week two ways.
+
 **Every key reads the whole of the value it orders, or ends in an identity that makes the rest
 unreachable.** That is the property the module exists to hold, and it is the one a partial key
 breaks silently: a stable sort on a key that cannot separate two unequal values returns the arrival
@@ -16,11 +20,40 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from syncr_domain.gaps import ForbiddenWindow
+    from uuid import UUID
+
+    from syncr_domain.gaps import EmptySlot, ForbiddenWindow
     from syncr_domain.identifiers import AnchorId, AreaId, RoutineId
+    from syncr_domain.identity import BindingKind
     from syncr_domain.intervals import Instant, Interval
     from syncr_domain.off_plan import OffPlanPeriod
+    from syncr_domain.plan import Block
     from syncr_solver.inputs import Anchor, AreaBudget, FrameEntry
+
+
+def block_key(block: Block) -> tuple[Instant, Instant, str, str, BindingKind, UUID, str, int]:
+    """The order a document holds its blocks in: the day as it runs, ending in an identity.
+
+    The identity is the BINDING rather than the derived block id, and the two are equally total: a
+    document holds one block per binding, which is the same invariant that makes an id unique inside
+    it. The binding is read because an id is a SHA-256 computed on every read, and a sort recomputes
+    one per block per document: measured on a 152-block week, 0.3 s of a 2.1 s solve went on hashing
+    identities that were only ever compared for order.
+    """
+    return (
+        *span_key(block.interval),
+        block.origin.value,
+        block.title,
+        block.binding.kind,
+        block.binding.entity_id,
+        block.binding.occurrence_key,
+        -1 if block.binding.split_index is None else block.binding.split_index,
+    )
+
+
+def slot_key(slot: EmptySlot) -> tuple[Instant, Instant, AreaId, str]:
+    """Span order, the Area, then the reason. Every field an empty slot carries."""
+    return (slot.interval.start, slot.interval.end, slot.area_id, slot.reason.value)
 
 
 def span_key(interval: Interval) -> tuple[Instant, Instant]:

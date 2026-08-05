@@ -40,6 +40,7 @@ from syncr_domain.identity import BindingKind, BindingRef
 from syncr_domain.intervals import IntervalSet
 from syncr_domain.plan import MIN_SPLIT_COUNT, PlanDocument
 from syncr_solver.figures import claimed_intervals, week_figures
+from syncr_solver.ordering import block_key, slot_key
 from syncr_solver.reading import demand_key
 from syncr_solver.state import PartialPlan, Placement
 
@@ -48,8 +49,7 @@ if TYPE_CHECKING:
 
     from syncr_domain.gaps import EmptySlot
     from syncr_domain.identifiers import AreaId
-    from syncr_domain.identity import BlockId
-    from syncr_domain.intervals import Instant, Interval
+    from syncr_domain.intervals import Interval
     from syncr_domain.plan import Block
     from syncr_solver.constraints import BlockedCandidate
     from syncr_solver.inputs import SolveInputs
@@ -272,22 +272,6 @@ class Attempt:
         """
         claimed = claimed_intervals([held.block for held in self.placements])
         return self.state.discretionary().subtract(claimed).after(self.inputs.now).members
-
-
-def block_key(block: Block) -> tuple[Instant, Instant, str, str, BlockId]:
-    """The order a document's blocks are held in: the day as it runs, ending in an identity."""
-    return (
-        block.interval.start,
-        block.interval.end,
-        block.origin.value,
-        block.title,
-        block.id,
-    )
-
-
-def slot_key(slot: EmptySlot) -> tuple[Instant, Instant, AreaId, str]:
-    """Span order, the Area, then the reason. Every field an empty slot carries."""
-    return (slot.interval.start, slot.interval.end, slot.area_id, slot.reason.value)
 
 
 def chunk_ordinal(placements: Sequence[Placed], binding: BindingRef) -> int:
