@@ -57,6 +57,22 @@ def content_key(binding: BindingRef) -> ContentKey:
     return (binding.kind, binding.entity_id)
 
 
+type DemandKey = tuple[BindingKind, UUID, str]
+"""One demand the solver places: content, and which instance of it, without the chunk.
+
+**Not the same key as** :data:`ContentKey`, and the difference is one component. A task's chunks all
+belong to one demand, so both keys drop the chunk number; a habit's four occurrences in one week are
+four SEPARATE demands, each with its own identity and its own block, so this one keeps the
+occurrence. Read as content, three of the four would look already placed the moment the first one
+landed.
+"""
+
+
+def demand_key(binding: BindingRef) -> DemandKey:
+    """The demand this binding belongs to: everything but which chunk of it this is."""
+    return (binding.kind, binding.entity_id, binding.occurrence_key)
+
+
 @dataclass(frozen=True, slots=True)
 class Placed:
     """One block the plan places into an Area, with that Area non-optional.
