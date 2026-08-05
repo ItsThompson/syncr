@@ -12,12 +12,16 @@ from syncr_domain.weeks import (
     IsoWeekError,
     Weekday,
     active_zone_by_date,
+    local_days,
     week_span,
 )
 from syncr_domain.zones import TravelOverride, ZoneProfile
 
 LONDON = "Europe/London"
 TOKYO = "Asia/Tokyo"
+# The eastern extreme, +14:00. Paired with `Etc/GMT+12` at -12:00 it gives a 26-hour offset
+# difference, which is more than a date is long.
+KIRITIMATI = "Pacific/Kiritimati"
 
 HOME = ZoneProfile(LONDON)
 
@@ -280,3 +284,90 @@ class TestTheZoneEachDayResolves:
 
         assert resolved[date(2026, 2, 9)] == TOKYO
         assert resolved[date(2026, 2, 11)] == LONDON
+
+
+class TestTheLocalDaysOfAWeek:
+    """A per-day figure is measured against the day the user had, not a 24-hour slice."""
+
+    def test_an_ordinary_week_is_seven_days_of_twenty_four_hours_covering_the_whole_span(
+        self,
+    ) -> None:
+        week = IsoWeek(2026, 7)
+        span = week_span(week, HOME)
+
+        days = local_days(week, active_zone_by_date(week, HOME), span)
+
+        assert [day.on for day in days] == list(week.dates())
+        assert [day.interval.total_minutes() for day in days] == [24 * 60] * 7
+        assert days[0].interval.start == span.start
+        assert days[-1].interval.end == span.end
+
+    def test_the_spring_forward_date_is_twenty_three_hours_and_its_neighbours_are_not(self) -> None:
+        # The whole reason a per-day figure cannot slice the span into equal parts: one date of
+        # this week is an hour shorter than the others and the cap for that day is measured on it.
+        week = IsoWeek(2026, 13)
+        span = week_span(week, HOME)
+
+        days = local_days(week, active_zone_by_date(week, HOME), span)
+
+        lengths = {day.on: day.interval.total_minutes() for day in days}
+        assert lengths[date(2026, 3, 29)] == 23 * 60
+        assert lengths[date(2026, 3, 28)] == 24 * 60
+        assert lengths[date(2026, 3, 23)] == 24 * 60
+        assert sum(lengths.values()) == span.total_minutes()
+
+    def test_the_fall_back_date_is_twenty_five_hours(self) -> None:
+        week = IsoWeek(2026, 43)
+        span = week_span(week, HOME)
+
+        days = local_days(week, active_zone_by_date(week, HOME), span)
+
+        lengths = {day.on: day.interval.total_minutes() for day in days}
+        assert lengths[date(2026, 10, 25)] == 25 * 60
+        assert sum(lengths.values()) == span.total_minutes()
+
+    def test_a_mid_week_move_east_shortens_the_date_the_boundary_falls_on(self) -> None:
+        # Thursday onwards in Tokyo, nine hours ahead: Thursday's own midnight arrives nine hours
+        # earlier than London's would, so Wednesday is fifteen hours long where the user was.
+        week = IsoWeek(2026, 7)
+        profile = ZoneProfile(
+            LONDON, (TravelOverride(date(2026, 2, 12), date(2026, 2, 15), TOKYO),)
+        )
+        span = week_span(week, profile)
+
+        days = local_days(week, active_zone_by_date(week, profile), span)
+
+        lengths = {day.on: day.interval.total_minutes() for day in days}
+        assert lengths[date(2026, 2, 11)] == 15 * 60
+        assert lengths[date(2026, 2, 12)] == 24 * 60
+        assert sum(lengths.values()) == span.total_minutes()
+
+    def test_a_move_between_the_extreme_offsets_drops_the_date_it_cannot_bound(self) -> None:
+        # Twenty-six hours of offset is more than a date is long, so Friday's midnight lands
+        # BEFORE Thursday's and the pair does not run forward. The date is dropped rather than
+        # reordered, and the dates around it still answer.
+        week = IsoWeek(2026, 7)
+        profile = ZoneProfile(
+            "Etc/GMT+12", (TravelOverride(date(2026, 2, 13), date(2026, 2, 15), KIRITIMATI),)
+        )
+        span = week_span(week, profile)
+
+        days = local_days(week, active_zone_by_date(week, profile), span)
+
+        assert date(2026, 2, 12) not in {day.on for day in days}
+        assert date(2026, 2, 13) in {day.on for day in days}
+        assert len(days) == 6
+
+    def test_no_day_reaches_outside_the_week_it_belongs_to(self) -> None:
+        # A per-day figure taken over these may not charge a minute the week does not hold, so the
+        # bound is stated here rather than at each reader.
+        week = IsoWeek(2026, 7)
+        profile = ZoneProfile(
+            LONDON, (TravelOverride(date(2026, 2, 15), date(2026, 2, 15), KIRITIMATI),)
+        )
+        span = week_span(week, profile)
+
+        days = local_days(week, active_zone_by_date(week, profile), span)
+
+        assert all(span.start <= day.interval.start for day in days)
+        assert all(day.interval.end <= span.end for day in days)

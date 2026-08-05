@@ -31,6 +31,8 @@ from syncr_domain.intervals import Interval
 from syncr_domain.zones import active_zone, to_instant
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from syncr_domain.zones import Date, ZoneId, ZoneProfile
 
 LOCAL_MIDNIGHT: Final = time(0, 0)
@@ -135,6 +137,54 @@ def week_span(iso_week: IsoWeek, profile: ZoneProfile) -> Interval:
         to_instant(LOCAL_MIDNIGHT, monday, active_zone(profile, monday)),
         to_instant(LOCAL_MIDNIGHT, next_monday, active_zone(profile, next_monday)),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class LocalDay:
+    """One of a week's dates, and the span that date occupies as instants."""
+
+    on: Date
+    interval: Interval
+
+
+def local_days(
+    iso_week: IsoWeek, zone_by_date: Mapping[Date, ZoneId], span: Interval
+) -> tuple[LocalDay, ...]:
+    """Each of the week's dates as the span it really occupies, bounded by its own midnight.
+
+    A per-day figure has to be measured against the day the USER had, so a cap or a ledger reads
+    this rather than a 24-hour slice of the span: a spring-forward date is 23 hours long and a
+    travel boundary makes one 14 hours long. Each date's start resolves against the zone active
+    on that date and its end against the next date's, which is what makes both lengths fall out
+    with no special case.
+
+    ``span``'s end bounds the last date, because the following Monday's zone is the span's
+    business and is not in the mapping. Every day is clipped to the span for the same reason:
+    a per-day figure taken over these may not charge a minute the week does not hold.
+
+    ``zone_by_date`` covers the week's seven dates. Every shape that carries the mapping as a
+    field validates that through ``plan.require_a_zone_for_every_day``, so a date missing here
+    is a caller that built the mapping rather than data that arrived wrong.
+
+    **A date whose bounds do not run forward contributes nothing, and consecutive dates can
+    overlap.** Both follow from the offsets rather than from a choice: two dates' midnights are
+    24 hours apart plus the difference between their offsets, which spans -14:00 to +14:00, so a
+    mid-week move between the extremes moves a midnight backwards past the one before it. The
+    day that cannot be built is dropped rather than reordered, because which date owns an instant
+    is what the mapping states; and a placement inside an overlap is charged to both dates, which
+    is the safe direction for a cap.
+    """
+    dates = iso_week.dates()
+    midnights = [to_instant(LOCAL_MIDNIGHT, on, zone_by_date[on]) for on in dates]
+    bounds = (*midnights, span.end)
+    days = []
+    for on, opens, closes in zip(dates, midnights, bounds[1:], strict=True):
+        if opens >= closes:
+            continue
+        inside = Interval(opens, closes).clipped_to(span)
+        if inside is not None:
+            days.append(LocalDay(on=on, interval=inside))
+    return tuple(days)
 
 
 def active_zone_by_date(iso_week: IsoWeek, profile: ZoneProfile) -> dict[Date, ZoneId]:
