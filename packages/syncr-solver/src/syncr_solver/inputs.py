@@ -435,6 +435,13 @@ class ChurnBaseline:
     is named, and this one says churn can be measured only when the plan to measure against is in
     hand. Both are right for their own question. A caller converting between them states which it
     is asking.
+
+    **The pairing invariant is the domain twin's, for the reason a clause renders from it.** A
+    plan with no revision named would make ``is_measured`` true while ``reason`` said
+    ``never-approved``, and a ``dominant`` clause built from it would cite churn while naming no
+    revision and no date, which is exactly what US-WHY-03 forbids. Unreachable through the two
+    constructors and refused by the type anyway, because the clause's own guarantee is stated as a
+    property of this value rather than of one producer.
     """
 
     revision_id: PlanRevisionId | None = None
@@ -444,6 +451,11 @@ class ChurnBaseline:
     NEVER_APPROVED = "never-approved"
     APPROVED_REVISION = "approved-revision"
     APPROVED_UNREADABLE = "approved-revision-unreadable"
+
+    def __post_init__(self) -> None:
+        _require_a_named_revision_for_a_readable_plan(
+            self.revision_id, self.approved_at, self.document
+        )
 
     @classmethod
     def never_approved(cls) -> ChurnBaseline:
@@ -643,6 +655,30 @@ class SolveInputs:
         """
         digest = sha256(f"{self.iso_week}\x1f{self.input_version}".encode()).digest()
         return int.from_bytes(digest[:_SEED_BYTES])
+
+
+def _require_a_named_revision_for_a_readable_plan(
+    revision_id: PlanRevisionId | None, approved_at: Instant | None, document: PlanDocument | None
+) -> None:
+    """A baseline names the revision and the instant of assent together, or names neither.
+
+    Two refusals, and the second is what the ``dominant`` clause depends on. Half a baseline
+    renders half a sentence, which is the domain twin's own rule. And a plan carried without a
+    revision to name it would make :attr:`ChurnBaseline.is_measured` true while ``reason`` still
+    read ``never-approved``, so churn could be charged against a document the clause cannot cite:
+    the clause would say the plan moved and name nothing it moved from.
+    """
+    if (revision_id is None) != (approved_at is None):
+        raise PlanError(
+            "a churn baseline names an approved revision and the instant of assent, or neither: "
+            "the clause renders the date, so half a baseline renders half a sentence"
+        )
+    if document is not None and revision_id is None:
+        raise PlanError(
+            "a churn baseline carrying a plan names the revision that plan is: churn measured "
+            "against a document no revision names is a cost the reason record cannot cite, and "
+            "the clause has to name the revision and its date"
+        )
 
 
 def _require_content_matching_the_kind(
