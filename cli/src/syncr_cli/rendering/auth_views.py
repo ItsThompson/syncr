@@ -35,7 +35,12 @@ class AuthView:
 
     An authorization command's payload never accompanies a verdict, so it never has to render a
     deadline in a week's zone. Stated once here rather than three times.
+
+    ``__slots__`` is empty and present: without it, the three ``slots=True`` dataclasses below would
+    inherit a ``__dict__`` from this base and the declaration would buy nothing.
     """
+
+    __slots__ = ()
 
     def body_lines(self) -> list[str]:
         return []

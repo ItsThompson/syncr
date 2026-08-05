@@ -5,7 +5,7 @@ interface CliResult<T> {
   ok: boolean;
   data: T | null;
   verdict: Verdict | null;    // present whenever the command changed the plan
-  operation: Operation | null; // present whenever the command dispatched work
+  operation: Operation | null; // present when the command dispatched work, or read one in flight
   problem: Problem | null;     // present when ok is false
 }
 ```
@@ -16,6 +16,10 @@ shape rather than parsing prose.
 **Human output, ``--json`` output, and the exit code all come from this object.** That is what
 makes it impossible for them to disagree: a command builds one result and returns it, and the
 runner renders it twice and exits with the number it asks for.
+
+**Only work this invocation dispatched decides the exit code.** An operation a command merely read
+is reported so a caller can follow it, and a read that saw someone else's failing solve still exits
+by what the read found.
 """
 
 from __future__ import annotations
@@ -78,10 +82,11 @@ class CliResult:
     verdict: Verdict | None = None
     operation: Operation | None = None
     problem: Problem | None = None
-    # Whether the operation is this invocation's work rather than one it merely read. A read that
-    # happens to see a week's in-flight solve reports it, and must not exit by its status: the
-    # command succeeded, and the status belongs to work nobody here asked for.
-    operation_is_this_invocations: bool = False
+    # Whether the operation is work this invocation asked for rather than one it merely read. A read
+    # that happens to see a week's in-flight solve reports it, and must not exit by its status: the
+    # command succeeded, and the status belongs to work nobody here asked for. The two classmethods
+    # below are how a command states this; nothing else should set it.
+    operation_was_dispatched: bool = False
 
     @classmethod
     def succeeded(
@@ -116,7 +121,7 @@ class CliResult:
             data=data,
             verdict=verdict,
             operation=operation,
-            operation_is_this_invocations=True,
+            operation_was_dispatched=True,
         )
 
     @classmethod
@@ -135,7 +140,7 @@ class CliResult:
         """
         if self.problem is not None:
             return self.problem.exit_code
-        if self.operation_is_this_invocations and self.operation is not None:
+        if self.operation_was_dispatched and self.operation is not None:
             dispatched = self.operation.exit_code
             if dispatched is not ExitCode.SUCCESS:
                 return dispatched

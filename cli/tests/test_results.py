@@ -99,7 +99,7 @@ def test_a_problem_outranks_everything_else() -> None:
         ok=False,
         verdict=verdict(),
         operation=operation(status="superseded"),
-        operation_is_this_invocations=True,
+        operation_was_dispatched=True,
         problem=cli_problem("syncr:cli-api-unreachable", "API unavailable", "no answer"),
     )
 

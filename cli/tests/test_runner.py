@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from syncr_cli.errors import UsageError
 from syncr_cli.exit_codes import ExitCode, exit_code_table
 from syncr_cli.main import _write
 from syncr_cli.parser import PROGRAM, build_parser
@@ -174,8 +175,10 @@ def test_a_payload_whose_rendering_raises_still_answers_with_the_wrapper() -> No
 
 
 def test_the_same_payload_answers_the_json_wrapper_too() -> None:
-    # The fallback render cannot fail for the reason the first one did: a failed result carries no
-    # data and no verdict, so nothing in it reaches a view at all.
+    # No fallback happens here: the JSON renderer emits the api's own object and calls no view
+    # method, so the payload that refuses to render for a person renders for an agent. That is why
+    # the read-time refusal is the half that makes the two formats agree, and this the half that
+    # stops the human one losing its wrapper.
     stdout = StringIO()
 
     code = _write(
@@ -213,6 +216,26 @@ class _RefusedByTheDomain:
 
     def render_deadline(self, moment: datetime) -> str:
         return moment.isoformat()
+
+
+def test_a_render_time_refusal_keeps_its_own_exit_code() -> None:
+    # A refusal that already knows its problem knows its exit code too. Flattening every render-time
+    # failure into an unreadable-response would answer 1 for a usage error.
+    stdout = StringIO()
+
+    code = _write(
+        CliResult.succeeded(_RefusesAsUsage()), host=_host(stdout), output=OutputFormat.HUMAN
+    )
+
+    assert code is ExitCode.USAGE
+    assert "Usage error" in stdout.getvalue()
+
+
+class _RefusesAsUsage(_RefusedByTheDomain):
+    """A payload whose rendering raises a failure of this package's own."""
+
+    def header_lines(self) -> list[str]:
+        raise UsageError("--week names no ISO week")
 
 
 @pytest.mark.parametrize("command", COMMANDS)

@@ -92,7 +92,12 @@ def _write(result: CliResult, *, host: Host, output: OutputFormat) -> ExitCode:
     """
     try:
         rendered = _render(result, output)
-    except (CliError, DomainError) as error:
+    except CliError as error:
+        # Reported as itself rather than flattened: a render-time refusal that already knows its own
+        # problem knows its own exit code too, and answering 1 for a usage error would lose that.
+        result = CliResult.failed(error.problem)
+        rendered = _render(result, output)
+    except DomainError as error:
         result = CliResult.failed(
             MalformedResponse(
                 f"the API sent a value this CLI cannot print: {error}. Nothing was changed."

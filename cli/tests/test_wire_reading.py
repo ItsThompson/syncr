@@ -23,6 +23,8 @@ from syncr_cli.wire.reading import (
     text,
 )
 from syncr_cli.wire.verdict import Verdict
+from syncr_domain.feasibility.errors import FeasibilityError
+from syncr_domain.feasibility.verdict import Shortfall, ShortfallKind
 
 
 def test_a_payload_that_is_not_an_object_names_the_path() -> None:
@@ -116,3 +118,47 @@ def test_a_verdict_with_no_shortfalls_member_reads_as_having_none() -> None:
     assert read.shortfalls == ()
     assert read.tradeoff_count == 0
     assert read.capacity_is_sufficient is True
+
+
+@pytest.mark.parametrize("minutes", [0, -1, -80])
+def test_this_reader_refuses_the_gap_the_domain_refuses(minutes: int) -> None:
+    # The gap threshold is stated in two packages: the domain refuses one at construction and this
+    # reader refuses one on the wire. Crossed here, because keeping two copies level is the whole
+    # reason this package depends on the domain rather than copying its arithmetic.
+    with pytest.raises(FeasibilityError):
+        Shortfall(
+            kind=ShortfallKind.DEADLINE_CAPACITY,
+            minutes=minutes,
+            against=("Career",),
+            honoring=("the Fitness floor of 5h",),
+        )
+
+    with pytest.raises(MalformedResponse, match="gap of something"):
+        Verdict.read(
+            {
+                "feasible": False,
+                "provenance": "probe",
+                "shortfalls": [{"minutes": minutes, "against": ["Career"], "honoring": []}],
+            },
+            "verdict",
+        )
+
+
+def test_both_accept_the_smallest_gap_there_is() -> None:
+    # The other direction, so the crossing above is a threshold rather than a blanket refusal.
+    domain = Shortfall(
+        kind=ShortfallKind.DEADLINE_CAPACITY,
+        minutes=1,
+        against=("Career",),
+        honoring=("the Fitness floor of 5h",),
+    )
+    read = Verdict.read(
+        {
+            "feasible": False,
+            "provenance": "probe",
+            "shortfalls": [{"minutes": 1, "against": ["Career"], "honoring": []}],
+        },
+        "verdict",
+    )
+
+    assert domain.minutes == read.shortfalls[0].minutes == 1
