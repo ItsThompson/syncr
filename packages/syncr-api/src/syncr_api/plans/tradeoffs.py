@@ -88,6 +88,12 @@ only eligibility carries it: a task whose whole estimate is covered by an immova
 its deadline has a demand and no eligibility. Where the week also has no elastic routine and no
 honored floor, such a gap is offered nothing at all. It is logged rather than left silent: a panel
 reporting a gap with no button is otherwise invisible outside the request that rendered it.
+
+The warning sits inside the enumeration rather than at a call site, so it fires wherever this runs
+and every caller inherits it. Today that is the tradeoff request path only, which means it fires
+when a user asks for a concession against some OTHER gap on a week that also holds an unanswerable
+one, and not on a render: no route serializes these yet. Once the panel's own read lands it needs no
+change here to be covered, which is why the log belongs here and not in the service.
 """
 
 from __future__ import annotations
@@ -97,8 +103,9 @@ from typing import TYPE_CHECKING, assert_never
 
 from syncr_api.plans import tradeoff_labels as labels
 from syncr_api.plans import tradeoff_nights as nights
+from syncr_api.plans import tradeoff_targets as targets
 from syncr_common.logging import get_logger
-from syncr_domain.feasibility import ShortfallKind, Tradeoff, floor_honored
+from syncr_domain.feasibility import ShortfallKind, Tradeoff
 from syncr_domain.plan import AdjustmentKind
 from syncr_solver.inputs import WeekAdjustment
 
@@ -143,10 +150,11 @@ class Offer:
 
     @property
     def recovers(self) -> int:
-        """The minutes this offer states it recovers.
+        """The minutes this offer states it recovers, as an UPPER bound on the gap movement.
 
-        Positive for everything :func:`offered_tradeoffs` returns: a concession that recovers
-        nothing is not offered, and each kind's own builder is where that is decided.
+        Positive for everything :func:`offered_tradeoffs` returns, and never less than what
+        approving the concession delivers: the module docstring states the three cases where it can
+        be more, and why that is the safe direction for a panel to be wrong in.
         """
         return self.tradeoff.delta_minutes or 0
 
@@ -177,9 +185,9 @@ def offered_tradeoffs(inputs: SolveInputs, verdict: Verdict) -> tuple[Offer, ...
     was offered against, and stating the smaller figure would understate what the user is
     approving.
 
-    A gap this can answer with nothing is logged rather than passed over. The module docstring names
-    the one shape that reaches it, and the panel's silence is otherwise visible only to the request
-    that rendered it.
+    A gap this can answer with nothing is logged rather than passed over, wherever this runs: the
+    module docstring names the one shape that reaches it, and the panel's silence is otherwise
+    visible only to the request that rendered it.
     """
     applied = {(adjustment.kind, adjustment.target_id) for adjustment in inputs.adjustments}
     offers: dict[OfferedConcession, Offer] = {}
@@ -215,23 +223,23 @@ def _against(shortfall: Shortfall, inputs: SolveInputs) -> tuple[Offer, ...]:
                 *_breaches(shortfall, of=inputs.areas),
             )
         case ShortfallKind.DEADLINE_CAPACITY:
-            due = _due_at(shortfall, inputs)
+            due = targets.due_at(shortfall, inputs)
             return (
                 *_drops(shortfall, due),
                 *_reductions(shortfall, inputs, before=shortfall.deadline),
-                *_breaches(shortfall, of=_honored_floors(shortfall, inputs)),
+                *_breaches(shortfall, of=targets.honored_floors(shortfall, inputs)),
                 *_excusals(shortfall, due),
             )
         case ShortfallKind.AREA_FLOOR_UNREACHABLE:
-            competing = _competing_with(shortfall, inputs)
+            competing = targets.competing_with(shortfall, inputs)
             return (
                 *_drops(shortfall, competing),
                 *_reductions(shortfall, inputs, before=None),
-                *_breaches(shortfall, of=_the_areas_own(shortfall, inputs)),
+                *_breaches(shortfall, of=targets.the_areas_own(shortfall, inputs)),
                 *_excusals(shortfall, competing),
             )
         case ShortfallKind.MINIMUM_CHUNK_UNPLACEABLE:
-            named = _named_by(shortfall, inputs)
+            named = targets.named_by(shortfall, inputs)
             return (
                 *_drops(shortfall, named),
                 *_reductions(shortfall, inputs, before=shortfall.deadline),
@@ -285,8 +293,8 @@ def _breaches(shortfall: Shortfall, *, of: Sequence[AreaBudget]) -> tuple[Offer,
 
     **The figure is exact against the two gaps that compare a reservation directly, and an upper
     bound against a deadline gap**, which subtracts the part of the floor that cannot fit after the
-    deadline rather than the whole of it. The module docstring states the arithmetic and names the
-    ticket that owns closing it.
+    deadline rather than the whole of it, and subtracts nothing further once that Area's earlier
+    deadlines have already claimed more. The module docstring states the arithmetic.
     """
     return tuple(
         _an_offer(
@@ -345,64 +353,3 @@ def _an_offer(
         tradeoff=Tradeoff(kind=kind, label=label, target_id=target_id, delta_minutes=recovers),
         reductions={} if reductions is None else reductions,
     )
-
-
-def _due_at(shortfall: Shortfall, inputs: SolveInputs) -> tuple[EligibleTask, ...]:
-    """The tasks that make up the demand this gap was raised against.
-
-    Matched on the Area and the deadline the demand was grouped by rather than on the titles the
-    shortfall renders, because two tasks may share a title and only one of them may be due then.
-
-    **This can be empty while the demand is not.** Eligibility nets immovable placements wherever
-    they sit and the demand nets only those before the deadline, so a task covered by a pin AFTER
-    its own deadline has a demand and no eligible row, and neither task-targeted kind can name it.
-    The module docstring carries the consequence.
-    """
-    return tuple(
-        task
-        for task in inputs.eligible_tasks
-        if task.area_id == shortfall.area_id and task.deadline == shortfall.deadline
-    )
-
-
-def _competing_with(shortfall: Shortfall, inputs: SolveInputs) -> tuple[EligibleTask, ...]:
-    """The deadline-bearing work of every OTHER Area, which is what took this floor's capacity.
-
-    This check compares one Area's reservation against what it may claim after the other Areas'
-    demands, so removing one of those demands is what gives the floor room. This Area's own work
-    is not competition: a block placed for its own task lands in it and satisfies the floor.
-    """
-    return tuple(
-        task
-        for task in inputs.eligible_tasks
-        if task.area_id != shortfall.area_id and task.deadline is not None
-    )
-
-
-def _named_by(shortfall: Shortfall, inputs: SolveInputs) -> tuple[EligibleTask, ...]:
-    """The tasks a packing failure names, which is the one gap that carries no demand.
-
-    Matched by title, which is the only handle a chunk failure leaves: it is raised against a
-    candidate the solver could not place rather than against a demand grouped by Area and
-    deadline. Narrowed to the shortfall's Area where it names one.
-    """
-    return tuple(
-        task
-        for task in inputs.eligible_tasks
-        if task.title in shortfall.against and shortfall.area_id in (None, task.area_id)
-    )
-
-
-def _honored_floors(shortfall: Shortfall, inputs: SolveInputs) -> tuple[AreaBudget, ...]:
-    """The floors this gap honored, which are the ones breaching would recover time from."""
-    return tuple(
-        area
-        for area in inputs.areas
-        if floor_honored(label=area.name, reserved_minutes=area.floor_reservation_minutes)
-        in shortfall.honoring
-    )
-
-
-def _the_areas_own(shortfall: Shortfall, inputs: SolveInputs) -> tuple[AreaBudget, ...]:
-    """The floor this gap is about, which is the one the user would be breaching."""
-    return tuple(area for area in inputs.areas if area.area_id == shortfall.area_id)

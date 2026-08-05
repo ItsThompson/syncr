@@ -45,6 +45,7 @@ one resolved ``SolveInputs``:
 | ``verdicts.py`` | the live verdict on the request path, and the caller-labeled histogram |
 | ``tradeoffs.py`` | what could close each gap, what it recovers, and nothing chosen |
 | ``tradeoff_nights.py`` | which nights a routine reduction touches, and by how much each |
+| ``tradeoff_targets.py`` | which targets a gap names, per kind: the selection half |
 | ``tradeoff_labels.py`` | the words a tradeoff is offered in, per kind |
 | ``candidates.py`` | a candidate concession's path to the worker, and the reductions read |
 """
