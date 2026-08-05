@@ -80,8 +80,8 @@ def by_hand(event_id: str = "evt-user") -> ExistingEvent:
     )
 
 
-def desired_of(*events: ProjectedEvent) -> dict[str, ProjectedEvent]:
-    return {event.syncr_key: event for event in events}
+def desired_of(*events: ProjectedEvent) -> list[ProjectedEvent]:
+    return list(events)
 
 
 # --------------------------------------------------------------------------------
@@ -111,7 +111,7 @@ def test_in_both_and_differing_patches() -> None:
 
 
 def test_in_existing_and_not_desired_deletes() -> None:
-    plan = plan_reconciliation({}, [held(intended(), event_id="evt-9")])
+    plan = plan_reconciliation([], [held(intended(), event_id="evt-9")])
 
     assert [(one.event_id, one.foreign) for one in plan.deletes] == [("evt-9", False)]
     assert plan.inserts == ()
@@ -119,7 +119,7 @@ def test_in_existing_and_not_desired_deletes() -> None:
 
 
 def test_in_existing_with_no_syncr_key_deletes_and_is_foreign() -> None:
-    plan = plan_reconciliation({}, [by_hand()])
+    plan = plan_reconciliation([], [by_hand()])
 
     assert [(one.event_id, one.foreign) for one in plan.deletes] == [("evt-user", True)]
 
@@ -259,7 +259,7 @@ def test_resolving_a_duplicate_is_idempotent() -> None:
 def test_a_duplicate_of_a_key_syncr_no_longer_intends_removes_both() -> None:
     event = intended()
 
-    plan = plan_reconciliation({}, [held(event, event_id="evt-a"), held(event, event_id="evt-b")])
+    plan = plan_reconciliation([], [held(event, event_id="evt-a"), held(event, event_id="evt-b")])
 
     assert sorted(one.event_id for one in plan.deletes) == ["evt-a", "evt-b"]
 

@@ -23,8 +23,9 @@ however carefully syncr writes: one holder is kept and patched, and every other 
 event syncr no longer intends. The kept one is the lowest event id, so two runs over the same target
 make the same choice and the second run finds nothing left to resolve.
 
-**A duplicate on the DESIRED side is not resolved here.** It is refused where the desired set is
-built, because it means syncr collected one span twice rather than that the target drifted.
+**A duplicate on the DESIRED side is not resolved, it is refused.** It means syncr collected one
+span twice rather than that the target drifted, and the live case is a span crossing the ISO week
+boundary, which belongs to the week its start falls in.
 """
 
 from __future__ import annotations
@@ -33,8 +34,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_api.calendars.projection_errors import ProjectionKeysCollide
+
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Sequence
 
     from syncr_api.calendars.projection import ProjectedEvent
     from syncr_domain.intervals import Interval
@@ -46,10 +49,15 @@ class ExistingEvent:
 
     ``syncr_key`` is ``None`` for an event the user created by hand: nothing wrote a key into its
     extended properties, and inside the horizon that is what makes removing it a foreign deletion.
+
+    ``interval`` is ``None`` for an event whose span syncr cannot read -- a provider answer that
+    does not hold the shape a timestamp has. Such an event is still ON the target inside the
+    horizon, so it still has to be reconciled: unkeyed it is removed like any other drift, and keyed
+    it is rewritten to what syncr intends, which is what an unreadable span deserves.
     """
 
     event_id: str
-    interval: Interval
+    interval: Interval | None = None
     syncr_key: str | None = None
     title: str = ""
     description: str | None = None
@@ -59,7 +67,8 @@ class ExistingEvent:
         """Whether this event already says what syncr intends, so no write is needed.
 
         Compared over everything a reader sees, which is deliberately NOT the diff key: the key
-        decides which event this is, and this decides whether it needs changing.
+        decides which event this is, and this decides whether it needs changing. An event whose span
+        could not be read matches nothing, so it is rewritten rather than left as it is.
         """
         return (
             self.interval == intended.interval
@@ -120,37 +129,59 @@ class ReconciliationPlan:
 
 
 def plan_reconciliation(
-    desired: Mapping[str, ProjectedEvent], existing: Iterable[ExistingEvent]
+    desired: Sequence[ProjectedEvent], existing: Iterable[ExistingEvent]
 ) -> ReconciliationPlan:
     """The four arms of the diff, over one horizon's worth of each side.
 
-    ``desired`` is already keyed and already unique, which is what its builder guarantees.
     ``existing`` is whatever the provider answered, so it may hold two events under one key and
-    events under no key at all.
+    events under no key at all. ``desired`` is syncr's own, so two events under one key there is a
+    fault in syncr and is refused rather than resolved.
     """
+    intended = _keyed_by_syncr_key(desired)
     keyed, foreign = _partitioned(existing)
     patches: list[Patch] = []
     deletes = [DeleteRequest(event.event_id, foreign=True) for event in foreign]
     unchanged = 0
     for key, holders in keyed.items():
-        intended = desired.get(key)
+        wanted = intended.get(key)
         kept, duplicates = holders[0], holders[1:]
         # A duplicate of a key syncr still intends is as unintended as one of a key it does not, so
         # both leave through the same arm. Counted as a syncr deletion rather than a foreign one:
         # the event carries syncr's key, whoever copied it.
         deletes.extend(DeleteRequest(event.event_id) for event in duplicates)
-        if intended is None:
+        if wanted is None:
             deletes.append(DeleteRequest(kept.event_id))
-        elif kept.matches(intended):
+        elif kept.matches(wanted):
             unchanged += 1
         else:
-            patches.append(Patch(kept.event_id, intended))
+            patches.append(Patch(kept.event_id, wanted))
     return ReconciliationPlan(
         patches=tuple(patches),
-        inserts=tuple(event for key, event in desired.items() if key not in keyed),
+        inserts=tuple(event for key, event in intended.items() if key not in keyed),
         deletes=tuple(deletes),
         unchanged=unchanged,
     )
+
+
+def _keyed_by_syncr_key(desired: Sequence[ProjectedEvent]) -> dict[str, ProjectedEvent]:
+    """The events syncr intends, by key, refusing two that claim one key.
+
+    Refused rather than resolved because the two are indistinguishable to a diff: it would pair one
+    of them and never see the other, so whichever lost would silently stop reaching the phone.
+    """
+    intended: dict[str, ProjectedEvent] = {}
+    for event in desired:
+        held = intended.get(event.syncr_key)
+        if held is not None:
+            raise ProjectionKeysCollide(
+                f"two events syncr intends share the key {event.syncr_key!r}: "
+                f"{held.title!r} at {held.interval.start} and {event.title!r} at "
+                f"{event.interval.start}. One binding produces one block per week, so a shared key "
+                "means a span was collected twice: a boundary-crossing block belongs to the week "
+                "its start falls in and is emitted from that week alone"
+            )
+        intended[event.syncr_key] = event
+    return intended
 
 
 def _partitioned(

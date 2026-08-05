@@ -48,6 +48,7 @@ from syncr_api.calendars.projected_events import (
     rendered_reason,
 )
 from syncr_api.calendars.projection_errors import ProjectionKeysCollide
+from syncr_api.calendars.reconciliation import plan_reconciliation
 from syncr_api.offplan.records import OffPlanPeriodRecord
 from syncr_api.offplan.segments import off_plan_segments
 from syncr_domain.fixtures.dst_weeks import FALL_BACK, LONDON, SPRING_FORWARD
@@ -435,8 +436,9 @@ def test_a_boundary_crossing_frame_span_is_emitted_once_across_a_two_week_horizo
 
     desired = desired_events(documents, (), horizon=horizon)
 
-    assert [event.title for event in desired.values()] == ["Sleep"]
-    assert desired[crossing.id].interval == SPRING_FORWARD.sunday_night_frame
+    assert [event.title for event in desired] == ["Sleep"]
+    assert [event.syncr_key for event in desired] == [crossing.id]
+    assert [event.interval for event in desired] == [SPRING_FORWARD.sunday_night_frame]
 
 
 def test_the_following_weeks_own_sunday_night_is_a_second_event_with_its_own_key() -> None:
@@ -464,12 +466,12 @@ def test_the_following_weeks_own_sunday_night_is_a_second_event_with_its_own_key
         horizon=horizon,
     )
 
-    assert set(desired) == {first.id, second.id}
+    assert {event.syncr_key for event in desired} == {first.id, second.id}
 
 
-def test_a_span_collected_from_two_weeks_is_refused() -> None:
-    """The bite the assertion above rests on: a duplicate key would make the diff pair one and miss
-    the other, so the collection refuses rather than resolving."""
+def test_a_span_collected_from_two_weeks_is_refused_by_the_diff() -> None:
+    """The bite the assertion above rests on: two events under one key would make the diff pair one
+    and never see the other, so it refuses rather than resolving."""
     crossing = a_sunday_night_frame(SPRING_FORWARD.iso_week, SPRING_FORWARD.sunday_night_frame)
     twice = a_document(
         week=SPRING_FORWARD.iso_week,
@@ -477,8 +479,10 @@ def test_a_span_collected_from_two_weeks_is_refused() -> None:
         zone_by_date=a_zone_map(SPRING_FORWARD.iso_week, LONDON),
     )
 
+    collected = desired_events([twice, twice], (), horizon=SPRING_FORWARD.span)
+
     with pytest.raises(ProjectionKeysCollide, match="share the key"):
-        desired_events([twice, twice], (), horizon=SPRING_FORWARD.span)
+        plan_reconciliation(collected, [])
 
 
 def test_a_block_and_an_off_plan_segment_never_share_the_desired_set() -> None:
@@ -491,6 +495,7 @@ def test_a_block_and_an_off_plan_segment_never_share_the_desired_set() -> None:
     desired = desired_events([a_document()], segments, horizon=A_WIDE_HORIZON)
 
     assert len(desired) == 1 + len(segments)
+    assert len({event.syncr_key for event in desired}) == len(desired)
 
 
 # --------------------------------------------------------------------------------

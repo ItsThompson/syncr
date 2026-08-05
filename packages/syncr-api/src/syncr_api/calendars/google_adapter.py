@@ -40,6 +40,8 @@ sensitive values in the product.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import TYPE_CHECKING, Final
 
 from syncr_api.calendars.config import GOOGLE_COMPONENT, SYNC_INTERVAL, UNKNOWN_LINE
@@ -50,8 +52,17 @@ from syncr_api.calendars.google_client import (
     GoogleReadFailed,
     SyncTokenExpired,
 )
+from syncr_api.calendars.google_config import WRITE_DEADLINE_SECONDS
 from syncr_api.calendars.google_cursors import bounded_cursor, sync_token_of
+from syncr_api.calendars.google_events import (
+    SYNCR_KEY_PROPERTY,
+    WriteRefused,
+    WritesUnavailable,
+)
 from syncr_api.calendars.google_values import ReadSpan, read_span
+from syncr_api.calendars.projection import ProjectionAction, ReconcileResult
+from syncr_api.calendars.projection_errors import ProjectionFailed, ProjectionRefused
+from syncr_api.calendars.reconciliation import ExistingEvent, plan_reconciliation
 from syncr_api.calendars.sync_state import (
     recorded_failure,
     recorded_success,
@@ -61,11 +72,14 @@ from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
     from datetime import datetime
 
     from syncr_api.calendars.google_client import CalendarsAnswer, GoogleCalendarClient
+    from syncr_api.calendars.google_events import EventWriting, GoogleEventWriter, WriteAnswer
     from syncr_api.calendars.google_payloads import GoogleEventPayload
-    from syncr_api.calendars.projection import ProjectedEvent, ReconcileResult
+    from syncr_api.calendars.projection import ProjectedEvent
+    from syncr_api.calendars.reconciliation import ReconciliationPlan
     from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
     from syncr_api.core.clock import Clock
     from syncr_domain.intervals import Interval
@@ -94,20 +108,32 @@ CHANGES_DETECTED: Final = (
 
 
 class GoogleAdapter:
-    """Read one Google calendar, list an account's calendars, and own the write target's shape.
+    """Read one Google calendar, list an account's calendars, and write the one syncr owns.
 
     The zone profile and the horizon are constructor dependencies rather than per-call arguments,
     because both belong to the tenant rather than to the source: one adapter is built per tenant per
     sync pass, and every calendar it reads resolves an all-day span the same way.
+
+    ``writes`` is the write side, and it is a two-armed value rather than an optional collaborator.
+    **The adapter the request path composes holds the refusing arm**, so no route can reach a
+    destructive write however it is wired: the arm is chosen once, in the composition, and a reader
+    of that composition sees which one.
     """
 
     def __init__(
-        self, *, client: GoogleCalendarClient, profile: ZoneProfile, horizon: Interval, clock: Clock
+        self,
+        *,
+        client: GoogleCalendarClient,
+        profile: ZoneProfile,
+        horizon: Interval,
+        clock: Clock,
+        writes: EventWriting,
     ) -> None:
         self._client = client
         self._profile = profile
         self._horizon = horizon
         self._clock = clock
+        self._writes = writes
 
     @measured("google_adapter")
     async def list_calendars(self) -> CalendarsAnswer:
@@ -142,16 +168,109 @@ class GoogleAdapter:
     ) -> ReconcileResult:
         """Make ``target`` match ``desired`` over the horizon, destructively.
 
-        Not implemented here. The interface is complete from this module so the projection writer
-        changes one method body and no signature: ticket 30 owns the diff, the delete of an event
-        syncr did not intend, and the count of the ones the user created by hand.
+        Three phases, and the order of the first two is the whole safety property. The refusal is
+        checked BEFORE anything is read, so a deployment that will not write spends no request to
+        learn what it already knew. The diff is then computed whole, before any of it is sent, so a
+        reconciliation cannot discover halfway through that it is about to delete more than it meant
+        to.
+
+        Raises rather than answering when it did not finish, carrying the writes that DID land: the
+        one thing a destructive write path must never do is read as a success when the target does
+        not match the plan.
         """
-        message = (
-            f"projecting the plan onto {target.display_name!r} is not implemented yet, so the "
-            f"{len(desired)} events syncr intends were not written. Reading anchors from every "
-            "source still works."
+        if isinstance(self._writes, WritesUnavailable):
+            raise ProjectionRefused(self._writes.reason)
+        started = time.perf_counter()
+        identity = {"source_id": str(target.id), "tenant_id": str(target.tenant_id)}
+        plan = plan_reconciliation(desired, await self._existing(target))
+        _log.info(
+            "calendars.projection.planned",
+            **identity,
+            desired_count=len(desired),
+            **plan.as_log_fields(),
         )
-        raise NotImplementedError(message)
+        result = await self._applied(target, plan, writer=self._writes, started=started)
+        _log.info("calendars.projection.reconciled", **identity, **result.as_log_fields())
+        return result
+
+    async def _existing(self, target: CalendarSourceRecord) -> list[ExistingEvent]:
+        """What the target already holds over the horizon, as the diff reads it.
+
+        A cancelled event is left out rather than reconciled: it occupies no time, so there is
+        nothing on the calendar to remove and a delete would spend a request to change nothing.
+        """
+        answer = await self._client.list_events(
+            target.external_id, sync_token=None, window=self._horizon
+        )
+        if not isinstance(answer, EventsRead):
+            raise ProjectionFailed(
+                f"the calendar syncr writes to could not be read, so the plan was not written: "
+                f"{_reason_of(answer)}."
+            )
+        return [
+            _as_existing_event(payload, profile=self._profile)
+            for payload in answer.events
+            if not payload.is_cancelled
+        ]
+
+    async def _applied(
+        self,
+        target: CalendarSourceRecord,
+        plan: ReconciliationPlan,
+        *,
+        writer: GoogleEventWriter,
+        started: float,
+    ) -> ReconcileResult:
+        """Send the plan, in its own order, stopping at the first write the provider refused.
+
+        Sequential rather than concurrent, deliberately. Concurrency would make the set of writes
+        that landed before a failure non-deterministic, and this is the one path in the product
+        whose partial state is a real calendar on a real phone.
+        """
+        counts = dict.fromkeys(ProjectionAction, 0)
+        calendar_id = target.external_id
+        async with asyncio.timeout(WRITE_DEADLINE_SECONDS):
+            for patch in plan.patches:
+                await self._one(
+                    writer.patch(calendar_id, patch.event_id, patch.intended),
+                    counts,
+                    ProjectionAction.PATCHED,
+                    plan,
+                    started,
+                )
+            for insert in plan.inserts:
+                await self._one(
+                    writer.insert(calendar_id, insert),
+                    counts,
+                    ProjectionAction.INSERTED,
+                    plan,
+                    started,
+                )
+            for removal in plan.deletes:
+                await self._one(
+                    writer.delete(calendar_id, removal.event_id),
+                    counts,
+                    ProjectionAction.FOREIGN_DELETED
+                    if removal.foreign
+                    else ProjectionAction.DELETED,
+                    plan,
+                    started,
+                )
+        return _result(counts, plan, started)
+
+    async def _one(
+        self,
+        write: Awaitable[WriteAnswer],
+        counts: dict[ProjectionAction, int],
+        action: ProjectionAction,
+        plan: ReconciliationPlan,
+        started: float,
+    ) -> None:
+        """Perform one write, counting it, and end the reconciliation if the provider refused it."""
+        answer = await write
+        if isinstance(answer, WriteRefused):
+            raise ProjectionFailed(answer.reason, applied=_result(counts, plan, started))
+        counts[action] += 1
 
     async def _after_detecting(
         self, source: CalendarSourceRecord, held: str, *, at: datetime, identity: dict[str, str]
@@ -332,6 +451,38 @@ def _reason_of(answer: SyncTokenExpired | GoogleReadFailed) -> str:
     if isinstance(answer, GoogleReadFailed):
         return answer.reason
     return "Google refused a sync token this read did not send"
+
+
+def _result(
+    counts: dict[ProjectionAction, int], plan: ReconciliationPlan, started: float
+) -> ReconcileResult:
+    """The counts so far as the value a reconciliation answers with, or a failure carries."""
+    return ReconcileResult(
+        inserted=counts[ProjectionAction.INSERTED],
+        patched=counts[ProjectionAction.PATCHED],
+        deleted=counts[ProjectionAction.DELETED],
+        foreign_deleted=counts[ProjectionAction.FOREIGN_DELETED],
+        duration_ms=round((time.perf_counter() - started) * 1000),
+        unchanged=plan.unchanged,
+    )
+
+
+def _as_existing_event(payload: GoogleEventPayload, *, profile: ZoneProfile) -> ExistingEvent:
+    """One event on the write target as the diff reads it.
+
+    A span that cannot be read leaves the interval absent rather than dropping the event. The event
+    is on the calendar inside the horizon either way, so it still has to be reconciled: with no key
+    it is drift and is removed, and with one it is rewritten to what syncr intends.
+    """
+    read = read_span(payload.start, payload.end, profile=profile)
+    return ExistingEvent(
+        event_id=payload.id,
+        interval=read.interval if isinstance(read, ReadSpan) else None,
+        syncr_key=payload.private_property(SYNCR_KEY_PROPERTY),
+        title=payload.summary or "",
+        description=payload.description,
+        location=payload.location,
+    )
 
 
 def _as_raw_event(payload: GoogleEventPayload, read: ReadSpan) -> RawEvent:

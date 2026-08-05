@@ -9,6 +9,10 @@ by URL and records what was asked, because "an incremental read sends the token 
 about what was SENT as much as about what came back. :func:`token_transport` is an httpx transport,
 so the OAuth client's own streaming, bounding, and form encoding are exercised rather than replaced.
 
+:class:`RecordedGoogleWrites` is the third, and it exists because the write path's claims are all
+about what was sent: which method, in which order, carrying which body, and how many of them landed
+before a refusal.
+
 No payload here carries an expected figure. A fixture that stated "three events" would be asserting
 against itself; the tests count what the adapter produced.
 """
@@ -163,6 +167,57 @@ def ok(body: bytes, **headers: str) -> GoogleResponse:
 
 def failed(status: int, body: bytes | None = None, **headers: str) -> GoogleResponse:
     return GoogleResponse(status=status, body=body, headers=headers)
+
+
+# What Google answers a successful delete: no content, and no body to read.
+NO_CONTENT = GoogleResponse(status=204, body=b"")
+# What it answers a successful insert or patch: the event it stored. Nothing syncr reads, but a body
+# is what a real answer carries and a fake that answered none would hide a reader of one.
+EVENT_STORED = GoogleResponse(status=200, body=b'{"id": "evt-stored"}')
+
+
+@dataclass(frozen=True, slots=True)
+class Write:
+    """One mutating request the projection made, as the assertions read it."""
+
+    method: str
+    url: str
+    token: str
+    body: dict[str, Any] | None
+
+
+@dataclass
+class RecordedGoogleWrites:
+    """A :class:`~syncr_api.calendars.google_writes.GoogleWriteTransport` answering from a script.
+
+    Answers are keyed by METHOD rather than by position, because that is how the claims read: "every
+    delete is refused", "a patch answers 404". ``fail_after`` is the one positional case, and it is
+    the one that matters most: a reconciliation that fails part way through has to report exactly
+    what it applied, so the count of writes before the failure is the assertion.
+    """
+
+    by_method: Mapping[str, GoogleResponse] = field(default_factory=dict)
+    default: GoogleResponse = EVENT_STORED
+    fail_after: int | None = None
+    failure: GoogleResponse = field(default_factory=lambda: failed(503))
+    raises: Exception | None = None
+    writes: list[Write] = field(default_factory=list)
+
+    async def send(
+        self, method: str, url: str, *, token: str, body: dict[str, Any] | None = None
+    ) -> GoogleResponse:
+        self.writes.append(Write(method=method, url=url, token=token, body=body))
+        if self.raises is not None:
+            raise self.raises
+        if self.fail_after is not None and len(self.writes) > self.fail_after:
+            return self.failure
+        if method in self.by_method:
+            return self.by_method[method]
+        return NO_CONTENT if method == "DELETE" else self.default
+
+    def methods(self) -> list[str]:
+        """The order the reconciliation applied its plan in."""
+        return [write.method for write in self.writes]
 
 
 @dataclass

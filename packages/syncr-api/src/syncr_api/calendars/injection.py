@@ -52,7 +52,9 @@ from syncr_api.calendars.config import GOOGLE, HORIZON_DAYS_DEFAULT, ICS
 from syncr_api.calendars.feeds import HttpFeedFetcher, create_feed_client
 from syncr_api.calendars.google_adapter import GoogleAdapter
 from syncr_api.calendars.google_client import GoogleCalendarClient
+from syncr_api.calendars.google_events import GoogleEventWriter, WritesUnavailable
 from syncr_api.calendars.google_transport import HttpxGoogleTransport, create_google_read_client
+from syncr_api.calendars.google_writes import HttpxGoogleWriteTransport
 from syncr_api.calendars.ics_adapter import IcsAdapter
 from syncr_api.calendars.remote_calendars import UnconfiguredCalendarReader
 from syncr_api.calendars.repository import CalendarSourceRepository
@@ -76,11 +78,45 @@ if TYPE_CHECKING:
 
     from syncr_api.calendars.adapters import CalendarAdapter
     from syncr_api.calendars.config import CalendarProvider
+    from syncr_api.calendars.google_events import EventWriting
     from syncr_api.calendars.remote_calendars import RemoteCalendarReader
     from syncr_api.core.principal import Principal
     from syncr_api.core.settings import ServiceSettings
     from syncr_domain.identifiers import TenantId
     from syncr_domain.zones import ZoneProfile
+
+# Why a deployment with no Google client cannot write. The same condition the connect flow reports,
+# stated for the write side: without a client id there is no account, so there is no calendar to
+# write to and nothing about the plan is wrong.
+NOT_CONFIGURED_REASON = (
+    "This deployment has no Google OAuth client, so there is no calendar for syncr to write the "
+    "plan to. Every ICS feed still syncs and the plan is still correct in syncr."
+)
+
+# Why the adapter a REQUEST composes will not write. Not a failure and not a fault: a request has no
+# business writing a calendar at all, because the projection is network-bound, retryable, and
+# destructive, so it runs in the worker and never sits on a request. Holding the refusing arm here
+# makes that structural rather than a convention every future route has to remember.
+READS_ONLY = WritesUnavailable(
+    reason=(
+        "This is a read of your calendars, and syncr only writes the plan from its background "
+        "worker. Nothing was written and nothing is wrong."
+    )
+)
+
+# Why a deployment that has not been armed will not write. The destructive reconciliation removes
+# anything inside its horizon that syncr does not intend, including events the user created by hand,
+# and no part of it has been run against the real Google API: the live suite needs a standing
+# authorization that only a person at a consent screen can obtain. So it is off until an operator
+# says otherwise, and the refusal is loud rather than silent.
+UNARMED = WritesUnavailable(
+    reason=(
+        "syncr is not writing the plan to your Google calendar, because writing is switched off in "
+        "this deployment. Reading your calendars still works and the plan itself is current: only "
+        "the copy on Google is not being updated. An operator turns it on with "
+        "GOOGLE_PROJECTION_WRITES=true."
+    )
+)
 
 
 async def get_feed_client() -> AsyncIterator[httpx.AsyncClient]:
@@ -115,11 +151,14 @@ def build_adapters(
     profile: ZoneProfile,
     horizon: Interval,
 ) -> tuple[Mapping[CalendarProvider, CalendarAdapter], RemoteCalendarReader]:
-    """The adapters this deployment can read with, and the reader that lists an account.
+    """The adapters this deployment can READ with, and the reader that lists an account.
 
     **A deployment with no Google client gets no Google adapter**, which is what makes the service's
     rule true rather than nominal: a forced sync on a Google source is refused with a stated reason
     instead of recording a transport failure against a calendar that is fine.
+
+    **The Google adapter these compose cannot write**, because it holds the refusing arm of the
+    write seam. The projection composes its own, in the worker, with a writer in it.
 
     The ICS adapter is always present. ICS needs no credential from anybody, which is the whole
     reason it is the strategic ingest path.
@@ -133,8 +172,35 @@ def build_adapters(
         transport=HttpxGoogleTransport(google),
         tokens=build_access_tokens(settings, session, tenant_id, google),
     )
-    adapter = GoogleAdapter(client=client, profile=profile, horizon=horizon, clock=utc_now)
+    adapter = GoogleAdapter(
+        client=client, profile=profile, horizon=horizon, clock=utc_now, writes=READS_ONLY
+    )
     return {ICS: ics, GOOGLE: adapter}, adapter
+
+
+def build_event_writing(
+    settings: ServiceSettings,
+    session: AsyncSession,
+    tenant_id: TenantId,
+    *,
+    writes: httpx.AsyncClient,
+    tokens: httpx.AsyncClient,
+) -> EventWriting:
+    """The write side of the projection: a writer, or the stated reason there is none.
+
+    Two conditions, and each answers with the sentence a user reads rather than a boolean: a
+    deployment with no Google client has nothing to write to, and a deployment that has not been
+    armed will not write. Both are checked here, once, so the adapter holds one value and the
+    reconciliation asks it before it spends a request.
+    """
+    if not settings.google_oauth_client_id:
+        return WritesUnavailable(reason=NOT_CONFIGURED_REASON)
+    if not settings.google_projection_writes:
+        return UNARMED
+    return GoogleEventWriter(
+        transport=HttpxGoogleWriteTransport(writes),
+        tokens=build_access_tokens(settings, session, tenant_id, tokens),
+    )
 
 
 async def read_zone_profile(session: AsyncSession, principal: Principal) -> ZoneProfile:

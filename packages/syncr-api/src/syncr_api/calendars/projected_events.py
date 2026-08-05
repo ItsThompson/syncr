@@ -33,11 +33,10 @@ reader, and an anchor does not project anyway; transit names a journey rather th
 because P0 declares the journey on the anchor type instead of routing it. So the field is present in
 the shape and always absent in the value, which a test states.
 
-**The desired set is a mapping keyed by that key, and a collision is refused.** One binding produces
-one block per week, so two events sharing a key means the collection double-counted something: the
-live case is a span that crosses the ISO week boundary, which belongs to the week its start falls in
-and must be emitted from that week alone. A duplicate would make the diff pair one of the two and
-never see the other, so it is refused where the set is built rather than resolved silently.
+**The desired set is keyed on that key, and a collision is refused where the diff is computed.** One
+binding produces one block per week, so two events sharing a key means a span was collected twice:
+the live case is one crossing the ISO week boundary, which belongs to the week its start falls in
+and is emitted from that week alone.
 """
 
 from __future__ import annotations
@@ -45,7 +44,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from syncr_api.calendars.projection import ProjectedEvent
-from syncr_api.calendars.projection_errors import ProjectionKeysCollide
 from syncr_domain.habits import BindingSource
 from syncr_domain.identity import Origin
 from syncr_domain.reasons import Bound, DerivationSource
@@ -119,31 +117,19 @@ def desired_events(
     segments: Iterable[OffPlanSegment],
     *,
     horizon: Interval,
-) -> dict[str, ProjectedEvent]:
-    """Everything syncr intends on the write target over ``horizon``, by key.
+) -> list[ProjectedEvent]:
+    """Everything syncr intends on the write target over ``horizon``.
 
     ``documents`` are the live plans of the weeks the horizon covers. A block belongs to the week
     its start falls in and is emitted from that week alone, so a frame span crossing the ISO
     boundary -- a Sunday-night ``Sleep`` running into Monday -- appears exactly once across a
-    multi-week horizon. A collection that emitted it from both weeks is refused here rather than
-    producing a diff that pairs one copy and never sees the other.
+    multi-week horizon. A collection that emitted it from both weeks would produce two events under
+    one key, which the diff refuses rather than pairing one copy and never seeing the other.
     """
-    desired: dict[str, ProjectedEvent] = {}
-    for event in (
+    return [
         *(one for document in documents for one in projected_blocks(document, horizon=horizon)),
         *projected_off_plan(segments),
-    ):
-        held = desired.get(event.syncr_key)
-        if held is not None:
-            raise ProjectionKeysCollide(
-                f"two events syncr intends share the key {event.syncr_key!r}: "
-                f"{held.title!r} at {held.interval.start} and {event.title!r} at "
-                f"{event.interval.start}. One binding produces one block per week, so a shared key "
-                "means a span was collected twice -- a boundary-crossing block belongs to the week "
-                "its start falls in and is emitted from that week alone"
-            )
-        desired[event.syncr_key] = event
-    return desired
+    ]
 
 
 def projected_blocks(document: PlanDocument, *, horizon: Interval) -> tuple[ProjectedEvent, ...]:
