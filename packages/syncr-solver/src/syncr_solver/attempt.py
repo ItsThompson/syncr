@@ -201,13 +201,21 @@ class Attempt:
         )
 
     def placed_minutes(self) -> Mapping[DemandKey, int]:
-        """Minutes this attempt places toward each demand, keyed the way one demand is keyed.
+        """Minutes placed toward each demand, less what the demand's own figure already nets.
 
         A task's chunks all count toward one demand and a habit's four occurrences are four separate
         demands, which is exactly the distinction :func:`~syncr_solver.reading.demand_key` states.
+
+        **A placement the producer's figure already nets is not counted here.**
+        ``EligibleTask.remaining_minutes`` arrives net of the immovable placements, which is a block
+        that has begun and a pin, so counting their minutes again would subtract one hour twice and
+        place a four-hour task at three. The set is read through the checker's own statement of it
+        rather than restated, so this and H9 cannot come to net different sets.
         """
         found: dict[DemandKey, int] = {}
         for held in self.placements:
+            if self.state.already_netted(held.placement.binding):
+                continue
             key = demand_key(held.block.binding)
             found[key] = found.get(key, 0) + held.block.interval.total_minutes()
         return found

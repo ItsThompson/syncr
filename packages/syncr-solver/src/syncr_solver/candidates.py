@@ -28,11 +28,20 @@ values and nothing else.
 ## A queue occurrence's content is chosen here, and the choice is the task ordering
 
 A habit whose binding source is ``queue`` takes its cadence from itself and its content from the
-backlog, so its content is the highest-ordered eligible task in its own Area. The occurrence
-keeps its own identity and its own length: what the backlog supplies is the NAME, which is what
-``US-HAB-04``'s "the chosen item is named on the block, not just the habit" asks for. An Area
-whose backlog holds nothing leaves the occurrence with no content, so it is not eligible at all,
-and a slot that wanted it reports that its Area has no eligible content.
+backlog, so its content is the highest-ordered OPEN task in its own Area. The occurrence keeps its
+own identity and its own length: what the backlog supplies is the NAME, which is what
+``US-HAB-04``'s "the chosen item is named on the block, not just the habit" asks for. An Area whose
+backlog holds nothing leaves the occurrence with no content, so it is not eligible at all, and a
+slot that wanted it reports that its Area has no eligible content.
+
+**The draw reads every open task rather than the ones this round still has work for**, so the name
+is a function of the inputs rather than of how far the packing has got: drawn from the round, an
+occurrence would lose its content the moment the task it names was fully placed, and the same week
+would bind three sessions and then stop. **It also does not net the task's minutes.** A queue
+habit's session is its own demand: the habit says "an hour of this Area, three times a week" and the
+task says how much work it needs, and a user who declared both declared both. Whether a session
+should discharge the work it is named after needs a rule nothing in this spec states, and ticket
+1372 carries it.
 """
 
 from __future__ import annotations
@@ -118,11 +127,15 @@ def candidates_for(
     as the round found it.
 
     The tasks are ordered first and the occurrences after them, because a queue occurrence's
-    content is the highest-ordered task in its Area and that ordering is the same one.
+    content is the highest-ordered open task in its Area and that ordering is the same one, taken
+    over every open task rather than over the ones this round still has work for.
     """
     tasks = _task_candidates(inputs.eligible_tasks, placed_minutes, floor_shortfalls)
     occurrences = _occurrence_candidates(
-        inputs.habit_occurrences, placed_minutes, floor_shortfalls, backlog=tasks
+        inputs.habit_occurrences,
+        placed_minutes,
+        floor_shortfalls,
+        backlog=_task_candidates(inputs.eligible_tasks, {}, floor_shortfalls),
     )
     return in_tiebreak_order((*tasks, *occurrences))
 
