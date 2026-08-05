@@ -47,18 +47,24 @@ def approving_browser(
 
 
 def refusing_browser(
-    *, error: str, description: str, calls: list[str] | None = None
+    *,
+    error: str,
+    description: str,
+    echo_state: bool = True,
+    calls: list[str] | None = None,
 ) -> BrowserOpener:
-    """A browser the Authorization Server sent back with a refusal instead of a code."""
-    return _browser(
-        opens=True,
-        calls=calls,
-        query=lambda stated: {
-            "error": error,
-            "error_description": description,
-            "state": stated["state"],
-        },
-    )
+    """A browser the Authorization Server sent back with a refusal instead of a code.
+
+    ``echo_state`` is what distinguishes a refusal from a hijacked redirect. RFC 6749 requires the
+    state on an error redirect, so a conforming server echoes it; a client that checked the state
+    first would report a mismatch instead of the server's own reason for anything that did not.
+    """
+
+    def query(stated: dict[str, str]) -> dict[str, str]:
+        refusal = {"error": error, "error_description": description}
+        return {**refusal, "state": stated["state"]} if echo_state else refusal
+
+    return _browser(opens=True, calls=calls, query=query)
 
 
 def silent_browser(*, calls: list[str] | None = None) -> BrowserOpener:

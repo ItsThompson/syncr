@@ -185,6 +185,32 @@ def test_a_refusal_on_the_redirect_is_reported_and_nothing_is_stored(
     assert api.requests_to("POST", "/oauth/token") == []
 
 
+def test_a_refusal_that_carries_no_state_is_still_reported_as_the_servers_refusal(
+    tmp_path: Path, in_memory_keychain: InMemoryKeyring
+) -> None:
+    # The refusal is read before the state, so a server that refused states its own reason. Checking
+    # the state first would answer "the browser came back with a state this run did not send", which
+    # sends the user looking for a browser problem they do not have. Nothing is exchanged on this
+    # path, so reading the refusal first costs no security.
+    with FakeApi() as api:
+        authorization_server(api)
+
+        ran = drive(
+            ["auth", "login"],
+            base_url=api.base_url,
+            home=tmp_path,
+            open_browser=refusing_browser(
+                error="invalid_scope", description="admin is refused", echo_state=False
+            ),
+        )
+
+    detail = ran.document["problem"]["detail"]
+    assert ran.code is ExitCode.FAILURE
+    assert "invalid_scope" in detail
+    assert "state" not in detail
+    assert in_memory_keychain.stored == {}
+
+
 def test_a_redirect_carrying_another_flows_state_is_refused(tmp_path: Path) -> None:
     with FakeApi() as api:
         authorization_server(api)
