@@ -41,7 +41,7 @@ sensitive values in the product.
 from __future__ import annotations
 
 import asyncio
-import time
+from time import perf_counter
 from typing import TYPE_CHECKING, Final
 
 from syncr_api.calendars.config import GOOGLE_COMPONENT, SYNC_INTERVAL, UNKNOWN_LINE
@@ -180,7 +180,7 @@ class GoogleAdapter:
         """
         if isinstance(self._writes, WritesUnavailable):
             raise ProjectionRefused(self._writes.reason)
-        started = time.perf_counter()
+        started = perf_counter()
         identity = {"source_id": str(target.id), "tenant_id": str(target.tenant_id)}
         plan = plan_reconciliation(desired, await self._existing(target))
         _log.info(
@@ -462,7 +462,7 @@ def _result(
         patched=counts[ProjectionAction.PATCHED],
         deleted=counts[ProjectionAction.DELETED],
         foreign_deleted=counts[ProjectionAction.FOREIGN_DELETED],
-        duration_ms=round((time.perf_counter() - started) * 1000),
+        duration_ms=round((perf_counter() - started) * 1000),
         unchanged=plan.unchanged,
     )
 
