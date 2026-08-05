@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Final
 
 from syncr_domain.feasibility import Provenance
 from syncr_domain.identity import BindingRef, Origin
-from syncr_domain.reasons import CLAUSE_BUDGET, MAX_CLAUSES, Blocked, Bound, Floor
+from syncr_domain.reasons import CLAUSE_BUDGET, MAX_CLAUSES, Blocked, Bound, Dominant, Floor
 from syncr_solver import solve
 from tests.objective_weeks import hand_tuned_weights
 from tests.reference_week import (
@@ -406,6 +406,28 @@ def test_the_floor_clause_agrees_with_the_probes_reservation_for_the_same_area()
     assert floors
     for clause in floors:
         assert clause.of - clause.placed == reserved[clause.area_id], clause
+
+
+def test_the_dominant_clause_names_the_share_the_breakdown_computed_for_the_plan() -> None:
+    """A real week charges several terms, so the share is a fraction rather than the whole.
+
+    The reference week is where that can be asserted: a fixture with one charged term makes every
+    share 1.0, which a clause carrying a constant would satisfy just as well.
+    """
+    result = solved_reference()
+    breakdown = result.objective_breakdown
+    dominant = [
+        clause
+        for block in result.document.blocks
+        for clause in block.reason.clauses
+        if isinstance(clause, Dominant)
+    ]
+
+    assert dominant
+    for clause in dominant:
+        assert clause.term == breakdown.dominant_term()
+        assert clause.share == breakdown.share_of(clause.term)
+        assert 0.0 < clause.share < 1.0
 
 
 def test_no_clause_names_a_rule_outside_the_checkers_vocabulary() -> None:

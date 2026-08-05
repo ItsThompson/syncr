@@ -541,6 +541,21 @@ class TestTheDominantClause:
         assert dominant.term == breakdown.dominant_term()
         assert dominant.share == breakdown.share_of(dominant.term)
 
+    def test_the_share_is_the_terms_fraction_of_what_the_whole_plan_costs(self) -> None:
+        """Two charged terms, so the share is a fraction rather than the whole.
+
+        A week with one charged term makes every share 1.0, which a clause carrying a constant
+        would satisfy: the fraction is what says the figure came from the breakdown's arithmetic.
+        """
+        result = a_solved_week()
+        two_terms = a_breakdown(budget_deviation=2.0, staleness=1.0)
+
+        (record,) = records_of(_a_document(result.document.blocks[0]), breakdown=two_terms)
+        dominant = only(Dominant, record.clauses)
+
+        assert isinstance(dominant, Dominant)
+        assert (dominant.term, dominant.share) == ("budget_deviation", 2.0 / 3.0)
+
     def test_every_chosen_block_of_one_plan_names_the_same_term_and_share(self) -> None:
         """The share is the PLAN's, which is the settlement ticket 1343 asked for.
 
@@ -659,6 +674,35 @@ class TestThePinClauses:
 
         assert "Pinned" not in kinds_in_of(result, "Walk")
         assert "InsteadOf" not in kinds_in_of(result, "Walk")
+
+    @pytest.mark.parametrize(
+        ("superseded_placement", "objective_delta"),
+        [(None, 0.42), ("a span", None)],
+        ids=["a delta with no placement", "a placement with no delta"],
+    )
+    def test_half_a_superseded_pair_claims_no_trade(
+        self, superseded_placement: str | None, objective_delta: float | None
+    ) -> None:
+        """Half a pair renders half a sentence, so the record states the edit and stops.
+
+        The same pairing ``Block.pinned`` is set from, asserted from both sides: a stored pin can
+        carry either half alone, and neither half alone is a trade the panel can render.
+        """
+        occurrence = an_occurrence(habit_id=A_HABIT, index=0, minutes=60, area_id=FITNESS)
+        pin = a_pin(
+            binding=occurrence.binding,
+            interval=between(15, 16),
+            superseded_placement=None if superseded_placement is None else between(6, 7),
+            objective_delta=objective_delta,
+        )
+        result = solved(a_week(habit_occurrences=(occurrence,), pins=(pin,)))
+        block = next(
+            block for block in result.document.blocks if block.binding == occurrence.binding
+        )
+
+        assert "Pinned" in kinds_in(block.reason)
+        assert "InsteadOf" not in kinds_in(block.reason)
+        assert block.pinned is False
 
     def test_the_pin_glyph_and_the_instead_of_clause_are_the_same_pairing(self) -> None:
         """``Block.pinned`` is set from the pair, so the two cannot report different things."""
