@@ -23,14 +23,14 @@ a test asserts against it.
    6  Wake Up, fifteen minutes, every date but Thursday's      template entry
    6  Shower, every date but Thursday's                        template entry
    7  Stretch, fifteen minutes, one per date                   template entry
-  10  lectures, two of them overlapping each other            anchor
+  11  lectures, two of them overlapping each other            anchor
    1  the Kontron interview                                    anchor
    1  the interview's prep                                     anchor type
    2  the interview's two transit legs                         anchor type
-   4  Gym, one of them pinned, content from a rotation         habit
+   5  Gym, one of them pinned, content from a rotation         habit
    4  Leetcode, content drawn from the Career backlog          habit, queue
-   3  Reading, elastic between 30 and 90 minutes               habit
-   5  Walk, one of them a make-up for an earlier miss          habit
+   2  Reading, elastic between 30 and 90 minutes               habit
+   4  Walk, one of them a make-up for an earlier miss          habit
    5  three tasks and the pieces they divide into              task
   ---
   61
@@ -161,6 +161,7 @@ _LECTURES: Final = (
     ("Compilers", 4, 23.0, 23.75),
     ("Networks", 5, 11.0, 12.5),
     ("Compilers", 6, 11.0, 12.5),
+    ("Systems Programming", 5, 15.0, 16.5),
 )
 
 ANCHORS: Final = (
@@ -277,9 +278,9 @@ HABIT_OCCURRENCES: Final = (
             area_id=FITNESS,
             title="Gym",
             binding_source=BindingSource.ROTATION,
-            variant=("Push", "Pull", "Legs", "Push")[index],
+            variant=("Push", "Pull", "Legs", "Push", "Pull")[index],
         )
-        for index in range(4)
+        for index in range(5)
     ),
     *(
         HabitOccurrence(
@@ -299,7 +300,7 @@ HABIT_OCCURRENCES: Final = (
             title="Reading",
             binding_source=BindingSource.FIXED,
         )
-        for index in range(3)
+        for index in range(2)
     ),
     *(
         HabitOccurrence(
@@ -308,9 +309,9 @@ HABIT_OCCURRENCES: Final = (
             area_id=FITNESS,
             title="Walk",
             binding_source=BindingSource.FIXED,
-            is_debt=index == 4,
+            is_debt=index == 3,
         )
-        for index in range(5)
+        for index in range(4)
     ),
 )
 

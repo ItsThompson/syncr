@@ -151,10 +151,10 @@ def test_the_composition_is_the_one_the_fixtures_table_states() -> None:
     assert dict(counted) == {
         Origin.FRAME.value: 7,
         Origin.TEMPLATE_ENTRY.value: 19,
-        Origin.ANCHOR.value: 11,
+        Origin.ANCHOR.value: 12,
         Origin.PREP.value: 1,
         Origin.TRANSIT.value: 2,
-        Origin.HABIT.value: 16,
+        Origin.HABIT.value: 15,
         Origin.TASK.value: 5,
     }
 
@@ -255,6 +255,7 @@ def test_the_rotation_bound_habit_names_the_variant_its_cursor_resolved() -> Non
     rotated = [block for block in document.blocks if block.binding.entity_id == GYM]
 
     assert {block.title for block in rotated} == {"Gym · Push", "Gym · Pull", "Gym · Legs"}
+    assert len(rotated) == 5
 
 
 def test_the_verdict_is_authoritative_and_the_week_packs() -> None:
