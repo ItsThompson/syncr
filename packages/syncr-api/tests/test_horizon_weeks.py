@@ -12,7 +12,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from syncr_api.horizon.weeks import horizon_dates, horizon_weeks, next_local_midnight
+from syncr_api.horizon.weeks import (
+    horizon_dates,
+    horizon_weeks,
+    next_local_midnight,
+    weeks_reaching_the_horizon,
+)
 from syncr_api.user_settings.zone_reading import local_date
 from syncr_domain.weeks import IsoWeek
 
@@ -43,6 +48,45 @@ def test_a_fortnight_from_a_monday_touches_two_weeks() -> None:
         IsoWeek(2026, 7),
         IsoWeek(2026, 8),
     )
+
+
+def test_the_weeks_that_can_reach_the_horizon_include_the_one_before_it() -> None:
+    """A block belongs to the week its start falls in, and that week may have left the horizon.
+
+    The Sunday-night ``Sleep`` occurrence of the week that is ending runs into the Monday the
+    horizon begins on. Read over the horizon's own weeks alone it is not desired, while the
+    provider's window-bounded read does return it, so the diff deletes it: the in-progress sleep
+    event would leave the phone at local midnight every Monday.
+    """
+    assert weeks_reaching_the_horizon(today=MONDAY, horizon_days=HORIZON_DAYS_DEFAULT) == (
+        IsoWeek(2026, 6),
+        IsoWeek(2026, 7),
+        IsoWeek(2026, 8),
+    )
+
+
+def test_the_week_before_is_not_added_twice_when_the_horizon_already_holds_it() -> None:
+    """On every day but a Monday, yesterday is in the horizon's first week already."""
+    tuesday = MONDAY + timedelta(days=1)
+
+    assert weeks_reaching_the_horizon(today=tuesday, horizon_days=HORIZON_DAYS_DEFAULT) == (
+        horizon_weeks(today=tuesday, horizon_days=HORIZON_DAYS_DEFAULT)
+    )
+
+
+@pytest.mark.parametrize("offset", range(7))
+def test_the_reaching_weeks_are_the_horizon_weeks_plus_at_most_one(offset: int) -> None:
+    """Whatever weekday it starts on: never fewer, never more than one extra, chronological."""
+    today = MONDAY + timedelta(days=offset)
+    covered = horizon_weeks(today=today, horizon_days=HORIZON_DAYS_DEFAULT)
+
+    reaching = weeks_reaching_the_horizon(today=today, horizon_days=HORIZON_DAYS_DEFAULT)
+
+    assert set(covered) <= set(reaching)
+    assert len(reaching) - len(covered) in {0, 1}
+    assert list(reaching) == sorted(reaching)
+    # And the earliest one holds the day before the horizon starts, which is the whole point.
+    assert IsoWeek.containing(today - timedelta(days=1)) == reaching[0]
 
 
 def test_a_fortnight_from_a_sunday_touches_three() -> None:

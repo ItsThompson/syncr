@@ -1,4 +1,4 @@
-"""Which weeks the projection horizon covers, when it next moves, and the span it is.
+"""Which weeks the projection horizon covers, which can reach into it, when it moves, and its span.
 
 The horizon is ``[today_local, today_local + horizon_days)``: a rolling window of LOCAL dates, so it
 advances with the date rather than being extended by hand, and a week is inside it when any of the
@@ -59,6 +59,32 @@ def horizon_weeks(*, today: date, horizon_days: int) -> tuple[IsoWeek, ...]:
         if week not in weeks:
             weeks.append(week)
     return tuple(weeks)
+
+
+def weeks_reaching_the_horizon(*, today: date, horizon_days: int) -> tuple[IsoWeek, ...]:
+    """Every ISO week whose plan can hold a block that overlaps the horizon, earliest first.
+
+    The horizon weeks, plus **the one before them**, and that one is not decoration. A block belongs
+    to the week its START falls in, so a Sunday-night ``Sleep`` occurrence belongs to the week that
+    is ending while its span runs into the Monday that begins the horizon. Read over the horizon
+    weeks alone, that block is not in the desired set while the provider's own window-bounded read
+    does return it: the diff then finds it under syncr's key and not desired, and **deletes it**. At
+    local midnight every Monday the in-progress sleep event would leave the user's phone while the
+    live plan still held it.
+
+    One week back is the bound, and what it covers is any block shorter than the distance from that
+    week's Monday to the horizon's start, which is at least a day. Every block a plan holds is
+    shorter than a day; a longer one would be missed at this seam, and the only spans that long are
+    imported anchors, which do not project.
+
+    Separate from :func:`horizon_weeks` rather than folded into it, because the two answer different
+    questions. The maintainer asks which weeks need a PLAN, and a week that has left the horizon
+    does not; the projection asks which plans can hold an event inside the horizon, and that one
+    can.
+    """
+    covered = horizon_weeks(today=today, horizon_days=horizon_days)
+    reaching = IsoWeek.containing(today - _ONE_DAY)
+    return covered if reaching in covered else (reaching, *covered)
 
 
 def horizon_span(*, today: Date, horizon_days: int, zone: ZoneId) -> Interval:

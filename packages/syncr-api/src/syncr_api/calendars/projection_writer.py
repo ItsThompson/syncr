@@ -19,17 +19,22 @@ construction, and the boundary suite enforces that no scoped statement can be bu
 second statement of the tenant on the method could only ever disagree with the scope the statements
 actually run under, so it is left off and the deviation is recorded here.
 
-**The desired set is drawn from the horizon weeks' own plans.** A block belongs to the week its
-start falls in, so a boundary-crossing Sunday-night span is emitted from that week alone. A week
-with no live revision contributes nothing rather than raising: the plan horizon maintainer is what
-brings a week into existence, and a projection that refused to run because next week has no plan
-yet would stop this week's plan reaching the phone.
+**The desired set is drawn from the plans of the weeks that can REACH the horizon.** A block belongs
+to the week its start falls in, so a boundary-crossing Sunday-night span is emitted from that week
+alone -- and the week it belongs to may be one that has already left the horizon. The caller passes
+the week list for that reason: ``weeks_reaching_the_horizon`` is the horizon's own weeks plus the
+one before them, and without that one the sleep occurrence in progress at local midnight would be
+found on the target under syncr's key, not desired, and deleted from the phone while the live plan
+held it.
 
-**A block whose week has left the horizon is no longer desired**, so the event on the target is
-deleted on the next reconciliation. That is what the horizon being a window means, and it is the one
-place a span crossing into the horizon from the week before it is affected: the sleep that began
-last night is removed at local midnight when its week drops out. Stable rather than churning, and
-stated here rather than left for a reader to discover from the counts.
+A week with no live revision contributes nothing rather than raising: the plan horizon maintainer is
+what brings a week into existence, and a projection that refused to run because next week has no
+plan yet would stop this week's plan reaching the phone.
+
+**A block outside the horizon is not desired**, so an event on the target for one is deleted on the
+next reconciliation. That is what the horizon being a window means, and the bound it rests on is the
+same one the week list rests on: a block reaching into the horizon from further back than one week
+would be missed, and no block a plan holds is that long.
 
 **Nothing about the WRITE lives here.** The diff, the provider calls, the refusal and the failure
 are the adapter's, because they are provider-specific and this is not.
