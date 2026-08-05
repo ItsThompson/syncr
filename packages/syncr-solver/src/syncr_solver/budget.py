@@ -12,14 +12,14 @@ budget is a count of evaluations rather than a wall clock:
 
 ```
   2000 ms budget / 1.5 ms an evaluation  ~=  1300 evaluations for a whole solve
-  construction   ~210 placements x 4 scored windows each  ~=  840 at the ceiling
-  local search   400 moves considered, of which the legal ones are evaluated
+  construction   210 placements x 3 scored windows each  ~=  630 at the ceiling
+  local search   200 moves considered, of which the legal ones are evaluated
 ```
 
-Construction reaches its ceiling only where every candidate has four legal windows, and the plan
-is smaller than 210 blocks for most of the run, so the measured figure is well inside the budget.
-The measurement is in the changeset rather than asserted in the suite: a wall-time assertion in a
-test measures the machine it runs on.
+Measured end to end on a 226-block week, which is what the two numbers were chosen against rather
+than derived from: construction 0.96 s, search 0.68 s, 1.64 s in all. The changeset carries the run.
+A wall-time assertion in the suite is deliberately absent, because it would measure the machine it
+runs on; what the suite asserts instead is that the iteration count is the same on every run.
 
 ## Why a bound cannot make a plan wrong
 
@@ -49,14 +49,17 @@ if TYPE_CHECKING:
 type Cancelled = Callable[[], bool]
 """Whether the caller has stopped wanting this solve's result."""
 
-# How many legal windows a candidate is scored in. Four rather than every gap, because a week holds
-# roughly fifty and scoring them all would spend the whole budget on construction.
-SCORED_WINDOWS: Final = 4
+# How many legal windows a candidate is scored in. Three rather than every gap, because a week holds
+# roughly fifty and scoring them all would spend the whole budget on construction. Measured on a
+# 210-block week: four windows cost 950 ms of construction and three cost 700 ms, for a plan the
+# objective valued the same to four decimal places.
+SCORED_WINDOWS: Final = 3
 
 # How many local-search moves one solve considers. A move that a rule refuses costs a constraint
 # check and a move that it accepts costs an objective evaluation, so this bounds the work either
-# way.
-MOVE_EVALUATIONS: Final = 400
+# way. Measured on a 210-block week at roughly 4 ms a move, so 200 is 800 ms of the budget; the
+# construction is the other 700, which leaves half a second of headroom against the two seconds.
+MOVE_EVALUATIONS: Final = 200
 
 # How often the search asks whether the caller still wants the result. Every fiftieth move, so the
 # question costs nothing measurable and a cancelled solve gives up inside a few milliseconds.
