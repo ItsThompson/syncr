@@ -219,6 +219,52 @@ def test_an_occurrence_whose_minimum_does_not_fit_is_not_placed_and_the_gap_stay
 # --------------------------------------------------------------------------------------
 
 
+def test_a_slot_whose_areas_content_cannot_take_its_duration_is_not_filled_by_it() -> None:
+    """Found by a bite that removed the duration test and reddened nothing: a missing test.
+
+    The slot declares an hour of Career and the Area's only task has fifteen minutes left, which is
+    below the minimum chunk it declares, so nothing in the Area can take the hour. Without the
+    check the slot would be filled by a fifteen-minute task placed over a sixty-minute span, which
+    is a block claiming four times the work it holds.
+    """
+    week = a_week(
+        template_entries=(a_slot(area_id=CAREER, interval=between(18, 19)),),
+        eligible_tasks=(
+            an_eligible_task(
+                remaining_minutes=15,
+                min_chunk_minutes=15,
+                area_id=CAREER,
+                title="Papers",
+            ),
+        ),
+        areas=(an_area_budget(area_id=CAREER, name="Career", target_minutes=600),),
+    )
+
+    document = solved(week).document
+
+    assert document.empty_slots[0].reason is EmptySlotReason.NO_ELIGIBLE_CONTENT
+    assert all(block.interval != between(18, 19) for block in document.blocks)
+
+
+def test_a_slot_takes_content_whose_range_covers_its_duration_exactly() -> None:
+    # The control for the test above: with the range widened to cover the hour, the slot fills, so
+    # what the assertion above measures is the range and not the Area or the span.
+    week = a_week(
+        template_entries=(a_slot(area_id=CAREER, interval=between(18, 19)),),
+        eligible_tasks=(
+            an_eligible_task(
+                remaining_minutes=60,
+                min_chunk_minutes=15,
+                area_id=CAREER,
+                title="Papers",
+            ),
+        ),
+        areas=(an_area_budget(area_id=CAREER, name="Career", target_minutes=600),),
+    )
+
+    assert solved(week).document.empty_slots == ()
+
+
 def test_a_slot_resolves_to_the_highest_ordered_content_of_its_own_area() -> None:
     week = a_week(
         template_entries=(a_slot(area_id=CAREER, interval=between(18, 19)),),

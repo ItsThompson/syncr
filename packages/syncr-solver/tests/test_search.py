@@ -142,7 +142,13 @@ def test_every_move_offered_proposes_a_plan_the_thirteen_rules_accept() -> None:
 
 
 def test_no_move_touches_a_placement_the_solve_did_not_choose() -> None:
-    """The frame, the commitments and the pins are the space rather than candidates inside it."""
+    """The frame, the commitments and the pins are the space rather than candidates inside it.
+
+    **The filter that expresses this is an optimization, not the rule.** Measured: dropping it
+    reddens nothing, because H10 and H11 refuse a move over such a placement on every window, so the
+    generator yields the same moves and merely spends longer reaching them. What this test holds is
+    the property; the rules are what make it unreachable to break.
+    """
     attempt = constructed(a_week_offering_every_move())
     preferences = ResolvedPreferences(attempt.inputs.preferences)
     fixed = {

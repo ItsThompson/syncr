@@ -8,6 +8,7 @@ produce the transition ``S8`` observes on a week that passes the arithmetic and 
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -174,6 +175,25 @@ def test_a_task_the_solve_placed_in_full_produces_no_packing_failure() -> None:
 
     assert blocks_titled(result.document, "Papers")
     assert result.verdict.shortfalls == ()
+
+
+def test_a_task_with_no_deadline_the_solve_could_not_place_produces_no_shortfall() -> None:
+    """Found by a bite that made every task deadline-bearing and reddened nothing: a missing test.
+
+    A shortfall is a gap measured against something, and the four kinds all name work that has to
+    fit before an instant. Work with no deadline is not late, so it is charged by the objective and
+    the verdict says nothing about it. Synthesised anyway, the panel would report a gap the user
+    cannot act on and no tradeoff can close.
+    """
+    week = a_week_that_packs_only_in_half_hour_pieces()
+    undated = replace(week, eligible_tasks=(replace(week.eligible_tasks[0], deadline=None),))
+
+    result = solved(undated)
+
+    assert blocks_titled(result.document, "F&F Past Papers") == ()
+    assert result.blocked_log, "the task has to have been refused for this to mean anything"
+    assert result.verdict.shortfalls == ()
+    assert result.verdict.feasible is True
 
 
 def test_a_demand_with_no_deadline_is_charged_by_the_objective_rather_than_by_a_shortfall() -> None:

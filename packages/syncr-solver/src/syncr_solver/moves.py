@@ -84,7 +84,13 @@ def moves(attempt: Attempt, preferences: ResolvedPreferences) -> Iterator[Move]:
 
 
 def _chosen(attempt: Attempt) -> tuple[Placed, ...]:
-    """The placements this solve chose, in span order, so a move set has one order."""
+    """The placements this solve chose, in span order, so a move set has one order.
+
+    **The filter is an optimization rather than a rule.** H10 and H11 refuse a move over anything
+    else on every window, so offering one would produce no move and spend the budget proving it:
+    measured, dropping the filter reddens nothing and changes no plan. It is what keeps the pass
+    affordable rather than what keeps it correct.
+    """
     return tuple(
         sorted(
             (held for held in attempt.placements if held.chosen),
