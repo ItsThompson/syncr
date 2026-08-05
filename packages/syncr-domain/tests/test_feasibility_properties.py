@@ -245,17 +245,35 @@ def pinning_toward(week: ProbeInputs, pinned: Interval) -> ProbeInputs:
     )
 
 
-def pinning_elsewhere(week: ProbeInputs, pinned: Interval) -> ProbeInputs:
+def pinning_elsewhere(
+    week: ProbeInputs, pinned: Interval, *, toward_their_deadline: bool
+) -> ProbeInputs:
     """The week after the user pins work no demand being measured here is waiting on.
 
-    Work in the other Area, so the measured demand is untouched and the other Area's own reservation
-    falls: the shape of every pin that is not progress toward the deadline being measured.
+    Work in the other Area, so the measured demand is untouched. What happens to the OTHER Area's
+    two figures is the whole subject. Its floor reservation always falls, because the block lands
+    in it, and its demand falls too when the block is that Area's own deadline-bearing work.
+    Modelling only the floor half is what let a fault in the competitor arithmetic survive this
+    property: the two figures are one set of minutes, so a transformation that moves one and not
+    the other is not a pin the assembler can produce.
     """
     other = _competitor_of(week)
+    minutes = pinned.total_minutes()
+    demands = week.deadline_demands
+    if toward_their_deadline:
+        demands = tuple(
+            dataclasses.replace(
+                demand, remaining_minutes=max(0, demand.remaining_minutes - minutes)
+            )
+            if demand.area_id == other
+            else demand
+            for demand in demands
+        )
     return dataclasses.replace(
         week,
         placed=week.placed.union(IntervalSet([pinned])),
-        area_floor_reservations=_lowering(week, other, pinned.total_minutes()),
+        deadline_demands=demands,
+        area_floor_reservations=_lowering(week, other, minutes),
     )
 
 
@@ -387,9 +405,10 @@ def test_pinning_into_capacity_an_earlier_deadline_needed_moves_the_gap_not_clos
 @given(
     week=weeks(with_room_before_the_deadline=True),
     take=st.integers(min_value=1, max_value=120),
+    toward_their_deadline=st.booleans(),
 )
 def test_pinning_anything_else_can_only_make_the_reading_worse(
-    week: ProbeInputs, take: int
+    week: ProbeInputs, take: int, toward_their_deadline: bool
 ) -> None:
     # The honest general property is non-improvement, and it is per measurement rather than per
     # verdict. A pin that is not progress toward this demand takes capacity from it and gives it
@@ -400,12 +419,16 @@ def test_pinning_anything_else_can_only_make_the_reading_worse(
     # progress toward the Fitness floor, so an unreachable-floor gap that the pin satisfies closes.
     # A property stated over every gap in the verdict fails on exactly that case, which is a
     # property that has read "pinning anything else" as "pinning anything at all".
+    #
+    # ``toward_their_deadline`` is drawn because the other Area's demand falls as well as its floor
+    # when the pinned work is that Area's own deadline-bearing work. One placement does both, so a
+    # transformation that moves one and not the other is not a state the assembler can produce.
     free = free_before(week, measured_demand(week).deadline)
     pinned = a_window_to_pin_into(free, take)
     assume(pinned is not None)
     assert pinned is not None
 
-    after = pinning_elsewhere(week, pinned)
+    after = pinning_elsewhere(week, pinned, toward_their_deadline=toward_their_deadline)
 
     assert deadline_gap(after) >= deadline_gap(week)
     assert floors_gap(probe(after)) >= floors_gap(probe(week))
@@ -547,9 +570,18 @@ def test_the_recovery_windows_two_declarations_cost_the_area_they_name(
 class Obligation:
     """Minutes one Area must find, and the capacity it may find them in.
 
-    A demand is one of these before its deadline; a floor reservation is one over the whole week.
-    Two obligations of the same Area double-count what one placement can serve, which makes the
-    oracle below conservative rather than wrong: it declares fewer weeks feasible than really are.
+    A demand is one of these before its deadline. A floor is one over the whole week, for the part
+    of it **its own Area's demands do not already cover**: a block placed for a Career task lands in
+    the Career Area, so an Area owing 2h by Wednesday against a 5h floor owes 5h in total rather
+    than 7h. An Area's total requirement is therefore ``max(floor, sum of its demands)``, expressed
+    here as each demand under its own deadline plus the floor's remainder anywhere in the week,
+    which preserves both the total and the per-deadline sub-constraints.
+
+    **The first version of this oracle counted the two in full**, and that conservatism was not
+    generic: it coincided exactly with the probe's own-floor exclusion, which is this module's most
+    contested derivation. So the weeks that would have exposed a fault in that rule were the weeks
+    the oracle called infeasible, and the property discarded them. An oracle whose blind spot is the
+    same shape as the arithmetic's is an oracle that makes a gap look measured.
     """
 
     minutes: int
@@ -557,19 +589,39 @@ class Obligation:
 
 
 def obligations(week: ProbeInputs) -> tuple[Obligation, ...]:
-    """Everything the week owes, with the capacity each may be satisfied in."""
+    """Everything the week owes, with the capacity each may be satisfied in.
+
+    The per-Area capacity is derived from ``ScopedWindow.forbids`` rather than through
+    ``ProbeInputs.scoped_against``, which the probe itself calls: an oracle that shares the scope
+    reading with the module it checks cannot see a fault in that reading, because both sides move
+    together and the week is filtered out.
+    """
     occupied = week.frame.union(week.anchors).union(week.absolute_forbidden).union(week.off_plan)
     free = IntervalSet([week.span]).subtract(occupied).after(week.now).subtract(week.placed)
-    owed = [
-        Obligation(
-            demand.remaining_minutes,
-            free.subtract(week.scoped_against(demand.area_id)).before(demand.deadline),
+
+    def claimable(area_id: AreaId) -> IntervalSet:
+        return free.subtract(
+            IntervalSet(
+                window.interval for window in week.scoped_forbidden if window.forbids(area_id)
+            )
         )
+
+    owed = [
+        Obligation(demand.remaining_minutes, claimable(demand.area_id).before(demand.deadline))
         for demand in week.deadline_demands
     ]
     owed += [
         Obligation(
-            reservation.reserved_minutes, free.subtract(week.scoped_against(reservation.area_id))
+            max(
+                0,
+                reservation.reserved_minutes
+                - sum(
+                    demand.remaining_minutes
+                    for demand in week.deadline_demands
+                    if demand.area_id == reservation.area_id
+                ),
+            ),
+            claimable(reservation.area_id),
         )
         for reservation in week.area_floor_reservations
     ]
@@ -629,24 +681,42 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
             IntervalSet(window.interval for window in windows if window.forbids(area_id))
         )
 
-    def a_share_of(available: int) -> int:
-        return draw(st.integers(min_value=0, max_value=max(0, available // 2)))
-
-    deadlines = [
-        MONDAY + timedelta(minutes=draw(st.integers(min_value=now_minutes, max_value=WEEK_MINUTES)))
-        for _ in range(2)
-    ]
     mine, theirs = claimable(measured), claimable(competitor)
-    # The competitor's work first, then this Area's floor drawn to land in the band where a
-    # per-Area capacity set and a whole-week one disagree: above what this Area's own capacity holds
-    # after the competitor's work, and at most what the two Areas' capacity holds together. A week
-    # drawn outside that band cannot tell the two readings apart, which is how the defect this
-    # property exists for survived a suite of 1158 tests.
-    owed_by_them = a_share_of(theirs.before(deadlines[1]).total_minutes())
+    # The competitor's deadline is the EARLIER one, because the fault this property exists to see
+    # needs the competitor to have already claimed capacity by the time the measured demand is
+    # checked. The measured deadline is drawn at the week's end as often as anywhere after it, so
+    # that the capacity able to absorb a floor LATER is nil in a fair share of weeks: without that,
+    # a competitor's floor never has to land before the deadline and its two figures never overlap.
+    theirs_due = MONDAY + timedelta(
+        minutes=draw(st.integers(min_value=now_minutes, max_value=WEEK_MINUTES))
+    )
+    mine_due = MONDAY + timedelta(
+        minutes=draw(
+            st.one_of(
+                st.just(WEEK_MINUTES),
+                st.integers(min_value=now_minutes, max_value=WEEK_MINUTES),
+            )
+        )
+    )
+    # The competitor's demand is drawn up to ALL of the capacity it may use rather than half of it,
+    # and its floor is drawn rather than fixed at zero, because an Area holding both is the shape
+    # the fourth site of the competitor defect needed: its floor and its own earlier work are one
+    # set of minutes.
+    owed_by_them = draw(
+        st.integers(min_value=0, max_value=theirs.before(theirs_due).total_minutes())
+    )
+    reserved_by_them = draw(
+        st.integers(min_value=0, max_value=max(owed_by_them, theirs.total_minutes()))
+    )
+    # What the competitor really has to place before the measured deadline: the larger of the two,
+    # never their sum. Derived here so the measured demand can be drawn against the boundary the
+    # arithmetic should allow, which is where the two readings differ.
+    absorbed_later = free.after(mine_due).total_minutes()
+    committed_by_them = max(owed_by_them, max(0, reserved_by_them - absorbed_later))
     together = mine.union(theirs).total_minutes()
-    at_least = max(0, mine.total_minutes() - owed_by_them)
+    at_least = max(0, mine.total_minutes() - committed_by_them)
     reserved_by_me = draw(
-        st.integers(min_value=at_least, max_value=max(at_least, together - owed_by_them))
+        st.integers(min_value=at_least, max_value=max(at_least, together - committed_by_them))
     )
     return ProbeInputs(
         span=WEEK,
@@ -663,16 +733,19 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
             FloorReservation(
                 area_id=measured, reserved_minutes=reserved_by_me, label=NAMES[measured]
             ),
-            FloorReservation(area_id=competitor, reserved_minutes=0, label=NAMES[competitor]),
+            FloorReservation(
+                area_id=competitor, reserved_minutes=reserved_by_them, label=NAMES[competitor]
+            ),
         ),
         deadline_demands=(
             DeadlineDemand(
-                deadline=deadlines[0],
+                deadline=mine_due,
                 remaining_minutes=draw(
                     st.integers(
                         min_value=0,
                         max_value=max(
-                            0, mine.before(deadlines[0]).total_minutes() - reserved_by_me
+                            0,
+                            mine.before(mine_due).total_minutes() - committed_by_them,
                         ),
                     )
                 ),
@@ -680,7 +753,7 @@ def weeks_that_can_hold_their_work(draw: st.DrawFn) -> ProbeInputs:
                 labels=("F&F Past Papers",),
             ),
             DeadlineDemand(
-                deadline=deadlines[1],
+                deadline=theirs_due,
                 remaining_minutes=owed_by_them,
                 area_id=competitor,
                 labels=("Kim's Game Project",),

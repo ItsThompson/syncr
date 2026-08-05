@@ -66,13 +66,19 @@ def test_every_row_answers_a_question_and_names_where_the_answer_lives() -> None
     # `find_spec` resolves without executing the module's body, and the parent packages it does
     # import carry nothing but a docstring. The domain's purity rule is about what SOURCE imports;
     # this is a test reading the tree.
+    #
+    # A row whose owner lives in a package that is not installed is reported as unresolved rather
+    # than failing, because this suite has to run against a domain package on its own: the workspace
+    # installs all six members, so in every environment that has them the guard is total.
     for field, (question, owner) in table_rows().items():
-        assert question.endswith("?") or "?" in question, field
+        assert "?" in question, field
         assert owner, field
-        if owner == THIS_MODULE:
+        if owner == THIS_MODULE or not owner.startswith("`"):
             continue
-        assert owner.startswith("`"), f"{field}: {owner!r} is neither a module nor {THIS_MODULE!r}"
-        assert importlib.util.find_spec(owner.strip("`")) is not None, owner
+        module = owner.strip("`")
+        if not _package_is_installed(module):
+            continue
+        assert importlib.util.find_spec(module) is not None, owner
 
 
 def test_the_guard_can_resolve_every_owner_the_table_names() -> None:
@@ -80,13 +86,29 @@ def test_the_guard_can_resolve_every_owner_the_table_names() -> None:
     # door is one: an owner the guard cannot resolve is an unchecked row, and this asserts there
     # are none. A row that named prose would have to be added to the resolvable forms above
     # deliberately, which is the moment to ask whether the thing it names has a home yet.
+    #
+    # It also names what the resolution costs: this suite reads two downstream packages, so it
+    # reports rather than asserts when one of them is absent. Both are installed in the workspace.
     unresolvable = {
         field
         for field, (_, owner) in table_rows().items()
         if owner != THIS_MODULE and not owner.startswith("`")
     }
+    absent = {
+        field
+        for field, (_, owner) in table_rows().items()
+        if owner.startswith("`") and not _package_is_installed(owner.strip("`"))
+    }
 
     assert unresolvable == set()
+    assert absent == set(), (
+        f"install the packages these rows name, or the guard skips them: {absent}"
+    )
+
+
+def _package_is_installed(module: str) -> bool:
+    """Whether the top-level package a dotted owner names can be found at all."""
+    return importlib.util.find_spec(module.split(".")[0]) is not None
 
 
 def test_every_module_in_the_package_appears_in_its_index() -> None:

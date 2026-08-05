@@ -76,6 +76,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_domain.discretionary import discretionary_intervals
+from syncr_domain.feasibility.honoring import (
+    demands_due_no_later,
+    demands_honored,
+    occupancy_honored,
+)
 from syncr_domain.feasibility.verdict import (
     Provenance,
     Shortfall,
@@ -83,12 +88,13 @@ from syncr_domain.feasibility.verdict import (
     Verdict,
     hours_and_minutes,
 )
-from syncr_domain.intervals import IntervalSet
 
 if TYPE_CHECKING:
-    from syncr_domain.feasibility.inputs import DeadlineDemand, ProbeInputs
+    from collections.abc import Mapping
+
+    from syncr_domain.feasibility.inputs import DeadlineDemand, FloorReservation, ProbeInputs
     from syncr_domain.identifiers import AreaId
-    from syncr_domain.intervals import Instant
+    from syncr_domain.intervals import Instant, IntervalSet
 
 
 def probe(inputs: ProbeInputs) -> Verdict:
@@ -141,7 +147,7 @@ class _Week:
             inputs=inputs,
             discretionary=discretionary,
             free=discretionary.after(inputs.now).subtract(inputs.placed),
-            honoring=_occupancy_honored(inputs),
+            honoring=occupancy_honored(inputs),
         )
 
     def free_for(self, area_id: AreaId) -> IntervalSet:
@@ -178,26 +184,28 @@ def _floors_against_the_week(week: _Week) -> tuple[Shortfall, ...]:
 def _demands_against_their_deadlines(week: _Week) -> tuple[Shortfall, ...]:
     """Each deadline's work against the capacity its Area has before it, earliest deadline first.
 
-    ``claimed`` accumulates what the earlier deadlines took, so two tasks sharing one deadline
-    are not each told the whole capacity is theirs, and a Tuesday deadline consumes the hours a
-    Friday one would otherwise count on. It is a whole-week figure, so it is discounted by the
-    capacity those earlier deadlines may use and this Area may not before the two meet.
+    ``claimed`` accumulates what the earlier deadlines took, PER AREA, so two tasks sharing one
+    deadline are not each told the whole capacity is theirs, and a Tuesday deadline consumes the
+    hours a Friday one would otherwise count on. Per Area rather than as one total because an
+    Area's earlier work and its own floor are the same minutes: see :func:`_competition_before`.
 
     A deadline at or before ``now`` has zero capacity and its whole remaining demand is the gap,
     which is correct rather than degenerate: work due yesterday that is not done cannot be fitted
     anywhere.
     """
     found: list[Shortfall] = []
-    claimed = 0
+    claimed: dict[AreaId, int] = {}
     claimed_labels: list[str] = []
     for demand in sorted(week.inputs.deadline_demands, key=_earliest_first):
         claimable = week.free_for(demand.area_id).before(demand.deadline)
-        reserved = _reserved_before(week, demand.deadline, for_area=demand.area_id)
-        # One discount over both competitors together, because they compete for the same capacity:
-        # discounting each separately would credit this Area twice with the same minutes it cannot
-        # use.
+        competition = _competition_before(
+            week, demand.deadline, for_area=demand.area_id, claimed=claimed
+        )
+        # One discount over the whole competition, because every competitor is after the same
+        # capacity: discounting each separately would credit this Area twice with the same minutes
+        # it cannot use.
         competing = _competing_minutes(
-            claimed + reserved.minutes,
+            competition.minutes,
             claimable=claimable,
             jointly=week.free.before(demand.deadline),
         )
@@ -212,15 +220,17 @@ def _demands_against_their_deadlines(week: _Week) -> tuple[Shortfall, ...]:
                     deadline=demand.deadline,
                     area_id=demand.area_id,
                     honoring=(
-                        *reserved.labels,
+                        *competition.labels,
                         *claimed_labels,
                         *week.honoring,
                         f"the {hours_and_minutes(capacity)} still uncommitted before it",
                     ),
                 )
             )
-        claimed += min(available, demand.remaining_minutes)
-        claimed_labels.extend(f"{label}, due no later than this" for label in demand.labels)
+        claimed[demand.area_id] = claimed.get(demand.area_id, 0) + min(
+            available, demand.remaining_minutes
+        )
+        claimed_labels.extend(demands_due_no_later(demand))
     return tuple(found)
 
 
@@ -251,7 +261,7 @@ def _floors_against_their_own_areas(week: _Week) -> tuple[Shortfall, ...]:
                 against=(reservation.label,),
                 area_id=reservation.area_id,
                 honoring=(
-                    *_demand_labels(elsewhere),
+                    *demands_honored(elsewhere),
                     *week.honoring,
                     f"the {hours_and_minutes(claimable.total_minutes())} "
                     f"{reservation.label} may still claim",
@@ -262,43 +272,75 @@ def _floors_against_their_own_areas(week: _Week) -> tuple[Shortfall, ...]:
 
 
 @dataclass(frozen=True, slots=True)
-class _Reserved:
-    """How much of the other Areas' floors has to come out of the capacity before one deadline.
+class _Competition:
+    """What the other Areas must place before one deadline, and the constraints that say so.
 
-    The labels are empty when the figure is, so a shortfall never honors a set of floors that took
-    nothing from it. Each floor in a non-empty set is named at its DECLARED size rather than at its
-    share of the figure: the constraint the user holds is the whole floor, and apportioning an
-    aggregate across the floors that produced it would state a split nothing computed.
+    The labels are empty when the figure is, so a shortfall never honors a floor that took nothing
+    from it. A floor is named at its DECLARED size rather than at the part of it that had to come
+    early: the constraint the user holds is the whole floor, and apportioning it would state a split
+    nothing computed.
     """
 
     minutes: int
     labels: tuple[str, ...]
 
 
-def _reserved_before(week: _Week, deadline: Instant, *, for_area: AreaId) -> _Reserved:
-    """The floors that must eat into the capacity before ``deadline``, and their names.
+def _competition_before(
+    week: _Week, deadline: Instant, *, for_area: AreaId, claimed: Mapping[AreaId, int]
+) -> _Competition:
+    """The minutes other work must take from the capacity before ``deadline``, and its names.
 
-    An Area's own floor is not among them: work placed for that Area's deadline satisfies that
-    Area's floor, so reserving it here would charge one requirement twice and would make pinning
-    work toward the deadline improve the very reading it is measured by.
+    **Per Area, the LARGER of two figures rather than their sum, because they are the same
+    minutes.** A block placed for a Career task lands in the Career Area, so it satisfies the Career
+    task and the Career floor together: an Area owing 2h by Wednesday against an unmet 5h floor has
+    to place 5h, not 7h. Adding them invents work the week does not owe and reports a gap on a week
+    that holds a valid assignment, which is the one direction this arithmetic may not take.
+
+    The two figures per Area are what its earlier deadlines already claimed, and the part of its
+    floor that cannot fit after this deadline. The capacity that could absorb a floor later is read
+    over the whole week's free capacity rather than per Area, which is an upper bound on what can be
+    absorbed and therefore keeps this figure a lower bound.
+
+    **The measured Area's own floor is excluded and its own earlier demands are not.** The floor is
+    excluded for the reason above, one step nearer: this demand's own work satisfies it. Its earlier
+    demands are not, because two deadlines in one Area really do need two lots of minutes.
     """
-    others = tuple(
-        reservation
-        for reservation in week.inputs.area_floor_reservations
-        if reservation.area_id != for_area and reservation.reserved_minutes
-    )
-    reserved = sum(reservation.reserved_minutes for reservation in others)
     absorbed_later = week.free.after(deadline).total_minutes()
-    minutes = max(0, reserved - absorbed_later)
-    if not minutes:
-        return _Reserved(minutes=0, labels=())
-    return _Reserved(
-        minutes=minutes,
-        labels=tuple(
-            f"the {reservation.label} floor of {hours_and_minutes(reservation.reserved_minutes)}"
-            for reservation in others
-        ),
-    )
+    reserved_by_area = {
+        reservation.area_id: reservation
+        for reservation in week.inputs.area_floor_reservations
+        if reservation.reserved_minutes
+    }
+    minutes = claimed.get(for_area, 0)
+    labels: list[str] = []
+    for area_id in _competing_areas(reserved_by_area, claimed, for_area=for_area):
+        reservation = reserved_by_area.get(area_id)
+        early = 0 if reservation is None else max(0, reservation.reserved_minutes - absorbed_later)
+        minutes += max(claimed.get(area_id, 0), early)
+        if early and reservation is not None:
+            labels.append(
+                f"the {reservation.label} floor of "
+                f"{hours_and_minutes(reservation.reserved_minutes)}"
+            )
+    return _Competition(minutes=minutes, labels=tuple(labels))
+
+
+def _competing_areas(
+    reserved_by_area: Mapping[AreaId, FloorReservation],
+    claimed: Mapping[AreaId, int],
+    *,
+    for_area: AreaId,
+) -> tuple[AreaId, ...]:
+    """Every Area with something to place besides the one being measured, in a stable order.
+
+    The reservations' own order first, then any Area that owes an earlier deadline and no floor, so
+    two probes of one week name the honored floors in one order.
+    """
+    ordered = [area_id for area_id in reserved_by_area if area_id != for_area]
+    ordered += [
+        area_id for area_id in claimed if area_id != for_area and area_id not in reserved_by_area
+    ]
+    return tuple(ordered)
 
 
 def _competing_minutes(minutes: int, *, claimable: IntervalSet, jointly: IntervalSet) -> int:
@@ -321,35 +363,6 @@ def _competing_minutes(minutes: int, *, claimable: IntervalSet, jointly: Interva
     """
     elsewhere_only = jointly.subtract(claimable).total_minutes()
     return max(0, minutes - elsewhere_only)
-
-
-def _occupancy_honored(inputs: ProbeInputs) -> tuple[str, ...]:
-    """What the week has already spent inside the capacity window, named for the user.
-
-    Only a term that overlaps that window is named: occupancy entirely behind ``now`` took
-    nothing from the capacity this check measured, so honoring it would name a constraint that
-    did not produce the gap. The overlap is against the window rather than against free capacity,
-    so a term lying wholly inside another is still named: it is a constraint the user holds, and
-    which of two overlapping spans took a minute is not a question this list has to answer.
-    """
-    capacity = IntervalSet([inputs.span]).after(inputs.now)
-    stated = (
-        ("the circadian frame", inputs.frame),
-        ("your external commitments", inputs.anchors),
-        ("the time reserved around them", inputs.absolute_forbidden),
-        ("the days you declared off-plan", inputs.off_plan),
-        ("the time already committed to this week's plan", inputs.placed),
-    )
-    return tuple(label for label, occupied in stated if occupied.intersect(capacity))
-
-
-def _demand_labels(demands: tuple[DeadlineDemand, ...]) -> tuple[str, ...]:
-    """The tasks a set of demands names, deduplicated in order, for a honored-constraint list."""
-    named: dict[str, None] = {}
-    for demand in demands:
-        for label in demand.labels:
-            named.setdefault(label, None)
-    return tuple(named)
 
 
 def _earliest_first(demand: DeadlineDemand) -> tuple[Instant, str, tuple[str, ...]]:

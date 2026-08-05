@@ -243,17 +243,31 @@ async def test_an_orphan_pin_takes_capacity_that_no_areas_reservation_nets() -> 
     # on the pin or a read of the binding's entity, which is ticket 1251's scope. This test states
     # the direction so the next reader inherits a measurement instead of a surprise.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
+    # A week tight enough for the hour to matter: five hours of capacity from the stamped instant
+    # against a five-hour floor, so without the pin the floor exactly fits.
+    tight = FakeOffPlan([an_off_plan_period(interval=between(14, 24 * 4 + 24, day=2))])
     orphan = FakePlacements(
         live_plan=a_plan(blocks=[]),
         pins=[a_pin(binding=BindingRef.for_task(FITNESS_TASK), interval=between(10, 11, day=2))],
     )
 
-    inputs = await an_assembly(areas=FakeAreas([fitness]), placements=orphan)
+    inputs = await an_assembly(areas=FakeAreas([fitness]), placements=orphan, off_plan=tight)
     projected = inputs.for_probe()
+    verdict = probe(projected)
 
     assert projected.placed.total_minutes() == MINUTES_PER_HOUR
     assert projected.area_floor_reservations[0].reserved_minutes == 5 * MINUTES_PER_HOUR
     assert inputs.areas[0].placed_minutes == 0
+    # The consequence the name claims: free capacity lost the hour and the reservation did not, so
+    # the floor gap is exactly the pinned hour. Asserted rather than described, so the direction is
+    # on record and a change to either side is visible.
+    floors = next(
+        gap for gap in verdict.shortfalls if gap.kind is ShortfallKind.FLOORS_EXCEED_CAPACITY
+    )
+    unpinned = await an_assembly(areas=FakeAreas([fitness]), off_plan=tight)
+
+    assert floors.minutes == MINUTES_PER_HOUR
+    assert probe(unpinned.for_probe()).shortfalls == ()
 
 
 async def test_a_verdict_carries_the_version_and_the_instant_its_assembly_was_built_against() -> (

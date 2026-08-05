@@ -7,7 +7,8 @@ directory, because an index a reader cannot trust is worse than none.
 |---|---|
 | ``inputs.py`` | ``ProbeInputs`` and its member types, with the question each field answers |
 | ``verdict.py`` | ``Verdict``, ``Shortfall``, the four shortfall kinds, and the duration wording |
-| ``probe.py`` | the arithmetic: two spans, one free-capacity set, three checks |
+| ``probe.py`` | the arithmetic: two spans, one free-capacity set, three checks, one discount |
+| ``honoring.py`` | the words a shortfall names its honored constraints in |
 | ``errors.py`` | the one rejection this vocabulary raises |
 
 The names below are the package's surface, so a caller writes ``from syncr_domain.feasibility

@@ -419,6 +419,86 @@ def test_the_discount_is_bounded_by_what_the_other_areas_can_really_place_elsewh
     assert unreachable.minutes == 60
 
 
+# --- one Area's floor and that Area's own deadline work are the same minutes -----------------
+#
+# A block placed for a Career task lands in the Career Area, so it satisfies the Career task AND the
+# Career floor. The production arithmetic says so in both directions: `reservations.py` nets every
+# placement in the Area out of the reservation, and `demand.py` nets the same placement out of the
+# demand. So a competitor Area holding an earlier deadline and an unmet floor must place the LARGER
+# of the two before this deadline, never their sum.
+#
+# Neither case below holds a scoped window: this is the reading that needs no scope at all.
+
+
+def weekday_evenings_and_nights() -> IntervalSet:
+    """Everything outside 09:00 to 18:00 on the five weekdays, so each holds nine free hours."""
+    return IntervalSet(
+        [
+            *(Interval(at(0, day=day), at(9, day=day)) for day in range(5)),
+            *(Interval(at(18, day=day), at(24, day=day)) for day in range(5)),
+        ]
+    )
+
+
+def test_a_competitors_task_is_not_charged_again_inside_that_areas_own_floor() -> None:
+    # An ordinary week: nine discretionary hours on each of five weekdays, the weekend off, so 2700
+    # free minutes. Career holds a 5h floor and a 2h task due Wednesday, and the task is part of the
+    # floor rather than extra to it, so Career's real requirement is 300. Fitness owes 2400 by
+    # Friday. 300 + 2400 is exactly 2700: the week holds both, and the honest answer is no gap.
+    #
+    # Charging Career's task once as an earlier claim and again inside its floor invents 120 minutes
+    # of work the week does not owe, which is exactly the gap that reading reports.
+    week = a_week(
+        now=WEEK.start,
+        frame=weekday_evenings_and_nights(),
+        off_plan=occupying(Interval(at(0, day=5), at(0, day=7))),
+        area_floor_reservations=(a_reservation(CAREER, 300),),
+        deadline_demands=(
+            a_demand(CAREER, 120, at(18, day=2), label="Leetcode"),
+            a_demand(FITNESS, 2400, at(18, day=4), label="Gym"),
+        ),
+    )
+
+    assert probe(week).discretionary_minutes == 2700
+    assert probe(week).shortfalls == ()
+
+
+def test_the_same_reading_at_sixty_minutes() -> None:
+    # The smallest instance of it. One free hour on the Monday: Career owes a minute by 00:01 and
+    # holds a 59-minute floor, Fitness owes a minute by 00:02. Career at 00:00, Fitness at 00:01,
+    # Career for the remaining 58: 59 Career minutes and one Fitness minute inside 60.
+    week = a_week(
+        now=WEEK.start,
+        off_plan=occupying(Interval(at(1, day=0), at(0, day=7))),
+        area_floor_reservations=(a_reservation(CAREER, 59),),
+        deadline_demands=(
+            a_demand(CAREER, 1, at(0, minute=1, day=0), label="Leetcode"),
+            a_demand(FITNESS, 1, at(0, minute=2, day=0), label="Gym"),
+        ),
+    )
+
+    assert probe(week).shortfalls == ()
+
+
+def test_a_competitor_that_owes_more_than_its_floor_is_charged_the_larger_figure() -> None:
+    # The control on the correction, so it cannot become "an Area's earlier work is free". The same
+    # week, with Career owing 400 minutes by Wednesday against a 300-minute floor: the larger figure
+    # is the task now, so Career must place 400 before Friday and Fitness's 2400 no longer fits.
+    week = a_week(
+        now=WEEK.start,
+        frame=weekday_evenings_and_nights(),
+        off_plan=occupying(Interval(at(0, day=5), at(0, day=7))),
+        area_floor_reservations=(a_reservation(CAREER, 300),),
+        deadline_demands=(
+            a_demand(CAREER, 400, at(18, day=2), label="Leetcode"),
+            a_demand(FITNESS, 2400, at(18, day=4), label="Gym"),
+        ),
+    )
+
+    gap = next(shortfall for shortfall in probe(week).shortfalls if shortfall.area_id == FITNESS)
+    assert gap.minutes == 100
+
+
 def test_two_competitors_are_discounted_once_between_them_rather_than_once_each() -> None:
     # The discount is against the capacity this Area cannot use, and there is only one such set, so
     # two competitors share it. Discounting each of them by the whole of it credits this Area twice
@@ -641,8 +721,9 @@ def test_the_arithmetic_answers_a_week_of_roughly_two_hundred_intervals() -> Non
     # week of that shape is an input the probe answers, and that the answer is the one the figures
     # imply.
     #
-    # 196 interval members across the five occupancy fields plus 20 scoped windows, 8 reservations
-    # and 8 demands, which is the shape `19-nonfunctional.md` budgets the pin path against.
+    # Every figure below is asserted rather than described, because a comment is the only statement
+    # of a shape a test does not check and the first version of this one got three of its four
+    # numbers wrong.
     occupied = IntervalSet(
         Interval(at(hour, minute=quarter * 15, day=day), at(hour, minute=quarter * 15 + 5, day=day))
         for day in range(7)
@@ -673,10 +754,19 @@ def test_the_arithmetic_answers_a_week_of_roughly_two_hundred_intervals() -> Non
 
     members = sum(
         len(occupancy)
-        for occupancy in (week.frame, week.anchors, week.absolute_forbidden, week.off_plan)
+        for occupancy in (
+            week.frame,
+            week.anchors,
+            week.absolute_forbidden,
+            week.off_plan,
+            week.placed,
+        )
     )
     verdict = probe(week)
 
-    assert members >= 190
+    assert members == 206
+    assert len(week.scoped_forbidden) == 7
+    assert len(week.area_floor_reservations) == 3
+    assert len(week.deadline_demands) == 6
     assert verdict.discretionary_minutes > 0
     assert all(gap.honoring for gap in verdict.shortfalls)
