@@ -22,6 +22,7 @@ directory in both directions, because an index a reader cannot trust is worse th
 | ``shape.py`` | the three rules about what length a block may take and where its bounds fall |
 | ``allocation.py`` | the two rules about what an Area's own budget allows |
 | ``immovability.py`` | the three rules about what may not move and what may not be intruded on |
+| ``weights.py`` | the seven term weights and the four fitted parameters the objective applies |
 | ``figures.py`` | the minute figures a document carries, over the inputs and the blocks |
 | ``metrics.py`` | the families this package publishes, on the shared registry |
 | ``errors.py`` | what a malformed resolved input is refused with |
