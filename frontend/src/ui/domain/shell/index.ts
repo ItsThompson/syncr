@@ -1,6 +1,6 @@
 export { CommandPalette, type CommandPaletteProps } from "./CommandPalette";
 export { HelpOverlay } from "./HelpOverlay";
-export { ShellLayout } from "./ShellLayout";
+export { ShellLayout, type ShellLayoutProps } from "./ShellLayout";
 export { SidebarNav, type SidebarNavProps } from "./SidebarNav";
 export { SidebarNavItem, type SidebarNavItemProps } from "./SidebarNavItem";
 export { TopBar, type TopBarProps } from "./TopBar";

@@ -3,12 +3,15 @@
  * One server, started once per test file and reset after each test, so a handler cannot leak into
  * the next test. `setup.ts` owns the lifecycle; a test only adds handlers.
  *
- * The session handler is a DEFAULT rather than something each test installs: every render goes
- * through the gate, so the uninteresting case is a signed-in reader. `resetHandlers` restores this
- * default after each test, and a test that cares says so by overriding it. */
+ * TWO DEFAULTS RATHER THAN SOMETHING EACH TEST INSTALLS, because every render goes through the gate and the gate
+ * makes two reads of its own: the session, whose uninteresting case is a signed-in reader, and the Google
+ * connection, whose uninteresting case is an account nobody has connected and nothing degraded. The second is there
+ * because a banner outlives the screen that explains it, so the shell reads it on every screen.
+ *
+ * `resetHandlers` restores these defaults after each test, and a test that cares says so by overriding one. */
 
 import { setupServer } from "msw/node";
 
-import { session } from "./apiStub";
+import { googleConnection, session } from "./apiStub";
 
-export const apiServer = setupServer(session());
+export const apiServer = setupServer(session(), googleConnection());

@@ -26,3 +26,12 @@ export const calendarSourcesKey = (): string => "/api/v1/calendar-sources";
  * the client will send rather than a second spelling of it. */
 export const anchorsKey = (from: string, to: string): string =>
   `/api/v1/anchors?${new URLSearchParams({ from, to }).toString()}`;
+
+export const settingsKey = (): string => "/api/v1/settings";
+export const travelOverridesKey = (): string => "/api/v1/settings/travel-overrides";
+export const offPlanKey = (): string => "/api/v1/off-plan";
+
+/* The Google account's own state, which is where the write target's expiry notices come from. A
+ * separate key from the sources it belongs to: a reconnect changes this and not the source list, and a
+ * source's inclusion changes the list and not this. */
+export const googleConnectionKey = (): string => "/api/v1/calendar-sources/google/connection";
