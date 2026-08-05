@@ -46,30 +46,28 @@ a key an outcome may already reference.
 ## A concrete entry arrives named and charged, or it does not arrive
 
 A block carries the resolved content name and, unless it is the frame or an anchor, an Area. An
-entry declares neither: it names a routine or a habit, and both live in tables this module is
-handed. So a concrete entry is resolved against those rows HERE rather than joined out of the
-snapshot later, because no join inside the snapshot is total: a habit's occurrences are
-cadence-filtered, so an entry naming a habit that is not due this week would find no name at all.
+entry declares neither: it names a routine or a habit, and both live in tables with no shared
+parent. So a concrete entry is resolved against those rows in :mod:`syncr_api.plans.entry_content`
+rather than joined out of the snapshot later, because no join inside the snapshot is total: a
+habit's occurrences are cadence-filtered, so an entry naming a habit that is not due this week
+would find no name at all.
 
-An entry whose content is missing, or whose Area resolves to nothing, is DROPPED and counted. Both
-are producer defects rather than states of the week: a binding naming no row this tenant has,
-which the entry boundary does not yet refuse, and a concrete entry naming a routine while
-declaring no Area, which no block can carry because a routine has none. Dropping is the
-degradation an anchor carrying an unread type already takes: the rest of the week assembles, and
-refusing would fail every solve, pin, and live verdict for the week over one malformed row.
+An entry nothing can name or charge is DROPPED and counted, which is the degradation an anchor
+carrying an unread type already takes: the rest of the week assembles, and refusing would fail
+every solve, pin and live verdict for the week over one malformed row. Which states are dropped
+and which are refused outright is that module's own statement.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from syncr_common.logging import get_logger
+from syncr_api.plans.entry_content import Charged, DropCause, charged, content_by_binding, report
 from syncr_domain.identity import date_occurrence_key
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.off_plan import OffPlanPeriod
-from syncr_domain.templates import BindingTarget, TemplateEntryKind
+from syncr_domain.templates import TemplateEntryKind
 from syncr_domain.weeks import Weekday
 from syncr_domain.zones import to_instant
 from syncr_solver.inputs import EntryBinding, FrameEntry, MaterializedEntry
@@ -80,13 +78,12 @@ if TYPE_CHECKING:
 
     from syncr_api.habits.records import HabitRecord
     from syncr_api.offplan.records import OffPlanPeriodRecord
+    from syncr_api.plans.entry_content import EntryContent
     from syncr_api.routines.records import RoutineRecord
     from syncr_api.templates.records import TemplateEntryRecord, TemplateRecord
-    from syncr_domain.identifiers import AreaId, DayTypeId
-    from syncr_domain.templates import WeekPattern
+    from syncr_domain.identifiers import DayTypeId
+    from syncr_domain.templates import BindingTarget, WeekPattern
     from syncr_domain.zones import Date, LocalTime, ZoneId
-
-_log = get_logger("syncr.plans")
 
 
 def periods_of(periods: Sequence[OffPlanPeriodRecord], span: Interval) -> tuple[OffPlanPeriod, ...]:
@@ -228,53 +225,22 @@ def materialized_entries(
     if pattern is None:
         return ()
     by_day_type = _templates_by_day_type(templates)
-    content = _content_by_binding(routines, habits)
+    content = content_by_binding(routines, habits)
     resolved: list[MaterializedEntry] = []
-    unresolved: list[str] = []
+    dropped: list[DropCause] = []
     for on in dates:
         template = by_day_type.get(pattern.day_type(_weekday_of(on)))
         if template is None:
             continue
         zone = zone_by_date[on]
         for stored in template.entries:
-            entry = _entry_on(stored, on, zone, off_plan, content, unresolved)
-            if entry is not None:
-                resolved.append(entry)
-    _report(unresolved)
+            outcome = _entry_on(stored, on, zone, off_plan, content)
+            if isinstance(outcome, DropCause):
+                dropped.append(outcome)
+            elif outcome is not None:
+                resolved.append(outcome)
+    report(dropped)
     return tuple(resolved)
-
-
-@dataclass(frozen=True, slots=True)
-class EntryContent:
-    """What a concrete entry's binding names: the title a block carries, and its Area.
-
-    A routine has no Area, because the frame is not a category competing with Fitness. An entry
-    naming one therefore has to declare an Area of its own, and the block it becomes carries
-    that one.
-    """
-
-    title: str
-    area_id: AreaId | None = None
-
-
-def _content_by_binding(
-    routines: Sequence[RoutineRecord], habits: Sequence[HabitRecord]
-) -> Mapping[tuple[BindingTarget, UUID], EntryContent]:
-    """Every row a concrete entry may name, keyed by the pair that names it.
-
-    Keyed by the target as well as the identifier, so an entry whose target says ``habit`` cannot
-    resolve against a routine that happens to share an identifier. That is the whole reason the
-    target column exists: the two live in separate tables with no shared parent.
-    """
-    routine_content = {
-        (BindingTarget.ROUTINE, routine.id): EntryContent(title=routine.title)
-        for routine in routines
-    }
-    habit_content = {
-        (BindingTarget.HABIT, habit.id): EntryContent(title=habit.title, area_id=habit.area_id)
-        for habit in habits
-    }
-    return routine_content | habit_content
 
 
 def _entry_on(
@@ -283,82 +249,28 @@ def _entry_on(
     zone: ZoneId,
     off_plan: OffPlanSuppression,
     content: Mapping[tuple[BindingTarget, UUID], EntryContent],
-    unresolved: list[str],
-) -> MaterializedEntry | None:
+) -> MaterializedEntry | DropCause | None:
+    """One stored entry as this date's occurrence, the cause it is not one, or nothing.
+
+    Nothing means a declared off-plan span covers it, which is the week behaving as the user asked
+    rather than a loss. A cause means the row cannot become a block, and the caller counts it.
+    """
     interval = _occurrence(stored.span.target_time, on, zone, stored.span.duration_minutes)
     if off_plan.suppresses_content(interval):
         return None
     binding = _content_of(stored)
-    charged = _charged(stored, binding, content, unresolved)
-    if charged is None:
-        return None
+    resolved = charged(stored, binding, content)
+    if not isinstance(resolved, Charged):
+        return resolved
     return MaterializedEntry(
         entry_id=stored.id,
         occurrence_key=date_occurrence_key(on),
         kind=stored.kind,
         interval=interval,
         flex_band_minutes=stored.span.flex_band_minutes,
-        area_id=charged.area_id,
-        title=charged.title,
+        area_id=resolved.area_id,
+        title=resolved.title,
         binding=binding,
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class _Charged:
-    """What the block an entry becomes is called, and which Area its minutes are charged to."""
-
-    area_id: AreaId
-    title: str | None = None
-
-
-def _charged(
-    stored: TemplateEntryRecord,
-    binding: EntryBinding | None,
-    content: Mapping[tuple[BindingTarget, UUID], EntryContent],
-    unresolved: list[str],
-) -> _Charged | None:
-    """The title and the Area the block this entry becomes carries, or nothing.
-
-    A slot carries its declared Area and no title, because nothing has been chosen to name yet.
-    A concrete entry carries its content's name, and its content's Area unless the content has
-    none, in which case its own declaration is what the minutes are charged to.
-
-    Returning nothing is the drop, and each cause is recorded so an assembly that quietly lost
-    part of a day shape can say which row cost it.
-    """
-    if stored.kind is not TemplateEntryKind.CONCRETE:
-        if stored.area_id is None:
-            unresolved.append("slot_without_an_area")
-            return None
-        return _Charged(area_id=stored.area_id)
-    if binding is None:
-        unresolved.append("concrete_without_a_binding")
-        return None
-    found = content.get((binding.target, binding.entity_id))
-    if found is None:
-        unresolved.append("content_this_tenant_does_not_have")
-        return None
-    area_id = found.area_id or stored.area_id
-    if area_id is None:
-        unresolved.append("content_with_no_area_and_none_declared")
-        return None
-    return _Charged(area_id=area_id, title=found.title)
-
-
-def _report(unresolved: Sequence[str]) -> None:
-    """Say once how many entries this assembly dropped, and per cause.
-
-    Counted rather than named one line per entry, which is how a template every date shares turns
-    one malformed row into seven log lines.
-    """
-    if not unresolved:
-        return
-    counted = {cause: unresolved.count(cause) for cause in sorted(set(unresolved))}
-    _log.warning(
-        "plans.assembly.template_entry_unresolved",
-        entries_dropped=len(unresolved),
-        by_cause=counted,
     )
 
 
