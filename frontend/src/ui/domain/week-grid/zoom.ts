@@ -7,7 +7,7 @@
  *
  * THE CLAMP IS COMPUTED FROM THE MODAL DURATION, NOT THE SHORTEST ONE. Thirty minutes is the most common block
  * length by a wide margin. Clamping to keep a fifteen-minute block labelled would cost half the range to
- * protect the blocks that are read from position anyway: those are the circadian frame, and they slivering at
+ * protect the blocks that are read from position anyway: those are the circadian frame, and their slivering at
  * the twelve-hour default on anything under a 27 inch display is accepted.
  *
  * A LEVEL PAST THE CAP IS OFFERED AS UNAVAILABLE WITH A STATED REASON, not hidden. Hiding it leaves the reader
