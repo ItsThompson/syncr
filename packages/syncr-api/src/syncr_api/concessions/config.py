@@ -16,14 +16,18 @@ from syncr_api.core.settings import API_PREFIX
 # `/api/v1/weeks`, built from the versioned prefix rather than written out.
 WEEKS_PREFIX: Final = f"{API_PREFIX}/weeks"
 
-# Relative to the router's own prefix, which carries the week. Camel-cased on the wire to match
-# every other multi-word path parameter the api serves.
+# Relative to the router's own prefix. The week is a path segment named as every other path
+# parameter this api declares one: snake_cased, matching `{period_id}` and `{area_id}`. Section 13's
+# route table writes `{isoWeek}`, which is the same URL with a different parameter NAME; the
+# generated client reads the name, so one spelling across the api's routes is worth more than
+# literal fidelity to an illustrative table.
 TRADEOFFS_PATH: Final = "/{iso_week}/tradeoffs"
 ADJUSTMENTS_PATH: Final = "/{iso_week}/adjustments"
 ADJUSTMENT_PATH: Final = "/{iso_week}/adjustments/{adjustment_id}"
 
-# The wire spelling of the week, which a field error names when the identifier will not parse.
-ISO_WEEK_FIELD: Final = "isoWeek"
+# The wire spelling of the week, which a field error names when the identifier will not parse. The
+# path parameter's own name, so the error points at what the caller sent.
+ISO_WEEK_FIELD: Final = "iso_week"
 ISO_WEEK_EXAMPLE: Final = "2026-W07"
 
 CONCESSION_RESOURCE: Final = "concession"

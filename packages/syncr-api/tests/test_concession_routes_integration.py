@@ -326,7 +326,7 @@ def test_a_week_identifier_that_will_not_parse_names_the_field_it_came_from(
     )
 
     assert answered.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, answered.text
-    assert answered.json()["errors"][0]["field"] == "isoWeek"
+    assert answered.json()["errors"][0]["field"] == "iso_week"
 
 
 def test_a_request_supersedes_a_pending_solve_rather_than_joining_it(
