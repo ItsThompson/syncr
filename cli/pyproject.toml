@@ -3,13 +3,36 @@ name = "syncr-cli"
 version = "0.1.0"
 description = "The syncr CLI: an OAuth client of the same API the browser uses. Separate from syncr-api so it ships nothing server-side."
 requires-python = ">=3.12"
+# Three dependencies and no more. The CLI reaches the product over HTTP, so it needs a
+# client, a keychain, and the pure package that owns the renderings it shares with the
+# rest of the product.
+#
+# `syncr-domain` is a workspace edge the architecture's dependency map does not draw, and
+# it is here for one stated reason: `syncr_domain.feasibility.verdict.hours_and_minutes`
+# documents itself as the rendering the verdict panel, THE CLI, and a tradeoff label all
+# print, and `IsoWeek` owns reading `2026-W07`. A second copy of either in this package is
+# how one figure comes to read two ways. The package is pure and does no I/O, so nothing
+# server-side arrives with it, and `tests/test_package_boundary.py` asserts that.
+#
+# `syncr-common` was declared here before this package imported anything. It is dropped
+# rather than kept unused: it arrives transitively through syncr-domain, and a declared
+# dependency nothing imports is a claim about this package its own source contradicts.
 dependencies = [
     "httpx>=0.27.0,<1",
-    "syncr-common",
+    # The OS keychain, which is the primary store for the refresh token. Its backends are
+    # per-platform C and D-Bus calls this package must not reimplement, and it reports
+    # "no backend on this machine" as an exception the file fallback is chosen on.
+    "keyring>=25.5.0,<26",
+    "syncr-domain",
 ]
 
+[project.scripts]
+# `syncr`, because the user types it. Every other console script in this workspace is an
+# operator command and is prefixed accordingly.
+syncr = "syncr_cli.main:main"
+
 [tool.uv.sources]
-syncr-common = { workspace = true }
+syncr-domain = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -31,7 +54,11 @@ extend = "../ruff.toml"
 src = ["src", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "PT018"]
+# Tests assert liberally (S101), name dummy credentials as constants (S105) and bundle
+# multi-condition assertions (PT018). The credential ignore matters more here than in any
+# other member: this package's subject IS a credential, so its suite is full of tokens
+# that are not tokens.
+"tests/**/*.py" = ["S101", "S105", "S106", "PT018"]
 
 [tool.mypy]
 python_version = "3.12"
