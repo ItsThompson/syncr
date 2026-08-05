@@ -27,6 +27,11 @@ export const calendarSourcesKey = (): string => "/api/v1/calendar-sources";
 export const anchorsKey = (from: string, to: string): string =>
   `/api/v1/anchors?${new URLSearchParams({ from, to }).toString()}`;
 
+/* The date is part of the key for the reason a span is: two dates are two ledgers. Recording an outcome
+ * and confirming a day each change one day, and a backfill changes the count of unconfirmed days the day
+ * on screen carries, so all three name this key. */
+export const dayKey = (date: string): string => `/api/v1/days/${date}`;
+
 export const settingsKey = (): string => "/api/v1/settings";
 export const travelOverridesKey = (): string => "/api/v1/settings/travel-overrides";
 export const offPlanKey = (): string => "/api/v1/off-plan";
