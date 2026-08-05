@@ -85,9 +85,14 @@ AN_EMPTY_REPORT = BudgetReport(
 
 
 def a_report(**overrides: int) -> BudgetReport:
-    """A budget report carrying figures, which is all the readings read off one."""
+    """A budget report carrying figures, which is all the readings read off one.
+
+    Every figure differs from the same figure on ``a_document``, so a reading taken from the wrong
+    one of the two is visible: the document's three are as of the instant it was produced and the
+    report's are live, and a fixture that gave them one value could not tell them apart.
+    """
     fields: dict[str, int] = {
-        "discretionary_minutes": 6000,
+        "discretionary_minutes": 5400,
         "unallocated_minutes": 1200,
         "oversubscription_minutes": 90,
     }
@@ -242,9 +247,13 @@ HOUR = timedelta(hours=1)
 def test_the_three_strip_figures_are_the_budget_reports_own() -> None:
     """The strip divides the denominator the pie review divides, from one arithmetic."""
     report = a_report()
+    document = a_document()
+    assert document.discretionary_minutes != report.discretionary_minutes, (
+        "the fixtures agree, so this could not tell the two readings apart"
+    )
 
     readings = week_readings(
-        a_document(),
+        document,
         span=WEEK_SPAN,
         report=report,
         off_plan=off_plan_reading(WEEK_SPAN, IntervalSet()),
@@ -306,11 +315,16 @@ def test_a_retry_in_flight_after_a_failure_reads_as_solving_rather_than_stale() 
     """A failure with an attempt left returns to the queue in the same transaction that wrote it.
 
     So a row observed as failed has no attempt left, and a pending row beside a failed one means the
-    plan is being recomputed rather than that it is the last one that worked.
+    plan is being recomputed rather than that it is the last one that worked. The two arguments are
+    different rows here, because the newest of the two is the one that failed: a solve due before a
+    materialize that failed after it is exactly the state the order of these two branches decides.
     """
     retrying = an_operation(status=PENDING, attempt=2, error_code="solver_raised")
+    failed_later = an_operation(
+        kind=MATERIALIZE, status=FAILED, scheduled_for=MONDAY + timedelta(minutes=1)
+    )
 
-    assert plan_currency(in_flight=retrying, latest=retrying) == SOLVING
+    assert plan_currency(in_flight=retrying, latest=failed_later) == SOLVING
 
 
 def test_a_materialize_counts_as_a_plan_operation() -> None:
