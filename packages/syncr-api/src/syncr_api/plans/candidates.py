@@ -14,7 +14,8 @@ date's ISO spelling, which is the same key a frame occurrence carries and the sa
 column holds: one spelling, so the fold pairs them without a second derivation. Reading is
 deliberately tolerant of a key this week cannot honour and reports what it dropped, because a
 document already written has to be readable; refusing one is the WRITE's job, and the concession
-table's own upsert does it.
+table's own upsert does it. **WA7's second half is enforced on both**, because a negative figure
+lengthens a routine rather than shortening one and no reader may pass one through.
 """
 
 from __future__ import annotations
@@ -83,13 +84,19 @@ def from_document(document: Mapping[str, object], *, dates: Sequence[Date]) -> W
 def reductions_of(stored: Mapping[str, object], *, dates: Sequence[Date]) -> Mapping[Date, int]:
     """The per-date minutes a routine reduction carries, as dates of THIS week.
 
-    An entry this week cannot honour is dropped and reported, and there are three of them: a key
-    that is not a date, a value that is not a count of minutes, and a date the week does not hold.
-    All three have one consequence, which is a reduction that pairs with no frame occurrence and is
-    applied to nothing while the concession claims to have been honoured. They are reported
-    separately because the causes differ: the first two are malformed and the third is a readable
-    date that another week's assembly owns, and an operator reading one event name should not go
-    hunting for the other fault.
+    An entry this week cannot honour is dropped and reported, and there are four of them: a key that
+    is not a date, a value that is not a count of minutes, a value that is not POSITIVE, and a date
+    the week does not hold. All four have one consequence, which is a reduction that pairs with no
+    frame occurrence and is applied to nothing while the concession claims to have been honoured.
+    They are reported in two events because the causes differ: the first three are malformed and the
+    fourth is a readable date that another week's assembly owns, and an operator reading one event
+    name should not go hunting for the other fault.
+
+    **A non-positive figure is malformed rather than merely useless**, and it is WA7's second half
+    here. Zero shortens nothing, and a negative one LENGTHENS the occurrence, because the effective
+    duration is ``duration - reduction``: a concession whose whole meaning is to shorten a routine
+    would extend one. The concession table refuses such a row on the write; this is the same
+    rule where a serialized candidate is read, which is the path a worker takes.
     """
     week = set(dates)
     reductions: dict[Date, int] = {}
@@ -97,7 +104,7 @@ def reductions_of(stored: Mapping[str, object], *, dates: Sequence[Date]) -> Map
     foreign: list[str] = []
     for key, value in stored.items():
         on = _a_date(key)
-        if on is None or isinstance(value, bool) or not isinstance(value, int):
+        if on is None or isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             malformed.append(key)
             continue
         if on not in week:

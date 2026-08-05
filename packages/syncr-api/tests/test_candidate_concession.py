@@ -145,3 +145,32 @@ def test_a_reduction_this_week_cannot_honour_is_dropped_and_reported(
     lines = captured_log.getvalue()
     assert "plans.adjustment.unreadable_reduction" in lines
     assert "plans.adjustment.reduction_outside_the_week" in lines
+
+
+@pytest.mark.parametrize("minutes", [0, -20])
+def test_a_reduction_that_would_not_shorten_the_night_is_dropped_too(
+    minutes: int, captured_log: io.StringIO
+) -> None:
+    # WA7's second half on this path, which is the one a worker reads. Zero shortens nothing, and a
+    # NEGATIVE figure lengthens the occurrence: the effective duration is `duration - reduction`, so
+    # a concession whose whole meaning is to shorten a routine would extend one. The concession
+    # table refuses such a row on the write; nothing refused it here until this clause.
+    read = reductions_of(
+        {WEEK_DATES[1].isoformat(): minutes, WEEK_DATES[2].isoformat(): 20}, dates=WEEK_DATES
+    )
+
+    assert read == {WEEK_DATES[2]: 20}
+    assert "plans.adjustment.unreadable_reduction" in captured_log.getvalue()
+
+
+def test_a_candidate_document_carrying_only_an_absurd_reduction_reads_as_none() -> None:
+    # The whole path, so the consequence is on record: a candidate whose every reduction is absurd
+    # folds as a concession that changes nothing, rather than as one that lengthens a routine.
+    document = {
+        ADJUSTMENT_ID: str(uuid4()),
+        KIND: AdjustmentKind.REDUCE_ROUTINE.value,
+        TARGET_ID: str(uuid4()),
+        REDUCTIONS: {WEEK_DATES[1].isoformat(): -20},
+    }
+
+    assert from_document(document, dates=WEEK_DATES).reductions == {}
