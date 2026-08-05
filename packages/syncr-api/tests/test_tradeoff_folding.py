@@ -64,9 +64,10 @@ if TYPE_CHECKING:
 
     from syncr_api.plans.assembler import WeekAssembler
     from syncr_domain.feasibility import Shortfall, Verdict
-    from syncr_domain.identifiers import TaskId
+    from syncr_domain.identifiers import AreaId, TaskId
 
 CAREER_TASK: TaskId = UUID("f2f2f2f2-0000-4000-8000-000000000001")
+FITNESS_TASK: TaskId = UUID("f2f2f2f2-0000-4000-8000-000000000002")
 
 # The member type each collection on `SolveInputs` holds, for the dotted half of a declared path.
 # Bounded by what the fold can reach: a path naming a collection absent here is a declaration this
@@ -254,31 +255,105 @@ async def test_a_dropped_task_keeps_its_status_because_that_is_a_different_act()
 # --------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("kind", "measure"),
-    [
-        (AdjustmentKind.DROP_ITEM, ShortfallKind.DEADLINE_CAPACITY),
-        (AdjustmentKind.ACCEPT_PARTIAL, ShortfallKind.DEADLINE_CAPACITY),
-        (AdjustmentKind.BREACH_FLOOR, ShortfallKind.DEADLINE_CAPACITY),
-        (AdjustmentKind.REDUCE_ROUTINE, ShortfallKind.DEADLINE_CAPACITY),
-    ],
-)
-async def test_approving_a_tradeoff_closes_the_gap_it_quoted_by_at_least_that_much(
-    kind: AdjustmentKind, measure: ShortfallKind
+@pytest.mark.parametrize("kind", list(AdjustmentKind))
+async def test_approving_a_tradeoff_closes_the_deadline_gap_when_no_floor_fits_later(
+    kind: AdjustmentKind,
 ) -> None:
-    # The observation review 5 asked for: after approving a tradeoff, the shortfall it quoted its
-    # minutes against has closed by at least that much. Without it, a concession could ship not
-    # doing what the panel said it did, and nothing in the plan document would show it.
+    # The observation review 5 asked for, over the ONE week shape where it holds for all four kinds:
+    # nothing after the deadline can absorb a floor, so the whole reservation is charged before it
+    # and a breach lowers the competition by the whole of what it concedes. That condition is in the
+    # name because it is load-bearing rather than incidental: relax it and the breach figure becomes
+    # an upper bound, which `test_a_breach_can_state_more_than_a_deadline_gap_can_fall_by` draws.
+    #
+    # The gap is asserted to be the only one of its kind, so the measurement cannot silently take a
+    # different deadline's shortfall than the one these offers were computed against.
     assembler, before, offer = await an_offered(kind)
+    held = probe(before.for_probe())
 
     after = await assembler.assemble(
         WEEK, elastic_sleep.NOW, offer.as_candidate(adjustment_id=uuid4())
     )
 
-    held = minutes_of(probe(before.for_probe()), measure)
-    left = minutes_of(probe(after.for_probe()), measure)
+    deadline_gaps = [one for one in held.shortfalls if one.kind is ShortfallKind.DEADLINE_CAPACITY]
+    assert len(deadline_gaps) == 1
     assert offer.recovers > 0
-    assert held - left >= offer.recovers
+    left = minutes_of(probe(after.for_probe()), ShortfallKind.DEADLINE_CAPACITY)
+    assert deadline_gaps[0].minutes - left >= offer.recovers
+
+
+async def test_a_breach_can_state_more_than_a_deadline_gap_can_fall_by() -> None:
+    # The bound the enumerator's docstring states, drawn rather than described, on a week reachable
+    # through the shipped routes: two Areas, one 7h floor, two ordinary tasks an hour apart, one
+    # off-plan declaration that leaves capacity AFTER the later deadline.
+    #
+    # The deadline check subtracts `max(claimed, reserved - absorbed_later)` rather than the
+    # reservation, so a floor that partly fits after the deadline is charged for part of itself and
+    # a breach of the whole reservation cannot lower the competition by the whole of it. `_breaches`
+    # caps at the reservation, which is blind to that split.
+    #
+    # The figure is therefore an UPPER bound on the gap movement, which is the safe direction for a
+    # panel to be wrong in only because the alternative is worse: a row promising less than it
+    # delivers would have the user approve two concessions where one sufficed. Closing it needs a
+    # per-floor contribution carried on the shortfall, which is one decision with 1361's.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(7))
+    career = an_area(name="Career")
+    assembler = an_assembler(
+        areas=FakeAreas([fitness, career]),
+        tasks=FakeTasks(
+            [
+                a_task(
+                    task_id=FITNESS_TASK,
+                    area_id=fitness.id,
+                    title="Gym block",
+                    estimate_minutes=300,
+                    deadline=at(12, day=2),
+                ),
+                a_task(
+                    task_id=CAREER_TASK,
+                    area_id=career.id,
+                    title="F&F Past Papers",
+                    estimate_minutes=300,
+                    deadline=at(13, day=2),
+                ),
+            ]
+        ),
+        off_plan=FakeOffPlan([an_off_plan_period(interval=between(18, 24 * 4 + 24, day=2))]),
+    )
+    before = await assembler.assemble(WEEK, at(9, day=2))
+    held = probe(before.for_probe())
+    breach = next(
+        one
+        for one in offered_tradeoffs(before, held)
+        if one.tradeoff.kind is AdjustmentKind.BREACH_FLOOR and one.tradeoff.target_id == fitness.id
+    )
+
+    after = await assembler.assemble(WEEK, at(9, day=2), breach.as_candidate(adjustment_id=uuid4()))
+
+    # Every gap's movement, so the claim is about the whole verdict rather than one measure.
+    left = probe(after.for_probe())
+    moved = {key: _minutes(held, key) - _minutes(left, key) for key in {*_keys(held), *_keys(left)}}
+    assert before.areas[0].floor_reservation_minutes == 420
+    assert breach.recovers == 240
+    assert breach.tradeoff.label == "Breach the Fitness floor by 4h"
+    # The largest movement anywhere in the verdict is 180, and the deadline gaps do not move at all.
+    assert max(moved.values()) == 180
+    assert max(moved.values()) < breach.recovers
+    assert moved[(ShortfallKind.DEADLINE_CAPACITY, career.id)] == 0
+    # And the fold still did both halves of its job, which is what makes this the FIGURE's fault.
+    assert after.areas[0].floor_minutes == 420 - 240
+    assert after.areas[0].floor_reservation_minutes == 420 - 240
+
+
+def _keys(verdict: Verdict) -> set[tuple[ShortfallKind, AreaId | None]]:
+    return {(one.kind, one.area_id) for one in verdict.shortfalls}
+
+
+def _minutes(verdict: Verdict, key: tuple[ShortfallKind, AreaId | None]) -> int:
+    """One gap's size, keyed by kind and Area, or zero where the verdict holds no such gap."""
+    return next(
+        (one.minutes for one in verdict.shortfalls if (one.kind, one.area_id) == key),
+        0,
+    )
 
 
 async def test_breaching_a_floor_closes_the_floors_gap_the_probe_reports() -> None:

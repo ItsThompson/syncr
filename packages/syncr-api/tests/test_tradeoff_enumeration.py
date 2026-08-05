@@ -26,6 +26,7 @@ equal.
 
 from __future__ import annotations
 
+import io
 from dataclasses import replace
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -34,6 +35,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from syncr_api.plans.tradeoffs import Offer, offered_tradeoffs
+from syncr_common.logging import configure_logging
 from syncr_domain.feasibility import (
     Provenance,
     ShortfallKind,
@@ -43,6 +45,7 @@ from syncr_domain.feasibility import (
     probe,
 )
 from syncr_domain.fixtures import elastic_sleep
+from syncr_domain.identity import BindingRef
 from syncr_domain.plan import AdjustmentKind
 from syncr_solver.inputs import WeekAdjustment
 from tests.assembly_fakes import (
@@ -52,8 +55,10 @@ from tests.assembly_fakes import (
     FakeAdjustments,
     FakeAreas,
     FakeOffPlan,
+    FakePlacements,
     FakeRoutines,
     FakeTasks,
+    a_pin,
     a_routine,
     a_task,
     an_adjustment,
@@ -65,7 +70,7 @@ from tests.assembly_fakes import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     from syncr_api.areas.records import AreaRecord
     from syncr_api.routines.records import RoutineRecord
@@ -591,9 +596,15 @@ async def test_every_offer_states_a_positive_recovery() -> None:
         assert all(offer.recovers > 0 for offer in offers)
 
 
-async def test_every_gap_the_probe_finds_can_be_answered_with_at_least_one_tradeoff() -> None:
+async def test_every_gap_of_an_ordinary_week_is_answered_with_at_least_one_tradeoff() -> None:
     # A shortfall with no enumerable tradeoff is a bug rather than a valid state: the panel would
-    # report an impossible week and offer nothing to do about it.
+    # report an impossible week and offer nothing to do about it. Three shapes, each gap enumerated
+    # alone so no other gap's offers can cover for it.
+    #
+    # **This is a rule with one exception, and the exception is drawn below** by
+    # `test_a_demand_whose_task_has_no_eligible_row_is_answered_with_nothing`: a demand whose task
+    # is not eligible has no target for either task-targeted kind, so a week holding nothing else
+    # to concede answers that gap with nothing and says so in the log.
     fitness, career = a_week_the_floors_do_not_fit_in()
     tight = FakeOffPlan([an_off_plan_period(interval=between(19, 24 * 4 + 24, day=2))])
     task = a_task(
@@ -615,6 +626,66 @@ async def test_every_gap_the_probe_finds_can_be_answered_with_at_least_one_trade
         assert verdict.shortfalls != ()
         for shortfall in verdict.shortfalls:
             assert offered_tradeoffs(inputs, replace(verdict, shortfalls=(shortfall,))) != ()
+
+
+@pytest.fixture
+def captured_log() -> Iterator[io.StringIO]:
+    """Render to a captured stream, then hand the configuration back.
+
+    Logging configuration is process-global, and ``conftest.py`` fails the test that leaves it
+    changed, so the restore is part of the fixture rather than an afterthought.
+    """
+    stream = io.StringIO()
+    configure_logging(environment="production", log_level="info", stream=stream)
+    yield stream
+    configure_logging(environment="test", log_level="info")
+
+
+async def test_a_demand_whose_task_has_no_eligible_row_is_answered_with_nothing(
+    captured_log: io.StringIO,
+) -> None:
+    # The exception to the rule above, one user pin away from an ordinary week, and the reason it
+    # exists: eligibility nets immovable placements WHEREVER they sit and the demand nets only those
+    # before the deadline, so a pin the user made after the deadline empties eligibility and leaves
+    # the demand standing. Neither task-targeted kind can name a task eligibility does not carry.
+    #
+    # Recorded rather than fixed here: closing it needs the demand to carry its tasks' identities,
+    # which is a field on a probe input struct that four reviews have corrected, and it is the same
+    # field the recovery-figure bound wants. What ships is that the gap is answered with nothing and
+    # SAYS so, because a panel reporting a gap with no button is otherwise invisible in production.
+    career = an_area(name="Career")
+    task = a_task(
+        task_id=CAREER_TASK,
+        area_id=career.id,
+        title="F&F Past Papers",
+        estimate_minutes=4 * MINUTES_PER_HOUR,
+        deadline=at(10, day=2),
+    )
+    pinned = FakePlacements(
+        pins=[
+            a_pin(
+                binding=BindingRef.for_task(CAREER_TASK),
+                interval=between(9, 13, day=3),
+                pinned_on=WEEK.dates()[2],
+            )
+        ]
+    )
+
+    inputs = await an_assembly(
+        areas=FakeAreas([career]), tasks=FakeTasks([task]), placements=pinned
+    )
+    verdict = probe(inputs.for_probe())
+
+    offers = offered_tradeoffs(inputs, verdict)
+
+    assert inputs.eligible_tasks == ()
+    assert [one.remaining_minutes for one in inputs.deadline_demands] == [4 * MINUTES_PER_HOUR]
+    gap = next(one for one in verdict.shortfalls if one.kind is ShortfallKind.DEADLINE_CAPACITY)
+    assert gap.minutes == 3 * MINUTES_PER_HOUR
+    assert offers == ()
+    # The one thing that makes the silence visible outside this request.
+    assert "plans.tradeoff.gap_unanswered" in captured_log.getvalue()
+    assert '"shortfall_kind": "deadline_capacity"' in captured_log.getvalue()
 
 
 async def test_the_kinds_come_in_the_order_the_product_lists_them() -> None:

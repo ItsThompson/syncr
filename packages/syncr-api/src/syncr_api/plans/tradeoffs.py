@@ -44,21 +44,34 @@ is matched through the one function that spells it.
 | ``breach_floor`` | the gap, capped by what that Area's floor still reserves |
 | ``reduce_routine`` | the sum of the reductions it names |
 
-The breach figure is exact: the check subtracts the reservation, so lowering it by that much closes
-the gap by that much. The reduction figure is the minutes handed back to the week, which is
-capacity unless another commitment already covered that span.
+The reduction figure is the minutes handed back to the week, which is capacity unless another
+commitment already covered that span.
 
-Two bounds on the task-targeted figure, both stated rather than hidden:
+**Three bounds on the stated figure, each measured rather than argued.** A figure is an UPPER bound
+on the gap movement in each case, never a lower one, so a row can promise more than approving it
+delivers and never less.
+
+*A breach against a DEADLINE gap can state more than that gap can fall by.* The deadline check does
+not subtract the reservation: it subtracts ``max(claimed, reserved - absorbed_later)``, where
+``absorbed_later`` is the free capacity after the deadline and ``claimed`` is what that Area's
+earlier deadlines already took. So lowering the reservation by ``delta`` lowers the competition by
+at most ``early - claimed``, and by nothing once ``claimed >= early``. A floor with room after the
+deadline took nothing from the window, which the honored list already filters for; a floor with only
+SOME of itself early is not filtered, and the figure is capped at the whole reservation. Against the
+other two gap kinds the figure is exact, because both compare a reservation directly.
 
 *A demand naming several tasks has no per-task split on a solve input.* The probe's demand is one
 figure per deadline and Area, because the tasks compete for the same capacity. So excusing one of
 three tasks closes part of the gap and the offer states the whole of it. One task per demand is
 the ordinary case and is exact.
 
-*The cap reads the task's remaining work as ELIGIBILITY states it*, which nets immovable
-placements only, while the gap was computed from the demand, which nets every placement before the
-deadline. The two differ for a task carrying an unpinned future block before its deadline, and
-there the stated figure can exceed what the gap actually falls by.
+*The task cap reads ELIGIBILITY's figure*, which nets immovable placements only, while the gap was
+computed from the demand, which nets every placement before the deadline. The two differ for a task
+carrying an unpinned future block before its deadline, and there the stated figure can exceed what
+the gap actually falls by.
+
+Closing any of the three needs the same shape of change, a per-contributor figure carried on the
+shortfall, so it is one decision rather than three.
 
 ## What it never does
 
@@ -68,6 +81,13 @@ It offers no concession the week already holds, because a concession already app
 the panel as an applied concession instead of being offered a second time. And it mints no
 identifier: an offer is a value derived from one assembly, so two enumerations of one assembly are
 equal, which they could not be if a candidate's identity were minted here.
+
+**One gap shape is answered with nothing, and it is not a valid state.** A deadline demand whose
+task has no eligible row cannot be dropped or excused, because both need the task's identity and
+only eligibility carries it: a task whose whole estimate is covered by an immovable placement AFTER
+its deadline has a demand and no eligibility. Where the week also has no elastic routine and no
+honored floor, such a gap is offered nothing at all. It is logged rather than left silent: a panel
+reporting a gap with no button is otherwise invisible outside the request that rendered it.
 """
 
 from __future__ import annotations
@@ -77,6 +97,7 @@ from typing import TYPE_CHECKING, assert_never
 
 from syncr_api.plans import tradeoff_labels as labels
 from syncr_api.plans import tradeoff_nights as nights
+from syncr_common.logging import get_logger
 from syncr_domain.feasibility import ShortfallKind, Tradeoff, floor_honored
 from syncr_domain.plan import AdjustmentKind
 from syncr_solver.inputs import WeekAdjustment
@@ -94,6 +115,8 @@ if TYPE_CHECKING:
 # What a request names, and what the storage index is keyed by: one concession per kind and
 # target. Two offers sharing it are one offer, and the larger recovery is the one kept.
 type OfferedConcession = tuple[AdjustmentKind, UUID]
+
+_log = get_logger("syncr.plans")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -148,15 +171,29 @@ def offered_tradeoffs(inputs: SolveInputs, verdict: Verdict) -> tuple[Offer, ...
     Deterministic: shortfalls in the verdict's own order, then the kinds in the order the product
     lists them, then targets in the order the assembly resolved them. Nothing is selected and
     nothing is written.
+
     One offer per kind and target, because that is what a concession is keyed by. Where two gaps
     offer the same one, the LARGER recovery is kept: the concession has to close the larger gap it
     was offered against, and stating the smaller figure would understate what the user is
     approving.
+
+    A gap this can answer with nothing is logged rather than passed over. The module docstring names
+    the one shape that reaches it, and the panel's silence is otherwise visible only to the request
+    that rendered it.
     """
     applied = {(adjustment.kind, adjustment.target_id) for adjustment in inputs.adjustments}
     offers: dict[OfferedConcession, Offer] = {}
     for shortfall in verdict.shortfalls:
-        for offer in _against(shortfall, inputs):
+        answered = _against(shortfall, inputs)
+        if not answered:
+            _log.warning(
+                "plans.tradeoff.gap_unanswered",
+                iso_week=str(inputs.iso_week),
+                shortfall_kind=shortfall.kind.value,
+                minutes=shortfall.minutes,
+                area_id=None if shortfall.area_id is None else str(shortfall.area_id),
+            )
+        for offer in answered:
             if offer.concession in applied:
                 continue
             held = offers.get(offer.concession)
@@ -245,6 +282,11 @@ def _breaches(shortfall: Shortfall, *, of: Sequence[AreaBudget]) -> tuple[Offer,
 
     An Area whose floor reserves nothing is not offered: it is already met by what the week holds,
     so there is nothing left to breach and a concession recovering nothing is worse than none.
+
+    **The figure is exact against the two gaps that compare a reservation directly, and an upper
+    bound against a deadline gap**, which subtracts the part of the floor that cannot fit after the
+    deadline rather than the whole of it. The module docstring states the arithmetic and names the
+    ticket that owns closing it.
     """
     return tuple(
         _an_offer(
@@ -310,6 +352,11 @@ def _due_at(shortfall: Shortfall, inputs: SolveInputs) -> tuple[EligibleTask, ..
 
     Matched on the Area and the deadline the demand was grouped by rather than on the titles the
     shortfall renders, because two tasks may share a title and only one of them may be due then.
+
+    **This can be empty while the demand is not.** Eligibility nets immovable placements wherever
+    they sit and the demand nets only those before the deadline, so a task covered by a pin AFTER
+    its own deadline has a demand and no eligible row, and neither task-targeted kind can name it.
+    The module docstring carries the consequence.
     """
     return tuple(
         task
