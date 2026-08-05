@@ -30,3 +30,8 @@ VERDICT_PATH: Final = "/{iso_week}/verdict"
 IMMEDIATE_PARAMETER: Final = "immediate"
 
 WEEK_RESOURCE: Final = "week"
+
+# How many revisions one page of the history holds. A week appends three to six per solve, so this
+# covers a week that has been re-solved several times without a caller stating a number, and the
+# response says when it did not fit rather than truncating in silence.
+HISTORY_PAGE: Final = 50

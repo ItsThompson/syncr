@@ -23,7 +23,7 @@ the strip cannot disagree with the same figure in the review: they are one arith
 occupancy read, not two implementations that agree today. The document's own three figures are as of
 the instant it was produced and are deliberately absent from the wire.
 
-## Two costs are accepted here rather than pushed onto a collaborator
+## Three costs are accepted here rather than pushed onto a collaborator
 
 **The off-plan periods are read twice**, once as intervals inside the budget's denominator and once
 as records for the screen's gutter. They are two shapes of one small indexed read, and a reader
@@ -32,6 +32,10 @@ answering with both would put the screen's fields on the budget's occupancy prot
 **The week is parsed before the budget is asked**, which parses it again. That is what makes a
 malformed identifier a 422 naming the path parameter the caller sent rather than the budget's own
 query parameter.
+
+**A week with no plan costs two extra reads**, the minimum inputs, and neither is on the path a week
+WITH a plan takes. The home zone the horizon is resolved in is not among them: it rides on the
+budget's view beside the zones, from the one read of the profile that both come from.
 
 ## ``operation`` reports either plan operation, not only a solve
 
@@ -55,6 +59,7 @@ from syncr_api.plans.currency import plan_currency
 from syncr_api.plans.emptiness import Horizon, empty_week
 from syncr_api.plans.readings import week_readings
 from syncr_api.plans.stored_documents import plan_document
+from syncr_api.plans.week_config import HISTORY_PAGE
 from syncr_api.solving.config import PLAN_KINDS, SOLVE
 from syncr_api.user_settings.zone_reading import local_date
 from syncr_common.logging import get_logger
@@ -80,7 +85,6 @@ if TYPE_CHECKING:
     from syncr_api.solving.lifecycle import OperationLifecycle
     from syncr_api.solving.records import OperationRecord
     from syncr_api.solving.repository import OperationRepository
-    from syncr_api.user_settings.repository import SettingsRepository
     from syncr_domain.intervals import Interval
     from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
@@ -108,6 +112,18 @@ class WeekView:
     readings: WeekReadings | None
 
 
+@dataclass(frozen=True, slots=True)
+class WeekRevisions:
+    """One page of a week's history, and whether the week holds more than the page.
+
+    The pair travels together because a bounded page that does not say it is bounded is a partial
+    history a client cannot tell from a whole one.
+    """
+
+    revisions: Sequence[PlanRevisionRecord]
+    truncated: bool
+
+
 class WeekService:
     """Reads one tenant's week, its history, and asks for a plan when one is wanted."""
 
@@ -121,7 +137,6 @@ class WeekService:
         lifecycle: OperationLifecycle,
         minimum: MinimumInputs,
         sources: CalendarSourceRepository,
-        settings: SettingsRepository,
         off_plan: OffPlanPeriodRepository,
         confirmations: DayConfirmationReader,
         clock: Clock,
@@ -133,7 +148,6 @@ class WeekService:
         self._lifecycle = lifecycle
         self._minimum = minimum
         self._sources = sources
-        self._settings = settings
         self._off_plan = off_plan
         self._confirmations = confirmations
         self._clock = clock
@@ -160,10 +174,10 @@ class WeekService:
             span=budget.span,
             zone_by_date=budget.zone_by_date,
             live=document,
-            empty=None if document is not None else await self._why_empty(week, now=now),
+            empty=None if document is not None else await self._why_empty(week, budget, now=now),
             off_plan=await self._off_plan.for_span(budget.span),
             operation=in_flight,
-            input_version=await self._versions.current(week) or UNTRACKED_VERSION,
+            input_version=await self._tracked_version(week),
             readings=(
                 None
                 if document is None
@@ -171,11 +185,23 @@ class WeekService:
             ),
         )
 
+    async def _tracked_version(self, week: IsoWeek) -> int:
+        """The week's input version, or the value no row can hold when nothing has referenced it."""
+        current = await self._versions.current(week)
+        return UNTRACKED_VERSION if current is None else current
+
     @measured("weeks")
-    async def revisions(self, principal: Principal, iso_week: str) -> list[PlanRevisionRecord]:
-        """One week's revision history, newest first. Read-only, like the table it reads."""
+    async def revisions(self, principal: Principal, iso_week: str) -> WeekRevisions:
+        """One page of a week's revision history, newest first. Read-only, like the table it reads.
+
+        One row more than the page is asked for and dropped, so the truncation is measured rather
+        than guessed: a page exactly as long as its bound is indistinguishable from a truncated one
+        without it.
+        """
         require_scope(principal, Scope.PLAN_READ)
-        return await self._revisions.history(require_an_iso_week(iso_week, field=ISO_WEEK_FIELD))
+        week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
+        found = await self._revisions.history(week, limit=HISTORY_PAGE + 1)
+        return WeekRevisions(revisions=found[:HISTORY_PAGE], truncated=len(found) > HISTORY_PAGE)
 
     @measured("weeks")
     async def verdict(self, principal: Principal, iso_week: str) -> None:
@@ -260,17 +286,20 @@ class WeekService:
             ),
         )
 
-    async def _why_empty(self, week: IsoWeek, *, now: datetime) -> EmptyWeek:
+    async def _why_empty(self, week: IsoWeek, budget: BudgetView, *, now: datetime) -> EmptyWeek:
         """Why this week holds no plan, read only on the path where it holds none.
 
         The horizon is the maintainer's own derivation over the write target's own length, so the
-        week this route calls beyond the horizon is exactly the week the maintainer skips.
+        week this route calls beyond the horizon is exactly the week the maintainer skips. The zone
+        the local date is resolved in is the budget's own, from the one read of the profile the span
+        came from: a second read of the settings row here would be a second answer to which date
+        this tenant is on.
         """
-        home_zone = (await self._settings.read()).home_zone
         return empty_week(
             week,
             readiness=await self._minimum.read(),
             horizon=Horizon.of(
-                today=local_date(now, home_zone), days=await read_horizon_days(self._sources)
+                today=local_date(now, budget.home_zone),
+                days=await read_horizon_days(self._sources),
             ),
         )

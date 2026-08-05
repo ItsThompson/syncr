@@ -31,17 +31,18 @@ from pydantic import Field
 # cannot see that ``WireModel`` extends ``BaseModel`` from another module, so each import says so.
 from syncr_api.concessions.schemas import AdjustmentResponse  # noqa: TC001
 from syncr_api.core.schemas import WireModel, WireSpan
-from syncr_api.offplan.schemas import OffPlanPeriodResponse  # noqa: TC001
+from syncr_api.offplan.schemas import OffPlanPeriodResponse
 from syncr_api.plans.config import RevisionReason, RevisionStatus  # noqa: TC001
 from syncr_api.plans.currency import PlanCurrency  # noqa: TC001
-from syncr_api.plans.document_schemas import PlanDocumentResponse  # noqa: TC001
+from syncr_api.plans.document_schemas import PlanDocumentResponse
 from syncr_api.plans.emptiness import EmptyReason  # noqa: TC001
-from syncr_api.solving.schemas import OperationResponse  # noqa: TC001
+from syncr_api.solving.schemas import OperationResponse
 
 if TYPE_CHECKING:
     from syncr_api.plans.emptiness import EmptyWeek
     from syncr_api.plans.readings import WeekReadings
     from syncr_api.plans.records import PlanRevisionRecord
+    from syncr_api.plans.service import WeekRevisions, WeekView
 
 
 class WeekReadingsResponse(WireModel):
@@ -128,7 +129,14 @@ class EmptyWeekResponse(WireModel):
 
 
 class WeekViewResponse(WireModel):
-    """The Week screen's whole read, in one request."""
+    """The Week screen's whole read, in one request.
+
+    **Every field is required and the nullable ones are nullable**, which is section 13's own shape
+    and the one thirty-six other response fields in this api already take. A field with a default is
+    OPTIONAL in the generated document, so a client would have to narrow ``undefined`` as well as
+    ``null`` and ``if (view.emptyReason === null)`` would not be sound against its own types. The
+    server populates all sixteen on every answer, so the contract says so.
+    """
 
     iso_week: str
     span: WireSpan = Field(
@@ -141,58 +149,78 @@ class WeekViewResponse(WireModel):
         "wherever a travel override was declared afterwards."
     )
     live: PlanDocumentResponse | None = Field(
-        default=None,
         description="The plan of record for this week, or null when none exists. A read never "
         "produces one: navigating between weeks is not a mutation.",
     )
     empty_reason: EmptyReason | None = Field(
-        default=None, description="Why live is null. Null exactly when live is populated."
+        description="Why live is null. Null exactly when live is populated."
     )
     empty_week: EmptyWeekResponse | None = Field(
-        default=None,
         description="The facts behind emptyReason. Null exactly when live is populated.",
     )
     # Ticket 44 wires the verdict, the proposal, the candidate concession, the approved
     # concessions, the pins, and the conflicts into this response. Each field ships now, always
     # null or empty, so the generated contract does not change shape when they are filled.
     proposal: None = Field(
-        default=None, description="Always null: nothing produces a proposal in this deployment."
+        description="Always null: nothing produces a proposal in this deployment."
     )
     candidate_adjustment: AdjustmentResponse | None = Field(
-        default=None,
         description="Always null: a candidate concession rides on an operation and is not read "
         "back into this view yet.",
     )
     adjustments: list[AdjustmentResponse] = Field(
-        default_factory=list,
         description="Always empty: the concessions a week holds are read through the adjustments "
         "route in this deployment.",
     )
-    pins: list[None] = Field(
-        default_factory=list, description="Always empty: nothing records a pin in this deployment."
-    )
+    pins: list[None] = Field(description="Always empty: nothing records a pin in this deployment.")
     conflicts: list[None] = Field(
-        default_factory=list,
         description="Always empty: nothing records a conflict in this deployment.",
     )
-    verdict: None = Field(
-        default=None, description="Always null: no read computes a verdict in this deployment."
-    )
+    verdict: None = Field(description="Always null: no read computes a verdict in this deployment.")
     off_plan: list[OffPlanPeriodResponse] = Field(
-        default_factory=list,
         description="Every declared off-plan span reaching into this week, unclipped, so a "
         "Friday-to-Monday span reads the same in both weeks it touches.",
     )
     operation: OperationResponse | None = Field(
-        default=None, description="The non-terminal solve for this week, if one is in flight."
+        description="The non-terminal solve or materialize for this week, if one is in flight. "
+        "Either changes what the grid holds, and the field exists so a client knows what to follow."
     )
     input_version: int = Field(
         description="The week's input counter, for optimistic client reasoning. Zero when nothing "
         "has referenced the week yet: versions start at one."
     )
     readings: WeekReadingsResponse | None = Field(
-        default=None, description="The strip's figures. Null exactly when live is null."
+        description="The strip's figures. Null exactly when live is null."
     )
+
+    @classmethod
+    def of(cls, view: WeekView) -> Self:
+        """The wire shape of one composed week.
+
+        The zone mapping is emitted in date order, so two reads of one week are byte-identical.
+
+        The six fields no component populates yet are passed explicitly rather than defaulted, so
+        the emptiness is a statement at the one place the response is built rather than a property
+        of the schema that a client would then read as an absent field.
+        """
+        return cls(
+            iso_week=str(view.iso_week),
+            span=WireSpan.of(view.span),
+            zone_by_date={day.isoformat(): zone for day, zone in sorted(view.zone_by_date.items())},
+            live=None if view.live is None else PlanDocumentResponse.of(view.live),
+            empty_reason=None if view.empty is None else view.empty.reason,
+            empty_week=None if view.empty is None else EmptyWeekResponse.of(view.empty),
+            proposal=None,
+            candidate_adjustment=None,
+            adjustments=[],
+            pins=[],
+            conflicts=[],
+            verdict=None,
+            off_plan=[OffPlanPeriodResponse.of(period) for period in view.off_plan],
+            operation=None if view.operation is None else OperationResponse.of(view.operation),
+            input_version=view.input_version,
+            readings=None if view.readings is None else WeekReadingsResponse.of(view.readings),
+        )
 
 
 class WeekRevisionResponse(WireModel):
@@ -205,7 +233,7 @@ class WeekRevisionResponse(WireModel):
     )
     reason: RevisionReason = Field(description="What caused this revision to exist.")
     approved_at: datetime | None = Field(
-        default=None, description="When the user assented. Null for an applied revision."
+        description="When the user assented. Null for an applied revision."
     )
     input_version: int = Field(description="The input snapshot the revision was produced from.")
 
@@ -222,9 +250,26 @@ class WeekRevisionResponse(WireModel):
 
 
 class WeekRevisionsResponse(WireModel):
-    """One week's revision history, newest first. Read-only: no route mutates a revision."""
+    """One week's revision history, newest first. Read-only: no route mutates a revision.
+
+    ``truncated`` exists because the page is bounded and a bounded page that says nothing about its
+    bound is a partial history a client cannot tell from a whole one. There is no cursor: what this
+    answers is the recent history of one week, and paging back through a year of it is the weekly
+    review's question rather than this route's.
+    """
 
     revisions: list[WeekRevisionResponse]
+    truncated: bool = Field(
+        description="Whether the week has more revisions than this page holds. True means the "
+        "oldest are not here."
+    )
+
+    @classmethod
+    def of(cls, page: WeekRevisions) -> Self:
+        return cls(
+            revisions=[WeekRevisionResponse.of(record) for record in page.revisions],
+            truncated=page.truncated,
+        )
 
 
 class WeekVerdictResponse(WireModel):
@@ -234,6 +279,4 @@ class WeekVerdictResponse(WireModel):
     path. Ticket 44 supplies the verdict, and ticket 43 owns the only writer of a transition.
     """
 
-    verdict: None = Field(
-        default=None, description="Always null: no read computes a verdict in this deployment."
-    )
+    verdict: None = Field(description="Always null: no read computes a verdict in this deployment.")

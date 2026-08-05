@@ -3,6 +3,10 @@
 The Week screen's whole read is one request, so a block arrives with the reason that explains it
 rather than behind a second call per block. The six clause shapes are ``clause_schemas.py``.
 
+**Every field is required and the nullable ones are nullable.** A field with a default is OPTIONAL
+in the generated document, so a client would have to narrow ``undefined`` as well as ``null`` on a
+key the server always sends.
+
 **Three of the document's own fields are deliberately absent**, and they are the three minute
 figures: ``discretionary_minutes``, ``unallocated_minutes``, and ``oversubscription_minutes``. Each
 was computed against the inputs the solve read, so a period declared off-plan afterwards moves the
@@ -47,7 +51,7 @@ class BindingResponse(WireModel):
         description="Which occurrence of that row: a date, a zero-padded index, or a transit leg."
     )
     split_index: int | None = Field(
-        default=None, description="Which chunk of a divided task this is. Null when it is whole."
+        description="Which chunk of a divided task this is. Null when it is whole."
     )
 
     @classmethod
@@ -73,7 +77,6 @@ class BlockResponse(WireModel):
     title: str
     reason: ReasonResponse
     area_id: UUID | None = Field(
-        default=None,
         description="The Area this block is charged to. Null for the frame and for an imported "
         "anchor: one defines how much time exists and the other is time the product does not own.",
     )
@@ -82,14 +85,10 @@ class BlockResponse(WireModel):
         "derivation is not pinned and carries no pin glyph, even where the solver cannot move it."
     )
     superseded_placement: WireSpan | None = Field(
-        default=None, description="Where a pinned block would otherwise have been."
+        description="Where a pinned block would otherwise have been."
     )
-    objective_delta: float | None = Field(
-        default=None, description="What overriding that placement cost."
-    )
-    split_count: int | None = Field(
-        default=None, description="How many chunks the divided task was split into."
-    )
+    objective_delta: float | None = Field(description="What overriding that placement cost.")
+    split_count: int | None = Field(description="How many chunks the divided task was split into.")
 
     @classmethod
     def of(cls, block: Block) -> Self:

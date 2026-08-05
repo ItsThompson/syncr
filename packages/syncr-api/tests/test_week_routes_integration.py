@@ -70,7 +70,7 @@ from syncr_api.plans.readiness import MissingInput
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_api.plans.versions import WeekInputVersionRepository
-from syncr_api.plans.week_config import IMMEDIATE_PARAMETER
+from syncr_api.plans.week_config import HISTORY_PAGE, IMMEDIATE_PARAMETER
 from syncr_api.routines.config import ROUTINES_PREFIX
 from syncr_api.solving.config import SOLVE
 from syncr_api.solving.lifecycle import OperationLifecycle
@@ -294,6 +294,13 @@ def append_a_document(
     Materializing a week this full would need a week of declarations, and what the latency
     measurement is about is the cost of reading and serializing a document that size.
     """
+    append_revisions(database_url, tenant_id, iso_week, count=1, blocks=blocks)
+
+
+def append_revisions(
+    database_url: str, tenant_id: TenantId, iso_week: IsoWeek, *, count: int, blocks: int = 1
+) -> None:
+    """``count`` revisions of one week, each holding ``blocks`` blocks, newest last."""
 
     async def append() -> None:
         now = datetime.now(UTC)
@@ -318,15 +325,19 @@ def append_a_document(
         database = create_database(database_url)
         try:
             async with database.sessionmaker() as session, session.begin():
-                await PlanRepository(session, tenant_id).append(
-                    document=stored_document(document),
-                    objective_breakdown={},
-                    status=APPLIED,
-                    reason=RevisionReason.HORIZON_ADVANCED.value,
-                    weight_set_version=1,
-                    input_version=1,
-                    created_at=now,
-                )
+                plans = PlanRepository(session, tenant_id)
+                for appended in range(count):
+                    await plans.append(
+                        document=stored_document(document),
+                        objective_breakdown={},
+                        status=APPLIED,
+                        reason=RevisionReason.HORIZON_ADVANCED.value,
+                        weight_set_version=1,
+                        input_version=1,
+                        # Distinct instants, so "newest first" is an order the rows really have:
+                        # the history's tie-break on the id would otherwise decide it.
+                        created_at=now + timedelta(seconds=appended),
+                    )
         finally:
             await database.engine.dispose()
 
@@ -974,6 +985,37 @@ def test_the_history_lists_each_revision_with_its_timestamp_status_and_reason(
     # The revision names the inputs it was produced FROM, and appending it changed the live plan,
     # which is itself a solve input: so the week now reads one version further on.
     assert revisions[0]["inputVersion"] < week_view(http, headers, week)["inputVersion"]
+    assert answered.json()["truncated"] is False
+
+
+def test_a_history_longer_than_one_page_says_so_rather_than_truncating_in_silence(
+    http: TestClient, owner: UserRecord, configured: dict[str, str], live_database_url: str
+) -> None:
+    """A page as long as its own bound is indistinguishable from a whole history without the flag.
+
+    Driven at exactly the bound and one past it, because the off-by-one is the whole question: a
+    check that compared the page's length to the bound would call the first of these truncated.
+    """
+    week = IsoWeek.containing(datetime.now(UTC).date() - timedelta(days=60))
+    append_revisions(live_database_url, owner.tenant_id, week, count=HISTORY_PAGE)
+
+    exactly_one_page = revisions_of(http, configured, week)
+
+    assert len(exactly_one_page["revisions"]) == HISTORY_PAGE
+    assert exactly_one_page["truncated"] is False
+
+    append_revisions(live_database_url, owner.tenant_id, week, count=1)
+    one_too_many = revisions_of(http, configured, week)
+
+    assert len(one_too_many["revisions"]) == HISTORY_PAGE
+    assert one_too_many["truncated"] is True
+
+
+def revisions_of(http: TestClient, headers: dict[str, str], iso_week: object) -> dict[str, Any]:
+    answered = http.get(week_path(iso_week, "/revisions"), headers=headers)
+    assert answered.status_code == HTTPStatus.OK, answered.text
+    payload: dict[str, Any] = answered.json()
+    return payload
 
 
 def test_a_week_with_no_revision_has_an_empty_history(
@@ -982,7 +1024,7 @@ def test_a_week_with_no_revision_has_an_empty_history(
     answered = http.get(week_path(this_week(), "/revisions"), headers=signed_in)
 
     assert answered.status_code == HTTPStatus.OK, answered.text
-    assert answered.json()["revisions"] == []
+    assert answered.json() == {"revisions": [], "truncated": False}
 
 
 def test_no_route_offers_a_method_that_could_change_a_revision(
@@ -1237,6 +1279,10 @@ def test_the_week_view_is_read_in_well_under_the_budget_on_a_full_week(
     Measured rather than asserted: the figure below is reported and the assertion is an order of
     magnitude looser, because a developer's machine and a CI runner are not the deployment. A
     ceiling tight enough to be the budget would be answered by deleting the test.
+
+    **The client is in-process**, so the figure excludes the ASGI server, the socket and TLS. It is
+    a lower bound on deployed latency rather than an estimate of it, which is what makes the
+    four-fold headroom the conclusion rather than the number itself.
     """
     week = this_week()
     append_a_document(live_database_url, owner.tenant_id, week, blocks=BLOCKS_IN_A_FULL_WEEK)

@@ -12,6 +12,11 @@ that received a kind it has no template for would render nothing at all.
 Beside ``document_schemas.py`` rather than inside it, mirroring the storage split one layer down:
 the clause bodies are six independent pairs a reader can check one at a time, and the document
 that carries them is its own concern.
+
+**Every field is required except each shape's own ``kind``**, which carries the union's
+discriminator and is set by the class rather than by a caller. The generator emits a discriminated
+union's discriminator as required whatever its default, so the narrowing a client does is
+unaffected.
 """
 
 from __future__ import annotations
@@ -53,10 +58,10 @@ class ChurnBaselineResponse(WireModel):
     """
 
     revision_id: UUID | None = Field(
-        default=None, description="The approved revision churn is the difference from."
+        description="The approved revision churn is the difference from."
     )
     approved_at: datetime | None = Field(
-        default=None, description="When it was approved, which the clause renders as a date."
+        description="When it was approved, which the clause renders as a date."
     )
 
     @classmethod
@@ -70,7 +75,7 @@ class BlockedClause(WireModel):
     kind: Literal["blocked"] = "blocked"
     window: WireSpan
     rule: str = Field(description=_RULE_DESCRIPTION)
-    detail: str | None = None
+    detail: str | None
 
 
 class DominantClause(WireModel):
@@ -80,7 +85,7 @@ class DominantClause(WireModel):
     term: str
     share: float = Field(description=_SHARE_DESCRIPTION)
     baseline: ChurnBaselineResponse | None = Field(
-        default=None, description="Set when the term is churn: what it was measured against."
+        description="Set when the term is churn: what it was measured against."
     )
 
 
@@ -92,7 +97,7 @@ class BoundClause(WireModel):
         description="How a habit's content was chosen, or what fixed a derived block outright."
     )
     selected: str
-    cursor: str | None = None
+    cursor: str | None
 
 
 class FloorClause(WireModel):

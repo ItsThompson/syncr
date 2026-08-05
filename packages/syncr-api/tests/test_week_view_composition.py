@@ -18,11 +18,14 @@ from that table without this note mis-files three items.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from importlib import import_module
+from inspect import getmembers, isclass
 from typing import TYPE_CHECKING, get_args
 from uuid import uuid4
 
 import pytest
 
+from syncr_api.core.schemas import WireModel
 from syncr_api.offplan.reading import off_plan_reading
 from syncr_api.plans.clause_schemas import ClauseResponse, ReasonResponse, as_clause
 from syncr_api.plans.currency import CURRENT, PLAN_CURRENCIES, SOLVING, STALE, plan_currency
@@ -595,6 +598,19 @@ def aliases(model: type[BaseModel]) -> frozenset[str]:
     return frozenset(field.alias or name for name, field in model.model_fields.items())
 
 
+def optional_fields(model: type[BaseModel]) -> frozenset[str]:
+    """The fields a client would have to narrow ``undefined`` on, in their wire spelling.
+
+    A field with a default is not required, and the generated document leaves it out of the
+    ``required`` list, which openapi-typescript emits as ``field?:``. Section 13 declares every
+    field of this response required and the nullable ones nullable, which is also what thirty-six
+    other response fields in this api do, so the set below is asserted to be empty rather than
+    merely small.
+    """
+    declared = model.model_fields.items()
+    return frozenset(field.alias or name for name, field in declared if not field.is_required())
+
+
 def test_the_week_view_matches_section_13_field_for_field() -> None:
     assert aliases(WeekViewResponse) == SECTION_13_FIELDS | BEYOND_THE_INTERFACE
 
@@ -605,3 +621,66 @@ def test_the_readings_block_matches_section_13_field_for_field() -> None:
     on_the_wire = aliases(get_args(readings)[0])
 
     assert on_the_wire == SECTION_13_READINGS
+
+
+# Every response shape these four routes answer with, discovered by walking the three schema modules
+# rather than listed, so a shape a later ticket adds to one of them comes under the rule below
+# without this test being extended.
+SCHEMA_MODULES = (
+    "syncr_api.plans.schemas",
+    "syncr_api.plans.document_schemas",
+    "syncr_api.plans.clause_schemas",
+)
+
+# The one exemption, and it is not a field a client narrows: each clause shape's ``kind`` carries
+# the union's discriminator and is set by the class. openapi-typescript emits a discriminated
+# union's discriminator as required whatever its default, and the shapes are asserted below to
+# declare one.
+DISCRIMINATOR = "kind"
+
+
+def response_models() -> list[type[BaseModel]]:
+    """Every wire shape the week routes answer with, in a stable order."""
+    found: list[type[BaseModel]] = []
+    for name in SCHEMA_MODULES:
+        module = import_module(name)
+        found.extend(
+            member
+            for _name, member in getmembers(module, isclass)
+            if member.__module__ == name and issubclass(member, WireModel)
+        )
+    return found
+
+
+def test_no_field_of_a_week_response_is_optional_in_the_generated_contract() -> None:
+    """A name-only assertion would not see an optionality drift, and twelve fields drifted once.
+
+    The names are pinned above and this pins the other half of the same contract: a field that gains
+    a default becomes ``field?:`` in the generated TypeScript, and a client narrowing ``null`` alone
+    stops being sound against its own types while every runtime payload still carries the key.
+    """
+    models = response_models()
+    assert len(models) >= len(SCHEMA_MODULES), "the module walk found almost nothing"
+
+    optional = {
+        model.__name__: sorted(optional_fields(model) - {DISCRIMINATOR}) for model in models
+    }
+
+    assert {name: fields for name, fields in optional.items() if fields} == {}
+
+
+def test_the_optionality_check_reports_a_field_that_gained_a_default() -> None:
+    """The control: a rule whose test cannot fail is indistinguishable from one nobody enforces."""
+
+    class _Drifted(WireModel):
+        required: int
+        drifted: int | None = None
+
+    assert optional_fields(_Drifted) == frozenset({"drifted"})
+
+
+def test_every_clause_shape_declares_the_discriminator_the_exemption_names() -> None:
+    """So the exemption above cannot quietly cover a field that is not a discriminator."""
+    for member in _wire_clauses():
+        assert optional_fields(member) <= {DISCRIMINATOR}, member
+        assert DISCRIMINATOR in member.model_fields, member
