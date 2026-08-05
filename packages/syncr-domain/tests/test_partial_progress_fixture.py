@@ -17,6 +17,7 @@ from datetime import date, time
 from syncr_domain.feasibility import probe
 from syncr_domain.fixtures import partial_progress
 from syncr_domain.intervals import Instant, Interval, IntervalSet
+from syncr_domain.outcomes import MISS_STATE
 from syncr_domain.weeks import week_span
 from syncr_domain.zones import ZoneProfile, to_instant
 
@@ -98,3 +99,48 @@ def test_the_week_the_fixture_describes_is_one_the_probe_finds_no_gap_in() -> No
     # into a gap, so a test that measures a gap against it starts from nothing rather than from
     # noise.
     assert probe(partial_progress.PARTIAL_PROGRESS).shortfalls == ()
+
+
+def test_a_confirmed_skip_on_the_past_hour_raises_the_demand_by_that_hour() -> None:
+    # The attribution table's one contested row, re-derived rather than asserted as a number: the
+    # user said the Tuesday hour's work was not done, so nothing is attributed for it and the whole
+    # 240 less the two pinned hours is outstanding again.
+    recorded = 0
+    past_before_the_deadline = 0
+    future_before_the_deadline = partial_progress.PINNED_AHEAD.total_minutes()
+    attributed = max(recorded, past_before_the_deadline) + future_before_the_deadline
+
+    assert (
+        partial_progress.ESTIMATE_MINUTES - attributed
+        == partial_progress.REMAINING_MINUTES_AFTER_A_SKIP
+    )
+    assert partial_progress.AFTER_A_SKIP.deadline_demands[0].remaining_minutes == (
+        partial_progress.REMAINING_MINUTES_AFTER_A_SKIP
+    )
+
+
+def test_the_skip_is_recorded_against_the_task_the_placements_are_for() -> None:
+    # The row exists so a consumer can drive the netting with it, so it has to name the same content
+    # the demand is about: an outcome on another binding would change no figure at all.
+    assert partial_progress.SKIPPED_PAST.binding.entity_id == partial_progress.TASK
+    assert partial_progress.SKIPPED_PAST.state is MISS_STATE
+
+
+def test_recording_the_skip_returns_no_span_to_capacity() -> None:
+    # The column of the table that is uniform by construction. Capacity starts at `now`, so the
+    # Tuesday hour was never in it: were it returned, pressing skip would make the week read as more
+    # feasible, which is the inversion the split between attribution and capacity exists to prevent.
+    assert partial_progress.AFTER_A_SKIP.placed == partial_progress.PARTIAL_PROGRESS.placed
+
+
+def test_the_week_absorbs_the_denied_hour_without_a_gap_and_without_a_smaller_one() -> None:
+    # What the fixture is FOR: a healthy week, so a figure measured against it starts from nothing.
+    # The denied hour raises the demand from 60 to 120 and the week still has the Career capacity to
+    # hold it before Friday, so no gap appears. What may never happen is a gap FALLING, and the
+    # denominator may not move either: capacity is identical because a past span was never in it.
+    healthy = probe(partial_progress.PARTIAL_PROGRESS)
+    after = probe(partial_progress.AFTER_A_SKIP)
+
+    assert healthy.shortfalls == ()
+    assert after.shortfalls == ()
+    assert after.discretionary_minutes == healthy.discretionary_minutes
