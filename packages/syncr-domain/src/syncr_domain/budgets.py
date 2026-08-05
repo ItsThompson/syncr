@@ -153,9 +153,30 @@ def minutes_after_floors(discretionary_minutes: int, shares: Iterable[AreaShare]
     return max(0, discretionary_minutes - floors)
 
 
-def oversubscription_minutes(allocations: Iterable[AreaAllocation], discretionary: int) -> int:
-    """How far the Areas' own targets exceed discretionary time. Zero when they fit."""
-    return max(0, sum(allocation.target_minutes for allocation in allocations) - discretionary)
+def oversubscription_minutes(target_minutes: Iterable[int], discretionary: int) -> int:
+    """How far the Areas' own targets exceed discretionary time. Zero when they fit.
+
+    Stated over the targets rather than over a report's rows, because the figure needs nothing
+    else and two callers hold their targets in different shapes: a budget report holds an
+    allocation per Area, and a plan document holds the per-Area figures a week was solved
+    against. One arithmetic, one clamp, either way.
+    """
+    return max(0, sum(target_minutes) - discretionary)
+
+
+def unallocated_minutes(discretionary: IntervalSet, claimed: IntervalSet) -> int:
+    """Discretionary minutes no block carrying an Area covers.
+
+    Coverage rather than a residual against Area targets: ``discretionary - sum(target)`` is
+    exactly zero for a user whose percentages sum to 100 and negative for an oversubscribed
+    budget, and neither is a renderable wedge. Taken as a subtraction of sets, the figure is
+    non-negative and no larger than the denominator by construction rather than by a clamp.
+
+    ``claimed`` is unioned by its caller and may reach outside ``discretionary``: a block
+    covering time that left the denominator claims none of it, which the subtraction already
+    says.
+    """
+    return discretionary.subtract(claimed).total_minutes()
 
 
 def budget_report(
@@ -200,8 +221,10 @@ def budget_report(
     return BudgetReport(
         discretionary_minutes=discretionary_minutes,
         allocations=allocations,
-        unallocated_minutes=discretionary.subtract(claimed).total_minutes(),
-        oversubscription_minutes=oversubscription_minutes(allocations, discretionary_minutes),
+        unallocated_minutes=unallocated_minutes(discretionary, claimed),
+        oversubscription_minutes=oversubscription_minutes(
+            (allocation.target_minutes for allocation in allocations), discretionary_minutes
+        ),
     )
 
 

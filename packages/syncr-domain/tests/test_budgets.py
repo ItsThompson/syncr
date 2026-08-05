@@ -26,7 +26,9 @@ from syncr_domain.budgets import (
     budget_report,
     floor_minutes,
     minutes_after_floors,
+    oversubscription_minutes,
     target_minutes,
+    unallocated_minutes,
 )
 from syncr_domain.discretionary import discretionary_intervals, discretionary_time
 from syncr_domain.intervals import Interval, IntervalSet
@@ -426,3 +428,30 @@ def test_a_budget_with_no_areas_leaves_the_whole_denominator_unallocated(
     assert report.unallocated_minutes == discretionary_time(
         WEEK, IntervalSet(), IntervalSet(), IntervalSet(), off_plan
     )
+
+
+def test_unallocated_minutes_is_the_denominator_less_what_is_claimed_of_it() -> None:
+    # The residual on its own, because a second caller reads it: a plan document carries the same
+    # figure over its own blocks, and a second statement of the subtraction is how the report and
+    # the document would come to disagree about one week.
+    discretionary = IntervalSet([Interval(at(9), at(12))])
+    claimed = IntervalSet([Interval(at(10), at(11))])
+
+    assert unallocated_minutes(discretionary, claimed) == 120
+
+
+def test_time_claimed_outside_the_denominator_claims_none_of_it() -> None:
+    # A block covering time that left the denominator claims nothing, which the subtraction already
+    # says, so no caller has to clip its covered set first.
+    discretionary = IntervalSet([Interval(at(9), at(12))])
+    elsewhere = IntervalSet([Interval(at(1), at(3))])
+
+    assert unallocated_minutes(discretionary, elsewhere) == 180
+
+
+def test_targets_are_oversubscribed_by_what_they_exceed_the_denominator_by() -> None:
+    # Stated over the targets rather than over a report's rows, because two callers hold theirs in
+    # different shapes and the figure needs nothing else.
+    assert oversubscription_minutes([60, 120], 100) == 80
+    assert oversubscription_minutes([60, 120], 180) == 0
+    assert oversubscription_minutes([], 0) == 0
