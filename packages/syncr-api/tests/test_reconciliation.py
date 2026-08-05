@@ -280,9 +280,9 @@ def test_a_duplicate_carrying_syncrs_key_is_not_counted_as_foreign() -> None:
 # --------------------------------------------------------------------------------
 
 
-def test_the_plan_states_its_own_application_order() -> None:
-    """Patches, then inserts, then deletes: a partial application leaves a stale event rather than a
-    gap where a commitment should be."""
+def test_the_plan_reports_the_counts_a_log_line_states() -> None:
+    """The order the plan is applied in is asserted where the writes are visible, in
+    ``test_the_four_arms_are_applied_patches_inserts_deletes``; this is the tally beside it."""
     plan = plan_reconciliation(
         desired_of(intended(KEY, title="new"), intended("c" * 64)),
         [held(intended(KEY), event_id="evt-1"), held(intended("d" * 64), event_id="evt-2")],

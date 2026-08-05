@@ -110,7 +110,8 @@ class EnvSettings(SyncrSettings):
     ``HOST``, ``DATABASE_URL``, ``SESSION_SIGNING_SECRET``, ``ALLOWED_ORIGINS``,
     ``PUBLIC_BASE_URL``, ``OAUTH_KEYS_PATH``, ``OAUTH_KEY_ENCRYPTION_KEY``,
     ``GOOGLE_OAUTH_CLIENT_ID``, ``GOOGLE_OAUTH_CLIENT_SECRET``,
-    ``GOOGLE_OAUTH_REDIRECT_URI``, ``GOOGLE_TOKEN_ENCRYPTION_KEY``.
+    ``GOOGLE_OAUTH_REDIRECT_URI``, ``GOOGLE_TOKEN_ENCRYPTION_KEY``,
+    ``GOOGLE_PROJECTION_WRITES``.
     Unknown keys are ignored (see
     :class:`syncr_common.config.SyncrSettings`).
     """
