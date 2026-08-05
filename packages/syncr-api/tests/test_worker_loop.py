@@ -62,7 +62,7 @@ ITERATION = [
     ("solve", False),
     ("plan_horizon_maintainer", True),
     ("calendar_sync", True),
-    ("projection", False),
+    ("projection", True),
     ("maintenance", True),
 ]
 
@@ -72,7 +72,7 @@ def test_the_iteration_runs_the_five_duties_in_the_documented_order() -> None:
 
 
 def test_a_duty_with_no_body_yet_declares_no_runner() -> None:
-    """The solve runner and the projection runner are filled in by the slices that own them.
+    """The solve runner is filled in by the slice that owns it.
 
     Declared as a row with no runner rather than as a commented-out line, so the structure is data a
     test reads. The solve runner deliberately does not claim yet either: claiming an operation it

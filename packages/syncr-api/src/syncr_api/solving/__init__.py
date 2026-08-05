@@ -11,6 +11,7 @@
 | ``reporting.py`` | what each status means to the user, one sentence per word |
 | ``repository.py`` | the per-operation statements, each carrying its own legality |
 | ``sweeps.py`` | the two set-wide statements maintenance runs |
+| ``queue.py`` | what is waiting to be done, for the worker duty that drains it |
 | ``lifecycle.py`` | create, claim, finish: the writes, and the one enforcement of the machine |
 | ``service.py`` | the two reads a route answers with, on an explicit principal |
 | ``maintenance.py`` | the worker duty: return the abandoned claims, prune the terminal rows |

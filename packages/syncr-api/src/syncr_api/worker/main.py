@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING
 from prometheus_client import Counter
 
 from syncr_api.calendars.config import SYNC_INTERVAL
+from syncr_api.calendars.projection_runner import ProjectionRunner
 from syncr_api.calendars.runner import CalendarSyncRunner
 from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_database
@@ -108,8 +109,7 @@ class Duty:
 #
 # A duty whose runner is `None` has no body yet. It is declared here rather than left as a
 # comment so the structure is data a test can read, and so filling one in is a change to
-# one row: the solve runner's body needs the solve coordinator's claim and the solver, and
-# the projection runner's needs the write target.
+# one row: the solve runner's body needs the solve coordinator's claim and the solver.
 #
 # The solve runner deliberately does NOT claim yet. Claiming an operation it cannot finish
 # would leave it `running` until its lease expired, and the reaper would then retry it into
@@ -119,7 +119,7 @@ WORKER_DUTIES: tuple[Duty, ...] = (
     Duty(name="solve"),
     Duty(name="plan_horizon_maintainer", runner=PlanHorizonRunner(clock=utc_now)),
     Duty(name="calendar_sync", runner=CalendarSyncRunner(interval=SYNC_INTERVAL, clock=utc_now)),
-    Duty(name="projection"),
+    Duty(name="projection", runner=ProjectionRunner(clock=utc_now)),
     Duty(
         name="maintenance",
         runner=OperationMaintenanceRunner(interval=MAINTENANCE_INTERVAL, clock=utc_now),

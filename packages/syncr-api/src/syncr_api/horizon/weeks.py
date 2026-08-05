@@ -1,4 +1,4 @@
-"""Which weeks the projection horizon covers, and when it next moves.
+"""Which weeks the projection horizon covers, when it next moves, and the span it is.
 
 The horizon is ``[today_local, today_local + horizon_days)``: a rolling window of LOCAL dates, so it
 advances with the date rather than being extended by hand, and a week is inside it when any of the
@@ -20,6 +20,7 @@ from datetime import time, timedelta
 from typing import TYPE_CHECKING
 
 from syncr_api.user_settings.zone_reading import local_date
+from syncr_domain.intervals import Interval
 from syncr_domain.weeks import IsoWeek
 from syncr_domain.zones import to_instant
 
@@ -58,6 +59,24 @@ def horizon_weeks(*, today: date, horizon_days: int) -> tuple[IsoWeek, ...]:
         if week not in weeks:
             weeks.append(week)
     return tuple(weeks)
+
+
+def horizon_span(*, today: Date, horizon_days: int, zone: ZoneId) -> Interval:
+    """The horizon as instants: local midnight today, to local midnight ``horizon_days`` later.
+
+    What the projection is bounded by, and what it will not delete past. Derived from the same
+    ``today`` and ``horizon_days`` the week list is, so the span a calendar is reconciled over and
+    the weeks whose plans are read cannot disagree about where the horizon ends.
+
+    Both ends resolve through the zone layer's one wall-time-to-instant function, so a horizon whose
+    first or last midnight a transition skips is answered the way every other declared wall time is.
+    A consequence worth naming: the bounds land on local midnight, which is also where an off-plan
+    day segment breaks, so no segment straddles either end.
+    """
+    return Interval(
+        to_instant(MIDNIGHT, today, zone),
+        to_instant(MIDNIGHT, today + _ONE_DAY * horizon_days, zone),
+    )
 
 
 def next_local_midnight(now: datetime, zone: ZoneId) -> datetime:

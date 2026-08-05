@@ -82,6 +82,7 @@ if TYPE_CHECKING:
     from syncr_api.calendars.remote_calendars import RemoteCalendarReader
     from syncr_api.core.principal import Principal
     from syncr_api.core.settings import ServiceSettings
+    from syncr_api.google_account.tokens import AccessTokenSource
     from syncr_domain.identifiers import TenantId
     from syncr_domain.zones import ZoneProfile
 
@@ -179,12 +180,7 @@ def build_adapters(
 
 
 def build_event_writing(
-    settings: ServiceSettings,
-    session: AsyncSession,
-    tenant_id: TenantId,
-    *,
-    writes: httpx.AsyncClient,
-    tokens: httpx.AsyncClient,
+    settings: ServiceSettings, *, writes: httpx.AsyncClient, tokens: AccessTokenSource
 ) -> EventWriting:
     """The write side of the projection: a writer, or the stated reason there is none.
 
@@ -197,16 +193,55 @@ def build_event_writing(
         return WritesUnavailable(reason=NOT_CONFIGURED_REASON)
     if not settings.google_projection_writes:
         return UNARMED
-    return GoogleEventWriter(
-        transport=HttpxGoogleWriteTransport(writes),
-        tokens=build_access_tokens(settings, session, tenant_id, tokens),
+    return GoogleEventWriter(transport=HttpxGoogleWriteTransport(writes), tokens=tokens)
+
+
+def build_write_target_adapter(
+    settings: ServiceSettings,
+    session: AsyncSession,
+    tenant_id: TenantId,
+    *,
+    reads: httpx.AsyncClient,
+    writes: httpx.AsyncClient,
+    profile: ZoneProfile,
+    horizon: Interval,
+) -> GoogleAdapter:
+    """The adapter the projection reconciles the write target through.
+
+    A second adapter rather than the read map's, and the difference is the whole point: this one
+    holds a writer and that one holds the refusal. Composed only by the worker's projection duty,
+    so the ability to delete a calendar is reachable from exactly one place.
+
+    The horizon is a constructor argument because the adapter applies it: the existing events are
+    read over it, and it is the bound past which nothing is removed.
+
+    **One token source, shared by the read and the write.** It caches the access token for its own
+    lifetime, so a reconciliation of two hundred events costs one refresh; two sources would cost
+    two, and a second request to the token endpoint per pass buys nothing.
+    """
+    tokens = build_access_tokens(settings, session, tenant_id, reads)
+    return GoogleAdapter(
+        client=GoogleCalendarClient(transport=HttpxGoogleTransport(reads), tokens=tokens),
+        profile=profile,
+        horizon=horizon,
+        clock=utc_now,
+        writes=build_event_writing(settings, writes=writes, tokens=tokens),
     )
 
 
 async def read_zone_profile(session: AsyncSession, principal: Principal) -> ZoneProfile:
     """The tenant's home zone and travel overrides, as the domain value zones resolve against."""
-    settings = await SettingsRepository(session, principal.tenant_id).read()
-    overrides = await TravelOverrideRepository(session, principal.tenant_id).list_all()
+    return await read_zone_profile_of(session, principal.tenant_id)
+
+
+async def read_zone_profile_of(session: AsyncSession, tenant_id: TenantId) -> ZoneProfile:
+    """The same profile, for the worker, which holds a tenant rather than a principal.
+
+    Two entry points over one reading, so the zone a feed's floating time resolves in and the zone a
+    projection's day segments break at cannot come to differ.
+    """
+    settings = await SettingsRepository(session, tenant_id).read()
+    overrides = await TravelOverrideRepository(session, tenant_id).list_all()
     return zone_profile(settings.home_zone, as_domain(overrides))
 
 

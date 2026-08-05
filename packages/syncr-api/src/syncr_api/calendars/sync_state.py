@@ -104,15 +104,21 @@ def recorded_failure(
     ``last_success_at``, the counts, the rejections, and the cursor are all kept: none of them
     became untrue because a poll failed, and the panel states when the feed last succeeded.
     """
-    return replace(previous, last_attempt_at=at, last_error=_stated(reason), attempts=attempts)
+    return replace(
+        previous, last_attempt_at=at, last_error=stated_failure(reason), attempts=attempts
+    )
 
 
-def _stated(reason: str) -> str:
+def stated_failure(reason: str, *, surviving: str = RETAINED_NOTICE) -> str:
     """The failure as the panel renders it: what broke, then what still works.
 
-    Bounded to the column's width from the end of the reason rather than the end of the
-    notice, so a publisher's long message cannot push out the sentence that says the anchors
-    survive.
+    Bounded to the column's width from the end of the reason rather than the end of the notice, so
+    a publisher's long message cannot push out the sentence that says what survived.
+
+    ``surviving`` is an argument because the write target's own attempts are recorded in a sync
+    state too, and what survives a failed projection is not what survives a failed read: the
+    anchors are irrelevant there and the previous projection is the thing that still stands.
+    One implementation of the bound, two sentences.
     """
-    room = LAST_ERROR_MAX_LENGTH - len(RETAINED_NOTICE) - 1
-    return f"{reason[:room].rstrip()} {RETAINED_NOTICE}"
+    room = LAST_ERROR_MAX_LENGTH - len(surviving) - 1
+    return f"{reason[:room].rstrip()} {surviving}"
