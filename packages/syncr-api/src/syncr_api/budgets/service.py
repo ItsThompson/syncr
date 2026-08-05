@@ -25,9 +25,10 @@ subtracted, so the statement and the figure it explains cannot disagree.
 **The span is the week's real span.** It comes from ``week_span`` over the tenant's own zone
 profile, so a transition week is 167 or 169 hours and a travel week resolves two zones across
 its days. Every figure derives from ``span.total_minutes()``, so no figure needs a special case
-for either. The zone active on each day inside the week is resolved from the same profile and
-carried on the view, because the two are one question asked twice and a second reader of the
-profile in one request would be a second answer to how long that week was.
+for either. The zone active on each day inside the week and the home zone the week's dates are
+resolved in both come from the same profile and are carried on the view, because the three are one
+question asked three times and a second reader of the profile in one request would be a second
+answer to how long that week was.
 
 The read writes nothing at all: no row, no version bump, and no verdict.
 """
@@ -66,15 +67,18 @@ if TYPE_CHECKING:
 class BudgetView:
     """One period's budget report, the span its denominator was derived from, and time off.
 
-    ``zone_by_date`` is beside the span because the two are one resolution asked twice: the span
-    resolves the two Mondays bounding the week and this resolves the days inside it. The report
-    itself needs neither, and a second caller does: the week view renders the active zone per day
+    ``zone_by_date`` and ``home_zone`` are beside the span because all three are one resolution
+    asked three times: the span resolves the two Mondays bounding the week, the mapping resolves the
+    days inside it, and the home zone is the one every "which date is it" question in this
+    application is answered in. The report needs none of the three beyond the span, and a second
+    caller needs all of them: the week view renders the zones and resolves the horizon's local date,
     and a profile read twice in one request is two answers to how long that week was.
     """
 
     period: IsoWeek
     span: Interval
     zone_by_date: Mapping[Date, ZoneId]
+    home_zone: ZoneId
     report: BudgetReport
     off_plan: OffPlanReading
 
@@ -116,6 +120,7 @@ class BudgetService:
             period=iso_week,
             span=span,
             zone_by_date=active_zone_by_date(iso_week, profile),
+            home_zone=profile.home_zone,
             report=report,
             off_plan=off_plan_reading(span, held.off_plan),
         )

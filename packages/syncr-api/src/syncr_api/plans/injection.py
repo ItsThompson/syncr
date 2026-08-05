@@ -120,10 +120,10 @@ def build_week_service(
     """One week service, scoped to ``tenant_id``, reading time from ``clock``.
 
     Split from the dependency above for the same reason ``build_week_assembler`` is a function of a
-    tenant: the composition is eleven collaborators, and a caller that wants one against a stated
-    instant should not have to restate all eleven. The horizon a week is compared against and the
-    days a figure is charged to both move at local midnight, so an instant is what a test of either
-    has to be able to fix.
+    tenant: the composition is ten collaborators, and a caller that wants one against a stated
+    instant should not have to restate all ten. The horizon a week is compared against and the days
+    a figure is charged to both move at local midnight, so an instant is what a test of either must
+    be able to fix.
 
     The budget service is the api's own, acquired through its dependency rather than rebuilt, so the
     three figures on the summary strip are the ones the pie review divides: a second composition of
@@ -147,7 +147,6 @@ def build_week_service(
             WeekPatternRepository(transaction, tenant_id),
         ),
         sources=CalendarSourceRepository(transaction, tenant_id),
-        settings=settings,
         off_plan=OffPlanPeriodRepository(transaction, tenant_id),
         confirmations=RecordedDayConfirmations(
             PlannedDayReader(revisions),
