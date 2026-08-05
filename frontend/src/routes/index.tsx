@@ -7,17 +7,17 @@
  * The screens the sidebar shows are derived from one table (`SCREENS`), and this file asserts
  * that every one of them has a route, so a screen cannot be navigable and unrouted. */
 
-import { Navigate, type RouteObject } from "react-router";
+import { type RouteObject } from "react-router";
 
 import { GatedShell } from "../app/GatedShell";
-import { DEFAULT_RETURN_PATH } from "../app/signIn";
 import { SETUP_PATH, SIGN_IN_PATH } from "../ui/domain/shell/navigation";
 import { AreasRoute } from "./AreasRoute";
 import { BacklogRoute } from "./BacklogRoute";
 import { LearnedRoute } from "./LearnedRoute";
 import { NotFoundRoute } from "./NotFoundRoute";
+import { RootRedirect } from "./RootRedirect";
 import { SettingsRoute } from "./settings";
-import { SetupRoute } from "./SetupRoute";
+import { SetupRoute } from "./setup";
 import { SignInRoute } from "./SignInRoute";
 import { TemplatesRoute } from "./templates";
 import { TodayRoute } from "./TodayRoute";
@@ -28,9 +28,9 @@ export const routes: RouteObject[] = [
   {
     element: <GatedShell />,
     children: [
-      // `/` lands on the week. Sending a user with no plan to setup instead needs the
-      // setup-completeness reading, which arrives with the screen that computes it.
-      { index: true, element: <Navigate to={DEFAULT_RETURN_PATH} replace /> },
+      // `/` lands on the week, or on setup when the minimum a plan needs does not exist. The reading
+      // that decides between them arrived with the screen that computes it, which is `/setup`.
+      { index: true, element: <RootRedirect /> },
       { path: SETUP_PATH, element: <SetupRoute /> },
       { path: "/week", element: <WeekRoute /> },
       { path: "/today", element: <TodayRoute /> },
