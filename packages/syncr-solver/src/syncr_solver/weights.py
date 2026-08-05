@@ -161,7 +161,6 @@ class WeightSet:
     def __post_init__(self) -> None:
         object.__setattr__(self, "time_of_day_fitness", dict(self.time_of_day_fitness))
         object.__setattr__(self, "skip_probability", dict(self.skip_probability))
-        _require_the_vocabulary_to_match(self.term_weights())
         for name, weight in self.term_weights().items():
             _require_a_weight(name, weight)
         _require_a_price(self.context_switch_cost)
@@ -172,9 +171,11 @@ class WeightSet:
     def term_weights(self) -> Mapping[str, float]:
         """Each term's weight by its name, which is what a breakdown pairs its costs with.
 
-        Spelled out rather than read off the fields, so a field renamed without the vocabulary
-        fails at construction instead of resolving to whatever a lookup found. The guard crosses
-        this against :data:`OBJECTIVE_TERMS` in both directions.
+        Spelled out rather than read off the fields, so a renamed weight is a name error here rather
+        than a lookup that resolves to whatever it finds. That this mapping and
+        :data:`OBJECTIVE_TERMS` name one set is asserted by the suite rather than at construction:
+        both are literal in this module, so no input can make them disagree and a guard against it
+        would be one with no reachable violation.
         """
         return {
             "deadline_risk": self.deadline_risk,
@@ -210,22 +211,6 @@ class WeightSet:
     def skip_at(self, area_id: AreaId, bucket: TimeBucket) -> float | None:
         """How often this Area's work is refused in this part of the day, or ``None``."""
         return self.skip_probability.get((area_id, bucket))
-
-
-def _require_the_vocabulary_to_match(weights: Mapping[str, float]) -> None:
-    """The names a weight set offers and the names the objective has terms for are one set.
-
-    Both directions, at construction. A term with no weight would be scored at whatever a lookup
-    happened to find, and a weight with no term would be a number nobody reads: the same fault
-    that makes an unread fitted parameter worth refusing.
-    """
-    offered = set(weights)
-    named = set(OBJECTIVE_TERMS)
-    if offered != named:  # pragma: no cover - unreachable while both are literal in this module
-        raise WeightError(
-            f"the weight set offers {sorted(offered)} and the objective names "
-            f"{sorted(named)}: a term with no weight is scored at whatever a lookup finds"
-        )
 
 
 def _require_a_weight(name: str, weight: float) -> None:
