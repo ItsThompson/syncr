@@ -191,21 +191,26 @@ def a_service(
     *,
     plans: Sequence[PlanRevisionRecord] = (),
     outcomes: Sequence[BlockOutcomeRecord] = (),
+    log: FakeOutcomeLog | None = None,
     areas: AreaRepository | None = None,
     settings: SettingsRepository | None = None,
     overrides: TravelOverrideRepository | None = None,
     now: datetime,
 ) -> Wired:
-    """The outcome service over fakes, with the real bump and the real read model."""
+    """The outcome service over fakes, with the real bump and the real read model.
+
+    ``log`` takes an existing one, so a test about time passing builds a second service over the
+    rows the first wrote rather than reaching into the service's own clock.
+    """
     stored_plans = FakePlans(plans)
-    log = FakeOutcomeLog(outcomes)
+    kept = log if log is not None else FakeOutcomeLog(outcomes)
     versions = FakeVersions(bumped=[])
     settings_repository = settings or FakeSettings()
     return Wired(
         service=OutcomeService(
             plans=stored_plans,
             days=PlannedDayReader(stored_plans),
-            outcomes=log,
+            outcomes=kept,
             areas=areas or FakeAreas(),
             settings=settings_repository,
             overrides=overrides or FakeOverrides(),
@@ -213,7 +218,7 @@ def a_service(
             clock=lambda: now,
         ),
         plans=stored_plans,
-        log=log,
+        log=kept,
         versions=versions,
     )
 

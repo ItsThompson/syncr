@@ -52,7 +52,8 @@ _MINUTES_DESCRIPTION = (
 )
 _INTERVAL_DESCRIPTION = (
     "When the block really happened, for a `moved` outcome only. It creates no pin: a `moved` "
-    "outcome describes the past, and a pin constrains the future."
+    "outcome describes the past, and a pin constrains the future. At most "
+    f"{MAX_ACTUAL_MINUTES} minutes long, for the reason `actualMinutes` carries the same bound."
 )
 _WEEK_DESCRIPTION = (
     "The ISO week the block belongs to, such as `2026-W07`. A block id is a digest of the week and "

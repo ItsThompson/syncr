@@ -215,13 +215,36 @@ async def test_a_move_records_the_interval_it_really_happened_in() -> None:
     assert recorded.occurred_at == block.interval.start
 
 
-async def test_a_move_reaches_no_collaborator_that_could_create_a_pin() -> None:
-    # O7's second half, as a property of the service rather than of one call: a `moved` outcome
-    # describes the past and a pin constrains the future, so this service must not be able to
-    # create one at all. The integration suite asserts no row appears.
-    scene = wired(a_gym_block(day=1))
+async def test_a_move_longer_than_a_day_is_refused_and_writes_nothing() -> None:
+    # The same bound and the same reason `partial`'s minutes carry: a block is placed inside one
+    # week and listed on the day it begins, so a span longer than a day describes something other
+    # than one block happening elsewhere. Unbounded, a `moved` outcome naming a decade attributes
+    # five million minutes to its content, which once a live placement reader exists would zero a
+    # task's remaining demand for every deadline and make an infeasible week read as feasible.
+    block = a_gym_block(day=1)
+    scene = wired(block)
+    a_decade = Interval(at(9, day=1), at(9, day=1) + timedelta(days=3650))
 
-    assert not [name for name in vars(scene.service) if "pin" in name.lower()]
+    with pytest.raises(ValidationFailed, match="may report at most 1440"):
+        await scene.service.record(
+            OWNER, block.id, a_recording(OutcomeState.MOVED, actual_interval=a_decade)
+        )
+
+    assert (await scene.service.read_day(OWNER, TUESDAY)).behind[0].outcome is None
+
+
+async def test_a_move_of_exactly_a_day_is_accepted() -> None:
+    # The control: the bound distinguishes rather than refusing a long block. A night's sleep is the
+    # longest thing a template can declare, and it fits.
+    block = a_gym_block(day=1)
+    scene = wired(block)
+    a_whole_day = Interval(at(9, day=1), at(9, day=2))
+
+    recorded = await scene.service.record(
+        OWNER, block.id, a_recording(OutcomeState.MOVED, actual_interval=a_whole_day)
+    )
+
+    assert recorded.actual_interval == a_whole_day
 
 
 async def test_a_block_the_weeks_plan_does_not_hold_is_a_404() -> None:
@@ -375,12 +398,20 @@ async def test_confirming_a_day_records_every_block_including_the_untouched_ones
 
 
 async def test_confirming_a_day_twice_keeps_the_instant_it_was_first_settled_at() -> None:
+    # Three days later, over the rows the first confirmation wrote. A second service rather than a
+    # reassigned clock, so the test stays on the public surface: what moves is time, and time is a
+    # constructor argument here.
     block = a_gym_block(day=1)
     scene = wired(block)
     first = await scene.service.confirm_day(OWNER, TUESDAY)
 
-    scene.service._clock = lambda: NOW + timedelta(days=3)
-    second = await scene.service.confirm_day(OWNER, TUESDAY)
+    later = a_service(
+        plans=[a_revision(a_week(block))],
+        log=scene.log,
+        areas=FakeAreas([AREA]),
+        now=NOW + timedelta(days=3),
+    )
+    second = await later.service.confirm_day(OWNER, TUESDAY)
 
     assert first.confirmed_at == NOW
     assert second.confirmed_at == NOW
@@ -400,6 +431,29 @@ async def test_today_itself_can_be_confirmed() -> None:
     day = await scene.service.confirm_day(OWNER, WEDNESDAY)
 
     assert day.confirmed_at == NOW
+
+
+async def test_confirming_today_answers_for_a_block_that_has_not_ended() -> None:
+    # The case the ledger's grouping rule does NOT govern, pinned deliberately rather than left to
+    # be read off the code. A day is answered for as a whole, so the 20:00 block is a confirmed
+    # presumption at 09:00 and the rotation cursor reads it as a completion.
+    #
+    # The alternative, settling only what has ended, was rejected because a day's last block
+    # routinely ends on the NEXT day: a `Sleep` routine from 23:00 belongs to the day it begins in,
+    # so waiting for every block to end would make today unconfirmable until tomorrow morning for
+    # every user who sleeps, and the evening pass would settle nothing. An evening that turns out
+    # otherwise is one recorded exception away, and O5 re-derives what the log projects.
+    ended = a_gym_block(day=2, index=0, hours=(7, 8))
+    ahead = a_gym_block(day=2, index=1, hours=(20, 21))
+    scene = wired(ended, ahead)
+
+    day = await scene.service.confirm_day(OWNER, WEDNESDAY)
+
+    assert day.confirmed_at == NOW
+    assert [row.block_id for row in day.behind] == [ended.id]
+    assert [row.block_id for row in day.ahead] == [ahead.id]
+    assert all(row.is_confirmed for row in day.rows)
+    assert all(row.state is OutcomeState.PRESUMED for row in day.rows)
 
 
 async def test_confirming_a_day_that_holds_no_block_records_nothing() -> None:

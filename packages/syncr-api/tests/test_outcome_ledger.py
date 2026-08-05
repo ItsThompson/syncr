@@ -80,7 +80,7 @@ class TestHowLongADayIs:
         # user did not have.
         assert minutes(day_span(LONDON_SPRING_FORWARD, profile(LONDON))) == 23 * MINUTES_PER_HOUR
 
-    def test_a_fall_back_day_is_an_hour_long(self) -> None:
+    def test_a_fall_back_day_is_an_hour_longer(self) -> None:
         assert minutes(day_span(LONDON_FALL_BACK, profile(LONDON))) == 25 * MINUTES_PER_HOUR
 
     def test_a_transition_at_midnight_still_bounds_the_day(self) -> None:
@@ -282,9 +282,12 @@ class TestTheLedgersRowsAndItsHeader:
         assert rows[0].area_name is None
 
     def test_a_block_that_has_ended_is_behind_now_and_one_still_running_is_ahead(self) -> None:
-        # The grouping boundary is the END, because the ledger asks "did this happen" and a block
-        # still running has not happened yet. This is deliberately NOT the immovability boundary,
-        # which is the start.
+        # The grouping boundary is the END, because the ledger's two sections are "recorded" and
+        # "presumed until you say otherwise", and a block still running has not been recorded. This
+        # is deliberately NOT the immovability boundary, which is the start.
+        #
+        # It is also NOT the confirmation boundary: a day is answered for as a whole, including the
+        # blocks still ahead in it. The outcome service's suite pins that case.
         ended = a_block(interval=Interval(at(8), at(9)), index=0)
         running = a_block(interval=Interval(at(9), at(10)), index=1)
         rows = ledger_rows([ended, running], outcomes={}, area_names={})

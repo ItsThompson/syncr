@@ -1,6 +1,7 @@
 """The outcome service: recording, confirming, backfilling, and the day's read model.
 
-Five rules live here rather than anywhere else.
+Three rules live here rather than anywhere else. What a settled day IS, and what a day holding no
+block is, are ``ledger.py``'s; what a request has to satisfy is ``rules.py``'s.
 
 **Recording never confirms, and confirming never overwrites a recording.** They are two acts on
 one row. Marking a block skipped during the day says something about the block; confirming the day
@@ -13,21 +14,14 @@ binding, so the week cannot be recovered from the id, and the alternative is a w
 revision the tenant has stored. The 100 ms budget on the recording route is what makes that a
 decision rather than a preference.
 
-**Every write bumps the week input version from the current week onwards.** A confirmation moves
-the rotation cursor and outstanding debt, and both are inputs to weeks the user has NOT yet lived,
-so the range is the open-ended one and its floor is the week holding today's local date. A past
-week is deliberately not bumped: its approved revision is immutable and keeps the inputs it was
-computed with. That is ``BacklogWideBump``, the one implementation of those four steps.
-
-**Nothing projected is stored.** The rotation cursor and outstanding debt are derived from the log
-on every read, so "correcting a past confirmation re-derives everything projected from the log"
-needs no re-derivation step here: there is no stored value for a correction to disagree with. What
-the bump buys is that a solve already running for a future week fails its conditional write, and
-that the next assembly reads the corrected log.
-
-**A day with no block is neither confirmed nor unconfirmed.** Confirming it stores nothing and
-answers with an empty ledger, because there is nothing to answer for. Counting such days would
-report a backlog of days on which the user had nothing planned.
+**Every write bumps the week input version from the current week onwards, and nothing projected is
+stored.** The rotation cursor and outstanding debt are derived from the log on every read, so O5
+needs no re-derivation step here: there is no stored value for a correction to disagree with. Both
+figures are inputs to weeks the user has NOT yet lived, so the range is the open-ended one and its
+floor is the week holding today's local date; a past week is deliberately not bumped, because its
+approved revision keeps the inputs it was computed with. What the bump buys is that a solve already
+running for a future week fails its conditional write. ``BacklogWideBump`` is the one implementation
+of those four steps.
 
 ``require_scope`` maps the writes to ``plan:write`` and the reads to ``plan:read``. Recording an
 outcome is an act on a week rather than plan configuration, which is what separates it from a
@@ -44,7 +38,7 @@ from syncr_api.core.errors import NotFound
 from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
-from syncr_api.outcomes.config import BLOCK_RESOURCE, UNCONFIRMED_LOOKBACK_DAYS
+from syncr_api.outcomes.config import BLOCK_RESOURCE, ISO_WEEK_FIELD, UNCONFIRMED_LOOKBACK_DAYS
 from syncr_api.outcomes.days import ONE_DAY
 from syncr_api.outcomes.ledger import (
     Backfill,
@@ -60,6 +54,7 @@ from syncr_api.outcomes.rules import (
     require_a_dated_span,
     require_a_day_that_has_begun,
     require_a_range_that_can_be_confirmed,
+    require_a_reportable_interval,
     stated_rejection,
 )
 from syncr_api.plans.stored_documents import plan_document
@@ -90,8 +85,6 @@ if TYPE_CHECKING:
     from syncr_domain.zones import Date, ZoneProfile
 
 _log = get_logger("syncr.outcomes")
-
-ISO_WEEK_FIELD = "isoWeek"
 
 
 class OutcomeService:
@@ -130,6 +123,7 @@ class OutcomeService:
         """
         require_scope(principal, Scope.PLAN_WRITE)
         week = require_an_iso_week(recording.iso_week, field=ISO_WEEK_FIELD)
+        require_a_reportable_interval(recording.actual_interval)
         revision, block = await self._placed(week, block_id)
         with stated_rejection():
             outcome = RecordedOutcome(
@@ -170,7 +164,8 @@ class OutcomeService:
         now = self._clock()
         require_a_day_that_has_begun(on, profile, now, field=DATE_FIELD)
 
-        recorded = await self._settle(await self._days.read(on, on, profile), at=now)
+        planned = await self._days.read(on, on, profile)
+        recorded = await self._settle(planned, at=now)
         _log.info(
             "outcomes.day.confirmed",
             tenant_id=str(principal.tenant_id),
@@ -178,7 +173,7 @@ class OutcomeService:
             blocks_recorded=recorded,
         )
         await self._bump.from_the_week_holding(now)
-        return await self._ledger(on, profile=profile)
+        return await self._ledger(on, profile=profile, planned=planned)
 
     @measured("outcomes")
     async def confirm_range(self, principal: Principal, first: Date, last: Date) -> Backfill:
@@ -217,16 +212,21 @@ class OutcomeService:
             (await self._settings.read()).home_zone, as_domain(await self._overrides.list_all())
         )
 
-    async def _ledger(self, on: Date, *, profile: ZoneProfile) -> DayLedger:
+    async def _ledger(
+        self, on: Date, *, profile: ZoneProfile, planned: Sequence[PlannedDay] | None = None
+    ) -> DayLedger:
         """One day's rows, its header figures, and how many days are outstanding.
 
         The span is required first, so a date the tenant's zones do not hold is refused before any
         read: the alternative is an empty ledger, which reads as a day with no plan.
+
+        ``planned`` is passed by a caller that has already read the day, which is what stops a
+        confirmation reading the same revision twice on a path with a 400 ms budget.
         """
         now = self._clock()
         span = require_a_dated_span(on, profile, field=DATE_FIELD)
-        planned = await self._days.read(on, on, profile)
-        blocks = planned[0].blocks if planned else ()
+        held = planned if planned is not None else await self._days.read(on, on, profile)
+        blocks = held[0].blocks if held else ()
         recorded = {row.block_id: row for row in await self._outcomes.for_span(span)}
         rows = ledger_rows(blocks, outcomes=recorded, area_names=await self._area_names())
         behind, ahead = split_at(rows, now)

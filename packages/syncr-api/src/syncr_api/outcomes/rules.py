@@ -3,9 +3,14 @@
 No rule here is stated for the first time. The outcome rules are ``syncr_domain.outcomes``': a
 ``partial`` states its minutes, a ``moved`` states the interval it really happened in, and neither
 figure may appear on a state that does not name it. What lives here is the translation from a domain
-rejection into the status the boundary owes it, plus the three refusals the boundary itself owns: a
-date that names no day, a day the user has not lived yet, and a range wider than the count that
-offered it.
+rejection into the status the boundary owes it, plus the four refusals the boundary itself owns: a
+reported span longer than a block could run, a date that names no day, a day the user has not lived
+yet, and a range wider than the count that offered it.
+
+The two wire field names a rejection cites come from ``config.py``, where the request schema reads
+them too. A field error naming a spelling the client did not send is the failure
+``core/iso_weeks.py``'s ``field`` parameter exists to prevent, and two declarations of one name is
+how that would arrive.
 
 Every rejection here is a bad value in the request, so 422. There is no conflict to answer with:
 recording an outcome replaces whatever the block said before, and confirming a day that is already
@@ -18,7 +23,12 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from syncr_api.core.errors import FieldError, ValidationFailed
-from syncr_api.outcomes.config import MAX_CONFIRM_RANGE_DAYS
+from syncr_api.outcomes.config import (
+    FROM_FIELD,
+    MAX_ACTUAL_MINUTES,
+    MAX_CONFIRM_RANGE_DAYS,
+    TO_FIELD,
+)
 from syncr_api.outcomes.days import day_span
 from syncr_api.user_settings.zone_reading import local_date
 from syncr_domain.intervals import IntervalError
@@ -33,9 +43,8 @@ if TYPE_CHECKING:
     from syncr_domain.zones import Date, ZoneProfile
 
 STATE_FIELD = "state"
+INTERVAL_FIELD = "actualInterval"
 DATE_FIELD = "date"
-FROM_FIELD = "from"
-TO_FIELD = "to"
 
 
 @contextmanager
@@ -57,6 +66,33 @@ def stated_rejection() -> Iterator[None]:
             "either figure.",
             errors=[FieldError(field=STATE_FIELD, message=str(error))],
         ) from error
+
+
+def require_a_reportable_interval(interval: Interval | None) -> None:
+    """An interval a block could really have run for, or the 422 a longer one carries.
+
+    The same bound and the same reason as ``partial``'s minutes: a block is placed inside one week
+    and the ledger lists it on the day it begins, so a span longer than a day describes something
+    other than one block happening at a different time. Without it a ``moved`` outcome naming a
+    decade attributes five million minutes to its content, which once a live placement reader exists
+    would zero a task's remaining demand for every deadline and make an infeasible week read as
+    feasible. That is the inversion the attribution rules exist to prevent, arriving from the
+    attribution side rather than the capacity side.
+
+    Bounded on the LENGTH and not on where the span falls. A block really done the previous evening,
+    or on a day this week's plan does not cover, is a fact about the past and the log records facts.
+    """
+    if interval is None or interval.total_minutes() <= MAX_ACTUAL_MINUTES:
+        return
+    detail = (
+        f"That interval covers {interval.total_minutes()} minutes, and an outcome may report at "
+        f"most {MAX_ACTUAL_MINUTES}. Nothing was changed, and the block still reads as it did. A "
+        "block is placed inside one week and listed on the day it begins, so a span longer than a "
+        "day describes something other than one block happening at a different time."
+    )
+    raise ValidationFailed(
+        detail, errors=[FieldError(field=INTERVAL_FIELD, message="is longer than a day")]
+    )
 
 
 def require_a_dated_span(on: Date, profile: ZoneProfile, *, field: str) -> Interval:

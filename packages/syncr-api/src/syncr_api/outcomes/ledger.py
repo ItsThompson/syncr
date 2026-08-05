@@ -9,11 +9,26 @@ filled in: it is what O1 means. Every block defaults to presumed with no user ac
 keeps daily interaction cost near zero, so the absence of a row is the common case rather than the
 exceptional one.
 
-**The grouping boundary is the block's END.** A block still running has not happened yet, so it
-cannot be answered for, and it sits under the section that says "presumed until you say otherwise".
-This is deliberately NOT the boundary the netting rules use: immovability is decided on the start,
-because that rule asks whether the solver may still move the block, and these two questions have
-different answers for the same block for as long as it runs.
+**The grouping boundary is the block's END.** A block still running has not been RECORDED yet, so
+it sits under the section that says "presumed until you say otherwise" rather than under the one
+that says "recorded". This is deliberately NOT the boundary the netting rules use: immovability is
+decided on the start, because that rule asks whether the solver may still move the block, and the
+two questions have different answers for the same block for as long as it runs.
+
+**A DAY-level confirmation covers the whole day, including the blocks still ahead in it.** The
+grouping above is about which section renders a row; confirming is about whether the user has
+answered for the day, and they answer for it as a whole. Two reasons, the first decisive:
+
+- A day's last block routinely ends on the NEXT day. A ``Sleep`` routine from 23:00 to 07:00 belongs
+  to the day it begins in, so a rule that waited for every block to end would make today
+  unconfirmable until tomorrow morning, for every user who sleeps. The evening pass the product is
+  designed around would settle nothing.
+- Presuming a block that has not happened is what O1 already does for every block, all day.
+  Confirming says the user has nothing to add, and if the evening turns out otherwise they record an
+  exception and everything projected from the log re-derives, which is O5.
+
+So a confirmed ``presumed`` row on a block later today reads as a completion, and that is the
+presumption the product is built on rather than a gap in it.
 
 **A day is settled when every block of it carries a confirmation.** A day holding no block is
 neither settled nor unsettled: there is nothing to answer for, so it is not counted among the

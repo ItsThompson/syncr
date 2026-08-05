@@ -456,6 +456,37 @@ def test_recording_the_same_block_twice_replaces_the_row_rather_than_adding_one(
     assert [(row.block_id, row.state) for row in stored] == [(first.id, "skipped")]
 
 
+def test_a_move_longer_than_a_day_is_refused_over_the_wire(
+    http: TestClient,
+    signed_in: dict[str, str],
+    planned: tuple[Block, Block],
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # The bound `partial`'s minutes already carry, on the span `moved` reports. The write is live
+    # and the row is permanent, so an unbounded span would sit in the log attributing five million
+    # minutes to its content for every future reader of the attribution table.
+    first, _ = planned
+    a_decade = Interval(an_instant(YESTERDAY, 9), an_instant(YESTERDAY, 9) + timedelta(days=3650))
+
+    status, refused = record(
+        http,
+        signed_in,
+        first.id,
+        {
+            "state": "moved",
+            "actualInterval": {
+                "start": a_decade.start.isoformat(),
+                "end": a_decade.end.isoformat(),
+            },
+        },
+    )
+
+    assert status == ValidationFailed.status, refused
+    assert "may report at most 1440" in refused["detail"]
+    assert outcome_rows(live_database_url, owner.tenant_id) == []
+
+
 def test_one_idempotency_key_replaying_a_recording_does_not_write_a_second_row(
     http: TestClient,
     signed_in: dict[str, str],
@@ -615,6 +646,38 @@ def test_one_key_across_two_days_does_not_silently_skip_the_second(
     assert first_answer["date"] == YESTERDAY.isoformat()
     if status == HTTPStatus.OK:
         assert second_answer["date"] == other_day.isoformat()
+    else:
+        assert status == ValidationFailed.status
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "ticket 1134: the request fingerprint hashes body bytes only and the route key is the "
+        "handler's name, so two blocks recorded with the same state and the same isoWeek hash "
+        "identically. Delete this marker when the claim is scoped to the resource it addresses."
+    ),
+)
+def test_one_key_across_two_blocks_with_one_body_does_not_silently_skip_the_second(
+    http: TestClient,
+    signed_in: dict[str, str],
+    planned: tuple[Block, Block],
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # The CONDITIONAL half of the same exposure, on this ticket's primary route. The confirm route's
+    # marker does not stand proxy for it: a fix scoped to bodyless routes would close that one and
+    # leave this open with nothing failing, and an evening pass marking two blocks of one day
+    # `completed` sends two requests whose bodies are byte-identical.
+    first, second = planned
+    key = uuid4().hex
+
+    record(http, signed_in, first.id, {"state": "completed"}, key=key)
+    status, _ = record(http, signed_in, second.id, {"state": "completed"}, key=key)
+
+    stored = {row.block_id: row.state for row in outcome_rows(live_database_url, owner.tenant_id)}
+    if status == HTTPStatus.OK:
+        assert stored == {first.id: "completed", second.id: "completed"}
     else:
         assert status == ValidationFailed.status
 

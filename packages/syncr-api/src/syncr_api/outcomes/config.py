@@ -53,7 +53,9 @@ MAX_CONFIRM_RANGE_DAYS: Final = 28
 # the longest one a template can declare is a night's sleep.
 MAX_ACTUAL_MINUTES: Final = 24 * 60
 
-# The wire field names the range body carries. `from` is a Python keyword, so the field is named
-# `from_` and aliased here, which is the spelling the anchor span query already uses.
+# The wire field names a rejection cites, so a field error and the schema that declares the field
+# cannot spell it two ways. `from` is a Python keyword, so that field is named `from_` and aliased
+# to this, which is the spelling the anchor span query already uses.
 FROM_FIELD: Final = "from"
 TO_FIELD: Final = "to"
+ISO_WEEK_FIELD: Final = "isoWeek"
