@@ -158,14 +158,20 @@ def request_tradeoff(
     return answered.status_code, answered.json()
 
 
-def stored_concessions(database_url: str, tenant_id: TenantId) -> list[WeekAdjustmentRecord]:
-    """The tenant's concessions for the week, read on a connection of this test's own."""
+def stored_concessions(
+    database_url: str, tenant_id: TenantId, *, iso_week: IsoWeek = WEEK
+) -> list[WeekAdjustmentRecord]:
+    """The tenant's concessions for one week, read on a connection of this test's own.
+
+    The week is a parameter because a test about revoking through the WRONG week has to read the
+    other one: asserting the addressed week is empty would hold whether or not the row survived.
+    """
 
     async def read() -> list[WeekAdjustmentRecord]:
         database = create_database(database_url)
         try:
             async with database.sessionmaker() as session:
-                return await WeekAdjustmentRepository(session, tenant_id).for_week(WEEK)
+                return await WeekAdjustmentRepository(session, tenant_id).for_week(iso_week)
         finally:
             await database.engine.dispose()
 
@@ -463,13 +469,10 @@ def test_a_concession_of_another_week_is_not_revocable_through_this_week(
     answered = http.delete(f"{ADJUSTMENTS}/{elsewhere.id}", headers=headers)
 
     assert answered.status_code == HTTPStatus.NOT_FOUND, answered.text
-    assert (
-        stored_concessions(
-            live_database_url,
-            owner.tenant_id,
-        )
-        == []
-    )
+    # Read the week the row is actually on: the addressed week holds none either way, so asserting
+    # THAT would pass whether or not the revoke had deleted the other week's concession.
+    surviving = stored_concessions(live_database_url, owner.tenant_id, iso_week=WEEK.following())
+    assert [one.id for one in surviving] == [elsewhere.id]
     assert current_version(live_database_url, owner.tenant_id) is None
 
 
