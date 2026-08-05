@@ -87,6 +87,13 @@ class ChurnBaseline:
     The two fields are set together or not at all, so the record cannot claim a baseline it
     cannot name. Which of the two cases this is, is read from :attr:`is_measured` rather than
     stored beside them: a third field could disagree with the pair.
+
+    **The solver has a same-named type whose ``is_measured`` answers differently.**
+    ``syncr_solver.inputs.ChurnBaseline`` is the objective's input and it carries the approved
+    PLAN as well, so its ``is_measured`` asks whether there is a document to compare against;
+    this one is the render-time value and asks whether a revision was named. The two disagree
+    wherever a revision is named but its document is not readable. Both are right for their own
+    question, and a caller converting between them states which it is asking.
     """
 
     revision_id: PlanRevisionId | None = None

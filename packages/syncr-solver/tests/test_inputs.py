@@ -195,9 +195,18 @@ def test_an_approved_baseline_names_the_revision_and_when_it_was_approved() -> N
     identifier = uuid4()
     baseline = ChurnBaseline.approved(identifier, NOW)
 
-    assert baseline.reason == ChurnBaseline.APPROVED_REVISION
     assert baseline.revision_id == identifier
     assert baseline.approved_at == NOW
+
+
+def test_a_baseline_naming_a_revision_whose_plan_it_cannot_read_says_which_state_it_is_in() -> None:
+    # The state every approved week is in today, because nothing reads a stored document back
+    # (tickets 1222 and 1251). It is named rather than reported as an ordinary approved baseline: a
+    # renderer told "approved-revision" would claim a comparison against a plan nobody supplied.
+    named = ChurnBaseline.approved(uuid4(), NOW)
+
+    assert named.reason == ChurnBaseline.APPROVED_UNREADABLE
+    assert named.is_measured is False
 
 
 def test_an_assembly_defaults_to_a_week_holding_nothing() -> None:

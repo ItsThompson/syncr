@@ -170,7 +170,12 @@ async def test_the_churn_baseline_names_the_approved_revision_or_states_there_is
 
     assert never.churn_baseline.reason == "never-approved"
     assert never.churn_baseline.revision_id is None
-    assert after.churn_baseline.reason == "approved-revision"
+    # `approved-revision-unreadable` rather than `approved-revision`, because this assembler names
+    # the revision and cannot supply its plan: reading a stored document back through the domain
+    # constructors is ticket 1222 and the placement reader is 1251. The baseline derives the word
+    # from what it holds, so it cannot tell a renderer a comparison happened that did not.
+    assert after.churn_baseline.reason == "approved-revision-unreadable"
+    assert after.churn_baseline.revision_id is not None
     assert after.churn_baseline.approved_at == approved_at
 
 
