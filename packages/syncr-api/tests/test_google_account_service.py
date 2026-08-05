@@ -29,7 +29,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
-from syncr_api.calendars.config import ANCHOR_SOURCE, GOOGLE, ICS
+from syncr_api.calendars.config import ANCHOR_SOURCE, GOOGLE, ICS, WRITE_TARGET
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 from syncr_api.core.errors import DependencyUnavailable, Forbidden, ValidationFailed
 from syncr_api.core.notices import BANNER, OXIDE, PANEL
@@ -75,6 +75,8 @@ from tests.fake_google import (
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from syncr_api.solving.records import OperationRecord
 
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 TENANT = uuid4()
@@ -140,6 +142,22 @@ class FakeSources:
     async def list_for(self, provider: str) -> tuple[CalendarSourceRecord, ...]:
         return tuple(row for row in self.rows if row.provider == provider)
 
+    async def write_target(self) -> CalendarSourceRecord | None:
+        return next((row for row in self.rows if row.role == WRITE_TARGET), None)
+
+
+@dataclass
+class FakeOperations:
+    """The tenant's operations, newest first, as the notice reads the last projection's attempt."""
+
+    rows: tuple[OperationRecord, ...] = ()
+
+    async def page(
+        self, *, limit: int, kind: str | None = None, **_ignored: object
+    ) -> list[OperationRecord]:
+        matching = [row for row in self.rows if kind is None or row.kind == kind]
+        return matching[:limit]
+
 
 @dataclass
 class Clock:
@@ -180,6 +198,7 @@ def service(
     *,
     credentials: FakeCredentials | None = None,
     sources: FakeSources | None = None,
+    operations: FakeOperations | None = None,
     handler: object = None,
     client_id: str = CLIENT_ID,
     clock: Clock | None = None,
@@ -188,6 +207,7 @@ def service(
     return GoogleConnectionService(
         credentials=credentials or FakeCredentials(),  # type: ignore[arg-type]
         sources=sources or FakeSources(),  # type: ignore[arg-type]
+        operations=operations or FakeOperations(),  # type: ignore[arg-type]
         oauth=GoogleOAuthClient(
             client=token_transport(handler or (lambda _request: token_answer())),
             client_id=client_id,

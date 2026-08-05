@@ -37,6 +37,7 @@ from syncr_api.google_account.oauth_client import GoogleOAuthClient
 from syncr_api.google_account.repository import GoogleCredentialRepository
 from syncr_api.google_account.service import GoogleConnectionService
 from syncr_api.google_account.tokens import GoogleAccessTokens
+from syncr_api.solving.repository import OperationRepository
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -137,6 +138,7 @@ async def get_google_connection_service(
     return GoogleConnectionService(
         credentials=GoogleCredentialRepository(transaction, principal.tenant_id),
         sources=CalendarSourceRepository(transaction, principal.tenant_id),
+        operations=OperationRepository(transaction, principal.tenant_id),
         oauth=build_oauth_client(settings, client),
         cipher=build_cipher(settings),
         may_store_tokens=may_store_tokens(settings),

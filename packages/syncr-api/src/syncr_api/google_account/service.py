@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_api.calendars.config import GOOGLE
+from syncr_api.calendars.projection_notices import projection_failure_notices
 from syncr_api.core.errors import DependencyUnavailable, ValidationFailed
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
@@ -43,6 +44,7 @@ from syncr_api.google_account.outcomes import (
     ConnectOutcome,
 )
 from syncr_api.google_account.state import StateAccepted, issue_state, read_state
+from syncr_api.solving.config import PROJECTION
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
@@ -57,6 +59,8 @@ if TYPE_CHECKING:
     from syncr_api.google_account.crypto import TokenCipher
     from syncr_api.google_account.oauth_client import GoogleOAuthClient
     from syncr_api.google_account.repository import GoogleCredentialRepository
+    from syncr_api.solving.records import OperationRecord
+    from syncr_api.solving.repository import OperationRepository
 
 _log = get_logger("syncr.google_account")
 
@@ -93,6 +97,7 @@ class GoogleConnectionService:
         *,
         credentials: GoogleCredentialRepository,
         sources: CalendarSourceRepository,
+        operations: OperationRepository,
         oauth: GoogleOAuthClient,
         cipher: TokenCipher,
         client_id: str,
@@ -103,6 +108,7 @@ class GoogleConnectionService:
     ) -> None:
         self._credentials = credentials
         self._sources = sources
+        self._operations = operations
         self._oauth = oauth
         self._cipher = cipher
         self._client_id = client_id
@@ -157,17 +163,37 @@ class GoogleConnectionService:
 
     @measured("google_account")
     async def describe_connection(self, principal: Principal) -> GoogleConnection:
-        """Whether an account is connected, and every notice its state raises."""
+        """Whether an account is connected, and every notice this integration raises.
+
+        Two conditions, both about the same thing reaching the phone and both raised at banner
+        volume: the authorization has expired, and the projection has stopped. They are separate
+        because the repairs are: one is a reconnect the user performs, and the other may be a
+        deployment an operator changes. A tenant can hold both at once, and then both are raised.
+        """
         require_scope(principal, Scope.PLAN_READ)
         credential = await self._credentials.read()
+        now = self._clock()
+        target = await self._sources.write_target()
         return GoogleConnection(
             configured=bool(self._client_id),
             connected=credential is not None,
             granted_scopes=credential.granted_scopes if credential else (),
             connected_at=credential.connected_at if credential else None,
             last_refresh_at=credential.last_refresh_at if credential else None,
-            notices=write_target_expiry_notices(credential, now=self._clock()),
+            notices=(
+                *write_target_expiry_notices(credential, now=now),
+                *projection_failure_notices(target, await self._last_projection(), now=now),
+            ),
         )
+
+    async def _last_projection(self) -> OperationRecord | None:
+        """The most recently scheduled projection of this tenant, for its attempt count.
+
+        One page of one row rather than a statement of its own: the list route's own order is newest
+        first, which is exactly the row a reader asking "how many tries has this had" wants.
+        """
+        page = await self._operations.page(limit=1, kind=PROJECTION)
+        return page[0] if page else None
 
     def _require_a_configured_client(self) -> None:
         """Refuse a connect this deployment has no credentials for, naming what still works."""
