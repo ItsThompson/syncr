@@ -258,6 +258,7 @@
 @custom-variant split       (&[data-split]);
 @custom-variant frame       (&[data-origin="frame"]);
 @custom-variant anchor      (&[data-origin="anchor"]);
+@custom-variant tier        (&[data-tier]);
 @custom-variant current     (&[data-current]);
 @custom-variant dragging    ([data-dragging] &);
 @custom-variant at-risk     (&[data-at-risk]);

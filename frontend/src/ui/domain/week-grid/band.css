@@ -1,0 +1,42 @@
+/* Layer 2: THE BAND THAT EXPLAINS A GAP, and the strip of readings above the grid.
+ *
+ * A FORBIDDEN WINDOW IS DRAWN, NOT OMITTED. Left as nothing, a forbidden gap and an ordinary empty gap are
+ * pixel-identical and the solver appears to decline a gap for no reason.
+ *
+ * IT IS DELIBERATELY NOT A BLOCK. No fill, no Area rule, no block state, because it is the ABSENCE of a block
+ * that it exists to explain, and it sits under every block in z-order so a pinned block inside a recovery window
+ * still reads as a block. A hatched band in --rule plus a gutter label naming the cause is the whole of it, and
+ * all three kinds that produce one share this rule: a window, an off-plan span and an unfilled template slot
+ * differ in what they do to the discretionary denominator and in nothing a reader sees.
+ *
+ * THE BAND PAINTS THE TEXTURE AND THE LABEL CARRIES ITS OWN INK. The token layer's hatch draws in `currentColor`,
+ * so the band spends its `color` on the texture; the label sets its own, which is what keeps the words legible
+ * instead of pale. */
+
+@import "./tokens.css";
+
+.week-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  color: var(--forbidden-hatch-ink);
+  background-image: var(--hatch-back);
+  border-top: var(--hairline) dotted var(--rule);
+  border-bottom: var(--hairline) dotted var(--rule);
+  pointer-events: none;
+}
+
+/* The gutter label knocks out its own background for the same reason the hour label does: a hatch behind
+   uppercase micro-type at --fs-eyebrow reads as a smudge rather than as a word. */
+.week-band__label {
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  padding: 0 3px;
+  background-color: var(--paper-raised);
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}

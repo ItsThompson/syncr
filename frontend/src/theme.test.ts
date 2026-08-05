@@ -182,6 +182,10 @@ describe("the closed state vocabulary", () => {
     ["split", "[data-split]"],
     ["frame", '[data-origin="frame"]'],
     ["anchor", '[data-origin="anchor"]'],
+    /* The tier is the block's own four-step ladder, and it is the one member whose VALUE the block's sheet selects
+     * on: `compact` and `hairline` each spend the channel differently. The variant selects on the attribute alone,
+     * which is all the markup scan needs to permit the name. */
+    ["tier", "[data-tier]"],
     ["current", "[data-current]"],
     ["at-risk", "[data-at-risk]"],
     ["overdue", "[data-overdue]"],

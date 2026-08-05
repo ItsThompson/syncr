@@ -45,6 +45,43 @@ const NOTICE: Notice = {
 
 /* Rendered inside a router where a component draws a link, because a link outside one throws rather than
  * degrading, and the sidebar's rows are real links by design. */
+const GRID_BLOCK: domain.GridBlock = {
+  id: "b1",
+  title: "Leetcode · Graphs",
+  span: { startMin: 540, endMin: 570 },
+  origin: "task",
+  pigment: "01",
+  areaName: "Career",
+  isPinned: false,
+};
+
+const PLACEMENT: domain.Placement = {
+  left: 0,
+  right: 0,
+  indentSteps: 0,
+  layer: 0,
+  overlapCount: null,
+  isSplit: false,
+};
+
+const EXTENT: domain.Extent = { startMin: 360, endMin: 1320 };
+
+const WEEK_DAY: domain.WeekDay = {
+  date: "2026-02-09",
+  zone: "Europe/London",
+  startMs: Date.parse("2026-02-09T00:00:00Z"),
+  minutes: 1440,
+  blocks: [GRID_BLOCK],
+  bands: [],
+};
+
+const READINGS: domain.StripReadings = {
+  scheduledMinutes: 4848,
+  discretionaryMinutes: 3126,
+  unallocatedMinutes: 1104,
+  blockCount: 91,
+  planCurrency: "current",
+};
 const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   AreaChip: () => <domain.AreaChip name="Career" pigment="01" />,
   AreaLegend: () => (
@@ -53,10 +90,23 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
       entries={[{ id: "career", label: "Career", pigment: "01", figure: "14.2h" }]}
     />
   ),
+  Block: () => (
+    <domain.Block block={GRID_BLOCK} placement={{ topPx: 0, heightPx: 26, across: PLACEMENT }} />
+  ),
   CommandPalette: () => (
     <domain.CommandPalette actions={[]} onSelect={vi.fn<(id: string) => void>()} />
   ),
   DataBar: () => <domain.DataBar value={3.5} max={6} label="3.5h, 58% of the leader" />,
+  DayColumn: () => (
+    <domain.DayColumn
+      canvasHeightPx={626}
+      day={WEEK_DAY}
+      extent={EXTENT}
+      label="MON 09"
+      nowMin={null}
+      pxPerMin={0.87}
+    />
+  ),
   DeviationBar: () => (
     <domain.DeviationBar
       caption="Scheduled against target"
@@ -65,8 +115,21 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
     />
   ),
   EmptyState: () => <domain.EmptyState title="Nothing yet" detail="Press n to capture one." />,
+  EmptyWeek: () => (
+    <domain.EmptyWeek
+      onExtendHorizon={vi.fn<() => void>()}
+      onSolveNow={vi.fn<() => void>()}
+      reason="outside_horizon"
+      setupHref="/setup"
+      statement="This week is beyond your 14-day planning horizon."
+    />
+  ),
   ErrorState: () => <domain.ErrorState title="Not read" detail="Your plan is unchanged." />,
+  ForbiddenBand: () => (
+    <domain.ForbiddenBand heightPx={40} label="recovery · Kontron Interview" topPx={10} />
+  ),
   GlyphSlot: () => <domain.GlyphSlot isPinned />,
+  GridLines: () => <domain.GridLines extent={EXTENT} pxPerMin={0.87} />,
   HelpOverlay: () => <domain.HelpOverlay />,
   KeyHint: () => <domain.KeyHint keys="j" />,
   LedgerRow: () => <domain.LedgerRow timeRange="10:00-10:30" duration="30m" title="Clean" />,
@@ -77,6 +140,7 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   NoticeMark: () => <domain.NoticeMark pigment="amber" />,
   NoticePanel: () => <domain.NoticePanel notice={NOTICE} />,
   NoticeStrip: () => <domain.NoticeStrip notice={{ ...NOTICE, volume: "banner" }} />,
+  NowRule: () => <domain.NowRule topPx={321} />,
   PendingState: () => <domain.PendingState title="Solving" detail="The last plan is on screen." />,
   PieChart: () => (
     <domain.PieChart
@@ -101,6 +165,7 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
     />
   ),
   StatusSurface: () => <domain.StatusSurface kind="empty" title="Nothing yet" detail="Press n." />,
+  SummaryStrip: () => <domain.SummaryStrip readings={READINGS} verdict={null} />,
   Table: () => (
     <domain.Table
       columns={[{ key: "title", header: "Task", cell: () => "Leetcode" }]}
@@ -110,6 +175,18 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
     />
   ),
   TopBar: () => <domain.TopBar />,
+  TimeAxis: () => (
+    <domain.TimeAxis canvasHeightPx={626} extent={EXTENT} nowMin={null} pxPerMin={0.87} />
+  ),
+  WeekGrid: () => (
+    <domain.WeekGrid
+      days={[WEEK_DAY]}
+      extent={EXTENT}
+      labels={["MON 09"]}
+      nowMs={null}
+      visibleHours={12}
+    />
+  ),
   WedgePatterns: () => (
     <svg>
       <domain.WedgePatterns idPrefix="mount" pigments={["01", "unallocated"]} />
@@ -143,24 +220,48 @@ describe("every component the layer exports", () => {
   });
 });
 
-/* A DOMAIN COMPONENT SPENDS NO STATE CHANNEL EITHER, and that is worth asserting rather than assuming. Every
- * channel in the kit is assigned in `ui/primitives/states.css`: a ledger row, a wizard step and a palette row all
- * COMPOSE `.state-row` rather than declaring a hover fill or a current row's rule of their own. `check-channels`
- * refuses a second assignment at commit; this says the layer has nothing for it to refuse.
+/* THE STATES THIS LAYER SPENDS ARE THE BLOCK'S, AND NOTHING ELSE'S.
+ *
+ * Every state channel a ROW needs is assigned in `ui/primitives/states.css`: a ledger row, a wizard step, a table
+ * row and a palette row all COMPOSE `.state-row` rather than declaring a hover fill or a current row's rule of their
+ * own, and the week grid's block composes it for the same two channels. What the block does own is the set section
+ * 14's table deals to it and to nothing else in the product: the tier ladder, the two origin identities, the split
+ * rule, the proposal's absence of fill, and the two states that share the left rule. Those cannot live in a shared
+ * sheet, because nothing else in the kit has a tier or an origin.
+ *
+ * SO THE ASSERTION IS THE EXACT SET, bounded by the inventory of what may exist rather than by a vocabulary of what
+ * may not. A sheet in this layer spending a state that is not the block's fails, and so does the block spending a
+ * property its channel is not dealt. `check-channels` refuses a SECOND FILE assigning one of these pairs; this says
+ * which file assigns them and which states exist at all.
  *
  * A pigment and a volume are not states: they are what the notice IS, like a title, so they are variant classes
- * rather than attributes. The same is true of a wizard step's status. */
-describe("a domain component spends no state", () => {
-  it("declares no state rule anywhere in the layer", async () => {
-    const spent = (await stateRules(domainDir)).map(
-      (rule) => `${rule.sheet} ${rule.selector} spends ${rule.declarations.length}`,
-    );
+ * rather than attributes. The same is true of a wizard step's status and of an Area's ramp step on a block. */
+describe("the states the layer spends", () => {
+  it("are the block's own, in the one sheet that draws a block", async () => {
+    const spent = (await stateRules(domainDir)).map((rule) => `${rule.sheet} ${rule.state}`);
 
-    expect(spent).toEqual([]);
+    expect([...new Set(spent)].toSorted()).toEqual([
+      "week-grid/block.css [data-conflict]",
+      'week-grid/block.css [data-origin="anchor"]',
+      'week-grid/block.css [data-origin="frame"]',
+      "week-grid/block.css [data-proposal]",
+      "week-grid/block.css [data-selected]",
+      "week-grid/block.css [data-split]",
+      'week-grid/block.css [data-tier="compact"]',
+      'week-grid/block.css [data-tier="hairline"]',
+      "week-grid/grid.css [data-dragging]",
+    ]);
   });
 
-  it("has no forced-colors casualty either, which follows from spending no state", async () => {
-    expect(await forcedColorsCasualties(domainDir)).toEqual([]);
+  /* EVERY STATE EXCEPT HOVER SURVIVES FORCED-COLORS MODE, because each pairs its fill with a rule, a border or a
+   * glyph. THE FRAME'S RECESSED FILL IS THE SECOND EXCEPTION and it is named here rather than papered over with a
+   * redundant border: what identifies a frame block when the OS drops every fill is its origin mark and its own
+   * title, both of which are text and neither of which a stylesheet declares. Adding a border to this rule would
+   * make the check pass and would distinguish nothing, which is the shape of a guard written to be satisfied. */
+  it("lose only hover and the frame's recessed fill to forced colors", async () => {
+    expect(await forcedColorsCasualties(domainDir)).toEqual([
+      'week-grid/block.css [data-origin="frame"]',
+    ]);
   });
 
   it("composes the kit's row states where a row needs them, rather than restating them", async () => {
@@ -170,6 +271,7 @@ describe("a domain component spends no state", () => {
       "ledger/LedgerRow.tsx",
       "shell/SidebarNavItem.tsx",
       "table/Table.tsx",
+      "week-grid/Block.tsx",
       "wizard/WizardSteps.tsx",
     ]);
   });

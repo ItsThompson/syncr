@@ -15,9 +15,10 @@
  *   ledger    the Today register's row, with the outcome controls arriving as children
  *   wizard    first run's numbered steps, with a caret on the current one and no progress bar
  *   plate     the dithered illustration plates, which are never behind data
+ *   week-grid the seven-column proportional grid: geometry, the tier ladder, overlap, the bands and the strip
  *
- * The week grid is NOT here: `domain/week-grid/` arrives with the ticket that owns it, and it will add its own
- * line to this barrel. */
+ * The week grid renders `WeekDay`s and knows nothing about a response: turning one into the other is the route's
+ * business, because `contract` is the only directory above this layer a component may read. */
 
 export * from "./charts";
 export * from "./ledger";
@@ -27,4 +28,5 @@ export * from "./plate";
 export * from "./shell";
 export * from "./status";
 export * from "./table";
+export * from "./week-grid";
 export * from "./wizard";

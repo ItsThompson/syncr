@@ -1,0 +1,148 @@
+/* Layer 2: THE GRID'S FRAME. The axis, the seven columns, their canvases, and the lines across them.
+ *
+ * Blocks are ABSOLUTELY POSITIONED and there is no virtualization. Roughly 210 positioned elements across seven
+ * columns sits well inside a frame budget, and virtualizing a surface with no scroll-driven mount would add
+ * complexity for nothing.
+ *
+ * THE QUARTER HOUR IS DRAWN AT REST, because the snap is fifteen minutes and the grid should show where a block
+ * can land. Only the hour carries cobalt weight; the three quarters are faint, and they step up to hour weight
+ * during a drag so the snap targets sharpen at the one moment the reader is aiming at them. That is a discrete
+ * state change, not motion.
+ *
+ * THE WIDTH POLICY: THE GRID ABSORBS SURPLUS WIDTH. Every day column takes an equal share of whatever is left
+ * after the fixed sidebar and the fixed detail panel, because a title in a single-line tier cannot wrap and the
+ * grid is the only column that cannot absorb a squeeze. Below --bp-compact the grid scrolls horizontally at
+ * --col-min per day with the axis sticky, so the squeeze is explicit and navigable instead of degrading all
+ * seven columns below legibility at once. That threshold arrives as Tailwind's `max-narrow:` variant on the
+ * component, which compiles from the theme's own mirror of --bp-compact: a raw length here would be a third
+ * copy of the value with nothing comparing it to the token. */
+
+@import "./tokens.css";
+
+.week-grid {
+  display: flex;
+  min-width: 0;
+  border: var(--hairline) solid var(--rule-strong);
+  background-color: var(--paper-raised);
+}
+
+/* Sticky rather than fixed, so it holds the left edge of the SCROLL CONTAINER: below --bp-compact the columns
+   scroll under it and the reader keeps the one column that says what a row means. */
+.week-grid__axis {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: 0 0 auto;
+  width: var(--axis-w);
+  border-right: var(--hairline) solid var(--rule);
+  background-color: var(--paper-raised);
+}
+
+.week-grid__axis-head {
+  height: var(--day-header-h);
+  border-bottom: var(--hairline) solid var(--rule-strong);
+  background-color: var(--ink-wash);
+}
+
+.week-grid__axis-canvas {
+  position: relative;
+}
+
+/* THE HOUR LABEL SITS JUST BELOW THE LINE IT NAMES, never centred on it, AND IT KNOCKS OUT ITS OWN BACKGROUND.
+   Centring with a negative offset pulled the first label up into the day header's rule, which struck it
+   through; sitting below the line still let it meet the top edge of the first block's rule at a deep zoom. The
+   knockout is what makes the collision impossible rather than unlikely. */
+.week-grid__hour {
+  position: absolute;
+  right: 4px;
+  padding: 0 3px;
+  background-color: var(--paper-raised);
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-chrome);
+}
+
+/* The now rule's own reading, in the axis gutter, in the one ink that says "now". */
+.week-grid__now-time {
+  position: absolute;
+  right: 3px;
+  padding: 0 2px;
+  background-color: var(--paper-raised);
+  color: var(--ink-bright);
+  font-size: var(--fs-eyebrow);
+  font-variant-numeric: tabular-nums;
+}
+
+.week-grid__days {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.week-day {
+  min-width: 0;
+  flex: 1 1 0;
+  border-right: var(--hairline) solid var(--rule);
+}
+
+.week-day:last-child {
+  border-right: 0;
+}
+
+.week-day__head {
+  display: flex;
+  height: var(--day-header-h);
+  align-items: center;
+  gap: 7px;
+  padding: 0 7px;
+  border-bottom: var(--hairline) solid var(--rule-strong);
+  background-color: var(--ink-wash);
+  color: var(--ink-deep);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}
+
+.week-day__count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.week-day__canvas {
+  position: relative;
+}
+
+.week-grid__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+}
+
+.week-grid__line--hour {
+  border-top: var(--hairline) solid var(--grid-line-hour);
+}
+
+.week-grid__line--quarter {
+  border-top: var(--hairline) solid var(--grid-line-quarter);
+}
+
+/* The one state this sheet spends: the quarter line's WEIGHT, driven by the grid's own attribute rather than by
+   each line's, so one attribute change re-weights the whole week. */
+[data-dragging] .week-grid__line--quarter {
+  border-top-color: var(--grid-line-quarter-drag);
+}
+
+/* THE NOW RULE IS THE ONLY MARKER OF WHAT IS PAST. Past blocks take no channel of their own, because the rule
+   already says where the boundary is and immutability is not a per-block property worth a pigment. It sits
+   above the bands and the blocks, because it is a statement about all of them. */
+.week-now {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  height: 0;
+  border-top: var(--now-rule) solid var(--ink-bright);
+}

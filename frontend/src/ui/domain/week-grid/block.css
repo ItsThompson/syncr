@@ -1,0 +1,223 @@
+/* Layer 2: THE BLOCK. The densest component in the product, and every state channel it carries.
+ *
+ * A BLOCK DRAWS THREE EDGES, NOT FOUR. The top rule carries the Area, the bottom rule closes the block at grid
+ * weight, the left rule is reserved for state, and there is no right border at all. An earlier draft gave it a
+ * full border: rendered, two adjacent fifteen-minute blocks put four rules inside one hour once the grid lines
+ * were counted, and the blocks vanished into the corduroy. A 1px horizontal inset keeps a block's own rules off
+ * the column divider.
+ *
+ * WHY THE AREA SITS ON THE TOP RULE. The left rule is already spoken for by conflict and selected, and at the
+ * sliver tier the top rule is the only thing that survives, which is exactly where identity matters most. An
+ * inline chip before the title dies with the title.
+ *
+ * THE LEFT RULE AND THE HOVER FILL ARE `ui/primitives/states.css`'s, COMPOSED RATHER THAN RESTATED. That file is
+ * the kit's one assignment of hover's fill and of the reserved 3px transparent left rule, and a second
+ * definition of either drifts apart with nothing on a rendered screen revealing it until the states co-occur. A
+ * block is the fourth surface with the same two behaviours, so it composes `.state-row` the way a ledger row, a
+ * table row and a palette row already do.
+ *
+ * ONE STATE, ONE CHANNEL, so combinations add instead of overwrite:
+ *
+ *   Area identity     2px top rule       --ai, set per block
+ *   anchor identity   2px top rule       --ink-deep. time the product does not own has no Area to name
+ *   the block exists  fill               --paper-raised
+ *   external anchor   fill as an image   a hatch over that fill, on its own layer
+ *   hover             fill as a colour   --ink-wash, from states.css, so it COMPOSES with the hatch
+ *   proposal target   no fill            the one state without one
+ *   conflict          3px left rule      --signal-oxide, which wins the pixel over selected while it lasts
+ *   selected          3px left rule      --ink-deep
+ *   split             1px left rule      --rule, replaced by the state rule when both apply
+ *   focus-visible     a 2px ring         base.css draws it; this sheet only lifts the block so it is not clipped
+ *   tier              type size, padding the four-step ladder
+ *   pinned, origin    the glyph slot     GlyphSlot owns the slot's precedence for the whole kit
+ *
+ * FOUR MEANINGS ARE DELIBERATELY NOT CHANNELS HERE. Reality state lives in the Today ledger, time relation in
+ * the now rule, infeasibility implication in a mode entered from the verdict strip, and the reason string in the
+ * detail panel on selection. There is no fifth channel for any of them. */
+
+@import "./tokens.css";
+
+.week-block {
+  /* Declared here with the fallback each needs, so the two per-block values the component sets inline have a
+     resting value: a block with no Area draws its top rule at grid weight, and a block whose height has not been
+     measured yet holds one line. */
+  --ai: var(--rule);
+  --lines: 1;
+
+  position: absolute;
+  display: block;
+  overflow: hidden;
+  padding: var(--block-pad-t) var(--block-pad-x) var(--block-pad-b);
+  border-top: var(--rule-emphasis) solid var(--ai);
+  border-bottom: var(--hairline) solid var(--rule);
+  background-color: var(--paper-raised);
+  color: var(--ink);
+  font-size: var(--fs-block);
+  line-height: var(--lh-block);
+  /* A title reads from the left edge like every other title in the system. The block is a BUTTON, which is what
+     makes it keyboard-reachable at every tier without a role or a tab index, and a button centres its label. */
+  text-align: left;
+}
+
+/* THE TWELVE STEPS OF THE SEALED RAMP, one class each, which is the only thing an Area's pigment does to a
+   block: it sets the ink its top rule is drawn in and touches nothing else. Twelve rules rather than one
+   interpolated class, because a class list a scan cannot read is a class list four design rules go silent on.
+   Past twelve Areas the deal wraps, so two Areas take one of these and the Area's NAME is what separates
+   them. */
+.week-block--area-01 {
+  --ai: var(--area-01);
+}
+
+.week-block--area-02 {
+  --ai: var(--area-02);
+}
+
+.week-block--area-03 {
+  --ai: var(--area-03);
+}
+
+.week-block--area-04 {
+  --ai: var(--area-04);
+}
+
+.week-block--area-05 {
+  --ai: var(--area-05);
+}
+
+.week-block--area-06 {
+  --ai: var(--area-06);
+}
+
+.week-block--area-07 {
+  --ai: var(--area-07);
+}
+
+.week-block--area-08 {
+  --ai: var(--area-08);
+}
+
+.week-block--area-09 {
+  --ai: var(--area-09);
+}
+
+.week-block--area-10 {
+  --ai: var(--area-10);
+}
+
+.week-block--area-11 {
+  --ai: var(--area-11);
+}
+
+.week-block--area-12 {
+  --ai: var(--area-12);
+}
+
+/* THE CIRCADIAN FRAME IS A RECESSED BAND rather than a category competing with Fitness, so it takes no Area ink
+   and a wash of its own. Wrapped in :where() so it does not out-specify hover's fill: the frame is what a block
+   IS and hover is a state, and a state has to win the channel it owns. */
+.week-block:where([data-origin="frame"]) {
+  background-color: var(--frame-wash);
+}
+
+/* AN ANCHOR HAS NO AREA, so its top rule takes the one ink that is not a pigment. Together with the hatch below
+   that is what makes an anchor read as a read-only fact rather than as an assertion. */
+.week-block[data-origin="anchor"] {
+  border-top-color: var(--ink-deep);
+}
+
+/* THE HATCH IS A LAYER OF ITS OWN, and it has to be. A texture in the token layer draws in --hatch-ink, which is
+   `currentColor`: a custom property holding a var() is substituted where it is DECLARED, so a per-element
+   --hatch-ink cannot reach a gradient declared at :root, and `color` is the one value CSS resolves per element.
+   The block paints its title, so the block cannot spend its `color` on a texture. A layer that paints no text
+   can, which is the same shape `charts/charts.css` uses for a wedge's hatch.
+   Under the content and over the fill, so hover's colour still reaches through it. */
+.week-block__hatch {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  color: var(--rule);
+  background-image: var(--hatch-back);
+  pointer-events: none;
+}
+
+/* The glyph slot floats beside a WRAPPING title rather than sitting in a gutter, because a block's title is the
+   only text in the system that wraps to a computed line count and a gutter would cost it a column of width. */
+.week-block__glyph {
+  position: relative;
+  z-index: 1;
+  float: right;
+  margin-left: 5px;
+}
+
+/* THE TITLE WRAPS TO WHATEVER FITS AND NEVER TRUNCATES. --lines is computed per block from its own height, so a
+   clip lands on a LINE BOUNDARY rather than mid-glyph and a tall block keeps the tail that distinguishes it from
+   its sibling. There is no `white-space: nowrap` here and no ellipsis: a measured ledger over one real week
+   found 4 of 37 distinct titles becoming ambiguous under end-ellipsis, because an ellipsis discards precisely
+   the tail that had to survive. */
+.week-block__title {
+  position: relative;
+  z-index: 1;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--lines);
+  overflow-wrap: anywhere;
+}
+
+/* THE TIER LADDER. The block degrades; the axis does not. The compact tier gives up its top padding because
+   there is no room for it, which is what keeps a title down to 12.5px inside a 13px floor. */
+.week-block[data-tier="compact"] {
+  padding-top: 0;
+  font-size: var(--fs-block-compact);
+  line-height: var(--lh-block-compact);
+}
+
+/* The hairline tier is a bounded floor: the Area rule alone, with nothing left to close. It is unreachable on
+   any supported display given the zoom clamp, and it is kept so a viewport shorter than anything supported
+   degrades rather than overlapping. */
+.week-block[data-tier="hairline"] {
+  padding: 0;
+  border-bottom-width: 0;
+}
+
+/* A SPLIT BLOCK IS THE ONE EXCEPTION TO THREE EDGES, because with no left border of its own nothing else would
+   divide it from the block beside it. Declared before the two state rules, so becoming selected or conflicted
+   replaces the split's ink and the pair below restores the state rule's width. */
+.week-block[data-split] {
+  border-left: var(--hairline) solid var(--rule);
+}
+
+/* CONFLICT AND SELECTED SHARE THE LEFT RULE DELIBERATELY. They cannot co-occur meaningfully: a conflict is
+   resolved by selecting it, at which point the detail panel states it in words. Conflict is declared second, so
+   it wins the pixel while it lasts. */
+.week-block[data-selected] {
+  border-left-color: var(--state-selected-color);
+}
+
+.week-block[data-conflict] {
+  border-left-color: var(--state-conflict-color);
+}
+
+.week-block[data-split][data-selected],
+.week-block[data-split][data-conflict] {
+  border-left-width: var(--state-selected-border);
+}
+
+/* A PROPOSAL TARGET IS THE ONE STATE WITH NO FILL, and dashed alone was rejected for it: a dashed border already
+   means `disabled` on a control, and one visual carrying two meanings is what this system forbids. Absence of
+   fill is unclaimed and unambiguous, and it survives forced colors where a fill is dropped anyway. The dashed
+   edge is kept as well, so that in forced colors the missing fill stops being the only difference: it is also
+   the one state that closes the box, because a rectangle with no fill needs an edge to be a rectangle. The left
+   rule is re-reserved after it, so the state channel is not spent by the dash. */
+.week-block[data-proposal] {
+  border: var(--hairline) dashed var(--ink-deep);
+  border-left: var(--state-selected-border) solid transparent;
+  background-color: transparent;
+  background-image: none;
+}
+
+/* Lifted so the ring, drawn at a 2px OUTSET offset by base.css, is not clipped by the block below it. The ring
+   itself is the surface's decision and no component in this layer declares one. */
+.week-block:focus-visible {
+  z-index: 4;
+}

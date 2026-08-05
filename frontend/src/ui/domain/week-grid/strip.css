@@ -1,0 +1,50 @@
+/* Layer 2: THE SUMMARY STRIP'S OWN CELLS.
+ *
+ * THE STRIP'S HEIGHT IS FIXED, and that is a layout-stability rule rather than a preference: the strip sits
+ * directly above the grid, and a strip that grew by a line when a verdict arrived would shift the grid under the
+ * cursor mid-drag. The height itself is `Strip`'s, at --strip-h, so this sheet reserves nothing of its own.
+ *
+ * THREE READINGS PLUS THE VERDICT, and the content budget is settled at four cells. Plan currency is therefore
+ * not a fifth: it rides in the SCHEDULED cell's sub-line, where it qualifies the block count, which is exactly
+ * what it does. `91 · solving` says whether that count is current. When it is, the sub-line reads `91 blocks`.
+ *
+ * The cells themselves are the layout layer's `StatCell`, so mono figures with tabular digits are one decision
+ * rather than four. What is here is the strip's own division: three cells sharing the width and a verdict cell
+ * that takes what is left, with a rule between each. */
+
+@import "./tokens.css";
+
+.week-strip {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  border: var(--hairline) solid var(--rule-strong);
+  background-color: var(--paper-raised);
+}
+
+.week-strip__cell {
+  min-width: 0;
+  flex: 0 1 auto;
+  padding: 7px 11px;
+  border-right: var(--hairline) solid var(--rule);
+}
+
+/* The verdict takes the surplus, because it is the one cell holding a sentence rather than a figure. */
+.week-strip__verdict {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 7px 11px;
+  border-left: var(--rule-emphasis) solid var(--signal-amber);
+  background-color: var(--amber-wash);
+  color: var(--text-on-wash);
+  font-size: var(--fs-chrome);
+  line-height: var(--lh-chrome);
+}
+
+/* Nothing to say yet is a real, static rendering rather than an absence: the cell is reserved either way, so the
+   strip's height cannot change when a verdict arrives. */
+.week-strip__verdict--quiet {
+  border-left-color: var(--rule);
+  background-color: var(--paper-raised);
+  color: var(--text-muted);
+}
