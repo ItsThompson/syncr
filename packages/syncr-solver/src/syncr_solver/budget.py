@@ -17,9 +17,10 @@ budget is a count of evaluations rather than a wall clock:
 ```
 
 Measured end to end on a 226-block week, which is what the two numbers were chosen against rather
-than derived from: construction 0.96 s, search 0.68 s, 1.64 s in all. The changeset carries the run.
-A wall-time assertion in the suite is deliberately absent, because it would measure the machine it
-runs on; what the suite asserts instead is that the iteration count is the same on every run.
+than derived from: construction 0.96 s, search 0.68 s, 1.64 s in all.
+``python -m tests.measure_solve`` reproduces the table, so the next person to change either number
+can re-measure what it was sized against. A wall-time assertion in the suite is deliberately absent,
+because it would measure the machine it runs on; the suite asserts the iteration count instead.
 
 ## Why a bound cannot make a plan wrong
 
