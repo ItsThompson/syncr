@@ -48,7 +48,7 @@ module's.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from enum import StrEnum
 from math import isfinite
 from typing import TYPE_CHECKING, Final
@@ -161,24 +161,40 @@ class WeightSet:
     def __post_init__(self) -> None:
         object.__setattr__(self, "time_of_day_fitness", dict(self.time_of_day_fitness))
         object.__setattr__(self, "skip_probability", dict(self.skip_probability))
-        _require_every_term_to_carry_a_weight(self)
-        for name in OBJECTIVE_TERMS:
-            _require_a_weight(name, self.weight_of(name))
+        _require_the_vocabulary_to_match(self.term_weights())
+        for name, weight in self.term_weights().items():
+            _require_a_weight(name, weight)
         _require_a_price(self.context_switch_cost)
         _require_a_tolerance(self.churn_tolerance)
         _require_fitted_curves(self.time_of_day_fitness)
         _require_fitted_probabilities(self.skip_probability)
 
+    def term_weights(self) -> Mapping[str, float]:
+        """Each term's weight by its name, which is what a breakdown pairs its costs with.
+
+        Spelled out rather than read off the fields, so a field renamed without the vocabulary
+        fails at construction instead of resolving to whatever a lookup found. The guard crosses
+        this against :data:`OBJECTIVE_TERMS` in both directions.
+        """
+        return {
+            "deadline_risk": self.deadline_risk,
+            "budget_deviation": self.budget_deviation,
+            "time_of_day_misfit": self.time_of_day_misfit,
+            "fragmentation": self.fragmentation,
+            "churn": self.churn,
+            "context_switch": self.context_switch,
+            "staleness": self.staleness,
+        }
+
     def weight_of(self, term: str) -> float:
         """How much ``term`` matters against the other six."""
-        if term not in OBJECTIVE_TERMS:
+        weights = self.term_weights()
+        if term not in weights:
             raise WeightError(
                 f"{term!r} is not one of the objective's seven terms: they are "
                 f"{', '.join(OBJECTIVE_TERMS)}"
             )
-        weight = getattr(self, term)
-        assert isinstance(weight, float)  # noqa: S101 - held by the field-name guard above
-        return weight
+        return weights[term]
 
     def fitness_at(self, area_id: AreaId, hour: int) -> float | None:
         """How well this Area's work goes at this hour, or ``None`` if nothing is fitted.
@@ -196,20 +212,19 @@ class WeightSet:
         return self.skip_probability.get((area_id, bucket))
 
 
-def _require_every_term_to_carry_a_weight(weights: WeightSet) -> None:
-    """Every name in the vocabulary is a field of this class, in both directions.
+def _require_the_vocabulary_to_match(weights: Mapping[str, float]) -> None:
+    """The names a weight set offers and the names the objective has terms for are one set.
 
-    Read from the dataclass rather than from a second list, so a renamed weight fails here
-    instead of resolving to whatever ``getattr`` finds. The inverse direction is asserted by
-    the suite, because the two parameters below are floats too and only a test can say which
-    floats are weights.
+    Both directions, at construction. A term with no weight would be scored at whatever a lookup
+    happened to find, and a weight with no term would be a number nobody reads: the same fault
+    that makes an unread fitted parameter worth refusing.
     """
-    declared = {member.name for member in fields(weights)}
-    missing = sorted(term for term in OBJECTIVE_TERMS if term not in declared)
-    if missing:  # pragma: no cover - unreachable while the class declares the seven
+    offered = set(weights)
+    named = set(OBJECTIVE_TERMS)
+    if offered != named:  # pragma: no cover - unreachable while both are literal in this module
         raise WeightError(
-            f"the objective names terms this weight set carries no weight for: {missing}. "
-            "A term with no weight would be scored at whatever a lookup happened to find"
+            f"the weight set offers {sorted(offered)} and the objective names "
+            f"{sorted(named)}: a term with no weight is scored at whatever a lookup finds"
         )
 
 
