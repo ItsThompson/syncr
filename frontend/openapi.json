@@ -1132,7 +1132,8 @@
         "required": [
           "kind",
           "entityId",
-          "occurrenceKey"
+          "occurrenceKey",
+          "splitIndex"
         ],
         "title": "BindingResponse",
         "type": "object"
@@ -1242,7 +1243,11 @@
           "origin",
           "title",
           "reason",
-          "pinned"
+          "areaId",
+          "pinned",
+          "supersededPlacement",
+          "objectiveDelta",
+          "splitCount"
         ],
         "title": "BlockResponse",
         "type": "object"
@@ -1278,7 +1283,8 @@
         },
         "required": [
           "window",
-          "rule"
+          "rule",
+          "detail"
         ],
         "title": "BlockedClause",
         "type": "object"
@@ -1457,7 +1463,8 @@
         },
         "required": [
           "source",
-          "selected"
+          "selected",
+          "cursor"
         ],
         "title": "BoundClause",
         "type": "object"
@@ -1820,6 +1827,10 @@
             "title": "Revisionid"
           }
         },
+        "required": [
+          "revisionId",
+          "approvedAt"
+        ],
         "title": "ChurnBaselineResponse",
         "type": "object"
       },
@@ -2317,7 +2328,8 @@
         },
         "required": [
           "term",
-          "share"
+          "share",
+          "baseline"
         ],
         "title": "DominantClause",
         "type": "object"
@@ -6058,13 +6070,14 @@
           "createdAt",
           "status",
           "reason",
+          "approvedAt",
           "inputVersion"
         ],
         "title": "WeekRevisionResponse",
         "type": "object"
       },
       "WeekRevisionsResponse": {
-        "description": "One week's revision history, newest first. Read-only: no route mutates a revision.",
+        "description": "One week's revision history, newest first. Read-only: no route mutates a revision.\n\n``truncated`` exists because the page is bounded and a bounded page that says nothing about its\nbound is a partial history a client cannot tell from a whole one. There is no cursor: what this\nanswers is the recent history of one week, and paging back through a year of it is the weekly\nreview's question rather than this route's.",
         "properties": {
           "revisions": {
             "items": {
@@ -6072,10 +6085,16 @@
             },
             "title": "Revisions",
             "type": "array"
+          },
+          "truncated": {
+            "description": "Whether the week has more revisions than this page holds. True means the oldest are not here.",
+            "title": "Truncated",
+            "type": "boolean"
           }
         },
         "required": [
-          "revisions"
+          "revisions",
+          "truncated"
         ],
         "title": "WeekRevisionsResponse",
         "type": "object"
@@ -6089,11 +6108,14 @@
             "type": "null"
           }
         },
+        "required": [
+          "verdict"
+        ],
         "title": "WeekVerdictResponse",
         "type": "object"
       },
       "WeekViewResponse": {
-        "description": "The Week screen's whole read, in one request.",
+        "description": "The Week screen's whole read, in one request.\n\n**Every field is required and the nullable ones are nullable**, which is section 13's own shape\nand the one thirty-six other response fields in this api already take. A field with a default is\nOPTIONAL in the generated document, so a client would have to narrow ``undefined`` as well as\n``null`` and ``if (view.emptyReason === null)`` would not be sound against its own types. The\nserver populates all sixteen on every answer, so the contract says so.",
         "properties": {
           "adjustments": {
             "description": "Always empty: the concessions a week holds are read through the adjustments route in this deployment.",
@@ -6181,7 +6203,7 @@
                 "type": "null"
               }
             ],
-            "description": "The non-terminal solve for this week, if one is in flight."
+            "description": "The non-terminal solve or materialize for this week, if one is in flight. Either changes what the grid holds, and the field exists so a client knows what to follow."
           },
           "pins": {
             "description": "Always empty: nothing records a pin in this deployment.",
@@ -6229,7 +6251,19 @@
           "isoWeek",
           "span",
           "zoneByDate",
-          "inputVersion"
+          "live",
+          "emptyReason",
+          "emptyWeek",
+          "proposal",
+          "candidateAdjustment",
+          "adjustments",
+          "pins",
+          "conflicts",
+          "verdict",
+          "offPlan",
+          "operation",
+          "inputVersion",
+          "readings"
         ],
         "title": "WeekViewResponse",
         "type": "object"
@@ -14258,7 +14292,7 @@
     },
     "/api/v1/weeks/{iso_week}/revisions": {
       "get": {
-        "description": "Every revision this week's plan has had, newest first.",
+        "description": "Every revision this week's plan has had, newest first, and whether more exist.",
         "operationId": "read_revisions_api_v1_weeks__iso_week__revisions_get",
         "parameters": [
           {

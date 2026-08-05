@@ -1208,7 +1208,7 @@ export interface paths {
         };
         /**
          * Revision history for the week. Read-only
-         * @description Every revision this week's plan has had, newest first.
+         * @description Every revision this week's plan has had, newest first, and whether more exist.
          */
         get: operations["read_revisions_api_v1_weeks__iso_week__revisions_get"];
         put?: never;
@@ -2052,7 +2052,7 @@ export interface components {
              * Splitindex
              * @description Which chunk of a divided task this is. Null when it is whole.
              */
-            splitIndex?: number | null;
+            splitIndex: number | null;
         };
         /**
          * BindingSource
@@ -2080,7 +2080,7 @@ export interface components {
              * Areaid
              * @description The Area this block is charged to. Null for the frame and for an imported anchor: one defines how much time exists and the other is time the product does not own.
              */
-            areaId?: string | null;
+            areaId: string | null;
             binding: components["schemas"]["BindingResponse"];
             /**
              * Id
@@ -2092,7 +2092,7 @@ export interface components {
              * Objectivedelta
              * @description What overriding that placement cost.
              */
-            objectiveDelta?: number | null;
+            objectiveDelta: number | null;
             /** @description What this block is to the reader, read from the binding. */
             origin: components["schemas"]["Origin"];
             /**
@@ -2105,9 +2105,9 @@ export interface components {
              * Splitcount
              * @description How many chunks the divided task was split into.
              */
-            splitCount?: number | null;
+            splitCount: number | null;
             /** @description Where a pinned block would otherwise have been. */
-            supersededPlacement?: components["schemas"]["WireSpan"] | null;
+            supersededPlacement: components["schemas"]["WireSpan"] | null;
             /** Title */
             title: string;
         };
@@ -2117,7 +2117,7 @@ export interface components {
          */
         BlockedClause: {
             /** Detail */
-            detail?: string | null;
+            detail: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2206,7 +2206,7 @@ export interface components {
          */
         BoundClause: {
             /** Cursor */
-            cursor?: string | null;
+            cursor: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2377,12 +2377,12 @@ export interface components {
              * Approvedat
              * @description When it was approved, which the clause renders as a date.
              */
-            approvedAt?: string | null;
+            approvedAt: string | null;
             /**
              * Revisionid
              * @description The approved revision churn is the difference from.
              */
-            revisionId?: string | null;
+            revisionId: string | null;
         };
         ClauseResponse: components["schemas"]["BlockedClause"] | components["schemas"]["DominantClause"] | components["schemas"]["BoundClause"] | components["schemas"]["FloorClause"] | components["schemas"]["PinnedClause"] | components["schemas"]["InsteadOfClause"];
         /**
@@ -2672,7 +2672,7 @@ export interface components {
          */
         DominantClause: {
             /** @description Set when the term is churn: what it was measured against. */
-            baseline?: components["schemas"]["ChurnBaselineResponse"] | null;
+            baseline: components["schemas"]["ChurnBaselineResponse"] | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -4776,7 +4776,7 @@ export interface components {
              * Approvedat
              * @description When the user assented. Null for an applied revision.
              */
-            approvedAt?: string | null;
+            approvedAt: string | null;
             /**
              * Createdat
              * Format: date-time
@@ -4801,10 +4801,20 @@ export interface components {
         /**
          * WeekRevisionsResponse
          * @description One week's revision history, newest first. Read-only: no route mutates a revision.
+         *
+         *     ``truncated`` exists because the page is bounded and a bounded page that says nothing about its
+         *     bound is a partial history a client cannot tell from a whole one. There is no cursor: what this
+         *     answers is the recent history of one week, and paging back through a year of it is the weekly
+         *     review's question rather than this route's.
          */
         WeekRevisionsResponse: {
             /** Revisions */
             revisions: components["schemas"]["WeekRevisionResponse"][];
+            /**
+             * Truncated
+             * @description Whether the week has more revisions than this page holds. True means the oldest are not here.
+             */
+            truncated: boolean;
         };
         /**
          * WeekVerdictResponse
@@ -4818,29 +4828,35 @@ export interface components {
              * Verdict
              * @description Always null: no read computes a verdict in this deployment.
              */
-            verdict?: null;
+            verdict: null;
         };
         /**
          * WeekViewResponse
          * @description The Week screen's whole read, in one request.
+         *
+         *     **Every field is required and the nullable ones are nullable**, which is section 13's own shape
+         *     and the one thirty-six other response fields in this api already take. A field with a default is
+         *     OPTIONAL in the generated document, so a client would have to narrow ``undefined`` as well as
+         *     ``null`` and ``if (view.emptyReason === null)`` would not be sound against its own types. The
+         *     server populates all sixteen on every answer, so the contract says so.
          */
         WeekViewResponse: {
             /**
              * Adjustments
              * @description Always empty: the concessions a week holds are read through the adjustments route in this deployment.
              */
-            adjustments?: components["schemas"]["AdjustmentResponse"][];
+            adjustments: components["schemas"]["AdjustmentResponse"][];
             /** @description Always null: a candidate concession rides on an operation and is not read back into this view yet. */
-            candidateAdjustment?: components["schemas"]["AdjustmentResponse"] | null;
+            candidateAdjustment: components["schemas"]["AdjustmentResponse"] | null;
             /**
              * Conflicts
              * @description Always empty: nothing records a conflict in this deployment.
              */
-            conflicts?: null[];
+            conflicts: null[];
             /** @description Why live is null. Null exactly when live is populated. */
-            emptyReason?: components["schemas"]["EmptyReason"] | null;
+            emptyReason: components["schemas"]["EmptyReason"] | null;
             /** @description The facts behind emptyReason. Null exactly when live is populated. */
-            emptyWeek?: components["schemas"]["EmptyWeekResponse"] | null;
+            emptyWeek: components["schemas"]["EmptyWeekResponse"] | null;
             /**
              * Inputversion
              * @description The week's input counter, for optimistic client reasoning. Zero when nothing has referenced the week yet: versions start at one.
@@ -4849,33 +4865,33 @@ export interface components {
             /** Isoweek */
             isoWeek: string;
             /** @description The plan of record for this week, or null when none exists. A read never produces one: navigating between weeks is not a mutation. */
-            live?: components["schemas"]["PlanDocumentResponse"] | null;
+            live: components["schemas"]["PlanDocumentResponse"] | null;
             /**
              * Offplan
              * @description Every declared off-plan span reaching into this week, unclipped, so a Friday-to-Monday span reads the same in both weeks it touches.
              */
-            offPlan?: components["schemas"]["OffPlanPeriodResponse"][];
-            /** @description The non-terminal solve for this week, if one is in flight. */
-            operation?: components["schemas"]["OperationResponse"] | null;
+            offPlan: components["schemas"]["OffPlanPeriodResponse"][];
+            /** @description The non-terminal solve or materialize for this week, if one is in flight. Either changes what the grid holds, and the field exists so a client knows what to follow. */
+            operation: components["schemas"]["OperationResponse"] | null;
             /**
              * Pins
              * @description Always empty: nothing records a pin in this deployment.
              */
-            pins?: null[];
+            pins: null[];
             /**
              * Proposal
              * @description Always null: nothing produces a proposal in this deployment.
              */
-            proposal?: null;
+            proposal: null;
             /** @description The strip's figures. Null exactly when live is null. */
-            readings?: components["schemas"]["WeekReadingsResponse"] | null;
+            readings: components["schemas"]["WeekReadingsResponse"] | null;
             /** @description The week's real span. 167 or 169 hours across a daylight-saving transition, and something else again across a travel boundary. */
             span: components["schemas"]["WireSpan"];
             /**
              * Verdict
              * @description Always null: no read computes a verdict in this deployment.
              */
-            verdict?: null;
+            verdict: null;
             /**
              * Zonebydate
              * @description The zone active on each of the week's dates NOW, keyed by ISO date. The mapping inside live is the one captured when the plan was produced, and the two differ wherever a travel override was declared afterwards.
