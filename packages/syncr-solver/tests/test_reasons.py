@@ -732,7 +732,16 @@ class TestThePinClauses:
             live_plan=a_live_plan(
                 a_block(binding=occurrence.binding, interval=began, title=occurrence.title)
             ),
-            pins=(a_pin(binding=occurrence.binding, interval=pinned_at),),
+            pins=(
+                a_pin(
+                    binding=occurrence.binding,
+                    interval=pinned_at,
+                    # The pair a real pin carries, so `at` has a second span to be confused with:
+                    # the placement the edit replaced is exactly where this block had begun.
+                    superseded_placement=began,
+                    objective_delta=0.42,
+                ),
+            ),
         )
         result = solved(week)
         block = next(
@@ -746,6 +755,7 @@ class TestThePinClauses:
         assert isinstance(clause, Pinned)
         assert clause.at == block.interval
         assert clause.at == pinned_at
+        assert clause.at != began
 
     def test_the_pin_glyph_and_the_instead_of_clause_are_the_same_pairing(self) -> None:
         """``Block.pinned`` is set from the pair, so the two cannot report different things."""

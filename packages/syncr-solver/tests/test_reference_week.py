@@ -34,7 +34,16 @@ from typing import TYPE_CHECKING, Final
 
 from syncr_domain.feasibility import Provenance
 from syncr_domain.identity import BindingRef, Origin
-from syncr_domain.reasons import CLAUSE_BUDGET, MAX_CLAUSES, Blocked, Bound, Dominant, Floor
+from syncr_domain.reasons import (
+    CLAUSE_BUDGET,
+    MAX_CLAUSES,
+    Blocked,
+    Bound,
+    Dominant,
+    Floor,
+    InsteadOf,
+    Pinned,
+)
 from syncr_solver import solve
 from tests.objective_weeks import hand_tuned_weights
 from tests.reference_week import (
@@ -368,8 +377,19 @@ def test_the_pinned_habit_reports_the_pin_and_what_it_replaced() -> None:
         block for block in solved_reference().document.blocks if block.binding == pin.binding
     )
     kinds = [type(clause).__name__ for clause in block.reason.clauses]
+    at = next(clause for clause in block.reason.clauses if isinstance(clause, Pinned))
+    replaced = next(clause for clause in block.reason.clauses if isinstance(clause, InsteadOf))
 
     assert kinds == ["Bound", "Pinned", "InsteadOf", "Dominant", "Floor"]
+    # The spans, not only the kinds: `pinned` names where the user put it, which is where the week
+    # holds the block, and `instead of` names the placement that edit replaced. Rendered the other
+    # way round both clauses would still be present and both would be wrong.
+    assert (at.at, at.pinned_on) == (pin.interval, pin.pinned_on)
+    assert at.at == block.interval
+    assert (replaced.placement, replaced.objective_delta) == (
+        pin.superseded_placement,
+        pin.objective_delta,
+    )
 
 
 def test_every_chunk_of_the_divided_task_reports_the_demand_s_refused_windows() -> None:
