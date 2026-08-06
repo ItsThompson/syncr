@@ -29,7 +29,7 @@ inputs are what the pin changes: the assembly has to see the pin to answer the v
 carries. So the row exists before its price does, both writes are in one transaction, and no reader
 ever sees a pin without its cost. A ``CHECK`` cannot express that, because Postgres has no
 deferrable one; what holds it instead is that pricing is the only other statement against this
-table, and a test asserts every committed pin carries a delta.
+table, and the pin service prices every row it writes before the transaction commits.
 
 The check constraint over the superseded pair is restated with the nullability. Paired nullability
 is what it could say while either column could be absent, and with neither absent that reading is

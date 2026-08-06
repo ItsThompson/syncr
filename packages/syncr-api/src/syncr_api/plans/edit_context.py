@@ -10,8 +10,7 @@ The fields below are the ones a fitter consumes, at roughly 1.5 KB per event.
 
 **Flat, deliberately, and it is a feature vector rather than a document.** The five groups the
 comments name are five derivations, but a fitter reads twenty numbers rather than five containers,
-and nesting them would put a walk in front of every one. The inventory is asserted against section
-11's own list instead, which is what keeps the flatness from hiding a missing field.
+and nesting them would put a walk in front of every one.
 
 **``E3``: every span here is an OFFSET from the accepted placement, in signed minutes.** An event
 has to stay meaningful without reconstructing the week it came from, and an absolute instant is only

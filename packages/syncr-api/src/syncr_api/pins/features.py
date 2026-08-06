@@ -218,8 +218,21 @@ def _deadline_of(block: Block, inputs: SolveInputs) -> Instant | None:
     Read from the eligible tasks rather than from the deadline demands: a demand is per Area and per
     instant and several tasks share one, so it could not say whether THIS content is the one under
     pressure. A habit, a routine occurrence and a commitment are under none by construction.
+
+    Matched on the ENTITY rather than the binding, because a split task carries a chunk index on its
+    blocks while the eligible-task entry carries none: matching on the full binding would leave
+    every chunk of a divided deadline-bearing task unrecognised, permanently, in a corpus E5 forbids
+    pruning.
     """
-    task = next((one for one in inputs.eligible_tasks if one.binding == block.binding), None)
+    task = next(
+        (
+            one
+            for one in inputs.eligible_tasks
+            if one.binding.kind == block.binding.kind
+            and one.binding.entity_id == block.binding.entity_id
+        ),
+        None,
+    )
     return None if task is None else task.deadline
 
 

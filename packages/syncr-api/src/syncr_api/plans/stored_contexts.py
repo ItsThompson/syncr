@@ -1,13 +1,13 @@
 """An edit context's stored form: written into ``edit_events.context``, and read back out of it.
 
-**Both directions, and the round trip is what proves the writer.** A serializer with no reader
-cannot be shown faithful: a field silently dropped writes successfully forever, and this column is
-the one whose loss is unrecoverable. ``E5`` says these rows are never pruned because they are the
-training corpus, which makes a dropped field a permanent hole rather than a bug a later run repairs.
+**Both directions.** A serializer with no reader cannot be shown faithful: a field silently dropped
+writes successfully forever, and this column is the one whose loss is unrecoverable. ``E5`` says
+these rows are never pruned because they are the training corpus, which makes a dropped field a
+permanent hole rather than a bug a later run repairs.
 
 Nothing in this deployment reads a context back on a request path. The reader exists because the
-round trip is the proof, and because the fitter that will read one is offline and in another
-package: it reads this column, so the spelling has to be stated somewhere both can be held to.
+fitter that will read one is offline and in another package: it reads this column, so the spelling
+has to be stated somewhere both can be held to.
 
 The keys are the field names, so the stored object and the value it came from read alike in a
 ``psql`` session and in a fitter.

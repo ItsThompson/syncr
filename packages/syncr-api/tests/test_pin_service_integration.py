@@ -47,7 +47,7 @@ from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import PENDING, SOLVE
-from syncr_domain.feasibility import Provenance, ShortfallKind
+from syncr_domain.feasibility import Provenance
 from syncr_domain.habits import BindingSource
 from syncr_domain.identity import BindingKind, BindingRef, block_id
 from syncr_domain.intervals import Interval
@@ -400,8 +400,7 @@ class TestVerdictProperties:
     async def test_pinning_time_toward_a_due_task_leaves_shortfall_unchanged(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """Both demand and capacity fall by the same amount."""
-        # A task due Friday 09:00 with 60 min remaining, block at Thu 14:00-15:00
+        """Captures verdict BEFORE, asserts shortfall minutes EQUAL after."""
         deadline = datetime(2026, 2, 13, 9, 0, tzinfo=UTC)
         block = a_block(14, 15, day_offset=3)
         plan = a_plan(blocks=(block,))
@@ -409,25 +408,26 @@ class TestVerdictProperties:
         await _seed_area(sessions, owner.tenant_id, floor=0)
         await _seed_task(sessions, owner.tenant_id, deadline=deadline, estimate=60)
 
-        # Pin the task block to a different time (still before the deadline)
+        from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
+
+        async with sessions() as session, session.begin():
+            assembler = build_week_assembler(
+                session, owner.tenant_id, caller=AssemblyCaller.REQUEST
+            )
+            before_inputs = await assembler.assemble(WEEK, NOW)
+        before_verdict = WeekProbe(caller=ProbeCaller.REQUEST).verdict_for(before_inputs)
+
         new_start = datetime(2026, 2, 12, 10, 0, tzinfo=UTC)
         result = await _pin(sessions, owner, new_start)
 
-        # The shortfall should not INCREASE: since both demand and capacity fall by the same
-        # amount when pinning toward a due task, the gap stays unchanged
-        for shortfall in result.verdict.shortfalls:
-            if shortfall.kind == ShortfallKind.DEADLINE_CAPACITY:
-                # If there IS a shortfall, it means the task needed more time than available
-                # before the pin too, and pinning toward it did not worsen it
-                pass
-        # The verdict carries probe provenance
-        assert result.verdict.provenance == Provenance.PROBE
+        before_total = sum(s.minutes for s in before_verdict.shortfalls)
+        after_total = sum(s.minutes for s in result.verdict.shortfalls)
+        assert after_total == before_total
 
     async def test_pinning_a_fitness_block_reduces_the_floor_reservation(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """The same hour is never charged twice."""
-        # A Fitness block placed by the solver, and a 60-minute floor for the area
+        """EQUAL reservation before and after: pinning does not double-charge."""
         block = a_block(14, 15, day_offset=3)
         plan = a_plan(blocks=(block,))
         await _seed_plan(sessions, owner.tenant_id, plan)
@@ -694,16 +694,3 @@ class TestLiveVerdict:
         assert result.operation is not None
         assert result.operation.kind == SOLVE
         assert result.operation.status == PENDING
-
-
-# ---------------------------------------------------------------------------
-# The 150 ms budget comment
-# ---------------------------------------------------------------------------
-
-# The assembly is the dominant cost, not the probe: the probe's arithmetic is under 1 ms of that
-# budget and the assembly's reads are the rest. This is asserted by the existing
-# `test_week_assembler.py::test_the_budget_figures_are_read_against_and_the_histogram_labels_say`
-# and `syncr_assembly_duration_seconds{caller="request"}` and
-# `syncr_probe_duration_seconds{caller="request"}` are both recorded on this path, separately.
-# The structural assertion is that both metrics carry the REQUEST label, which the injection module
-# binds at construction.

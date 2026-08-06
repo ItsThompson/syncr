@@ -154,7 +154,10 @@ class PinService:
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
         produced = await self._last_produced(week)
         block = _block_of(produced, requested.block_id)
-        return await self._held(week, produced, block, _starting_at(requested.start, block))
+        accepted = _starting_at(requested.start, block)
+        now = self._clock()
+        _require_a_placement_the_week_has_not_reached(block, accepted, now)
+        return await self._held(week, produced, block, accepted, now=now)
 
     @measured("pins")
     async def reject(
@@ -165,7 +168,9 @@ class PinService:
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
         proposed = await self._proposed(week)
         block = _block_of(proposed, rejected.block_id)
-        return await self._held(week, proposed, block, await self._existing(week, block))
+        existing = await self._existing(week, block)
+        # No started-block check: the plan of record's placement is inherently valid to keep.
+        return await self._held(week, proposed, block, existing, now=self._clock())
 
     @measured("pins")
     async def unpin(self, principal: Principal, iso_week: str, pin_id: UUID) -> None:
@@ -196,11 +201,15 @@ class PinService:
         await self._coordinator.request_solve(week, version)
 
     async def _held(
-        self, week: IsoWeek, produced: PlanDocument, block: Block, accepted: Interval
+        self,
+        week: IsoWeek,
+        produced: PlanDocument,
+        block: Block,
+        accepted: Interval,
+        *,
+        now: datetime,
     ) -> PinnedWeek:
         """The one transaction every edit performs, whichever route asked for it."""
-        now = self._clock()
-        _require_a_placement_the_week_has_not_reached(block, accepted, now)
         stored = await self._weights.active()
         if stored is None:
             raise NoWeightSetInForce(
@@ -359,15 +368,19 @@ def _require_a_placement_the_week_has_not_reached(
 
 
 def _require_a_placement_inside_the_week(accepted: Interval, span: Interval) -> None:
-    """A pin binds ONE week, so a placement leaving that week's span is refused.
+    """A pin binds ONE week, so a placement whose start falls outside that week's span is refused.
 
     ``PN1``: the pin constrains the week it was made in and the next week's solve is unconstrained
-    by it, so a placement outside the span would be a constraint on a week no row names. Checked
-    against the assembled span rather than a span derived here, because a week's real length is a
-    resolution of the zone profile: it is 167 or 169 hours across a daylight-saving transition and
-    something else again across a travel boundary.
+    by it, so a placement starting outside the span would be a constraint on a week no row names.
+    Checked against the assembled span rather than a span derived here, because a week's real length
+    is a resolution of the zone profile: it is 167 or 169 hours across a daylight-saving transition
+    and something else again across a travel boundary.
+
+    The START is what decides ownership rather than the whole interval, because a Sunday-night frame
+    occurrence starts inside the week and ends after it: its overhang into the next week is modelled
+    by the assembler already, and refusing a pin at its own placement would make a block unpinnable.
     """
-    if accepted.clipped_to(span) == accepted:
+    if span.start <= accepted.start < span.end:
         return
     raise ValidationFailed(
         "That start puts the block outside the week it belongs to, and a pin binds one week. "
