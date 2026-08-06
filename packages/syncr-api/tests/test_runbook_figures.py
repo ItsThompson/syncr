@@ -302,3 +302,15 @@ class TestTheDebounceRunbook:
 
     def test_it_says_a_high_ratio_is_not_an_error_rate(self) -> None:
         assert "not an error rate" in read(DEBOUNCE_TUNING)
+
+    def test_it_says_the_guarantee_is_per_window_rather_than_per_burst(self) -> None:
+        # The two readings differ for sustained editing, which is exactly the case an operator reads
+        # the ratio during: inside one window a burst costs one solve, and editing past the window
+        # loses roughly one per solve-duration.
+        assert "per window**, not per burst" in read(DEBOUNCE_TUNING)
+
+    def test_it_says_which_of_the_three_figures_were_measured_here(self) -> None:
+        # The window is a considered default rather than a fitted one, because the burst it is sized
+        # for has no endpoint to produce it yet. A runbook that implied otherwise would have an
+        # operator tuning against a figure nothing in this deployment has ever exercised.
+        assert "not readings taken from this" in read(DEBOUNCE_TUNING)

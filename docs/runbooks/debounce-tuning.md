@@ -45,9 +45,29 @@ sum(rate(syncr_solve_total{outcome="superseded"}[1h]))
 | 0.1 to 0.3 | ordinary. A supersession is the expected outcome of editing quickly |
 | **sustained above 0.3** | the window is too short for this user's editing rhythm |
 
-The design guarantees at most one discarded solve per burst, so a sustained ratio above roughly 0.3
-does not mean the mechanism is failing. It means bursts are being cut short: the window is expiring
-mid-burst, a solve starts, and the next edit displaces it.
+The design guarantees at most one discarded solve **per window**, not per burst, and the difference
+matters when reading the ratio. Inside one window every mutation coalesces into the operation the
+first one created, so a burst of two hundred edits inside 1500 ms costs one solve at most. Editing
+that continues past the window opens a new one each time a solve starts, so sustained editing loses
+roughly one solve per solve-duration. A sustained ratio above roughly 0.3 therefore does not mean
+the mechanism is failing: it means bursts are being cut short, the window is expiring mid-burst, a
+solve starts, and the next edit displaces it.
+
+## What the 1500 ms was measured against, and what it was not
+
+The value comes from three figures, and only the first is a measurement of this deployment:
+
+| Figure | Where it comes from |
+|---|---|
+| a drag takes roughly one second | the interaction the window has to outlast, so one drag is one solve |
+| a weekly-session burst has 3 to 8 second gaps | the rhythm a session should produce several solves across rather than one at the end |
+| a solve is budgeted under two seconds | ticket 37's measurement: p50 1408 ms on a 226-block week |
+
+**The first two are the interview's readings of how the product is used, not readings taken from this
+system.** No pin endpoint exists yet, so the burst case the window is sized for cannot be driven at
+all: the coalescing is asserted with a hand-moved clock over the four triggers that do exist. Read
+the ratio once pinning ships and re-derive the value from what the user actually does; until then it
+is a considered default rather than a fitted one.
 
 ## Changing the value
 
@@ -85,4 +105,5 @@ an hour would be correct and useless. What the window decides is only how much w
 |---|---|
 | 1500 ms | `DEFAULT_SOLVE_DEBOUNCE_MS` in `syncr_api.core.settings` |
 | 0.3 | the supersession-ratio threshold in `18-observability.md` |
-| one discarded solve per burst | the single-flight invariant, held by a partial unique index |
+| one discarded solve per window | the single-flight invariant, held by a partial unique index |
+| a solve under two seconds | `syncr_solver.budget`, whose two bounds were measured against it |
