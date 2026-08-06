@@ -62,7 +62,7 @@ observes a supersession with no successor.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from prometheus_client import Counter
 
@@ -78,9 +78,9 @@ if TYPE_CHECKING:
 
     from syncr_api.core.clock import Clock
     from syncr_api.core.columns import JsonDocument
+    from syncr_api.solving.config import OperationKind
     from syncr_api.solving.lifecycle import OperationLifecycle
     from syncr_api.solving.outcomes import Outcome
-    from syncr_api.solving.queue import OperationQueue
     from syncr_api.solving.records import OperationRecord
     from syncr_api.solving.repository import OperationRepository
     from syncr_domain.weeks import IsoWeek
@@ -97,6 +97,20 @@ CLAIM_RACES_LOST = Counter(
 _log = get_logger("syncr.solving")
 
 
+class DueSolves(Protocol):
+    """What the claim scan reads: the due pending operations of one kind, oldest first.
+
+    A protocol rather than the queue itself, because the window between reading a row and claiming
+    it cannot be opened from outside the coordinator: a second session's commit is visible to the
+    scan's own read. A test substitutes a reader answering with a row that has already moved on,
+    which is the only way to drive the branch a real lost race reaches.
+    """
+
+    async def due(
+        self, *, kind: OperationKind, at: datetime, limit: int = ...
+    ) -> tuple[OperationRecord, ...]: ...
+
+
 class SolveCoordinator:
     """Holds one tenant's single-flight invariant over every week it plans."""
 
@@ -104,7 +118,7 @@ class SolveCoordinator:
         self,
         *,
         operations: OperationRepository,
-        queue: OperationQueue,
+        queue: DueSolves,
         lifecycle: OperationLifecycle,
         clock: Clock,
         debounce: timedelta,
