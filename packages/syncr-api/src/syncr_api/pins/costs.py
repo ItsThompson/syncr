@@ -18,33 +18,60 @@ why both rows also carry the weight-set version it was priced under.
 revision's column holds the breakdown the solve that produced it computed, under whichever weight
 set was active then. Computing it beside the delta means the seven terms and the difference cannot
 be priced under different weights, which is exactly what an edit event carrying one weight-set
-version claims about both."""
+version claims about both.
+
+## Why the per-term difference is measured a second time, at unit weights
+
+A breakdown's seven costs are each a WEIGHTED measurement, so a difference of two of them already
+contains the weights. Learning to rank fits the weights, so what it needs is the difference in the
+objective's RAW measurements: seven numbers whose weighted sum, under the version the delta was
+priced at, is the delta.
+
+So both plans are evaluated a second time under a weight set whose seven term weights are one and
+whose two shaping PARAMETERS are untouched. A weight scales a measurement and a parameter shapes
+one, so unit weights leave every raw measurement as it was and make each cost equal to it. The
+alternative, dividing each weighted difference by its own weight, has a hole at a weight of zero,
+where the cost is zero whatever the measurement and the information is gone. Two more evaluations of
+a pure function is the cheaper price: the pin path's cost is its two assemblies.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from syncr_solver.objective import evaluate
+from syncr_solver.weights import OBJECTIVE_TERMS
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from syncr_domain.intervals import Interval
     from syncr_domain.plan import Block, PlanDocument
     from syncr_solver.inputs import SolveInputs
     from syncr_solver.objective import ObjectiveBreakdown
     from syncr_solver.weights import WeightSet
 
+# What a pin that moves nothing measured. Stated rather than left absent, so the corpus holds one
+# shape and the fitter's rule about a pair comparing two identical plans is a rule about a value.
+UNCHANGED: Final[Mapping[str, float]] = dict.fromkeys(OBJECTIVE_TERMS, 0.0)
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class PinPrice:
     """What one edit cost, and the reading of the plan it was measured against.
 
-    Two values because two rows read them: the pin and the edit event each carry the delta, and the
-    event also carries the breakdown as the plan context a refit needs.
+    Three values because two rows read them: the pin carries the delta, and the edit event carries
+    the delta, the breakdown as the plan context a refit needs, and the per-term measurement
+    difference a weight fit consumes.
     """
 
     objective_delta: float
     breakdown: ObjectiveBreakdown
+    # Per term, the raw measurement of the plan the user chose minus that of the plan the solver
+    # proposed. Signed: a term the user's choice improves reads negative. The weighted sum of these
+    # under the pricing version's weights is `objective_delta`.
+    measurement_delta: Mapping[str, float]
 
 
 def pin_price(
@@ -64,9 +91,47 @@ def pin_price(
     """
     before = evaluate(document, inputs=inputs, weights=weights)
     if block.interval == accepted:
-        return PinPrice(objective_delta=0.0, breakdown=before)
-    after = evaluate(_moved(document, block, accepted), inputs=inputs, weights=weights)
-    return PinPrice(objective_delta=after.total() - before.total(), breakdown=before)
+        return PinPrice(objective_delta=0.0, breakdown=before, measurement_delta=UNCHANGED)
+    moved = _moved(document, block, accepted)
+    after = evaluate(moved, inputs=inputs, weights=weights)
+    return PinPrice(
+        objective_delta=after.total() - before.total(),
+        breakdown=before,
+        measurement_delta=_measurement_delta(document, moved, inputs=inputs, weights=weights),
+    )
+
+
+def _measurement_delta(
+    proposed: PlanDocument,
+    accepted: PlanDocument,
+    *,
+    inputs: SolveInputs,
+    weights: WeightSet,
+) -> Mapping[str, float]:
+    """Each term's raw measurement of ``accepted``, minus its raw measurement of ``proposed``."""
+    unit = _at_unit_weights(weights)
+    raw_proposed = evaluate(proposed, inputs=inputs, weights=unit).costs()
+    raw_accepted = evaluate(accepted, inputs=inputs, weights=unit).costs()
+    return {term: raw_accepted[term] - raw_proposed[term] for term in OBJECTIVE_TERMS}
+
+
+def _at_unit_weights(weights: WeightSet) -> WeightSet:
+    """``weights`` with every term weight at one, and every fitted parameter untouched.
+
+    The seven are spelled out rather than taken from ``term_weights()``, so a term added to the
+    objective is a name error here rather than a weight that quietly keeps its own scale and makes
+    one of the seven measurements incomparable with the other six.
+    """
+    return replace(
+        weights,
+        deadline_risk=1.0,
+        budget_deviation=1.0,
+        time_of_day_misfit=1.0,
+        fragmentation=1.0,
+        churn=1.0,
+        context_switch=1.0,
+        staleness=1.0,
+    )
 
 
 def _moved(document: PlanDocument, block: Block, accepted: Interval) -> PlanDocument:

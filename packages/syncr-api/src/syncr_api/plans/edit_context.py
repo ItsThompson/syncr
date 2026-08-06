@@ -22,6 +22,12 @@ would leave that one field needing a zone nobody stored.
 than a column because it is one of this edit's circumstances alongside the rest, and every fitter
 reads the context. Recorded rather than refused, because pinning inside an off-plan span is exactly
 how "off, except this one thing" is expressed.
+
+**One field is nullable because the corpus predates it.** These rows are never pruned, so a field
+added to the snapshot is absent from every row written before it, and ``measurement_delta`` is that
+field. ``None`` therefore means "this event was recorded before the difference was measured" rather
+than "the difference was nothing", which is a value it can also hold, and the weight fit excludes
+the former and counts it.
 """
 
 from __future__ import annotations
@@ -77,7 +83,7 @@ class RejectedWindow:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class EditContext:
-    """The state one edit was made in. Twenty-four features, and every one is read by a fitter."""
+    """The state one edit was made in. Twenty-five features, and every one is read by a fitter."""
 
     # Temporal context. The two minute-of-day figures are local to `zone`, which is the zone active
     # on the accepted placement's own date: a drag across a travel boundary is a drag inside the
@@ -92,6 +98,11 @@ class EditContext:
     # the EXISTING objective fully supported from stored data: the pair alone would let a refit rank
     # two placements and not recover what either cost.
     objective_breakdown: Mapping[str, float]
+    # The seven RAW measurements of the plan the user chose minus those of the plan the solver
+    # proposed, which is the feature vector a weight fit ranks the pair on. A weighted difference
+    # would already contain the weights the fit exists to produce, and the breakdown above is the
+    # proposed side alone, so neither of the other two figures can stand in for this one.
+    measurement_delta: Mapping[str, float] | None
     discretionary_minutes: int
     unallocated_minutes: int
     blocks_in_day: int
@@ -124,10 +135,14 @@ class EditContext:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "objective_breakdown", dict(self.objective_breakdown))
+        if self.measurement_delta is not None:
+            object.__setattr__(self, "measurement_delta", dict(self.measurement_delta))
         object.__setattr__(self, "anchor_offsets_minutes", tuple(self.anchor_offsets_minutes))
         object.__setattr__(self, "forbidden_offsets_minutes", tuple(self.forbidden_offsets_minutes))
         object.__setattr__(self, "rejected_windows", tuple(self.rejected_windows))
         _require_the_seven_terms(self.objective_breakdown)
+        if self.measurement_delta is not None:
+            _require_the_seven_terms(self.measurement_delta)
         _require_a_placement_with_a_length(self.duration_minutes)
         _require_a_weekday(self.weekday)
         _require_bounded(self.anchor_offsets_minutes, "anchor_offsets_minutes", NEAREST)

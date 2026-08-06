@@ -32,7 +32,7 @@ from syncr_domain.reasons import Blocked
 from syncr_domain.weeks import local_days
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from syncr_domain.identifiers import AreaId
     from syncr_domain.intervals import Instant, Interval
@@ -62,6 +62,7 @@ def edit_context(
     block: Block,
     accepted: Interval,
     breakdown: ObjectiveBreakdown,
+    measurement_delta: Mapping[str, float],
     task_deadline: Instant | None,
     area_floor_declared: int | None,
     pinned_blocks_before: int,
@@ -71,9 +72,10 @@ def edit_context(
     Two sources, deliberately separated, and no field may read from the wrong one.
 
     **Pre-edit (the state the proposal was made in):** ``document``, ``breakdown``,
-    ``task_deadline``, ``area_floor_declared``, ``pinned_blocks_before``. Each describes the moment
-    before the user acted, which is the circumstance the preference was expressed inside. None of
-    these reads ``inputs``, because the pin has already entered the assembly and altered it.
+    ``measurement_delta``, ``task_deadline``, ``area_floor_declared``, ``pinned_blocks_before``.
+    Each describes the moment before the user acted, which is the circumstance the preference was
+    expressed inside. None of these reads ``inputs``, because the pin has already entered the
+    assembly and altered it.
 
     **Post-edit (the week's facts as the pin left them):** ``inputs``. This supplies the temporal
     and occupancy fields: anchors, forbidden windows, off-plan spans, the week's own span. These
@@ -94,6 +96,7 @@ def edit_context(
         duration_minutes=accepted.total_minutes(),
         zone=inputs.zone_by_date[day.on],
         objective_breakdown=breakdown.costs(),
+        measurement_delta=measurement_delta,
         discretionary_minutes=document.discretionary_minutes,
         unallocated_minutes=document.unallocated_minutes,
         blocks_in_day=sum(1 for one in document.blocks if day.interval.overlaps(one.interval)),

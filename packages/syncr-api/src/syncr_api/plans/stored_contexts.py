@@ -45,6 +45,7 @@ DURATION_MINUTES = "duration_minutes"
 ZONE = "zone"
 
 OBJECTIVE_BREAKDOWN = "objective_breakdown"
+MEASUREMENT_DELTA = "measurement_delta"
 DISCRETIONARY_MINUTES = "discretionary_minutes"
 UNALLOCATED_MINUTES = "unallocated_minutes"
 BLOCKS_IN_DAY = "blocks_in_day"
@@ -80,6 +81,9 @@ def stored_context(context: EditContext) -> JsonObject:
         DURATION_MINUTES: context.duration_minutes,
         ZONE: context.zone,
         OBJECTIVE_BREAKDOWN: dict(context.objective_breakdown),
+        MEASUREMENT_DELTA: (
+            None if context.measurement_delta is None else dict(context.measurement_delta)
+        ),
         DISCRETIONARY_MINUTES: context.discretionary_minutes,
         UNALLOCATED_MINUTES: context.unallocated_minutes,
         BLOCKS_IN_DAY: context.blocks_in_day,
@@ -129,6 +133,7 @@ def _context(stored: JsonDocument) -> EditContext:
         ),
         zone=read_text(stored.get(ZONE), field=_at(ZONE)),
         objective_breakdown=_read_breakdown(stored.get(OBJECTIVE_BREAKDOWN)),
+        measurement_delta=_read_measurement_delta(stored.get(MEASUREMENT_DELTA)),
         discretionary_minutes=read_whole_number(
             stored.get(DISCRETIONARY_MINUTES), field=_at(DISCRETIONARY_MINUTES)
         ),
@@ -219,10 +224,24 @@ def _read_offsets(value: object, named: str) -> tuple[int, ...]:
 
 def _read_breakdown(value: object) -> Mapping[str, float]:
     """The seven costs a stored breakdown names. Which seven is the value type's own guard."""
-    stored = read_mapping(value, field=_at(OBJECTIVE_BREAKDOWN))
+    return _read_terms(value, named=OBJECTIVE_BREAKDOWN)
+
+
+def _read_measurement_delta(value: object) -> Mapping[str, float] | None:
+    """The seven measurement differences a stored object names, or nothing because it names none.
+
+    Absent is a reading rather than a corruption, and it is the only optional key in this column.
+    These rows are never pruned, so every event written before the difference was measured has no
+    key here; refusing them would make the corpus unreadable to keep one field non-optional.
+    """
+    if value is None:
+        return None
+    return _read_terms(value, named=MEASUREMENT_DELTA)
+
+
+def _read_terms(value: object, *, named: str) -> Mapping[str, float]:
+    stored = read_mapping(value, field=_at(named))
     return {
-        read_text(term, field=_at(OBJECTIVE_BREAKDOWN)): read_number(
-            cost, field=_at(f"{OBJECTIVE_BREAKDOWN}.{term}")
-        )
+        read_text(term, field=_at(named)): read_number(cost, field=_at(f"{named}.{term}"))
         for term, cost in stored.items()
     }

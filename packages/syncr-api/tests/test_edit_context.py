@@ -29,6 +29,9 @@ AREA_ID = uuid4()
 ZONE = "Europe/London"
 
 A_BREAKDOWN = {term: float(i) for i, term in enumerate(OBJECTIVE_TERMS)}
+# Distinct from the breakdown above, and signed, so a round trip that confused the two fields or
+# dropped this one's sign is a failing comparison rather than a coincidence.
+A_MEASUREMENT_DELTA = {term: 0.5 - i for i, term in enumerate(OBJECTIVE_TERMS)}
 
 
 def a_context(**overrides: object) -> EditContext:
@@ -40,6 +43,7 @@ def a_context(**overrides: object) -> EditContext:
         "duration_minutes": 60,
         "zone": ZONE,
         "objective_breakdown": A_BREAKDOWN,
+        "measurement_delta": A_MEASUREMENT_DELTA,
         "discretionary_minutes": 5880,
         "unallocated_minutes": 2000,
         "blocks_in_day": 4,
@@ -89,6 +93,18 @@ class TestSevenTermGuard:
         wrong = dict(list(A_BREAKDOWN.items())[:6])
         with pytest.raises(EditContextRejected):
             a_context(objective_breakdown=wrong)
+
+    def test_a_measurement_delta_missing_a_term_is_refused(self) -> None:
+        # The same guard over the second seven-term mapping. A partial one would let the weight fit
+        # rank a pair on six terms and silently treat the seventh as costing the same either way.
+        incomplete = {k: v for k, v in A_MEASUREMENT_DELTA.items() if k != "staleness"}
+        with pytest.raises(EditContextRejected, match="seven terms"):
+            a_context(measurement_delta=incomplete)
+
+    def test_a_measurement_delta_of_none_passes_because_the_corpus_predates_it(self) -> None:
+        # E5 forbids pruning, so every event written before the field existed carries no key. The
+        # absence has to read as a value, and the weight fit is what excludes it.
+        assert a_context(measurement_delta=None).measurement_delta is None
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +193,29 @@ class TestRoundTrip:
         rebuilt = read_context(stored_context(original))
         assert rebuilt.inside_off_plan is True
 
+    def test_a_context_written_before_the_measurement_delta_reads_back_as_none(self) -> None:
+        # The shape a row written by ticket 41 holds: every other key, and no `measurement_delta`.
+        # Read as a refusal rather than as None, the corpus would be unreadable from this commit on.
+        stored = stored_context(a_context())
+        del stored["measurement_delta"]
+
+        assert read_context(stored).measurement_delta is None
+
+    def test_a_null_measurement_delta_reads_back_as_none(self) -> None:
+        # The shape this commit writes for a pin that could not be priced, and the shape a JSONB
+        # column holds for an explicit null. Both read the same way.
+        original = a_context(measurement_delta=None)
+
+        assert read_context(stored_context(original)).measurement_delta is None
+
+    def test_a_measurement_delta_keeps_its_signs_through_the_round_trip(self) -> None:
+        # The label's own sign is what says which side the user preferred, so a serializer that
+        # dropped it would invert the preference the corpus records.
+        rebuilt = read_context(stored_context(a_context()))
+
+        assert rebuilt.measurement_delta == A_MEASUREMENT_DELTA
+        assert rebuilt.measurement_delta != rebuilt.objective_breakdown
+
     def test_rejected_windows_survive(self) -> None:
         windows = (
             RejectedWindow(offset_minutes=-180, duration_minutes=60, rule="past_block"),
@@ -227,6 +266,7 @@ class TestDeadlineGuard:
 PRE_EDIT_FIELDS = frozenset(
     {
         "objective_breakdown",
+        "measurement_delta",
         "discretionary_minutes",
         "unallocated_minutes",
         "blocks_in_day",
@@ -260,7 +300,7 @@ POST_EDIT_FIELDS = frozenset(
 
 
 class TestFieldClassification:
-    """Every field is classified; a twenty-fifth cannot be added on the wrong side."""
+    """Every field is classified; a twenty-sixth cannot be added on the wrong side."""
 
     def test_every_field_is_classified(self) -> None:
         actual = {f.name for f in dataclasses.fields(EditContext)}

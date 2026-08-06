@@ -279,6 +279,7 @@ class PinService:
                     block=block,
                     accepted=accepted,
                     breakdown=price.breakdown,
+                    measurement_delta=price.measurement_delta,
                     task_deadline=task_deadline,
                     area_floor_declared=area_floor_declared,
                     pinned_blocks_before=pinned_blocks_before,

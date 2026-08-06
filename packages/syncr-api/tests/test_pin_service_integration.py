@@ -36,6 +36,7 @@ from sqlalchemy import select, text
 
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.db import create_db_engine, create_sessionmaker
+from syncr_api.learned.models import WeightSet as WeightSetRow
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.pins.declarations import BlockRejected, PinRequested
 from syncr_api.pins.injection import build_pin_service
@@ -57,6 +58,7 @@ from syncr_domain.reasons import Bound, ReasonRecord
 from syncr_domain.tasks import Priority
 from syncr_domain.weeks import IsoWeek
 from syncr_solver.inputs import Pin as SolverPin
+from syncr_solver.weights import OBJECTIVE_TERMS
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -918,3 +920,74 @@ class TestObjectiveDeltaAndBreakdown:
         # The breakdown must record the pre-pin deadline_risk exactly: 5.625
         # (measured independently by the reviewer in a pre-pin frame evaluation)
         assert context["objective_breakdown"]["deadline_risk"] == pytest.approx(5.625, abs=0.01)
+
+    async def test_the_measurement_delta_reprices_to_the_stored_delta_under_its_own_version(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """The seven differences and the one scalar are two readings of one comparison.
+
+        The weight fit ranks a pair on the seven, and the pin's own price is the scalar. If the two
+        disagree, the corpus carries a label that does not belong to its features, and no assertion
+        over either alone can see it: this reprices the seven under the weights the row names and
+        compares the result with the figure the row stores.
+
+        The weights come from the stored version rather than from ``P0_WEIGHTS``, so the check is
+        against what priced the row rather than against what this deployment happens to ship.
+        """
+        deadline = datetime(2026, 2, 13, 18, 0, tzinfo=UTC)
+        plan = a_plan(blocks=(a_block(14, 15, day_offset=3),))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id, floor=0)
+        await _seed_task(sessions, owner.tenant_id, deadline=deadline, estimate=240)
+
+        await _pin(sessions, owner, datetime(2026, 2, 14, 10, 0, tzinfo=UTC))
+
+        async with sessions() as session:
+            event = (
+                await session.scalars(
+                    select(EditEvent).where(EditEvent.tenant_id == owner.tenant_id)
+                )
+            ).one()
+            weights = (
+                await session.scalars(
+                    select(WeightSetRow).where(
+                        WeightSetRow.tenant_id == owner.tenant_id,
+                        WeightSetRow.version == event.weight_set_version,
+                    )
+                )
+            ).one()
+
+        measured = event.context["measurement_delta"]
+        assert set(measured) == set(OBJECTIVE_TERMS)
+        repriced = sum(getattr(weights, term) * measured[term] for term in OBJECTIVE_TERMS)
+
+        assert repriced == pytest.approx(event.objective_delta, rel=1e-9, abs=1e-9)
+        # And the pair is not the degenerate one: a drag past a deadline moves at least one term.
+        assert any(value != 0.0 for value in measured.values())
+
+    async def test_a_pin_that_moves_nothing_records_a_measurement_delta_of_zero(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """The one pair that carries no preference, and it has to be visible as one.
+
+        Pinning a block where it already is compares a plan with itself, so every difference is
+        exactly nothing. A fit that counted such a pair would report a sample it learned nothing
+        from, which is how a gate passes on a corpus with no signal in it.
+        """
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        await _pin(sessions, owner, block.interval.start)
+
+        async with sessions() as session:
+            event = (
+                await session.scalars(
+                    select(EditEvent).where(EditEvent.tenant_id == owner.tenant_id)
+                )
+            ).one()
+
+        assert event.objective_delta == 0.0
+        assert event.context["measurement_delta"] == dict.fromkeys(OBJECTIVE_TERMS, 0.0)
