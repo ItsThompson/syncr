@@ -82,6 +82,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from uuid import UUID
 
+    from syncr_api.areas.repository import AreaRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
     from syncr_api.learned.repository import WeightSetRepository
@@ -136,6 +137,7 @@ class PinService:
         weights: WeightSetRepository,
         coordinator: SolveCoordinator,
         tasks: TaskRepository,
+        areas: AreaRepository,
         clock: Clock,
     ) -> None:
         self._assembler = assembler
@@ -148,6 +150,7 @@ class PinService:
         self._weights = weights
         self._coordinator = coordinator
         self._tasks = tasks
+        self._areas = areas
         self._clock = clock
 
     @measured("pins")
@@ -221,6 +224,12 @@ class PinService:
                 "tenant without one was not created by this application"
             )
 
+        # Pre-edit state, resolved BEFORE the pin enters the assembly. These are the figures
+        # section 11 labels "at proposal time", and the pin must not perturb them.
+        task_deadline = await self._task_deadline(block)
+        area_floor_declared = await self._declared_floor(block)
+        pinned_blocks_before = len(await self._pins.for_week(week))
+
         version = await self._versions.bump(week, at=now)
         record = await self._pins.hold(
             PinToHold(
@@ -252,7 +261,9 @@ class PinService:
                     block=block,
                     accepted=accepted,
                     breakdown=price.breakdown,
-                    task_deadline=await self._task_deadline(block),
+                    task_deadline=task_deadline,
+                    area_floor_declared=area_floor_declared,
+                    pinned_blocks_before=pinned_blocks_before,
                 ),
                 created_at=now,
             )
@@ -292,6 +303,25 @@ class PinService:
             return None
         found = await self._tasks.find(block.binding.entity_id)
         return None if found is None else found.deadline
+
+    async def _declared_floor(self, block: Block) -> int | None:
+        """The Area's declared floor in minutes, read from the entity itself.
+
+        Not from ``AreaBudget.floor_minutes``, because that field is the SOLVER's quantity: it nets
+        immovable placements, and a pin makes its block immovable, so the recorded figure would be
+        short by exactly the dragged block's duration. The Area's own declaration is what the pin
+        does not perturb.
+
+        Returns ``None`` for content carrying no Area (frame, commitment).
+        """
+        if block.area_id is None:
+            return None
+        found = await self._areas.find(block.area_id)
+        if found is None:
+            return None
+        from syncr_domain.budgets import floor_minutes
+
+        return floor_minutes(found.floor_hours)
 
     async def _last_produced(self, week: IsoWeek) -> PlanDocument:
         """The plan the solver last produced for this week: the pending slot, or the plan of record.

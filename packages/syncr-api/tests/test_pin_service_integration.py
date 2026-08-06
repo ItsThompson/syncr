@@ -705,11 +705,6 @@ class TestLiveVerdict:
         assert result.operation.status == PENDING
 
 
-# ---------------------------------------------------------------------------
-# M4: Unpin and StoredPinRelease
-# ---------------------------------------------------------------------------
-
-
 class TestUnpin:
     """AC10: the pin is removed, the version bumps, and the event stays."""
 
@@ -805,11 +800,6 @@ class TestStoredPinRelease:
         assert was_pinned is False
 
 
-# ---------------------------------------------------------------------------
-# M1-R2: deadline feature written correctly even when the pin covers the estimate
-# ---------------------------------------------------------------------------
-
-
 class TestDeadlineFeature:
     """A pin on a block that covers the task's estimate still records the deadline."""
 
@@ -840,3 +830,55 @@ class TestDeadlineFeature:
         # The deadline must be recorded, even though the pin covers the full estimate
         assert context["was_deadline_constrained"] is True
         assert context["days_until_deadline"] is not None
+
+
+class TestPreEditFields:
+    """Fields section 11 labels 'at proposal time' must not read the post-pin assembly."""
+
+    async def test_area_floor_minutes_records_the_declared_floor_not_the_netted_one(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """Floor 120, one 60-min block: the written floor must be 120, not 60."""
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id, floor=120)
+        await _seed_task(sessions, owner.tenant_id)
+
+        await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+
+        async with sessions() as session:
+            events = (
+                await session.scalars(
+                    select(EditEvent).where(EditEvent.tenant_id == owner.tenant_id)
+                )
+            ).all()
+            assert len(events) == 1
+            context = events[0].context
+
+        # The declared floor is 120, not 120 - 60 = 60 (the solver's netted quantity)
+        assert context["area_floor_minutes"] == 120
+
+    async def test_pinned_blocks_in_week_records_the_count_before_this_pin(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """A first pin records 0, because at proposal time there were none."""
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+
+        async with sessions() as session:
+            events = (
+                await session.scalars(
+                    select(EditEvent).where(EditEvent.tenant_id == owner.tenant_id)
+                )
+            ).all()
+            assert len(events) == 1
+            context = events[0].context
+
+        # At proposal time: zero pins existed
+        assert context["pinned_blocks_in_week"] == 0

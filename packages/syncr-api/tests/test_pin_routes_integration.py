@@ -1,14 +1,11 @@
 """The pin route end to end, and the idempotency replay that keeps a retry from doubling an event.
 
-Two tests, because the review asked for two and the remedies are localized.
+``test_post_pin_end_to_end`` drives the whole request path through a real app and a real database:
+the 201 status, the camelCase wire shape, the three-field response, and probe provenance.
 
-``test_post_pin_end_to_end`` drives the whole request path through a real app, a real database,
-and a real session: the 201 status, the camelCase wire shape, the three-field response, and that
-the pin row and its edit event exist afterwards.
-
-``test_a_retried_pin_with_the_same_key_does_not_create_a_second_event`` is AC13: the guard
-replays the stored response rather than re-executing, so the learning corpus holds exactly one
-preference per intent.
+``test_a_retried_pin_with_the_same_key_does_not_create_a_second_event`` is AC13: the guard replays
+the stored response rather than re-executing, so the learning corpus holds exactly one preference
+per intent.
 """
 
 from __future__ import annotations
@@ -48,8 +45,10 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.integration
 
 LONDON = "Europe/London"
-WEEK = IsoWeek(2027, 7)
-NOW = datetime(2027, 2, 16, 9, 0, tzinfo=UTC)
+# Far enough ahead that blocks are never in the past under the real clock.
+# If this test runs after 2030 it will need updating.
+WEEK = IsoWeek(2030, 7)
+NOW = datetime(2030, 2, 11, 9, 0, tzinfo=UTC)
 BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 
 TASK_ID = uuid4()
@@ -112,8 +111,8 @@ def _seed(live_database_url: str, tenant_id: UUID) -> None:
     block = Block(
         iso_week=WEEK,
         interval=Interval(
-            datetime(2027, 2, 18, 14, 0, tzinfo=UTC),
-            datetime(2027, 2, 18, 15, 0, tzinfo=UTC),
+            datetime(2030, 2, 13, 14, 0, tzinfo=UTC),
+            datetime(2030, 2, 13, 15, 0, tzinfo=UTC),
         ),
         binding=BINDING,
         title="Gym",
@@ -198,7 +197,7 @@ class TestPinRouteEndToEnd:
     ) -> None:
         _seed(live_database_url, owner.tenant_id)
 
-        body = {"blockId": BLOCK_ID, "start": "2027-02-18T10:00:00Z"}
+        body = {"blockId": BLOCK_ID, "start": "2030-02-13T10:00:00Z"}
         response = http.post(PIN_URL, json=body, headers=signed_in)
 
         assert response.status_code == HTTPStatus.CREATED, response.text
@@ -214,7 +213,7 @@ class TestPinRouteEndToEnd:
     ) -> None:
         _seed(live_database_url, owner.tenant_id)
 
-        body = {"blockId": BLOCK_ID, "start": "2027-02-18T10:00:00Z"}
+        body = {"blockId": BLOCK_ID, "start": "2030-02-13T10:00:00Z"}
         key = str(uuid4())
         headers = {**signed_in, IDEMPOTENCY_KEY_HEADER: key}
 

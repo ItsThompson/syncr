@@ -63,13 +63,25 @@ def edit_context(
     accepted: Interval,
     breakdown: ObjectiveBreakdown,
     task_deadline: Instant | None,
+    area_floor_declared: int | None,
+    pinned_blocks_before: int,
 ) -> EditContext:
     """The state this edit was made in, as the row that outlives it will carry it.
 
-    ``document`` is the plan the solver last produced for this week, which is where ``block`` and
-    the two plan figures come from: the context is the state the proposal was made in, and the
-    proposal is what the user is overriding. ``inputs`` is the assembly this request made, which is
-    where the week's own facts come from.
+    Two sources, deliberately separated, and no field may read from the wrong one.
+
+    **Pre-edit (the state the proposal was made in):** ``document``, ``breakdown``,
+    ``task_deadline``, ``area_floor_declared``, ``pinned_blocks_before``. Each describes the moment
+    before the user acted, which is the circumstance the preference was expressed inside. None of
+    these reads ``inputs``, because the pin has already entered the assembly and altered it.
+
+    **Post-edit (the week's facts as the pin left them):** ``inputs``. This supplies the temporal
+    and occupancy fields: anchors, forbidden windows, off-plan spans, the week's own span. These
+    are week facts the pin does not change, so either reading would give the same answer, and
+    ``inputs`` is the one already resolved.
+
+    The split is what makes it structurally impossible for a "proposal time" field to read the
+    post-pin assembly: its source is a parameter the caller resolves before the pin is written.
     """
     days = local_days(inputs.iso_week, inputs.zone_by_date, inputs.span)
     day = _day_holding(accepted.start, days)
@@ -85,9 +97,9 @@ def edit_context(
         discretionary_minutes=document.discretionary_minutes,
         unallocated_minutes=document.unallocated_minutes,
         blocks_in_day=sum(1 for one in document.blocks if day.interval.overlaps(one.interval)),
-        pinned_blocks_in_week=len(inputs.pins),
+        pinned_blocks_in_week=pinned_blocks_before,
         area_id=block.area_id,
-        area_floor_minutes=None if area is None else area.floor_minutes,
+        area_floor_minutes=area_floor_declared,
         area_placed_minutes=0 if area is None else area.placed_minutes,
         area_target_minutes=0 if area is None else area.target_minutes,
         gap_before_minutes=neighbours.gap_before_minutes,
@@ -143,11 +155,17 @@ def _neighbours(
         default=None,
     )
     return _Neighbours(
-        gap_before_minutes=_minutes_between(
-            day.interval.start if before is None else before.interval.end, accepted.start
+        gap_before_minutes=max(
+            0,
+            _minutes_between(
+                day.interval.start if before is None else before.interval.end, accepted.start
+            ),
         ),
-        gap_after_minutes=_minutes_between(
-            accepted.end, day.interval.end if after is None else after.interval.start
+        gap_after_minutes=max(
+            0,
+            _minutes_between(
+                accepted.end, day.interval.end if after is None else after.interval.start
+            ),
         ),
         area_before=None if before is None else before.area_id,
         area_after=None if after is None else after.area_id,

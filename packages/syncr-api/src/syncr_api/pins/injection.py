@@ -29,6 +29,7 @@ from fastapi import Depends, Request
 # two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
 # NameError while the app is being constructed.
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
+from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.pins.service import PinService
@@ -90,6 +91,7 @@ def build_pin_service(
         weights=WeightSetRepository(transaction, tenant_id),
         coordinator=build_solve_coordinator(transaction, tenant_id, clock=clock, debounce=debounce),
         tasks=TaskRepository(transaction, tenant_id),
+        areas=AreaRepository(transaction, tenant_id),
         clock=clock,
     )
 
