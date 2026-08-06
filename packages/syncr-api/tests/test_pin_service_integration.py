@@ -1,26 +1,27 @@
 """The pin transaction against a real Postgres: invariants, verdict, and two settlements.
 
-Five groups.
+Six groups.
 
 **The E1 invariant.** A pin and its edit event are one transaction: a failure writing the event
-rolls back the pin, so a pin can never exist without its features. Driven by monkeypatching the
-edit repository to raise after the pin is held, then asserting neither row exists.
+rolls back the pin, so a pin can never exist without its features.
 
-**Idempotency.** A retried pin with the same Idempotency-Key replays the stored response rather
-than writing a second pin or a second edit event. A retried pin with NO key replaces the row (the
-upsert) but does NOT duplicate the edit event if the idempotency guard stored the response.
+**The Idempotency-Key replay is tested in ``test_pin_routes_integration.py``.** The tests here
+drive the service directly and exercise the upsert behaviour without a key: two drags of one block
+produce one pin row (the upsert) and two edit events (two preferences).
 
 **The three Blocker-1 verdict properties.** Pinning time toward a task that is due leaves that
-task's shortfall unchanged. Pinning a Fitness block reduces the Fitness floor's remaining
-reservation by the same amount. Pinning an already-placed block leaves the verdict unchanged.
+task's shortfall unchanged. Pinning a Fitness block leaves the floor reservation equal. Pinning
+an already-placed block leaves the verdict unchanged.
 
 **The two settlements.** Ticket 1333: a pin on a block that has begun is refused with a stated
 reason. Ticket 1402: a pin whose interval elapses while its block lives only in a pending proposal
 does not wedge the week.
 
 **Reject-block.** A rejection is a pin at the block's existing placement, records the pairwise
-preference used for training, and the pending proposal is then replaced by whatever the next solve
-proposes.
+preference used for training.
+
+**Unpin and StoredPinRelease.** The pin row is removed, the event stays, the version bumps, and
+the real release the conflict path reaches answers correctly.
 """
 
 from __future__ import annotations
@@ -694,3 +695,103 @@ class TestLiveVerdict:
         assert result.operation is not None
         assert result.operation.kind == SOLVE
         assert result.operation.status == PENDING
+
+
+# ---------------------------------------------------------------------------
+# M4: Unpin and StoredPinRelease
+# ---------------------------------------------------------------------------
+
+
+class TestUnpin:
+    """AC10: the pin is removed, the version bumps, and the event stays."""
+
+    async def test_unpin_removes_the_row_and_bumps_the_version(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        result = await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+        pin_id = result.pin.id
+
+        # Read version before unpin
+        async with sessions() as session:
+            version_before = await WeekInputVersionRepository(session, owner.tenant_id).current(
+                WEEK
+            )
+
+        # Unpin
+        async with sessions() as session, session.begin():
+            service = build_pin_service(session, owner.tenant_id, clock=lambda: NOW)
+            await service.unpin(_principal(owner), str(WEEK), pin_id)
+
+        # Pin row is gone
+        async with sessions() as session:
+            from syncr_api.plans.pins import PinRepository
+
+            found = await PinRepository(session, owner.tenant_id).find(pin_id)
+        assert found is None
+
+        # Version bumped
+        async with sessions() as session:
+            version_after = await WeekInputVersionRepository(session, owner.tenant_id).current(WEEK)
+        assert version_after is not None
+        assert version_before is not None
+        assert version_after > version_before
+
+        # Edit event row survives (PN2)
+        async with sessions() as session:
+            events = (
+                await session.scalars(
+                    select(EditEvent).where(EditEvent.tenant_id == owner.tenant_id)
+                )
+            ).all()
+            assert len(events) == 1
+
+
+class TestStoredPinRelease:
+    """Ticket 1393: the real release, over the real table, not the fake."""
+
+    async def test_releasing_a_held_pin_frees_the_binding(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        # Pin the block
+        await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+
+        # Release it through StoredPinRelease (the production path conflicts use)
+        from syncr_api.pins.release import StoredPinRelease
+        from syncr_api.plans.pins import PinRepository
+
+        async with sessions() as session, session.begin():
+            release = StoredPinRelease(PinRepository(session, owner.tenant_id))
+            was_pinned = await release.release(WEEK, BINDING)
+
+        assert was_pinned is True
+
+        # The pin row is gone
+        async with sessions() as session:
+            pins = (
+                await session.scalars(select(Pin).where(Pin.tenant_id == owner.tenant_id))
+            ).all()
+            assert len(pins) == 0
+
+    async def test_releasing_nothing_returns_false(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        from syncr_api.pins.release import StoredPinRelease
+        from syncr_api.plans.pins import PinRepository
+
+        async with sessions() as session, session.begin():
+            release = StoredPinRelease(PinRepository(session, owner.tenant_id))
+            was_pinned = await release.release(WEEK, BINDING)
+
+        assert was_pinned is False
