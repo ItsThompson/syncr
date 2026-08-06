@@ -50,6 +50,8 @@ from syncr_api.anchors.shadows import regenerate
 from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.calendars.horizons import read_horizon_days
 from syncr_api.calendars.repository import CalendarSourceRepository
+from syncr_api.events.envelopes import conflict_event
+from syncr_api.events.publishing import published
 from syncr_api.horizon.weeks import horizon_weeks
 from syncr_api.plans.calendar_occupancy import typed_anchors
 from syncr_api.plans.conflicts import PlanConflictRepository
@@ -115,6 +117,9 @@ class IngestConflicts:
         for week in weeks:
             raised.extend(await self._detected(week, profile=profile, now=now))
         if raised:
+            # A conflict is the only event in this product that raises a notification, and it is
+            # published on this transaction so a client is told exactly when the row lands.
+            await published(self._session, *(conflict_event(one) for one in raised))
             _log.info(
                 "conflicts.ingest.raised",
                 tenant_id=str(self._tenant_id),

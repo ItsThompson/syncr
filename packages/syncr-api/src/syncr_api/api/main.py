@@ -1,7 +1,7 @@
 """The HTTP application entrypoint.
 
-Composes the api process: settings from the environment, the database, the OAuth signing keys,
-the two readiness checks that gate a deploy, and the pool-disposing lifespan.
+Composes the api process: settings from the environment, the database, the OAuth signing keys, the
+two readiness checks that gate a deploy, the event listener, and the pool-disposing lifespan.
 
 The signing keys are loaded HERE rather than lazily on the first request, so a key file that
 cannot be decrypted, or a deployment with no key file at all, fails the boot. A process that
@@ -11,12 +11,13 @@ CLI.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 import uvicorn
 
 from syncr_api.core.app_factory import create_app
-from syncr_api.core.db import create_database, create_db_lifespan, db_readiness_check
+from syncr_api.core.db import create_database, db_readiness_check
 from syncr_api.core.migrations import migration_readiness_check
 from syncr_api.core.settings import (
     API_APP_TARGET,
@@ -26,13 +27,19 @@ from syncr_api.core.settings import (
     EnvSettings,
     build_service_settings,
 )
+from syncr_api.events.channel import listening
 from syncr_api.oauth.config import build_oauth_config
 from syncr_api.oauth.injection import build_oauth_state
 from syncr_api.oauth.keys import load_signing_key_set
 from syncr_common.logging import configure_logging
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from fastapi import FastAPI
+    from starlette.types import Lifespan
+
+    from syncr_api.core.db import Database
 
 
 def build_app() -> FastAPI:
@@ -50,11 +57,31 @@ def build_app() -> FastAPI:
             db_readiness_check(database.engine),
             migration_readiness_check(database.engine),
         ),
-        lifespan=create_db_lifespan(database.engine),
+        lifespan=_create_lifespan(database),
     )
     app.state.db = database
     app.state.oauth = build_oauth_state(oauth_config, load_signing_key_set(oauth_config))
     return app
+
+
+def _create_lifespan(database: Database) -> Lifespan[FastAPI]:
+    """The two things this process starts and stops: the event listener and the pool.
+
+    The listener is here rather than in the factory because it holds a connection for the life of
+    the process, which a test app must not: the hub the factory attaches works without it, and what
+    the listener adds is events produced by the OTHER two processes.
+
+    Composed at the entrypoint because this is the composition root. The pool is disposed last, so
+    the listener's own connection is closed before the engine it came from goes away.
+    """
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        async with listening(database.engine, app.state.events):
+            yield
+        await database.engine.dispose()
+
+    return lifespan
 
 
 app = build_app()

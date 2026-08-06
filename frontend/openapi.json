@@ -10406,6 +10406,61 @@
         ]
       }
     },
+    "/api/v1/events": {
+      "get": {
+        "description": "Every operation, conflict, projection and notice of this account, as they happen.",
+        "operationId": "stream_events_api_v1_events_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "The event stream. Session credential only, and it carries no plan documents",
+        "tags": [
+          "events"
+        ]
+      }
+    },
     "/api/v1/habits": {
       "get": {
         "description": "The habits, in the order they were declared. Both derived figures travel with each.",

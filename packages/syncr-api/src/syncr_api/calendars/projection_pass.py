@@ -48,6 +48,8 @@ from syncr_api.calendars.projection_state import (
 )
 from syncr_api.calendars.projection_writer import ProjectionWriter
 from syncr_api.calendars.repository import CalendarSourceRepository
+from syncr_api.events.envelopes import projection_event
+from syncr_api.events.publishing import published
 from syncr_api.horizon.weeks import horizon_span, weeks_reaching_the_horizon
 from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.plans.repository import PlanRepository
@@ -174,6 +176,17 @@ class TenantPass:
             return 0
         observed(result, outcome=SUCCEEDED)
         await self._record(target, recorded_projection(target.sync_state, at=self.now))
+        # Published on this transaction, so a client hears about a reconciliation exactly when the
+        # sync state that records it lands. One event per claimed week, because that is what the
+        # client asked to be told about.
+        await published(
+            self.session,
+            *(
+                projection_event(self.tenant_id, week, result)
+                for operation in self.claimed
+                if (week := operation.iso_week) is not None
+            ),
+        )
         _log.info(
             "calendars.projection.completed",
             **self.as_log_fields(),

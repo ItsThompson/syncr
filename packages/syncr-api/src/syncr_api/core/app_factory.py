@@ -30,6 +30,8 @@ from syncr_api.conflicts.wiring import build_conflicts_router
 from syncr_api.core.correlation import CorrelationMiddleware
 from syncr_api.core.error_handlers import PROBLEM_RESPONSES, build_exception_handlers
 from syncr_api.core.observability import create_metrics_router
+from syncr_api.events.hub import EventHub
+from syncr_api.events.wiring import build_events_router
 from syncr_api.google_account.wiring import build_google_account_router
 from syncr_api.habits.wiring import build_habits_router
 from syncr_api.oauth.wiring import build_oauth_router
@@ -89,6 +91,7 @@ FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
     build_outcomes_router,
     build_reviews_router,
     build_conflicts_router,
+    build_events_router,
 )
 
 # The one place the api's version is stated: the package metadata uv installs from
@@ -115,6 +118,10 @@ def create_app(
     )
     app.state.settings = settings
     app.state.log = log
+    # One fan-out per process, because the streams it fans out to are this process's own sockets.
+    # The LISTEN connection that feeds it is the entrypoint's, so a test app has a working hub and
+    # no background connection.
+    app.state.events = EventHub()
 
     for key, handler in build_exception_handlers().items():
         app.add_exception_handler(key, handler)

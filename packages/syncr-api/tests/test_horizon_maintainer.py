@@ -34,7 +34,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from http import HTTPStatus
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import pytest
 from fastapi.testclient import TestClient
@@ -52,6 +52,7 @@ from syncr_api.core.db import (
     create_sessionmaker,
 )
 from syncr_api.core.settings import (
+    API_PREFIX,
     DEV_ALLOWED_ORIGINS,
     WORKER_SERVICE,
     EnvSettings,
@@ -809,15 +810,33 @@ def http(live_database_url: str, settings: ServiceSettings) -> Iterator[TestClie
         yield client
 
 
+# The one read a request-response client cannot drive: an SSE body never ends, so a `GET` against it
+# blocks until the connection is closed. Excluded here rather than everywhere, and named rather than
+# filtered by shape, so adding a second endless route is a diff a reviewer reads as what it is. What
+# the stream writes is asserted in `test_event_stream.py`, which drives the generator directly.
+ENDLESS_READS: Final = frozenset({f"{API_PREFIX}/events"})
+
+
 def parameterless_reads(settings: ServiceSettings) -> list[str]:
-    """Every GET route under the api prefix that needs no path parameter.
+    """Every GET route under the api prefix that needs no path parameter and answers.
 
     The predicate is ``tests.boundaries.read_paths``, so this half and the parameterized half
     cannot overlap or leave a route in neither. A route WITH a parameter is left out here because a
     value has to be invented for it; the week view is the one that matters most and it drives its
     own half in ``test_week_routes_integration.py``.
     """
-    return read_paths(create_app(settings), parameterized=False)
+    return [
+        path
+        for path in read_paths(create_app(settings), parameterized=False)
+        if path not in ENDLESS_READS
+    ]
+
+
+def test_every_endless_read_is_a_route_that_exists(settings: ServiceSettings) -> None:
+    """So an exclusion cannot outlive the route it was written for and quietly widen the hole."""
+    every = set(read_paths(create_app(settings), parameterized=False))
+
+    assert every >= ENDLESS_READS
 
 
 async def test_no_read_route_creates_an_operation_or_appends_a_revision(
