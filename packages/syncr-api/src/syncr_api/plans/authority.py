@@ -29,7 +29,7 @@ moves, so nothing auto-applies, so no revision is appended and no projection is 
 destructive calendar reconciliations during one session would be both slow and visible on the
 user's phone, and this falls out of the rule rather than needing a session-specific case.
 
-## The past is not classified, and a candidate may not restate it
+## The past is not classified, and a candidate may not restate what the solve chose
 
 A block the week has already reached appears in no output class, whatever authority would say
 about it. The reference instant is an argument rather than something read here, for the reason the
@@ -41,32 +41,10 @@ invites.** What persists is the candidate DOCUMENT: an appended revision carries
 does the pending slot, whose document becomes the plan of record when it is approved. So a candidate
 that drops a block the week has reached reports no removal, satisfies every class-level rule, and
 still replaces the plan of record with a week whose past is different. A guard reading only the
-three lists cannot see that, so the pair of documents is checked directly.
-
-**What is compared is exactly this: which blocks the week has reached, and where each one sits.**
-Both documents must hold the same set of started blocks at the same placements. A started block's
-title, its Area and its pin state are deliberately OUTSIDE the comparison, and the reason is that
-failing a week's solving is worse than the drift: a task renamed or re-filed into another Area on
-Wednesday would otherwise stop every solve of that week for the rest of it. What that costs is that
-an elapsed hour can be re-attributed, which the retro and the unallocated figure read, so the rule
-is stated at the width it is enforced rather than as "the same past".
-
-It is refused rather than repaired: a candidate that places a started block elsewhere fails with a
-stated cause, the previous plan stays live and stays projected, and the fault is visible instead of
-being silently absorbed into an append-only table.
-
-**A disagreement is not always a producer defect, and this rule is measurably stricter than the
-producer today.** The solver may not MOVE a block that has started, but derivation restates one: a
-commitment corrected in the feed after it began, and a routine edited mid-week whose occurrence has
-begun, both re-derive at their new span and are both refused. Neither is a defect, and nothing
-reconciles the two, so the refusal wedges that week's solving until the week passes. Which origins
-the rule should bind, and whether a corrected commitment is a fact the live plan should be made to
-carry, is an open decision recorded in ticket 1395, which blocks the runner that pairs the producer
-with this function. Until it is answered the strict reading is the safe direction, because the
-alternative is the silent rewrite this guard exists to stop.
-
-A week with **no** live plan has no past to restate, so a first plan for a week that is half elapsed
-is classified as it stands: every block of it fills space nothing occupied.
+three lists cannot see that, so the pair of documents is checked directly, in
+:mod:`syncr_api.plans.settled`, which also states which origins the rule binds and why it binds
+those. It is refused rather than repaired: the previous plan stays live and stays projected, and the
+fault is visible instead of being silently absorbed into an append-only table.
 
 Filtering here is also what keeps this module out of the question of what authority means over a
 block that has started and is pinned. It means nothing, because such a block is not classified.
@@ -82,11 +60,12 @@ emitting its blocks in a different order.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from syncr_api.anchors.shadow_products import DERIVED_ORIGINS
 from syncr_api.plans.errors import ClassificationRejected
 from syncr_api.plans.overlaps import detected_conflicts
+from syncr_api.plans.settled import has_started, require_an_unchanged_past
 from syncr_domain.identity import Origin
 from syncr_domain.intervals import IntervalSet
 from syncr_domain.proposals import BlockChange, ProposalDiff
@@ -97,12 +76,8 @@ if TYPE_CHECKING:
 
     from syncr_api.plans.overlaps import DetectedConflict
     from syncr_domain.identity import BlockId
-    from syncr_domain.intervals import Instant, Interval
+    from syncr_domain.intervals import Instant
     from syncr_domain.plan import Block, PlanDocument
-
-# How many block ids a refusal names before it counts the rest. A week holds hundreds of blocks and
-# a message that listed every disagreeing one would be a log line nobody reads.
-IDS_IN_A_REFUSAL: Final = 3
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -157,7 +132,7 @@ def classify(live: PlanDocument | None, candidate: PlanDocument, *, now: Instant
     document rather than the diff.
     """
     _require_one_week(live, candidate)
-    _require_an_unchanged_past(live, candidate, now=now)
+    require_an_unchanged_past(live, candidate, now=now)
     held = {} if live is None else live.blocks_by_id()
     wanted = candidate.blocks_by_id()
     occupied = IntervalSet(block.interval for block in (() if live is None else live.blocks))
@@ -192,7 +167,7 @@ def _new_blocks(
     slot binding late to content is the ordinary auto-application.
     """
     arriving = [
-        block for block in blocks if block.id not in held and not _has_started(block.interval, now)
+        block for block in blocks if block.id not in held and not has_started(block.interval, now)
     ]
     return (
         _changes(
@@ -211,7 +186,7 @@ def _dropped(
     return _changes(
         BlockChange.removed(block)
         for block_id, block in held.items()
-        if block_id not in candidate and not _has_started(block.interval, now)
+        if block_id not in candidate and not has_started(block.interval, now)
     )
 
 
@@ -229,8 +204,8 @@ def _relocated(
         for block_id, block in held.items()
         if (wanted := candidate.get(block_id)) is not None
         and wanted.interval != block.interval
-        and not _has_started(block.interval, now)
-        and not _has_started(wanted.interval, now)
+        and not has_started(block.interval, now)
+        and not has_started(wanted.interval, now)
     )
 
 
@@ -274,11 +249,6 @@ def _change_order(change: BlockChange) -> tuple[Instant, BlockId]:
     return (placement.start, change.block_id)
 
 
-def _has_started(interval: Interval, now: Instant) -> bool:
-    """Whether the week has already reached this placement. The past is not classified."""
-    return interval.start <= now
-
-
 def _require_one_week(live: PlanDocument | None, candidate: PlanDocument) -> None:
     if live is None or live.iso_week == candidate.iso_week:
         return
@@ -287,70 +257,6 @@ def _require_one_week(live: PlanDocument | None, candidate: PlanDocument) -> Non
         f"{candidate.iso_week}: an id is derived against the week, so every block would read as "
         "dropped and every one as added, and the whole week would be proposed as new"
     )
-
-
-def _require_an_unchanged_past(
-    live: PlanDocument | None, candidate: PlanDocument, *, now: Instant
-) -> None:
-    """Both documents hold the same started blocks at the same placements, or this is refused.
-
-    The guard the three classes cannot be: each of them skips a block the week has reached, and
-    what persists is the document. So a candidate that drops or moves such a block partitions into
-    nothing at all and still becomes the plan of record.
-
-    Symmetric, because both directions rewrite history: a block missing from the candidate is one
-    the week lived and the plan no longer places, and a block the candidate holds in the past that
-    the live plan does not is time the user is told they spent on something nobody scheduled.
-
-    **Placements only.** A block id is a digest of the week and the binding, so what is compared is
-    where each started block sits and nothing about what it says: a rename or a re-filing into
-    another Area passes, deliberately, because refusing it would stop a week's solving for the rest
-    of that week.
-    """
-    if live is None:
-        return
-    settled = _settled(live, now)
-    restated = _settled(candidate, now)
-    stated = ", ".join(
-        filter(
-            None,
-            (
-                _named("dropped", sorted(settled.keys() - restated.keys())),
-                _named("invented", sorted(restated.keys() - settled.keys())),
-                _named("moved", sorted(_relocated_in_the_past(settled, restated))),
-            ),
-        )
-    )
-    if not stated:
-        return
-    raise ClassificationRejected(
-        f"the candidate for {candidate.iso_week} places a block the week has already reached "
-        f"differently than the live plan does: {stated}. Where such a block sits is not a change "
-        "this product may make, and the document is what becomes the plan of record, so the diff "
-        "skipping the block cannot protect it"
-    )
-
-
-def _settled(document: PlanDocument, now: Instant) -> Mapping[BlockId, Interval]:
-    """Where this document puts every block the week has already reached."""
-    return {
-        block.id: block.interval for block in document.blocks if _has_started(block.interval, now)
-    }
-
-
-def _relocated_in_the_past(
-    settled: Mapping[BlockId, Interval], restated: Mapping[BlockId, Interval]
-) -> list[BlockId]:
-    return [one for one in settled.keys() & restated.keys() if settled[one] != restated[one]]
-
-
-def _named(verb: str, ids: list[BlockId]) -> str:
-    """``verb`` and the blocks it happened to, bounded, because a week holds hundreds."""
-    if not ids:
-        return ""
-    shown = ", ".join(ids[:IDS_IN_A_REFUSAL])
-    more = "" if len(ids) <= IDS_IN_A_REFUSAL else f" and {len(ids) - IDS_IN_A_REFUSAL} more"
-    return f"{verb} {shown}{more}"
 
 
 def _require_one_class_per_block(

@@ -31,9 +31,10 @@ from uuid import uuid4
 
 import pytest
 
-from syncr_api.plans.authority import IDS_IN_A_REFUSAL, Classification, classify
+from syncr_api.plans.authority import Classification, classify
 from syncr_api.plans.errors import ClassificationRejected
 from syncr_api.plans.overlaps import DetectedConflict, detected_conflicts
+from syncr_api.plans.settled import IDS_IN_A_REFUSAL
 from syncr_domain.identity import BindingRef, TransitLeg
 from syncr_domain.proposals import BlockChange, ProposalDiff
 from syncr_domain.weeks import IsoWeek
@@ -64,6 +65,8 @@ LEETCODE = BindingRef.for_task(uuid4())
 STANDUP = BindingRef.for_anchor(INTERVIEW)
 PREP = BindingRef.for_anchor_prep(INTERVIEW)
 TRANSIT = BindingRef.for_anchor_transit(INTERVIEW, leg=TransitLeg.OUT)
+SLEEP = BindingRef.for_routine(uuid4(), on=WEEK.monday())
+LECTURE = BindingRef.for_template_entry(uuid4(), on=WEEK.monday())
 
 
 def a_week(*blocks: Block) -> PlanDocument:
@@ -399,6 +402,73 @@ class TestThePastMayNotBeRestated:
 
         with pytest.raises(ClassificationRejected, match="moved"):
             classify(live, a_week(replace(started, interval=span)), now=at(10))
+
+
+class TestTheRuleBindsWhatTheSolveChoseAndNothingElse:
+    """The narrowing by origin, driven from both sides of the split.
+
+    The rule is stated over the two origins whose placement the solve chooses. A block whose time a
+    declaration or an import fixes is re-derived at its CURRENT span on every solve, whether or not
+    the week has reached it, so binding those origins refused two ordinary upstream events and
+    wedged the week: every solve of it failed until it left the horizon.
+
+    ``plans/settled.py`` carries the decision, the two shapes, and the two answers not taken.
+    """
+
+    def test_a_commitment_corrected_after_it_began_does_not_refuse_the_candidate(self) -> None:
+        # The user extended a meeting that was in progress. The feed now says 07:30-08:30, the
+        # live plan holds 07:00-08:00, and the candidate carries the corrected span because
+        # derivation restates a fact rather than repeating a decision.
+        live = a_week(a_block_holding(STANDUP, between(7, 8)))
+        candidate = a_week(
+            a_block_holding(STANDUP, between(7.5, 8.5)), a_block_holding(LEETCODE, between(14, 15))
+        )
+
+        assert classify(live, candidate, now=at(9)).applies_immediately()
+
+    def test_a_routine_edited_mid_week_whose_occurrence_has_begun_does_not_refuse_it(self) -> None:
+        # Sleep shortened from 23:00-07:00 to 23:00-06:30 while the occurrence was running.
+        live = a_week(a_block_holding(SLEEP, between(-1, 7)))
+        candidate = a_week(
+            a_block_holding(SLEEP, between(-1, 6.5)), a_block_holding(LEETCODE, between(14, 15))
+        )
+
+        assert classify(live, candidate, now=at(9)).applies_immediately()
+
+    @pytest.mark.parametrize(
+        "binding",
+        [STANDUP, PREP, TRANSIT, SLEEP, LECTURE],
+        ids=["a commitment", "its prep", "its transit", "a routine", "a concrete entry"],
+    )
+    def test_no_origin_whose_time_its_source_fixes_is_bound(self, binding: BindingRef) -> None:
+        # The whole half of the split, so a sixth such origin is covered by the same rule rather
+        # than by whichever of these five a later reader thought to check.
+        live = a_week(a_block_holding(binding, between(8, 9)))
+        candidate = a_week(a_block_holding(LEETCODE, between(14, 15)))
+
+        assert classify(live, candidate, now=at(10)).applies_immediately()
+
+    @pytest.mark.parametrize("binding", [GYM, LEETCODE], ids=["a due occurrence", "backlog work"])
+    def test_what_the_solve_placed_is_still_bound_in_both_directions(
+        self, binding: BindingRef
+    ) -> None:
+        # The control for the parametrization above: the narrowing removed the wedge and kept the
+        # shape the rule exists for, which is a solve dropping or moving its own elapsed placement.
+        started = a_block_holding(binding, between(8, 9))
+        live = a_week(started)
+
+        with pytest.raises(ClassificationRejected, match="dropped"):
+            classify(live, a_week(a_block_holding(GYM, between(14, 15))), now=at(10))
+        with pytest.raises(ClassificationRejected, match="moved"):
+            classify(live, a_week(replace(started, interval=between(6, 7))), now=at(10))
+
+    def test_an_exempt_origin_in_the_past_is_still_in_no_output_class(self) -> None:
+        # What the exemption does NOT do: the corrected span is carried by the document, and the
+        # classification reports nothing about it, so no revision claims to have moved anything.
+        live = a_week(a_block_holding(STANDUP, between(7, 8)))
+        candidate = a_week(a_block_holding(STANDUP, between(7.5, 8.5)))
+
+        assert classify(live, candidate, now=at(9)).is_empty()
 
 
 class TestWhatCollides:

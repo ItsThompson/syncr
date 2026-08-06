@@ -26,6 +26,7 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``stored_documents.py`` | a whole week, written from and rebuilt through the domain constructors |
 | ``stored_proposals.py`` | the assent-requiring changes, in the form the pending slot holds |
 | ``overlaps.py`` | the two overlaps nothing may settle quietly, detected against the live plan |
+| ``settled.py`` | what the week has lived, and which of it a candidate may not restate |
 | ``authority.py`` | the authority rule: what auto-applies, what waits, and what collides |
 
 And the week assembler, which turns everything above plus every declaration a tenant holds into
