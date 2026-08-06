@@ -79,13 +79,19 @@ def conflict_event(conflict: ConflictRecord) -> ServerEvent:
 def projection_event(
     tenant_id: TenantId, iso_week: IsoWeek, result: ReconcileResult
 ) -> ServerEvent:
-    """A week was written out to the calendar, and what that reconciliation did."""
+    """A week's plan was written out, and what the PASS that wrote it did.
+
+    ``isoWeek`` is the week the client should refetch. ``pass`` is the whole reconciliation's tally
+    and is named that way deliberately: one pass reconciles the entire projection horizon in one
+    destructive write, so there is no per-week figure to report and a field called ``result`` beside
+    a week would read as this week's.
+    """
     return ServerEvent(
         type=PROJECTION,
         tenant_id=tenant_id,
         data={
             "isoWeek": str(iso_week),
-            "result": {
+            "pass": {
                 "inserted": result.inserted,
                 "patched": result.patched,
                 "deleted": result.deleted,

@@ -46,11 +46,13 @@ from syncr_api.solving.config import (
     PENDING,
     RETRY_BACKOFF,
     RUNNING,
+    SOLVE,
     SUCCEEDED,
     SUPERSEDED,
     OperationKind,
 )
 from syncr_api.solving.errors import OperationMovedOn, OperationNotFound
+from syncr_api.solving.metrics import SOLVE_TALLY
 from syncr_api.solving.outcomes import Failed, Outcome, Succeeded, Superseded
 from syncr_api.solving.transitions import may_retry
 from syncr_common.logging import get_logger
@@ -130,7 +132,19 @@ class OperationLifecycle:
         A retried failure comes back as ``pending`` with its attempt raised and its next due
         instant pushed out. Both writes are in the caller's transaction, so an operation is never
         observed as failed when it is going to run again.
+
+        **A solve's ending is counted here rather than by the caller**, because this is the one
+        place every operation is stepped: the reaper, the retry, the coordinator and the inline
+        calendar sync all arrive through it. Counted in the coordinator instead, the counter read
+        "solves that reached a terminal status" while omitting every solve the REAPER finished, and
+        the supersession ratio an operator tunes the debounce on was a share of a subset.
         """
+        stepped = await self._stepped_by(operation_id, outcome)
+        if stepped.kind == SOLVE:
+            SOLVE_TALLY.finished(stepped.status)
+        return stepped
+
+    async def _stepped_by(self, operation_id: OperationId, outcome: Outcome) -> OperationRecord:
         match outcome:
             case Succeeded():
                 stepped = await self._operations.mark_succeeded(

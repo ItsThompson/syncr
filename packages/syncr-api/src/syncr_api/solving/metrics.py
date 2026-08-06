@@ -109,7 +109,12 @@ class SolveTally:
         return dict(self._counts)
 
     def finished(self, status: OperationStatus) -> None:
-        """Record one solve's ending, and re-derive the ratio from every ending so far."""
+        """Record one solve's ending, and re-derive the ratio from every ending so far.
+
+        A status that is not terminal is ignored rather than refused, because the lifecycle hands
+        this the row it actually wrote: a failure with an attempt left comes back as ``pending`` in
+        the same transaction that recorded it, and counting that would report a retry as an ending.
+        """
         if status not in self._counts:
             return
         self._counts[status] += 1

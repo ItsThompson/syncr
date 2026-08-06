@@ -254,6 +254,21 @@ class TestTheRoute:
         assert "require_bearer_principal" not in body
         assert "PrincipalDep" in body
 
+    def test_the_stream_service_holds_no_session_so_the_route_cannot_write(self) -> None:
+        """Which is the real reason excluding this route from the read-never-writes walk is safe.
+
+        The walk cannot drive an endless body, so the exclusion rests on a property rather than on a
+        promise: the service takes the hub and nothing else, so there is no session for it to write
+        through and no repository it could compose one from.
+        """
+        import inspect
+
+        from syncr_api.events.service import EventStreamService
+
+        taken = inspect.signature(EventStreamService.__init__).parameters
+
+        assert list(taken) == ["self", "hub"]
+
 
 class TestEveryFamilyThisSliceExportsIsVisibleBeforeItIsUsed:
     """The reading "nothing is stuck" and the reading "nobody has looked yet" have to differ.
@@ -272,6 +287,7 @@ class TestEveryFamilyThisSliceExportsIsVisibleBeforeItIsUsed:
             "syncr_sse_events_dropped_total",
             "syncr_sse_listener_reconnects_total",
             "syncr_solve_claim_races_lost_total",
+            "syncr_solve_tenant_failures_total",
             "syncr_solve_superseded_ratio",
         ],
         ids=lambda one: one,
@@ -282,11 +298,14 @@ class TestEveryFamilyThisSliceExportsIsVisibleBeforeItIsUsed:
     @pytest.mark.parametrize("kind", list(OPERATION_KINDS), ids=lambda one: one)
     def test_every_operation_kind_is_a_label_on_both_kind_labeled_families(self, kind: str) -> None:
         # Seeded at import rather than on the first pass, so a worker that has not ticked yet is
-        # distinguishable from one whose queues are empty.
-        assert REGISTRY.get_sample_value("syncr_operations_non_terminal", {"kind": kind}) == 0.0
+        # distinguishable from one whose queues are empty. Presence rather than zero, because a
+        # sibling test in this process may legitimately have observed one already.
+        assert (
+            REGISTRY.get_sample_value("syncr_operations_non_terminal", {"kind": kind}) is not None
+        )
         assert (
             REGISTRY.get_sample_value("syncr_operation_queue_delay_seconds_count", {"kind": kind})
-            == 0.0
+            is not None
         )
 
     @pytest.mark.parametrize("outcome", list(TERMINAL_STATUSES), ids=lambda one: one)

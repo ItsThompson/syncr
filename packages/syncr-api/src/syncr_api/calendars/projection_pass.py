@@ -34,7 +34,7 @@ that has not designated a write target is not a tenant whose writes are failing.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from syncr_api.calendars.config import GOOGLE
@@ -42,13 +42,14 @@ from syncr_api.calendars.horizons import read_horizon_days
 from syncr_api.calendars.injection import build_write_target_adapter, read_zone_profile_of
 from syncr_api.calendars.projection_errors import ProjectionFailed, ProjectionRefused
 from syncr_api.calendars.projection_metrics import FAILED, SUCCEEDED, observed
+from syncr_api.calendars.projection_notices import projection_failure_notices
 from syncr_api.calendars.projection_state import (
     recorded_projection,
     recorded_projection_failure,
 )
 from syncr_api.calendars.projection_writer import ProjectionWriter
 from syncr_api.calendars.repository import CalendarSourceRepository
-from syncr_api.events.envelopes import projection_event
+from syncr_api.events.envelopes import notice_event, projection_event
 from syncr_api.events.publishing import published
 from syncr_api.horizon.weeks import horizon_span, weeks_reaching_the_horizon
 from syncr_api.offplan.repository import OffPlanPeriodRepository
@@ -177,8 +178,9 @@ class TenantPass:
         observed(result, outcome=SUCCEEDED)
         await self._record(target, recorded_projection(target.sync_state, at=self.now))
         # Published on this transaction, so a client hears about a reconciliation exactly when the
-        # sync state that records it lands. One event per claimed week, because that is what the
-        # client asked to be told about.
+        # sync state that records it lands. One event per claimed week, because which weeks to
+        # refetch is what the client asked to be told; the FIGURES are the whole pass's, because one
+        # reconciliation covers the horizon rather than one week, and the field says so.
         await published(
             self.session,
             *(
@@ -203,10 +205,27 @@ class TenantPass:
         alert that watches it must fire for both; the difference is the error code and the sentence.
         """
         observed(failure.applied, outcome=FAILED)
+        recorded = recorded_projection_failure(
+            target.sync_state, at=self.now, reason=failure.reason
+        )
         await self._record(
             target,
-            recorded_projection_failure(target.sync_state, at=self.now, reason=failure.reason),
+            recorded,
             outcome=Failed(code=failure.code, message=str(failure)),
+        )
+        # The notice is published from HERE rather than left to the next read of the Settings
+        # screen, because a projection that stopped is the one degradation a user cannot discover
+        # by looking at the plan: the plan is correct and the calendar is quietly stale. The
+        # notices are built from the state just RECORDED rather than the one the pass started with,
+        # because they are raised on the strength of `last_error` and that is what this write sets.
+        await published(
+            self.session,
+            *(
+                notice_event(self.tenant_id, one)
+                for one in projection_failure_notices(
+                    replace(target, sync_state=recorded), self._last_claim(), now=self.now
+                )
+            ),
         )
         _log.warning(
             "calendars.projection.failed",
@@ -241,3 +260,11 @@ class TenantPass:
 
     def _sources(self) -> CalendarSourceRepository:
         return CalendarSourceRepository(self.session, self.tenant_id)
+
+    def _last_claim(self) -> OperationRecord | None:
+        """The claim a failure notice quotes the attempt count from, or nothing.
+
+        The newest, because a pass claims every due projection and the attempt a reader wants to see
+        is the one this failure was recorded against.
+        """
+        return self.claimed[-1] if self.claimed else None

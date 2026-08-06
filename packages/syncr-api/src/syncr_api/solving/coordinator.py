@@ -68,7 +68,7 @@ from prometheus_client import Counter
 
 from syncr_api.solving.config import PENDING, RUNNING, SOLVE
 from syncr_api.solving.errors import OperationMovedOn, SolveIsRunning
-from syncr_api.solving.metrics import OPERATION_QUEUE_DELAY, SOLVE_TALLY
+from syncr_api.solving.metrics import OPERATION_QUEUE_DELAY
 from syncr_api.solving.outcomes import Superseded
 from syncr_common.logging import get_logger
 from syncr_common.metrics import REGISTRY, measured
@@ -197,7 +197,7 @@ class SolveCoordinator:
         solve does not discard the concession the user asked for. It is due now: the mutation that
         superseded this solve has already been made, so there is nothing left to coalesce with it.
         """
-        closed = await self._closed(op, outcome)
+        closed = await self._lifecycle.finish(op.id, outcome)
         if not isinstance(outcome, Superseded) or outcome.superseded_by is not None:
             return closed
         follow_up = await self._enqueued(
@@ -207,12 +207,6 @@ class SolveCoordinator:
             at_version=closed.input_version,
         )
         return await self._named(closed, follow_up)
-
-    async def _closed(self, op: OperationRecord, outcome: Outcome) -> OperationRecord:
-        """``op``'s terminal step, counted on the two instruments the debounce is read from."""
-        finished = await self._lifecycle.finish(op.id, outcome)
-        SOLVE_TALLY.finished(finished.status)
-        return finished
 
     async def _named(
         self, superseded: OperationRecord, successor: OperationRecord
@@ -256,7 +250,9 @@ class SolveCoordinator:
         """
         if in_flight is not None and in_flight.status == RUNNING:
             raise SolveIsRunning(week)
-        closed = None if in_flight is None else await self._closed(in_flight, Superseded())
+        closed = (
+            None if in_flight is None else await self._lifecycle.finish(in_flight.id, Superseded())
+        )
         created = await self._enqueued(
             week, due_at=self._clock(), candidate=candidate, at_version=at_version
         )

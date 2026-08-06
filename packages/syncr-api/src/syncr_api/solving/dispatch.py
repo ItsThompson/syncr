@@ -215,8 +215,19 @@ class SolveDispatch:
                     "be produced under. Provisioning seeds version 1 in the transaction that "
                     "creates a tenant, so a tenant without one was not created by this application"
                 )
-            await OperationRepository(session, self._tenant_id).stamp_input_version(
+            stamped = await OperationRepository(session, self._tenant_id).stamp_input_version(
                 op.id, input_version=inputs.input_version
+            )
+        if stamped is None:
+            # The row is no longer running, which means something finished it between the claim and
+            # this write: the reaper, on a lease this load outlived. The solve continues and its
+            # guard still uses the version it read, so correctness holds; what is lost is the row
+            # REPORTING the version it read, which is the whole point of the stamp, so it is said.
+            _log.warning(
+                "solving.stamp.lost",
+                iso_week=str(week),
+                operation_id=str(op.id),
+                input_version=inputs.input_version,
             )
         return Loaded(
             inputs=inputs,
