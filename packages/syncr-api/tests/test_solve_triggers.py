@@ -44,6 +44,7 @@ from syncr_api.accounts.config import AUTH_PREFIX
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.settings import API_PREFIX
 from syncr_api.oauth.config import OAUTH_PREFIX
+from syncr_api.solving.config import SOLVE
 from tests.boundaries import METHODS_WITHOUT_A_BODY, api_routes, route_identity
 
 if TYPE_CHECKING:
@@ -232,8 +233,11 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
 #                   is `calendars` and it is in the table above
 #   /events         is a read whose body never ends. It holds no session, so it cannot write
 #
-# Adding an entry here is adding a hole in the rule. That is the point of keeping the list in the
-# file named for it: it cannot be done without editing this test.
+# The first two are DOCUMENTATION rather than exclusions: the walk filters on the api prefix first,
+# and neither is under it, so deleting either entry would change nothing. What keeps that safe is
+# the credential-routes assertion below, which closes the set outside the prefix. The other two do
+# exclude, and adding an entry beside them is adding a hole in the rule: that is the point of
+# keeping the list in the file named for it.
 OUTSIDE_THE_RULE: Final = (
     AUTH_PREFIX,
     OAUTH_PREFIX,
@@ -246,7 +250,17 @@ OUTSIDE_THE_RULE: Final = (
 KEPT_BOTH_ROUTE: Final = f"{API_PREFIX}/conflicts"
 
 
-def module_source(module: str) -> str:
+def module_source(module: str | None) -> str:
+    """The source of a module a row names.
+
+    Takes the optional type the row carries, and refuses ``None`` rather than being handed a
+    narrowed value by each caller: a row with no module is one whose endpoint does not exist, and
+    the parametrizations that reach here have already filtered those out. A refusal names the
+    mistake.
+    """
+    if module is None:
+        message = "a row with no module has no source to read: filter it out of the parametrization"
+        raise AssertionError(message)
     return (SOURCE_ROOT / module).read_text(encoding="utf-8")
 
 
@@ -314,19 +328,41 @@ class TestTheTriggerTable:
         assert len(rows) == 25
 
     @pytest.mark.parametrize(
-        "trigger", [one for one in TRIGGER_TABLE if one.bumps], ids=lambda one: one.row
+        "trigger",
+        [one for one in TRIGGER_TABLE if one.bumps and one.module is not None],
+        ids=lambda one: one.row,
     )
     def test_a_row_that_bumps_has_a_module_that_bumps(self, trigger: Trigger) -> None:
         """Every trigger the table says invalidates a week reaches the version counter.
 
         Read from the module's source rather than by driving the route, because what has to hold is
         that the write is THERE: a route test proves one path and this proves the set.
+
+        A row with no module has no endpoint to read, and it is left out of the parametrization
+        rather than skipped: a skip reports forever and says nothing, while its absence is covered
+        by ``test_a_row_with_no_module_is_one_whose_endpoint_does_not_exist`` below, which names the
+        three and the ticket that owes each.
         """
-        if trigger.module is None:
-            pytest.skip(f"row is unwired and owned by ticket {trigger.owner}")
         body = module_source(trigger.module)
 
         assert any(spelling in body for spelling in BUMPS_A_VERSION), trigger.row
+
+    def test_a_row_with_no_module_is_one_whose_endpoint_does_not_exist(self) -> None:
+        """The three rows the walk above cannot read, named rather than skipped.
+
+        Each bumps according to the table and has nothing in the tree to read it from, because the
+        endpoint has not been built: two approvals and the pin. Naming them here means the set is
+        asserted rather than reported once per run as a skip nobody reads.
+        """
+        unreadable = {
+            one.row: one.owner for one in TRIGGER_TABLE if one.module is None and one.bumps
+        }
+
+        assert unreadable == {
+            "pin, unpin, drag, keyboard move": "41",
+            "tradeoff approved": "42",
+            "proposal approved": "42",
+        }
 
     @pytest.mark.parametrize(
         "trigger",
@@ -387,24 +423,46 @@ class TestTheTriggerTable:
 class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
     """Sixteen rows ask for a solve and reach none. Named here so the gap is countable.
 
-    Building this enumeration is what made them visible, and the count is asserted so that wiring
-    one is a change to this file: a row that gains its request has to lose its owner here, and a row
-    that loses its bump fails the walk above.
+    Building this enumeration is what made them visible, and BOTH directions are guarded, which is
+    what makes the table's own claim true: a row that loses its bump fails the walk above, and a row
+    that gains its solve request without losing its owner here fails
+    ``test_a_row_that_still_names_an_owner_has_not_been_wired``. Without that second half the
+    enumeration could not see the one change it exists to track, so it would have gone stale in
+    exactly the direction the next ticket travels.
     """
 
     def test_the_unwired_count_is_what_the_walk_found(self) -> None:
         """Sixteen rows ask for a solve and reach none.
 
-        Fifteen of them are mutations a person makes; the sixteenth is the horizon maintainer, which
-        is not a mutation at all -- time passing is what triggers it -- and it materializes instead
-        of
-        solving, which is ticket 1400.
+        Fifteen of them are mutations a person makes. The sixteenth is the horizon maintainer, which
+        is not a mutation at all, because time passing is what triggers it, and which materializes
+        instead of solving: that is ticket 1400.
         """
         unwired = [one for one in TRIGGER_TABLE if one.solves and one.owner is not None]
         by_a_person = [one for one in unwired if one.owner != "1400"]
 
         assert len(unwired) == 16
         assert len(by_a_person) == 15
+
+    @pytest.mark.parametrize(
+        "trigger",
+        [one for one in TRIGGER_TABLE if one.owner is not None and one.module is not None],
+        ids=lambda one: one.row,
+    )
+    def test_a_row_that_still_names_an_owner_has_not_been_wired(self, trigger: Trigger) -> None:
+        """The reverse guard, and the direction the next ticket over this area actually travels.
+
+        A row loses its owner when it gains its request, and this is what forces the pair to move
+        together: wiring one without editing the table fails here, so the enumeration cannot report
+        a gap that has been closed. It is the same pattern ``OUTSIDE_THE_RULE`` already has one
+        screen down, applied to the half that was missing it.
+        """
+        body = module_source(trigger.module)
+
+        assert REQUESTS_A_SOLVE not in body, (
+            f"{trigger.module} now requests a solve, so the {trigger.row!r} row is wired: drop its "
+            f"owner ({trigger.owner}) from TRIGGER_TABLE, and correct the counts beside it."
+        )
 
     def test_every_unwired_row_names_a_ticket(self) -> None:
         for one in TRIGGER_TABLE:
@@ -414,8 +472,7 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
 
     def test_only_four_rows_reach_the_coordinator_today(self) -> None:
         # The four live triggers, one of which bypasses the debounce by design. The burst of pins
-        # the
-        # window was measured against is row one, which is ticket 41's.
+        # the window was measured against is row one, which is ticket 41's.
         wired = [one.row for one in TRIGGER_TABLE if one.solves and one.owner is None]
 
         assert sorted(wired) == [
@@ -430,11 +487,16 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
 
         If a second path created a `solve` operation, a trigger could reach one without reaching the
         coordinator and the enumeration would be measuring the wrong thing.
+
+        Both spellings are searched. ``OperationKind`` is a ``Literal``, so ``kind="solve"`` written
+        out type-checks exactly as the constant does, and a walk that matched only the constant
+        would be evaded by the more likely of the two mistakes.
         """
+        spellings = (f"kind={SOLVE.upper()}", f'kind="{SOLVE}"')
         creating = sorted(
             str(path.relative_to(SOURCE_ROOT))
             for path in SOURCE_ROOT.rglob("*.py")
-            if "kind=SOLVE" in path.read_text(encoding="utf-8")
+            if any(one in path.read_text(encoding="utf-8") for one in spellings)
         )
 
         assert creating == ["solving/coordinator.py"]
@@ -446,10 +508,47 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
     Stated over the routes that change what a solve READS. The routes outside that are listed in
     ``OUTSIDE_THE_RULE`` with the reason each is outside, and the list has its own reverse guard, so
     an exclusion cannot outlive the route it was written for.
+
+    **The granularity is the PACKAGE, not the route, and that is a real limit.** What this walk
+    asserts is that a route's package bumps somewhere, so one route of a package forgetting its own
+    bump passes here. The per-route half is carried by each feature's own suite:
+    ``test_tasks_service``, ``test_habits_service``, ``test_areas_service`` and their siblings each
+    assert their own writes bump. What this adds is that no route belongs to a package with no bump
+    at all, which is the failure a feature suite cannot see, because it does not know the route
+    exists. Deriving the pairing per route would need a second hop below the service method, of
+    which ``tests/boundaries.py`` resolves one; it is worth doing the day a package holds a route
+    that must not bump.
+
+    **The walk is bounded by the api prefix**, and the routes outside it are asserted rather than
+    assumed, so a solve-input-mutating route added outside ``/api/v1``, a provider webhook being the
+    plausible one, has to be classified rather than silently exempt.
     """
 
     def test_the_walk_finds_routes_at_all(self, settings: ServiceSettings) -> None:
         assert mutating_routes(settings), "no mutating route was found, so this asserted nothing"
+
+    def test_the_body_bearing_routes_outside_the_api_prefix_are_exactly_the_credential_ones(
+        self, settings: ServiceSettings
+    ) -> None:
+        """So a mutation added outside the prefix cannot be exempt by the filter alone.
+
+        The filter is what bounds the walk, not the exclusion list, and the two prefixes the list
+        names for `/auth` and `/oauth` therefore document rather than exclude. What makes that safe
+        is this assertion: the set outside the prefix is closed, and a new member fails here.
+        """
+        outside = sorted(
+            (method, path)
+            for method, path in api_route_pairs(settings)
+            if method not in METHODS_WITHOUT_A_BODY and not path.startswith(API_PREFIX)
+        )
+
+        assert [path for _method, path in outside] == [
+            f"{AUTH_PREFIX}/login",
+            f"{AUTH_PREFIX}/logout",
+            f"{OAUTH_PREFIX}/authorize/decision",
+            f"{OAUTH_PREFIX}/revoke",
+            f"{OAUTH_PREFIX}/token",
+        ]
 
     def test_every_mutating_route_belongs_to_a_package_that_bumps(
         self, settings: ServiceSettings
