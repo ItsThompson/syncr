@@ -13,9 +13,9 @@ every week it governs, and a second implementation of that would be a second ans
 retype means. The operation lifecycle is the solving module's, and it is the only creation path for
 an operation.
 
-``NoPins`` is the pin release of this deployment rather than a placeholder for one: nothing writes a
-pin yet, so no stored document holds a pinned block either. The seam is what makes the branch that
-frees one the production code path when a pin write exists.
+``StoredPinRelease`` is the pin feature's answer to the release this path declares. The seam stays a
+protocol because the lifecycle question it settles is the pin's: what a release does to the row, and
+what still teaches the learning layer afterwards, are decided where pins are written.
 """
 
 from __future__ import annotations
@@ -29,10 +29,11 @@ from fastapi import Depends, Request
 # NameError while the app is being constructed.
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.anchors.injection import get_anchor_service
-from syncr_api.conflicts.pins import NoPins
 from syncr_api.conflicts.service import ConflictService
 from syncr_api.core.clock import utc_now
+from syncr_api.pins.release import StoredPinRelease
 from syncr_api.plans.conflicts import PlanConflictRepository
+from syncr_api.plans.pins import PinRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.injection import build_solve_coordinator, configured_debounce
@@ -53,7 +54,7 @@ def get_conflict_service(
             debounce=configured_debounce(request),
         ),
         anchors=get_anchor_service(principal, transaction),
-        pins=NoPins(),
+        pins=StoredPinRelease(PinRepository(transaction, principal.tenant_id)),
         clock=utc_now,
     )
 

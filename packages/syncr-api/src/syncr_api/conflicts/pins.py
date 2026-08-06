@@ -6,10 +6,10 @@ released pin still teaches the learning layer, are decided where pins are writte
 protocol the resolution path declares and the pin feature answers, exactly as the week assembler
 declares the seam that supplies it a week's placements.
 
-``NoPins`` is the correct reading of this deployment rather than a placeholder for one. Nothing
-writes a pin yet, so no stored document holds a pinned block either, and a resolution can only
-reach the pinned branch through this seam in a test. What the seam buys is that the branch is the
-production code path when a pin write exists, rather than something a later ticket has to add.
+``NoPins`` is kept for the ONE suite that still needs it: the resolution suite drives the pinned
+branch against a recording fake, and the null implementation is what its "no pin was holding it"
+case is stated over. Production wires :class:`syncr_api.pins.release.StoredPinRelease`, which
+deletes the row and leaves the edit event that outlives it.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ class PinRelease(Protocol):
 
 
 class NoPins:
-    """The pin release of a deployment where nothing writes a pin. Reads and writes nothing."""
+    """A pin release that releases nothing. Reads and writes nothing."""
 
     async def release(self, iso_week: IsoWeek, binding: BindingRef) -> bool:
         return False
