@@ -32,3 +32,5 @@ type RoutineId = UUID
 type WeekAdjustmentId = UUID
 type BlockOutcomeId = UUID
 type ConflictId = UUID
+type PinId = UUID
+type EditEventId = UUID

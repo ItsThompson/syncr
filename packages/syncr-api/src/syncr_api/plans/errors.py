@@ -1,4 +1,4 @@
-"""The five rejections the plan side raises, and why none is a ``SyncrError``.
+"""The six rejections the plan side raises, and why none is a ``SyncrError``.
 
 A revision reaches storage from a Pydantic model that has already validated it, and every
 document-describing column is derived rather than passed in. So a document that cannot
@@ -42,6 +42,17 @@ class AdjustmentRejected(Exception):
     sit on the table claiming to have been honoured while changing nothing. The read side is
     deliberately tolerant and reports what it dropped, because a row already stored has to be
     readable; this is what stops one being written.
+    """
+
+
+class EditContextRejected(Exception):
+    """A feature snapshot that could not be a feature vector, so no edit event may carry it.
+
+    The same class as the two above and for the same reason: every field of a context is derived
+    from one assembly and two documents, so a snapshot missing an objective term or holding an
+    unbounded list is a defect in the derivation rather than something a request carried. It is
+    refused at construction because ``E5`` never prunes these rows: a hole in the corpus is
+    permanent, and the write is the only moment it can be caught.
     """
 
 

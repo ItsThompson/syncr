@@ -75,6 +75,12 @@ type ConflictResolution = Literal["moved", "kept-both", "retyped"]
 UNANSWERED_CONFLICT_INDEX: Final = "uq_conflicts_tenant_id_anchor_id_block_id"
 UNANSWERED_CONFLICT: Final = text(f"resolved_at IS NULL OR resolution = '{KEPT_BOTH_RESOLUTION}'")
 
+# One pin per block, ever. A person holds one answer at a time to "where does this content go this
+# week", so a second drag of one block states the same preference again rather than adding one, and
+# the write path upserts. Stated once and read twice, as the unique index the table declares and as
+# the conflict target that upsert names.
+ONE_PIN_PER_BLOCK_INDEX: Final = "uq_pins_tenant_id_block_id"
+
 # A verdict's provenance. `probe` proves infeasibility only; `solver` is authoritative.
 VERDICT_PROVENANCES: Final = ("probe", "solver")
 

@@ -40,6 +40,7 @@ if TYPE_CHECKING:
         BlockOutcomeId,
         ConflictId,
         OperationId,
+        PinId,
         PlanRevisionId,
         TenantId,
     )
@@ -100,6 +101,33 @@ class WeekAdjustmentRecord:
     delta_minutes: int | None
     created_at: datetime
     created_by_operation_id: OperationId
+
+
+@dataclass(frozen=True, slots=True)
+class PinRecord:
+    """Where the user put one block this week, and what the solver had chosen instead.
+
+    The record carries a rebuilt ``BindingRef`` and two ``Interval`` values where the table carries
+    a JSONB object and four columns, for the reason :class:`BlockOutcomeRecord` does: every reader
+    wants the identity as one value and each span as one.
+
+    Neither half of the counterfactual is optional once the pin is complete, which is ``PN3`` and
+    ``B1``: a pin states the placement it replaced and what replacing it cost, so the reason panel
+    renders both from the pin rather than by walking the edit log. ``objective_delta`` is nullable
+    here for one statement's width: it is derived from an assembly the pin changes, so the row is
+    written and then priced inside one transaction, and a read between the two sees no cost yet.
+    """
+
+    id: PinId
+    tenant_id: TenantId
+    iso_week: IsoWeek
+    block_id: BlockId
+    binding: BindingRef
+    interval: Interval
+    superseded_placement: Interval
+    objective_delta: float | None
+    weight_set_version: int
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)

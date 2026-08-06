@@ -15,6 +15,12 @@ review, a retro, a fitter, or a product metric.
 
 The columns whose semantics arrive later hold JSONB: a ``BindingRef``, an ``EditContext``,
 a set of shortfall kinds. Their shape is enforced by the Pydantic model that writes them.
+
+**One of the six holds a row that stops being current without ceasing to be a fact.** ``pins``
+carries one pin per block, so a second drag of one block replaces the row and a release deletes it.
+What persists is the ``edit_events`` row every pin writes in the same transaction: it carries the
+same pair, the same objective delta and the same weight-set version, so the training label outlives
+the constraint. That is the distinction ``PN2`` draws between the binding and the record.
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ from syncr_api.plans.config import (
     CONFLICTS_TABLE,
     EDIT_EVENTS_TABLE,
     MOVED_OUTCOME,
+    ONE_PIN_PER_BLOCK_INDEX,
     OUTCOME_STATES,
     PARTIAL_OUTCOME,
     PINS_TABLE,
@@ -67,26 +74,31 @@ class Pin(Base, TenantScoped):
     """Where the user put something, and what the solver had chosen instead.
 
     A pin binds ONE week and does not carry forward, so the schema stores the week rather
-    than a recurrence. The record persists permanently even so: the binding is a live
-    constraint on this week's solve, and the record is a fact about a week that has
-    already happened.
+    than a recurrence. The record persists permanently even so, and it is the
+    ``edit_events`` row written beside this one that holds it: this row is the live
+    constraint on this week's solve, and that row is the fact about a week that happened.
+
+    ``block_id`` is denormalized onto the row because the pin route is handed one -- the
+    client drags a rendered block, and a block id is its only handle -- and because it is
+    what one pin per binding per week is unique over. It is a digest of the week and the
+    binding, so it is a restatement of two columns that are already here rather than a
+    third fact, which is why the identity index needs no week.
     """
 
     __tablename__ = PINS_TABLE
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     iso_week: Mapped[str] = mapped_column(String(ISO_WEEK_LENGTH), nullable=False)
+    block_id: Mapped[str] = mapped_column(String(BLOCK_ID_MAX_LENGTH), nullable=False)
     binding: Mapped[JsonObject] = mapped_column(JSONB, nullable=False)
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    superseded_starts_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    superseded_ends_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    superseded_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    superseded_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # Stored, never recomputed later: the weight set that produced it is versioned and
-    # will have moved on, so a recomputation would answer a different question.
+    # will have moved on, so a recomputation would answer a different question. Nullable
+    # because it is derived from an assembly the pin itself changes, so the row exists a
+    # statement before its price does, inside the transaction that writes both.
     objective_delta: Mapped[float | None] = mapped_column(nullable=True)
     weight_set_version: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -94,10 +106,13 @@ class Pin(Base, TenantScoped):
     __table_args__ = (
         CheckConstraint("starts_at < ends_at", name="interval_is_half_open"),
         CheckConstraint(
-            "(superseded_starts_at IS NULL) = (superseded_ends_at IS NULL)",
-            name="superseded_placement_is_whole",
+            "superseded_starts_at < superseded_ends_at", name="superseded_placement_is_whole"
         ),
         Index("ix_pins_tenant_id_iso_week", TENANT_ID_COLUMN, "iso_week"),
+        # One pin per block, so a second drag of one block replaces the first rather than
+        # constraining one solve to two intervals: the solver seeds a pinned binding from the
+        # pin naming it, and with two rows which interval wins would be read order.
+        Index(ONE_PIN_PER_BLOCK_INDEX, TENANT_ID_COLUMN, "block_id", unique=True),
     )
 
 
