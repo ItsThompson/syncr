@@ -359,6 +359,7 @@ async def replace_proposal(
         "proposal_diff": {"added": [], "removed": [], "moved": []},
         "objective_breakdown": BREAKDOWN,
         "verdict": {"feasible": True, "provenance": "solver"},
+        "weight_set_version": 1,
         "input_version": 1,
         "operation_id": uuid4(),
         "created_at": NOW,

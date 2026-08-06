@@ -8,6 +8,10 @@ week is rejected.
 
 What would be lost by overwriting is the per-week plan of record, and that is a different
 table, appended and never replaced.
+
+**The row carries everything the approved revision it may become has to state**, which is why
+the weight set version is here as well as on the revision table: approval appends from this row,
+and a revision says which weights produced its document.
 """
 
 from __future__ import annotations
@@ -41,6 +45,7 @@ class PendingProposalRepository(TenantScopedRepository):
         proposal_diff: JsonDocument,
         objective_breakdown: JsonDocument,
         verdict: JsonDocument,
+        weight_set_version: int,
         input_version: int,
         operation_id: OperationId,
         created_at: datetime,
@@ -59,6 +64,7 @@ class PendingProposalRepository(TenantScopedRepository):
             "proposal_diff": dict(proposal_diff),
             "objective_breakdown": dict(objective_breakdown),
             "verdict": dict(verdict),
+            "weight_set_version": weight_set_version,
             "input_version": input_version,
             "operation_id": operation_id,
             "candidate_adjustment": (
@@ -112,6 +118,7 @@ def _as_record(proposal: PendingProposal) -> PendingProposalRecord:
         proposal_diff=deepcopy(proposal.proposal_diff),
         objective_breakdown=deepcopy(proposal.objective_breakdown),
         verdict=deepcopy(proposal.verdict),
+        weight_set_version=proposal.weight_set_version,
         input_version=proposal.input_version,
         operation_id=proposal.operation_id,
         candidate_adjustment=deepcopy(proposal.candidate_adjustment),

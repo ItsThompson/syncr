@@ -121,6 +121,10 @@ class PendingProposal(Base, TenantScoped):
     proposal_diff: Mapped[JsonObject] = mapped_column(JSONB, nullable=False)
     objective_breakdown: Mapped[JsonObject] = mapped_column(JSONB, nullable=False)
     verdict: Mapped[JsonObject] = mapped_column(JSONB, nullable=False)
+    # Recorded because approval appends a revision FROM this row, and a revision states which
+    # weights produced its document. The set in force at approval is a different figure: the user
+    # may have activated another one since the solve that filled this slot.
+    weight_set_version: Mapped[int] = mapped_column(nullable=False)
     input_version: Mapped[int] = mapped_column(nullable=False)
     # No foreign key, deliberately. Terminal operations are pruned at 30 and 90 days and a
     # proposal is not, so a constraint here would either block the prune or null a column

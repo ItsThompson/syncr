@@ -238,6 +238,7 @@ class PlanAdoption:
             proposal_diff=stored_proposal_diff(classification.proposal_diff),
             objective_breakdown=dict(candidate.objective_breakdown),
             verdict=candidate.verdict,
+            weight_set_version=candidate.weight_set_version,
             input_version=candidate.input_version,
             operation_id=candidate.operation_id,
             created_at=at,

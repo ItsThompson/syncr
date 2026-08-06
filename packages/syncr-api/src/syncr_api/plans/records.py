@@ -82,6 +82,7 @@ class PendingProposalRecord:
     proposal_diff: JsonObject
     objective_breakdown: JsonObject
     verdict: JsonObject
+    weight_set_version: int
     input_version: int
     operation_id: OperationId
     candidate_adjustment: JsonObject | None

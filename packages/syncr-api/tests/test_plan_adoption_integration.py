@@ -207,6 +207,27 @@ class TestWhatEachClassificationWrites:
         assert adopted.proposal.proposal_diff[ADDED] == []
         assert adopted.proposal.verdict == A_VERDICT
 
+    async def test_the_slot_records_the_weights_that_produced_the_document_in_it(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        # Approval appends a revision FROM this row, and a revision states which weights produced
+        # its document. Read off the same load the document came from, so the two cannot name
+        # different sets, and not the set in force at approval, which the user may have changed
+        # since. Asserted on the stored ROW rather than on the value passed in.
+        live = a_week(a_block_holding(GYM, between(9, 10)))
+        candidate = a_week(a_block_holding(GYM, between(17, 18)))
+
+        await adopt(
+            sessions,
+            owner.tenant_id,
+            classified(live, candidate),
+            a_candidate(candidate, weight_set_version=9),
+        )
+
+        stored = await proposal_held(sessions, owner.tenant_id)
+        assert stored is not None
+        assert stored.weight_set_version == 9
+
     async def test_a_second_proposal_replaces_the_first_in_place(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
