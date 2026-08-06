@@ -12,8 +12,8 @@ bullets below are counted to match it, because a latency budget and an alert are
 it: an assembly is budgeted at p95 under 100 ms against reads on a warm cache, and the assembly
 histogram's alert is read against that budget. **The budget and the alert were both set against a
 figure of eleven, which was never counted; recalibrating them is its own piece of work, and
-restating the figure here does not do it.** Two of the eighteen are stubs today, each named below
-with what it awaits.
+restating the figure here does not do it.** One of the eighteen is a stub today, named below with
+what it awaits, and one performs four statements behind a single call.
 
 ```
 assemble(iso_week, now, extra_adjustment=None)
@@ -21,7 +21,8 @@ assemble(iso_week, now, extra_adjustment=None)
   ├── resolve each day's active zone
   ├── read the input version, from which the seed derives
   ├── name the churn baseline: the last approved revision, or never-approved
-  ├── read what the week already holds: the live plan and its pins
+  ├── read what the week already holds: the live plan, its pins and its outcomes, keeping
+  │     only the pins whose placement the week has not yet reached
   ├── load off-plan periods, over this week and the one before it, and clip them per week
   ├── materialize routines: local target times to instants, at EFFECTIVE durations
   │     clamped to min_duration_minutes, one occurrence per day, each keyed by date
@@ -58,15 +59,16 @@ a tradeoff request from persisting anything.
 the week before it each have their own approved concessions, and the inherited occurrence has to
 be resolved as its own week resolves it or the two weeks disagree about how long one night was.
 
-## Two resolutions await another component, and each is honest rather than absent
+## One resolution awaits another component, and it is honest rather than absent
 
-*The live plan and its pins* come through a reader whose production implementation answers with
-nothing, because no code names the keys a stored binding holds yet. *The habit outcome log* is the
-same seam one module over.
+*The habit outcome log* comes through a reader whose production implementation answers with nothing.
+It is a seam rather than a silence: the cursor and the debt figure are exercised through the real
+arithmetic in the suite, and bringing a reader online changes one line of wiring.
 
-Each is a seam rather than a silence: the netting rules, the cursor, and the debt figure are all
-exercised through the real arithmetic in the suite, and bringing a reader online changes one line
-of wiring.
+*The live plan, its pins and its outcomes* are read for real. One collaborator call, and four
+statements behind it: that gap is stated on the seam itself, because the p95 budgets in section 19
+are calibrated against the collaborator figure above, and this is the collaborator the two figures
+differ over most.
 
 ## What this method never does
 
@@ -99,6 +101,7 @@ from syncr_api.plans.materialization import (
 from syncr_api.plans.multipliers import DurationMultipliers
 from syncr_api.plans.netting import PlacedTime, placements
 from syncr_api.plans.overhang import frame_overhang
+from syncr_api.plans.placements import constraining
 from syncr_api.plans.reservations import area_budgets
 from syncr_api.plans.resolved_preferences import area_caps, resolved_preferences
 from syncr_api.user_settings.zone_reading import as_domain, zone_profile
@@ -262,9 +265,13 @@ class WeekAssembler:
 
         input_version = await self._versions.current(iso_week) or UNVERSIONED_WEEK
         churn_baseline = _churn_baseline(await self._revisions.latest_approved(iso_week))
-        held = await self._placements.read(iso_week)
+        held = await self._placements.read(iso_week, span)
+        # A pin the week has reached is a record rather than a constraint, and the seam states why
+        # carrying one wedges the week. Applied here because the rule is a function of the instant
+        # this assembly is stamped with, which is exactly what makes a placement immovable below.
+        pins = constraining(held.pins, now=now)
         placed = PlacedTime(
-            placements(held.live_plan, held.pins, now=now, outcomes=held.outcomes), now=now
+            placements(held.live_plan, pins, now=now, outcomes=held.outcomes), now=now
         )
         # Both weeks in one read. The inherited occurrence is judged against the periods of the
         # week that owns it, and reading only this week's would suppress it by a period this week
@@ -362,7 +369,7 @@ class WeekAssembler:
                 tasks=folded.eligible_tasks,
                 zone_by_date=zone_by_date,
             ),
-            pins=held.pins,
+            pins=pins,
             deadline_demands=deadline_demands(folded.demands),
             adjustments=adjustments,
             live_plan=held.live_plan,

@@ -1,4 +1,4 @@
-"""How the assembler acquires what a week already holds: the live plan, and its pins.
+"""How the assembler acquires what a week already holds: the live plan, its pins, and its outcomes.
 
 The netting rules every quantity on a solve input obeys are stated over PLACEMENTS: a task's
 remaining work nets the immovable ones, an Area's floor reservation nets all of them, and a
@@ -9,36 +9,37 @@ It is a protocol for the same reason the budget report's occupancy reader and th
 outcome log's reader are: the concern that stores these rows owns its own storage, and an
 assembly should acquire that answer rather than reach into another module's table.
 
-``NoPlacements`` answers with nothing, and that is the correct reading of this deployment
-rather than a placeholder for one. All three parts of the answer need the same missing
-capability, which is why they are one seam and not three:
+## What one call costs, which the assembly's own read figure does not say
 
-*The live plan.* ``plan_revisions`` stores a document as JSONB and nothing yet reads its
-interior. A revision's blocks carry a binding, an interval, and an Area, and no code names the
-keys a stored block holds, so no revision in this deployment can be read back as placements.
+``StoredPlacements`` performs FOUR statements per call, and the assembler counts the seam as one
+collaborator read. The two figures answer different questions and both are true; what matters is
+that the p95 budgets in section 19 are calibrated against a collaborator count, and this is the
+collaborator whose count and whose statement count differ most. Recalibrating those budgets against
+measured statements is ticket 1253's, and stating the gap here is not doing it.
 
-*The pins.* ``pins`` exists and carries a ``binding`` column, and nothing writes one: there is
-no pin write path yet, and the interior of a stored ``BindingRef`` is undefined for the same
-reason. A read of the table could not attribute a row to the task or Area it pins.
+## A pin stops constraining its week once the week has reached the placement it names
 
-*The outcomes.* ``block_outcomes`` is written and readable, so this half could be answered
-today. It is not, because an outcome only changes what a PLACEMENT attributes: with no live
-plan there is no placement to attribute, so supplying the rows alone would change no figure.
-Whoever supplies the live plan supplies these in the same read.
+One rule, and it is read in two places: this module refuses to carry such a pin into an assembly,
+and the pin route refuses to create one. Both read :func:`constrains_a_solve`, so neither can drift
+from the other.
 
-So the honest answer today is that no week holds a placement: every task's remaining work is
-its corrected estimate less recorded minutes, every Area's two floor quantities are equal, and
-every demand is gross. Each of those is what is true while nothing is placed.
+What it settles, and each was open before a pin route existed:
 
-The seam earns its keep in the suite rather than in the production wiring. Without it, the two
-netting rules could only ever be asserted against an empty week; with it, the assembler's tests
-supply real placements and assert both quantities through the real arithmetic.
+**A pin on a block that has already begun.** ``syncr_solver.immovability`` documents H10 winning
+for that input -- the block stays where it ran, and H11 yields -- while ``inheritance._placed``
+seeds a pinned block at the pin unconditionally, which would move it. The two disagreed because the
+input was unreachable. It stays unreachable: the route refuses the drag, and a pin whose interval
+the week has since reached is not carried, so the block reaches the checker with no pin against it
+and H10 governs it exactly as its own prose says.
 
-Whoever brings the plan document's interior online supplies a reader over ``plan_revisions``
-and ``pins`` and changes one line in ``injection.py``. What that reader owes this module is
-stated on the protocol below, and the one rule it must not break is that a pinned block and its
-live-plan block are ONE placement: counted twice, a pinned hour would net twice out of every
-quantity that reads it.
+**A pin whose interval elapses while its block lives only in a pending proposal.** Carried, the
+solver builds a block for pinned content the live plan does not hold, the guard reads that block as
+a past the live plan does not state, and every solve of that week fails from then on. Not carried,
+the producer never emits the block and nothing reaches the guard.
+
+What it costs is the pin's own hold on an elapsed span, and ``H4`` already protects that span from
+being placed into. The RECORD is untouched: the row stays until something releases it, and the edit
+event beside it is permanent.
 """
 
 from __future__ import annotations
@@ -46,11 +47,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
+from syncr_api.plans.settled import has_started
+from syncr_api.plans.stored_documents import plan_document
+from syncr_api.user_settings.zone_reading import local_date
+from syncr_solver.inputs import Pin
+
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from syncr_api.plans.pins import PinRepository
+    from syncr_api.plans.reality import BlockOutcomeRepository
+    from syncr_api.plans.records import PinRecord
+    from syncr_api.plans.repository import PlanRepository
+    from syncr_api.user_settings.repository import SettingsRepository
+    from syncr_domain.intervals import Instant, Interval
     from syncr_domain.outcomes import RecordedOutcome
     from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
-    from syncr_solver.inputs import Pin
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,8 +85,14 @@ class WeekPlacements:
 class WeekPlacementReader(Protocol):
     """What an assembly asks for the capacity a week has already committed."""
 
-    async def read(self, iso_week: IsoWeek) -> WeekPlacements:
+    async def read(self, iso_week: IsoWeek, span: Interval) -> WeekPlacements:
         """The live plan of ``iso_week``, its pins, and the outcomes recorded on it. Writes nothing.
+
+        ``span`` is the week's own elapsed span, which the assembler has already resolved against
+        the zone profile. It is a parameter for the reason the budget report's occupancy reader
+        takes one: an outcome is keyed by the instant its block was scheduled at, so the rows of a
+        week are the rows inside its span, and re-deriving that span here would resolve the zone
+        profile a second time and could answer with a different one.
 
         **The live plan is the plan of record, not a pending proposal.** A proposal nobody
         has approved has committed no capacity, so netting against one would report work as
@@ -99,12 +118,69 @@ class WeekPlacementReader(Protocol):
         ...
 
 
-class NoPlacements:
-    """The placements of a deployment where no block can be read back from a document.
+class StoredPlacements:
+    """What a week holds, read from the three tables that hold it.
 
-    Reads nothing and writes nothing. A week assembled against it holds no committed
-    capacity, which is what is true while nothing names the keys a stored binding holds.
+    Four statements: the newest revision, the week's pins, the outcomes of the span, and the profile
+    whose home zone a pin's creation instant is dated in. The last is what makes the pin's own
+    ``pinned_on`` the date the USER made the edit rather than the UTC date it landed on, which are
+    different dates for anything after early evening in the zones this product is used in.
     """
 
-    async def read(self, iso_week: IsoWeek) -> WeekPlacements:
-        return WeekPlacements()
+    def __init__(
+        self,
+        revisions: PlanRepository,
+        pins: PinRepository,
+        outcomes: BlockOutcomeRepository,
+        settings: SettingsRepository,
+    ) -> None:
+        self._revisions = revisions
+        self._pins = pins
+        self._outcomes = outcomes
+        self._settings = settings
+
+    async def read(self, iso_week: IsoWeek, span: Interval) -> WeekPlacements:
+        latest = await self._revisions.latest(iso_week)
+        home_zone = (await self._settings.read()).home_zone
+        return WeekPlacements(
+            live_plan=None if latest is None else plan_document(latest.document),
+            pins=tuple(
+                _as_pin(record, home_zone=home_zone)
+                for record in await self._pins.for_week(iso_week)
+            ),
+            outcomes=tuple(record.as_domain() for record in await self._outcomes.for_span(span)),
+        )
+
+
+def constrains_a_solve(interval: Interval, now: Instant) -> bool:
+    """Whether a pin at ``interval`` is still a constraint on the week's solve.
+
+    A pin the week has reached is a record and not a constraint. There is nothing left for the
+    solver to honour, because the moment has passed and the placement is a fact, and carrying one is
+    what makes the two rules that protect the past disagree about it.
+
+    Read by this module, which drops such a pin from an assembly, and by the pin route, which
+    refuses to create one. One predicate, so the created set and the honoured set are the same set.
+    """
+    return not has_started(interval, now)
+
+
+def constraining(pins: Sequence[Pin], *, now: Instant) -> tuple[Pin, ...]:
+    """The pins an assembly stamped at ``now`` carries: those whose placement it has not reached."""
+    return tuple(pin for pin in pins if constrains_a_solve(pin.interval, now))
+
+
+def _as_pin(record: PinRecord, *, home_zone: str) -> Pin:
+    """One stored pin as the value the solver seeds a placement from.
+
+    ``pinned_on`` is derived rather than stored, because the row holds the instant and a date needs
+    a zone. The home zone is the one this product resolves a date in when no week is in question,
+    which is the same reading the Week screen's own empty state takes.
+    """
+    return Pin(
+        binding=record.binding,
+        interval=record.interval,
+        pinned_on=local_date(record.created_at, home_zone),
+        superseded_placement=record.superseded_placement,
+        objective_delta=record.objective_delta,
+    )

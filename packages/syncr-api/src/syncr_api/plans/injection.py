@@ -11,21 +11,23 @@ request-scoped dependency, because two of its three callers are not requests: th
 week and the horizon maintainer materializes one, and neither has a principal. The week service is
 request-only and takes the principal's own dependency.
 
-Two seams are wired to readers that answer with nothing, and each is the honest reading of this
+One seam is wired to a reader that answers with nothing, and it is the honest reading of this
 deployment rather than a placeholder:
-
-``NoPlacements`` for the live plan and the pins, because no code names the keys a stored pin binding
-holds, so no committed capacity can be read back out of one.
 
 ``NoRecordedOutcomes`` for the ASSEMBLER's habit outcome log, which is a different question from the
 one the week view asks: it attributes a row to a habit occurrence, and the wiring that answers it is
 the habit module's own.
 
-Whoever brings either online changes one line here.
+Whoever brings it online changes one line here.
 
-The week view's day confirmations are NOT a stub: ``RecordedDayConfirmations`` reads the plan of
-record and the outcome log, so the count on the Week screen and the count on the Today surface come
-from one rule. Both surfaces would otherwise answer the same question about the same week.
+``StoredPlacements`` is NOT a stub: it reads the newest revision, the week's pins, the outcomes of
+the span, and the profile a pin's creation instant is dated in. Four statements behind one
+collaborator call, which the seam's own module states, because the assembly's read figure counts the
+call.
+
+The week view's day confirmations are NOT a stub either: ``RecordedDayConfirmations`` reads the plan
+of record and the outcome log, so the count on the Week screen and the count on the Today surface
+come from one rule. Both surfaces would otherwise answer the same question about the same week.
 """
 
 from __future__ import annotations
@@ -53,7 +55,8 @@ from syncr_api.outcomes.confirmations import RecordedDayConfirmations
 from syncr_api.outcomes.planned_days import PlannedDayReader
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.assembler import AssemblyCaller, WeekAssembler
-from syncr_api.plans.placements import NoPlacements
+from syncr_api.plans.pins import PinRepository
+from syncr_api.plans.placements import StoredPlacements
 from syncr_api.plans.readiness import MinimumInputs
 from syncr_api.plans.reality import BlockOutcomeRepository
 from syncr_api.plans.repository import PlanRepository
@@ -97,8 +100,9 @@ def build_week_assembler(
     The anchor repositories are the calendar half's, and they are read-only here: an assembly of a
     week reads what a sync already reconciled and never writes an imported fact.
     """
+    settings = SettingsRepository(transaction, tenant_id)
     return WeekAssembler(
-        settings=SettingsRepository(transaction, tenant_id),
+        settings=settings,
         overrides=TravelOverrideRepository(transaction, tenant_id),
         routines=RoutineRepository(transaction, tenant_id),
         week_pattern=WeekPatternRepository(transaction, tenant_id),
@@ -109,7 +113,12 @@ def build_week_assembler(
         areas=AreaRepository(transaction, tenant_id),
         preferences=PreferenceRepository(transaction, tenant_id),
         off_plan=OffPlanPeriodRepository(transaction, tenant_id),
-        placements=NoPlacements(),
+        placements=StoredPlacements(
+            PlanRepository(transaction, tenant_id),
+            PinRepository(transaction, tenant_id),
+            BlockOutcomeRepository(transaction, tenant_id),
+            settings,
+        ),
         adjustments=WeekAdjustmentRepository(transaction, tenant_id),
         anchors=AnchorRepository(transaction, tenant_id),
         anchor_types=AnchorTypeRepository(transaction, tenant_id),
