@@ -86,6 +86,13 @@ mypy_path = "src"
 # belongs inside the gate.
 files = ["src/syncr_api", "alembic", "scripts", "tests"]
 
+# asyncpg ships no type information. It is normally reached only through SQLAlchemy's own typed
+# surface; the event listener is the one place that connects with the driver directly, because
+# `LISTEN` is per session and a pooled connection cannot hold one.
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 # "." puts the packaged `tests` on the import path so test modules use absolute
 # imports (`from tests.conftest import ...`); "src" keeps first-party `syncr_api`
