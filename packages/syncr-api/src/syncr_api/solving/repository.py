@@ -271,6 +271,67 @@ class OperationRepository(TenantScopedRepository):
             ),
         )
 
+    async def bring_forward(
+        self, operation_id: OperationId, *, to: datetime
+    ) -> OperationRecord | None:
+        """Pull one pending operation's due instant forward to ``to``, or ``None``.
+
+        Only ever forward, and only while the row is still pending. An immediate request arriving
+        inside a debounce window means the user asked for a solve NOW, and the window it lands in
+        was opened by an earlier mutation; pushing the instant back instead would let a slow stream
+        of immediate requests postpone the solve each of them asked for.
+        """
+        return await self._stepped(
+            operation_id,
+            self.scoped_update(Operation)
+            .where(
+                Operation.id == operation_id,
+                Operation.status == PENDING,
+                Operation.scheduled_for > to,
+            )
+            .values(scheduled_for=to),
+        )
+
+    async def name_supersessor(
+        self, operation_id: OperationId, *, superseded_by: OperationId
+    ) -> OperationRecord | None:
+        """Say which operation displaced this superseded one, or ``None``.
+
+        A second write rather than a value on the step that closed the row, because the follow-up
+        cannot exist until the row is closed: at most one non-terminal solve per week is a partial
+        unique index, so creating the replacement first would be refused by the database. Both
+        writes are in the caller's transaction, so nothing observes a supersession with no
+        successor.
+
+        It matches only a row that names none, so a chain cannot be re-pointed after the fact.
+        """
+        return await self._stepped(
+            operation_id,
+            self.scoped_update(Operation)
+            .where(
+                Operation.id == operation_id,
+                Operation.status == SUPERSEDED,
+                Operation.superseded_by.is_(None),
+            )
+            .values(superseded_by=superseded_by),
+        )
+
+    async def stamp_input_version(
+        self, operation_id: OperationId, *, input_version: int
+    ) -> OperationRecord | None:
+        """Record which input snapshot a running solve read, or ``None``.
+
+        Only a running row takes it, because the stamp is taken when the worker LOADS the inputs:
+        an operation that is still queued has read nothing, and one that has finished is guarded on
+        whatever it read. The runner states why loading rather than creation is the moment.
+        """
+        return await self._stepped(
+            operation_id,
+            self.scoped_update(Operation)
+            .where(Operation.id == operation_id, Operation.status == RUNNING)
+            .values(input_version=input_version),
+        )
+
     def _to(self, operation_id: OperationId, status: OperationStatus) -> Update:
         """The write one step performs, refusing a row that cannot take that step.
 

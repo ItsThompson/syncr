@@ -59,12 +59,13 @@ from syncr_api.plans.config import (
     RETYPED_RESOLUTION,
 )
 from syncr_api.plans.conflicts import PlanConflictRepository
+from syncr_api.plans.injection import DEFAULT_DEBOUNCE
 from syncr_api.plans.overlaps import DetectedConflict
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import SOLVE
-from syncr_api.solving.lifecycle import OperationLifecycle
+from syncr_api.solving.injection import build_solve_coordinator
 from syncr_api.solving.repository import OperationRepository
 from syncr_domain.identity import BindingRef, Origin, TransitLeg, is_placed_by_the_solver
 from syncr_domain.intervals import Interval
@@ -242,13 +243,13 @@ def a_service(
     would assert about a branch nothing reaches. Every other collaborator is the real one, and the
     routes suite drives the production wiring end to end.
     """
-    operations = OperationRepository(session, principal.tenant_id)
     return ConflictService(
         conflicts=PlanConflictRepository(session, principal.tenant_id),
         revisions=PlanRepository(session, principal.tenant_id),
         versions=WeekInputVersionRepository(session, principal.tenant_id),
-        operations=operations,
-        lifecycle=OperationLifecycle(operations, lambda: NOW),
+        coordinator=build_solve_coordinator(
+            session, principal.tenant_id, clock=lambda: NOW, debounce=DEFAULT_DEBOUNCE
+        ),
         anchors=get_anchor_service(principal, session),
         pins=pins or ReleasedPins(),
         clock=lambda: NOW,

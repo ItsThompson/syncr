@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 # FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and these
 # two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
@@ -30,27 +30,29 @@ from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
 from syncr_api.plans.versions import WeekInputVersionRepository
-from syncr_api.solving.lifecycle import OperationLifecycle
-from syncr_api.solving.repository import OperationRepository
+from syncr_api.solving.injection import build_solve_coordinator, configured_debounce
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 
 
 def get_concession_service(
-    principal: PrincipalDep, transaction: TransactionDep
+    request: Request, principal: PrincipalDep, transaction: TransactionDep
 ) -> ConcessionService:
     """The concession service, wired for this request and scoped to this tenant."""
-    operations = OperationRepository(transaction, principal.tenant_id)
+    versions = WeekInputVersionRepository(transaction, principal.tenant_id)
     return ConcessionService(
         assembler=build_week_assembler(
             transaction, principal.tenant_id, caller=AssemblyCaller.REQUEST
         ),
         probe=WeekProbe(caller=ProbeCaller.REQUEST),
         adjustments=WeekAdjustmentRepository(transaction, principal.tenant_id),
-        operations=operations,
-        lifecycle=OperationLifecycle(operations, utc_now),
-        versions=TrackedWeekInputVersions(
-            WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+        coordinator=build_solve_coordinator(
+            transaction,
+            principal.tenant_id,
+            clock=utc_now,
+            debounce=configured_debounce(request),
         ),
+        current=versions,
+        versions=TrackedWeekInputVersions(versions, clock=utc_now),
         clock=utc_now,
     )
 

@@ -60,7 +60,7 @@ from syncr_api.plans.readings import week_readings
 from syncr_api.plans.stored_documents import plan_document
 from syncr_api.plans.week_config import HISTORY_PAGE
 from syncr_api.plans.week_views import WeekRevisions, WeekView
-from syncr_api.solving.config import PLAN_KINDS, SOLVE
+from syncr_api.solving.config import PLAN_KINDS
 from syncr_api.user_settings.zone_reading import local_date
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
@@ -79,7 +79,7 @@ if TYPE_CHECKING:
     from syncr_api.plans.readings import WeekReadings
     from syncr_api.plans.repository import PlanRepository
     from syncr_api.plans.versions import WeekInputVersionRepository
-    from syncr_api.solving.lifecycle import OperationLifecycle
+    from syncr_api.solving.coordinator import SolveCoordinator
     from syncr_api.solving.records import OperationRecord
     from syncr_api.solving.repository import OperationRepository
     from syncr_domain.plan import PlanDocument
@@ -102,7 +102,7 @@ class WeekService:
         revisions: PlanRepository,
         versions: WeekInputVersionRepository,
         operations: OperationRepository,
-        lifecycle: OperationLifecycle,
+        coordinator: SolveCoordinator,
         minimum: MinimumInputs,
         sources: CalendarSourceRepository,
         off_plan: OffPlanPeriodRepository,
@@ -113,7 +113,7 @@ class WeekService:
         self._revisions = revisions
         self._versions = versions
         self._operations = operations
-        self._lifecycle = lifecycle
+        self._coordinator = coordinator
         self._minimum = minimum
         self._sources = sources
         self._off_plan = off_plan
@@ -192,11 +192,11 @@ class WeekService:
         **Idempotent per week, with no key**, because at most one non-terminal solve for a week can
         exist: a second request while one is in flight answers with the one already running rather
         than creating a rival. The database's partial unique index is what makes that an invariant
-        rather than a race this read narrows.
+        rather than a race a read narrows.
 
-        Ticket 40 owns the debounce window and the coalescing, so ``immediate`` is recorded here and
-        has nothing yet to bypass: every request is due now, which is what the coordinator's own
-        immediate path will mean.
+        The re-solve control is ``immediate``, which is what bypassing the debounce window means: a
+        request from a person is not being coalesced with anything, so it is due now rather than at
+        the end of a window an earlier mutation opened.
         """
         require_scope(principal, Scope.PLAN_WRITE)
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
@@ -207,25 +207,11 @@ class WeekService:
                 "Nothing was changed, and no plan was invented: declare what is missing and ask "
                 "again, or wait and this week is planned without you asking."
             )
-        in_flight = await self._operations.in_flight(week, kind=SOLVE)
-        if in_flight is not None:
-            _log.info(
-                "weeks.solve.joined",
-                tenant_id=str(principal.tenant_id),
-                iso_week=str(week),
-                operation_id=str(in_flight.id),
-                status=in_flight.status,
-            )
-            return in_flight
-        requested = await self._lifecycle.enqueue(kind=SOLVE, iso_week=week)
-        _log.info(
-            "weeks.solve.requested",
-            tenant_id=str(principal.tenant_id),
-            iso_week=str(week),
-            operation_id=str(requested.id),
-            immediate=immediate,
+        # This control changes no input, so the version it reports is the one the week already
+        # holds: it is what the client's response says was acknowledged, and it is not the guard.
+        return await self._coordinator.request_solve(
+            week, await self._tracked_version(week), immediate=immediate
         )
-        return requested
 
     async def _readings(
         self,

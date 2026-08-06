@@ -33,6 +33,17 @@ API_WORKERS = 2
 # its own full prefix from this constant rather than the app factory imposing one.
 API_PREFIX = "/api/v1"
 
+# The debounce window's default, in milliseconds. Stated here rather than beside the coordinator
+# because it is deployment configuration and this module is where the environment is read; the
+# coordinator takes the resolved window as an argument, so nothing reads an environment variable
+# below the composition root.
+#
+# 1500 ms is what the interview settled, against three measurements: a drag takes roughly one
+# second, so one drag produces one solve; a weekly-session burst has 3 to 8 second gaps, so a
+# session produces several solves rather than one at the end; and live feedback is unaffected,
+# because the verdict is synchronous and returns in the mutation's own response.
+DEFAULT_SOLVE_DEBOUNCE_MS = 1500
+
 # The value SESSION_SIGNING_SECRET holds when nobody has set it. Every browser
 # session's stored identifier is keyed by this secret, so replacing it signs every
 # live session out: that is the documented cost of rotating it, not a bug.
@@ -159,6 +170,15 @@ class EnvSettings(SyncrSettings):
     # off, the whole projection is computed and then refused before any request is sent, and the
     # refusal is stated in the same banner a failure raises rather than being silent.
     google_projection_writes: bool = False
+
+    # How long the solve coordinator waits before a debounced solve becomes due, in
+    # milliseconds. A drag takes roughly a second, so the window outlasts one edit and a burst
+    # resolves within one window of its START: the window is deliberately not extended by later
+    # mutations, because a sliding one would mean a user editing continuously never gets a solve.
+    # Raise it if `syncr_solve_superseded_ratio` sits above roughly 0.3 for this user's editing
+    # rhythm; docs/runbooks/debounce-tuning.md states how to read that and what each direction
+    # costs.
+    solve_debounce_ms: int = DEFAULT_SOLVE_DEBOUNCE_MS
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
@@ -302,6 +322,7 @@ class ServiceSettings(BaseModel):
     google_oauth_redirect_uri: str
     google_token_encryption_key: SecretStr
     google_projection_writes: bool
+    solve_debounce_ms: int
 
 
 def build_service_settings(
@@ -326,4 +347,5 @@ def build_service_settings(
         google_oauth_redirect_uri=env.google_oauth_redirect_uri,
         google_token_encryption_key=env.google_token_encryption_key,
         google_projection_writes=env.google_projection_writes,
+        solve_debounce_ms=env.solve_debounce_ms,
     )

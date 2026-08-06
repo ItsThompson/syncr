@@ -88,3 +88,21 @@ ERROR_CODE_MAX_LENGTH = 64
 # What a reaped operation's failure is called. A worker that died mid-solve reports nothing, so the
 # cause is the lease rather than anything the solve said.
 LEASE_EXPIRED: Final = "lease_expired"
+
+# The four places a solve can stop, which are the four causes an operation's error names. Each has
+# one sentence in `failures.py`, because the answer to each differs; `lease_expired` is not one of
+# them, because a worker that died said nothing about the solve at all.
+type SolveFailure = Literal[
+    "inputs_unreadable", "solver_raised", "past_disagreement", "write_refused"
+]
+INPUTS_UNREADABLE: Final[SolveFailure] = "inputs_unreadable"
+SOLVER_RAISED: Final[SolveFailure] = "solver_raised"
+PAST_DISAGREEMENT: Final[SolveFailure] = "past_disagreement"
+WRITE_REFUSED: Final[SolveFailure] = "write_refused"
+SOLVE_FAILURES: Final = (INPUTS_UNREADABLE, SOLVER_RAISED, PAST_DISAGREEMENT, WRITE_REFUSED)
+
+# How many solves one tick claims for one tenant before moving on. A tenant holds at most one
+# non-terminal solve per week and a horizon is two or three weeks, so this drains an ordinary
+# backlog in one tick while bounding a tick that meets an unusual one: what is left is claimed by
+# the next tick.
+SOLVES_PER_TICK: Final = 4

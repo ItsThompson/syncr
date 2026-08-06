@@ -49,8 +49,8 @@ from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.plans.candidates import as_document
-from syncr_api.solving.config import PENDING, SOLVE
-from syncr_api.solving.outcomes import Superseded
+from syncr_api.plans.service import UNTRACKED_VERSION
+from syncr_api.solving.errors import SolveIsRunning
 from syncr_api.user_settings.solve_inputs import WeekRange
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
@@ -66,9 +66,9 @@ if TYPE_CHECKING:
     from syncr_api.plans.records import WeekAdjustmentRecord
     from syncr_api.plans.tradeoffs import Offer
     from syncr_api.plans.verdicts import WeekProbe
-    from syncr_api.solving.lifecycle import OperationLifecycle
+    from syncr_api.plans.versions import WeekInputVersionRepository
+    from syncr_api.solving.coordinator import SolveCoordinator
     from syncr_api.solving.records import OperationRecord
-    from syncr_api.solving.repository import OperationRepository
     from syncr_api.user_settings.solve_inputs import WeekInputVersions
     from syncr_domain.weeks import IsoWeek
 
@@ -84,16 +84,16 @@ class ConcessionService:
         assembler: WeekAssembler,
         probe: WeekProbe,
         adjustments: WeekAdjustmentRepository,
-        operations: OperationRepository,
-        lifecycle: OperationLifecycle,
+        coordinator: SolveCoordinator,
+        current: WeekInputVersionRepository,
         versions: WeekInputVersions,
         clock: Clock,
     ) -> None:
         self._assembler = assembler
         self._probe = probe
         self._adjustments = adjustments
-        self._operations = operations
-        self._lifecycle = lifecycle
+        self._coordinator = coordinator
+        self._current = current
         self._versions = versions
         self._clock = clock
 
@@ -105,17 +105,30 @@ class ConcessionService:
 
         Returns the operation to follow. The concession itself becomes real only if the user
         approves the proposal it produces.
+
+        A request carrying a candidate never joins an existing operation, which is the coordinator's
+        rule: a pin made two seconds earlier would otherwise absorb it and the proposal would look
+        as though syncr had ignored the concession. A solve already RUNNING cannot be displaced
+        either, so this is refused rather than queued, and the refusal says the request can be made
+        again once that solve lands.
         """
         require_scope(principal, Scope.PLAN_WRITE)
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
         offer = await self._offered(week, requested)
 
-        await self._make_room_for(week)
-        operation = await self._lifecycle.enqueue(
-            kind=SOLVE,
-            iso_week=week,
-            candidate_adjustment=as_document(offer.as_candidate(adjustment_id=uuid4())),
-        )
+        try:
+            operation = await self._coordinator.request_solve(
+                week,
+                await self._current_version(week),
+                immediate=True,
+                candidate=as_document(offer.as_candidate(adjustment_id=uuid4())),
+            )
+        except SolveIsRunning as running:
+            raise Conflict(
+                "A solve of that week is already running, so a tradeoff cannot be evaluated yet. "
+                "Nothing was changed: the week keeps its plan and its concessions, and this "
+                "request can be made again once the solve lands."
+            ) from running
         _log.info(
             "concessions.tradeoff.requested",
             tenant_id=str(principal.tenant_id),
@@ -156,8 +169,16 @@ class ConcessionService:
             adjustment_id=str(adjustment_id),
             kind=found.kind,
         )
-        if await self._operations.in_flight(week, kind=SOLVE) is None:
-            await self._lifecycle.enqueue(kind=SOLVE, iso_week=week)
+        await self._coordinator.request_solve(week, await self._current_version(week))
+
+    async def _current_version(self, week: IsoWeek) -> int:
+        """The version this week now holds, for the coordinator's answer to the caller.
+
+        Not the guard, which is the conditional write's comparison against the version the worker
+        stamps when it loads the inputs. What it is for is the client: the operation the caller
+        follows names the input state its own request was acknowledged at.
+        """
+        return await self._current.current(week) or UNTRACKED_VERSION
 
     async def _offered(self, week: IsoWeek, requested: RequestedConcession) -> Offer:
         """The offer the enumerator made for what was requested, or a 422 naming what it can be.
@@ -184,22 +205,3 @@ class ConcessionService:
                 ],
             )
         return offer
-
-    async def _make_room_for(self, week: IsoWeek) -> None:
-        """Make room for this request's own solve, or refuse to displace a running one.
-
-        A pending solve is closed, because a request carrying a candidate may not join one: a pin
-        made two seconds earlier would absorb the concession and the proposal would look as though
-        syncr ignored it. The single-flight invariant is enforced by a partial unique index, so
-        this is what makes the insert that follows legal rather than a race the database catches.
-        """
-        in_flight = await self._operations.in_flight(week, kind=SOLVE)
-        if in_flight is None:
-            return
-        if in_flight.status != PENDING:
-            raise Conflict(
-                "A solve of that week is already running, so a tradeoff cannot be evaluated yet. "
-                "Nothing was changed: the week keeps its plan and its concessions, and this "
-                "request can be made again once the solve lands."
-            )
-        await self._lifecycle.finish(in_flight.id, Superseded())

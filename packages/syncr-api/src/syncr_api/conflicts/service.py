@@ -53,7 +53,6 @@ from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.plans.config import KEPT_BOTH_RESOLUTION, MOVED_RESOLUTION
 from syncr_api.plans.stored_documents import plan_document
-from syncr_api.solving.config import SOLVE
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
@@ -67,9 +66,8 @@ if TYPE_CHECKING:
     from syncr_api.plans.records import ConflictRecord
     from syncr_api.plans.repository import PlanRepository
     from syncr_api.plans.versions import WeekInputVersionRepository
-    from syncr_api.solving.lifecycle import OperationLifecycle
+    from syncr_api.solving.coordinator import SolveCoordinator
     from syncr_api.solving.records import OperationRecord
-    from syncr_api.solving.repository import OperationRepository
     from syncr_domain.identifiers import ConflictId
     from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
@@ -86,8 +84,7 @@ class ConflictService:
         conflicts: PlanConflictRepository,
         revisions: PlanRepository,
         versions: WeekInputVersionRepository,
-        operations: OperationRepository,
-        lifecycle: OperationLifecycle,
+        coordinator: SolveCoordinator,
         anchors: AnchorService,
         pins: PinRelease,
         clock: Clock,
@@ -95,8 +92,7 @@ class ConflictService:
         self._conflicts = conflicts
         self._revisions = revisions
         self._versions = versions
-        self._operations = operations
-        self._lifecycle = lifecycle
+        self._coordinator = coordinator
         self._anchors = anchors
         self._pins = pins
         self._clock = clock
@@ -221,11 +217,8 @@ class ConflictService:
         """
         if chosen.resolution == KEPT_BOTH_RESOLUTION:
             return None
-        await self._versions.bump(found.iso_week, at=self._clock())
-        in_flight = await self._operations.in_flight(found.iso_week, kind=SOLVE)
-        if in_flight is not None:
-            return in_flight
-        return await self._lifecycle.enqueue(kind=SOLVE, iso_week=found.iso_week)
+        bumped = await self._versions.bump(found.iso_week, at=self._clock())
+        return await self._coordinator.request_solve(found.iso_week, bumped)
 
     async def _live(self, iso_week: IsoWeek) -> PlanDocument | None:
         """The week's live plan, or ``None`` when it holds none."""

@@ -21,7 +21,12 @@ from pathlib import Path
 from pydantic import SecretStr
 
 from syncr_api.core.app_factory import create_app
-from syncr_api.core.settings import API_PORT, API_SERVICE, ServiceSettings
+from syncr_api.core.settings import (
+    API_PORT,
+    API_SERVICE,
+    DEFAULT_SOLVE_DEBOUNCE_MS,
+    ServiceSettings,
+)
 from syncr_api.oauth.config import build_oauth_config
 from syncr_api.oauth.injection import build_oauth_state
 from syncr_api.oauth.keys import SigningKeySet, generate_signing_key
@@ -52,6 +57,9 @@ EXPORT_SETTINGS = ServiceSettings(
     # False for the same reason: the document describes the routes, and whether this deployment may
     # write to a calendar is a property of the deployment rather than of the contract.
     google_projection_writes=False,
+    # The default, for the same reason again: the debounce window is a deployment tunable and
+    # nothing about it reaches the contract.
+    solve_debounce_ms=DEFAULT_SOLVE_DEBOUNCE_MS,
 )
 
 # The `kid` is fixed too. No signing key reaches the document, but the state has to exist

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 # FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and these
 # two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
@@ -35,19 +35,23 @@ from syncr_api.core.clock import utc_now
 from syncr_api.plans.conflicts import PlanConflictRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
-from syncr_api.solving.lifecycle import OperationLifecycle
-from syncr_api.solving.repository import OperationRepository
+from syncr_api.solving.injection import build_solve_coordinator, configured_debounce
 
 
-def get_conflict_service(principal: PrincipalDep, transaction: TransactionDep) -> ConflictService:
+def get_conflict_service(
+    request: Request, principal: PrincipalDep, transaction: TransactionDep
+) -> ConflictService:
     """The conflict service, wired for this request and scoped to this tenant."""
-    operations = OperationRepository(transaction, principal.tenant_id)
     return ConflictService(
         conflicts=PlanConflictRepository(transaction, principal.tenant_id),
         revisions=PlanRepository(transaction, principal.tenant_id),
         versions=WeekInputVersionRepository(transaction, principal.tenant_id),
-        operations=operations,
-        lifecycle=OperationLifecycle(operations, utc_now),
+        coordinator=build_solve_coordinator(
+            transaction,
+            principal.tenant_id,
+            clock=utc_now,
+            debounce=configured_debounce(request),
+        ),
         anchors=get_anchor_service(principal, transaction),
         pins=NoPins(),
         clock=utc_now,

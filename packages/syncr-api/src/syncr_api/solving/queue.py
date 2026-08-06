@@ -21,10 +21,17 @@ the whole horizon either way, so nothing is lost by stopping early.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
+
+from sqlalchemy import func
 
 from syncr_api.core.repository import TenantScopedRepository
-from syncr_api.solving.config import PENDING, OperationKind
+from syncr_api.solving.config import (
+    NON_TERMINAL_STATUSES,
+    OPERATION_KINDS,
+    PENDING,
+    OperationKind,
+)
 from syncr_api.solving.models import Operation
 from syncr_api.solving.repository import as_record
 
@@ -61,3 +68,23 @@ class OperationQueue(TenantScopedRepository):
             .limit(limit)
         )
         return tuple(as_record(row) for row in rows)
+
+    async def non_terminal_counts(self) -> dict[OperationKind, int]:
+        """How many of this tenant's operations are pending or running, by kind.
+
+        Here rather than on the per-operation repository for this module's stated reason: it
+        answers about a SET and no request wants it. What reads it is the worker duty that sets the
+        non-terminal gauge.
+
+        Every kind is a key whether or not the tenant holds one, because a gauge that stopped
+        exporting a label would read as "nothing is stuck" exactly when a kind's queue emptied, and
+        as nothing at all before its first row ever existed.
+        """
+        rows = await self._session.execute(
+            self.scoped_select(Operation)
+            .where(Operation.status.in_(NON_TERMINAL_STATUSES))
+            .with_only_columns(Operation.kind, func.count())
+            .group_by(Operation.kind)
+        )
+        counted = {cast("OperationKind", kind): total for kind, total in rows.all()}
+        return {kind: counted.get(kind, 0) for kind in OPERATION_KINDS}

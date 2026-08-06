@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from syncr_api.solving.config import OperationStatus
     from syncr_domain.identifiers import OperationId
+    from syncr_domain.weeks import IsoWeek
 
 
 class IllegalTransition(Exception):
@@ -54,3 +55,21 @@ class OperationNotFound(IllegalTransition):
 
 class OperationMovedOn(IllegalTransition):
     """The row holds a status this step cannot leave: a lost race, or a step that never existed."""
+
+
+class SolveIsRunning(Exception):
+    """A tradeoff request arrived while a solve of the week was already running.
+
+    Not a transition refusal: nothing was attempted. It is the single-flight invariant answering a
+    request that cannot be satisfied without breaking it, and the coordinator's own module states
+    why the two alternatives are worse. The wording a user reads is the requesting service's, which
+    is where every other sentence a user reads lives.
+    """
+
+    def __init__(self, iso_week: IsoWeek) -> None:
+        super().__init__(
+            f"a solve of {iso_week} is running, and a tradeoff may not join an existing operation: "
+            "joining one created by an unrelated mutation would answer with a proposal that does "
+            "not contain the concession"
+        )
+        self.iso_week = iso_week
