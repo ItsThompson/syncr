@@ -23,6 +23,7 @@ from syncr_api.calendars.projection_errors import ProjectionFailed, ProjectionRe
 from syncr_api.calendars.projection_notices import PROJECTION_STOPPED
 from syncr_api.calendars.projection_runner import TENANT_PROJECTION_FAILURES
 from syncr_api.calendars.schemas import SyncStateResponse
+from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
 from syncr_api.google_account.models import GoogleCredential
 from syncr_api.google_account.notices import WRITE_TARGET_EXPIRED
 from syncr_api.solving.config import (
@@ -33,6 +34,7 @@ from syncr_api.solving.config import (
     RETRY_BACKOFF,
     SUCCEEDED_RETENTION,
 )
+from syncr_api.solving.config import SUPERSEDED as SUPERSEDED_STATUS
 from syncr_api.solving.maintenance import MAINTENANCE_INTERVAL
 from syncr_common.metrics import REGISTRY
 
@@ -43,6 +45,7 @@ RUNBOOKS: Final = Path(__file__).resolve().parents[3] / "docs" / "runbooks"
 
 STUCK_OPERATION = RUNBOOKS / "stuck-operation.md"
 SOLVE_FAILING = RUNBOOKS / "solve-failing.md"
+DEBOUNCE_TUNING = RUNBOOKS / "debounce-tuning.md"
 GOOGLE_TOKEN_EXPIRED = RUNBOOKS / "google-token-expired.md"
 
 
@@ -61,7 +64,7 @@ def days(value: timedelta) -> int:
 
 @pytest.mark.parametrize(
     "runbook",
-    [STUCK_OPERATION, SOLVE_FAILING, GOOGLE_TOKEN_EXPIRED],
+    [STUCK_OPERATION, SOLVE_FAILING, DEBOUNCE_TUNING, GOOGLE_TOKEN_EXPIRED],
     ids=lambda one: one.name,
 )
 def test_the_runbook_exists_and_states_a_trigger(runbook: Path) -> None:
@@ -261,3 +264,41 @@ class TestTheGoogleTokenExpiredRunbook:
     def test_it_states_the_deadline_the_code_enforces(self) -> None:
         """The figure an operator compares a recurring overrun against."""
         assert f"stopped after {WRITE_DEADLINE_SECONDS:.0f}s" in read(GOOGLE_TOKEN_EXPIRED)
+
+
+class TestTheDebounceRunbook:
+    """The window's own figures, and the three claims an operator has to be able to find.
+
+    The threshold and the default are both quoted, and both are asserted against what produces
+    them: a runbook telling an operator to raise a value it names wrongly is worse than one that
+    names no value at all.
+    """
+
+    def test_it_quotes_the_default_window_the_code_ships(self) -> None:
+        assert f"**{DEFAULT_SOLVE_DEBOUNCE_MS} ms**" in read(DEBOUNCE_TUNING)
+
+    def test_it_names_the_environment_variable_that_changes_it(self) -> None:
+        # The name is the field on EnvSettings upper-cased, which is how the settings base reads it.
+        assert "SOLVE_DEBOUNCE_MS" in read(DEBOUNCE_TUNING)
+
+    def test_it_names_both_instruments_the_ratio_is_read_from(self) -> None:
+        body = read(DEBOUNCE_TUNING)
+
+        assert "syncr_solve_superseded_ratio" in body
+        assert "syncr_solve_total" in body
+
+    def test_both_instruments_it_names_are_exported(self) -> None:
+        """So the runbook cannot tell an operator to read a metric nothing publishes."""
+        assert REGISTRY.get_sample_value("syncr_solve_superseded_ratio") is not None
+        assert (
+            REGISTRY.get_sample_value("syncr_solve_total", {"outcome": SUPERSEDED_STATUS})
+            is not None
+        )
+
+    def test_it_says_the_window_is_fixed_rather_than_sliding(self) -> None:
+        # The property the whole mechanism rests on, and the one an operator raising the value has
+        # to understand: a longer window does not mean a user editing continuously waits longer.
+        assert "does not extend it" in read(DEBOUNCE_TUNING)
+
+    def test_it_says_a_high_ratio_is_not_an_error_rate(self) -> None:
+        assert "not an error rate" in read(DEBOUNCE_TUNING)
