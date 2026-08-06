@@ -54,6 +54,7 @@ from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.placements import WeekPlacements
 from syncr_api.plans.production import WeekProducer
+from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import plan_document
 from syncr_api.plans.versions import WeekInputVersionRepository
@@ -77,9 +78,15 @@ from syncr_api.tasks.repository import TaskRepository
 from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.worker.main import WorkerContext
+from syncr_domain.feasibility import Provenance, Verdict
+from syncr_domain.intervals import Interval
+from syncr_domain.plan import Block, PlanDocument
+from syncr_domain.reasons import Bound, DerivationSource, ReasonRecord
 from syncr_domain.tasks import Priority
 from syncr_domain.templates import WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
+from syncr_solver.objective import ObjectiveBreakdown
+from syncr_solver.solve import SolveResult
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -657,3 +664,210 @@ def classification_of(dispatch: SolveDispatch, loaded: Any, solved: Any) -> Any:
 def _raising(*_args: Any, **_asked: Any) -> Any:
     message = "the solver could not complete"
     raise RuntimeError(message)
+
+
+class TestTheAdoptionBranch:
+    """The branch production always takes, driven by a solver that answers with a plan.
+
+    Every other case in this file produces a solve that changes nothing, because a week declared
+    with an Area and one task solves to an empty document: what a solve places into a week is the
+    solver suite's subject and it is not reachable from this fixture. So the branch that appends a
+    revision, bumps the version and enqueues the projection was executed by no test at all, and it
+    is the ONLY branch this deployment takes: the placement seam answers with no live plan, so every
+    candidate classifies as a first plan for its week and auto-applies.
+
+    Substituted at the module boundary, exactly as the raising solver is, so the phases either side
+    of it are the production ones and the whole of `run()` is exercised.
+    """
+
+    async def test_a_candidate_that_fills_empty_space_appends_a_revision(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        await declare_the_minimum(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+
+        finished = await a_solve(sessions, context, owner, clock)
+
+        assert finished.status == SUCCEEDED
+        appended = await revisions_of(sessions, owner.tenant_id)
+        assert len(appended) == 1
+        assert finished.result_revision_id == appended[0].id
+        assert appended[0].reason == "auto_applied_fill"
+
+    async def test_the_version_moves_because_the_live_plan_did(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # V3 and V5: the live plan IS a solve input, so appending a revision has to move the counter
+        # a later mutation and a later assembly both read.
+        await declare_the_minimum(sessions, owner.tenant_id)
+        held = await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+
+        finished = await a_solve(sessions, context, owner, clock)
+
+        assert finished.input_version == held
+        assert await version_of(sessions, owner) == held + 1
+
+    async def test_a_projection_is_enqueued_because_the_live_plan_changed(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # The true side of the condition whose false side the case above drives. Both are the same
+        # `if`, so a change that enqueued unconditionally would redden one and a change that never
+        # enqueued would redden the other.
+        await declare_the_minimum(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+
+        await a_solve(sessions, context, owner, clock)
+
+        queued = await operations_of(sessions, owner.tenant_id, kind=PROJECTION)
+        assert [one.iso_week for one in queued] == [str(WEEK)]
+
+    async def test_the_appended_document_is_one_the_domain_can_rebuild(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # What is stored is the plan of record, so a document that could be written and not read
+        # back would be a week nothing can render.
+        await declare_the_minimum(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+
+        await a_solve(sessions, context, owner, clock)
+
+        (appended,) = await revisions_of(sessions, owner.tenant_id)
+        rebuilt = plan_document(appended.document)
+        assert rebuilt.iso_week == WEEK
+        assert len(rebuilt.blocks) == 1
+
+    async def test_a_second_solve_of_the_same_week_proposes_rather_than_applying(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The authority rule, end to end, which is what the placement seam makes unreachable today.
+
+        The first solve appends. The second answers with the SAME block moved, which is a change the
+        product may not make on its own, so it lands in the pending slot and the live plan is left
+        exactly where it was.
+        """
+        await declare_the_minimum(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+        await a_solve(sessions, context, owner, clock)
+        applied = await revisions_of(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _moving_that_block)
+
+        finished = await a_solve(sessions, context, owner, clock)
+
+        assert finished.status == SUCCEEDED
+        assert finished.result_revision_id is None
+        assert [one.id for one in await revisions_of(sessions, owner.tenant_id)] == [
+            one.id for one in applied
+        ]
+        assert await pending_proposal_of(sessions, owner) is not None
+
+
+async def pending_proposal_of(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> object:
+    async with sessions() as session:
+        return await PendingProposalRepository(session, owner.tenant_id).find(WEEK)
+
+
+def _one_block_at(inputs: Any, hour: float) -> Any:
+    """A plan holding one task block, at an hour of the week the assembly says is still to come."""
+    task = inputs.eligible_tasks[0]
+    midnight = inputs.now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start = midnight + timedelta(days=1, hours=hour)
+    return PlanDocument(
+        iso_week=inputs.iso_week,
+        zone_by_date=inputs.zone_by_date,
+        discretionary_minutes=6000,
+        unallocated_minutes=0,
+        oversubscription_minutes=0,
+        blocks=(
+            Block(
+                iso_week=inputs.iso_week,
+                interval=Interval(start, start + timedelta(minutes=60)),
+                binding=task.binding,
+                title=task.title,
+                reason=ReasonRecord((Bound(DerivationSource.ROUTINE, "the substituted solver"),)),
+                area_id=task.area_id,
+            ),
+        ),
+    )
+
+
+def _solved_with(document: PlanDocument) -> Any:
+    """A solve result carrying ``document``, with the figures the write path reads.
+
+    A verdict is required because the pending slot's column is not nullable, and a proposal is what
+    the second solve produces: the shape of the value is what makes the write reachable, so it is
+    built rather than stubbed.
+    """
+    return SolveResult(
+        document=document,
+        objective_breakdown=_NO_COST,
+        verdict=Verdict(
+            feasible=True,
+            provenance=Provenance.SOLVER,
+            computed_at=document.blocks[0].interval.start,
+            input_version=1,
+            discretionary_minutes=6000,
+        ),
+        blocked_log=(),
+        iterations=1,
+    )
+
+
+def _placing_one_block(inputs: Any, _weights: Any, **_asked: Any) -> Any:
+    """A solver that fills empty space, which is the one thing authority lets through."""
+    return _solved_with(_one_block_at(inputs, 10))
+
+
+def _moving_that_block(inputs: Any, _weights: Any, **_asked: Any) -> Any:
+    """The same content an hour later, which is a move and therefore needs assent."""
+    return _solved_with(_one_block_at(inputs, 14))
+
+
+# The seven terms, all zero. A substituted solver evaluates nothing, and a breakdown of zeros is the
+# honest reading of that: what the write path reads it for is the column, not the figures.
+_NO_COST = ObjectiveBreakdown(
+    deadline_risk=0.0,
+    budget_deviation=0.0,
+    time_of_day_misfit=0.0,
+    fragmentation=0.0,
+    churn=0.0,
+    context_switch=0.0,
+    staleness=0.0,
+)
