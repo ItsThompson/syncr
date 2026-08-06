@@ -97,6 +97,18 @@ def has_started(interval: Interval, now: Instant) -> bool:
     return interval.start <= now
 
 
+def has_elapsed(interval: Interval, now: Instant) -> bool:
+    """Whether the week has spent any of this placement, which is a narrower question.
+
+    The two differ at exactly one instant. A block beginning AT the reference instant has consumed
+    none of the week, so there is nothing recorded for a candidate to rewrite; but it is also not a
+    change the product may still make, so the classifier reports it in no class.
+
+    Read by one of the three directions below, which states why.
+    """
+    return interval.start < now
+
+
 def require_an_unchanged_past(
     live: PlanDocument | None, candidate: PlanDocument, *, now: Instant
 ) -> None:
@@ -114,7 +126,7 @@ def require_an_unchanged_past(
             None,
             (
                 _named("dropped", sorted(settled.keys() - restated.keys())),
-                _named("invented", sorted(restated.keys() - settled.keys())),
+                _named("invented", sorted(_stated_past(restated, settled, now))),
                 _named("moved", sorted(_relocated_in_the_past(settled, restated))),
             ),
         )
@@ -141,6 +153,26 @@ def settled_placements(document: PlanDocument, now: Instant) -> Mapping[BlockId,
         for block in document.blocks
         if has_started(block.interval, now) and is_placed_by_the_solver(block.origin)
     }
+
+
+def _stated_past(
+    restated: Mapping[BlockId, Interval], settled: Mapping[BlockId, Interval], now: Instant
+) -> list[BlockId]:
+    """The blocks the candidate puts in the past that the live plan does not hold at all.
+
+    A block beginning AT the reference instant is excluded, and that exclusion is the one place the
+    two readings of "started" differ. The solver may place work beginning now, so binding this
+    direction at the wider reading wedges the week at every assembly instant that falls on the
+    placement grid: the guard reads the block as a past the live plan does not state, the operation
+    fails, and the next trigger repeats it. Measured against the real solver at 09:00.
+
+    The other two directions keep the wider reading, because both are about a block the LIVE plan
+    holds: dropping or moving one is a rewrite whatever its elapsed length. So what this costs is a
+    block beginning exactly now reaching the plan of record without appearing in a class, which is
+    one instant of drift against a week that could not solve at all. Aligning the two boundaries
+    properly is filed as ticket 1401.
+    """
+    return [one for one in restated.keys() - settled.keys() if has_elapsed(restated[one], now)]
 
 
 def _relocated_in_the_past(

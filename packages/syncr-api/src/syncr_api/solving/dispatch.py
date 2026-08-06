@@ -54,8 +54,11 @@ starts holding moves back with no change here.
 The guard is the first statement of the write transaction and it takes the row ``FOR UPDATE``, so
 reading the version, comparing it, and writing the revision cannot interleave with another
 mutation's bump. A missing row is a mismatch, not a match, which is what stops two concurrent first
-solves from both committing. Nothing is rebased and nothing is applied partially: the transaction
-rolls back and the coordinator enqueues exactly one follow-up.
+solves from both committing. Nothing is rebased and nothing is applied partially: on a mismatch the
+transaction carries no write at all, so it commits the nothing it did -- plus, on a week that had no
+version row, the row the guard created, which the follow-up is then guarded against. Rolling that
+back instead would leave the follow-up finding no row either, superseded for the same reason,
+forever.
 
 ## Failure names what still works, and the last attempt keeps the inputs it read
 
@@ -72,6 +75,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_api.events.envelopes import conflict_event, operation_event
+from syncr_api.events.publishing import published
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.learned.weight_reading import as_weight_set
 from syncr_api.plans.adoption import Candidate, PlanAdoption
@@ -254,7 +259,11 @@ class SolveDispatch:
         async with self._database.sessionmaker() as session, session.begin():
             versions = WeekInputVersionRepository(session, self._tenant_id)
             if not await versions.holds_version(week, loaded.input_version, at=now):
-                await session.rollback()
+                # Returned from inside the transaction rather than rolling it back. Nothing has
+                # been written when the guard fires, because the guard is its first statement, so
+                # there is nothing to undo; and a week that had NO version row has one now, created
+                # by the guard's own fail-closed bump. Rolling that back would discard it, and the
+                # follow-up would find no row and be superseded for the same reason, forever.
                 return await self._superseded(op, week, loaded)
             adopted = await self._adoption(session).adopt(
                 classification,
@@ -271,6 +280,14 @@ class SolveDispatch:
             revision = None if adopted.revision is None else adopted.revision.id
             finished = await self._coordinator(session).finish(
                 op, Succeeded(result_revision_id=revision)
+            )
+            # Published on this transaction, so the push happens on COMMIT: a client is never told
+            # about an adoption that rolled back. A conflict is the one event that notifies, so the
+            # raised ones are published beside the operation rather than left to a refetch.
+            await published(
+                session,
+                operation_event(finished),
+                *(conflict_event(raised) for raised in adopted.raised),
             )
         _log.info(
             "solving.solve.completed",
@@ -291,11 +308,14 @@ class SolveDispatch:
     ) -> OperationRecord:
         """Discard this solve's result and let the coordinator enqueue exactly one follow-up.
 
-        Its own transaction, because the write transaction rolled back: the supersession is a fact
-        about this operation and must not be lost with the read that discovered it.
+        Its own transaction, because the guard's is committing the row lock it took and, on a week
+        that had none, the version row it created. The supersession is a fact about this operation
+        and must not depend on either.
         """
         async with self._database.sessionmaker() as session, session.begin():
-            return await self._coordinator(session).finish(op, Superseded())
+            superseded = await self._coordinator(session).finish(op, Superseded())
+            await published(session, operation_event(superseded))
+            return superseded
 
     async def _failed(
         self,
@@ -328,6 +348,7 @@ class SolveDispatch:
                     snapshot=None if inputs is None else as_snapshot(inputs),
                 ),
             )
+            await published(session, operation_event(finished))
         if finished.status != FAILED:
             return finished
         await self._materialized_if_the_week_has_no_plan(week)
