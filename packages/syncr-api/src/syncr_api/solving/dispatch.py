@@ -100,6 +100,8 @@ from syncr_api.solving.config import (
     SOLVER_RAISED,
     WRITE_REFUSED,
 )
+from syncr_api.solving.coordinator import CLAIM_RACES_LOST
+from syncr_api.solving.errors import OperationMovedOn
 from syncr_api.solving.failures import statement_for
 from syncr_api.solving.injection import build_solve_coordinator
 from syncr_api.solving.lifecycle import OperationLifecycle
@@ -112,7 +114,7 @@ from syncr_domain.plan import RevisionReason
 from syncr_solver import solve
 
 if TYPE_CHECKING:
-    from datetime import timedelta
+    from datetime import datetime, timedelta
 
     from sqlalchemy.ext.asyncio.session import AsyncSession
 
@@ -267,6 +269,26 @@ class SolveDispatch:
         is recorded in a transaction of its own, because the rollback has to take the read with it.
         """
         now = self._clock()
+        try:
+            return await self._adopted(op, week, loaded, solved, classification, now=now)
+        except OperationMovedOn as moved:
+            # The reaper took the row while this solve was running, so the step that would have
+            # closed it applies to nothing and this transaction rolls back with everything it was
+            # about to write. Detected here rather than routed through a failure, because a
+            # `write_refused` would name a fault where there is only a race.
+            return await self._taken_from_under_this_solve(op, week, moved)
+
+    async def _adopted(
+        self,
+        op: OperationRecord,
+        week: IsoWeek,
+        loaded: Loaded,
+        solved: SolveResult,
+        classification: Classification,
+        *,
+        now: datetime,
+    ) -> OperationRecord:
+        """The guarded write: the row lock, the comparison, and everything a match allows."""
         async with self._database.sessionmaker() as session, session.begin():
             versions = WeekInputVersionRepository(session, self._tenant_id)
             if not await versions.holds_version(week, loaded.input_version, at=now):
@@ -342,6 +364,14 @@ class SolveDispatch:
         The snapshot is offered on every failure and kept only on the last one, which the lifecycle
         decides: a retried attempt returns the row to the queue, and the table forbids a snapshot on
         any status but ``failed``.
+
+        **A lease that expired mid-solve is a lost race here, not a failure.** The reaper finishes
+        an abandoned claim through the same lifecycle, so a solve that outlived its lease finds its
+        row already back in the queue and the step it tries to take applies to nothing. That is
+        expected under concurrency, and it is why the refusal has two types: nothing of this solve's
+        was written, the version did not move, and the retry the reaper queued is what runs next.
+        Left to raise, it reached the runner's per-tenant boundary and read as a tenant fault, which
+        is the one reading it is not.
         """
         _log.exception(
             "solving.solve.failed",
@@ -350,20 +380,51 @@ class SolveDispatch:
             operation_id=str(op.id),
             error_code=code,
         )
-        async with self._database.sessionmaker() as session, session.begin():
-            finished = await self._coordinator(session).finish(
-                op,
-                Failed(
-                    code=code,
-                    message=statement_for(code),
-                    snapshot=None if inputs is None else as_snapshot(inputs),
-                ),
-            )
-            await published(session, operation_event(finished))
+        try:
+            async with self._database.sessionmaker() as session, session.begin():
+                finished = await self._coordinator(session).finish(
+                    op,
+                    Failed(
+                        code=code,
+                        message=statement_for(code),
+                        snapshot=None if inputs is None else as_snapshot(inputs),
+                    ),
+                )
+                await published(session, operation_event(finished))
+        except OperationMovedOn as moved:
+            return await self._taken_from_under_this_solve(op, week, moved)
         if finished.status != FAILED:
             return finished
         await self._materialized_if_the_week_has_no_plan(week)
         return finished
+
+    async def _taken_from_under_this_solve(
+        self, op: OperationRecord, week: IsoWeek, moved: OperationMovedOn
+    ) -> OperationRecord:
+        """The row as something else left it, so ``run()`` answers rather than raising.
+
+        Counted on the same instrument the claim scan's lost races use, because it is the same class
+        of event: a step that applied to no row because another actor had already stepped it. What
+        makes it safe is that this solve wrote nothing, which the caller of this dispatch does not
+        have to know, because the row it answers with says so.
+        """
+        CLAIM_RACES_LOST.inc()
+        _log.info(
+            "solving.solve.taken_over",
+            iso_week=str(week),
+            operation_id=str(op.id),
+            held=moved.held,
+            attempted=moved.attempted,
+        )
+        async with self._database.sessionmaker() as session:
+            left = await OperationRepository(session, self._tenant_id).find(op.id)
+        # The refusal named the status the row held, so the row existed a moment ago. A tenant whose
+        # row vanished between the two is a defect the retention sweep cannot produce: it prunes
+        # terminal rows only.
+        if left is None:  # pragma: no cover - unreachable while pruning is terminal-only
+            message = f"operation {op.id} vanished after refusing a step from {moved.held!r}"
+            raise RuntimeError(message) from moved
+        return left
 
     async def _materialized_if_the_week_has_no_plan(self, week: IsoWeek) -> None:
         """The plan of last resort, for a week whose attempts are spent and that holds no plan.

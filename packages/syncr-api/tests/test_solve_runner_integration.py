@@ -60,6 +60,8 @@ from syncr_api.plans.stored_documents import plan_document
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import (
     FAILED,
+    LEASE,
+    LEASE_EXPIRED,
     MATERIALIZE,
     MAX_ATTEMPTS,
     PENDING,
@@ -72,12 +74,14 @@ from syncr_api.solving.config import (
 from syncr_api.solving.dispatch import SolveDispatch
 from syncr_api.solving.injection import build_solve_coordinator, debounce_window
 from syncr_api.solving.lifecycle import OperationLifecycle
+from syncr_api.solving.maintenance import maintenance_for
 from syncr_api.solving.models import Operation
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.tasks.repository import TaskRepository
 from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.worker.main import WorkerContext
+from syncr_common.metrics import REGISTRY
 from syncr_domain.feasibility import Provenance, Verdict
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import Block, PlanDocument
@@ -795,6 +799,9 @@ class TestTheAdoptionBranch:
             one.id for one in applied
         ]
         assert await pending_proposal_of(sessions, owner) is not None
+        # The false side of the projection condition WITH a live plan present, which is the more
+        # interesting one: a proposal nobody has agreed to must not reach the user's calendar.
+        assert len(await operations_of(sessions, owner.tenant_id, kind=PROJECTION)) == 1
 
 
 async def pending_proposal_of(
@@ -871,3 +878,139 @@ _NO_COST = ObjectiveBreakdown(
     context_switch=0.0,
     staleness=0.0,
 )
+
+
+class TestALeaseExpiringMidSolve:
+    """The reaper takes the row from under a running solve, and that is a race rather than a fault.
+
+    Both actors go through one lifecycle, so a solve that outlived its lease finds its row already
+    back in the queue and every step it tries applies to nothing. The refusal has two types exactly
+    so this is distinguishable from a caller asking for a step the machine never had.
+
+    Contained before this pass and misreported: `run()` raised, the runner's per-tenant boundary
+    caught it, and a lease expiry read as an unexplained tenant fault on the runner's own counter.
+    """
+
+    async def test_the_dispatch_answers_with_the_row_the_reaper_left(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        await declare_the_minimum(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+
+        finished = await a_solve_whose_lease_expires(sessions, context, owner, clock)
+
+        assert finished.status == PENDING
+        assert finished.attempt == 2
+        assert finished.error_code == LEASE_EXPIRED
+
+    async def test_nothing_of_the_overtaken_solve_is_written(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # The containment half, which is the important one: the guard is what stops the write, so a
+        # solve whose row moved on cannot leave a revision, a projection or a moved version behind.
+        await declare_the_minimum(sessions, owner.tenant_id)
+        held = await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+
+        await a_solve_whose_lease_expires(sessions, context, owner, clock)
+
+        assert await revisions_of(sessions, owner.tenant_id) == []
+        assert await operations_of(sessions, owner.tenant_id, kind=PROJECTION) == []
+        assert await version_of(sessions, owner) == held
+
+    async def test_the_race_is_counted_as_a_race_rather_than_a_tenant_failure(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The reporting half, which is what this pass fixed.
+
+        A tenant-failure counter that moves for an expected race is a counter an operator cannot
+        alert on, because the ordinary case and the fault read identically.
+        """
+        await declare_the_minimum(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+        races = _sample("syncr_solve_claim_races_lost_total")
+        tenant_faults = _sample("syncr_solve_tenant_failures_total")
+
+        await a_solve_whose_lease_expires(sessions, context, owner, clock)
+
+        assert _sample("syncr_solve_claim_races_lost_total") == races + 1
+        assert _sample("syncr_solve_tenant_failures_total") == tenant_faults
+
+    async def test_the_reaped_solve_reaches_the_solve_counter(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        owner: UserRecord,
+        clock: Ticking,
+    ) -> None:
+        """Which is what makes the supersession ratio a share of every solve rather than a subset.
+
+        The reaper finishes an abandoned claim through the lifecycle directly, so counting in the
+        coordinator omitted every reaped solve from the counter an operator tunes the debounce on.
+
+        Driven to the attempt bound, and the count moves ONCE: the two reaps before it return the
+        row to the queue as pending, which is a retry rather than an ending, so counting them would
+        report one solve three times.
+        """
+        await declare_the_minimum(sessions, owner.tenant_id)
+        before = _sample("syncr_solve_total", {"outcome": FAILED})
+
+        for _ in range(MAX_ATTEMPTS):
+            await requested(sessions, owner, clock)
+            await claimed(sessions, owner, clock)
+            clock.advance(LEASE * 2)
+            async with sessions() as session, session.begin():
+                assert (await maintenance_for(session, owner.tenant_id, clock).sweep()).reaped == 1
+
+        assert _sample("syncr_solve_total", {"outcome": FAILED}) == before + 1
+
+
+async def a_solve_whose_lease_expires(
+    sessions: async_sessionmaker[AsyncSession],
+    context: WorkerContext,
+    owner: UserRecord,
+    clock: Ticking,
+) -> OperationRecord:
+    """One solve the reaper takes over between its load and its write.
+
+    Driven through the real phases rather than through `run()`, because the interleaving is the
+    whole subject: the reaper has to land after the inputs are loaded and before the guard is taken,
+    and nothing outside the dispatch can open that window.
+    """
+    await requested(sessions, owner, clock)
+    claim = await claimed(sessions, owner, clock)
+    dispatch = dispatch_reading_the_live_plan(context, owner.tenant_id, clock)
+    loaded = await dispatch._loaded(claim, WEEK)
+    solved = await dispatch._solved(loaded, WEEK)
+
+    clock.advance(LEASE * 2)
+    async with sessions() as session, session.begin():
+        assert (await maintenance_for(session, owner.tenant_id, clock).sweep()).reaped == 1
+
+    return await dispatch._written(
+        claim, WEEK, loaded, solved, classification_of(dispatch, loaded, solved)
+    )
+
+
+def _sample(family: str, labels: dict[str, str] | None = None) -> float:
+    """One metric value, read as a scraper reads it rather than through a private attribute."""
+    return REGISTRY.get_sample_value(family, labels or {}) or 0.0
