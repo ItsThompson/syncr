@@ -39,17 +39,20 @@ from syncr_domain.identity import (
     INDEX_DIGITS,
     MAX_OCCURRENCES_PER_WEEK,
     NO_OCCURRENCE,
+    PLACED_BY,
     TASK_OCCURRENCE_KEY,
     BindingError,
     BindingKind,
     BindingRef,
     Origin,
+    PlacedBy,
     TransitLeg,
     binding_kind_of,
     block_id,
     date_occurrence_key,
     habit_occurrence_keys,
     index_occurrence_key,
+    is_placed_by_the_solver,
     origin_of,
 )
 from syncr_domain.weeks import IsoWeek
@@ -206,6 +209,39 @@ class TestTheTwoVocabularies:
         """So a block carrying a binding needs no second field for what it is."""
         for kind in BindingKind:
             assert a_binding(kind).origin is origin_of(kind)
+
+
+class TestWhoDecidedWhenABlockHappens:
+    """The fact two separate rules read, so neither keeps its own subset of the vocabulary.
+
+    A conflict resolution asks who may move a block, and the authority rule asks which of a week's
+    elapsed placements a candidate may not restate. Both come down to whether the solve chose the
+    time or merely restated one something else fixed.
+    """
+
+    def test_every_origin_is_answered(self) -> None:
+        assert set(PLACED_BY) == set(Origin)
+
+    def test_both_answers_are_used(self) -> None:
+        """So the table is a distinction rather than a constant with seven keys."""
+        assert set(PLACED_BY.values()) == set(PlacedBy)
+
+    def test_the_solver_places_the_two_origins_whose_content_the_backlog_holds(self) -> None:
+        chosen = {origin for origin in Origin if is_placed_by_the_solver(origin)}
+
+        assert chosen == {Origin.HABIT, Origin.TASK}
+
+    def test_every_other_origin_restates_a_time_its_source_fixed(self) -> None:
+        """The five whose time a declaration or an import decides, listed so a sixth is visible."""
+        restated = {origin for origin in Origin if not is_placed_by_the_solver(origin)}
+
+        assert restated == {
+            Origin.FRAME,
+            Origin.TEMPLATE_ENTRY,
+            Origin.ANCHOR,
+            Origin.PREP,
+            Origin.TRANSIT,
+        }
 
 
 class TestTheKeyPerKind:

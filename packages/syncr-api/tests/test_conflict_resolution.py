@@ -66,7 +66,7 @@ from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import SOLVE
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
-from syncr_domain.identity import BindingRef, Origin, TransitLeg
+from syncr_domain.identity import BindingRef, Origin, TransitLeg, is_placed_by_the_solver
 from syncr_domain.intervals import Interval
 from tests.anchor_specifications import INTERVIEW as INTERVIEW_TYPE
 from tests.live_tenants import delete_tenant, seed_owner
@@ -588,20 +588,26 @@ class TestAuthorization:
 
 
 class TestWhoCanMoveABlockIsAnsweredForEveryOrigin:
-    """The map's completeness, asserted over the vocabulary rather than claimed beside it.
+    """The map's completeness, and where the bite for it now lives.
 
-    A hand-kept set going stale is this epic's most-measured defect, and the failure here would be
-    a ``KeyError`` at request time: loud, but in production rather than in a test.
+    The table is derived from ``syncr_domain.identity.PLACED_BY``, so a missing origin is
+    impossible here and the completeness bite is in the domain's own suite, beside the
+    vocabulary. What is still assertable here is that the derivation says what this package
+    means by it: who chose the time decides who may move the block, and the third answer is
+    the pin's rather than an origin's.
     """
 
-    def test_every_origin_has_an_answer(self) -> None:
-        assert set(MOVABILITY_BY_ORIGIN) == set(Origin)
+    @pytest.mark.parametrize("origin", list(Origin))
+    def test_a_block_the_solve_placed_is_the_solvers_to_move_and_no_other_is(
+        self, origin: Origin
+    ) -> None:
+        expected = Movability.THE_SOLVER if is_placed_by_the_solver(origin) else Movability.NOBODY
+
+        assert MOVABILITY_BY_ORIGIN[origin] is expected
 
     def test_the_map_answers_two_of_the_three_and_the_pin_answers_the_third(self) -> None:
-        # The floor beside the completeness check: a map answering every origin with one member
-        # would satisfy the assertion above while collapsing the table's rows into one. `THE_USER`
-        # is deliberately not an origin's answer, because a pin is what put the block where it is,
-        # whatever the origin says about where it would otherwise have gone.
+        # `THE_USER` is deliberately not an origin's answer, because a pin is what put the block
+        # where it is, whatever the origin says about where it would otherwise have gone.
         assert set(MOVABILITY_BY_ORIGIN.values()) == {Movability.THE_SOLVER, Movability.NOBODY}
 
     @pytest.mark.parametrize("origin", list(Origin))

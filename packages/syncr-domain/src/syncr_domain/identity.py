@@ -162,6 +162,42 @@ _KIND_BY_ORIGIN: Final[Mapping[Origin, BindingKind]] = {
 }
 
 
+class PlacedBy(StrEnum):
+    """Who decided WHEN a block happens. Two answers, and every origin takes one of them.
+
+    ``THE_SOLVER`` is a choice the product made out of the time that was free, so restating it
+    differently is the product changing its own decision.
+
+    ``ITS_SOURCE`` is a restatement of a fact something outside the solve fixed: a routine's target
+    time, a concrete template entry's, an imported commitment's, or the offset a commitment's type
+    measures a buffer at. :class:`~syncr_domain.reasons.DerivationSource` names those four sources
+    from the other side, which is why a block of one of these origins carries a ``bound`` clause
+    rather than a chosen one.
+    """
+
+    THE_SOLVER = "the_solver"
+    ITS_SOURCE = "its_source"
+
+
+# Who decided when a block of each origin happens. Total over the vocabulary, and read by two
+# rules that would otherwise each keep their own subset: which blocks a conflict resolution may
+# move, and which of a week's elapsed placements a candidate plan may not restate.
+PLACED_BY: Final[Mapping[Origin, PlacedBy]] = {
+    Origin.HABIT: PlacedBy.THE_SOLVER,
+    Origin.TASK: PlacedBy.THE_SOLVER,
+    Origin.FRAME: PlacedBy.ITS_SOURCE,
+    Origin.TEMPLATE_ENTRY: PlacedBy.ITS_SOURCE,
+    Origin.ANCHOR: PlacedBy.ITS_SOURCE,
+    Origin.PREP: PlacedBy.ITS_SOURCE,
+    Origin.TRANSIT: PlacedBy.ITS_SOURCE,
+}
+
+
+def is_placed_by_the_solver(origin: Origin) -> bool:
+    """Whether a block of this origin sits where the solve chose to put it."""
+    return PLACED_BY[origin] is PlacedBy.THE_SOLVER
+
+
 def origin_of(kind: BindingKind) -> Origin:
     """What a block bound this way is to the reader."""
     return _ORIGIN_BY_KIND[kind]

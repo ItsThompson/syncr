@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
-from syncr_domain.identity import Origin
+from syncr_domain.identity import Origin, is_placed_by_the_solver
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -55,24 +55,21 @@ class Movability(StrEnum):
     NOBODY = "nobody"
 
 
-# Who decides where a block of each origin goes. Read twice, so its completeness is not a claim
-# beside it: a test asserts every member of the vocabulary is a key, because a hand-kept set going
-# stale would otherwise surface as a `KeyError` on a request rather than as a red test.
+# Who decides where a block of each origin goes, which is the domain's own reading of who chose
+# its time: a block the solve placed can be placed again, and one whose time a declaration or an
+# import fixes cannot be moved by this product at all. Derived rather than listed, because the
+# authority rule reads the same fact to decide which elapsed placements a candidate may restate,
+# and two hand-kept subsets of one vocabulary would come to disagree.
 #
 # `Movability.THE_USER` is deliberately not a value here. A pin is what put the block where it is,
 # whatever the origin says about where it would otherwise have gone, so the pin is read first.
 #
-# An imported commitment is a key for completeness rather than because a conflict can name one: the
+# An imported commitment answers for completeness rather than because a conflict can name one: the
 # detector never raises a conflict against an anchor block, because two genuine commitments
 # overlapping is not something the product owns either.
 MOVABILITY_BY_ORIGIN: Final[Mapping[Origin, Movability]] = {
-    Origin.HABIT: Movability.THE_SOLVER,
-    Origin.TASK: Movability.THE_SOLVER,
-    Origin.FRAME: Movability.NOBODY,
-    Origin.TEMPLATE_ENTRY: Movability.NOBODY,
-    Origin.PREP: Movability.NOBODY,
-    Origin.TRANSIT: Movability.NOBODY,
-    Origin.ANCHOR: Movability.NOBODY,
+    origin: Movability.THE_SOLVER if is_placed_by_the_solver(origin) else Movability.NOBODY
+    for origin in Origin
 }
 
 
