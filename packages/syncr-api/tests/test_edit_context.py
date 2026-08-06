@@ -206,3 +206,61 @@ class TestDeadlineParameter:
         ctx = a_context(was_deadline_constrained=False, days_until_deadline=None)
         assert ctx.was_deadline_constrained is False
         assert ctx.days_until_deadline is None
+
+
+# ---------------------------------------------------------------------------
+# The field classification: pre-edit vs post-edit, derived and asserted
+# ---------------------------------------------------------------------------
+
+# Every field of EditContext classified by its source. Pre-edit fields describe the state the
+# proposal was made in; post-edit fields describe the week's facts as the pin left them.
+# A field added to EditContext without appearing in one of these two sets fails
+# `test_every_field_is_classified`.
+PRE_EDIT_FIELDS = frozenset(
+    {
+        "objective_breakdown",
+        "discretionary_minutes",
+        "unallocated_minutes",
+        "blocks_in_day",
+        "pinned_blocks_in_week",
+        "area_floor_minutes",
+        "area_placed_minutes",
+        "area_target_minutes",
+        "was_deadline_constrained",
+        "days_until_deadline",
+    }
+)
+
+POST_EDIT_FIELDS = frozenset(
+    {
+        "weekday",
+        "accepted_start_minute_of_day",
+        "proposed_start_minute_of_day",
+        "duration_minutes",
+        "zone",
+        "area_id",
+        "gap_before_minutes",
+        "gap_after_minutes",
+        "adjacent_area_before",
+        "adjacent_area_after",
+        "anchor_offsets_minutes",
+        "forbidden_offsets_minutes",
+        "rejected_windows",
+        "inside_off_plan",
+    }
+)
+
+
+class TestFieldClassification:
+    """Every field is classified; a twenty-fifth cannot be added on the wrong side."""
+
+    def test_every_field_is_classified(self) -> None:
+        actual = {f.name for f in dataclasses.fields(EditContext)}
+        classified = PRE_EDIT_FIELDS | POST_EDIT_FIELDS
+        assert actual == classified, {
+            "unclassified": sorted(actual - classified),
+            "classified but absent": sorted(classified - actual),
+        }
+
+    def test_the_two_sets_do_not_overlap(self) -> None:
+        assert set() == PRE_EDIT_FIELDS & POST_EDIT_FIELDS

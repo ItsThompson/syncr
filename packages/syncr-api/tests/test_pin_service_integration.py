@@ -401,7 +401,7 @@ class TestVerdictProperties:
     async def test_pinning_time_toward_a_due_task_leaves_shortfall_unchanged(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """Captures verdict BEFORE, asserts shortfall minutes EQUAL after."""
+        """Captures verdict BEFORE, asserts shortfall totals equal (0 == 0 in this fixture)."""
         deadline = datetime(2026, 2, 13, 9, 0, tzinfo=UTC)
         block = a_block(14, 15, day_offset=3)
         plan = a_plan(blocks=(block,))
@@ -465,7 +465,7 @@ class TestVerdictProperties:
     async def test_pinning_an_already_placed_block_leaves_the_verdict_unchanged(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """Captures the full verdict BEFORE and asserts equality AFTER."""
+        """Captures the verdict BEFORE and asserts equality AFTER (provenance check)."""
         block = a_block(14, 15, day_offset=3)
         plan = a_plan(blocks=(block,))
         await _seed_plan(sessions, owner.tenant_id, plan)
@@ -487,7 +487,7 @@ class TestVerdictProperties:
 
         # Delta is zero
         assert result.pin.objective_delta == 0.0
-        # Full verdict equality (discriminating: compares the two verdicts)
+        # Full verdict equality: captures before and compares after
         assert result.verdict.shortfalls == before_verdict.shortfalls
         assert result.verdict.feasible == before_verdict.feasible
         assert result.verdict.discretionary_minutes == before_verdict.discretionary_minutes
@@ -882,3 +882,38 @@ class TestPreEditFields:
 
         # At proposal time: zero pins existed
         assert context["pinned_blocks_in_week"] == 0
+
+
+class TestObjectiveDeltaAndBreakdown:
+    """The label and the breakdown are measured in the pre-pin frame."""
+
+    async def test_a_drag_past_a_deadline_records_a_nonzero_delta(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """The delta must differ from a same-day drag and from a pin that moves nothing."""
+        # Task: 240-min estimate, 60-min block, deadline Fri 18:00
+        deadline = datetime(2026, 2, 13, 18, 0, tzinfo=UTC)
+        block = a_block(14, 15, day_offset=3)  # Thu 14:00-15:00
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id, floor=0)
+        await _seed_task(sessions, owner.tenant_id, deadline=deadline, estimate=240)
+
+        # Drag to Saturday 10:00 (past the Friday deadline)
+        past_deadline_start = datetime(2026, 2, 14, 10, 0, tzinfo=UTC)
+        await _pin(sessions, owner, past_deadline_start)
+
+        async with sessions() as session:
+            events = (
+                await session.scalars(
+                    select(EditEvent).where(EditEvent.tenant_id == owner.tenant_id)
+                )
+            ).all()
+            assert len(events) == 1
+            delta = events[0].objective_delta
+            context = events[0].context
+
+        # The delta must be POSITIVE: moving past a deadline costs something
+        assert delta > 0.0, f"expected positive delta for a drag past deadline, got {delta}"
+        # The breakdown must record a nonzero deadline_risk
+        assert context["objective_breakdown"]["deadline_risk"] > 0.0
