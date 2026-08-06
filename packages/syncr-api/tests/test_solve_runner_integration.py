@@ -205,17 +205,16 @@ async def declare_the_minimum(
 
 
 class StoredPlacements:
-    """The live-plan half of the placement seam, over the revision table.
+    """No longer needed: production wires the real reader.
 
-    Substituted here rather than wired into the production injection, which is the pin ticket's:
-    what this supplies is the live plan and no pins, and the two are one seam because a pinned block
-    and its live-plan block are ONE placement.
+    Kept so the fixture below does not need to be removed from nine test signatures in this
+    commit. The fixture itself is a no-op now.
     """
 
     def __init__(self, revisions: PlanRepository) -> None:
         self._revisions = revisions
 
-    async def read(self, iso_week: IsoWeekType) -> WeekPlacements:
+    async def read(self, iso_week: IsoWeekType, span: object = None) -> WeekPlacements:
         latest = await self._revisions.latest(iso_week)
         return WeekPlacements(live_plan=None if latest is None else plan_document(latest.document))
 
@@ -240,20 +239,11 @@ def dispatch_reading_the_live_plan(
 
 @pytest.fixture
 def live_plan_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Wire the placement seam to the revision table for the whole of one test."""
-    from syncr_api.plans import injection as plans_injection
+    """No-op: the production injection now wires StoredPlacements.
 
-    original = plans_injection.build_week_assembler
-
-    def with_placements(session: AsyncSession, tenant_id: TenantId, **asked: Any) -> Any:
-        assembler = original(session, tenant_id, **asked)
-        assembler._placements = StoredPlacements(PlanRepository(session, tenant_id))
-        return assembler
-
-    monkeypatch.setattr(plans_injection, "build_week_assembler", with_placements)
-    monkeypatch.setattr(
-        "syncr_api.solving.dispatch.build_week_assembler", with_placements, raising=True
-    )
+    Kept so the nine tests that declare this fixture in their signature do not need to be
+    edited in this commit. The fixture was a monkeypatch of the one seam production now holds.
+    """
 
 
 async def requested(

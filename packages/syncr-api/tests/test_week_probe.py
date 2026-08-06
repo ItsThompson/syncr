@@ -199,7 +199,7 @@ async def test_the_projection_and_the_netting_pair_a_pin_with_its_block_the_same
     )
 
     inputs = await an_assembly(areas=FakeAreas([fitness]), placements=placed)
-    held = await placed.read(WEEK)
+    held = await placed.read(WEEK, inputs.span)
     paired = placements(held.live_plan, held.pins, now=NOW)
 
     assert inputs.for_probe().placed == IntervalSet(one.interval for one in paired)

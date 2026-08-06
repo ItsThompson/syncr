@@ -86,7 +86,7 @@ class Trigger(NamedTuple):
 # the gap is enumerated rather than absent.
 # ---------------------------------------------------------------------------
 TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
-    Trigger("pin, unpin, drag, keyboard move", bumps=True, solves=True, module=None, owner="41"),
+    Trigger("pin, unpin, drag, keyboard move", bumps=True, solves=True, module="pins/service.py"),
     Trigger(
         "task added, edited, completed, dropped",
         bumps=True,
@@ -351,7 +351,7 @@ class TestTheTriggerTable:
         """The three rows the walk above cannot read, named rather than skipped.
 
         Each bumps according to the table and has nothing in the tree to read it from, because the
-        endpoint has not been built: two approvals and the pin. Naming them here means the set is
+        endpoint has not been built: two approvals. Naming them here means the set is
         asserted rather than reported once per run as a skip nobody reads.
         """
         unreadable = {
@@ -359,7 +359,6 @@ class TestTheTriggerTable:
         }
 
         assert unreadable == {
-            "pin, unpin, drag, keyboard move": "41",
             "tradeoff approved": "42",
             "proposal approved": "42",
         }
@@ -441,8 +440,8 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
         unwired = [one for one in TRIGGER_TABLE if one.solves and one.owner is not None]
         by_a_person = [one for one in unwired if one.owner != "1400"]
 
-        assert len(unwired) == 16
-        assert len(by_a_person) == 15
+        assert len(unwired) == 15
+        assert len(by_a_person) == 14
 
     @pytest.mark.parametrize(
         "trigger",
@@ -468,15 +467,16 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
         for one in TRIGGER_TABLE:
             if one.owner is None:
                 continue
-            assert one.owner in {"41", "42", "1400", "1403"}, one.row
+            assert one.owner in {"42", "1400", "1403"}, one.row
 
-    def test_only_four_rows_reach_the_coordinator_today(self) -> None:
-        # The four live triggers, one of which bypasses the debounce by design. The burst of pins
-        # the window was measured against is row one, which is ticket 41's.
+    def test_only_five_rows_reach_the_coordinator_today(self) -> None:
+        # The five live triggers, one of which bypasses the debounce by design. The burst of pins
+        # the window was measured against is the first, which is now wired.
         wired = [one.row for one in TRIGGER_TABLE if one.solves and one.owner is None]
 
         assert sorted(wired) == [
             "conflict resolved as moved or retyped",
+            "pin, unpin, drag, keyboard move",
             "re-solve control",
             "tradeoff requested",
             "week adjustment revoked",

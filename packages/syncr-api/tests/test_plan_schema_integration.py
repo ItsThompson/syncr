@@ -288,18 +288,21 @@ async def test_an_outcome_whose_binding_no_longer_exists_is_still_readable(
 async def test_a_pin_that_records_half_a_superseded_placement_is_refused(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
-    # A pin persists what the solver had chosen AND what the pin cost. Half of an interval
-    # would render a reason panel that cannot say where the block would have been.
+    # The superseded interval must be half-open: a span where start >= end is not a placement
+    # anything ever held, so persisting it would render a reason panel stating a negative duration.
     await refuses(
         sessions,
         Pin(
             id=uuid4(),
             tenant_id=owner.tenant_id,
             iso_week=str(WEEK),
+            block_id=BLOCK_ID,
             binding=BINDING,
             starts_at=NOW,
             ends_at=LATER,
-            superseded_starts_at=NOW,
+            superseded_starts_at=LATER,
+            superseded_ends_at=NOW,
+            objective_delta=0.5,
             weight_set_version=FIRST_WEIGHT_SET_VERSION,
             created_at=NOW,
         ),
@@ -316,9 +319,13 @@ async def test_a_pin_whose_interval_is_not_half_open_is_refused(
             id=uuid4(),
             tenant_id=owner.tenant_id,
             iso_week=str(WEEK),
+            block_id=BLOCK_ID,
             binding=BINDING,
             starts_at=LATER,
             ends_at=NOW,
+            superseded_starts_at=NOW,
+            superseded_ends_at=LATER,
+            objective_delta=0.5,
             weight_set_version=FIRST_WEIGHT_SET_VERSION,
             created_at=NOW,
         ),

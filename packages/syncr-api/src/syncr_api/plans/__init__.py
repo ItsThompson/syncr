@@ -17,15 +17,20 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``adoption.py`` | the writes a classification names: the live plan, the slot, or nothing |
 | ``versions.py`` | the input-version counter and the conditional-write guard |
 | ``adjustments.py`` | approved tradeoff concessions, one per kind and target |
+| ``pins.py`` | ``PinRepository``: the live constraint a pin is, held, priced and released |
+| ``edits.py`` | ``EditEventRepository``: the training corpus, appended and never pruned |
+| ``edit_context.py`` | the feature snapshot one edit carries, and what makes it a feature vector |
+| ``declarations.py`` | what a caller states when it writes a pin and the event beside it |
 | ``reality.py`` | the outcome log: one row per block, recorded and corrected in place |
 | ``habit_log.py`` | the same log keyed by habit, for the rotation cursor and outstanding debt |
-| ``errors.py`` | the three rejections a plan write or a plan read raises, none a caller's fault |
+| ``errors.py`` | the six rejections a plan write or a plan read raises, none a caller's fault |
 | ``stored_values.py`` | the leaf forms a stored document is built from: an instant, a span, an id |
 | ``stored_clauses.py`` | the six reason clauses, one stored form each |
 | ``stored_reasons.py`` | a block's reason record, and which of the six kinds a stored object is |
 | ``stored_documents.py`` | a whole week, written from and rebuilt through the domain constructors |
 | ``stored_proposals.py`` | the assent-requiring changes, in the form the pending slot holds |
 | ``stored_verdicts.py`` | a verdict's stored form, written into the pending slot and read back |
+| ``stored_contexts.py`` | an edit context's stored form, both directions, over one JSONB column |
 | ``overlaps.py`` | the two overlaps nothing may settle quietly, detected against the live plan |
 | ``settled.py`` | what the week has lived, and which of it a candidate may not restate |
 | ``authority.py`` | the authority rule: what auto-applies, what waits, and what collides |
@@ -37,7 +42,7 @@ one resolved ``SolveInputs``:
 |---|---|
 | ``assembler.py`` | the one method: the pipeline, the stamped instant, the counts, the metric |
 | ``injection.py`` | the one place its collaborators are composed |
-| ``placements.py`` | the seam supplying the live plan and the pins |
+| ``placements.py`` | the seam supplying what a week already holds, and which pins constrain |
 | ``netting.py`` | the two placement sets, and every minute count taken over them |
 | ``materialization.py`` | a declared wall time to instants per date, and what suppresses one |
 | ``entry_content.py`` | what a concrete entry's block is called, and the Area it charges |
@@ -73,5 +78,6 @@ And the week routes, which compose everything above into the Week screen's whole
 | ``confirmations.py`` | the seam answering which of a week's days the user has confirmed |
 | ``schemas.py`` | the wire shapes the four routes answer with |
 | ``document_schemas.py`` | a stored document on the wire: the blocks and the two kinds of gap |
+| ``verdict_schemas.py`` | a verdict on the wire, and the weaker reading a probe verdict renders |
 | ``clause_schemas.py`` | the six reason clauses on the wire, discriminated by kind |
 """

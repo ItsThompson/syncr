@@ -577,7 +577,7 @@ class FakePlacements:
             live_plan=live_plan, pins=tuple(pins), outcomes=tuple(outcomes)
         )
 
-    async def read(self, iso_week: IsoWeek) -> WeekPlacements:
+    async def read(self, iso_week: IsoWeek, span: Interval) -> WeekPlacements:
         return self._placements
 
 
