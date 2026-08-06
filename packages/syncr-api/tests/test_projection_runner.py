@@ -680,20 +680,32 @@ async def test_a_burst_of_version_bumps_writes_to_the_provider_zero_times(
 
 
 def test_a_projection_is_enqueued_only_beside_an_appended_revision(source_root: Any) -> None:
-    """The structural half: one enqueue site in the tree, and it follows a revision append.
+    """The structural half: two enqueue sites in the tree, each after what makes it conditional.
 
-    A burst of pins writing zero times is a property of WHERE a projection is enqueued, so a second
-    enqueue site added later would break the rule without breaking the test above.
+    A burst of pins writing zero times is a property of WHERE a projection is enqueued, so a site
+    added later would break the rule without breaking the test above.
+
+    The two sites spell the same condition differently, so each names its own. The producer appends
+    a revision unconditionally and enqueues after it; the solve dispatch appends through the
+    adoption, which decides whether the live plan advanced at all, so what has to precede its
+    enqueue is that reading rather than the append itself.
     """
+    guard_by_site = {
+        "production.py": "revisions.append",
+        "dispatch.py": "changed_the_live_plan()",
+    }
     sites = [
         path
         for path in source_root.rglob("*.py")
         if f"enqueue(kind={PROJECTION.upper()}" in path.read_text()
     ]
 
-    assert [path.name for path in sites] == ["production.py"]
-    body = sites[0].read_text()
-    assert body.index("revisions.append") < body.index(f"enqueue(kind={PROJECTION.upper()}")
+    assert sorted(path.name for path in sites) == sorted(guard_by_site)
+    for path in sites:
+        body = path.read_text()
+        assert body.index(guard_by_site[path.name]) < body.index(
+            f"enqueue(kind={PROJECTION.upper()}"
+        ), path.name
 
 
 # --------------------------------------------------------------------------------

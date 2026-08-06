@@ -25,6 +25,7 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``stored_reasons.py`` | a block's reason record, and which of the six kinds a stored object is |
 | ``stored_documents.py`` | a whole week, written from and rebuilt through the domain constructors |
 | ``stored_proposals.py`` | the assent-requiring changes, in the form the pending slot holds |
+| ``stored_verdicts.py`` | a verdict's stored form, written into the pending slot and read back |
 | ``overlaps.py`` | the two overlaps nothing may settle quietly, detected against the live plan |
 | ``settled.py`` | what the week has lived, and which of it a candidate may not restate |
 | ``authority.py`` | the authority rule: what auto-applies, what waits, and what collides |

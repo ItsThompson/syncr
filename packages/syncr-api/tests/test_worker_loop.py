@@ -59,7 +59,7 @@ def test_every_registered_runner_is_callable() -> None:
 # than derived from the declaration, because that declaration IS what this asserts: the structure is
 # the ticket's own, and a duty renamed, reordered or dropped has to fail rather than be re-read.
 ITERATION = [
-    ("solve", False),
+    ("solve", True),
     ("plan_horizon_maintainer", True),
     ("calendar_sync", True),
     ("projection", True),
@@ -71,13 +71,12 @@ def test_the_iteration_runs_the_five_duties_in_the_documented_order() -> None:
     assert [duty.name for duty in WORKER_DUTIES] == [name for name, _built in ITERATION]
 
 
-def test_a_duty_with_no_body_yet_declares_no_runner() -> None:
-    """The solve runner is filled in by the slice that owns it.
+def test_every_duty_now_has_a_body() -> None:
+    """The structure stays data a test reads, so a duty declared without a runner still fails here.
 
-    Declared as a row with no runner rather than as a commented-out line, so the structure is data a
-    test reads. The solve runner deliberately does not claim yet either: claiming an operation it
-    could not finish would leave it running until its lease expired, and the reaper would then spend
-    its attempts.
+    Every one of the five is built now that the solve runner has a body. What the table protects is
+    the reverse direction: a duty that loses its runner, or one added without one, reads as a row
+    that does nothing rather than as a duty nobody notices is absent.
     """
     built = {duty.name: duty.runner is not None for duty in WORKER_DUTIES}
 

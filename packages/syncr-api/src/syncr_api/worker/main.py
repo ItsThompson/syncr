@@ -44,6 +44,7 @@ from syncr_api.core.settings import WORKER_SERVICE, ServiceSettings, build_servi
 from syncr_api.horizon.runner import PlanHorizonRunner
 from syncr_api.oauth.cleanup import SWEEP_INTERVAL, OAuthSweepRunner
 from syncr_api.solving.maintenance import MAINTENANCE_INTERVAL, OperationMaintenanceRunner
+from syncr_api.solving.runner import SolveRunner
 from syncr_common.logging import (
     bind_correlation_id,
     clear_context,
@@ -109,14 +110,10 @@ class Duty:
 #
 # A duty whose runner is `None` has no body yet. It is declared here rather than left as a
 # comment so the structure is data a test can read, and so filling one in is a change to
-# one row: the solve runner's body needs the solve coordinator's claim and the solver.
-#
-# The solve runner deliberately does NOT claim yet. Claiming an operation it cannot finish
-# would leave it `running` until its lease expired, and the reaper would then retry it into
-# its attempt bound: a duty with no body must do nothing rather than something harmful.
+# one row.
 # ---------------------------------------------------------------------------
 WORKER_DUTIES: tuple[Duty, ...] = (
-    Duty(name="solve"),
+    Duty(name="solve", runner=SolveRunner(clock=utc_now)),
     Duty(name="plan_horizon_maintainer", runner=PlanHorizonRunner(clock=utc_now)),
     Duty(name="calendar_sync", runner=CalendarSyncRunner(interval=SYNC_INTERVAL, clock=utc_now)),
     Duty(name="projection", runner=ProjectionRunner(clock=utc_now)),
