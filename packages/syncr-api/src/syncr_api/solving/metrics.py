@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Final
 
 from prometheus_client import Counter, Gauge, Histogram
 
-from syncr_api.solving.config import SUPERSEDED, TERMINAL_STATUSES
+from syncr_api.solving.config import OPERATION_KINDS, SUPERSEDED, TERMINAL_STATUSES
 from syncr_common.metrics import REGISTRY
 
 if TYPE_CHECKING:
@@ -71,6 +71,24 @@ OPERATION_QUEUE_DELAY = Histogram(
 _FINISHED: Final[tuple[OperationStatus, ...]] = TERMINAL_STATUSES
 
 
+def seed_the_operation_families() -> None:
+    """Export every label of the two kind-labeled families at zero, before anything observes one.
+
+    A labeled family does not exist until a label is used, so a gauge nobody has set yet is absent
+    from the exposition rather than zero. An alert stated over an absent series does not fire, which
+    is the failure this epic has now shipped twice: the reading "nothing is stuck" and the reading
+    "this process has not looked yet" have to be different, and they are only different if the
+    vocabulary is exported up front.
+
+    Called at import, because the module that defines the instrument is the one that knows its
+    vocabulary. The queue delay is a histogram, so it is seeded by observing nothing rather than by
+    setting a value: touching the child is what creates its series.
+    """
+    for kind in OPERATION_KINDS:
+        OPERATIONS_NON_TERMINAL.labels(kind=kind).set(0)
+        OPERATION_QUEUE_DELAY.labels(kind=kind)
+
+
 class SolveTally:
     """The finished solves this process has seen, and the ratio derived from them.
 
@@ -109,3 +127,5 @@ class SolveTally:
 
 SOLVE_TALLY = SolveTally()
 """One tally per process, because both instruments it writes are process-wide too."""
+
+seed_the_operation_families()

@@ -32,6 +32,7 @@ from uuid import uuid4
 
 import pytest
 
+import syncr_api.solving.runner  # noqa: F401  - imported so its own families are registered
 from syncr_api.core.settings import API_PREFIX
 from syncr_api.events.config import EVENT_TYPES, HEARTBEAT_SECONDS, SUBSCRIBER_BACKLOG
 from syncr_api.events.envelopes import (
@@ -45,7 +46,13 @@ from syncr_api.events.envelopes import (
 )
 from syncr_api.events.hub import EventHub
 from syncr_api.events.streams import event_stream
-from syncr_api.solving.config import PENDING, SOLVE, SUCCEEDED
+from syncr_api.solving.config import (
+    OPERATION_KINDS,
+    PENDING,
+    SOLVE,
+    SUCCEEDED,
+    TERMINAL_STATUSES,
+)
 from syncr_api.solving.records import OperationRecord
 from syncr_common.metrics import REGISTRY
 from syncr_domain.weeks import IsoWeek
@@ -246,3 +253,42 @@ class TestTheRoute:
         assert "BearerPrincipalDep" not in body
         assert "require_bearer_principal" not in body
         assert "PrincipalDep" in body
+
+
+class TestEveryFamilyThisSliceExportsIsVisibleBeforeItIsUsed:
+    """The reading "nothing is stuck" and the reading "nobody has looked yet" have to differ.
+
+    A labeled Prometheus family does not exist until a label is used, so an alert stated over one is
+    silent until the first observation. This epic has shipped that twice: a counter that incremented
+    before its document existed, and a gauge that could not fire for a duty failing every pass. So
+    every family added here is read out of the exposition as a scraper reads it, on a process that
+    has done no work.
+    """
+
+    @pytest.mark.parametrize(
+        "family",
+        [
+            "syncr_sse_connections",
+            "syncr_sse_events_dropped_total",
+            "syncr_sse_listener_reconnects_total",
+            "syncr_solve_claim_races_lost_total",
+            "syncr_solve_superseded_ratio",
+        ],
+        ids=lambda one: one,
+    )
+    def test_an_unlabeled_family_is_in_the_exposition(self, family: str) -> None:
+        assert REGISTRY.get_sample_value(family) is not None
+
+    @pytest.mark.parametrize("kind", list(OPERATION_KINDS), ids=lambda one: one)
+    def test_every_operation_kind_is_a_label_on_both_kind_labeled_families(self, kind: str) -> None:
+        # Seeded at import rather than on the first pass, so a worker that has not ticked yet is
+        # distinguishable from one whose queues are empty.
+        assert REGISTRY.get_sample_value("syncr_operations_non_terminal", {"kind": kind}) == 0.0
+        assert (
+            REGISTRY.get_sample_value("syncr_operation_queue_delay_seconds_count", {"kind": kind})
+            == 0.0
+        )
+
+    @pytest.mark.parametrize("outcome", list(TERMINAL_STATUSES), ids=lambda one: one)
+    def test_every_terminal_status_is_a_label_on_the_solve_counter(self, outcome: str) -> None:
+        assert REGISTRY.get_sample_value("syncr_solve_total", {"outcome": outcome}) is not None
