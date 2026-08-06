@@ -36,6 +36,12 @@ enqueue nothing to replace it.
 a concurrent mutation is the solve coordinator's, and it wraps this call rather than living inside
 it: this module's whole job is that the three writes agree with one classification.
 
+**It checks that the classification describes THIS candidate, as far as one document can say.**
+Every change names a block, and every class but one names where the candidate wants it, so the
+document either holds that block at that placement or the pair was mismatched. That is what stops a
+classification of one candidate being written over another's document, which is the failure a
+single-caller function is least likely to notice and most likely to persist.
+
 **It does not check the candidate against the past, and that is a boundary rather than an
 oversight.** The document written here carries the whole candidate, including the days the week has
 already lived, so the rule that protects them is real and load-bearing; it lives in
@@ -44,6 +50,12 @@ decided against, and which refuses the pair outright. Repeating it here would ne
 the live plan and a second reference instant, and a write-time instant later than the
 classification's would refuse a candidate over a block that started while the solve ran, which is a
 supersession for the version guard to answer rather than a defect.
+
+**So one thing is left trusted, and it is stated rather than implied: nothing binds a classification
+to having come from ``classify``.** A hand-built one paired with a matching document passes every
+check here, and the past rule is the factory's. What the checks above cover is the mismatch a real
+caller can produce by accident; what they cannot cover is a caller that computed the partition
+itself, which no caller does and none should.
 
 **It does not serialize a verdict or a concession.** The plan document and the proposal diff have
 stored forms in this package and are written from their values here. The verdict and the candidate
@@ -165,12 +177,14 @@ class PlanAdoption:
         occupied space. It is refused for anything else, because the four remaining reasons name an
         approval or the plan horizon maintainer and neither of those passes through here.
 
-        Raises :class:`~syncr_api.plans.errors.RevisionRejected` for such a reason, and for a
-        classification describing a different week than the candidate: the diff would then be
-        stored under a week whose blocks its changes cannot be paired against.
+        Raises :class:`~syncr_api.plans.errors.RevisionRejected` for such a reason, for a
+        classification describing a different week than the candidate, and for one describing
+        different blocks: in either case the diff would be stored under a document whose blocks its
+        changes cannot be paired against.
         """
         _require_an_auto_applied_reason(reason)
         _require_one_week(classification, candidate.document)
+        _require_the_classification_to_describe(classification, candidate.document)
         adopted = Adopted(
             revision=await self._appended(classification, candidate, reason=reason, at=at),
             proposal=await self._replaced(classification, candidate, at=at),
@@ -272,3 +286,39 @@ def _require_one_week(classification: Classification, candidate: PlanDocument) -
         f"{candidate.iso_week}: the diff is stored under the document's week, so its changes "
         "would name blocks that week does not hold"
     )
+
+
+def _require_the_classification_to_describe(
+    classification: Classification, candidate: PlanDocument
+) -> None:
+    """Every change names a block this document holds where the change says it wants it.
+
+    The pairing check the write can perform on its own. Three of the four classes state where the
+    candidate puts a block, so the document either holds that block at that placement or the
+    classification is of a different candidate; a removal states the opposite, that the candidate
+    drops it, so the document must not hold it at all.
+
+    What this cannot see is the past, which needs the live plan the write does not receive. The
+    module docstring says which of the two rules lives where, and why.
+    """
+    held = candidate.blocks_by_id()
+    wanted = (
+        *((change, change.after) for change in classification.auto_applicable),
+        *((change, change.after) for change in classification.proposal_diff.added),
+        *((change, change.after) for change in classification.proposal_diff.moved),
+    )
+    for change, placement in wanted:
+        block = held.get(change.block_id)
+        if block is None or block.interval != placement:
+            raise RevisionRejected(
+                f"the classification wants {change.title!r} at {placement}, and the candidate for "
+                f"{candidate.iso_week} does not hold it there: a classification of one candidate "
+                "written over another's document would store a diff nothing in the plan matches"
+            )
+    for change in classification.proposal_diff.removed:
+        if change.block_id in held:
+            raise RevisionRejected(
+                f"the classification drops {change.title!r} and the candidate for "
+                f"{candidate.iso_week} still holds it: a removal names a block the candidate does "
+                "not place, so this pair describes two different candidates"
+            )

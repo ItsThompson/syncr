@@ -21,8 +21,12 @@ all: ``calendar_occupancy`` takes an ``OffPlanSuppression`` its caller supplies 
 for annotations only. The detection deliberately calls the shadow generator directly instead, and
 that choice is what this lens holds.
 
-Each has a positive control. A boundary test with no positive control passes forever once the thing
-it guards has been removed, which is worse than having no test at all.
+Each has a positive control, and **both source controls read real tree source rather than a literal
+written here**. The vocabulary this lens matches on is hand-kept, so a rename of either function
+would blind it silently: pointing the controls at the two modules that really make those calls is
+what makes the rename redden instead. A boundary test with no positive control passes forever once
+the thing it guards has been removed, which is worse than having no test at all; a control that
+asserts against its own literal is the same failure wearing a control's name.
 """
 
 from __future__ import annotations
@@ -50,7 +54,15 @@ OFF_PLAN_PACKAGE: Final = "syncr_api.offplan"
 # What applying a suppression looks like in source, whichever way it is reached.
 # `calendar_occupancy` is the function that drops a derived block inside a declared span, and
 # `suppresses_content` is the predicate it asks; either name here would mean a span was consulted.
+#
+# Hand-kept, which is why each name has a control pointing at the module that really calls it: a
+# rename that left this set behind would make the lens find nothing anywhere, and the controls are
+# what turn that into a red test rather than a silent blind spot.
 SUPPRESSING_CALLS: Final = frozenset({"calendar_occupancy", "suppresses_content"})
+
+# The modules those two calls really live in, one per name, read as source by the controls below.
+CALLS_THE_SUPPRESSOR: Final = "syncr_api.plans.assembler"
+ASKS_THE_PREDICATE: Final = "syncr_api.plans.materialization"
 
 _PROBE = """
 import importlib, json, sys
@@ -124,13 +136,25 @@ def test_no_detection_module_applies_a_suppression(module: str) -> None:
 
 def test_the_source_lens_can_see_a_suppression() -> None:
     # The second control, over the shape the import lens is blind to: `calendar_occupancy` imports
-    # the suppression type for annotations only, so calling it loads no off-plan module.
-    reached = "occupancy = calendar_occupancy(loaded, span=span, off_plan=suppression)"
-
-    assert suppressing_calls_in(reached) == ["calendar_occupancy"]
+    # the suppression type for annotations only, so calling it loads no off-plan module. Read out of
+    # the assembler's own source, so renaming the function reddens this rather than blinding the
+    # lens: an assertion against a literal written here would keep passing on its own string.
+    assert suppressing_calls_in(source_of(CALLS_THE_SUPPRESSOR)) == ["calendar_occupancy"]
 
 
 def test_the_source_lens_reads_a_call_through_a_receiver_too() -> None:
-    assert suppressing_calls_in("if off_plan.suppresses_content(inside):\n    pass") == [
-        "suppresses_content"
-    ]
+    # The other half of the vocabulary, and the other call shape: this one is asked through a
+    # receiver no import alias could resolve. Also read out of real source.
+    assert suppressing_calls_in(source_of(ASKS_THE_PREDICATE)) == ["suppresses_content"]
+
+
+def test_every_name_the_lens_matches_on_is_bound_to_a_module_that_calls_it() -> None:
+    # The floor beside the two controls: a name added to the set with no control would be a
+    # vocabulary entry nothing in the tree exercises, which is how the set goes stale next time.
+    controlled = {
+        call
+        for module in (CALLS_THE_SUPPRESSOR, ASKS_THE_PREDICATE)
+        for call in suppressing_calls_in(source_of(module))
+    }
+
+    assert controlled == set(SUPPRESSING_CALLS)

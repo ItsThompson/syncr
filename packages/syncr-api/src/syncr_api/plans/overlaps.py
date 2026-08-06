@@ -36,12 +36,11 @@ identity.
 
 **Anything over a block that has started.** What a resolution can do to a block is move it, free it
 by removing the pin holding it, or accept the overlap, and the first two cannot change a placement
-the week has already reached: the solver may not move such a block, and a pin on one is refused
-where pins are written. Raising the one notification this product sends for a collision whose
-answers mostly cannot be applied is how a user learns to mute the channel. **The resolution path
-imposes no matching refusal**, and that asymmetry is deliberate rather than an oversight: it answers
-a conflict raised while the block was still ahead of the week, by which time the two answers that
-still work are the useful ones.
+the week has already reached: the solver may not move such a block. Raising the one notification
+this product sends for a collision whose answers mostly cannot be applied is how a user learns to
+mute the channel. **The resolution path imposes no matching refusal**, and that asymmetry is
+deliberate rather than an oversight: it answers a conflict raised while the block was still ahead of
+the week, by which time the two answers that still work are the useful ones.
 
 **An off-plan span suppresses nothing here.** A commitment during a period the user declared off
 is still a commitment: off-plan suspends syncr's scheduling, not the world's.

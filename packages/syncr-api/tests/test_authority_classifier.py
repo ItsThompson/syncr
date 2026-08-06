@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
@@ -302,7 +302,7 @@ class TestThePastMayNotBeRestated:
         live = a_week(a_block_holding(GYM, between(8, 9)))
         candidate = a_week(a_block_holding(LEETCODE, between(14, 15)))
 
-        with pytest.raises(ClassificationRejected, match="states a past the live plan does not"):
+        with pytest.raises(ClassificationRejected, match="places a block the week has already"):
             classify(live, candidate, now=at(10))
 
     def test_a_candidate_that_moves_a_started_block_while_filling_a_gap_is_refused(self) -> None:
@@ -343,7 +343,8 @@ class TestThePastMayNotBeRestated:
         held = [a_block_holding(_a_habit(index), between(index, index + 0.5)) for index in range(6)]
         live = a_week(*held)
 
-        with pytest.raises(ClassificationRejected, match="and 3 more") as refused:
+        overflow = len(held) - IDS_IN_A_REFUSAL
+        with pytest.raises(ClassificationRejected, match=f"and {overflow} more") as refused:
             classify(live, a_week(), now=at(12))
 
         named = [one for one in held if one.id in str(refused.value)]
@@ -370,6 +371,34 @@ class TestThePastMayNotBeRestated:
         candidate = a_week(started, a_block_holding(LEETCODE, between(14, 15)))
 
         assert classify(live, candidate, now=at(10)).applies_immediately()
+
+    @pytest.mark.parametrize(
+        "restated",
+        [{"area_id": FITNESS}, {"title": "Gym \u00b7 Pull"}],
+        ids=["re-filed into another Area", "renamed"],
+    )
+    def test_a_started_blocks_content_may_drift_because_refusing_it_would_wedge_the_week(
+        self, restated: dict[str, Any]
+    ) -> None:
+        # Deliberately outside the rule, and asserted so nobody widens it by accident. A task
+        # renamed or re-filed into another Area on Wednesday would otherwise stop every solve of
+        # that week for the rest of it, which is worse than the drift. What the drift costs is that
+        # an elapsed hour can be re-attributed, which ticket 1395 carries.
+        started = a_block_holding(GYM, between(8, 9))
+        live = a_week(started)
+        candidate = a_week(replace(started, **restated), a_block_holding(LEETCODE, between(14, 15)))
+
+        assert classify(live, candidate, now=at(10)).applies_immediately()
+
+    @pytest.mark.parametrize("span", [between(8, 9.5), between(8, 8.5)], ids=["longer", "shorter"])
+    def test_a_started_blocks_duration_is_inside_the_rule(self, span: Interval) -> None:
+        # The other side of the same boundary: the comparison is interval equality, so a span that
+        # ends elsewhere is a placement the week did not hold.
+        started = a_block_holding(GYM, between(8, 9))
+        live = a_week(started)
+
+        with pytest.raises(ClassificationRejected, match="moved"):
+            classify(live, a_week(replace(started, interval=span)), now=at(10))
 
 
 class TestWhatCollides:
@@ -567,9 +596,10 @@ class TestTheClassificationIsAValue:
             )
 
     def test_one_block_may_not_appear_twice_among_the_fills(self) -> None:
+        # A different mistake from the one above, so it says so: nothing is held for assent here.
         arriving = BlockChange.added(a_block_holding(LEETCODE, between(14, 15)))
 
-        with pytest.raises(ClassificationRejected, match="is also held for assent"):
+        with pytest.raises(ClassificationRejected, match="applies without asking twice"):
             Classification(auto_applicable=(arriving, arriving))
 
     def test_an_empty_classification_applies_nothing(self) -> None:

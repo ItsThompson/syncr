@@ -41,14 +41,29 @@ invites.** What persists is the candidate DOCUMENT: an appended revision carries
 does the pending slot, whose document becomes the plan of record when it is approved. So a candidate
 that drops a block the week has reached reports no removal, satisfies every class-level rule, and
 still replaces the plan of record with a week whose past is different. A guard reading only the
-three lists cannot see that, so the pair of documents is checked directly: **when a live plan
-exists, both documents state the same past, exactly.**
+three lists cannot see that, so the pair of documents is checked directly.
 
-A well-behaved candidate satisfies it for free, because the solver may not move a block that has
-started, so a disagreement is a producer defect rather than anything a request carried. It is
-refused rather than repaired: a solve answering with a rewritten history fails with a stated cause,
-the previous plan stays live and stays projected, and the fault is visible instead of being silently
-absorbed into an append-only table.
+**What is compared is exactly this: which blocks the week has reached, and where each one sits.**
+Both documents must hold the same set of started blocks at the same placements. A started block's
+title, its Area and its pin state are deliberately OUTSIDE the comparison, and the reason is that
+failing a week's solving is worse than the drift: a task renamed or re-filed into another Area on
+Wednesday would otherwise stop every solve of that week for the rest of it. What that costs is that
+an elapsed hour can be re-attributed, which the retro and the unallocated figure read, so the rule
+is stated at the width it is enforced rather than as "the same past".
+
+It is refused rather than repaired: a candidate that places a started block elsewhere fails with a
+stated cause, the previous plan stays live and stays projected, and the fault is visible instead of
+being silently absorbed into an append-only table.
+
+**A disagreement is not always a producer defect, and this rule is measurably stricter than the
+producer today.** The solver may not MOVE a block that has started, but derivation restates one: a
+commitment corrected in the feed after it began, and a routine edited mid-week whose occurrence has
+begun, both re-derive at their new span and are both refused. Neither is a defect, and nothing
+reconciles the two, so the refusal wedges that week's solving until the week passes. Which origins
+the rule should bind, and whether a corrected commitment is a fact the live plan should be made to
+carry, is an open decision recorded in ticket 1395, which blocks the runner that pairs the producer
+with this function. Until it is answered the strict reading is the safe direction, because the
+alternative is the silent rewrite this guard exists to stop.
 
 A week with **no** live plan has no past to restate, so a first plan for a week that is half elapsed
 is classified as it stands: every block of it fills space nothing occupied.
@@ -277,7 +292,7 @@ def _require_one_week(live: PlanDocument | None, candidate: PlanDocument) -> Non
 def _require_an_unchanged_past(
     live: PlanDocument | None, candidate: PlanDocument, *, now: Instant
 ) -> None:
-    """Both documents state the same past, exactly, or the candidate is not classifiable.
+    """Both documents hold the same started blocks at the same placements, or this is refused.
 
     The guard the three classes cannot be: each of them skips a block the week has reached, and
     what persists is the document. So a candidate that drops or moves such a block partitions into
@@ -286,6 +301,11 @@ def _require_an_unchanged_past(
     Symmetric, because both directions rewrite history: a block missing from the candidate is one
     the week lived and the plan no longer places, and a block the candidate holds in the past that
     the live plan does not is time the user is told they spent on something nobody scheduled.
+
+    **Placements only.** A block id is a digest of the week and the binding, so what is compared is
+    where each started block sits and nothing about what it says: a rename or a re-filing into
+    another Area passes, deliberately, because refusing it would stop a week's solving for the rest
+    of that week.
     """
     if live is None:
         return
@@ -304,9 +324,10 @@ def _require_an_unchanged_past(
     if not stated:
         return
     raise ClassificationRejected(
-        f"the candidate for {candidate.iso_week} states a past the live plan does not: {stated}. "
-        "A block the week has reached is not a change this product may make, and the document is "
-        "what becomes the plan of record, so the diff skipping such a block cannot protect it"
+        f"the candidate for {candidate.iso_week} places a block the week has already reached "
+        f"differently than the live plan does: {stated}. Where such a block sits is not a change "
+        "this product may make, and the document is what becomes the plan of record, so the diff "
+        "skipping the block cannot protect it"
     )
 
 
@@ -335,18 +356,23 @@ def _named(verb: str, ids: list[BlockId]) -> str:
 def _require_one_class_per_block(
     auto_applicable: tuple[BlockChange, ...], proposal_diff: ProposalDiff
 ) -> None:
-    """A block is in one authority class, so a reader is never told two things about it.
+    """A block is in one authority class, and appears once inside it.
 
-    The diff already refuses to name one block twice within itself. This is the other pair: a
-    change that both applies on its own and waits for assent would be applied and asked about.
+    The diff already refuses to name one block twice within itself. These are the other two ways one
+    block could carry two answers, and they are different mistakes, so each says what it is.
     """
     waiting = {change.block_id for change in proposal_diff.changes()}
     seen: set[BlockId] = set()
     for change in auto_applicable:
-        if change.block_id in waiting or change.block_id in seen:
+        if change.block_id in waiting:
             raise ClassificationRejected(
                 f"{change.title!r} applies without asking and is also held for assent: a block is "
                 "in one authority class, or the plan both moves it and asks about moving it"
+            )
+        if change.block_id in seen:
+            raise ClassificationRejected(
+                f"{change.title!r} applies without asking twice: one block fills one space, and a "
+                "second change for it would be applied on top of the first"
             )
         seen.add(change.block_id)
 

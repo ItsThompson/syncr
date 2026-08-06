@@ -376,6 +376,50 @@ class TestWhatTheWriteRefuses:
             "horizon_advanced",
         } == NOT_AN_AUTO_APPLICATION
 
+    async def test_a_classification_wanting_a_block_the_candidate_does_not_hold_is_refused(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        # The pairing check the write can perform alone: a classification of one candidate written
+        # over another's document would store a diff nothing in the plan matches.
+        arriving = a_block_holding(LEETCODE, between(14, 15))
+        classification = Classification(auto_applicable=(BlockChange.added(arriving),))
+
+        with pytest.raises(RevisionRejected, match="does not hold it there"):
+            await adopt(sessions, owner.tenant_id, classification, a_candidate(a_week()))
+
+        assert await revisions_held(sessions, owner.tenant_id) == 0
+
+    async def test_a_classification_wanting_a_block_at_another_placement_is_refused(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        arriving = a_block_holding(LEETCODE, between(14, 15))
+        classification = Classification(
+            proposal_diff=ProposalDiff(
+                moved=(
+                    BlockChange.moved(
+                        live=replace(arriving, interval=between(9, 10)), candidate=arriving
+                    ),
+                ),
+            )
+        )
+        elsewhere = a_week(replace(arriving, interval=between(17, 18)))
+
+        with pytest.raises(RevisionRejected, match="does not hold it there"):
+            await adopt(sessions, owner.tenant_id, classification, a_candidate(elsewhere))
+
+        assert await proposal_held(sessions, owner.tenant_id) is None
+
+    async def test_a_classification_dropping_a_block_the_candidate_still_holds_is_refused(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        kept = a_block_holding(GYM, between(9, 10))
+        classification = Classification(
+            proposal_diff=ProposalDiff(removed=(BlockChange.removed(kept),))
+        )
+
+        with pytest.raises(RevisionRejected, match="still holds it"):
+            await adopt(sessions, owner.tenant_id, classification, a_candidate(a_week(kept)))
+
     async def test_a_classification_of_another_week_is_refused(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
