@@ -96,6 +96,7 @@ if TYPE_CHECKING:
     from syncr_api.plans.versions import WeekInputVersionRepository
     from syncr_api.solving.coordinator import SolveCoordinator
     from syncr_api.solving.records import OperationRecord
+    from syncr_api.tasks.repository import TaskRepository
     from syncr_domain.feasibility import Verdict
     from syncr_domain.identity import BlockId
     from syncr_domain.plan import Block, PlanDocument
@@ -134,6 +135,7 @@ class PinService:
         versions: WeekInputVersionRepository,
         weights: WeightSetRepository,
         coordinator: SolveCoordinator,
+        tasks: TaskRepository,
         clock: Clock,
     ) -> None:
         self._assembler = assembler
@@ -145,6 +147,7 @@ class PinService:
         self._versions = versions
         self._weights = weights
         self._coordinator = coordinator
+        self._tasks = tasks
         self._clock = clock
 
     @measured("pins")
@@ -249,6 +252,7 @@ class PinService:
                     block=block,
                     accepted=accepted,
                     breakdown=price.breakdown,
+                    task_deadline=await self._task_deadline(block),
                 ),
                 created_at=now,
             )
@@ -271,6 +275,23 @@ class PinService:
             verdict=verdict,
             operation=await self._coordinator.request_solve(week, version),
         )
+
+    async def _task_deadline(self, block: Block) -> datetime | None:
+        """The deadline on the task this block holds, read from the entity itself.
+
+        Not from ``eligible_tasks`` or ``deadline_demands``, because both net placements and the
+        pin makes its block immovable: a fully-placed task would vanish from either list, falsifying
+        the feature by the act of recording it. The task record is what the pin does not perturb.
+
+        Returns ``None`` for content that is not a task, which is what ``edit_context`` writes as
+        ``was_deadline_constrained=False``.
+        """
+        from syncr_domain.identity import BindingKind
+
+        if block.binding.kind != BindingKind.TASK:
+            return None
+        found = await self._tasks.find(block.binding.entity_id)
+        return None if found is None else found.deadline
 
     async def _last_produced(self, week: IsoWeek) -> PlanDocument:
         """The plan the solver last produced for this week: the pending slot, or the plan of record.

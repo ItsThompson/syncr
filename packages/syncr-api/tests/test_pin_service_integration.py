@@ -428,61 +428,69 @@ class TestVerdictProperties:
     async def test_pinning_a_fitness_block_reduces_the_floor_reservation(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """EQUAL reservation before and after: pinning does not double-charge."""
+        """The reservation is EQUAL before and after: the same hour is not charged twice."""
         block = a_block(14, 15, day_offset=3)
         plan = a_plan(blocks=(block,))
         await _seed_plan(sessions, owner.tenant_id, plan)
         await _seed_area(sessions, owner.tenant_id, floor=60)
         await _seed_task(sessions, owner.tenant_id, estimate=60)
 
-        # Assemble before pinning to read the reservation
+        # Assemble BEFORE the pin
         async with sessions() as session, session.begin():
             assembler = build_week_assembler(
                 session, owner.tenant_id, caller=AssemblyCaller.REQUEST
             )
             before = await assembler.assemble(WEEK, NOW)
+        before_reservation = next(
+            a.floor_reservation_minutes for a in before.areas if a.area_id == AREA_ID
+        )
 
-        # The block is already placed, so the floor reservation should already net it
-        before_reservations = {
-            area.area_id: area.floor_reservation_minutes for area in before.areas
-        }
-
-        # Pin the same block to a new time (still in the Fitness area)
+        # Pin to a different time
         new_start = datetime(2026, 2, 12, 10, 0, tzinfo=UTC)
         await _pin(sessions, owner, new_start)
 
-        # Assemble after pinning
+        # Assemble AFTER the pin
         async with sessions() as session, session.begin():
             assembler = build_week_assembler(
                 session, owner.tenant_id, caller=AssemblyCaller.REQUEST
             )
             after = await assembler.assemble(WEEK, NOW)
+        after_reservation = next(
+            a.floor_reservation_minutes for a in after.areas if a.area_id == AREA_ID
+        )
 
-        after_reservations = {area.area_id: area.floor_reservation_minutes for area in after.areas}
-
-        # The reservation should NOT increase: pinning the block still satisfies the floor
-        assert after_reservations[AREA_ID] <= before_reservations[AREA_ID]
+        # Discriminating EQUALITY: the pinned block still satisfies the floor
+        assert after_reservation == before_reservation
 
     async def test_pinning_an_already_placed_block_leaves_the_verdict_unchanged(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """The assertion that catches the reversed floor rule."""
+        """Captures the full verdict BEFORE and asserts equality AFTER."""
         block = a_block(14, 15, day_offset=3)
         plan = a_plan(blocks=(block,))
         await _seed_plan(sessions, owner.tenant_id, plan)
         await _seed_area(sessions, owner.tenant_id, floor=60)
         await _seed_task(sessions, owner.tenant_id, estimate=60)
 
-        # Pin the block at its OWN interval: this is the `p` toggle
-        same_start = block.interval.start
-        result = await _pin(sessions, owner, same_start)
+        # Probe BEFORE the pin
+        from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
 
-        # The objective delta for pinning at the same place must be zero
+        async with sessions() as session, session.begin():
+            assembler = build_week_assembler(
+                session, owner.tenant_id, caller=AssemblyCaller.REQUEST
+            )
+            before_inputs = await assembler.assemble(WEEK, NOW)
+        before_verdict = WeekProbe(caller=ProbeCaller.REQUEST).verdict_for(before_inputs)
+
+        # Pin at the SAME interval: the `p` toggle
+        result = await _pin(sessions, owner, block.interval.start)
+
+        # Delta is zero
         assert result.pin.objective_delta == 0.0
-
-        # The verdict should report no shortfalls that weren't already there
-        # (the whole point: pinning at the same place changes nothing)
-        assert result.verdict.provenance == Provenance.PROBE
+        # Full verdict equality (discriminating: compares the two verdicts)
+        assert result.verdict.shortfalls == before_verdict.shortfalls
+        assert result.verdict.feasible == before_verdict.feasible
+        assert result.verdict.discretionary_minutes == before_verdict.discretionary_minutes
 
 
 # ---------------------------------------------------------------------------
@@ -795,3 +803,40 @@ class TestStoredPinRelease:
             was_pinned = await release.release(WEEK, BINDING)
 
         assert was_pinned is False
+
+
+# ---------------------------------------------------------------------------
+# M1-R2: deadline feature written correctly even when the pin covers the estimate
+# ---------------------------------------------------------------------------
+
+
+class TestDeadlineFeature:
+    """A pin on a block that covers the task's estimate still records the deadline."""
+
+    async def test_pinning_a_block_covering_its_tasks_estimate_records_the_deadline(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        # A 60-min task with a 60-min block: the pin fully covers the estimate
+        deadline = datetime(2026, 2, 13, 9, 0, tzinfo=UTC)
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id, floor=0)
+        await _seed_task(sessions, owner.tenant_id, deadline=deadline, estimate=60)
+
+        # Pin the block to a new time
+        await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+
+        # Read the edit event's context back
+        async with sessions() as session:
+            events = (
+                await session.scalars(
+                    select(EditEvent).where(EditEvent.tenant_id == owner.tenant_id)
+                )
+            ).all()
+            assert len(events) == 1
+            context = events[0].context
+
+        # The deadline must be recorded, even though the pin covers the full estimate
+        assert context["was_deadline_constrained"] is True
+        assert context["days_until_deadline"] is not None

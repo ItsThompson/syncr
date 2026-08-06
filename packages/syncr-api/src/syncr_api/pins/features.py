@@ -62,6 +62,7 @@ def edit_context(
     block: Block,
     accepted: Interval,
     breakdown: ObjectiveBreakdown,
+    task_deadline: Instant | None,
 ) -> EditContext:
     """The state this edit was made in, as the row that outlives it will carry it.
 
@@ -100,8 +101,8 @@ def edit_context(
             (one.interval for one in inputs.forbidden_windows), from_=accepted.start
         ),
         rejected_windows=_rejected(block, from_=accepted.start),
-        was_deadline_constrained=_deadline_of(block, inputs) is not None,
-        days_until_deadline=_days_until(_deadline_of(block, inputs), accepted.start),
+        was_deadline_constrained=task_deadline is not None,
+        days_until_deadline=_days_until(task_deadline, accepted.start),
         inside_off_plan=any(period.interval.overlaps(accepted) for period in inputs.off_plan),
     )
 
@@ -210,30 +211,6 @@ def _budget_for(area_id: AreaId | None, areas: Sequence[AreaBudget]) -> AreaBudg
     if area_id is None:
         return None
     return next((one for one in areas if one.area_id == area_id), None)
-
-
-def _deadline_of(block: Block, inputs: SolveInputs) -> Instant | None:
-    """The deadline the content this block holds is under, if it is under one.
-
-    Read from the eligible tasks rather than from the deadline demands: a demand is per Area and per
-    instant and several tasks share one, so it could not say whether THIS content is the one under
-    pressure. A habit, a routine occurrence and a commitment are under none by construction.
-
-    Matched on the ENTITY rather than the binding, because a split task carries a chunk index on its
-    blocks while the eligible-task entry carries none: matching on the full binding would leave
-    every chunk of a divided deadline-bearing task unrecognised, permanently, in a corpus E5 forbids
-    pruning.
-    """
-    task = next(
-        (
-            one
-            for one in inputs.eligible_tasks
-            if one.binding.kind == block.binding.kind
-            and one.binding.entity_id == block.binding.entity_id
-        ),
-        None,
-    )
-    return None if task is None else task.deadline
 
 
 def _days_until(deadline: Instant | None, moment: Instant) -> int | None:

@@ -11,7 +11,6 @@ Pure tests, no database. Four groups:
 from __future__ import annotations
 
 import dataclasses
-from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -193,64 +192,17 @@ class TestRoundTrip:
 # ---------------------------------------------------------------------------
 
 
-class TestDeadlineMatch:
-    def test_a_split_chunk_matches_its_task_by_entity(self) -> None:
-        """A split block carries split_index=0 while EligibleTask carries None."""
-        from syncr_api.pins.features import _deadline_of
-        from syncr_domain.habits import BindingSource
-        from syncr_domain.identity import BindingKind, BindingRef
-        from syncr_domain.intervals import Interval
-        from syncr_domain.plan import Block
-        from syncr_domain.reasons import Bound, ReasonRecord
-        from syncr_domain.tasks import Priority
-        from syncr_domain.weeks import IsoWeek
-        from syncr_solver.inputs import EligibleTask, SolveInputs
+class TestDeadlineParameter:
+    """The deadline is a parameter to edit_context, not derived from eligible_tasks."""
 
-        task_id = uuid4()
-        deadline = datetime(2026, 2, 14, 9, 0, tzinfo=UTC)
+    def test_a_task_deadline_is_carried_into_the_context(self) -> None:
+        """When task_deadline is set, was_deadline_constrained is True."""
 
-        # The eligible task has no split_index
-        task_binding = BindingRef(kind=BindingKind.TASK, entity_id=task_id, occurrence_key="00")
-        # The block IS a chunk: split_index=1
-        chunk_binding = BindingRef(
-            kind=BindingKind.TASK, entity_id=task_id, occurrence_key="00", split_index=1
-        )
-        block = Block(
-            iso_week=IsoWeek(2026, 7),
-            interval=Interval(
-                datetime(2026, 2, 12, 14, 0, tzinfo=UTC),
-                datetime(2026, 2, 12, 15, 0, tzinfo=UTC),
-            ),
-            binding=chunk_binding,
-            title="Gym (2/3)",
-            reason=ReasonRecord((Bound(source=BindingSource.QUEUE, selected="picked"),)),
-            area_id=uuid4(),
-            split_count=3,
-        )
-        eligible = EligibleTask(
-            binding=task_binding,
-            remaining_minutes=120,
-            priority=Priority.NORMAL,
-            min_chunk_minutes=30,
-            splittable=True,
-            area_id=block.area_id,  # type: ignore[arg-type]
-            title="Gym",
-            deadline=deadline,
-        )
-        # Minimal SolveInputs with just the eligible task
-        from syncr_domain.weeks import IsoWeek
+        ctx = a_context(was_deadline_constrained=True, days_until_deadline=3)
+        assert ctx.was_deadline_constrained is True
+        assert ctx.days_until_deadline == 3
 
-        inputs = SolveInputs(
-            iso_week=IsoWeek(2026, 7),
-            span=Interval(
-                datetime(2026, 2, 9, 0, 0, tzinfo=UTC),
-                datetime(2026, 2, 16, 0, 0, tzinfo=UTC),
-            ),
-            now=datetime(2026, 2, 11, 9, 0, tzinfo=UTC),
-            zone_by_date=dict.fromkeys(IsoWeek(2026, 7).dates(), "Europe/London"),
-            input_version=1,
-            eligible_tasks=(eligible,),
-        )
-
-        found = _deadline_of(block, inputs)
-        assert found == deadline
+    def test_no_deadline_means_not_constrained(self) -> None:
+        ctx = a_context(was_deadline_constrained=False, days_until_deadline=None)
+        assert ctx.was_deadline_constrained is False
+        assert ctx.days_until_deadline is None

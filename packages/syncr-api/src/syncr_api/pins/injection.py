@@ -41,6 +41,7 @@ from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.injection import build_solve_coordinator, configured_debounce
+from syncr_api.tasks.repository import TaskRepository
 
 if TYPE_CHECKING:
     from datetime import timedelta
@@ -88,6 +89,7 @@ def build_pin_service(
         versions=WeekInputVersionRepository(transaction, tenant_id),
         weights=WeightSetRepository(transaction, tenant_id),
         coordinator=build_solve_coordinator(transaction, tenant_id, clock=clock, debounce=debounce),
+        tasks=TaskRepository(transaction, tenant_id),
         clock=clock,
     )
 
