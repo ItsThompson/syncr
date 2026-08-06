@@ -26,6 +26,7 @@ event.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -33,6 +34,11 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 
+from syncr_api.calendars.config import GOOGLE, WRITE_TARGET
+from syncr_api.calendars.projection import ReconcileResult
+from syncr_api.calendars.projection_notices import projection_failure_notices
+from syncr_api.calendars.projection_state import recorded_projection_failure
+from syncr_api.calendars.records import CalendarSourceRecord
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.events.channel import (
     LISTENER_APPLICATION_NAME,
@@ -40,8 +46,14 @@ from syncr_api.events.channel import (
     listening,
     notify,
 )
-from syncr_api.events.envelopes import operation_event
+from syncr_api.events.envelopes import (
+    ServerEvent,
+    notice_event,
+    operation_event,
+    projection_event,
+)
 from syncr_api.events.hub import EventHub
+from syncr_api.events.publishing import published as published_events
 from syncr_api.solving.config import PENDING, SOLVE
 from syncr_api.solving.records import OperationRecord
 from syncr_common.metrics import REGISTRY
@@ -52,7 +64,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-    from syncr_api.events.envelopes import ServerEvent
+    from syncr_api.core.notices import Notice
 
 pytestmark = pytest.mark.integration
 
@@ -303,3 +315,145 @@ async def waited_for_a_reconnect(before: float, *, within: float = RECONNECT_TIM
         await asyncio.sleep(0.05)
     message = f"the reconnect counter never moved from {before}"
     raise AssertionError(message)
+
+
+class TestTheFourthEventType:
+    """The notice, which had a builder and no producer until the closing pass.
+
+    A stopped projection is the one degradation a user cannot discover by looking at the plan: the
+    plan is correct and the calendar is quietly stale. So it is the event that has to arrive, and
+    the pass that raises it is the producer.
+    """
+
+    async def test_a_notice_carries_a_banner_and_a_panel_for_the_right_tenant(
+        self, hub: EventHub
+    ) -> None:
+        # Two notices per stopped projection, at two volumes: the banner is where a user meets it
+        # and the panel is where they act on it. Both belong to the tenant whose calendar stopped.
+        notices = a_stopped_projection()
+        assert len(notices) == 2
+
+        async with hub.subscribe(A_TENANT) as queue:
+            for one in notices:
+                hub.publish(notice_event(A_TENANT, one))
+
+            arrived = [
+                (await delivered(queue, within=DELIVERY_TIMEOUT)).data["volume"] for _ in notices
+            ]
+
+        assert sorted(arrived) == ["banner", "panel"]
+
+    async def test_a_notice_event_names_what_still_works(self) -> None:
+        """Which is the one field rule the notice type enforces, carried onto the wire.
+
+        A notice that said only what broke would leave the reader unable to decide what to do next,
+        and the stream is the loudest place that could happen.
+        """
+        (banner, _panel) = a_stopped_projection()
+
+        data = notice_event(A_TENANT, banner).data
+
+        assert data["volume"] == "banner"
+        assert data["stillWorks"]
+        assert data["unavailable"]
+
+    async def test_a_notice_crosses_the_channel_to_its_own_tenant_only(
+        self, engine: AsyncEngine, sessions: async_sessionmaker[AsyncSession], hub: EventHub
+    ) -> None:
+        (banner, _panel) = a_stopped_projection()
+        event = notice_event(A_TENANT, banner)
+
+        async with (
+            listening(engine, hub),
+            hub.subscribe(A_TENANT) as mine,
+            hub.subscribe(ANOTHER_TENANT) as theirs,
+        ):
+            await asyncio.sleep(0.1)
+            await published(sessions, event)
+
+            assert await delivered(mine, within=DELIVERY_TIMEOUT) == event
+            with pytest.raises(TimeoutError):
+                await delivered(theirs, within=1.0)
+
+
+class TestTheProjectionPayload:
+    def test_the_counts_are_named_as_the_passs_rather_than_the_weeks(self) -> None:
+        """One reconciliation covers the whole horizon, so there is no per-week figure to report.
+
+        The field name is the whole of this fix: called `result` beside a week it read as this
+        week's, and a client watching three weeks was told each of them inserted the pass's totals.
+        """
+        data = projection_event(A_TENANT, WEEK, ReconcileResult(inserted=3, patched=1, deleted=2))
+
+        assert data.data["isoWeek"] == str(WEEK)
+        assert "result" not in data.data
+        assert data.data["pass"] == {
+            "inserted": 3,
+            "patched": 1,
+            "deleted": 2,
+            "foreignDeleted": 0,
+            "unchanged": 0,
+            "durationMs": 0,
+        }
+
+
+class TestWhatThePublishSwallowAbsorbs:
+    async def test_an_oversized_payload_is_dropped_and_the_transaction_survives(
+        self, sessions: async_sessionmaker[AsyncSession]
+    ) -> None:
+        """The one failure the swallow can absorb: refused in Python, before any statement runs.
+
+        So the write the event was announcing really is left intact, which is the asymmetry that
+        justifies dropping the push at all.
+        """
+        oversized = ServerEvent(type="operation", tenant_id=A_TENANT, data={"blocks": "x" * 5000})
+
+        async with sessions() as session, session.begin():
+            assert await published_events(session, oversized) == 0
+            # The session is still usable, which is the property being asserted: a statement-level
+            # failure would have aborted it and every later statement would fail with it.
+            assert await session.scalar(text("SELECT 1")) == 1
+
+    async def test_a_statement_level_failure_is_not_swallowed(
+        self, sessions: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Because swallowing it would report the doomed transaction somewhere else, later.
+
+        A failed statement aborts the caller's transaction, so the write is already lost: converting
+        that into a commit-time error in the producer's own code, with the cause only in a log line,
+        trades an attributable failure for an unattributable one.
+        """
+
+        async def refusing(*_args: object, **_asked: object) -> None:
+            message = "the channel is unavailable"
+            raise RuntimeError(message)
+
+        monkeypatch.setattr("syncr_api.events.publishing.notify", refusing)
+
+        with pytest.raises(RuntimeError):
+            async with sessions() as session, session.begin():
+                await published_events(session, operation_event(an_operation()))
+
+
+def a_stopped_projection() -> tuple[Notice, ...]:
+    """The notices a write target whose last attempt failed raises, built by their own producer."""
+    target = replace(
+        A_WRITE_TARGET,
+        sync_state=recorded_projection_failure(
+            A_WRITE_TARGET.sync_state, at=NOW, reason="the calendar refused the write"
+        ),
+    )
+    return projection_failure_notices(target, None, now=NOW)
+
+
+# One write target whose calendar syncr owns, which is the only source a projection notice is about.
+A_WRITE_TARGET = CalendarSourceRecord(
+    id=uuid4(),
+    tenant_id=A_TENANT,
+    provider=GOOGLE,
+    role=WRITE_TARGET,
+    display_name="syncr",
+    external_id="syncr@group.calendar.google.com",
+    included=True,
+    horizon_days=14,
+)

@@ -1041,3 +1041,58 @@ async def test_the_adapter_a_request_composes_cannot_write(
         # A deployment that is fully armed for the worker, and this adapter still will not write.
         with pytest.raises(ProjectionRefused, match="background worker"):
             await adapters[GOOGLE].reconcile(target, [])  # type: ignore[attr-defined]
+
+
+async def test_a_refused_write_publishes_the_notice_a_client_has_to_be_told(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    calendar: FakeCalendar,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stopped projection is the one degradation a user cannot discover by looking at the plan.
+
+    The plan is correct and the calendar is quietly stale, so unlike every other event this one has
+    to arrive rather than be refetched. Recorded at the module boundary rather than by listening,
+    because what is asserted is that the PASS publishes it: whether a notification crosses the
+    channel is ``test_event_channel_integration.py``'s subject.
+    """
+    published: list[tuple[str, str]] = []
+
+    async def recording(_session: object, *events: Any) -> int:
+        published.extend((one.type, one.data["volume"]) for one in events)
+        return len(events)
+
+    monkeypatch.setattr("syncr_api.calendars.projection_pass.published", recording)
+    await declare_a_planned_week(sessions, context, owner.tenant_id)
+    calendar.refuse_after = 0
+
+    await drain(context, calendar)
+
+    assert sorted(published) == [("notice", "banner"), ("notice", "panel")]
+
+
+async def test_a_successful_write_publishes_no_notice(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    calendar: FakeCalendar,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The control. A notice raised on a pass that worked would be the loudest volume in the product
+    # telling a user something is degraded when nothing is.
+    published: list[str] = []
+
+    async def recording(_session: object, *events: Any) -> int:
+        published.extend(one.type for one in events)
+        return len(events)
+
+    monkeypatch.setattr("syncr_api.calendars.projection_pass.published", recording)
+    await declare_a_planned_week(sessions, context, owner.tenant_id)
+
+    assert await drain(context, calendar) == 1
+
+    # One projection event per claimed week, and no notice: the fixture plans two weeks, which is
+    # what makes the count worth asserting rather than the emptiness alone.
+    assert set(published) == {"projection"}
+    assert len(published) == 2

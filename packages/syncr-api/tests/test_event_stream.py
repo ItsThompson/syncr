@@ -26,6 +26,10 @@ refetches.
 from __future__ import annotations
 
 import asyncio
+import inspect
+import json
+import subprocess
+import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -45,6 +49,7 @@ from syncr_api.events.envelopes import (
     operation_event,
 )
 from syncr_api.events.hub import EventHub
+from syncr_api.events.service import EventStreamService
 from syncr_api.events.streams import event_stream
 from syncr_api.solving.config import (
     OPERATION_KINDS,
@@ -261,10 +266,6 @@ class TestTheRoute:
         promise: the service takes the hub and nothing else, so there is no session for it to write
         through and no repository it could compose one from.
         """
-        import inspect
-
-        from syncr_api.events.service import EventStreamService
-
         taken = inspect.signature(EventStreamService.__init__).parameters
 
         assert list(taken) == ["self", "hub"]
@@ -299,7 +300,8 @@ class TestEveryFamilyThisSliceExportsIsVisibleBeforeItIsUsed:
     def test_every_operation_kind_is_a_label_on_both_kind_labeled_families(self, kind: str) -> None:
         # Seeded at import rather than on the first pass, so a worker that has not ticked yet is
         # distinguishable from one whose queues are empty. Presence rather than zero, because a
-        # sibling test in this process may legitimately have observed one already.
+        # sibling test in this process may legitimately have observed one already; the case below
+        # asserts the ZERO in a process where nothing can have.
         assert (
             REGISTRY.get_sample_value("syncr_operations_non_terminal", {"kind": kind}) is not None
         )
@@ -308,6 +310,47 @@ class TestEveryFamilyThisSliceExportsIsVisibleBeforeItIsUsed:
             is not None
         )
 
+    def test_a_fresh_process_reports_zero_for_every_kind(self) -> None:
+        """The order-proof half, in an interpreter where nothing has had a chance to observe.
+
+        Presence alone is satisfiable by a sibling's observation, which is what the seeding exists
+        to be distinguishable FROM: "nothing is stuck" and "nobody has looked yet" have to read
+        differently. A sibling in this process may already have moved a label, so the zero is
+        asserted in a subprocess that imports the module, reads the exposition, and does nothing.
+        """
+        read = subprocess.run(  # noqa: S603 - this interpreter, a literal program, no shell
+            [sys.executable, "-c", _FRESH_EXPOSITION],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        assert json.loads(read.stdout) == {
+            "gauge": dict.fromkeys(OPERATION_KINDS, 0.0),
+            "histogram": dict.fromkeys(OPERATION_KINDS, 0.0),
+        }
+
     @pytest.mark.parametrize("outcome", list(TERMINAL_STATUSES), ids=lambda one: one)
     def test_every_terminal_status_is_a_label_on_the_solve_counter(self, outcome: str) -> None:
         assert REGISTRY.get_sample_value("syncr_solve_total", {"outcome": outcome}) is not None
+
+
+# The program the fresh-process assertion runs: import the module that seeds, read the exposition as
+# a scraper reads it, print the two families. A literal rather than a fixture file because what it
+# has to be is short enough to read and to contain nothing that could observe a metric on its own.
+_FRESH_EXPOSITION = """
+import json
+from syncr_api.solving.config import OPERATION_KINDS
+from syncr_api.solving.metrics import OPERATIONS_NON_TERMINAL  # noqa: F401 - the seeding import
+from syncr_common.metrics import REGISTRY
+
+def sample(family, kind):
+    return REGISTRY.get_sample_value(family, {"kind": kind})
+
+print(json.dumps({
+    "gauge": {k: sample("syncr_operations_non_terminal", k) for k in OPERATION_KINDS},
+    "histogram": {
+        k: sample("syncr_operation_queue_delay_seconds_count", k) for k in OPERATION_KINDS
+    },
+}))
+"""
