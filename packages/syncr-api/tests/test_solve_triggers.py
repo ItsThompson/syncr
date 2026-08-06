@@ -17,7 +17,7 @@ through ``SolveCoordinator.request_solve``, which has four call sites, and the h
 enqueues ``materialize`` rather than ``solve``. So the debounce, the coalescing and the supersession
 machinery have four live triggers, one of which bypasses the debounce by design, and the
 weekly-session burst of pins the 1500 ms window was measured against is not reachable at all,
-because no pin endpoint exists yet.
+because the pin endpoint was not built yet. It is now: ticket 41 wired the row.
 
 That is not a defect in any one of the fifteen: each bumps correctly, and a bump is what makes a
 running solve's conditional write fail. What is missing is the request that follows it. The

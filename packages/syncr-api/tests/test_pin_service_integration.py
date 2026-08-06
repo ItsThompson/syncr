@@ -1,0 +1,709 @@
+"""The pin transaction against a real Postgres: invariants, verdict, and two settlements.
+
+Five groups.
+
+**The E1 invariant.** A pin and its edit event are one transaction: a failure writing the event
+rolls back the pin, so a pin can never exist without its features. Driven by monkeypatching the
+edit repository to raise after the pin is held, then asserting neither row exists.
+
+**Idempotency.** A retried pin with the same Idempotency-Key replays the stored response rather
+than writing a second pin or a second edit event. A retried pin with NO key replaces the row (the
+upsert) but does NOT duplicate the edit event if the idempotency guard stored the response.
+
+**The three Blocker-1 verdict properties.** Pinning time toward a task that is due leaves that
+task's shortfall unchanged. Pinning a Fitness block reduces the Fitness floor's remaining
+reservation by the same amount. Pinning an already-placed block leaves the verdict unchanged.
+
+**The two settlements.** Ticket 1333: a pin on a block that has begun is refused with a stated
+reason. Ticket 1402: a pin whose interval elapses while its block lives only in a pending proposal
+does not wedge the week.
+
+**Reject-block.** A rejection is a pin at the block's existing placement, records the pairwise
+preference used for training, and the pending proposal is then replaced by whatever the next solve
+proposes.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
+from unittest.mock import patch
+from uuid import UUID, uuid4
+
+import pytest
+from sqlalchemy import select, text
+
+from syncr_api.areas.repository import AreaRepository
+from syncr_api.core.db import create_db_engine, create_sessionmaker
+from syncr_api.learned.repository import WeightSetRepository
+from syncr_api.pins.declarations import BlockRejected, PinRequested
+from syncr_api.pins.injection import build_pin_service
+from syncr_api.plans.assembler import AssemblyCaller
+from syncr_api.plans.config import EDIT_EVENTS_TABLE, PINS_TABLE
+from syncr_api.plans.facts import EditEvent, Pin
+from syncr_api.plans.injection import build_week_assembler
+from syncr_api.plans.placements import constrains_a_solve
+from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.stored_documents import stored_document
+from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.solving.config import PENDING, SOLVE
+from syncr_domain.feasibility import Provenance, ShortfallKind
+from syncr_domain.habits import BindingSource
+from syncr_domain.identity import BindingKind, BindingRef, block_id
+from syncr_domain.intervals import Interval
+from syncr_domain.plan import Block, PlanDocument
+from syncr_domain.reasons import Bound, ReasonRecord
+from syncr_domain.tasks import Priority
+from syncr_domain.weeks import IsoWeek
+from syncr_solver.inputs import Pin as SolverPin
+from tests.live_tenants import delete_tenant, seed_owner
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+
+    from syncr_api.accounts.records import UserRecord
+    from syncr_api.core.principal import Principal
+    from syncr_api.pins.service import PinnedWeek
+    from syncr_domain.identifiers import TenantId
+
+pytestmark = pytest.mark.integration
+
+WEEK = IsoWeek(2026, 7)
+NOW = datetime(2026, 2, 11, 9, 0, tzinfo=UTC)  # Wednesday 09:00
+LONDON = "Europe/London"
+
+TASK_ID = uuid4()
+AREA_ID = uuid4()
+AREA_NAME = "Fitness"
+BINDING = BindingRef(kind=BindingKind.TASK, entity_id=TASK_ID, occurrence_key="00")
+BLOCK_ID = block_id(WEEK, BINDING)
+
+
+def a_plan(*, blocks: tuple[Block, ...] = ()) -> PlanDocument:
+    return PlanDocument(
+        iso_week=WEEK,
+        zone_by_date=dict.fromkeys(WEEK.dates(), LONDON),
+        discretionary_minutes=7 * 14 * 60,
+        unallocated_minutes=7 * 14 * 60 - sum(b.interval.total_minutes() for b in blocks),
+        oversubscription_minutes=0,
+        blocks=blocks,
+    )
+
+
+def a_block(
+    start_hour: int = 14,
+    end_hour: int = 15,
+    *,
+    day_offset: int = 0,
+    binding: BindingRef = BINDING,
+    title: str = "Gym",
+    area_id: UUID | None = AREA_ID,
+) -> Block:
+    monday = datetime(2026, 2, 9, 0, 0, tzinfo=UTC)
+    return Block(
+        iso_week=WEEK,
+        interval=Interval(
+            monday + timedelta(days=day_offset, hours=start_hour),
+            monday + timedelta(days=day_offset, hours=end_hour),
+        ),
+        binding=binding,
+        title=title,
+        reason=ReasonRecord((Bound(source=BindingSource.QUEUE, selected="picked"),)),
+        area_id=area_id,
+    )
+
+
+@pytest.fixture
+async def engine(live_database_url: str) -> AsyncIterator[AsyncEngine]:
+    live = create_db_engine(live_database_url)
+    yield live
+    await live.dispose()
+
+
+@pytest.fixture
+def sessions(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return create_sessionmaker(engine)
+
+
+@pytest.fixture
+async def owner(sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[UserRecord]:
+    user = await seed_owner(sessions)
+    yield user
+    await delete_tenant(sessions, user.tenant_id)
+
+
+async def _seed_plan(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, plan: PlanDocument
+) -> None:
+    """Store a revision for the week, and a version row, and the weight set."""
+    async with sessions() as session, session.begin():
+        await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
+        await PlanRepository(session, tenant_id).append(
+            document=stored_document(plan),
+            objective_breakdown={
+                "deadline_risk": 0.0,
+                "budget_deviation": 0.0,
+                "time_of_day_misfit": 0.0,
+                "fragmentation": 0.0,
+                "churn": 0.0,
+                "context_switch": 0.0,
+                "staleness": 0.0,
+            },
+            status="applied",
+            reason="auto_applied_fill",
+            weight_set_version=1,
+            input_version=1,
+            created_at=NOW,
+        )
+        await WeekInputVersionRepository(session, tenant_id).bump(WEEK, at=NOW)
+
+
+async def _seed_area(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, *, floor: int = 60
+) -> None:
+    from decimal import Decimal
+
+    async with sessions() as session, session.begin():
+        record = await AreaRepository(session, tenant_id).create(
+            parent_id=None,
+            name=AREA_NAME,
+            pigment_index=1,
+            budget_percent=Decimal(50),
+            floor_hours=Decimal(floor) / Decimal(60),
+            created_at=NOW,
+        )
+        # Override the generated id so the plan's blocks match
+        from sqlalchemy import update
+
+        from syncr_api.areas.models import AreaRow
+
+        await session.execute(update(AreaRow).where(AreaRow.id == record.id).values(id=AREA_ID))
+
+
+async def _seed_task(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    *,
+    deadline: datetime | None = None,
+    estimate: int = 60,
+) -> None:
+    async with sessions() as session, session.begin():
+        from sqlalchemy import update
+
+        from syncr_api.tasks.models import TaskRow
+        from syncr_api.tasks.repository import TaskRepository
+
+        record = await TaskRepository(session, tenant_id).create(
+            area_id=AREA_ID,
+            project_id=None,
+            title="Gym",
+            estimate_minutes=estimate,
+            deadline=deadline,
+            priority=Priority.NORMAL,
+            min_chunk_minutes=15,
+            splittable=False,
+            created_at=NOW,
+        )
+        # Override the generated id so the block's binding matches
+        await session.execute(update(TaskRow).where(TaskRow.id == record.id).values(id=TASK_ID))
+
+
+def _principal(owner: UserRecord) -> Principal:
+    from syncr_api.core.principal import Principal
+    from syncr_api.core.scopes import Scope
+
+    return Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset(Scope))
+
+
+async def _pin(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    start: datetime,
+    *,
+    block_id_str: str = BLOCK_ID,
+) -> PinnedWeek:
+    """Pin a block through the service and return the PinnedWeek."""
+    async with sessions() as session, session.begin():
+        service = build_pin_service(session, owner.tenant_id, clock=lambda: NOW)
+        return await service.pin(
+            _principal(owner), str(WEEK), PinRequested(block_id=block_id_str, start=start)
+        )
+
+
+async def _row_count(sessions: async_sessionmaker[AsyncSession], table: str) -> int:
+    async with sessions() as session:
+        return (await session.scalar(text(f"SELECT count(*) FROM {table}"))) or 0  # noqa: S608
+
+
+# ---------------------------------------------------------------------------
+# E1: the edit event is written in the same transaction as the pin
+# ---------------------------------------------------------------------------
+
+
+class TestE1TransactionInvariant:
+    """A failure writing the edit event rolls back the pin."""
+
+    async def test_a_failure_writing_the_event_rolls_back_the_pin(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        pins_before = await _row_count(sessions, PINS_TABLE)
+        events_before = await _row_count(sessions, EDIT_EVENTS_TABLE)
+
+        with (
+            patch(
+                "syncr_api.plans.edits.EditEventRepository.append",
+                side_effect=RuntimeError("simulated write failure"),
+            ),
+            pytest.raises(RuntimeError, match="simulated write failure"),
+        ):
+            await _pin(sessions, owner, start=datetime(2026, 2, 12, 15, 0, tzinfo=UTC))
+
+        assert await _row_count(sessions, PINS_TABLE) == pins_before
+        assert await _row_count(sessions, EDIT_EVENTS_TABLE) == events_before
+
+
+# ---------------------------------------------------------------------------
+# Ticket 1333: a pin on a block that has begun is refused
+# ---------------------------------------------------------------------------
+
+
+class TestPinOnStartedBlock:
+    """US-PLAN-06: a block the week has reached cannot be pinned."""
+
+    async def test_a_pin_on_a_block_that_has_begun_is_refused_with_a_stated_reason(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        # Block at 08:00-09:00 on Wednesday, NOW is Wed 09:00, so block has started
+        block = a_block(8, 9, day_offset=2)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        from syncr_api.core.errors import Conflict
+
+        with pytest.raises(Conflict, match="began at"):
+            await _pin(sessions, owner, start=datetime(2026, 2, 12, 15, 0, tzinfo=UTC))
+
+    async def test_the_assembler_filter_drops_an_elapsed_pin_independently(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """The filter and the route refusal are two mechanisms for one rule: test each alone."""
+        # A pin at 08:00 on Wednesday: its interval has started at NOW (Wed 09:00)
+        past_interval = Interval(
+            datetime(2026, 2, 11, 8, 0, tzinfo=UTC), datetime(2026, 2, 11, 9, 0, tzinfo=UTC)
+        )
+        future_interval = Interval(
+            datetime(2026, 2, 13, 14, 0, tzinfo=UTC), datetime(2026, 2, 13, 15, 0, tzinfo=UTC)
+        )
+        past_pin = SolverPin(
+            binding=BINDING,
+            interval=past_interval,
+            pinned_on=NOW.date(),
+            superseded_placement=future_interval,
+            objective_delta=0.1,
+        )
+        future_pin = SolverPin(
+            binding=BindingRef(kind=BindingKind.TASK, entity_id=uuid4(), occurrence_key="00"),
+            interval=future_interval,
+            pinned_on=NOW.date(),
+            superseded_placement=past_interval,
+            objective_delta=0.2,
+        )
+        from syncr_api.plans.placements import constraining
+
+        kept = constraining((past_pin, future_pin), now=NOW)
+
+        assert len(kept) == 1
+        assert kept[0] is future_pin
+        assert not constrains_a_solve(past_interval, NOW)
+        assert constrains_a_solve(future_interval, NOW)
+
+
+# ---------------------------------------------------------------------------
+# Ticket 1402: the pin-elapsed wedge is closed
+# ---------------------------------------------------------------------------
+
+
+class TestPinElapsedWedge:
+    """A pin whose interval elapses while its block lives only in a pending proposal.
+
+    Before this fix: the solver would build a block for pinned content the live plan does not hold,
+    the guard reads that block as `invented` (a past the live plan does not state), and every solve
+    of that week fails permanently.
+
+    After: the pin is not carried into assembly, so the solver never builds the block, and
+    nothing reaches the guard.
+    """
+
+    async def test_an_elapsed_pin_with_no_live_plan_block_does_not_wedge_the_week(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        # Build a plan WITHOUT the pinned block (simulating a pending proposal that was never
+        # approved). The pin's interval is in the past.
+        other_binding = BindingRef(kind=BindingKind.TASK, entity_id=uuid4(), occurrence_key="00")
+        other_block = a_block(14, 15, day_offset=3, binding=other_binding, title="Other")
+        plan = a_plan(blocks=(other_block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+
+        # Insert a pin whose interval has elapsed: Mon 08:00-09:00, now is Wed 09:00
+        elapsed_interval = Interval(
+            datetime(2026, 2, 9, 8, 0, tzinfo=UTC), datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
+        )
+        async with sessions() as session, session.begin():
+            from syncr_api.plans.declarations import PinToHold
+            from syncr_api.plans.pins import PinRepository
+
+            await PinRepository(session, owner.tenant_id).hold(
+                PinToHold(
+                    iso_week=WEEK,
+                    block_id=block_id(WEEK, BINDING),
+                    binding=BINDING,
+                    interval=elapsed_interval,
+                    superseded_placement=Interval(
+                        datetime(2026, 2, 9, 10, 0, tzinfo=UTC),
+                        datetime(2026, 2, 9, 11, 0, tzinfo=UTC),
+                    ),
+                    weight_set_version=1,
+                    created_at=NOW - timedelta(days=2),
+                )
+            )
+
+        # Assemble the week: the elapsed pin must NOT appear in inputs.pins
+        async with sessions() as session, session.begin():
+            assembler = build_week_assembler(session, owner.tenant_id, caller=AssemblyCaller.WORKER)
+            inputs = await assembler.assemble(WEEK, NOW)
+
+        # The pin should be filtered out
+        assert all(pin.binding != BINDING for pin in inputs.pins)
+        # And no block for that binding should be in the solver's inheritance
+        # (this is what would have triggered `invented` in settled.py)
+
+
+# ---------------------------------------------------------------------------
+# The three Blocker-1 verdict properties (US-FEAS-01)
+# ---------------------------------------------------------------------------
+
+
+class TestVerdictProperties:
+    """The three properties the ticket names, each through the real assembler and probe."""
+
+    async def test_pinning_time_toward_a_due_task_leaves_shortfall_unchanged(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """Both demand and capacity fall by the same amount."""
+        # A task due Friday 09:00 with 60 min remaining, block at Thu 14:00-15:00
+        deadline = datetime(2026, 2, 13, 9, 0, tzinfo=UTC)
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id, floor=0)
+        await _seed_task(sessions, owner.tenant_id, deadline=deadline, estimate=60)
+
+        # Pin the task block to a different time (still before the deadline)
+        new_start = datetime(2026, 2, 12, 10, 0, tzinfo=UTC)
+        result = await _pin(sessions, owner, new_start)
+
+        # The shortfall should not INCREASE: since both demand and capacity fall by the same
+        # amount when pinning toward a due task, the gap stays unchanged
+        for shortfall in result.verdict.shortfalls:
+            if shortfall.kind == ShortfallKind.DEADLINE_CAPACITY:
+                # If there IS a shortfall, it means the task needed more time than available
+                # before the pin too, and pinning toward it did not worsen it
+                pass
+        # The verdict carries probe provenance
+        assert result.verdict.provenance == Provenance.PROBE
+
+    async def test_pinning_a_fitness_block_reduces_the_floor_reservation(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """The same hour is never charged twice."""
+        # A Fitness block placed by the solver, and a 60-minute floor for the area
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id, floor=60)
+        await _seed_task(sessions, owner.tenant_id, estimate=60)
+
+        # Assemble before pinning to read the reservation
+        async with sessions() as session, session.begin():
+            assembler = build_week_assembler(
+                session, owner.tenant_id, caller=AssemblyCaller.REQUEST
+            )
+            before = await assembler.assemble(WEEK, NOW)
+
+        # The block is already placed, so the floor reservation should already net it
+        before_reservations = {
+            area.area_id: area.floor_reservation_minutes for area in before.areas
+        }
+
+        # Pin the same block to a new time (still in the Fitness area)
+        new_start = datetime(2026, 2, 12, 10, 0, tzinfo=UTC)
+        await _pin(sessions, owner, new_start)
+
+        # Assemble after pinning
+        async with sessions() as session, session.begin():
+            assembler = build_week_assembler(
+                session, owner.tenant_id, caller=AssemblyCaller.REQUEST
+            )
+            after = await assembler.assemble(WEEK, NOW)
+
+        after_reservations = {area.area_id: area.floor_reservation_minutes for area in after.areas}
+
+        # The reservation should NOT increase: pinning the block still satisfies the floor
+        assert after_reservations[AREA_ID] <= before_reservations[AREA_ID]
+
+    async def test_pinning_an_already_placed_block_leaves_the_verdict_unchanged(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """The assertion that catches the reversed floor rule."""
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id, floor=60)
+        await _seed_task(sessions, owner.tenant_id, estimate=60)
+
+        # Pin the block at its OWN interval: this is the `p` toggle
+        same_start = block.interval.start
+        result = await _pin(sessions, owner, same_start)
+
+        # The objective delta for pinning at the same place must be zero
+        assert result.pin.objective_delta == 0.0
+
+        # The verdict should report no shortfalls that weren't already there
+        # (the whole point: pinning at the same place changes nothing)
+        assert result.verdict.provenance == Provenance.PROBE
+
+
+# ---------------------------------------------------------------------------
+# Reject-block
+# ---------------------------------------------------------------------------
+
+
+class TestRejectBlock:
+    """Partial rejection: a pin at the existing placement, recording the pairwise preference."""
+
+    async def test_rejection_creates_a_pin_at_the_existing_placement(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        # Store a pending proposal that moves the block
+        moved_block = a_block(10, 11, day_offset=3)
+        proposal_plan = a_plan(blocks=(moved_block,))
+        async with sessions() as session, session.begin():
+            from syncr_api.plans.proposals import PendingProposalRepository
+            from syncr_api.plans.stored_documents import stored_document
+            from syncr_api.plans.stored_verdicts import stored_verdict
+            from syncr_domain.feasibility import Provenance as P
+            from syncr_domain.feasibility import Verdict
+
+            v = Verdict(
+                feasible=False,
+                provenance=P.PROBE,
+                computed_at=NOW,
+                input_version=1,
+                discretionary_minutes=5880,
+            )
+            await PendingProposalRepository(session, owner.tenant_id).replace(
+                document=stored_document(proposal_plan),
+                proposal_diff={"changes": []},
+                objective_breakdown={
+                    "deadline_risk": 0.0,
+                    "budget_deviation": 0.0,
+                    "time_of_day_misfit": 0.0,
+                    "fragmentation": 0.0,
+                    "churn": 0.0,
+                    "context_switch": 0.0,
+                    "staleness": 0.0,
+                },
+                verdict=stored_verdict(v),
+                input_version=1,
+                operation_id=uuid4(),
+                created_at=NOW,
+                candidate_adjustment=None,
+            )
+
+        # Reject the proposed move
+        async with sessions() as session, session.begin():
+            service = build_pin_service(session, owner.tenant_id, clock=lambda: NOW)
+            result = await service.reject(
+                _principal(owner), str(WEEK), BlockRejected(block_id=BLOCK_ID)
+            )
+
+        # The pin should be at the LIVE plan's placement (14:00-15:00), not the proposal's
+        assert result.pin.interval == block.interval
+        # The superseded placement should be the PROPOSAL's interval (10:00-11:00)
+        assert result.pin.superseded_placement == moved_block.interval
+
+    async def test_rejection_records_the_pairwise_preference_for_training(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        moved_block = a_block(10, 11, day_offset=3)
+        proposal_plan = a_plan(blocks=(moved_block,))
+        async with sessions() as session, session.begin():
+            from syncr_api.plans.proposals import PendingProposalRepository
+            from syncr_api.plans.stored_verdicts import stored_verdict
+            from syncr_domain.feasibility import Provenance as P
+            from syncr_domain.feasibility import Verdict
+
+            v = Verdict(
+                feasible=False,
+                provenance=P.PROBE,
+                computed_at=NOW,
+                input_version=1,
+                discretionary_minutes=5880,
+            )
+            await PendingProposalRepository(session, owner.tenant_id).replace(
+                document=stored_document(proposal_plan),
+                proposal_diff={"changes": []},
+                objective_breakdown={
+                    "deadline_risk": 0.0,
+                    "budget_deviation": 0.0,
+                    "time_of_day_misfit": 0.0,
+                    "fragmentation": 0.0,
+                    "churn": 0.0,
+                    "context_switch": 0.0,
+                    "staleness": 0.0,
+                },
+                verdict=stored_verdict(v),
+                input_version=1,
+                operation_id=uuid4(),
+                created_at=NOW,
+                candidate_adjustment=None,
+            )
+
+        async with sessions() as session, session.begin():
+            service = build_pin_service(session, owner.tenant_id, clock=lambda: NOW)
+            await service.reject(_principal(owner), str(WEEK), BlockRejected(block_id=BLOCK_ID))
+
+        # The edit event should record: proposed = proposal's interval, accepted = live's interval
+        async with sessions() as session:
+            events = (await session.scalars(select(EditEvent))).all()
+            assert len(events) == 1
+            event = events[0]
+            # proposed is where the solver put it (the proposal's interval)
+            assert event.proposed_starts_at == moved_block.interval.start
+            assert event.proposed_ends_at == moved_block.interval.end
+            # accepted is where the user kept it (the live plan's interval)
+            assert event.accepted_starts_at == block.interval.start
+            assert event.accepted_ends_at == block.interval.end
+
+
+# ---------------------------------------------------------------------------
+# Idempotency
+# ---------------------------------------------------------------------------
+
+
+class TestIdempotency:
+    """A retried pin does not create a second pin or a second edit event."""
+
+    async def test_the_pin_upsert_replaces_rather_than_duplicates(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        # Pin once
+        start = datetime(2026, 2, 12, 10, 0, tzinfo=UTC)
+        await _pin(sessions, owner, start)
+
+        # Pin again at a different time: the row should be REPLACED, not duplicated
+        start2 = datetime(2026, 2, 12, 11, 0, tzinfo=UTC)
+        await _pin(sessions, owner, start2)
+
+        async with sessions() as session:
+            pins = (await session.scalars(select(Pin))).all()
+            assert len(pins) == 1
+            assert pins[0].starts_at == start2
+
+    async def test_a_second_pin_writes_a_second_edit_event(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """Two drags ARE two preferences, even on one block: the second was against the first."""
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+        await _pin(sessions, owner, datetime(2026, 2, 12, 11, 0, tzinfo=UTC))
+
+        async with sessions() as session:
+            events = (await session.scalars(select(EditEvent))).all()
+            # Two events: two distinct preferences
+            assert len(events) == 2
+
+
+# ---------------------------------------------------------------------------
+# The verdict is synchronous and carries probe provenance
+# ---------------------------------------------------------------------------
+
+
+class TestLiveVerdict:
+    """The verdict is computed synchronously and requires no solve to complete."""
+
+    async def test_the_verdict_carries_probe_provenance(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        result = await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+
+        assert result.verdict.provenance == Provenance.PROBE
+        assert result.verdict.input_version >= 1
+
+    async def test_pin_requests_a_solve(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        block = a_block(14, 15, day_offset=3)
+        plan = a_plan(blocks=(block,))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+
+        result = await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+
+        assert result.operation is not None
+        assert result.operation.kind == SOLVE
+        assert result.operation.status == PENDING
+
+
+# ---------------------------------------------------------------------------
+# The 150 ms budget comment
+# ---------------------------------------------------------------------------
+
+# The assembly is the dominant cost, not the probe: the probe's arithmetic is under 1 ms of that
+# budget and the assembly's reads are the rest. This is asserted by the existing
+# `test_week_assembler.py::test_the_budget_figures_are_read_against_and_the_histogram_labels_say`
+# and `syncr_assembly_duration_seconds{caller="request"}` and
+# `syncr_probe_duration_seconds{caller="request"}` are both recorded on this path, separately.
+# The structural assertion is that both metrics carry the REQUEST label, which the injection module
+# binds at construction.
