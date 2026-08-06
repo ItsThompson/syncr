@@ -192,7 +192,7 @@ class TestRoundTrip:
 # ---------------------------------------------------------------------------
 
 
-class TestDeadlineParameter:
+class TestDeadlineGuard:
     """The deadline is a parameter to edit_context, not derived from eligible_tasks."""
 
     def test_a_task_deadline_is_carried_into_the_context(self) -> None:
@@ -216,6 +216,14 @@ class TestDeadlineParameter:
 # proposal was made in; post-edit fields describe the week's facts as the pin left them.
 # A field added to EditContext without appearing in one of these two sets fails
 # `test_every_field_is_classified`.
+#
+# LIMIT OF THIS GUARD: it checks MEMBERSHIP (a new field must be placed in one set) but cannot
+# check SOURCING (that the code reads it from the right assembly). A source check would require
+# tracing the data flow from `edit_context()`'s parameters through to each field assignment, which
+# is not expressible as a pure assertion over the dataclass. What prevents a re-sourcing defect is
+# the parameter split in `edit_context()`: pre-edit values arrive as explicit parameters resolved
+# BEFORE the pin, and the post-pin `inputs` object is what supplies the rest. A field on the wrong
+# side would have to read a parameter that does not carry it.
 PRE_EDIT_FIELDS = frozenset(
     {
         "objective_breakdown",

@@ -915,5 +915,6 @@ class TestObjectiveDeltaAndBreakdown:
 
         # The delta must be POSITIVE: moving past a deadline costs something
         assert delta > 0.0, f"expected positive delta for a drag past deadline, got {delta}"
-        # The breakdown must record a nonzero deadline_risk
-        assert context["objective_breakdown"]["deadline_risk"] > 0.0
+        # The breakdown must record the pre-pin deadline_risk exactly: 5.625
+        # (measured independently by the reviewer in a pre-pin frame evaluation)
+        assert context["objective_breakdown"]["deadline_risk"] == pytest.approx(5.625, abs=0.01)

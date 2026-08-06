@@ -9,10 +9,10 @@ the week already states, so nothing here reads a clock, performs a lookup, or in
 reconstructing the week it came from, so a neighbouring anchor two hours earlier reads as ``-120``
 whatever week and whatever zone it was in.
 
-**The day is the bound.** The two gap figures are measured inside the accepted placement's own local
-day, so a placement with nothing before it reports the distance to that day's own start rather than
-to the week's. That keeps both figures bounded, which is what a feature has to be, and it is the
-same day the fragmentation term reasons over.
+**The day is the bound, and both gaps are clamped at zero.** The two gap figures are measured
+inside the accepted placement's own local day, clamped so a placement overhanging the day's end
+writes 0 rather than a negative. Both figures are non-negative by construction. The day the
+fragmentation term reasons over is the same one.
 
 ## Which day, and why the domain answers it
 

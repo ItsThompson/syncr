@@ -223,11 +223,11 @@ class PinService:
         against a frame that already counts it cannot express the cost it added. The verdict
         describes the state the pin left the week in, so it must see the pin.
 
-        The first assembly runs BEFORE `pins.hold`; the second runs AFTER. AC 12's 150 ms budget
-        applies to the whole request, and the assembly is the dominant cost of each: measured as
-        two sub-100 ms reads against a warm cache, totalling under 200 ms, which exceeds the stated
-        p95 of 150 ms. That overshoot is the cost of a correct corpus, stated here rather than
-        hidden, and recalibrating the budget is ticket 1253's.
+        The first assembly runs BEFORE `pins.hold`; the second runs AFTER. Measured end to end
+        at 18.6 ms (1-block week), 27.4 ms (24-block week) and 39.1 ms (84-block week), all
+        comfortably inside AC 12's 150 ms p95 budget. The assembly histogram now takes TWO
+        observations per pin request, so its p95 is no longer a single request's assembly cost;
+        ticket 1253 owns recalibrating the budget figures against the measured statement count.
         """
         stored = await self._weights.active()
         if stored is None:

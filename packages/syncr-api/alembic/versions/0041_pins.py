@@ -23,13 +23,10 @@ The superseded placement is where the plan of record holds the block, so a route
 that block in a stored document always knows it: nullable made that a rule a writer remembers, and
 this makes it a shape.
 
-**The price stays nullable, and the reason is an ordering the arithmetic forces.** What the user's
-choice cost is a difference of two objective evaluations over one week's resolved inputs, and those
-inputs are what the pin changes: the assembly has to see the pin to answer the verdict the response
-carries. So the row exists before its price does, both writes are in one transaction, and no reader
-ever sees a pin without its cost. A ``CHECK`` cannot express that, because Postgres has no
-deferrable one; what holds it instead is that pricing is the only other statement against this
-table, and the pin service prices every row it writes before the transaction commits.
+**The price stays nullable, which is now vestigial.** The delta is known before the hold since the
+pre-pin frame fix, so the two-statement write and the nullable column can be collapsed into one
+insert with NOT NULL: ticket 1410 owns that simplification. Until then both writes happen in one
+transaction and no reader sees a pin without its cost.
 
 The check constraint over the superseded pair is restated with the nullability. Paired nullability
 is what it could say while either column could be absent, and with neither absent that reading is
