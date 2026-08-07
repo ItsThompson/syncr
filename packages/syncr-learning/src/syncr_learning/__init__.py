@@ -28,7 +28,8 @@ the directory. The pure layer first, in the order the pipeline runs:
 | ``gates.py`` | the per-parameter gates, and the maturity row each produces |
 | ``statements.py`` | the plain-language sentence each maturity row states |
 | ``artifact.py`` | the stored spelling of one appendable weight-set version |
-| ``fitting.py`` | observations to one artefact: every fitter run and every gate applied |
+| ``applied.py`` | what each parameter contributes to the artefact, with its gate applied |
+| ``fitting.py`` | observations to one artefact: the pipeline order, and the weight fit's own gate |
 | ``promotion.py`` | the repeated-pin candidates that go to a template rather than to a weight |
 
 And the run, its I/O, and the container's entrypoint:
