@@ -28,6 +28,7 @@ import {
 import { renderBacklog, stubBacklog } from "./render";
 
 const CAPTURE = "Capture a task";
+const SEND_OPEN = "A capture is still being sent";
 
 /** Opening capture with the global keystroke, from wherever the reader is. */
 async function pressN(): Promise<void> {
@@ -372,6 +373,109 @@ describe("a second submit while the first is in flight", () => {
 
   /* The lock is released on BOTH endings. A reader whose capture was refused has to be able to send again after
      fixing the member the api named, so a refusal that left the lock taken would be a form that never sends. */
+  /* THE PATH THE DISABLED CONTROL DOES NOT COVER, because the dismiss controls stay live while it is disabled:
+     submit, Escape, `n`, retype, submit. The request from the first opening is still open, so the lock has to
+     survive the dismiss; releasing it on close is what let two identical tasks be captured. On a slow connection
+     the window is seconds, and a reader who dismissed because nothing seemed to happen and retyped the same title
+     is the plausible case rather than the contrived one. */
+  it("is refused after the reader dismisses the form and opens it again", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.holdCapture();
+    await pressN();
+    await fillTitle("same task");
+    await chooseArea("Career");
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() => {
+      expect(stub.captured).toHaveLength(1);
+    });
+
+    await userEvent.keyboard("{Escape}");
+    await pressN();
+    await fillTitle("same task");
+    await chooseArea("Career");
+
+    /* The control says why rather than sitting inert: a disabled button with no reason is a button that looks
+       broken. */
+    expect(screen.getByRole("button", { name: "Capture" })).toBeDisabled();
+    expect(await screen.findByRole("status", { name: SEND_OPEN })).toHaveTextContent(
+      "will be captured whatever this form does",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+    expect(stub.captured).toHaveLength(1);
+
+    stub.releaseCapture();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Capture" })).toBeEnabled();
+    });
+  });
+
+  /* THE SAME WINDOW, FROM THE OTHER END. A send that resolves no longer owns the dialog once the reader has
+     dismissed and reopened it, so it must not close a form they are typing into: the draft below survives the
+     first request landing. */
+  it("does not tear down a form the reader reopened while it was open", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.holdCapture();
+    await pressN();
+    await fillTitle("first task");
+    await chooseArea("Career");
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() => {
+      expect(stub.captured).toHaveLength(1);
+    });
+    await userEvent.keyboard("{Escape}");
+    await pressN();
+    await fillTitle("second task");
+
+    stub.releaseCapture();
+    /* The send landing is what this waits on, not the control: the second draft has no Area yet, so the control
+       is legitimately disabled either way. */
+    await waitFor(() => {
+      expect(screen.queryByRole("status", { name: SEND_OPEN })).toBeNull();
+    });
+
+    expect(screen.getByRole("dialog", { name: CAPTURE })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Task/ })).toHaveValue("second task");
+  });
+
+  /* AND THE REFUSAL FROM THE SAME WINDOW. A send the reader dismissed can still be refused, and its sentence
+     names a draft that no longer exists: it must not land on the one they have since typed. */
+  it("does not state a refusal about the draft the reader replaced", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.holdCapture();
+    stub.refuseCaptureWith(
+      422,
+      buildProblem({
+        detail: "One or more members were refused.",
+        errors: [{ field: "title", message: "is too long" }],
+      }),
+    );
+    await pressN();
+    await fillTitle("x".repeat(40));
+    await chooseArea("Career");
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() => {
+      expect(stub.captured).toHaveLength(1);
+    });
+    await userEvent.keyboard("{Escape}");
+    await pressN();
+    await fillTitle("a short title");
+
+    stub.releaseCapture();
+    await waitFor(() => {
+      expect(screen.queryByRole("status", { name: SEND_OPEN })).toBeNull();
+    });
+
+    expect(screen.queryByText("is too long")).toBeNull();
+    expect(screen.queryByRole("status", { name: "Validation failed" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: /Task/ })).toHaveValue("a short title");
+  });
+
+  /* The lock is released on BOTH endings. A reader whose capture was refused has to be able to send again after
+     fixing the member the api named, so a refusal that left the lock taken would be a form that never sends. */
   it("lets the reader send again after a refusal", async () => {
     const stub = await renderBacklog();
     await screen.findByRole("table", { name: "The backlog" });
@@ -444,5 +548,31 @@ describe("where the reader ends up", () => {
     expect(
       await screen.findByText("Kontron take-home", { selector: ".table__cell" }),
     ).toBeInTheDocument();
+  });
+
+  /* THE FLOW A NEW ACCOUNT STARTS IN, and the one where naming `document.activeElement` is not enough: capturing
+     the first task replaces the empty state with a table, so the button the reader pressed has left the document
+     before the dialog closes. Focusing a detached node does nothing, and suppressing Radix's own restoration for
+     it leaves the reader on the document body. The prompt therefore names the band's control, which is the same
+     affordance and survives the write. */
+  it("returns focus to a control that survives when the reader captures the first task", async () => {
+    const stub = await renderBacklog({
+      backlog: { header: buildHeader({ openCount: 0, atRiskCount: 0 }), tasks: [] },
+    });
+    const prompt = await screen.findByRole("button", { name: "Capture the first one" });
+    stub.answerWith(buildBacklog({ tasks: [buildTask({ title: "Kontron take-home" })] }));
+
+    await userEvent.click(prompt);
+    await screen.findByRole("dialog", { name: CAPTURE });
+    await fillTitle("Kontron take-home");
+    await chooseArea("Career");
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+
+    await screen.findByText("Kontron take-home", { selector: ".table__cell" });
+    expect(prompt.isConnected).toBe(false);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: CAPTURE })).toHaveFocus();
+    });
+    expect(document.activeElement).not.toBe(document.body);
   });
 });

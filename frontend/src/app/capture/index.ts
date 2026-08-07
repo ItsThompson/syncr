@@ -1,6 +1,6 @@
 export { CaptureDialog, type CaptureArea, type CaptureDialogProps } from "./CaptureDialog";
 export { CaptureHost, type CaptureHostProps } from "./CaptureHost";
-export { CaptureContext, useCapture, type Capture } from "./captureContext";
+export { CaptureContext, useCapture, type Capture, type CaptureOpening } from "./captureContext";
 export {
   PRIORITIES,
   bodyOf,
@@ -13,4 +13,4 @@ export {
   type DraftRefusals,
   type Priority,
 } from "./draft";
-export { captureRefusedNotice, refusalsFrom } from "./refusals";
+export { captureRefusedNotice, refusalsFrom, sendStillOpenNotice } from "./refusals";

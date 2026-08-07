@@ -18,7 +18,9 @@
  * must never compete with the thing being captured, so there is one dialog above the outlet rather than one per
  * screen: two instances would mean two forms holding two drafts of the same task. Inside the gate, because a
  * visitor with no session has no Area to capture into. A screen that wants a control for it asks this instance
- * to open through `useCapture`.
+ * to open through `useCapture`. It lives in `app/capture/` rather than in a route's directory, because a thing
+ * the gate mounts is the shell's: a route importing it is a screen asking for the shell's affordance, and the
+ * shell importing a route for a shell-owned concern was the wrong direction.
  *
  * THE WORDS ARE THE API'S. The same condition is composed once and raised at two volumes with a shared identity
  * root: the banner here, and the panel on Settings. Neither surface writes the sentence, so the two cannot state
@@ -27,7 +29,7 @@
 import { useGoogleConnection } from "../api/hooks/useCalendarSources";
 import { useSession } from "../api/hooks/useSession";
 import { EventStreamProvider } from "../api/events";
-import { CaptureHost } from "../routes/backlog";
+import { CaptureHost } from "./capture";
 import { NoticeStrip, noticesAt, ShellLayout } from "../ui/domain";
 import { AuthGate } from "./AuthGate";
 

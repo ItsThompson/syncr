@@ -16,9 +16,9 @@
  * the field instead of after a round trip. When the two ever disagree, the boundary's own sentence is what the
  * form renders, because every field error a refusal names lands on the row it names. */
 
-import { zonedInstant } from "../../../lib/zonedInstant";
-import type { TaskCaptureBody } from "../../../api/hooks/useBacklog";
-import type { components } from "../../../api/schema";
+import { zonedInstant } from "../../lib/zonedInstant";
+import type { TaskCaptureBody } from "../../api/hooks/useBacklog";
+import type { components } from "../../api/schema";
 
 export type Priority = components["schemas"]["Priority"];
 

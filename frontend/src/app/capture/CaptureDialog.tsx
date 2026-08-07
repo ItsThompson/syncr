@@ -22,8 +22,8 @@
  * has to be typing the title. That is the `Dialog` family's own policy rather than something arranged here: the
  * caret goes to the first control in the body, and the title is the first row. */
 
-import { NoticeCard, type Notice } from "../../../ui/domain";
-import { FormRow } from "../../../ui/layout";
+import { NoticeCard, type Notice } from "../../ui/domain";
+import { FormRow } from "../../ui/layout";
 import {
   Button,
   Checkbox,
@@ -32,7 +32,7 @@ import {
   Input,
   NumberStepper,
   Select,
-} from "../../../ui/primitives";
+} from "../../ui/primitives";
 import {
   PRIORITIES,
   priorityOf,
@@ -61,8 +61,14 @@ export interface CaptureDialogProps {
   readonly today: string;
   /** Where focus returns when the dialog closes: the element the reader was on when it opened. */
   readonly returnFocusTo?: HTMLElement | null | undefined;
-  /** The refusal the api answered with, at inline volume, or null when nothing has been refused. */
-  readonly refusal?: Notice | undefined;
+  /**
+   * What the form has to say, at inline volume inside the dialog.
+   *
+   * One slot rather than one per kind, because the host is what knows which of them holds: a refusal this
+   * opening was answered with, or the statement that a send it does not own is still open. A dialog rendering
+   * two would be stacking notices inside a notice's own position.
+   */
+  readonly notice?: Notice | undefined;
 }
 
 const PRIORITY_LABELS: Record<Priority, string> = {
@@ -83,7 +89,7 @@ export function CaptureDialog({
   onSubmit,
   today,
   returnFocusTo,
-  refusal,
+  notice,
 }: CaptureDialogProps) {
   const change = <Field extends keyof CaptureDraft>(field: Field, value: CaptureDraft[Field]) => {
     onDraftChange({ ...draft, [field]: value });
@@ -107,7 +113,7 @@ export function CaptureDialog({
         </Button>
       }
     >
-      {refusal === undefined ? null : <NoticeCard notice={refusal} />}
+      {notice === undefined ? null : <NoticeCard notice={notice} />}
       <FormRow error={stated("title", draft.title)} isRequired label="Task">
         {(field) => (
           <Input

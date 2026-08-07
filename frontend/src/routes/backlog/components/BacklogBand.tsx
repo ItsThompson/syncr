@@ -10,6 +10,8 @@
  * already sets: the key hint is drawn in ink and the primary rank's own fill is ink, so inside it a reader
  * cannot see the keystroke the screen is advertising. */
 
+import type { Ref } from "react";
+
 import { CAPTURE_KEY, KeyHint, NoticeCard, type Notice } from "../../../ui/domain";
 import { StatCell, Strip } from "../../../ui/layout";
 import { Button } from "../../../ui/primitives";
@@ -20,16 +22,25 @@ export interface BacklogBandProps {
   /** Every notice the SCREEN carries: a completion that landed, or a write the api refused. */
   readonly notices: readonly Notice[];
   readonly onCapture: () => void;
+  /**
+   * The capture control, which is the one on this screen that SURVIVES a capture.
+   *
+   * The empty state's own prompt is replaced by the table as soon as the first task lands, so it names this
+   * control as where focus returns rather than the button the reader pressed.
+   */
+  readonly captureRef?: Ref<HTMLButtonElement> | undefined;
 }
 
-export function BacklogBand({ header, notices, onCapture }: BacklogBandProps) {
+export function BacklogBand({ header, notices, onCapture, captureRef }: BacklogBandProps) {
   return (
     <div className="flex flex-col gap-2.75">
       <Strip>
         <StatCell label="open tasks" figure={header.openCount} />
         <StatCell label="at risk" figure={header.atRiskCount} sub="named by this week's verdict" />
         <span className="ml-auto flex items-center gap-2">
-          <Button onClick={onCapture}>Capture a task</Button>
+          <Button onClick={onCapture} ref={captureRef}>
+            Capture a task
+          </Button>
           <KeyHint keys={CAPTURE_KEY} />
         </span>
       </Strip>

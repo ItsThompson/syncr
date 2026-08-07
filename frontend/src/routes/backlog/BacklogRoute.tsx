@@ -12,14 +12,20 @@
  * it is waiting for in words. The empty state carries the capture prompt, because a backlog with nothing in it
  * is an invitation rather than a dead end.
  *
+ * THE EMPTY STATE'S PROMPT NAMES THE BAND'S CONTROL AS WHERE FOCUS RETURNS, and that is not a detail: capturing
+ * the first task replaces the prompt with a table, so the button the reader pressed is gone before the dialog
+ * closes and returning to it would return to nowhere. The band's control is the same affordance and survives.
+ *
  * CAPTURE IS NOT MOUNTED HERE. `n` opens it from any screen, so the one instance lives above the route in
- * `app/GatedShell`; this screen asks that instance to open. A second dialog mounted here would mean two forms
- * could hold two drafts of the same task. */
+ * `app/capture`; this screen asks that instance to open. A second dialog mounted here would mean two forms could
+ * hold two drafts of the same task. */
 
+import { useRef } from "react";
+
+import { useCapture } from "../../app/capture";
 import { EmptyState, ErrorState, PendingState, type Notice } from "../../ui/domain";
 import { Button } from "../../ui/primitives";
 import { RouteBand } from "../RouteBand";
-import { useCapture } from "./capture";
 import { BacklogBand } from "./components/BacklogBand";
 import { BacklogFilters } from "./components/BacklogFilters";
 import { BacklogTable } from "./components/BacklogTable";
@@ -32,6 +38,7 @@ const SUB = "tasks and projects";
 export function BacklogRoute() {
   const screen = useBacklogScreen();
   const capture = useCapture();
+  const bandCapture = useRef<HTMLButtonElement>(null);
   const { reading } = screen;
 
   if (reading.status === "loading") {
@@ -67,7 +74,12 @@ export function BacklogRoute() {
   return (
     <RouteBand sub={`${SUB} · ${headerReading(backlog.header)}`} title="Backlog">
       <div className="flex flex-col gap-3.25">
-        <BacklogBand header={backlog.header} notices={notices} onCapture={() => capture.open()} />
+        <BacklogBand
+          captureRef={bandCapture}
+          header={backlog.header}
+          notices={notices}
+          onCapture={() => capture.open()}
+        />
         <BacklogFilters
           areas={[...areas].map(([id, area]) => ({ id, name: area.name }))}
           filters={screen.filters}
@@ -77,7 +89,9 @@ export function BacklogRoute() {
           <EmptyState
             action={
               capture.isAvailable ? (
-                <Button onClick={() => capture.open()}>Capture the first one</Button>
+                <Button onClick={() => capture.open({ returnFocusTo: bandCapture.current })}>
+                  Capture the first one
+                </Button>
               ) : undefined
             }
             detail={

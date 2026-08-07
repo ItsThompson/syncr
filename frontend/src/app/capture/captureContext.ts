@@ -15,9 +15,23 @@
 
 import { createContext, useContext } from "react";
 
+/** What a caller can say about the opening it is asking for. */
+export interface CaptureOpening {
+  /** The Area to open ON, where the caller already knows it. Not a change to a draft in flight. */
+  readonly areaId?: string | undefined;
+  /**
+   * Where focus returns when the dialog closes. Defaults to wherever the reader was.
+   *
+   * NAMED BY A CALLER WHOSE OWN CONTROL WILL NOT SURVIVE THE WRITE. The empty backlog's prompt is replaced by a
+   * table as soon as the first task lands, so returning to the button that was pressed would return to nothing:
+   * it names the band's control instead, which is the same affordance and is always there.
+   */
+  readonly returnFocusTo?: HTMLElement | null | undefined;
+}
+
 export interface Capture {
-  /** Opens capture, optionally on an Area the caller already knows. */
-  readonly open: (areaId?: string) => void;
+  /** Opens capture, on the Area and with the focus target the caller names. */
+  readonly open: (opening?: CaptureOpening) => void;
   /** False outside the host, which is where nothing can be captured. */
   readonly isAvailable: boolean;
 }

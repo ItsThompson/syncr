@@ -18,6 +18,17 @@
  * something only the caller holds, so it is the caller that names it, and the return is driven through Radix's
  * own `onCloseAutoFocus` rather than around it.
  *
+ * AN ELEMENT THAT NO LONGER EXISTS IS NOT AN ELEMENT TO RETURN TO. `focus()` on a detached node is a no-op, so
+ * suppressing Radix's own restoration and then calling it left the reader on the document body with Radix
+ * already told to stand down. The check is therefore whether the named node is still CONNECTED.
+ *
+ * THAT CHECK IS NOT DEMONSTRABLE IN THIS TEST ENVIRONMENT, and saying so is better than a test that pretends:
+ * jsdom lands on the body either way, because Radix's own restoration does not work here at all, which is the
+ * measurement `returnFocusTo` exists because of. In a browser the two differ for a dialog Radix CAN see the
+ * trigger of. What holds the promise regardless is the caller side: a caller whose own control will not survive
+ * its own write names one that will, which is what the empty backlog's prompt does and what `capture.test.tsx`
+ * drives end to end.
+ *
  * WHERE IT GOES ON OPEN IS THE FAMILY'S POLICY AND NOT THE CALLER'S: the first control in the body, through
  * Radix's own `onOpenAutoFocus`. See `FIRST_CONTROL` below.
  *
@@ -51,7 +62,8 @@ export interface DialogProps {
    * The element focus returns to when the dialog closes. Absent leaves the return to Radix.
    *
    * Named by the caller because only the caller knows: a dialog opened by a keystroke has no trigger to go back
-   * to, and where the reader was is what the caller read at the moment it decided to open.
+   * to, and where the reader was is what the caller read at the moment it decided to open. An element that has
+   * left the document is treated as absent, because focusing it would do nothing.
    */
   readonly returnFocusTo?: HTMLElement | null | undefined;
   /**
@@ -80,6 +92,9 @@ export function Dialog({
       ? {}
       : {
           onCloseAutoFocus: (event: Event) => {
+            /* A node that has left the document cannot take focus, and suppressing Radix's own restoration for
+               it lands the reader nowhere. Leaving the default in place is the honest fallback. */
+            if (!returnFocusTo.isConnected) return;
             event.preventDefault();
             returnFocusTo.focus();
           },
