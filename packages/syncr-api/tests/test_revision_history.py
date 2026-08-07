@@ -8,9 +8,9 @@ the pair a bounded page cannot see: the oldest row of a complete page has no pre
 oldest row of a truncated one does, because the read asks for one more than it shows.
 
 **A concession is named on the revision that carries it**, read from the document's own list of
-identifiers, and one that has been revoked since is COUNTED rather than dropped, because a plan
-reported as solved under fewer concessions than it was is the failure the whole feature exists
-against.
+identifiers, and one the week no longer holds under that identifier is COUNTED rather than dropped,
+because a plan reported as solved under fewer concessions than it was is the failure the whole
+feature exists against.
 
 Pure, from literals, because the composition is. The route that answers with it is driven in
 ``test_week_routes_integration.py`` and the approval that fills it in
@@ -169,7 +169,7 @@ class TestTheConcessionsAPlanWasSolvedUnder:
 
         named = page.revisions[0]
         assert [one.id for one in named.adjustments] == [held.id]
-        assert named.revoked_adjustments == 0
+        assert named.unnamed_adjustments == 0
 
     def test_a_revision_solved_under_nothing_names_nothing_even_when_the_week_holds_one(
         self,
@@ -182,12 +182,13 @@ class TestTheConcessionsAPlanWasSolvedUnder:
         page = revision_page([earlier], held=(held,), page=PAGE)
 
         assert page.revisions[0].adjustments == ()
-        assert page.revisions[0].revoked_adjustments == 0
+        assert page.revisions[0].unnamed_adjustments == 0
 
-    def test_a_concession_revoked_since_is_counted_rather_than_dropped(self) -> None:
-        # The row is deleted on revocation and the document still names it, so the only honest
-        # answer is a count: a plan reported as solved under fewer concessions than it was is the
-        # silence this whole feature exists against.
+    def test_a_concession_the_week_no_longer_holds_is_counted_rather_than_dropped(self) -> None:
+        # A revocation deletes the row and a later concession of the same kind and target replaces
+        # it under the REPLACED row's identifier, so both leave the document naming a row that is
+        # not there. The only honest answer is a count: a plan reported as solved under fewer
+        # concessions than it was is the silence this whole feature exists against.
         gone = uuid4()
         still_held = a_concession()
         approved = an_approved(
@@ -197,7 +198,7 @@ class TestTheConcessionsAPlanWasSolvedUnder:
         page = revision_page([approved], held=(still_held,), page=PAGE)
 
         assert [one.id for one in page.revisions[0].adjustments] == [still_held.id]
-        assert page.revisions[0].revoked_adjustments == 1
+        assert page.revisions[0].unnamed_adjustments == 1
 
     def test_a_concession_of_another_week_reaches_no_revision_of_this_one(self) -> None:
         # The read is per week already, and this states that the pairing is by identifier rather

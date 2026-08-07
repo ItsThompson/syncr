@@ -245,9 +245,10 @@ class WeekRevisionResponse(WireModel):
         description="The approved concessions this plan was solved under, so a week never reads as "
         "feasible for a reason the user cannot see."
     )
-    revoked_adjustments: int = Field(
-        description="How many concessions this plan was solved under have been revoked since, and "
-        "so cannot be named. Zero for every plan whose concessions the week still holds."
+    unnamed_adjustments: int = Field(
+        description="How many concessions this plan was solved under the week no longer holds "
+        "under that identifier, and so cannot be named: revoked, or replaced by a later "
+        "concession of the same kind and target. Zero when the week still holds all of them."
     )
 
     @classmethod
@@ -262,7 +263,7 @@ class WeekRevisionResponse(WireModel):
             input_version=record.input_version,
             auto_applied=list(revision.auto_applied),
             adjustments=[AdjustmentResponse.of(one) for one in revision.adjustments],
-            revoked_adjustments=revision.revoked_adjustments,
+            unnamed_adjustments=revision.unnamed_adjustments,
         )
 
 

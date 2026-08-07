@@ -47,6 +47,7 @@ from syncr_api.plans.stored_documents import stored_document
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.weeks import IsoWeek
 from syncr_solver.inputs import WeekAdjustment
+from tests.boundaries import api_routes, route_identity
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 from tests.plan_documents import a_document
 
@@ -257,6 +258,22 @@ class TestTheApproveRoute:
         assert answered.status_code == ValidationFailed.status
         assert answered.json()["errors"][0]["field"] == ISO_WEEK_FIELD
 
+    def test_the_app_answers_exactly_one_approve_route(self, settings: ServiceSettings) -> None:
+        """The Week screen, the weekly session and the keyboard all approve through one endpoint.
+
+        Ticket 49 wires the three surfaces, and what this asserts is the half they depend on: there
+        is one route, so three callers cannot come to mean three slightly different acts. Read off
+        the app's own route table rather than from a list.
+        """
+        approving = sorted(
+            f"{method} {path}"
+            for route in api_routes(create_app(settings))
+            for method, path in route_identity(route)
+            if path.endswith("/approve")
+        )
+
+        assert approving == [f"POST {WEEKS_PREFIX}/{{iso_week}}/approve"]
+
     def test_the_history_names_the_concession_the_approved_plan_was_solved_under(
         self, http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
     ) -> None:
@@ -283,7 +300,7 @@ class TestTheApproveRoute:
         assert [one["id"] for one in listed[0]["adjustments"]] == [str(conceded)]
         assert listed[0]["adjustments"][0]["kind"] == "breach_floor"
         assert listed[0]["adjustments"][0]["deltaMinutes"] == BREACH_MINUTES
-        assert listed[0]["revokedAdjustments"] == 0
+        assert listed[0]["unnamedAdjustments"] == 0
         assert listed[0]["autoApplied"] == []
         assert history.json()["truncated"] is False
 

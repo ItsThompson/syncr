@@ -48,14 +48,14 @@ class WeekRevision:
 
     ``auto_applied`` names what this revision added without asking, which is a difference between
     two revisions rather than a column. ``adjustments`` names the concessions the plan was solved
-    under, which the document holds by identifier, and ``revoked_adjustments`` counts the ones the
+    under, which the document holds by identifier, and ``unnamed_adjustments`` counts the ones the
     week no longer holds, so a plan is never reported as conceded less than it was.
     """
 
     record: PlanRevisionRecord
     auto_applied: tuple[str, ...]
     adjustments: tuple[WeekAdjustmentRecord, ...]
-    revoked_adjustments: int
+    unnamed_adjustments: int
 
 
 @dataclass(frozen=True, slots=True)

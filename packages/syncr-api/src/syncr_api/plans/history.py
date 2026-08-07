@@ -12,9 +12,11 @@ the revision before it, and a history read already holds both.
 **The concessions a plan was solved under are named by identifier in the document.** So the week's
 concession rows are read once and paired here, rather than a route resolving one per revision.
 
-A concession may have been revoked since, in which case the document still names it and no row
-exists. The count of those travels beside the named ones, because a history that silently dropped
-them would report a plan as solved under fewer concessions than it was.
+A concession the week no longer holds under that identifier is COUNTED rather than dropped. Two
+things produce one, and both leave the document naming a row that is not there: a revocation, which
+deletes it, and a later concession of the same kind and target, which replaces it and keeps the
+replaced row's own identifier. Either way a history that dropped it silently would report a plan as
+solved under fewer concessions than it was.
 
 Pure, and every document is rebuilt exactly once, so a page of fifty is fifty rebuilds rather than
 one per question asked of it.
@@ -59,7 +61,7 @@ def revision_page(
                     record, documents[position], _predecessor(documents, position)
                 ),
                 adjustments=_named(documents[position], by_id),
-                revoked_adjustments=_revoked(documents[position], by_id),
+                unnamed_adjustments=_not_held(documents[position], by_id),
             )
             for position, record in enumerate(found[:page])
         ),
@@ -102,6 +104,6 @@ def _named(
     return tuple(one for one in by_id.values() if one.id in under)
 
 
-def _revoked(document: PlanDocument, by_id: Mapping[UUID, WeekAdjustmentRecord]) -> int:
-    """How many of them have been revoked since, so the count is never silently short."""
+def _not_held(document: PlanDocument, by_id: Mapping[UUID, WeekAdjustmentRecord]) -> int:
+    """How many of them the week no longer holds under that identifier: revoked, or replaced."""
     return sum(1 for one in document.adjustments if one not in by_id)
