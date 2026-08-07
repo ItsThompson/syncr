@@ -338,27 +338,38 @@ export function buildPinned(overrides: Partial<Pinned> = {}): Pinned {
 export interface WeekReads {
   /** How many times the week itself was read, which is how one refetch is told from two. */
   readonly weekReads: () => number;
+  /** Every week identifier the screen asked for, in order, which is how `[`, `]` and `T` are observed. */
+  readonly weeksRead: () => string[];
   /** The view the next read answers with, so a test can land a solve's result. */
   readonly serve: (view: WeekView) => void;
 }
 
-/** The three reads the Week screen makes, answered with what the test gave them. */
+/**
+ * The three reads the Week screen makes, answered with what the test gave them.
+ *
+ * EVERY WEEK IS ANSWERED, not only the one the test names, because the api serves every week and the screen navigates:
+ * `[`, `]` and `T` change the week in the URL, and a handler bound to one identifier would turn a navigation into an
+ * unhandled request. A neighbouring week is served the same plan under its own identifier, which is enough for a
+ * navigation to be observable and is never a claim about what that week holds.
+ */
 export function installWeekReads(view: WeekView): WeekReads {
   let served = view;
-  let weekReads = 0;
+  const asked: string[] = [];
 
   apiServer.use(
     readyz(),
     jsonHandler("/api/v1/settings", { status: 200, body: SETTINGS }),
     jsonHandler("/api/v1/areas", { status: 200, body: buildAreas() }),
-    http.get(`${window.location.origin}/api/v1/weeks/${ISO_WEEK}`, () => {
-      weekReads += 1;
-      return HttpResponse.json(served);
+    http.get(`${window.location.origin}/api/v1/weeks/:isoWeek`, ({ params }) => {
+      const isoWeek = String(params.isoWeek);
+      asked.push(isoWeek);
+      return HttpResponse.json(isoWeek === served.isoWeek ? served : { ...served, isoWeek });
     }),
   );
 
   return {
-    weekReads: () => weekReads,
+    weekReads: () => asked.filter((isoWeek) => isoWeek === view.isoWeek).length,
+    weeksRead: () => [...asked],
     serve: (next) => {
       served = next;
     },

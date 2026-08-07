@@ -38,18 +38,8 @@ export function weekAway(isoWeek: string, steps: number): string {
   return isoWeekOf(isoDateOf(at)) ?? isoWeek;
 }
 
-/** True where the identifier names a week this arithmetic can read. */
-export function isIsoWeek(isoWeek: string): boolean {
-  return mondayOf(isoWeek) !== null;
-}
-
 function isoDateOf(at: Date): string {
   const month = String(at.getUTCMonth() + 1).padStart(2, "0");
   const day = String(at.getUTCDate()).padStart(2, "0");
   return `${String(at.getUTCFullYear())}-${month}-${day}`;
-}
-
-/** Whether the week holding a date is the one on screen, which is what `T` moves to and what it disables. */
-export function isSameWeek(isoWeek: string, isoDate: string): boolean {
-  return isoWeekOf(isoDate) === isoWeek;
 }

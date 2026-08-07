@@ -7,6 +7,10 @@
  * same call: `Shift+Up` and `Shift+Down` compute an instant fifteen minutes either way and hand it to the same write
  * the drop hands it to. There is no second path, so there is nothing for the two to disagree about.
  *
+ * `j` IS NEXT AND `k` IS PREVIOUS, which is the vi convention rather than the order section 15's table lists them in.
+ * The reader's own muscle memory settles it: `j` moves down a list everywhere else they type, and the grid's list runs
+ * down the day. `h` and `l` follow the table exactly, previous and next column.
+ *
  * SELECTION SURVIVES A REDRAW ONLY WHERE THE BLOCK DOES. A solve landing can remove the selected block, and holding an
  * identifier the week no longer contains would leave the keys acting on nothing: `surviving` is what turns that into a
  * cleared selection rather than a silent no-op. A reason row for a block that no longer exists is the same case, one
