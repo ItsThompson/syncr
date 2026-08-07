@@ -19,21 +19,27 @@
 # are, which is small resident processes reading /proc and the Docker API.
 #
 # ---------------------------------------------------------------------------------------------------
-# DO NOT START THIS STACK BEFORE TICKETS 58 AND 1532, or silence two rules until they land.
+# TWO ALERTS READ A FILE RATHER THAN A SCRAPE, AND BOTH PRODUCERS NOW EXIST.
 #
-# `BackupStale` and `LearningJobFailed` both fire on day one, through the `absent()` disjunct that
-# makes them fire rather than stay silent while their producer is missing. That is the right reading:
-# no backup having ever run is more serious than a stale one, and a silent rule is the defect this
-# whole stack exists to prevent. But neither has an ACTION until:
+# `BackupStale` and `LearningJobFailed` are stated over families no process exposes: a one-shot has
+# exited by the time a scrape would arrive, so each writes its exposition into the textfile collector
+# below. Both rules carry an `absent()` disjunct, which makes them fire while their file is missing.
+# That is the right reading and it is deliberate: no backup having ever run is more serious than a
+# stale one. DO NOT REMOVE THE DISJUNCTS.
 #
-#   ticket 58    writes `syncr_backup_last_success_timestamp_seconds` from the nightly backup
-#   ticket 1532  gives the learning container a timer and a Compose service
+# What that costs is now a SCHEDULING requirement rather than a wait for another ticket:
 #
-# Until both land, either sequence this stack after them, or post an Alertmanager silence WITH AN
-# EXPIRY for those two alertnames. On a personal deployment with one channel, two permanently-firing
-# alerts are the fatigue section 18 is written against, and the whole justification for keeping the
-# `absent()` disjuncts is that this cost is carried as a recorded constraint rather than as a
-# surprise. Do NOT remove the disjuncts: that restores the silence they exist to prevent.
+#   the backup      `deployments/systemd/syncr-backup.timer`, nightly at 03:00, writes
+#                   `syncr_backup_last_success_timestamp_seconds`
+#   the WAL shipper `deployments/systemd/syncr-walship.timer`, every minute, writes
+#                   `syncr_wal_archive_last_success_timestamp_seconds`
+#   the fitter      `deployments/systemd/syncr-learning.timer`, nightly at 03:00, writes the six
+#                   learning families
+#
+# So: INSTALL THE TIMERS BEFORE OR WITH THIS STACK. `docs/runbooks/deploy-and-rollback.md` has the
+# order, and `just backup-now` moves the first two by hand in under a minute. On a host where the
+# timers are not installed yet, post an Alertmanager silence WITH AN EXPIRY for those two alertnames;
+# a permanently-firing alert is the fatigue section 18 is written against.
 # ---------------------------------------------------------------------------------------------------
 # =============================================================================
 
@@ -222,7 +228,5 @@ volumes:
   prometheus_data:
   alertmanager_data:
   grafana_data:
-  # Shared by the node exporter and by whatever writes into it: the learning one-shot and the
-  # nightly backup. Named so both halves mount the same volume rather than a host path that only
-  # exists on the deployed machine.
-  textfile_metrics:
+  # `textfile_metrics` is NOT declared here. It is declared in `docker-compose.yml`, beside the two
+  # one-shots that write into it, and this file mounts it into the exporter that serves it.

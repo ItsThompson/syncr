@@ -655,12 +655,17 @@ class TestTheExtractionItself:
         assert collector_names_are_plain_literals() == []
 
 
-class TestTheTwelve:
-    def test_there_are_exactly_twelve_rules(self) -> None:
-        """Twelve, and no thirteenth. Alert fatigue is the failure mode on a personal deployment."""
+class TestTheThirteen:
+    def test_there_are_exactly_thirteen_rules(self) -> None:
+        """Thirteen, and no fourteenth. Alert fatigue is the failure mode on a personal deployment.
+
+        Section 18 names twelve. The thirteenth is `ClockDrifting`, which section 19's failure
+        matrix names as a row of its own and which nothing else in the deployment would notice; the
+        reasoning is beside the rule and beside `SEVERITY_BY_ALERT`.
+        """
         assert len(alert_rules()) == len(SEVERITY_BY_ALERT)
 
-    def test_the_names_are_section_eighteen_s_own(self) -> None:
+    def test_the_names_are_the_two_sections_own(self) -> None:
         assert {rule.alert for rule in alert_rules()} == set(SEVERITY_BY_ALERT)
 
     @pytest.mark.parametrize(("name", "severity"), sorted(SEVERITY_BY_ALERT.items()))
@@ -723,9 +728,9 @@ class TestDelivery:
         """The shape that shipped, and the shape it becomes in one edit, both forbidden.
 
         `severity = critical` suppressing `severity = warning`, scoped with `equal: ["deployment"]`.
-        `deployment` is an `external_labels` entry, so it is identical on all twelve rules: the rule
-        read 'any firing critical suppresses every firing warning'. `BackupStale` fires
-        unconditionally until ticket 58 writes its metric, so ten minutes after the stack first
+        `deployment` is an `external_labels` entry, so it is identical on EVERY rule: the rule
+        read 'any firing critical suppresses every firing warning'. `BackupStale` fired
+        unconditionally while nothing wrote its metric, so ten minutes after the stack first
         started, none of the seven warnings was deliverable.
 
         BOTH SIDES ARE CONSTRAINED, because constraining the source alone left the same defect one
@@ -786,7 +791,7 @@ class TestDelivery:
             "and Alertmanager will honour it. Compare `amtool check-config`'s own count."
         )
 
-    def test_every_alert_an_inhibit_rule_names_is_one_of_the_twelve(self) -> None:
+    def test_every_alert_an_inhibit_rule_names_is_a_rule_that_exists(self) -> None:
         """A rule naming an alert that does not exist is dead, and a typo reads as one."""
         for rule in inhibitions():
             for matcher in (*rule.sources, *rule.targets):
@@ -904,8 +909,8 @@ class TestTheAbsentDiscipline:
         assert "syncr_horizon_weeks_without_plan" not in unproduced
 
     def test_every_rule_over_an_exporter_family_says_absent(self) -> None:
-        """An exporter that is down reads as plenty of disk and a healthy database."""
-        for name in ("DiskFillingUp", "DatabaseUnreachable"):
+        """An exporter that is down reads as plenty of disk, a live database and a synced clock."""
+        for name in ("DiskFillingUp", "DatabaseUnreachable", "ClockDrifting"):
             assert "absent(" in named(name).expr
 
 

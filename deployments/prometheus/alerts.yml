@@ -1,8 +1,14 @@
-# The twelve alert rules, and no thirteenth.
+# The thirteen alert rules, and no fourteenth.
 #
-# `18-observability.md` names exactly twelve. On a personal deployment alert fatigue is the failure
-# mode to design against, so two rules govern every entry and both are enforced by
-# `tests/test_alert_rules.py`:
+# `18-observability.md` names twelve and this file holds THIRTEEN. The extra one is `ClockDrifting`,
+# and it is here because `19-nonfunctional.md`'s failure matrix names it as a row of its own -- "clock
+# skew on the host: alert on NTP drift" -- while section 18's table did not enumerate it. The frame
+# and the now rule are computed against the host clock, so a drifting one makes every plan correct and
+# placed in the wrong day. Ticket 58 resolved the two sections in favour of the rule existing; the
+# reasoning is beside the rule.
+#
+# On a personal deployment alert fatigue is the failure mode to design against, so two rules govern
+# every entry and both are enforced by `tests/test_alert_rules.py`:
 #
 #   - NO ALERT FIRES FOR A CONDITION THE USER CANNOT ACT ON. An unactionable alert trains the user to
 #     ignore the channel, and the channel is one channel.
@@ -89,23 +95,39 @@ groups:
             sources still sync. What is stale is the calendar on the phone.
           runbook: docs/runbooks/projection-failing.md
 
-      # The only alert about data that cannot be recovered. The timestamp is written by the nightly
-      # backup into the node exporter's textfile collector, so `absent()` is not defensive dressing:
-      # it is the reading on a deployment where the backup has never run, which is exactly when this
-      # alert must fire rather than stay quiet.
+      # The only alert about data that cannot be recovered, and it reads BOTH producers of that
+      # guarantee. The nightly dump bounds the loss to a bit under a day; the WAL shipper bounds it to
+      # minutes, and section 19 states a recovery point UNDER FIVE MINUTES that nothing else observes.
+      # A rule over the dump alone would report a healthy backup path while every commit since 03:00
+      # was unrecoverable.
+      #
+      # Both timestamps are written into the node exporter's textfile collector, by
+      # `python3 -m ops.dump` and `python3 -m ops.ship`, so `absent()` is not defensive dressing: it is
+      # the reading on a deployment where the backup has never run, which is exactly when this alert
+      # must fire rather than stay quiet.
+      #
+      # THE WAL THRESHOLD IS 15 MINUTES AGAINST AN OBJECTIVE OF 5, and the gap is deliberate. The
+      # objective is breached from the moment the series stops moving, not from when this fires; an
+      # alert on one refused upload is an alert the operator learns to ignore. `ops.config` holds both
+      # figures and the runbook is crossed against them.
       - alert: BackupStale
         expr: >-
           absent(syncr_backup_last_success_timestamp_seconds)
           or time() - max(syncr_backup_last_success_timestamp_seconds) > 129600
+          or absent(syncr_wal_archive_last_success_timestamp_seconds)
+          or time() - max(syncr_wal_archive_last_success_timestamp_seconds) > 900
         for: 10m
         labels:
           severity: critical
         annotations:
-          summary: No successful backup in 36 hours, so recent data is not recoverable.
+          summary: >-
+            No successful backup in 36 hours, or no WAL archived off-host in 15 minutes, so recent
+            data is not recoverable.
           surviving: >-
-            Everything in the product works. What is missing is the copy: WAL archiving may still be
-            running, so the exposure is bounded by the last archived segment rather than by the last
-            dump.
+            Everything in the product works. What is missing is the copy. Check WHICH of the two
+            timestamps stopped moving before treating this as total exposure: with the nightly dump
+            fresh and WAL stale, everything up to 03:00 is recoverable; with WAL fresh and the dump
+            stale, the recovery point is still minutes old.
           runbook: docs/runbooks/backup-stale.md
 
       # Every family in the plan pipeline, the calendar and the token age is recorded in the WORKER
@@ -172,7 +194,7 @@ groups:
             The plan is still solved, projected and correct against the commitments syncr last read.
             The risk is that those commitments have moved: a lecture that was cancelled is still
             being planned around.
-          runbook: docs/runbooks/source-stale.md
+          runbook: docs/runbooks/ics-feed-broken.md
 
       # A superseded solve is the EXPECTED outcome of editing quickly, so the alert is on a sustained
       # ratio and never on an event. The window is the one `docs/runbooks/debounce-tuning.md` states,
@@ -269,7 +291,39 @@ groups:
           surviving: >-
             Everything works until it does not. Postgres, the api and the worker are all still
             healthy; a full disk stops writes, so act before that rather than after.
-          runbook: docs/runbooks/disk-filling-up.md
+          runbook: docs/runbooks/disk-pressure.md
+
+      # THE THIRTEENTH RULE, and section 18's table names twelve. It is here because section 19's
+      # failure matrix names it as its own row -- "clock skew on the host: alert on NTP drift" -- and
+      # because nothing else in this deployment would notice. THE FRAME AND THE NOW RULE DEPEND ON THE
+      # HOST CLOCK: every day boundary, every "is this block running", and every staleness comparison
+      # is computed against it, so a host half an hour ahead places work in a week that has not
+      # started and marks blocks past that are still ahead. Nothing fails; everything is wrong.
+      #
+      # A WARNING rather than a critical, by the same scheme the rest of the file uses: no data is
+      # lost, and the repair is one `timedatectl` away. `absent()` because a host with no time
+      # synchronisation at all reports no timex series, which is the more serious reading and the one a
+      # threshold alone would be silent for.
+      #
+      # `node_timex_sync_status` is 0 when the kernel's clock is not synchronised. The offset is read
+      # as an absolute value at half a second, which is far tighter than anything the product can
+      # notice and far looser than normal NTP jitter, so it fires on a clock that has stopped being
+      # corrected rather than on one being corrected.
+      - alert: ClockDrifting
+        expr: >-
+          absent(node_timex_sync_status)
+          or node_timex_sync_status == 0
+          or abs(node_timex_offset_seconds) > 0.5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: The host clock is not synchronised, or has drifted past half a second.
+          surviving: >-
+            Every screen still renders and nothing is lost. What is unreliable is WHEN: the day
+            boundary, which blocks read as past, and every staleness figure are all computed against
+            this clock, so a plan can be correct and placed in the wrong day.
+          runbook: docs/runbooks/clock-drift.md
 
   - name: syncr-info
     rules:

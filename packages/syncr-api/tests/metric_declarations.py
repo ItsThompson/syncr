@@ -18,7 +18,14 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 # ---------------------------------------------------------------------------
-# THE TWELVE, exactly as `18-observability.md` names them, with the severity each carries.
+# THE THIRTEEN, and the severity each carries.
+#
+# `18-observability.md` names twelve. THE THIRTEENTH IS `ClockDrifting`, and it is here because
+# `19-nonfunctional.md`'s failure matrix names it as a row of its own, "clock skew on the host:
+# alert on NTP drift", while section 18's table did not enumerate it. Ticket 58 resolved the two in
+# favour of the rule existing: the frame and the now rule are computed against the host clock, so a
+# drifting one leaves every plan correct and placed in the wrong day, and nothing else in the
+# deployment would notice.
 #
 # `BackupStale` is critical while `SolveFailing` is a warning, and that pair is the whole severity
 # scheme: A FAILED SOLVE LOSES NOTHING, because the previous plan is intact and still projected, and
@@ -36,6 +43,7 @@ SEVERITY_BY_ALERT: Final[Mapping[str, str]] = {
     "AssemblySlow": "warning",
     "HorizonNotMaintained": "warning",
     "DiskFillingUp": "warning",
+    "ClockDrifting": "warning",
     "LearningJobFailed": "info",
 }
 
@@ -83,9 +91,10 @@ JOBS_BY_MEMBER: Final[Mapping[str, tuple[str, ...]]] = {
     "syncr_domain": ("syncr-api", "syncr-worker"),
     "syncr_solver": ("syncr-api", "syncr-worker"),
     "syncr_cli": ("syncr-api", "syncr-worker"),
-    # The nightly one-shot has no service and no HTTP surface at all: a container that has exited
-    # cannot be scraped, so it writes its exposition to a file the node exporter serves. Its
-    # families are therefore absent until it has run at least once, and nothing runs it (1532).
+    # The nightly one-shot has no service on the loop and no HTTP surface at all: a container that
+    # has exited cannot be scraped, so it writes its exposition to a file the node exporter serves.
+    # Its families are therefore absent until the timer has run at least once
+    # (`deployments/systemd/syncr-learning.timer`).
     "syncr_learning": (),
 }
 
@@ -163,9 +172,18 @@ SPEC_FAMILIES: Final[Mapping[str, str]] = {
 EXTERNALLY_PRODUCED: Final[Mapping[str, str]] = {
     "syncr_backup_last_success_timestamp_seconds": (
         "Written by the nightly backup into the node exporter's textfile collector, because a "
-        "script that has exited cannot be scraped. Ticket 58 owns the script; `BackupStale` reads "
-        "this name with an `absent()` disjunct, so the alert fires on a deployment where no backup "
-        "has ever run rather than staying silent until one does."
+        "script that has exited cannot be scraped. `deployments/ops/dump.py` writes it, only on "
+        "success and only as its last step; `BackupStale` reads this name with an `absent()` "
+        "disjunct, so the alert fires on a deployment where no backup has ever run rather than "
+        "staying silent until one does."
+    ),
+    "syncr_wal_archive_last_success_timestamp_seconds": (
+        "Written by the WAL shipper, `deployments/ops/ship.py`, the same way and for the same "
+        "reason. It is a SECOND producer of one guarantee: the nightly dump bounds data loss to a "
+        "bit under a day and this bounds it to minutes, which is the recovery point section 19 "
+        "states and the only thing that observes it. The shipper refuses to write it while "
+        "`pg_stat_archiver` reports a pending failure, because an empty staging volume reads "
+        "identically to a healthy one."
     ),
 }
 
