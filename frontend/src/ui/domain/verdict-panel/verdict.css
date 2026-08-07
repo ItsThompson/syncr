@@ -5,7 +5,8 @@
  * whatever the rows say, and adding a pin changes the rows and never the height.
  *
  * A FOURTH TRADEOFF ROW IS PARTIALLY VISIBLE, and that is the whole scroll affordance: the clipped edge is what
- * makes the scroll discoverable, so no scrollbar has to be drawn. 226px holds the lead sentence plus three rows,
+ * makes the scroll discoverable, so no scrollbar has to be drawn. Whether that edge is actually visible at 226px is a
+ * RENDERED-PIXEL claim and is not gated yet: ticket 1493. 226px holds the lead sentence plus three rows,
  * which is what sets the token, and `scrollbar-width: none` is what keeps the fourth row's edge the only cue. A
  * scrollbar would also change the width of the rows as they grow, which is motion by another name.
  *

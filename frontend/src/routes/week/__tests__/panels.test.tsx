@@ -373,12 +373,12 @@ describe("the two controls in the band", () => {
 });
 
 describe("an empty slot's gutter label", () => {
-  it("carries the slot's Area, the estimate that fits it exactly, and the window it should prefer", async () => {
+  it("is drawn as a band even though the payload carries no label for it yet", async () => {
     await renderWeek(buildWeekView());
 
     /* The wire carries no rendered label for an empty slot yet (ticket 1350), so the band draws with an empty gutter
-     * and there is nothing to activate. What is asserted is that the band is drawn at all: a gap left as nothing is
-     * pixel-identical to an ordinary gap. */
+     * and there is nothing to activate: what the slot's Area and duration become is ticket 1490's. What is asserted
+     * here is that the band is drawn AT ALL, because a gap left as nothing is pixel-identical to an ordinary gap. */
     expect(document.querySelectorAll(".week-band")).toHaveLength(2);
     expect(document.querySelectorAll(".week-band__label")).toHaveLength(1);
   });

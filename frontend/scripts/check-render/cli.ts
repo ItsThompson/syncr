@@ -7,9 +7,13 @@
  * to the same shorthand, and a `-webkit-line-clamp` shorthand supplying an end-ellipsis that reading `white-space`
  * and `text-overflow` could not see.
  *
- * NOT YET IN THE EIGHT-CHECK SET, and deliberately: no browser is a declared dependency of this repository, so
- * adding it to `just lint-frontend` and to CI is a change to what every agent's commit requires. That adoption is
- * ticket 1352's, along with the question of which browser CI gets. Run by hand until then. */
+ * THE NINTH OF THE NINE CHECKS `just lint-frontend` RUNS, in the pre-commit hook and in CI. No browser is a declared
+ * dependency of this repository, so it uses the one already installed and REFUSES rather than skips when it finds
+ * none: a check that passes when it cannot look reports a claim it never tested. GitHub's ubuntu runner images ship
+ * `/usr/bin/google-chrome`, which is one of the paths it probes, so CI needs no setup step.
+ *
+ * Its case list is still the nine the title's clamp needed. Widening it to the composed STATES -- selection, conflict,
+ * a proposal target, the drag's step-up, the verdict panel's fourth row -- is ticket 1493. */
 
 import { buildStylesheets } from "../check-bundle/build.ts";
 import { checkRender } from "./check.ts";

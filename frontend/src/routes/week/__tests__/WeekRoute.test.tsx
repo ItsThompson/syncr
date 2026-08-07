@@ -5,162 +5,39 @@
  * the network layer, so the real client, the real path it assembles from the settled `{iso_week}` spelling, and the
  * real response parsing are all exercised.
  *
- * The payloads are the shapes ticket 31's endpoint answers with, reduced to the fields the screen reads. */
+ * THE PAYLOADS ARE `./fixtures`, TYPED AGAINST THE GENERATED CLIENT. This file held its own untyped copies first, and
+ * they had invented three shapes the api does not produce -- an Area with `targetShare` and `floorMinutesPerWeek`,
+ * which the api spells `budgetPercent` and `floorHours`, and a `reviewCadence` of `weekly`, which is not one of the two
+ * the enum holds. Every case here passed against all three, because the double takes a body of `unknown`. One typed
+ * home per screen is what makes a renamed field a compile error instead of a green test. */
 
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { apiServer } from "../../../testing/apiServer";
-import { jsonHandler, readyz, recordingHandler } from "../../../testing/apiStub";
+import { jsonHandler, recordingHandler } from "../../../testing/apiStub";
 import { renderAt } from "../../../testing/renderRoute";
 import { GRID_H_PX } from "../../../ui/domain";
+import {
+  APPLICATION,
+  EMPTY_WEEK_FACTS,
+  ISO_WEEK,
+  LEETCODE,
+  SETTINGS,
+  WEEK_PATH,
+  buildReadings,
+  buildWeekView,
+  installWeekReads,
+} from "./fixtures";
 
 /* The axis the fixture's own week yields: the declared bounds run 06:00 to 22:00 and no block lies outside them, so
  * the extent is 960 minutes and every column's canvas is that many minutes of pixels. */
 const EXTENT_MINUTES = 16 * 60;
 
-const ISO_WEEK = "2026-W07";
-const DATES = [
-  "2026-02-09",
-  "2026-02-10",
-  "2026-02-11",
-  "2026-02-12",
-  "2026-02-13",
-  "2026-02-14",
-  "2026-02-15",
-];
-
-const AREA_ID = "3f6b2c9d-1a77-4a1b-9a5f-8a2e4a1b9a5f";
-
-const SETTINGS = {
-  homeZone: "Europe/London",
-  activeZone: "Europe/London",
-  activeZoneDate: "2026-02-09",
-  dayStart: "06:00",
-  dayEnd: "22:00",
-  visibleHours: 12,
-  reviewCadence: "weekly",
-};
-
-const AREAS = {
-  areas: [
-    {
-      id: AREA_ID,
-      name: "Career",
-      pigmentIndex: 0,
-      parentId: null,
-      targetShare: "0.25",
-      floorMinutesPerWeek: null,
-      defaultPreferenceId: null,
-    },
-  ],
-  ramp: { pigmentCount: 12, pigmentsInUse: 1, areasSharingAPigment: 0, statement: null },
-};
-
-function span(startIso: string, endIso: string) {
-  return { start: startIso, end: endIso };
-}
-
-function block(id: string, startIso: string, endIso: string, title: string) {
-  return {
-    id,
-    title,
-    areaId: AREA_ID,
-    origin: "task",
-    binding: { kind: "task", entityId: AREA_ID, occurrenceKey: id, splitIndex: null },
-    interval: span(startIso, endIso),
-    pinned: false,
-    splitCount: null,
-    supersededPlacement: null,
-    objectiveDelta: null,
-    reason: { clauses: [], dominant: null },
-  };
-}
-
-function weekView(overrides: Record<string, unknown> = {}) {
-  return {
-    isoWeek: ISO_WEEK,
-    span: span("2026-02-09T00:00:00+00:00", "2026-02-16T00:00:00+00:00"),
-    zoneByDate: Object.fromEntries(DATES.map((date) => [date, "Europe/London"])),
-    live: {
-      isoWeek: ISO_WEEK,
-      zoneByDate: Object.fromEntries(DATES.map((date) => [date, "Europe/London"])),
-      blocks: [
-        block("b1", "2026-02-09T09:00:00+00:00", "2026-02-09T10:30:00+00:00", "Leetcode · Graphs"),
-        block(
-          "b2",
-          "2026-02-10T19:00:00+00:00",
-          "2026-02-10T19:30:00+00:00",
-          "36 South Application",
-        ),
-      ],
-      forbiddenWindows: [
-        {
-          interval: span("2026-02-09T16:45:00+00:00", "2026-02-09T18:00:00+00:00"),
-          kind: "recovery",
-          scope: "all",
-          forbiddenAreaIds: [],
-          label: "recovery · Kontron Interview",
-          anchorId: AREA_ID,
-        },
-      ],
-      emptySlots: [
-        {
-          interval: span("2026-02-11T14:00:00+00:00", "2026-02-11T15:00:00+00:00"),
-          areaId: AREA_ID,
-          reason: "no_eligible_content",
-        },
-      ],
-      adjustments: [],
-    },
-    emptyReason: null,
-    emptyWeek: null,
-    readings: {
-      scheduledMinutes: 4848,
-      discretionaryMinutes: 3126,
-      unallocatedMinutes: 1104,
-      oversubscriptionMinutes: 0,
-      unconfirmedDays: 0,
-      offPlanMinutes: 0,
-      blockCount: 91,
-      planCurrency: "current",
-    },
-    offPlan: [],
-    operation: null,
-    inputVersion: 4,
-    adjustments: [],
-    candidateAdjustment: null,
-    conflicts: [],
-    pins: [],
-    proposal: null,
-    verdict: null,
-    ...overrides,
-  };
-}
-
-const emptyWeekFacts = {
-  coversThisWeek: false,
-  horizonDays: 14,
-  horizonThrough: "2026-02-01",
-  missingInputs: [],
-  statement: "This week is beyond your 14-day planning horizon, which reaches 1 February.",
-};
-
-function installReads(view: Record<string, unknown>) {
-  apiServer.use(
-    readyz(),
-    jsonHandler("/api/v1/settings", { status: 200, body: SETTINGS }),
-    jsonHandler("/api/v1/areas", { status: 200, body: AREAS }),
-    jsonHandler(`/api/v1/weeks/${ISO_WEEK}`, { status: 200, body: view }),
-  );
-}
-
-const weekPath = `/week?week=${ISO_WEEK}`;
-
 describe("the week the reader asked for", () => {
   it("renders seven columns from the payload's own zone map", async () => {
-    installReads(weekView());
-    const { container } = renderAt(weekPath);
+    installWeekReads(buildWeekView());
+    const { container } = renderAt(WEEK_PATH);
 
     await waitFor(() => {
       expect(container.querySelectorAll(".week-day")).toHaveLength(7);
@@ -168,16 +45,16 @@ describe("the week the reader asked for", () => {
   });
 
   it("draws each block once, in the column its own start falls in", async () => {
-    installReads(weekView());
-    renderAt(weekPath);
+    installWeekReads(buildWeekView());
+    renderAt(WEEK_PATH);
 
-    expect(await screen.findByLabelText("Leetcode · Graphs · Career")).toBeInTheDocument();
-    expect(screen.getByLabelText("36 South Application · Career")).toBeInTheDocument();
+    expect(await screen.findByLabelText(`${LEETCODE} · Career`)).toBeInTheDocument();
+    expect(screen.getByLabelText(`${APPLICATION} · Career`)).toBeInTheDocument();
   });
 
   it("draws the forbidden window's STORED label in the gutter", async () => {
-    installReads(weekView());
-    renderAt(weekPath);
+    installWeekReads(buildWeekView());
+    renderAt(WEEK_PATH);
 
     expect(await screen.findByText("recovery · Kontron Interview")).toBeInTheDocument();
   });
@@ -186,8 +63,8 @@ describe("the week the reader asked for", () => {
    * with an empty gutter rather than with a second wording of it. What is asserted is that it draws AT ALL: a gap
    * left as nothing is pixel-identical to an ordinary gap, which is the defect the band exists to prevent. */
   it("draws the empty slot's band even though the payload carries no label for it", async () => {
-    installReads(weekView());
-    const { container } = renderAt(weekPath);
+    installWeekReads(buildWeekView());
+    const { container } = renderAt(WEEK_PATH);
 
     await waitFor(() => {
       expect(container.querySelectorAll(".week-band")).toHaveLength(2);
@@ -196,8 +73,8 @@ describe("the week the reader asked for", () => {
   });
 
   it("reads the strip's three figures and the currency from the payload", async () => {
-    installReads(weekView());
-    renderAt(weekPath);
+    installWeekReads(buildWeekView());
+    renderAt(WEEK_PATH);
 
     expect(await screen.findByText("80.8h")).toBeInTheDocument();
     expect(screen.getByText("52.1h")).toBeInTheDocument();
@@ -206,15 +83,15 @@ describe("the week the reader asked for", () => {
   });
 
   it("qualifies the block count while a solve is in flight, rather than spinning", async () => {
-    installReads(weekView({ readings: { ...weekView().readings, planCurrency: "solving" } }));
-    renderAt(weekPath);
+    installWeekReads(buildWeekView({ readings: buildReadings({ planCurrency: "solving" }) }));
+    renderAt(WEEK_PATH);
 
     expect(await screen.findByText("91 · solving")).toBeInTheDocument();
   });
 
   it("labels each column with its weekday and date", async () => {
-    installReads(weekView());
-    renderAt(weekPath);
+    installWeekReads(buildWeekView());
+    renderAt(WEEK_PATH);
 
     expect(await screen.findByText("MON 09")).toBeInTheDocument();
     expect(screen.getByText("SUN 15")).toBeInTheDocument();
@@ -230,11 +107,11 @@ describe("the week the reader asked for", () => {
    * the cap is that display's 16. In a browser the cap is the real display's, which is the whole point of moving the
    * clamp down here: clamping above the grid capped a 27 inch reader at the 13 inch reference. */
   it("renders a 24-hour setting at the measured display's own cap of 16 hours", async () => {
-    installReads(weekView());
+    installWeekReads(buildWeekView());
     apiServer.use(
       jsonHandler("/api/v1/settings", { status: 200, body: { ...SETTINGS, visibleHours: 24 } }),
     );
-    const { container } = renderAt(weekPath);
+    const { container } = renderAt(WEEK_PATH);
 
     await screen.findByText("MON 09");
     const canvas = container.querySelector(".week-day__canvas");
@@ -248,15 +125,15 @@ describe("the week the reader asked for", () => {
 
 describe("a week with no plan", () => {
   it("says why, in the server's own sentence, and offers the horizon's two repairs", async () => {
-    installReads(
-      weekView({
+    installWeekReads(
+      buildWeekView({
         live: null,
         readings: null,
         emptyReason: "outside_horizon",
-        emptyWeek: emptyWeekFacts,
+        emptyWeek: EMPTY_WEEK_FACTS,
       }),
     );
-    renderAt(weekPath);
+    renderAt(WEEK_PATH);
 
     expect(
       await screen.findByText(
@@ -268,35 +145,35 @@ describe("a week with no plan", () => {
   });
 
   it("draws no grid at all, so an empty state and a grid can never be on screen together", async () => {
-    installReads(
-      weekView({
+    installWeekReads(
+      buildWeekView({
         live: null,
         readings: null,
         emptyReason: "outside_horizon",
-        emptyWeek: emptyWeekFacts,
+        emptyWeek: EMPTY_WEEK_FACTS,
       }),
     );
-    const { container } = renderAt(weekPath);
+    const { container } = renderAt(WEEK_PATH);
 
     await screen.findByRole("button", { name: "Solve this week now" });
     expect(container.querySelector(".week-grid")).toBeNull();
   });
 
   it("offers one repair for a missing input, and points it at the setup route", async () => {
-    installReads(
-      weekView({
+    installWeekReads(
+      buildWeekView({
         live: null,
         readings: null,
         emptyReason: "setup_incomplete",
         emptyWeek: {
-          ...emptyWeekFacts,
+          ...EMPTY_WEEK_FACTS,
           coversThisWeek: true,
           missingInputs: ["areas"],
           statement: "Declare at least one Area and a day shape for each weekday.",
         },
       }),
     );
-    renderAt(weekPath);
+    renderAt(WEEK_PATH);
 
     expect(await screen.findByRole("link", { name: "Finish setting up" })).toHaveAttribute(
       "href",
@@ -310,16 +187,16 @@ describe("a week with no plan", () => {
       status: 202,
       body: null,
     });
-    installReads(
-      weekView({
+    installWeekReads(
+      buildWeekView({
         live: null,
         readings: null,
         emptyReason: "outside_horizon",
-        emptyWeek: emptyWeekFacts,
+        emptyWeek: EMPTY_WEEK_FACTS,
       }),
     );
     apiServer.use(solve.handler);
-    renderAt(weekPath);
+    renderAt(WEEK_PATH);
 
     (await screen.findByRole("button", { name: "Solve this week now" })).click();
 
@@ -331,10 +208,11 @@ describe("a week with no plan", () => {
 
 describe("a week the api refuses", () => {
   it("says the plan was not read and leaves the reader's plan unchanged", async () => {
+    /* The three reads, with the week's own answering a refusal rather than a view: `installWeekReads` serves a view, so
+     * the refusal is installed over it. Later handlers win in msw, which is what makes this an override of one read
+     * rather than a second copy of all three. */
+    installWeekReads(buildWeekView());
     apiServer.use(
-      readyz(),
-      jsonHandler("/api/v1/settings", { status: 200, body: SETTINGS }),
-      jsonHandler("/api/v1/areas", { status: 200, body: AREAS }),
       jsonHandler(`/api/v1/weeks/${ISO_WEEK}`, {
         status: 422,
         body: {
@@ -345,7 +223,7 @@ describe("a week the api refuses", () => {
         },
       }),
     );
-    renderAt(weekPath);
+    renderAt(WEEK_PATH);
 
     expect(await screen.findByText("iso_week is not an ISO week identifier.")).toBeInTheDocument();
   });
@@ -355,8 +233,8 @@ describe("a week the api refuses", () => {
    * and it is read as NOT YET READABLE rather than rendered with holes: a strip drawing three empty cells over a real
    * grid would state figures nobody computed. Checking `live` alone leaves that reachable, so the pair is checked. */
   it("treats a plan with no figures as not yet readable rather than drawing it with holes", async () => {
-    installReads(weekView({ readings: null }));
-    renderAt(weekPath);
+    installWeekReads(buildWeekView({ readings: null }));
+    renderAt(WEEK_PATH);
 
     expect(await screen.findByText("Reading this week")).toBeInTheDocument();
   });

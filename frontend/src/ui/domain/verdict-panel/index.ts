@@ -1,8 +1,8 @@
 /* THE VERDICT PANEL: the week's own feasibility, at panel volume in amber, with a fixed height.
  *
  * The two reserved heights live here, in `tokens.css`, promoted out of layer 1 with this component and the summary
- * strip: `--verdict-h` for the panel and `--strip-h` for the strip, so the panel and the strip's verdict cell cannot
- * drift apart.
+ * strip: `--verdict-h` for the panel and `--strip-h` for the strip. Two values, one decision -- both are reserved so
+ * the grid beneath them cannot shift under the cursor mid-drag.
  */
 
 export { ConcessionRow, type ConcessionRowProps } from "./ConcessionRow";

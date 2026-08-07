@@ -73,7 +73,7 @@ async function rule(selector: string): Promise<[string, string][]> {
 }
 
 describe("the height is fixed and the rows scroll inside it", () => {
-  it("spends the token the strip's verdict cell shares, so the two cannot drift", async () => {
+  it("reserves the panel's own height token, so the rows cannot change it", async () => {
     expect(await rule(".verdict-panel")).toContainEqual(["height", "var(--verdict-h)"]);
   });
 

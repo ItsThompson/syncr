@@ -89,7 +89,6 @@ export function WeekRoute() {
       <div className="flex flex-col gap-3.25">
         <WeekActions
           blockCount={screen.readings.blockCount}
-          currency={interaction.operation.planCurrency}
           hasProposal={screen.view.proposal !== null}
           onApprove={interaction.onApprove}
           onResolveNow={interaction.onResolveNow}

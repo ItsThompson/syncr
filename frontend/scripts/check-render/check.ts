@@ -12,10 +12,10 @@
  * cancels.
  *
  * THE DECLARATION SWEEP REMAINS LOAD-BEARING EITHER WAY, and not as a formality: `blockStylesheet.test.ts` refuses
- * `line-clamp`, `block-ellipsis`, `text-overflow` and `white-space` by name across every sheet in the family, it runs
- * in the suite that every commit runs, and NOTHING RUNS THIS GATE automatically until ticket 1352 lands. The two
- * layers are complementary. A reader who retires the declaration guards believing this one subsumes them would be
- * retiring the only net that is actually armed.
+ * `line-clamp`, `block-ellipsis`, `text-overflow` and `white-space` by name across every sheet in the family, and it
+ * catches the class this gate's own control cancels. Both layers are armed now -- this one runs in
+ * `just lint-frontend` -- and they are complementary rather than redundant: a reader who retires the declaration
+ * guards believing this one subsumes them would be retiring the net that sees a truncation applying to every copy.
  *
  * THE TITLE'S TOP OFFSET is the third reading, and it is a geometry question rather than a pixel one. It is here
  * because a `<button>` centres its content, which put a two-line title 26.70px from its block's top instead of 4px:
