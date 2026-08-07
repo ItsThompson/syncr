@@ -232,8 +232,13 @@ def service_classes(source_root: Path) -> list[type]:
 
     Found by walking ``*/service.py``, the same way the route rule walks ``*/api.py``, so
     a service class added by a later feature module is covered without that ticket
-    remembering to extend an import here. Value types are excluded: a frozen dataclass in
-    the same module is a return shape, not a service, and has no authorization to do.
+    remembering to extend an import here.
+
+    Two kinds of class in the same module are excluded, and neither has authorization to do. A
+    frozen dataclass is a return shape. A ``Protocol`` is the interface of a collaborator the
+    service reads THROUGH, declared beside the reader so the service depends on the question it asks
+    rather than on another package's implementation: whoever implements one is a class elsewhere,
+    and it is that class's own module the rule applies to.
     """
     discovered: list[type] = []
     for path in sorted(source_root.glob(f"*/{SERVICE_MODULE_NAME}")):
@@ -244,8 +249,18 @@ def service_classes(source_root: Path) -> list[type]:
             if not name.startswith("_")
             and member.__module__ == module.__name__
             and not is_dataclass(member)
+            and not _is_protocol(member)
         )
     return discovered
+
+
+def _is_protocol(candidate: type) -> bool:
+    """Whether this class is a ``Protocol`` declaration rather than an implementation.
+
+    Read off the attribute ``typing`` sets on the class itself, so a protocol is recognized by what
+    it IS rather than by a naming convention a new one could miss.
+    """
+    return getattr(candidate, "_is_protocol", False) is True
 
 
 def imported_modules(source: str) -> set[str]:

@@ -30,7 +30,9 @@ records nothing fails here.
 **``VE6``: no read path appends one.** The routes are bounded by the response shapes that carry a
 verdict rather than by three paths named here, so the weekly-session payload comes under the rule
 the moment it exists. Each is driven TWICE against a real week and the transitions are counted
-before and after.
+before and after. **The guard bites rather than being armed**: the week read computes a real verdict
+and the assertion that it did is beside the count, because zero rows written by a path that computed
+nothing is not evidence of anything.
 
 **The limit of the first three guards, stated because ticket 41 shipped one like it.** They read
 NAMES: the surface a call site binds, the method a package calls, the field a response declares. A
@@ -225,13 +227,17 @@ def _package_of(route: RouteView) -> str:
 # --------------------------------------------------------------------------------
 
 
-def probing_packages(source_root: Path) -> set[str]:
-    """Every package with a production call to the probe, read out of the source.
+def probing_modules(source_root: Path) -> set[str]:
+    """Every module with a production call to the probe, read out of the source.
 
     A module that DEFINES one of the methods is not a caller of it: ``plans/verdicts.py`` is the
     probe's own home and calls ``verdict_for`` from inside ``offered_verdict_for``. The exclusion is
     derived from the definition rather than from that module's name, so moving the probe does not
     quietly widen or narrow this.
+
+    Modules rather than packages, because the plan package now holds both a mutation-free read that
+    computes a verdict and the probe that defines the call: a package-level answer could not tell
+    the self-call exclusion working from the exclusion having quietly swallowed a real caller.
     """
     found = set()
     for module in sorted(source_root.rglob("*.py")):
@@ -239,8 +245,29 @@ def probing_packages(source_root: Path) -> set[str]:
         if _defined_methods(tree) & PROBE_METHODS:
             continue
         if _called_methods(tree) & PROBE_METHODS:
-            found.add(module.relative_to(source_root).parts[0])
+            found.add(str(module.relative_to(source_root)))
     return found
+
+
+def probing_packages(source_root: Path) -> set[str]:
+    """Every package with a production call to the probe."""
+    return {module.split("/")[0] for module in probing_modules(source_root)}
+
+
+def verdict_reading_packages(settings: ServiceSettings) -> set[str]:
+    """The packages that ANSWER a verdict-bearing read, read off the app's own routes.
+
+    ``VE6`` forbids a read from recording a transition, so a package whose only verdict computation
+    is on a read cannot appear in the recording set and would otherwise fail the guard below. Which
+    packages those are is derived from the routes whose response shape carries a verdict rather than
+    named here, so this exemption widens only when a package starts answering such a read.
+    """
+    bearing = set(verdict_bearing_reads(settings))
+    return {
+        _package_of(route)
+        for route in api_routes(create_app(settings))
+        if route.path in bearing and "GET" in route.methods
+    }
 
 
 def _defined_methods(tree: ast.AST) -> set[str]:
@@ -259,12 +286,20 @@ def _called_methods(tree: ast.AST) -> set[str]:
     }
 
 
-def test_every_package_that_computes_a_verdict_records_the_transition(source_root: Path) -> None:
+def test_every_package_that_computes_a_verdict_records_the_transition(
+    source_root: Path, settings: ServiceSettings
+) -> None:
     """``09``'s rule: every mutation or job that computes a verdict writes one on a transition.
 
     Stated over packages rather than modules because a package computes its verdict in a service and
     composes its recorder in its wiring. A mutation added later that probes and records nothing
     fails here without this file naming it.
+
+    **The exemption is ``VE6`` rather than a list**, and it is the other half of the same rule: a
+    read computes a verdict for display and may not record one. Which packages that covers is read
+    off the routes, so a package that begins probing on a MUTATION is not exempted by having a read.
+    That residual is the price of a package-level unit and it is the one this file's own "limit of
+    the first three guards" paragraph names.
     """
     probing = probing_packages(source_root)
     recording = {
@@ -274,8 +309,26 @@ def test_every_package_that_computes_a_verdict_records_the_transition(source_roo
     }
     assert probing, "no caller of the probe was found, so this asserted nothing"
 
-    assert probing <= recording, (
-        f"these compute a verdict and record no transition: {probing - recording}"
+    assert probing - recording - verdict_reading_packages(settings) == set(), (
+        "these compute a verdict, record no transition, and answer no verdict-bearing read: "
+        f"{sorted(probing - recording - verdict_reading_packages(settings))}"
+    )
+
+
+def test_the_only_package_exempt_from_recording_is_the_one_that_answers_a_verdict_read(
+    settings: ServiceSettings, source_root: Path
+) -> None:
+    """Named so widening the exemption above is a diff a reviewer reads.
+
+    Both halves are asserted, because an exemption that covered nothing and an exemption that
+    covered everything would both leave the guard above green: the set is exactly the plan package,
+    and the plan package really is a probe caller that records nothing.
+    """
+    exempt = verdict_reading_packages(settings)
+
+    assert exempt == {"plans"}
+    assert exempt <= probing_packages(source_root), (
+        "the exempt package does not compute a verdict at all, so the exemption guards nothing"
     )
 
 
@@ -283,18 +336,22 @@ def test_the_probe_is_not_counted_as_a_caller_of_itself(source_root: Path) -> No
     """The control on the guard above, and on the one exclusion it makes.
 
     ``plans/verdicts.py`` calls ``verdict_for`` from inside ``offered_verdict_for``, so a scan that
-    read calls alone would report the plan package as a mutation that records nothing, and the guard
-    would fail for a reason that is not a defect. What it must still see is the real callers.
+    read calls alone would report the probe's own home as a caller and the exclusion exists to stop
+    it. What it must still see is the real callers, INCLUDING the read in the same package: an
+    exclusion keyed on the package rather than on the definition would hide that one.
     """
     probe = source_root / "plans" / "verdicts.py"
     tree = ast.parse(probe.read_text())
     assert _called_methods(tree) & PROBE_METHODS, "the exclusion below now guards nothing"
     assert _defined_methods(tree) & PROBE_METHODS
 
-    packages = probing_packages(source_root)
+    modules = probing_modules(source_root)
 
-    assert "plans" not in packages
-    assert {"pins", "concessions", "horizon"} <= packages, "a real caller was not seen at all"
+    assert "plans/verdicts.py" not in modules
+    assert "plans/served_verdicts.py" in modules, "the read in the probe's own package was hidden"
+    assert {"pins", "concessions", "horizon"} <= probing_packages(source_root), (
+        "a real caller was not seen at all"
+    )
 
 
 # --------------------------------------------------------------------------------
@@ -322,14 +379,20 @@ def verdict_bearing_reads(settings: ServiceSettings) -> list[str]:
     return sorted(paths)
 
 
-def test_the_reads_that_carry_a_verdict_are_the_two_that_exist(settings: ServiceSettings) -> None:
-    """Named here so the arrival of a third is a diff, and so the census below is not empty.
+def test_the_reads_that_carry_a_verdict_are_the_three_that_exist(
+    settings: ServiceSettings,
+) -> None:
+    """Named here so the arrival of a fourth is a diff, and so the census below is not empty.
 
-    ``VE6`` names three: the week view, the verdict refresh, and the weekly-session payload. The
-    third is ticket 51's and does not exist yet, which is why this asserts two rather than three.
+    ``VE6`` names three surfaces: the week view, the verdict refresh, and the weekly-session
+    payload. The third is ticket 51's and does not exist yet. The proposal read is a fourth ROUTE
+    under the same rule and not a fourth surface: it answers the verdict the solve that filled the
+    slot produced, which is a stored value rather than a computation, and it must still write
+    nothing.
     """
     assert verdict_bearing_reads(settings) == [
         f"{WEEKS_PREFIX}/{{iso_week}}",
+        f"{WEEKS_PREFIX}/{{iso_week}}/proposal",
         f"{WEEKS_PREFIX}/{{iso_week}}/verdict",
     ]
 
@@ -431,17 +494,17 @@ async def test_no_verdict_bearing_read_appends_a_row_however_often_it_is_driven(
     http: TestClient,
     settings: ServiceSettings,
 ) -> None:
-    """``VE6``, driven twice, and **armed rather than proven** in this deployment.
+    """``VE6``, driven twice, and it now bites rather than being armed.
 
-    Neither read computes a verdict yet: both response shapes declare ``verdict: None`` and say so,
-    and the service parses the week and answers ``None``. So this cannot fail today, and what it is
-    for is the commit that makes it able to: the driven set is bounded by the response shapes that
-    carry a verdict, so the read that starts computing one and the weekly-session payload arrive
-    already covered.
+    Two of the three reads compute a real verdict and the week is impossible at this instant, so
+    each finds a gap a transition recorder would write a row for. The proposal read answers 404
+    here, because a materialized week holds no proposal, and it is driven anyway: the set is bounded
+    by the response shapes that carry a verdict, so a read arrives covered rather than being
+    remembered.
 
-    The week is impossible at this instant, so once a verdict IS computed here each read finds one a
-    transition recorder would write a row for. Twice, because a read that wrote on the first call
-    and not the second would pass a one-call guard.
+    Twice, because a read that wrote on the first call and not the second would pass a one-call
+    guard: the recorder writes only on a TRANSITION, so a read that recorded would write one row and
+    then be quiet, which counting once after one call cannot tell from writing none.
     """
     await a_planned_week(sessions, owner, context)
     headers = sign_in(http, owner.email)
@@ -450,9 +513,28 @@ async def test_no_verdict_bearing_read_appends_a_row_however_often_it_is_driven(
     for _ in range(2):
         for path in paths:
             answered = http.get(path.replace("{iso_week}", str(THIS_WEEK)), headers=headers)
-            assert answered.status_code == HTTPStatus.OK, (path, answered.text)
+            assert answered.status_code in {HTTPStatus.OK, HTTPStatus.NOT_FOUND}, (
+                path,
+                answered.text,
+            )
 
     assert await transitions(sessions, owner) == []
+    assert _a_verdict_was_computed(http, headers), (
+        "neither read answered a verdict, so this guard is armed rather than biting"
+    )
+
+
+def _a_verdict_was_computed(http: TestClient, headers: dict[str, str]) -> bool:
+    """Whether the week read really answered a verdict, which is what makes the count above mean.
+
+    Without this the guard passes on a deployment where every read answers null, which is exactly
+    the state it sat in before a read computed one: zero rows written by a path that computed
+    nothing is not evidence of anything.
+    """
+    answered = http.get(f"{WEEKS_PREFIX}/{THIS_WEEK}", headers=headers)
+    assert answered.status_code == HTTPStatus.OK, answered.text
+    verdict = answered.json()[VERDICT_FIELD]
+    return verdict is not None and bool(verdict["shortfalls"])
 
 
 @pytest.mark.integration
@@ -464,9 +546,10 @@ async def test_the_same_week_records_a_row_when_a_mutation_asks_the_same_questio
 ) -> None:
     """The control on ``VE6``, and the ``tradeoff`` surface and ``VE3`` end to end in one request.
 
-    What separates this from the reads above is that it is a mutation: the reads compute no verdict
-    in this deployment, and this path does. It states that the weekly session is open, and the row
-    carries that answer from the header rather than from anything this application knows.
+    What separates this from the reads above is that it is a mutation. Both compute a verdict over
+    the same week and find the same gaps; this one records the transition and the reads may not. It
+    states that the weekly session is open, and the row carries that answer from the header rather
+    than from anything this application knows.
     """
     await a_planned_week(sessions, owner, context)
     headers = sign_in(http, owner.email)

@@ -18,13 +18,14 @@ from that table without this note mis-files three items.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from importlib import import_module
-from inspect import getmembers, isclass
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING, get_args, get_type_hints
 from uuid import uuid4
 
 import pytest
+from pydantic import BaseModel
 
+from syncr_api.concessions.config import WEEKS_PREFIX
+from syncr_api.core.app_factory import create_app
 from syncr_api.core.schemas import WireModel
 from syncr_api.offplan.reading import off_plan_reading
 from syncr_api.plans.clause_schemas import ClauseResponse, ReasonResponse, as_clause
@@ -67,11 +68,11 @@ from syncr_domain.reasons import (
 )
 from syncr_domain.weeks import IsoWeek, active_zone_by_date, local_days, week_span
 from syncr_domain.zones import ZoneProfile
+from tests.boundaries import api_routes
 from tests.plan_documents import CAREER, LONDON, WEEK, a_block, a_document, a_zone_map, at, between
 
 if TYPE_CHECKING:
-    from pydantic import BaseModel
-
+    from syncr_api.core.settings import ServiceSettings
     from syncr_api.solving.config import OperationKind, OperationStatus
 
 # Monday of 2026-W07 in London, where local midnight and UTC midnight coincide.
@@ -623,50 +624,128 @@ def test_the_readings_block_matches_section_13_field_for_field() -> None:
     assert on_the_wire == SECTION_13_READINGS
 
 
-# Every response shape these four routes answer with, discovered by walking the three schema modules
-# rather than listed, so a shape a later ticket adds to one of them comes under the rule below
-# without this test being extended.
-SCHEMA_MODULES = (
-    "syncr_api.plans.schemas",
-    "syncr_api.plans.document_schemas",
-    "syncr_api.plans.clause_schemas",
-)
+# Every wire shape a week route answers with, and every shape reachable from one, discovered by
+# walking the app's own routes rather than a list of modules. A module list covered the three plan
+# modules and could not see the concession, pin, conflict, off-plan or operation shapes the composed
+# read nests, four of which arrived on it in one commit.
 
-# The one exemption, and it is not a field a client narrows: each clause shape's ``kind`` carries
-# the union's discriminator and is set by the class. openapi-typescript emits a discriminated
-# union's discriminator as required whatever its default, and the shapes are asserted below to
-# declare one.
+# The one MODULE exempted from the optionality rule below, and the reason it is a module rather than
+# a field list: eight of its fields carry a default and the solve lifecycle owns every one of them.
+# Ticket 1442 holds converging them; until it lands, exempting the module is the honest statement,
+# and the assertion beside the guard is what stops the exemption from covering anything else.
+OPTIONALITY_EXEMPT_MODULE = "syncr_api.solving.schemas"
+
+# The one FIELD exemption, and it is not a field a client narrows: each clause shape's ``kind``
+# carries the union's discriminator and is set by the class. openapi-typescript emits a
+# discriminated union's discriminator as required whatever its default, and the shapes are asserted
+# below to declare one. Applied to the clause shapes alone, so a ``kind`` elsewhere is not swept up.
 DISCRIMINATOR = "kind"
 
 
-def response_models() -> list[type[BaseModel]]:
-    """Every wire shape the week routes answer with, in a stable order."""
-    found: list[type[BaseModel]] = []
-    for name in SCHEMA_MODULES:
-        module = import_module(name)
-        found.extend(
-            member
-            for _name, member in getmembers(module, isclass)
-            if member.__module__ == name and issubclass(member, WireModel)
-        )
+def nested_models(model: type[BaseModel]) -> set[type[BaseModel]]:
+    """Every wire shape this one's fields can hold, at any depth of a union or a container."""
+    found: set[type[BaseModel]] = set()
+    for field in model.model_fields.values():
+        pending: list[object] = [field.annotation]
+        while pending:
+            candidate = pending.pop()
+            if isinstance(candidate, type) and issubclass(candidate, BaseModel):
+                found.add(candidate)
+            pending.extend(get_args(candidate))
     return found
 
 
-def test_no_field_of_a_week_response_is_optional_in_the_generated_contract() -> None:
+def response_models(settings: ServiceSettings) -> list[type[BaseModel]]:
+    """Every wire shape a week route answers with or nests, in a stable order.
+
+    Bounded by the routes the application declares under the week prefix, so a route added to that
+    prefix and a shape nested inside one come under the rule below without this test being extended.
+    """
+    reached: set[type[BaseModel]] = set()
+    pending = [
+        answered
+        for route in api_routes(create_app(settings))
+        if route.path.startswith(WEEKS_PREFIX)
+        and isinstance(answered := get_type_hints(route.endpoint).get("return"), type)
+        and issubclass(answered, BaseModel)
+    ]
+    while pending:
+        model = pending.pop()
+        if model in reached:
+            continue
+        reached.add(model)
+        pending.extend(nested_models(model))
+    return sorted(reached, key=lambda model: (model.__module__, model.__name__))
+
+
+def _exempt_fields(model: type[BaseModel]) -> frozenset[str]:
+    """The fields this model's optionality is not measured over."""
+    return frozenset({DISCRIMINATOR}) if model in _wire_clauses() else frozenset()
+
+
+def test_no_field_of_a_week_response_is_optional_in_the_generated_contract(
+    settings: ServiceSettings,
+) -> None:
     """A name-only assertion would not see an optionality drift, and twelve fields drifted once.
 
     The names are pinned above and this pins the other half of the same contract: a field that gains
     a default becomes ``field?:`` in the generated TypeScript, and a client narrowing ``null`` alone
     stops being sound against its own types while every runtime payload still carries the key.
+
+    Stated over the shapes the composed read really nests rather than over three modules, because
+    the six fields that were empty placeholders now carry a concession, a pin, a conflict, a
+    proposal, a verdict and an operation, and five of those shapes are declared in another package.
     """
-    models = response_models()
-    assert len(models) >= len(SCHEMA_MODULES), "the module walk found almost nothing"
+    models = response_models(settings)
+    assert len(models) > len(SECTION_13_READINGS), "the route walk found almost nothing"
 
     optional = {
-        model.__name__: sorted(optional_fields(model) - {DISCRIMINATOR}) for model in models
+        f"{model.__module__}.{model.__name__}": sorted(
+            optional_fields(model) - _exempt_fields(model)
+        )
+        for model in models
+        if model.__module__ != OPTIONALITY_EXEMPT_MODULE
     }
 
     assert {name: fields for name, fields in optional.items() if fields} == {}
+
+
+def test_the_route_walk_reaches_the_shapes_another_package_declares(
+    settings: ServiceSettings,
+) -> None:
+    """The control on the walk: a module-listing version of it saw none of these.
+
+    Five of the composed read's sixteen fields carry a shape from another feature package, and each
+    is what the rule above exists to measure. A walk that reached only the plan package's own
+    modules would pass while four of the five drifted.
+    """
+    reached = {f"{model.__module__}.{model.__name__}" for model in response_models(settings)}
+
+    assert {
+        "syncr_api.concessions.schemas.AdjustmentResponse",
+        "syncr_api.conflicts.schemas.ConflictResponse",
+        "syncr_api.pins.schemas.PinResponse",
+        "syncr_api.offplan.schemas.OffPlanPeriodResponse",
+        "syncr_api.solving.schemas.OperationResponse",
+        "syncr_api.plans.proposal_schemas.ProposalDiffResponse",
+        "syncr_api.plans.verdict_schemas.VerdictResponse",
+        "syncr_api.plans.verdict_schemas.ShortfallResponse",
+    } <= reached
+
+
+def test_the_one_exempt_module_is_the_only_one_that_would_fail(settings: ServiceSettings) -> None:
+    """So the exemption is measured rather than assumed, and shrinks visibly when it is closed.
+
+    An exemption nobody checks is indistinguishable from a rule nobody enforces. This asserts both
+    directions: the exempt module really does carry optional fields, and no other module does.
+    """
+    drifting = {
+        model.__module__
+        for model in response_models(settings)
+        if optional_fields(model) - _exempt_fields(model)
+    }
+
+    assert drifting == {OPTIONALITY_EXEMPT_MODULE}
 
 
 def test_the_optionality_check_reports_a_field_that_gained_a_default() -> None:
