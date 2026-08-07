@@ -77,8 +77,8 @@ OBJECTIVE_TERMS: Final = (
 )
 
 
-# --------------------------------------------------------------------------- The three routes: the
-# read the Learned screen makes, the version list, and the activation.
+# ---------------------------------------------------------------------------
+# The three routes: the read the Learned screen makes, the version list, and the activation.
 #
 # Two prefixes rather than one, because the two collections answer different questions. `/learned`
 # is the PARAMETERS and their maturity, which is what the screen renders; `/weight-sets` is the

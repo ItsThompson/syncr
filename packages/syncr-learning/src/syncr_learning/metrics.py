@@ -3,7 +3,7 @@
 The job has no HTTP surface, so nothing serves an exposition here: a one-shot container is not
 scrapeable, and the run instead writes its figures to the registry and the entrypoint pushes or logs
 them. What matters for this module is that the families exist and are named exactly as section 18
-and ticket 54's dashboards spell them, because an alert reads a name.
+spells them, because an alert reads a name.
 
 ``syncr_learning_samples`` is labelled by PARAMETER, which is the label section 11's own maturity
 table is keyed on: an alert about a gate is an alert about one parameter, and one series per

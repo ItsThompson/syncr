@@ -119,8 +119,7 @@ def runtime_closure(root: str) -> set[str]:
     """Every package that ships when ``root`` is installed from the lockfile.
 
     Runtime only: a lockfile's dev groups live under ``package.metadata.requires-dev`` and never
-    ship
-    in an image, which is the distinction this member's two workspace dev dependencies rest on.
+    ship in an image, which is the distinction this member's two workspace dev dependencies rest on.
     """
     packages = locked_packages()
     assert root in packages, f"{root} is not a locked package"

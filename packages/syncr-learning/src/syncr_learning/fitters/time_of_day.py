@@ -130,6 +130,13 @@ def _interval_of(curve: tuple[float, ...]) -> tuple[float, float]:
 
     Built here rather than by :func:`~syncr_learning.shrinkage.shrunk`, because the summary is a
     mean of twenty-four already-shrunk values rather than a shrinkage of its own.
+
+    **Its sample is the twenty-four curve values, which makes it narrow on SPARSE evidence.** An
+    hour nothing was observed at sits exactly at the prior and contributes no variance, so a curve
+    fitted from two hours reports a tighter interval than one fitted from twenty. That is the
+    opposite of what an interval usually does, and it is presentational only:
+    ``covers_enough_of_the_day`` is what gates the curve and nothing serves ``confidence`` over the
+    wire. Stated rather than left for the first consumer to discover.
     """
     mean = fmean(curve)
     variance = sum((one - mean) ** 2 for one in curve) / len(curve)

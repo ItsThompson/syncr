@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import Final
 
-# --------------------------------------------------------------------------- The tables. Four are
-# facts about weeks that happened, two are declarations, one is the artefact.
+# ---------------------------------------------------------------------------
+# The tables. Four are facts about weeks that happened, two are declarations, one is the artefact.
 # ---------------------------------------------------------------------------
 
 TENANTS: Final = "tenants"
@@ -50,8 +50,9 @@ WRITE_TABLE: Final = WEIGHT_SETS
 NEVER_WRITTEN: Final[tuple[str, ...]] = (PLAN_REVISIONS, PINS, BLOCK_OUTCOMES)
 """The three the learning layer must never write. Asserted over this subpackage's own source."""
 
-# --------------------------------------------------------------------------- The columns each read
-# names. ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# The columns each read names.
+# ---------------------------------------------------------------------------
 
 TENANT_ID: Final = "tenant_id"
 ID: Final = "id"
@@ -77,8 +78,8 @@ NAME: Final = "name"
 VERSION: Final = "version"
 ACTIVE: Final = "active"
 
-# --------------------------------------------------------------------------- The keys inside the
-# two JSONB documents this job reads.
+# ---------------------------------------------------------------------------
+# The keys inside the two JSONB documents this job reads.
 # ---------------------------------------------------------------------------
 
 # A stored plan document. Three of its fields are what a fitter reads: the blocks, each block's own
