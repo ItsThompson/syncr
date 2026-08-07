@@ -57,12 +57,14 @@ inhibit_rules:
   # all seven warnings stopped being deliverable. Posting four alerts to a real Alertmanager returned
   # `ProbeSlow` and `DiskFillingUp` as `suppressed, inhibitedBy: [BackupStale]`.
   #
-  # It is DELETED rather than rescoped, because scoped correctly it would never fire: no critical here
-  # shares a subsystem with any warning. A cause-named inhibition is the only kind that says
-  # something, and `test_alert_rules.py` now asserts that every rule below names an `alertname` source
-  # and that every name it uses is one of the twelve.
+  # It is DELETED rather than rescoped, because a class is not a cause: what a scoped version would
+  # have needed is a `subsystem` label the rules do not carry, and the one real critical-and-warning
+  # pair that shares a cause is named below instead. `test_alert_rules.py` asserts that every rule
+  # here names BOTH its source and its targets by `alertname`, because constraining the source alone
+  # left the same defect one edit away: `alertname="BackupStale"` targeting `severity="warning"`
+  # suppressed all seven warnings in a real Alertmanager while the whole suite and `amtool` passed.
   #
-  # `deployments/bin/alertmanager-probe.sh` drives this file through a real Alertmanager, because
+  # `deployments/bin/alertmanager-probe.py` drives this file through a real Alertmanager, because
   # that is the one artefact `amtool check-config` cannot judge.
 
   # One outage, one page. A process that is gone is the cause of every duty that stopped, so the four
@@ -73,6 +75,21 @@ inhibit_rules:
       - alertname = "DatabaseUnreachable"
     target_matchers:
       - alertname =~ "SolveFailing|ProjectionFailing|HorizonNotMaintained|SourceStale"
+    equal: ["deployment"]
+
+  # ONE GOOGLE GRANT SERVES BOTH THE ANCHOR READS AND THE WRITE TARGET. `calendars/injection.py`
+  # composes the Google anchor adapter's token source from the same
+  # `GoogleCredentialRepository(session, tenant_id)` row the projection writes with, and a tenant has
+  # one. So a revoked grant fires `WriteTargetTokenExpiring` at once and `SourceStale` twenty-four
+  # hours later on every Google-provider anchor source, for ONE repair: reconnect the account.
+  #
+  # This is the pair whose absence made the blanket rule's deletion rationale wrong. "No critical
+  # shares a subsystem with any warning" was false, and it was false HERE. The rule is cause-named
+  # rather than severity-scoped, which is the distinction that matters.
+  - source_matchers:
+      - alertname = "WriteTargetTokenExpiring"
+    target_matchers:
+      - alertname =~ "SourceStale|ProjectionFailing"
     equal: ["deployment"]
 
 receivers:

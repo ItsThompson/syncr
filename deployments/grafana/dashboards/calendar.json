@@ -100,7 +100,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Write target token: how long refreshing has been failing",
-      "description": "THE MOST DANGEROUS FAILURE IN THE PRODUCT. The gauge holds the age of the CONDITION rather than of a credential: zero while refreshes work, growing from the instant one starts failing. Reading anchors keeps working, solving keeps working, the plan keeps updating; only the projection stops, so the calendar on the phone silently freezes while syncr itself looks healthy. Set from stored rows on a duty that runs every minute, so it does not go absent once refreshes stop being attempted.",
+      "description": "THE MOST DANGEROUS FAILURE IN THE PRODUCT. The gauge holds the age of the CONDITION rather than of a credential: zero while refreshes work, growing from the instant one starts failing. ONE GOOGLE GRANT SERVES BOTH the anchor reads and the write target, so a revoked grant stops a Google-provider anchor source too and SourceStale follows a day later; an ICS feed is unaffected. Only the projection stops immediately, so the calendar on the phone silently freezes while syncr itself looks healthy. Set from stored rows on a duty that runs every minute, so it does not go absent once refreshes stop being attempted. The second series is that duty's own contained fault, which WriteTargetTokenExpiring reads as a disjunct: a contained fault freezes the gauge at its last value, and its last value is the healthy one.",
       "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "targets": [
@@ -108,6 +108,11 @@
           "refId": "A",
           "expr": "max(syncr_write_target_token_age_seconds)",
           "legendFormat": "failing for"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(syncr_observability_tenant_failures_total[15m]) * 900",
+          "legendFormat": "state readings that raised, per 15m"
         }
       ],
       "fieldConfig": {

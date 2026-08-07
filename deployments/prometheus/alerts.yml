@@ -40,17 +40,29 @@ groups:
       # than of a credential: it is zero while refreshes work and grows from the instant one starts
       # failing, so a bare `> 0` is the condition and needs no invented threshold. Fifteen minutes of
       # `for` rides out a transient network refusal without waiting out a real expiry.
+      #
+      # THE SECOND DISJUNCT IS WHAT STOPS A FROZEN GAUGE READING HEALTHY. The gauge is set by the
+      # worker's state duty, whose per-tenant fault is contained and counted rather than raised. A
+      # contained fault therefore leaves the gauge at its last value, and its last value is 0, which is
+      # the healthy reading: a mis-rotated `GOOGLE_TOKEN_ENCRYPTION_KEY` makes the credential read
+      # raise on every tick and this alert would stay quiet while writes to the calendar failed. That
+      # is the same argument the worker's liveness disjunct rests on, one layer in.
       - alert: WriteTargetTokenExpiring
-        expr: max(syncr_write_target_token_age_seconds) > 0
+        expr: >-
+          max(syncr_write_target_token_age_seconds) > 0
+          or increase(syncr_observability_tenant_failures_total[15m]) > 0
         for: 15m
         labels:
           severity: critical
         annotations:
           summary: The write target's token has stopped refreshing, so the plan is not reaching the phone.
           surviving: >-
-            Anchor sources still sync, so external commitments are still read. The plan is still
-            solved and still correct in syncr, and the Week screen still shows it. Only the write to
-            the calendar is failing, so the phone is stale from the instant in the banner.
+            ICS anchor sources still sync, so a timetable published as a feed is still read. A
+            GOOGLE-PROVIDER anchor source does NOT: one credential per tenant serves both the anchor
+            reads and the write target, so a revoked grant stops both and `SourceStale` follows a day
+            later. The plan is still solved and still correct against whatever syncr last read, and
+            every screen still shows it. What has stopped is the write to the calendar, so the phone
+            is stale from the instant in the banner.
           runbook: docs/runbooks/google-token-expired.md
 
       # Same consequence, different cause. The inhibiting term is load-bearing: a refused projection
