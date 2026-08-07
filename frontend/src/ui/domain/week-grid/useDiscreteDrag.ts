@@ -8,12 +8,24 @@
  * weight for the same reason: the reader is aiming at them, so they sharpen at the one moment that matters. That is
  * a discrete state change, not motion.
  *
- * A DROP THAT STATES NO NEW PLACEMENT ISSUES NO REQUEST, and there are two of those. A release on the quarter hour
- * the pointer STARTED over is a click or a jitter: a plain click selects a block and must not move it, and a pin is a
- * training label, so one created by a jittery pointer is a false preference the learning layer would fit against. A
- * release that lands the block back on its own start states nothing either. The same argument covers a release with no
- * target at all: a pointer released outside the column has stated no placement, so it cancels rather than clamping to
- * an edge the reader never aimed at. Clamping would turn a slip into a hard constraint on the solver.
+ * A RELEASE STATES A PLACEMENT ONLY AFTER THE POINTER HAS TRAVELLED ONE SNAP STEP, and that threshold is the whole
+ * of "a drop on the same quarter hour is a no-op". It is measured in PIXELS, not in quarters, and the difference is
+ * the defect it exists to close: a rounded quarter flips on the smallest movement across a rounding midpoint, so
+ * comparing quarters suppressed only a release that had not moved at all. Pressing one pixel below the 09:00/09:15
+ * midpoint and releasing one pixel lower posted a pin at 09:15 for a block at 09:00, and over a 90-minute block with
+ * an ordinary three-pixel trackpad slop, six of seventy-five press positions wrote one, at starts up to a full block
+ * height away.
+ *
+ * THAT MATTERS BECAUSE A CLICK IS THE SELECTION GESTURE. `onClick` and `onPointerDown` are on the same element, so
+ * without the threshold the primary way a reader selects a block moves it, and a pin is a hard constraint the solver
+ * then honours AND a training label the learning layer fits against. One snap step is the smallest distance that can
+ * mean a placement at all: below it the reader has aimed at nothing, and the same is true of a release outside the
+ * column, which cancels rather than clamping to an edge nobody aimed at.
+ *
+ * THE POINTER IS CAPTURED, so a release anywhere reaches this drag. Without capture a mouse released outside the
+ * viewport delivers no `pointerup` to the page at all: the drag stayed live, the marker stayed drawn, and the next
+ * release posted a pin at whatever quarter the cursor then held. `pointercancel` is a cancel for the same reason:
+ * the platform has taken the pointer away, so no placement was stated.
  *
  * THE INSTANT IS BUILT FROM THE COLUMN'S OWN START PLUS ELAPSED MINUTES, never from a wall time. A column's offsets
  * are measured between instants, so adding minutes to its start cannot produce a local time that does not exist:
@@ -31,7 +43,7 @@ const MILLISECONDS_IN_MINUTE = 60_000;
 export interface DragOrigin {
   readonly blockId: string;
   readonly date: string;
-  /** The block's own start, in the column's minutes, which is what a same-quarter drop is compared against. */
+  /** The block's own start, in the column's minutes, which a release that lands back on it is compared against. */
   readonly fromMin: number;
   /** The instant the column's local day began, which every offset here is measured from. */
   readonly dayStartMs: number;
@@ -58,7 +70,7 @@ export interface BlockDrop {
 export interface DiscreteDragOptions {
   readonly extent: Extent;
   readonly pxPerMin: number;
-  /** Called once, on a drop that states a different quarter hour from the one the block already holds. */
+  /** Called once, on a release that states a placement: see the header for the two ways one does not. */
   readonly onDrop?: ((drop: BlockDrop) => void) | undefined;
 }
 
@@ -73,35 +85,51 @@ export interface DiscreteDrag {
 /** What the whole drag is decided from, held in a ref so the window listeners attach once per drag. */
 interface Live extends DiscreteDragOptions {
   readonly origin: DragOrigin | null;
-  /** The quarter hour the pointer was over when it went down, which is what a click is compared against. */
-  readonly grabbedAtMin: number | null;
+  /** Where the pointer went down, in client pixels, which is what the travel is measured from. */
+  readonly grabbedY: number | null;
+  /** Where the pointer was last seen, in client pixels. A release carries no position of its own here. */
+  readonly atY: number | null;
   readonly atMin: number | null;
+}
+
+/** How far a pointer must travel before a release may state a placement: one snap step, in pixels. */
+export function travelFloorPx(pxPerMin: number): number {
+  return SNAP_MINUTES * pxPerMin;
 }
 
 export function useDiscreteDrag(options: DiscreteDragOptions): DiscreteDrag {
   const [origin, setOrigin] = useState<DragOrigin | null>(null);
-  const [atMin, setAtMin] = useState<number | null>(null);
-  const grabbedAtMin = useRef<number | null>(null);
-  const live = useRef<Live>({ ...options, origin, atMin, grabbedAtMin: grabbedAtMin.current });
-  live.current = { ...options, origin, atMin, grabbedAtMin: grabbedAtMin.current };
+  const [at, setAt] = useState<{ readonly min: number; readonly y: number } | null>(null);
+  const grabbedY = useRef<number | null>(null);
+  const live = useRef<Live>({ ...options, origin, grabbedY: null, atY: null, atMin: null });
+  live.current = {
+    ...options,
+    origin,
+    grabbedY: grabbedY.current,
+    atY: at?.y ?? null,
+    atMin: at?.min ?? null,
+  };
 
   const begin = useCallback((next: DragOrigin) => {
-    const at = minuteUnder(next.pointerY, next, live.current);
-    grabbedAtMin.current = at;
+    grabbedY.current = next.pointerY;
     setOrigin(next);
-    setAtMin(at);
+    setAt(pointAt(next.pointerY, next, live.current));
   }, []);
 
   useEffect(() => {
     if (origin === null) return;
 
+    const clear = (): void => {
+      setOrigin(null);
+      setAt(null);
+      grabbedY.current = null;
+    };
     const onMove = (event: PointerEvent): void => {
-      setAtMin(minuteUnder(event.clientY, live.current.origin, live.current));
+      setAt(pointAt(event.clientY, live.current.origin, live.current));
     };
     const onUp = (): void => {
       const settled = live.current;
-      setOrigin(null);
-      setAtMin(null);
+      clear();
       const drop = dropOf(settled);
       if (drop !== null) settled.onDrop?.(drop);
     };
@@ -111,23 +139,28 @@ export function useDiscreteDrag(options: DiscreteDragOptions): DiscreteDrag {
        * means one thing. */
       event.preventDefault();
       event.stopImmediatePropagation();
-      setOrigin(null);
-      setAtMin(null);
+      clear();
     };
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    /* The platform took the pointer away, so nothing was stated. Both events are listened for because a browser
+     * sends `pointercancel` and a capture loss sends `lostpointercapture`, and either one ends this drag. */
+    window.addEventListener("pointercancel", clear);
+    window.addEventListener("lostpointercapture", clear);
     window.addEventListener("keydown", onKeyDown, CAPTURE);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", clear);
+      window.removeEventListener("lostpointercapture", clear);
       window.removeEventListener("keydown", onKeyDown, CAPTURE);
     };
   }, [origin]);
 
   return {
     isDragging: origin !== null,
-    insertion: origin === null || atMin === null ? null : { date: origin.date, atMin },
+    insertion: origin === null || at === null ? null : { date: origin.date, atMin: at.min },
     begin,
   };
 }
@@ -136,10 +169,11 @@ const CAPTURE = { capture: true } as const;
 
 /** What a release states, or null where it states nothing a request should be made about. */
 function dropOf(live: Live): BlockDrop | null {
-  const { origin, atMin, grabbedAtMin } = live;
-  if (origin === null || atMin === null) return null;
-  /* A click, a jitter, or a drag that came back to where it started: no new placement has been stated. */
-  if (atMin === grabbedAtMin) return null;
+  const { origin, atMin, atY, grabbedY } = live;
+  if (origin === null || atMin === null || atY === null || grabbedY === null) return null;
+  /* A click, a jitter, or a drag that came back inside one snap step of where it started: no placement is stated. */
+  if (Math.abs(atY - grabbedY) < travelFloorPx(live.pxPerMin)) return null;
+  /* A release that lands the block back on its own start states nothing either. */
   if (atMin === origin.fromMin) return null;
   return {
     blockId: origin.blockId,
@@ -150,16 +184,20 @@ function dropOf(live: Live): BlockDrop | null {
 }
 
 /**
- * The quarter hour under a pointer, or null where the pointer is outside the column the drag started in.
+ * The quarter hour under a pointer and the pixel it was read at, or null outside the column the drag started in.
  *
  * THE SNAP IS COMPUTED HERE RATHER THAN THROUGH `snapMinutes`, which floors at zero. A column's minute offset may be
  * negative: a frame occurrence beginning at 23:00 on Sunday is a block of Monday's column, so Monday's axis starts
  * before Monday did, and flooring would refuse every quarter hour above the day's own start.
  */
-function minuteUnder(clientY: number, origin: DragOrigin | null, live: Live): number | null {
+function pointAt(
+  clientY: number,
+  origin: DragOrigin | null,
+  live: Live,
+): { readonly min: number; readonly y: number } | null {
   if (origin === null || origin.canvas === null) return null;
   const box = origin.canvas.getBoundingClientRect();
   if (clientY < box.top || clientY > box.bottom) return null;
   const minutes = live.extent.startMin + (clientY - box.top) / live.pxPerMin;
-  return Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES;
+  return { min: Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES, y: clientY };
 }

@@ -48,6 +48,17 @@ const PINS = `${window.location.origin}/api/v1/weeks/${ISO_WEEK}/pins`;
 const AXIS_START_MIN = 360;
 const VISIBLE_HOURS = 12;
 const PX_PER_MIN = GRID_H_PX / (VISIBLE_HOURS * 60);
+const SNAP_MINUTES = 15;
+
+/** An ordinary trackpad click's movement, which must never state a placement. */
+const SLOP_PX = 3;
+
+/* WHAT A NO-REQUEST ASSERTION HAS TO WAIT FOR. A write is a round trip, so reading the recorder in the same tick as
+ * the release passes whether or not the request was made: the first version of the sweep below did exactly that and
+ * stayed green with the travel floor deleted. There is no condition to wait ON for something that must not happen, so
+ * the wait is a settle, the same shape `useOperation.test.tsx` uses for the same reason. */
+const SETTLE_MS = 60;
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
 
 /** Where in the canvas a wall-clock minute of the fixture's own day falls. */
 function offsetOf(minutes: number): number {
@@ -126,20 +137,21 @@ function dragTo(block: HTMLElement, minutes: number): void {
 
 describe("the drag is discrete", () => {
   it("marks the grid as dragging and draws the hairline, and does not move the block", async () => {
-    const { container } = await (async () => {
-      await renderWeek();
-      return { container: document.body };
-    })();
+    await renderWeek();
+    /* THE RELEASE AT THE END OF THIS TEST IS A REAL DROP, so the route has to be installed even though nothing here
+     * asserts the request: an unhandled write errors under `onUnhandledRequest: "error"`, and the rollback that
+     * follows it runs after the cache has been torn down. Two tests in this file turned the whole suite red that way. */
+    recordPins();
     const block = blockOf(LEETCODE);
     const before = block.getAttribute("style");
 
     fireEvent.pointerDown(block, { clientY: offsetOf(540) });
     fireEvent.pointerMove(window, { clientY: offsetOf(780) });
 
-    expect(container.querySelector(".week-grid")).toHaveAttribute("data-dragging");
+    expect(document.querySelector(".week-grid")).toHaveAttribute("data-dragging");
     /* THE MARKER IS WHAT MOVES. The block's own box is byte-identical to what it was before the pointer went down. */
     expect(block.getAttribute("style")).toBe(before);
-    const marker = container.querySelector(".week-insertion");
+    const marker = document.querySelector(".week-insertion");
     expect(marker).not.toBeNull();
     expect(marker?.textContent).toBe("13:00");
 
@@ -148,6 +160,7 @@ describe("the drag is discrete", () => {
 
   it("snaps the marker to the quarter hour under the cursor", async () => {
     await renderWeek();
+    recordPins();
     const block = blockOf(LEETCODE);
 
     fireEvent.pointerDown(block, { clientY: offsetOf(540) });
@@ -210,20 +223,106 @@ describe("the drag that issues no request", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.pointerUp(window);
 
+    await settle();
     expect(pins.bodies).toEqual([]);
     expect(document.querySelector(".week-insertion")).toBeNull();
     expect(blockOf(LEETCODE)).not.toHaveAttribute("data-pinned");
   });
 
-  it("is a no-op on the same quarter hour, because a jittery pointer is not a preference", async () => {
+  /* THE PRESS POSITION IS THE WHOLE OF THIS CASE, and the first version of the test got it wrong: pressing at the
+   * block's own start meant the SECOND guard caught the release, so the test passed with the rule it names deleted.
+   * A press inside the block, one pixel under a rounding midpoint, is the position where a rounded quarter flips on
+   * the smallest possible movement, which is what the travel floor exists for. */
+  it("is a no-op for a jittery pointer, because a jitter is not a preference", async () => {
+    await renderWeek();
+    const pins = recordPins();
+    /* 09:07:24, just under the 09:00/09:15 midpoint: the marker reads 09:00 here and 09:15 one pixel lower. */
+    const midpoint = offsetOf(547.4);
+
+    fireEvent.pointerDown(blockOf(LEETCODE), { clientY: midpoint });
+    fireEvent.pointerMove(window, { clientY: midpoint + 1 });
+    fireEvent.pointerUp(window);
+
+    await settle();
+    expect(pins.bodies).toEqual([]);
+  });
+
+  /* THE HARM THIS CLOSES, SWEPT RATHER THAN SAMPLED. A press anywhere in the block with an ordinary trackpad slop
+   * must write nothing: `onClick` and `onPointerDown` are on the same element, so the documented way to SELECT a
+   * block would otherwise move it, and a pin is a hard constraint the solver honours and a training label the
+   * learning layer fits against. Before the travel floor, 6 of these 75 press positions posted a pin, at starts from
+   * 09:15 to 10:30: up to a full block height away from where the block sits. */
+  it("writes nothing from any press position in the block with a three-pixel slop", async () => {
+    await renderWeek();
+    const pins = recordPins();
+    const block = blockOf(LEETCODE);
+    const top = offsetOf(540);
+    const bottom = offsetOf(630);
+    let presses = 0;
+
+    for (let y = Math.ceil(top); y <= Math.floor(bottom); y += 1) {
+      presses += 1;
+      fireEvent.pointerDown(block, { clientY: y });
+      fireEvent.pointerMove(window, { clientY: y + SLOP_PX });
+      fireEvent.pointerUp(window);
+    }
+
+    expect(presses).toBeGreaterThan(70);
+    await settle();
+    expect(pins.bodies).toEqual([]);
+  });
+
+  /* THE FLOOR IS NOT A REFUSAL OF EVERY DRAG, which is the control the sweep above needs: one snap step of travel is
+   * the smallest movement that can mean a placement, and just past it the pin is posted. A pixel of slack rather than
+   * the exact figure, because `(y + step) - y` is not bit-identical to `step` and a test pinned to a knife edge
+   * measures the arithmetic of doubles rather than the rule. */
+  it("posts on a release a snap step from the press, which is the smallest travel that means one", async () => {
+    await renderWeek();
+    const pins = recordPins();
+    const from = offsetOf(540);
+
+    fireEvent.pointerDown(blockOf(LEETCODE), { clientY: from });
+    fireEvent.pointerMove(window, { clientY: from + SNAP_MINUTES * PX_PER_MIN + 1 });
+    fireEvent.pointerUp(window);
+
+    await waitFor(() => expect(pins.bodies).toHaveLength(1));
+    expect(pins.bodies[0]).toMatchObject({ start: "2026-02-09T09:15:00.000Z" });
+  });
+
+  /* THE PLATFORM TAKING THE POINTER AWAY IS NOT A DROP. Without this the drag stayed live after a `pointercancel`,
+   * the marker stayed drawn, and the NEXT release posted a pin at whatever quarter the cursor then held. */
+  it("cancels on pointercancel, and a later release states nothing", async () => {
     await renderWeek();
     const pins = recordPins();
 
-    /* Down at 09:00 and up four minutes later, which snaps back to 09:00: the block already begins there. */
     fireEvent.pointerDown(blockOf(LEETCODE), { clientY: offsetOf(540) });
-    fireEvent.pointerMove(window, { clientY: offsetOf(544) });
+    fireEvent.pointerMove(window, { clientY: offsetOf(780) });
+    fireEvent.pointerCancel(window);
+
+    expect(document.querySelector(".week-insertion")).toBeNull();
+    expect(document.querySelector("[data-dragging]")).toBeNull();
+
     fireEvent.pointerUp(window);
 
+    await settle();
+    expect(pins.bodies).toEqual([]);
+  });
+
+  /* A SECONDARY-BUTTON PRESS OPENS A CONTEXT MENU and delivers no release the page can pair with it, so a drag begun
+   * on one is a drag that stays live. */
+  it("does not begin on a secondary button", async () => {
+    await renderWeek();
+    const pins = recordPins();
+
+    fireEvent.pointerDown(blockOf(LEETCODE), { button: 2, clientY: offsetOf(540) });
+    fireEvent.pointerMove(window, { clientY: offsetOf(780) });
+
+    expect(document.querySelector("[data-dragging]")).toBeNull();
+    expect(document.querySelector(".week-insertion")).toBeNull();
+
+    fireEvent.pointerUp(window);
+
+    await settle();
     expect(pins.bodies).toEqual([]);
   });
 
@@ -237,6 +336,7 @@ describe("the drag that issues no request", () => {
     fireEvent.pointerMove(window, { clientY: -40 });
     fireEvent.pointerUp(window);
 
+    await settle();
     expect(pins.bodies).toEqual([]);
     expect(document.querySelector(".week-insertion")).toBeNull();
   });
@@ -276,6 +376,7 @@ describe("the keyboard equivalent of the drag", () => {
 
     await userEvent.keyboard("{Shift>}{ArrowDown}{/Shift}");
 
+    await settle();
     expect(pins.bodies).toEqual([]);
   });
 
@@ -286,6 +387,7 @@ describe("the keyboard equivalent of the drag", () => {
 
     await userEvent.keyboard("{ArrowDown}");
 
+    await settle();
     expect(pins.bodies).toEqual([]);
   });
 });
@@ -340,7 +442,40 @@ describe("p toggles a pin", () => {
 
     await userEvent.keyboard("gp");
 
+    await settle();
     expect(pins.bodies).toEqual([]);
+  });
+});
+
+describe("a refused pin", () => {
+  /* THE ROLLBACK BRANCH, WHICH HAD NO TEST OF ITS OWN AND WAS BEING REACHED BY ACCIDENT. Two tests in this file
+   * released without installing the route, so each fired an unhandled write, took this branch, and turned the whole
+   * suite red by re-reading the week after the cache had been torn down. The branch is right and now it is asserted:
+   * the plan of record never held the optimistic placement, so the honest recovery is to read the week again. */
+  it("reads the week again, so the optimistic placement does not outlive the refusal", async () => {
+    const reads = await renderWeek();
+    apiServer.use(
+      http.post(PINS, () =>
+        HttpResponse.json(
+          {
+            type: "syncr:conflict",
+            title: "Conflict",
+            status: 409,
+            detail: "That block has already begun, so it cannot be pinned.",
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const before = reads.weekReads();
+
+    dragTo(blockOf(LEETCODE), 780);
+
+    await waitFor(() => expect(reads.weekReads()).toBe(before + 1));
+    /* The reason is the api's own, at panel volume: the reader's plan is untouched and the sentence says which. */
+    expect(
+      await screen.findByText("That block has already begun, so it cannot be pinned."),
+    ).toBeInTheDocument();
   });
 });
 

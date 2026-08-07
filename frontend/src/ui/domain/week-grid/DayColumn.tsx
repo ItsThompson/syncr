@@ -11,7 +11,11 @@
  *
  * THE CANVAS IS HANDED TO A DRAG RATHER THAN FOUND BY ONE. A pointer position becomes a minute through this box, so
  * the element travels with the pointerdown instead of being located from the event's ancestors: a drag that read the
- * DOM upwards would depend on markup this component is free to change. */
+ * DOM upwards would depend on markup this component is free to change.
+ *
+ * A DRAG BEGINS ON THE PRIMARY BUTTON AND CAPTURES THE POINTER. Both are here rather than in the drag itself,
+ * because both are facts about the EVENT this column received: the drag reads positions, and it never sees the
+ * element the press landed on. */
 
 import { useRef } from "react";
 
@@ -97,6 +101,12 @@ export function DayColumn({
             block={block}
             key={block.id}
             onPointerDown={(event) => {
+              /* THE PRIMARY BUTTON ONLY. A secondary-button press opens a context menu and delivers no release the
+               * page can pair with it, so a drag begun on one is a drag that stays live. */
+              if (event.button !== 0) return;
+              /* CAPTURED, so a release anywhere reaches this drag. Without it a mouse released outside the viewport
+               * delivers no `pointerup` to the page and the drag never ends. */
+              event.currentTarget.setPointerCapture(event.pointerId);
               interaction.onDragBegin?.(originOf(block, day, canvas.current, event.clientY));
             }}
             onSelect={() => {
