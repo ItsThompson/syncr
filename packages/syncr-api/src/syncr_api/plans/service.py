@@ -250,7 +250,7 @@ class WeekService:
         """
         require_scope(principal, Scope.PLAN_READ)
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
-        if await self._revisions.latest(week) is None:
+        if not await self._revisions.holds_a_plan(week):
             return None
         return await self._verdicts.for_week(
             week,

@@ -224,6 +224,10 @@ def test_the_revision_repository_exposes_append_and_reads_and_nothing_else() -> 
         "approved_in",
         "find",
         "history",
+        # Whether the week has a plan at all, for the two request-path reads that gate on the
+        # absence: `latest` selects the whole row and the row carries the document, so asking it a
+        # yes-or-no question transfers a week's blocks and discards them.
+        "holds_a_plan",
         "latest",
         "latest_approved",
         # The inherited read builder. Every read above is composed from it, which is what puts

@@ -103,6 +103,26 @@ class PlanRepository(TenantScopedReader):
         """The live plan for this week: the newest revision, whatever its status."""
         return await self._newest(iso_week, status=None)
 
+    async def holds_a_plan(self, iso_week: IsoWeek) -> bool:
+        """Whether this week has a plan of record at all, without reading one.
+
+        For the callers that gate on the ABSENCE and never open the document: a week with no plan
+        has no verdict, and the two reads that answer that question are on the request path.
+        ``latest`` selects the whole row, and the row carries the ``document`` JSONB, so asking it a
+        yes-or-no question transfers a whole week's blocks and discards them.
+
+        Beside ``holds_version`` rather than derived by a caller, because "does this week have a
+        plan" is a question about this table and a caller that answered it by fetching a document
+        would be answering a cheaper question with a more expensive read.
+        """
+        found = await self._session.scalar(
+            self.scoped_select(PlanRevision)
+            .where(PlanRevision.iso_week == str(iso_week))
+            .with_only_columns(PlanRevision.id)
+            .limit(1)
+        )
+        return found is not None
+
     async def latest_approved(self, iso_week: IsoWeek) -> PlanRevisionRecord | None:
         """The churn baseline: the newest revision the user assented to."""
         return await self._newest(iso_week, status=APPROVED)

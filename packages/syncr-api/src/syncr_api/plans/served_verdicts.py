@@ -139,12 +139,12 @@ class CurrentWeekVerdict:
         """The current week's verdict, or ``None`` when that week holds no plan.
 
         Writes nothing, and needs no solve to have completed. The plan check is first, so a week the
-        maintainer has not reached costs one indexed read rather than a whole assembly.
+        maintainer has not reached costs one indexed read of one column rather than an assembly.
         """
         now = self._clock()
         profile = await self._settings.read()
         week = IsoWeek.containing(local_date(now, profile.home_zone))
-        if await self._revisions.latest(week) is None:
+        if not await self._revisions.holds_a_plan(week):
             return None
         return await self._served.for_week(
             week,
