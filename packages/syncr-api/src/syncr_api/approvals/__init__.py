@@ -17,4 +17,9 @@ composed read.
 The rule the transaction is stated over, and the reason it is one transaction, is ``PP3``: a
 partial approval would leave the slot holding a proposal whose document is already the plan of
 record, and approving it again would append a second revision of it.
+
+The rule the transaction is SERIALIZED by is the week's version row, taken before anything is read.
+The refusal is decided from the live plan, so the live plan has to be held while it is decided
+against: ``service.py`` says which paths that keeps out, why one lock reaches all of them, and which
+mechanism holds for a week whose version row does not exist yet.
 """

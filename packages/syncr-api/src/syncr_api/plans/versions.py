@@ -5,6 +5,12 @@ whether it changed the solve inputs or the live plan. That is why one guard suff
 why there is no dirty flag: a mutation arriving mid-solve bumps this counter, the solve's
 conditional write then fails, and exactly one follow-up is enqueued.
 
+**It is also the lock a read-then-write decision is serialized on**, which is the same row doing
+the same job from the other side. A caller that reads the live plan, decides something from what it
+read, and then writes has to hold something across all three, or the plan it decided against can be
+replaced before the write lands. :meth:`WeekInputVersionRepository.held` is that hold, and it is
+this row rather than a lock of its own because the conditional write already takes this one.
+
 Two states need care, and both are normal rather than exceptional.
 
 A week nobody has touched has NO row. The horizon maintainer solves such weeks, so the
@@ -73,6 +79,30 @@ class WeekInputVersionRepository(TenantScopedRepository):
             .where(WeekInputVersion.iso_week == str(iso_week))
             .with_only_columns(WeekInputVersion.version)
         )
+
+    async def held(self, iso_week: IsoWeek) -> int | None:
+        """The week's version, with the row locked until the caller's transaction ends.
+
+        For a caller that has to READ the week, decide something from what it read, and write: this
+        is the row every such decision is serialized on, so the decision cannot be made against a
+        live plan that another transaction replaces before the write lands. ``current`` answers the
+        same question and holds nothing, which is what a caller reporting a figure wants.
+
+        **A missing row is not locked and needs no lock**, which is the opposite of
+        :meth:`holds_version`'s reading of the same absence and is right for the same reason. This
+        answers ``None`` and creates nothing: a week with no row has no live plan for a concurrent
+        write to change, because the one path that appends to such a week is the conditional write,
+        and that path treats the absent row as a mismatch and writes nothing.
+        """
+        # Bound to a typed name because `with_for_update()` erases the column's type from the
+        # statement, and a scalar of an untyped statement is `Any`.
+        version: int | None = await self._session.scalar(
+            self.scoped_select(WeekInputVersion)
+            .where(WeekInputVersion.iso_week == str(iso_week))
+            .with_only_columns(WeekInputVersion.version)
+            .with_for_update()
+        )
+        return version
 
     async def tracked_weeks(
         self, first: IsoWeek, last: IsoWeek | None = None

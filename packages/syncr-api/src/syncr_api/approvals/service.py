@@ -2,28 +2,64 @@
 
 ```
 approve(week)
-  ├── read the slot. Empty ──▶ 409. There is nothing left to approve
-  ├── refuse a document that changes anything the proposal did not show (assent.py)
   └── ONE TRANSACTION
-        ├── pending.clear(week)        THE CLAIM. See below
+        ├── weekVersion.held(week)     THE LOCK. Taken before anything is read
+        ├── read the slot. Empty ──▶ 409. There is nothing left to approve
+        ├── refuse a document that changes anything the proposal did not show (assent.py)
+        ├── pending.clear(week)
         ├── revisions.append(approved, document=the slot's, reason=user|tradeoff_approved)
         ├── adjustments.upsert(the candidate concession)   NOW it is real
         ├── weekVersion.bump()                            REQUIRED. See below
         └── operations.enqueue(projection)
 ```
 
-## The clear leads, because it is the serialization point two approvals race for
+## The lock is taken before the read, because the refusal is decided from what was read
 
-Nothing else in this transaction can be taken twice: the append is append-only, and the upsert
-and the bump are idempotent in shape but not in effect. So the DELETE goes first and its answer
-decides whether this request owns the approval. A second approval of one slot blocks on that
-row's lock, finds nothing to delete once the first commits, and is refused with the same 409 an
-already-replaced slot gets. An ``Idempotency-Key`` cannot cover this: two clicks carrying two
-different keys are two requests, and each would otherwise append a revision of one document.
+The refusal below compares the slot's document against the live plan, and an approval that read the
+live plan and then wrote would be deciding against a plan another transaction can replace in
+between. The one that does replace it is the solve dispatch's conditional write, which appends an
+``applied`` revision when its candidate fills empty space and nothing else. Committing inside this
+window, that revision is invisible to the comparison, and the approved document then drops the block
+it added with **nothing scheduled to put it back**: approval requests no solve, and the solve that
+appended the fill has already reported ``succeeded``.
 
-``PP3`` still holds whichever order the writes take, because they are one transaction: a failure
-at any step rolls the DELETE back with everything else, so the slot is intact and the proposal is
-still approvable.
+So the week's version row is taken ``FOR UPDATE`` first. It is the same row the conditional write
+locks, which is what makes the two paths serialize without a lock of their own, and it is what the
+version row is already called: the single serialization point for anything that changes the live
+plan.
+
+**One lock covers every appender, and that is read off the appenders rather than assumed.** Two
+places append an ``applied`` revision. The dispatch takes this row first, so it either waits for
+this transaction and then finds its own version moved, or it commits first and this comparison sees
+its fill. The week producer takes no lock, and it cannot reach a week that holds a pending proposal:
+both of its callers refuse a week that already has a live revision, and a week whose first solve
+filled the slot has one, because a first plan for a week classifies as fills and is appended rather
+than proposed.
+
+A week with no version row is not locked and needs none. Nothing can append to such a week inside
+this window: the conditional write treats the absent row as a mismatch and writes nothing.
+
+## What the slot's DELETE decides, and which state each mechanism holds in
+
+Two mechanisms make two concurrent approvals of one slot into one approval, and which of them does
+the work depends on whether the week has a version row yet.
+
+**With a row**, this transaction holds it from before the read, so the second approval waits on the
+lock and then reads a slot that is already gone: it is refused by the empty-slot branch and never
+reaches the DELETE.
+
+**With no row** there is nothing to lock. Nothing needs locking against an ADOPTION in that state,
+because the conditional write treats an absent row as a mismatch and writes nothing at all; but two
+APPROVALS both read the slot and both proceed, so what makes them one is the DELETE's own row lock
+and the check on its answer. A request that finds nothing to delete owns no approval and is refused
+before it appends.
+
+**The POSITION of the DELETE is not load-bearing and nothing here claims it is.** The five writes
+are one transaction, so a loser's append rolls back with its failed DELETE wherever the statement
+sits. What may not be dropped is the answer being checked, and above it the lock.
+
+``PP3`` holds for the same reason: a failure at any step rolls every other write back, so the slot
+is intact and the proposal is still approvable.
 
 ## Why the bump is here rather than only an invariant elsewhere
 
@@ -157,6 +193,10 @@ class ApprovalService:
         require_scope(principal, Scope.PLAN_WRITE)
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
         now = self._clock()
+        # Before the slot and the live plan are read, because what is read decides the refusal and
+        # an adoption committing in between would be invisible to it. The module docstring says why
+        # this row, and why one lock covers every path that appends.
+        await self._versions.held(week)
         pending = await self._proposals.find(week)
         if pending is None:
             raise Conflict(REPLACED_DETAIL)
@@ -230,11 +270,11 @@ class ApprovalService:
         superseding: PlanRevisionId | None,
         now: datetime,
     ) -> ApprovedWeek:
-        """The one transaction, and the claim that decides whether this request performs it."""
+        """The transaction's writes, and the claim deciding which of two approvals performs them."""
         if not await self._proposals.clear(week):
-            # Another approval of this slot committed while this one was reading it. Nothing of
-            # this request's is written: the append below has not run, and the DELETE that found
-            # nothing changed no row.
+            # Reached only for a week with no version row, where the lock above had nothing to
+            # take: two approvals then both read the slot, and this is what makes them one. With a
+            # row, the loser waits on the lock and is refused by the empty-slot branch instead.
             raise Conflict(REPLACED_DETAIL)
         reason = _reason_for(pending)
         revision = await self._revisions.append(
