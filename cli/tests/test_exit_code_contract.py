@@ -8,9 +8,11 @@ what is asserted is what a shell and an agent see.
 The case table is bounded by ``ExitCode`` itself: a member with no case fails a test, which is what
 stops the documented table from rotting as the code grows.
 
-Two codes are reached in this interpreter rather than through the script, and the reason is stated
-where each is: no command in this slice dispatches long-running work, and an operation a read merely
-saw does not decide that read's exit code. Both still run the real loop against a real server.
+**Every code is reached through the script now, and the exemption set is empty.** Ticket 50 could
+not provoke 9 or 10 from a command, because no command in that slice dispatched long-running work,
+so both were reached in its own interpreter and the gap was pinned rather than hidden.
+``plan solve --wait`` dispatches work, so a supersession and a timeout are both a real process
+exiting with a real number.
 """
 
 from __future__ import annotations
@@ -22,21 +24,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import httpx
 import pytest
 
 import syncr_cli
-from syncr_cli.api_client import ApiClient
 from syncr_cli.auth.discovery import DISCOVERY_PATH
-from syncr_cli.auth.storage import CREDENTIALS_FILE_NAME
-from syncr_cli.errors import WaitTimedOut
 from syncr_cli.exit_codes import ExitCode
-from syncr_cli.http import Transport
-from syncr_cli.operations import wait_for_operation
-from syncr_cli.results import CliResult
-from syncr_cli.wire.operation import Operation
 from tests import payloads
 from tests.child import child_environment
+from tests.credentials import NO_KEYCHAIN, seed_refresh_token
 from tests.fake_api import Answer, FakeApi
 
 if TYPE_CHECKING:
@@ -45,21 +40,25 @@ if TYPE_CHECKING:
 WEEK_PATH = f"/api/v1/weeks/{payloads.ISO_WEEK}"
 AREAS_PATH = "/api/v1/areas"
 OPERATION_PATH = f"/api/v1/operations/{payloads.OPERATION_ID}"
+SOLVE_PATH = f"/api/v1/weeks/{payloads.ISO_WEEK}/solve"
 STORED_REFRESH = "syncrr_stored"  # pragma: allowlist secret
 
-# `keyring` resolves a process-global backend, and the subprocess is a different process: its
-# backend is chosen the way a headless machine chooses one, through keyring's own variable. So the
-# credential lands in the 0600 file, which is also what lets this test seed one.
-NO_KEYCHAIN = {"PYTHON_KEYRING_BACKEND": "keyring.backends.fail.Keyring"}
+# The subprocess resolves `keyring`'s backend the way a headless machine does, through keyring's own
+# variable, so the credential lands in the 0600 file rather than in this developer's keychain. Owned
+# by `tests/credentials.py` because three files need the same answer.
 
 
 @dataclass(frozen=True, slots=True)
 class Case:
-    """One condition, and the arguments that provoke it."""
+    """One condition, the arguments that provoke it, and whether the wrapper reports success."""
 
     argv: tuple[str, ...]
     routes: Callable[[FakeApi], None]
     authorized: bool = True
+    # Whether `ok` is true when this code is reached. False for every failure, and true for the two
+    # normal outcomes that are not success: an infeasible week is the product working correctly, and
+    # a superseded solve is the expected result of editing quickly, so neither carries a problem.
+    ok: bool = False
 
 
 def _serving(
@@ -80,8 +79,24 @@ def _refusal(problem_type: str, status: int) -> Answer:
     return Answer.problem(payloads.problem(problem_type=problem_type, status=status), status=status)
 
 
+def _waiting(*operations: Answer) -> Callable[[FakeApi], None]:
+    """A deployment that accepts a solve and answers the poll with ``operations`` in turn."""
+
+    def routes(api: FakeApi) -> None:
+        _serving()(api)
+        api.answer("POST", SOLVE_PATH, Answer.json(payloads.operation(), status=202))
+        api.answer_in_turn("GET", OPERATION_PATH, *operations)
+
+    return routes
+
+
+# The arguments that make a wait end at the timeout rather than at a status, in one real second: the
+# poll interval and the timeout are the smallest the settings allow, so the child process does not
+# hold the suite for a minute.
+A_WAIT_THAT_RUNS_OUT = ("plan", "solve", "--wait", "--timeout", "1", "--poll-interval", "1")
+
 CASES: dict[ExitCode, Case] = {
-    ExitCode.SUCCESS: Case(argv=("week", "show"), routes=_serving()),
+    ExitCode.SUCCESS: Case(argv=("week", "show"), routes=_serving(), ok=True),
     ExitCode.FAILURE: Case(
         argv=("week", "show"), routes=_serving(week=_refusal("syncr:internal-error", 500))
     ),
@@ -102,32 +117,39 @@ CASES: dict[ExitCode, Case] = {
     ExitCode.INFEASIBLE: Case(
         argv=("week", "show"),
         routes=_serving(week=Answer.json(payloads.week(week_verdict=payloads.verdict()))),
+        ok=True,
+    ),
+    ExitCode.SUPERSEDED: Case(
+        argv=("plan", "solve", "--wait"),
+        routes=_waiting(
+            Answer.json(
+                payloads.operation(status="superseded", superseded_by=payloads.SUCCESSOR_ID)
+            )
+        ),
+        ok=True,
+    ),
+    ExitCode.TIMED_OUT: Case(
+        argv=A_WAIT_THAT_RUNS_OUT,
+        routes=_waiting(Answer.json(payloads.operation(status="running"))),
     ),
     ExitCode.API_UNAVAILABLE: Case(
         argv=("week", "show"), routes=_serving(week=_refusal("syncr:dependency-unavailable", 503))
     ),
 }
 
-# Reached in this interpreter, because both need a command that dispatches long-running work and
-# this slice ships none. An operation a read merely saw does not decide that read's exit code -- a
-# successful read must not report the status of work nobody asked for -- so neither code can be
-# provoked through a shipped command. The loop, the server, and the codes are the real ones.
-CODES_REACHED_WITHOUT_THE_SCRIPT = frozenset({ExitCode.SUPERSEDED, ExitCode.TIMED_OUT})
-
-
-def test_the_exemption_set_is_the_two_codes_it_is_allowed_to_hold() -> None:
-    # Pinned, because the cheapest way to satisfy the completeness assertion below is to exempt a
-    # code rather than provoke it. Growing this set has to be a deliberate edit a reviewer sees, and
-    # `plan solve --wait` empties it.
-    allowed = frozenset({ExitCode.SUPERSEDED, ExitCode.TIMED_OUT})
-
-    assert allowed == CODES_REACHED_WITHOUT_THE_SCRIPT
-
 
 def test_every_documented_exit_code_has_a_case() -> None:
     # The guard that stops the table rotting: a new code with nothing that provokes it fails here
     # rather than being documented and unreachable.
-    assert set(CASES) | CODES_REACHED_WITHOUT_THE_SCRIPT == set(ExitCode)
+    assert set(CASES) == set(ExitCode)
+
+
+def test_every_case_runs_the_console_script_rather_than_this_interpreter() -> None:
+    # What ticket 50 could not say. Two codes were reached in its own interpreter because no command
+    # dispatched work; `plan solve --wait` does, so the exemption set is gone and this is what stops
+    # one coming back: a case is a subprocess or it is not a case.
+    assert set(CASES) == set(ExitCode)
+    assert all(case.argv for case in CASES.values())
 
 
 @pytest.mark.parametrize("expected", list(CASES), ids=lambda code: f"{int(code)}-{code.name}")
@@ -143,6 +165,7 @@ def test_the_process_exits_with_the_documented_code(expected: ExitCode, tmp_path
     assert completed.returncode == int(expected), completed.stderr
     document = json.loads(completed.stdout)
     assert list(document) == ["ok", "data", "verdict", "operation", "problem"]
+    assert document["ok"] is case.ok
 
 
 def test_the_child_process_runs_the_tree_this_test_imported(tmp_path: Path) -> None:
@@ -175,63 +198,39 @@ def test_a_closed_port_also_exits_eleven(tmp_path: Path) -> None:
     assert completed.returncode == int(ExitCode.API_UNAVAILABLE)
 
 
-def test_a_wait_that_runs_out_exits_ten(tmp_path: Path) -> None:
-    # Ten is reached through the wait rather than through the script: no command in this slice
-    # dispatches work. The poll, the server, and the error are the real ones, and the code comes off
-    # the same problem table every other failure uses.
-    class _NoCredential:
-        def headers(self) -> dict[str, str]:
-            return {}
+def test_a_wait_that_runs_out_exits_ten_through_the_script(tmp_path: Path) -> None:
+    # Redundant with the parametrized case above by design: this asserts the two things the case
+    # does not, which are that the wrapper reports the failure and that the operation travels on it
+    # so the wait is resumable without parsing prose.
+    with FakeApi() as api:
+        _waiting(Answer.json(payloads.operation(status="running")))(api)
+        _seed_credential(tmp_path, api.base_url)
+        completed = _run(A_WAIT_THAT_RUNS_OUT, api.base_url, tmp_path)
 
-    now = [0.0]
-
-    def monotonic() -> float:
-        return now[0]
-
-    def sleep(seconds: float) -> None:
-        now[0] += seconds
-
-    with FakeApi() as api, httpx.Client(timeout=5.0) as client:
-        api.answer("GET", OPERATION_PATH, Answer.json(payloads.operation(status="running")))
-        client_under_test = ApiClient(
-            transport=Transport(client),
-            api_url=api.base_url,
-            session=_NoCredential(),
-        )
-
-        with pytest.raises(WaitTimedOut) as timed_out:
-            wait_for_operation(
-                client=client_under_test,
-                operation_id=payloads.OPERATION_ID,
-                poll_interval_ms=1,
-                timeout_s=1,
-                sleep=sleep,
-                monotonic=monotonic,
-            )
-
-    assert CliResult.failed(timed_out.value.problem).exit_code is ExitCode.TIMED_OUT
-    assert int(ExitCode.TIMED_OUT) == 10
+    assert completed.returncode == int(ExitCode.TIMED_OUT), completed.stderr
+    document = json.loads(completed.stdout)
+    assert document["ok"] is False
+    assert document["operation"]["id"] == payloads.OPERATION_ID
+    assert payloads.OPERATION_ID in document["problem"]["detail"]
 
 
-def test_a_superseded_operation_read_from_the_api_exits_nine_and_names_its_successor() -> None:
+def test_a_superseded_wait_exits_nine_and_names_its_successor(tmp_path: Path) -> None:
     # Nine is only useful if it comes with the successor: an agent follows the chain rather than
-    # dispatching another solve onto it. Read from a real server, and the code comes off the same
-    # result the runner would exit by.
-    with FakeApi() as api, httpx.Client(timeout=5.0) as client:
-        api.answer(
-            "GET",
-            OPERATION_PATH,
+    # dispatching another solve onto it. Driven through the script, and the code comes off the same
+    # result the runner exits by.
+    with FakeApi() as api:
+        _waiting(
             Answer.json(
                 payloads.operation(status="superseded", superseded_by=payloads.SUCCESSOR_ID)
-            ),
-        )
-        body = Transport(client).get(f"{api.base_url}{OPERATION_PATH}")
+            )
+        )(api)
+        _seed_credential(tmp_path, api.base_url)
+        completed = _run(("plan", "solve", "--wait"), api.base_url, tmp_path)
 
-    superseded = Operation.read(body, "operation")
-
-    assert CliResult.dispatched(superseded).exit_code is ExitCode.SUPERSEDED
-    assert superseded.superseded_by == payloads.SUCCESSOR_ID
-    assert payloads.SUCCESSOR_ID in superseded.summary
+    assert completed.returncode == int(ExitCode.SUPERSEDED), completed.stderr
+    document = json.loads(completed.stdout)
+    assert document["ok"] is True
+    assert document["operation"]["supersededBy"] == payloads.SUCCESSOR_ID
 
 
 def test_an_operation_a_read_only_saw_does_not_decide_that_reads_exit_code(
@@ -257,10 +256,7 @@ def test_an_operation_a_read_only_saw_does_not_decide_that_reads_exit_code(
 
 def _seed_credential(home: Path, api_url: str) -> None:
     """Put a refresh token where a machine with no keychain keeps one."""
-    path = home / ".config" / "syncr" / CREDENTIALS_FILE_NAME
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({api_url: STORED_REFRESH}), encoding="utf-8")
-    path.chmod(0o600)
+    seed_refresh_token(home, api_url, token=STORED_REFRESH)
 
 
 def _child_environment(api_url: str, home: Path) -> dict[str, str]:

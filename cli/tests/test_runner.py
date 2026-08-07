@@ -23,6 +23,7 @@ from syncr_cli.results import CliResult
 from syncr_cli.runtime import Host
 from syncr_cli.settings import OutputFormat, environment_variable
 from syncr_domain.errors import DomainError
+from tests.catalog import commands
 from tests.fake_api import FakeApi
 from tests.harness import TODAY, drive
 
@@ -31,12 +32,7 @@ if TYPE_CHECKING:
 
     from syncr_cli.wire.reading import JsonMapping
 
-COMMANDS = [
-    ["auth", "login"],
-    ["auth", "logout"],
-    ["auth", "status"],
-    ["week", "show"],
-]
+COMMANDS = commands()
 
 
 def test_output_is_json_when_stdout_is_not_a_terminal(tmp_path: Path) -> None:

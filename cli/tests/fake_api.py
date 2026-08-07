@@ -1,13 +1,17 @@
 """A real HTTP server on a real socket, standing in for the API.
 
 A real server rather than a stubbed client, because half of what this package does is HTTP: the
-timeout, the status mapping, the form encoding, the ``Authorization`` header, and the loopback
-redirect are all things a stub would assert nothing about. The server is the only thing faked, and
-it is faked at the boundary the CLI genuinely does not own.
+timeout, the status mapping, the form encoding, the JSON body, the ``Authorization`` header, the
+``Idempotency-Key``, and the loopback redirect are all things a stub would assert nothing about. The
+server is the only thing faked, and it is faked at the boundary the CLI genuinely does not own.
 
 Routes are matched by method and path, so a test states what each endpoint answers and never the
 order the CLI asks in. Every request is recorded, which is how a test asserts that a credential
 was presented and that a secret was not.
+
+**A route may be declared idempotent**, which makes the server behave the way the api's guard does:
+a repeated ``Idempotency-Key`` is the same act rather than a second one. Without that, a test about
+a retry not duplicating would be asserting a rule this server does not have.
 """
 
 from __future__ import annotations
@@ -18,6 +22,8 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Self
 from urllib.parse import parse_qs, urlparse
+
+from syncr_cli.idempotency import IDEMPOTENCY_KEY_HEADER
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
 JSON_MEDIA_TYPE = "application/json"
@@ -74,6 +80,12 @@ class FakeApi:
 
     answers: dict[tuple[str, str], list[Answer]] = field(default_factory=dict)
     received: list[Recorded] = field(default_factory=list)
+    # Which routes deduplicate by `Idempotency-Key`, and the keys each has seen. The real api's
+    # guard stores a response per key and replays it, so a route declared here counts a repeat as
+    # the same act rather than a second one: that is what lets a test assert that running a mutation
+    # twice with one key creates one thing.
+    idempotent: set[tuple[str, str]] = field(default_factory=set)
+    keys_seen: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     _server: ThreadingHTTPServer | None = None
     _thread: threading.Thread | None = None
 
@@ -81,6 +93,20 @@ class FakeApi:
         """Answer every request to this route this way."""
         self.answers[(method, path)] = [answer]
         return self
+
+    def answer_once_per_key(self, method: str, path: str, answer: Answer) -> Self:
+        """Answer this way, and treat a repeated ``Idempotency-Key`` as the same act.
+
+        What the api's guard does: the second request with a key it has already applied reads the
+        stored response rather than applying anything. Declared per route, because a test asserting
+        that a retry does not duplicate needs a server that can tell a retry from a second act.
+        """
+        self.idempotent.add((method, path))
+        return self.answer(method, path, answer)
+
+    def applications_of(self, method: str, path: str) -> int:
+        """How many distinct acts this route saw: one per idempotency key it was given."""
+        return len(set(self.keys_seen.get((method, path), [])))
 
     def answer_in_turn(self, method: str, path: str, *answers: Answer) -> Self:
         """Answer successive requests to this route with successive answers.
@@ -137,19 +163,26 @@ def _make_handler(api: FakeApi) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:
             self._handle("POST")
 
+        def do_PUT(self) -> None:
+            self._handle("PUT")
+
         def _handle(self, method: str) -> None:
             parsed = urlparse(self.path)
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length) if length else b""
+            headers = {name.lower(): value for name, value in self.headers.items()}
             api.received.append(
                 Recorded(
                     method=method,
                     path=parsed.path,
                     query=parse_qs(parsed.query),
-                    headers={name.lower(): value for name, value in self.headers.items()},
+                    headers=headers,
                     body=body,
                 )
             )
+            key = headers.get(IDEMPOTENCY_KEY_HEADER.lower())
+            if key is not None:
+                api.keys_seen.setdefault((method, parsed.path), []).append(key)
             answer = api._next(method, parsed.path)
             if answer is None:
                 answer = Answer.problem(

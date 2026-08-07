@@ -59,6 +59,26 @@ class Ran:
         return self.stdout.splitlines()
 
 
+class Clock:
+    """A clock a test moves, and the sleeps the process asked it for.
+
+    A wait polls until an operation is terminal or the timeout runs out, and both endings are
+    reached here in no time at all: the sleep advances the clock rather than the machine's, so the
+    loop under test is the real loop and the suite does not wait a minute to see a timeout.
+    """
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.slept: list[float] = []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.now += seconds
+
+
 def drive(
     argv: Sequence[str],
     *,
@@ -68,10 +88,16 @@ def drive(
     stdout_is_tty: bool = False,
     today: date = TODAY,
     open_browser: BrowserOpener = _no_browser,
+    clock: Clock | None = None,
 ) -> Ran:
-    """Run one invocation against ``base_url`` and answer with everything it produced."""
+    """Run one invocation against ``base_url`` and answer with everything it produced.
+
+    ``clock`` is how a test drives a wait: without one the process sleeps for real, which is what a
+    user's does, and with one a supersession and a timeout are reached in no time at all.
+    """
     stdout, stderr = StringIO(), StringIO()
     environment = {"SYNCR_API_URL": base_url, **(env or {})}
+    moved = clock or Clock()
     host = Host(
         env=environment,
         home=home,
@@ -80,6 +106,8 @@ def drive(
         stdout_is_tty=stdout_is_tty,
         today=today,
         open_browser=open_browser,
+        sleep=moved.sleep,
+        monotonic=moved.monotonic,
     )
     with httpx.Client(timeout=5.0) as client:
         code = run(list(argv), host=host, transport=Transport(client))

@@ -295,6 +295,201 @@ def problem(
     }
 
 
+TASK_ID = "88888888-8888-4888-8888-888888888888"
+REVISION_ID = "99999999-9999-4999-8999-999999999999"
+PIN_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+PROJECTION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+BLOCK_ID = "blk-career-leetcode-0"
+TUESDAY = date(2026, 2, 10)
+
+
+def task(
+    *,
+    identifier: str = TASK_ID,
+    title: str = "Leetcode",
+    area_id: UUID = CAREER_ID,
+    estimate_minutes: int = 150,
+    recorded_minutes: int = 0,
+    remaining_minutes: int = 150,
+    deadline: str | None = None,
+    priority: str = "normal",
+    status: str = "open",
+    eligible: bool = True,
+    at_risk: bool | None = None,
+) -> dict[str, Any]:
+    """One task, with the members the backlog reads and nothing it does not.
+
+    ``at_risk`` is ``None`` by default, which omits the member: that is the shape a build without
+    the probe answers with, and the reader treats an absent mark as false.
+    """
+    row = {
+        "id": identifier,
+        "areaId": str(area_id),
+        "projectId": None,
+        "title": title,
+        "estimateMinutes": estimate_minutes,
+        "recordedMinutes": recorded_minutes,
+        "remainingMinutes": remaining_minutes,
+        "deadline": deadline,
+        "priority": priority,
+        "minChunkMinutes": 30,
+        "splittable": True,
+        "status": status,
+        "completedAt": None,
+        "eligibleForSolving": eligible,
+    }
+    if at_risk is not None:
+        row["atRisk"] = at_risk
+    return row
+
+
+def backlog(
+    *,
+    tasks: list[dict[str, Any]] | None = None,
+    open_count: int = 1,
+    at_risk_count: int = 0,
+) -> dict[str, Any]:
+    """The backlog: its header counts, and the tasks a filter selected."""
+    return {
+        "header": {"openCount": open_count, "atRiskCount": at_risk_count},
+        "tasks": [task()] if tasks is None else tasks,
+    }
+
+
+def outcome(
+    *,
+    block_id: str = BLOCK_ID,
+    state: str = "completed",
+    actual_minutes: int | None = None,
+    confirmed_at: str | None = None,
+) -> dict[str, Any]:
+    """What the log holds for one block, as a recording answers with it."""
+    return {
+        "blockId": block_id,
+        "state": state,
+        "actualMinutes": actual_minutes,
+        "actualInterval": None,
+        "occurredAt": "2026-02-10T07:00:00+00:00",
+        "confirmedAt": confirmed_at,
+    }
+
+
+def ledger_row(
+    *,
+    block_id: str = BLOCK_ID,
+    start: str = "2026-02-10T07:00:00+00:00",
+    end: str = "2026-02-10T09:30:00+00:00",
+    duration_minutes: int = 150,
+    area_name: str | None = "Career",
+    title: str = "Leetcode",
+    origin: str = "task",
+    recorded: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One row of a day, as the Today ledger sends it."""
+    return {
+        "blockId": block_id,
+        "interval": span(start, end),
+        "durationMinutes": duration_minutes,
+        "areaId": str(CAREER_ID),
+        "areaName": area_name,
+        "title": title,
+        "origin": origin,
+        "outcome": recorded,
+    }
+
+
+def day(
+    *,
+    on: date = TUESDAY,
+    behind: list[dict[str, Any]] | None = None,
+    ahead: list[dict[str, Any]] | None = None,
+    confirmed_at: str | None = None,
+    presumed_count: int = 1,
+    unconfirmed_days: int = 3,
+) -> dict[str, Any]:
+    """One date's ledger, with a row behind and a row ahead unless a test says otherwise."""
+    settled = [ledger_row()] if behind is None else behind
+    coming = (
+        [
+            ledger_row(
+                block_id="blk-fitness-gym-0",
+                start="2026-02-10T18:00:00+00:00",
+                end="2026-02-10T19:00:00+00:00",
+                duration_minutes=60,
+                area_name="Fitness",
+                title="Gym",
+                origin="habit",
+            )
+        ]
+        if ahead is None
+        else ahead
+    )
+    return {
+        "date": on.isoformat(),
+        "zone": ZONE,
+        "span": span(
+            f"{on.isoformat()}T00:00:00+00:00",
+            f"{(on + timedelta(days=1)).isoformat()}T00:00:00+00:00",
+        ),
+        "blockCount": len(settled) + len(coming),
+        "presumedCount": presumed_count,
+        "confirmedAt": confirmed_at,
+        "unconfirmedDays": unconfirmed_days,
+        "behind": settled,
+        "ahead": coming,
+    }
+
+
+def pinned(
+    *,
+    block_id: str = BLOCK_ID,
+    start: str = "2026-02-10T07:00:00+00:00",
+    end: str = "2026-02-10T09:30:00+00:00",
+    pin_verdict: dict[str, Any] | None = None,
+    pin_operation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """What one edit answers with: the pin, the live verdict, and the solve to follow."""
+    return {
+        "pin": {
+            "id": PIN_ID,
+            "isoWeek": ISO_WEEK,
+            "blockId": block_id,
+            "interval": span(start, end),
+            "supersededPlacement": span("2026-02-10T05:30:00+00:00", "2026-02-10T08:00:00+00:00"),
+            "objectiveDelta": 0.4,
+            "weightSetVersion": 1,
+            "createdAt": "2026-02-09T09:00:00+00:00",
+        },
+        "verdict": (
+            verdict(feasible=True, shortfalls=[], tradeoffs=0)
+            if pin_verdict is None
+            else pin_verdict
+        ),
+        "operation": operation() if pin_operation is None else pin_operation,
+    }
+
+
+def approved(
+    *,
+    input_version: int = 8,
+    solved_against_version: int = 7,
+    reason: str = "user_approved",
+    adjustment: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """What one approval wrote, and the projection it queued."""
+    return {
+        "revisionId": REVISION_ID,
+        "isoWeek": ISO_WEEK,
+        "reason": reason,
+        "approvedAt": "2026-02-09T09:05:00+00:00",
+        "inputVersion": input_version,
+        "solvedAgainstVersion": solved_against_version,
+        "adjustment": adjustment,
+        "projection": operation(kind="projection", identifier=PROJECTION_ID),
+    }
+
+
 def metadata(base_url: str) -> dict[str, Any]:
     """The RFC 8414 document, as the api builds it from its pinned issuer."""
     return {
