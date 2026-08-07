@@ -105,13 +105,23 @@ echo "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/l
 apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 ```
 
-`just` is NOT in Debian bookworm's repositories. Take the release binary, at a version you record:
+`just` is NOT in Debian bookworm's repositories. Take the release binary, at a version you record, and
+**record where it landed**: the systemd units resolve it through systemd's own `PATH`, which includes
+`/usr/local/bin`, and `tests/test_deployment_figures.py` crosses this directory against every unit's
+`ExecStart` so the two cannot disagree.
 
 ```
 curl -fsSL https://github.com/casey/just/releases/download/1.42.4/just-1.42.4-x86_64-unknown-linux-musl.tar.gz \
   | tar -xz -C /usr/local/bin just
-just --version
+just --version                  # 1.42.4
+command -v just                 # /usr/local/bin/just, which is on systemd's default PATH
 ```
+
+This justfile has been parsed with **1.42.4** (the pin above) and with **1.50.0**. Both evaluate the
+multi-line `env_var_or_default(` calls, and every recipe this runbook names dry-runs under both:
+`deploy`, `backup-now`, `wal-ship`, `restore-drill`, `learn-once`, `digests`, `ports-check`,
+`uid-check`. 1.50.0 was driven on the workstation that wrote this; 1.42.4 was driven by review.
+Nothing in the tree crosses the two versions, so record a new one here when you move the pin.
 
 ```
 git clone <repo> /opt/syncr && cd /opt/syncr
@@ -149,8 +159,12 @@ these are the ones without which the stack refuses to start or refuses to work:
 | `PUBLIC_BASE_URL` | The tunnel hostname. Every URL the Authorization Server publishes is built from it |
 | `ALLOWED_ORIGINS` | The tunnel hostname. This plus `SameSite=Lax` is the whole CSRF defence |
 
-**Confirm the secret scan catches a pasted one** before trusting the arrangement. Two commands,
-because a clean tree only proves the tree is clean:
+**Confirm the secret scan catches a pasted one.** Two commands, because a clean tree only proves the
+tree is clean.
+
+**RUN THIS ON THE WORKSTATION THAT HOLDS THE CHECKOUT, not on the host.** Both commands need `uv` and a
+synced Python environment, and step 2 installs neither: the host has no reason to hold a Python
+toolchain, and the scan is a pre-commit and CI concern rather than a deployment one.
 
 ```
 # 1. Prove the scan FIRES. A scratch file outside the repository, deleted immediately.
@@ -233,6 +247,17 @@ systemctl enable --now syncr-backup.timer syncr-walship.timer syncr-learning.tim
 systemctl list-timers 'syncr-*'
 ```
 
+**Then START ONE SERVICE, not just its timer.** `systemctl list-timers` lists a timer whether or not
+its service can execute at all, so enabling three timers and reading that list tells you nothing about
+whether they will run. A unit whose `ExecStart` does not resolve fails at `203/EXEC` on its first
+firing, which for the nightly backup is 03:00, and this is the step that would otherwise not notice:
+
+```
+systemctl start syncr-walship.service
+systemctl status syncr-walship.service --no-pager      # expect: Active: inactive (dead), status=0/SUCCESS
+journalctl -u syncr-walship.service -n 20 --no-pager   # expect: the shipper's own output
+```
+
 Then move both backup timestamps by hand, so `BackupStale` is quiet for a reason rather than by
 accident. Each recipe reads `deployments/digests.env` itself, so these run the release's images:
 
@@ -240,6 +265,10 @@ accident. Each recipe reads `deployments/digests.env` itself, so these run the r
 just backup-now
 just wal-ship
 ```
+
+**These two succeed in an interactive shell whether or not the units work**, because a shell finds
+`just` on `PATH` and a unit uses systemd's. That is why the `systemctl start` above is the check and
+these two are not.
 
 ### 11. The restore drill
 

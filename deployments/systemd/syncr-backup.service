@@ -21,7 +21,15 @@ Requires=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/syncr
-ExecStart=/usr/bin/just backup-now
+# `/usr/bin/env just`, NOT an absolute path to the binary. `just` is not in Debian's repositories, so
+# the deploy runbook installs the release tarball into `/usr/local/bin`, and a unit pinning
+# `/usr/bin/just` fails at 203/EXEC on its first firing: measured as a review finding, on a deployment
+# where `systemctl list-timers` still reported all three timers scheduled and both gauges still went
+# fresh, because step 10 never starts a service and the two commands after it run in a shell that finds
+# the binary on PATH. `env` resolves it through systemd's own PATH, which includes `/usr/local/bin`, so
+# the unit and the install location no longer have to agree.
+# `tests/test_deployment_figures.py` derives the expected path from the runbook rather than pinning it.
+ExecStart=/usr/bin/env just backup-now
 # A run that hangs on a network is a run that must end, or the next one overlaps it. Well inside the
 # nightly window and far outside a real dump, which is seconds on a database of this size.
 TimeoutStartSec=30min

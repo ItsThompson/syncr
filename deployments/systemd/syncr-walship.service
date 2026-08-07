@@ -17,7 +17,9 @@ Requires=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/syncr
-ExecStart=/usr/bin/just wal-ship
+# `/usr/bin/env just`, for the reason `syncr-backup.service` states in full: `just` is installed into
+# `/usr/local/bin`, and a unit pinning `/usr/bin/just` fails at 203/EXEC on its first firing.
+ExecStart=/usr/bin/env just wal-ship
 # Shorter than the interval below plus its accuracy, so a hung upload is killed before the next run
 # starts rather than two shippers draining one directory.
 TimeoutStartSec=45s

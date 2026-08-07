@@ -19,6 +19,8 @@ Requires=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/syncr
-ExecStart=/usr/bin/just learn-once
+# `/usr/bin/env just`, for the reason `syncr-backup.service` states in full: `just` is installed into
+# `/usr/local/bin`, and a unit pinning `/usr/bin/just` fails at 203/EXEC on its first firing.
+ExecStart=/usr/bin/env just learn-once
 # Section 19 budgets the run at under five minutes. Six times that is a hang rather than a slow night.
 TimeoutStartSec=30min
