@@ -133,6 +133,41 @@ monitoring-check:
       --entrypoint amtool prom/alertmanager:v0.28.0 \
       check-config /etc/alertmanager/alertmanager.yml
 
+# Ask the RUNNING stack what it actually did with the committed configuration.
+#
+# The three questions `promtool` and `amtool` cannot answer, and one of them cost this deployment
+# every warning-severity alert it had:
+#
+#   - are all five scrape targets up, including the worker's own exposition
+#   - did Grafana provision the four dashboards against the datasource they name
+#   - does the cadvisor memory join return a series, or is the panel drawing nothing
+#
+# Needs `just monitoring` first. The two URLs are reachable from inside `app-net` only, so this is
+# run from a container on that network rather than from the host.
+monitoring-probe:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker compose {{monitoring_compose}} exec -T prometheus \
+      sh -c 'wget -qO- http://localhost:9090/api/v1/targets?state=any' >/dev/null
+    docker run --rm --network "$(docker compose {{monitoring_compose}} ps -q prometheus \
+      | head -1 | xargs docker inspect -f '{{{{range $k,$v := .NetworkSettings.Networks}}}}{{{{$k}}}}{{{{end}}}}')" \
+      -v "$PWD/deployments/bin:/probe:ro" python:3.12-alpine \
+      python /probe/stack-probe.py http://prometheus:9090 http://grafana:3000 "${GRAFANA_ADMIN_PASSWORD:-admin}"
+
+# Post one alert per severity to the running Alertmanager and report what it did with each.
+#
+# THE ONE ARTEFACT `amtool` CANNOT JUDGE. An inhibit rule whose `equal:` names a label every alert
+# shares is syntactically perfect and silences whole severities: this deployment shipped exactly
+# that, and only posting alerts showed it. A warning coming back `suppressed` beside an unrelated
+# critical is the failure to look for.
+monitoring-alert-probe:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker run --rm --network "$(docker compose {{monitoring_compose}} ps -q alertmanager \
+      | head -1 | xargs docker inspect -f '{{{{range $k,$v := .NetworkSettings.Networks}}}}{{{{$k}}}}{{{{end}}}}')" \
+      -v "$PWD/deployments/bin:/probe:ro" --entrypoint sh alpine/curl:latest \
+      /probe/alertmanager-probe.sh http://alertmanager:9093
+
 # The api only, on the host, with autoreload. Needs `just dev-infra` and `just migrate`
 dev-api:
     cd packages/syncr-api && uv run --no-sync uvicorn syncr_api.api.main:app \

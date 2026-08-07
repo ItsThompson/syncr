@@ -152,6 +152,13 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
       - /dev/disk:/dev/disk:ro
+      # THE SOCKET IS NAMED EXPLICITLY, and `--docker_only=true` is why it has to be. Mounting
+      # `/var/run` does not reliably carry it: bringing the stack up showed cadvisor logging
+      # "Registration of the docker container factory failed: Cannot connect to the Docker daemon",
+      # after which it reported ONE series for the root cgroup and no `name` label at all. The System
+      # dashboard's memory panel joins on that label, so it drew nothing while every config check
+      # passed.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     expose:
       - "8080"
     networks:
