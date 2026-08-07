@@ -232,3 +232,37 @@ export const refusedEventStream = (status = 503): RequestHandler =>
   http.get(url(EVENTS_PATH), () =>
     HttpResponse.json({ title: "Service unavailable", status }, { status }),
   );
+
+/* THE TWO READS THE CAPTURE HOST MAKES, and they are defaults for the reason the connection is: the host is
+ * mounted inside the gate, so every render through it asks for both. A capture needs an Area, and a deadline
+ * needs the reader's home zone.
+ *
+ * THE UNINTERESTING CASE IS AN ACCOUNT WITH NOTHING DECLARED, which is what an empty Area list is: the form then
+ * offers no Area and refuses to submit, which is a real state rather than a broken one. A test about capture says
+ * what it needs by overriding these, the way a test about a banner overrides the connection. */
+export const areasResponse: StubbedResponse = {
+  status: 200,
+  body: {
+    areas: [],
+    ramp: { pigmentCount: 12, pigmentsInUse: 0, areasSharingAPigment: 0, statement: null },
+  },
+};
+
+export const areas = (stubbed: StubbedResponse = areasResponse): RequestHandler =>
+  jsonHandler("/api/v1/areas", stubbed);
+
+export const settingsResponse: StubbedResponse = {
+  status: 200,
+  body: {
+    homeZone: "Europe/London",
+    activeZone: "Europe/London",
+    activeZoneDate: "2026-02-12",
+    dayStart: "06:00",
+    dayEnd: "23:00",
+    visibleHours: 16,
+    reviewCadence: "quarterly",
+  },
+};
+
+export const settings = (stubbed: StubbedResponse = settingsResponse): RequestHandler =>
+  jsonHandler("/api/v1/settings", stubbed);

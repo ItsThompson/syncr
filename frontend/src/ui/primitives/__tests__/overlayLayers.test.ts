@@ -6,39 +6,122 @@
  * because Radix portals a select's list to the document root and the dialog's scrim covers the viewport at a
  * higher layer.
  *
- * SO THE RULE IS AN ORDERING BETWEEN TWO SHEETS. A control a dialog can contain has to float above the scrim, and
- * a select and a date field are both such controls. Reading the numbers from the files is what makes the claim
- * survive either of them moving.
+ * THE SET IS DERIVED RATHER THAN NAMED, and that is why this file was rewritten after review. Naming
+ * `.select__content` and `.date-picker__panel` bounds the pair that broke and not the claim the guard makes: FOUR
+ * components in this kit portal to the document root, `@radix-ui/react-popover` is a declared dependency with no
+ * primitive of its own yet, and the next one added would reproduce the defect with this check still green. So the
+ * portalling components are read from the kit's own source, their surface classes are resolved against the kit's
+ * own sheets, and a portal that lands on no layer at all is the finding.
  *
- * The three numbers this kit spends live in three sheets and belong in the token layer as one ladder, which is
- * ticket 1461. Until then this test is what keeps the two ends of the ordering honest. */
+ * The numbers still live in four sheets rather than in the token layer as one ladder, which is ticket 1461. Until
+ * that lands, this is what keeps the ordering honest. */
 
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { kitStylesheet } from "../../../testing/kitStylesheets";
+import { classListsIn } from "../../../testing/kitSources";
+import { domainDir, layoutDir, primitivesDir } from "../../../testing/kitStylesheets";
 
-/** The `z-index` a rule declares, read from the sheet the browser loads. */
-async function layerOf(sheet: string, selector: string): Promise<number> {
-  const css = await kitStylesheet(sheet);
-  const rule = new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`).exec(css);
-  const declared = /z-index:\s*(\d+)/.exec(rule?.[1] ?? "");
-  if (declared === null) throw new Error(`${selector} in ${sheet} declares no z-index`);
-  return Number(declared[1]);
+const LAYERS = [primitivesDir, layoutDir, domainDir];
+
+/** Every file under the kit with the extension given, tests excluded. */
+async function kitFiles(extension: string): Promise<string[]> {
+  const perLayer = await Promise.all(
+    LAYERS.map((layer) => readdir(layer, { withFileTypes: true, recursive: true })),
+  );
+  return perLayer
+    .flat()
+    .filter((entry) => entry.isFile() && entry.name.endsWith(extension))
+    .filter((entry) => !entry.name.includes(".test."))
+    .map((entry) => path.join(entry.parentPath, entry.name))
+    .toSorted();
 }
 
-describe("a control a dialog can contain", () => {
-  it("floats above the scrim, because a list under it can be seen and not clicked", async () => {
-    const scrim = await layerOf("overlay.css", ".overlay__scrim");
+/** Each file's path and its source, read in one pass. */
+async function sourcesOf(extension: string): Promise<{ file: string; source: string }[]> {
+  const files = await kitFiles(extension);
+  return Promise.all(files.map(async (file) => ({ file, source: await readFile(file, "utf8") })));
+}
 
-    expect(await layerOf("Select.css", ".select__content")).toBeGreaterThan(scrim);
-    expect(await layerOf("DatePicker.css", ".date-picker__panel")).toBeGreaterThan(scrim);
+/** Every `z-index` the kit declares, by the class the rule selects on. */
+async function layersByClass(): Promise<Map<string, number>> {
+  const layers = new Map<string, number>();
+  for (const { source } of await sourcesOf(".css")) {
+    for (const rule of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const declared = /z-index:\s*(\d+)/.exec(rule[2]);
+      if (declared === null) continue;
+      for (const named of rule[1].matchAll(/\.([a-z][a-z0-9_-]*)/g)) {
+        layers.set(named[1], Math.max(layers.get(named[1]) ?? 0, Number(declared[1])));
+      }
+    }
+  }
+  return layers;
+}
+
+interface PortalledSurface {
+  /** The file a finding names, so a reader knows which component to open. */
+  readonly name: string;
+  /** The highest layer any class it draws with resolves to, or null when none of them declares one. */
+  readonly layer: number | null;
+}
+
+/** Every component in the kit that portals to the document root, with the layer its surfaces land on. */
+async function portalled(): Promise<PortalledSurface[]> {
+  const layers = await layersByClass();
+  return (await sourcesOf(".tsx"))
+    .filter(({ source }) => source.includes(".Portal"))
+    .map(({ file, source }) => {
+      let highest: number | null = null;
+      for (const classList of classListsIn(source)) {
+        for (const named of classList.split(/\s+/)) {
+          const declared = layers.get(named);
+          if (declared !== undefined) highest = Math.max(highest ?? 0, declared);
+        }
+      }
+      return { name: path.basename(file), layer: highest };
+    })
+    .toSorted((left, right) => left.name.localeCompare(right.name));
+}
+
+describe("the kit's portalled surfaces", () => {
+  it("are found by reading the kit rather than by naming a pair", async () => {
+    const surfaces = await portalled();
+
+    /* Named as well as counted, so a portal that stops portalling is as visible as one that arrives. */
+    expect(surfaces.map((surface) => surface.name)).toEqual([
+      "CommandPalette.tsx",
+      "DatePicker.tsx",
+      "Dialog.tsx",
+      "Select.tsx",
+    ]);
+  });
+
+  /* A portal leaves its parent's stacking context entirely, so a surface that declares no layer is at the mercy
+     of document order against every scrim in the product. That is the shape the scrim defect had. */
+  it("all land on a layer, so none is left to document order", async () => {
+    expect((await portalled()).filter((surface) => surface.layer === null)).toEqual([]);
+  });
+
+  /* The claim the fix makes: a control a dialog can contain floats above the scrim. Every portal that is not a
+     scrim itself has to clear it, because a reader can open a select inside a dialog and cannot open a dialog
+     inside a select. */
+  it("float above a dialog's scrim, because a list under it can be seen and not clicked", async () => {
+    const scrim = (await layersByClass()).get("overlay__scrim");
+    const popovers = (await portalled()).filter((surface) => surface.layer !== scrim);
+
+    expect(scrim).toBe(50);
+    expect(popovers.map((surface) => surface.name)).toEqual(["DatePicker.tsx", "Select.tsx"]);
+    for (const surface of popovers) {
+      expect(surface.layer ?? 0).toBeGreaterThan(scrim ?? 0);
+    }
   });
 
   /* The scrim still covers the page it dims. A ladder that lifted every popover above everything would put a
      select's list over a dialog it does not belong to, so the ordering is asserted from both ends. */
-  it("leaves the scrim above the surfaces the page itself stacks", async () => {
-    const scrim = await layerOf("overlay.css", ".overlay__scrim");
+  it("leave the scrim above the surfaces the page itself stacks", async () => {
+    const layers = await layersByClass();
 
-    expect(scrim).toBeGreaterThan(await layerOf("../domain/week-grid/grid.css", ".week-insertion"));
+    expect(layers.get("overlay__scrim") ?? 0).toBeGreaterThan(layers.get("week-insertion") ?? 0);
   });
 });

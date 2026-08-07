@@ -134,8 +134,17 @@ export function useBacklogScreen(): BacklogState & BacklogActions {
     nowMs: Date.now(),
     completionRefusal: completion.problem,
     completed,
-    onFiltersChange: setFilters,
-    onSortChange: setSort,
+    onFiltersChange: (next: BacklogFilters) => {
+      /* The notice is about a row that left THIS list. Narrowing to another one, or ordering it differently, is
+       * the reader moving on, and a confirmation that outlived what it confirmed would sit on the screen for
+       * the life of the mount. */
+      setCompleted(null);
+      setFilters(next);
+    },
+    onSortChange: (next: TableSort) => {
+      setCompleted(null);
+      setSort(next);
+    },
     onComplete: (taskId: string) => {
       void completion.submit(taskId).then((applied) => {
         setCompleted(applied ? taskId : null);

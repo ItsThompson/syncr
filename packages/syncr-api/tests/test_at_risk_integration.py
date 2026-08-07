@@ -80,12 +80,17 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-# The measurement's shape, and the ceiling this suite fails at. The budget is p95 under 150 ms; the
-# ceiling is deliberately looser, because a developer's machine and a CI runner are not the
-# deployment, and the measured figure is reported rather than asserted. Twenty deadlined tasks is
-# review 44's own shape, which is what makes this figure comparable to the one it recorded.
+# The measurement's shape, and the ceiling this suite fails at.
+#
+# The budget is p95 under 150 ms, stated in `19-nonfunctional.md`. The ceiling is looser, because a
+# developer's machine and a CI runner are not the deployment, and the figure is reported rather than
+# asserted. 400 ms rather than the week suite's 1000: at 1000 against a measured 42 ms a twenty-fold
+# regression stayed green, which is a ceiling no plausible regression reaches. 400 is still nearly
+# ten times the measurement and under three times the budget.
+#
+# Twenty deadlined tasks is review 44's own shape, which is what makes this figure comparable to it.
 LATENCY_SAMPLES = 30
-CATASTROPHIC_MILLISECONDS = 1000
+CATASTROPHIC_MILLISECONDS = 400
 DEADLINED_TASKS = 20
 
 
@@ -505,9 +510,9 @@ def test_the_backlog_read_is_well_under_its_budget_on_a_full_week(
     Measured on the branch that PAYS: the week's pending slot is empty, so the read assembles and
     probes. A week whose slot is current serves a stored verdict and is the cheaper of the two.
 
-    The ceiling this suite fails at is the same one ``test_week_view_integration.py`` uses and is
-    several times the budget, because a developer's machine and a CI runner are not the deployment.
-    The figure is printed so a regression is visible without the run turning red on a slow host.
+    The ceiling this suite fails at is 400 ms, nearly ten times the measured figure and under three
+    times the budget: the week suite's 1000 would have let a twenty-fold regression through. The
+    figure is printed rather than asserted, because a developer's machine is not the deployment.
     """
     headers, area_id = configured
     week = this_week()
