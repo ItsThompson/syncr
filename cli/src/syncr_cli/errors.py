@@ -26,6 +26,7 @@ from syncr_cli.problems import (
 
 if TYPE_CHECKING:
     from syncr_cli.exit_codes import ExitCode
+    from syncr_cli.wire.operation import Operation
 
 
 class CliError(Exception):
@@ -91,16 +92,22 @@ class Failure(CliError):
 class WaitTimedOut(CliError):
     """A wait on an operation ran out before the operation reached a terminal status.
 
-    Carries the operation id as well as stating it in the detail, because the wait is
-    resumable and an agent should not have to parse a sentence to resume it.
+    Carries the operation as well as naming it in the detail, because the wait is resumable and an
+    agent should not have to parse a sentence to resume it: the result this becomes reports the
+    operation under the wrapper's own member, beside a ``problem`` saying the wait ended.
     """
 
     problem_type = CLI_TIMED_OUT
     title = "Timed out while waiting"
 
-    def __init__(self, detail: str, *, operation_id: str) -> None:
-        self.operation_id = operation_id
+    def __init__(self, detail: str, *, operation: Operation) -> None:
+        self.operation = operation
         super().__init__(detail)
+
+    @property
+    def operation_id(self) -> str:
+        """The identifier a caller resumes the wait with."""
+        return self.operation.id
 
 
 class ApiRefused(CliError):

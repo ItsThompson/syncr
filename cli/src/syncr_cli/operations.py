@@ -55,7 +55,7 @@ def wait_for_operation(
                 f"the {operation.kind} {operation_id} was still {operation.status.value} after "
                 f"{timeout_s}s, so this wait ended. The work is not cancelled: read it again "
                 f"with the same id to resume the wait.",
-                operation_id=operation_id,
+                operation=operation,
             )
         sleep(min(interval_ms / _MS_PER_SECOND, remaining))
         interval_ms = min(interval_ms * BACKOFF_FACTOR, MAX_POLL_INTERVAL_MS)

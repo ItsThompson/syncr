@@ -17,6 +17,7 @@ from __future__ import annotations
 import webbrowser
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from time import monotonic, sleep
 from typing import TYPE_CHECKING, Self
 
 from syncr_cli.api_client import ApiClient
@@ -40,6 +41,12 @@ if TYPE_CHECKING:
 # to stand where the browser stands.
 type BrowserOpener = Callable[[str], bool]
 
+# How a wait passes time and how it tells that time has passed. Members of `Host` for the same
+# reason: a test drives a supersession and a timeout in milliseconds rather than waiting for either,
+# and the loop it drives is the loop the process runs.
+type Sleeper = Callable[[float], None]
+type Monotonic = Callable[[], float]
+
 
 @dataclass(frozen=True, slots=True)
 class Host:
@@ -56,6 +63,8 @@ class Host:
     stdout_is_tty: bool
     today: date
     open_browser: BrowserOpener = webbrowser.open
+    sleep: Sleeper = sleep
+    monotonic: Monotonic = monotonic
 
     @classmethod
     def real(cls, stdout: TextIO, stderr: TextIO, env: Mapping[str, str]) -> Self:

@@ -21,7 +21,7 @@ command rather than living in a document.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, NoReturn
 
 from syncr_cli.errors import UsageError
@@ -44,6 +44,24 @@ if TYPE_CHECKING:
 PROGRAM: Final = "syncr"
 
 type Handler = Callable[[Runtime, "Invocation"], CliResult]
+
+# What every parser in the tree writes into the namespace on its own account: the shared flags, and
+# the three values the tree itself sets. Named so an invocation's `arguments` can mean "what this
+# command declared" rather than "everything argparse produced", and asserted against the shared
+# parser's own actions by a test, so the list cannot drift from the flags below.
+SHARED_DESTINATIONS: Final = frozenset(
+    {
+        "api_url",
+        "week",
+        "output",
+        "poll_interval_ms",
+        "timeout_s",
+        "idempotency_key",
+        "help",
+    }
+)
+
+_TREE_DESTINATIONS: Final = frozenset({"noun", "verb", "handler", "command"})
 
 # The verb table under a noun, and the noun table under the root: argparse builds both with the
 # parent's own class, so every parser in the tree refuses in this package's words.
@@ -74,7 +92,36 @@ class Invocation:
 
     command: tuple[str, ...]
     flags: Flags
+    arguments: dict[str, object] = field(default_factory=dict)
     stated_idempotency_key: str | None = None
+
+    def value[ValueT](self, name: str, kind: type[ValueT]) -> ValueT | None:
+        """One argument this command declared, or ``None`` when the caller stated none.
+
+        ``kind`` is the type the argument's own ``type=`` produces. A value of another type is a
+        mistake in this package's declaration of that argument rather than anything a caller can
+        cause, so it raises rather than being answered: the traceback names the argument, which is
+        what a bug report needs, and the runner deliberately leaves an unexpected exception alone.
+        """
+        stated = self.arguments.get(name)
+        if stated is None:
+            return None
+        if not isinstance(stated, kind):
+            raise TypeError(
+                f"{name} was declared to produce {kind.__name__} and arrived as "
+                f"{type(stated).__name__}"
+            )
+        return stated
+
+    def required[ValueT](self, name: str, kind: type[ValueT]) -> ValueT:
+        """An argument argparse guaranteed: a positional, or a flag declared ``required``.
+
+        Absent is a mistake in the declaration for the same reason a wrong type is, so it raises.
+        """
+        stated = self.value(name, kind)
+        if stated is None:
+            raise TypeError(f"{name} is required and arrived absent")
+        return stated
 
     def idempotency_key(self, arguments: dict[str, object]) -> str:
         """The key a mutation carries: the caller's own, or one derived from this invocation.
@@ -116,17 +163,27 @@ def parse(argv: Sequence[str]) -> tuple[Invocation, Handler]:
                 week=getattr(parsed, "week", None),
                 output=getattr(parsed, "output", None),
             ),
+            arguments=command_arguments(parsed),
             stated_idempotency_key=getattr(parsed, "idempotency_key", None),
         ),
         handler,
     )
 
 
+def command_arguments(parsed: argparse.Namespace) -> dict[str, object]:
+    """Everything the chosen command declared, and nothing the tree or the shared flags did."""
+    return {
+        name: value
+        for name, value in vars(parsed).items()
+        if name not in SHARED_DESTINATIONS and name not in _TREE_DESTINATIONS
+    }
+
+
 def build_parser() -> Parser:
     """The whole command line, catalog and all."""
     # Imported here rather than at module scope: a command module reads `Invocation` from this
     # one, so importing them at the top would be a cycle at import time.
-    from syncr_cli.commands import auth, week
+    from syncr_cli.commands import auth, backlog, block, day, plan, task, week
 
     shared = _shared_flags()
     root = Parser(
@@ -136,13 +193,14 @@ def build_parser() -> Parser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=_epilog(
             f"{PROGRAM} auth login",
-            f"{PROGRAM} auth status --json",
             f"{PROGRAM} week show --week 2026-W07",
+            f"{PROGRAM} plan solve --wait",
+            f"{PROGRAM} backlog list --json",
         ),
     )
     nouns = root.add_subparsers(dest="noun", metavar="<noun>")
-    auth.register(nouns, shared)
-    week.register(nouns, shared)
+    for noun in (auth, task, backlog, week, plan, block, day):
+        noun.register(nouns, shared)
     return root
 
 

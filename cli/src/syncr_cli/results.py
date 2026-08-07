@@ -125,9 +125,15 @@ class CliResult:
         )
 
     @classmethod
-    def failed(cls, problem: Problem) -> CliResult:
-        """A command that did not."""
-        return cls(ok=False, problem=problem)
+    def failed(cls, problem: Problem, *, operation: Operation | None = None) -> CliResult:
+        """A command that did not.
+
+        ``operation`` is the work the failure was about, where the failure was about work: a wait
+        that ran out names the operation so the wait is resumable from the wrapper's own member
+        rather than from a sentence an agent would have to parse. It does not decide the exit code,
+        because the problem already did.
+        """
+        return cls(ok=False, problem=problem, operation=operation)
 
     @property
     def exit_code(self) -> ExitCode:

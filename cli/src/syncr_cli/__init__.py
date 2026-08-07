@@ -31,6 +31,8 @@ Every module in this package appears in the table below.
 | ``errors.py`` | The failures a command raises, each carrying its problem |
 | ``http.py`` | The one place this package speaks HTTP |
 | ``api_client.py`` | The product's routes, as this client calls them |
+| ``areas.py`` | Naming an Area, and what a surface prints when it cannot |
+| ``arguments.py`` | Reading a value a caller stated, and refusing one that names nothing |
 | ``operations.py`` | Waiting on an operation: poll, back off, and end with a code |
 | ``idempotency.py`` | The key a mutation carries, derived deterministically |
 | ``notices.py`` | What the process says on stderr beyond its result |
