@@ -9,6 +9,10 @@ Both directions live together for the reason the two task quantities do: a write
 one shape in two modules is a shape that drifts, and the failure would be a concession the user
 approved being read back as a different one, or as none.
 
+:func:`awaiting_approval` is the third reading, and it is the same document one step further on: the
+candidate the SLOT holds, in the shape an approved concession takes, so a week view renders a
+concession awaiting assent the way it renders one already granted.
+
 **The reductions are the only interesting part.** They are per-date minutes, keyed by the local
 date's ISO spelling, which is the same key a frame occurrence carries and the same key the stored
 column holds: one spelling, so the fold pairs them without a second derivation. Reading is
@@ -25,6 +29,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from syncr_api.plans.errors import AdjustmentRejected
+from syncr_api.plans.records import WeekAdjustmentRecord
 from syncr_common.logging import get_logger
 from syncr_domain.identity import date_occurrence_key
 from syncr_domain.plan import AdjustmentKind
@@ -33,6 +38,7 @@ from syncr_solver.inputs import WeekAdjustment
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from syncr_api.plans.records import PendingProposalRecord
     from syncr_domain.zones import Date
 
 _log = get_logger("syncr.plans")
@@ -86,6 +92,39 @@ def from_document(document: Mapping[str, object], *, dates: Sequence[Date]) -> W
         target_id=_an_identifier(document.get(TARGET_ID), named=TARGET_ID),
         reductions=reductions_of(_a_mapping(document.get(REDUCTIONS)), dates=dates),
         delta_minutes=_a_figure(document.get(DELTA_MINUTES)),
+    )
+
+
+def awaiting_approval(proposal: PendingProposalRecord) -> WeekAdjustmentRecord | None:
+    """The concession a pending proposal was solved under, in the shape an approved one takes.
+
+    ``None`` for an ordinary proposal, which was solved under no candidate.
+
+    **It is not a row, and the shape says so by what it carries.** The identifier is the one the
+    approval will persist under, which is the identifier the proposed document already names, so the
+    concession a client sees before approving and the concession it reads afterwards are one thing
+    with one identity. The two instants are the PROPOSAL's, because the candidate has none of its
+    own: requesting a tradeoff persists nothing, so the only fact about when this concession came
+    into being is when the solve that evaluated it landed.
+
+    One shape rather than a second, so a surface renders a concession the same way whether the user
+    has assented to it or is being asked to.
+    """
+    if proposal.candidate_adjustment is None:
+        return None
+    candidate = from_document(proposal.candidate_adjustment, dates=proposal.iso_week.dates())
+    return WeekAdjustmentRecord(
+        id=candidate.adjustment_id,
+        tenant_id=proposal.tenant_id,
+        iso_week=proposal.iso_week,
+        # The record's kind is the COLUMN's closed set, which ``ADJUSTMENT_KINDS`` derives from the
+        # domain enum, so the member's own value is already one of them.
+        kind=candidate.kind.value,
+        target_id=candidate.target_id,
+        reductions=dict(stored_reductions(candidate)),
+        delta_minutes=candidate.delta_minutes,
+        created_at=proposal.created_at,
+        created_by_operation_id=proposal.operation_id,
     )
 
 

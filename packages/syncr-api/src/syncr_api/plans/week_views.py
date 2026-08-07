@@ -1,10 +1,10 @@
-"""The two shapes the week service answers with, beside the service rather than inside it.
+"""The shapes the week service answers with, beside the service rather than inside it.
 
 A composed read has a return type, and a wire schema has to name it. Keeping these in ``service.py``
 would make ``schemas.py`` import a service module to describe a response, which is the dependency
 running the wrong way: a schema describes a value, and the value is what the service produces.
 
-Neither carries behaviour. They are what the routes map onto the wire, and every figure on them was
+None carries behaviour. They are what the routes map onto the wire, and every figure on them was
 computed by the modules named beside their fields.
 """
 
@@ -15,14 +15,23 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+    from datetime import datetime
 
     from syncr_api.offplan.records import OffPlanPeriodRecord
     from syncr_api.plans.emptiness import EmptyWeek
     from syncr_api.plans.readings import WeekReadings
-    from syncr_api.plans.records import PlanRevisionRecord, WeekAdjustmentRecord
+    from syncr_api.plans.records import (
+        ConflictRecord,
+        PinRecord,
+        PlanRevisionRecord,
+        WeekAdjustmentRecord,
+    )
     from syncr_api.solving.records import OperationRecord
+    from syncr_domain.feasibility import Verdict
+    from syncr_domain.identifiers import OperationId
     from syncr_domain.intervals import Interval
     from syncr_domain.plan import PlanDocument
+    from syncr_domain.proposals import ProposalDiff
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import Date, ZoneId
 
@@ -36,10 +45,41 @@ class WeekView:
     zone_by_date: Mapping[Date, ZoneId]
     live: PlanDocument | None
     empty: EmptyWeek | None
+    proposal: ProposalDiff | None
+    candidate_adjustment: WeekAdjustmentRecord | None
+    adjustments: Sequence[WeekAdjustmentRecord]
+    pins: Sequence[PinRecord]
+    conflicts: Sequence[ConflictRecord]
     off_plan: Sequence[OffPlanPeriodRecord]
+    verdict: Verdict | None
     operation: OperationRecord | None
     input_version: int
     readings: WeekReadings | None
+
+
+@dataclass(frozen=True, slots=True)
+class PendingProposal:
+    """The proposal a week is holding, as its own route answers with it.
+
+    **The candidate plan document is deliberately absent.** A proposal IS the difference between
+    the live plan and a candidate, and the difference is what the grid renders proposal targets
+    from: the live plan is already on the week view beside it, so carrying the whole candidate week
+    would put a second document in a payload whose reader has one.
+
+    Both versions travel, and that is ``PP5`` from the read side. ``input_version`` is the state the
+    proposal was SOLVED against, so a client comparing it with the week's own can see that the week
+    moved on while this proposal waited, which is permitted and is what makes approval never
+    blocked.
+    """
+
+    iso_week: IsoWeek
+    diff: ProposalDiff
+    verdict: Verdict
+    candidate_adjustment: WeekAdjustmentRecord | None
+    input_version: int
+    weight_set_version: int
+    operation_id: OperationId
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)

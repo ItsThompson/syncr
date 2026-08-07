@@ -24,6 +24,7 @@ WEEK_PATH: Final = "/{iso_week}"
 REVISIONS_PATH: Final = "/{iso_week}/revisions"
 SOLVE_PATH: Final = "/{iso_week}/solve"
 VERDICT_PATH: Final = "/{iso_week}/verdict"
+PROPOSAL_PATH: Final = "/{iso_week}/proposal"
 
 # The query parameter that bypasses the debounce window a solve would otherwise wait out. The
 # window is the coordinator's, and so is the reading of this flag once it exists.
