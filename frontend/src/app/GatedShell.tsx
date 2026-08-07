@@ -14,6 +14,12 @@
  * fan-out and a second thing to reconnect. Inside the gate rather than around it: a visitor with no session has
  * nothing to be pushed. The kit may not fetch, so the provider sits here and a route reads it through a hook.
  *
+ * CAPTURE IS HELD HERE FOR THE SAME REASON THE CONNECTION IS. `n` opens capture from any screen, because capture
+ * must never compete with the thing being captured, so there is one dialog above the outlet rather than one per
+ * screen: two instances would mean two forms holding two drafts of the same task. Inside the gate, because a
+ * visitor with no session has no Area to capture into. A screen that wants a control for it asks this instance
+ * to open through `useCapture`.
+ *
  * THE WORDS ARE THE API'S. The same condition is composed once and raised at two volumes with a shared identity
  * root: the banner here, and the panel on Settings. Neither surface writes the sentence, so the two cannot state
  * the outage differently. */
@@ -21,6 +27,7 @@
 import { useGoogleConnection } from "../api/hooks/useCalendarSources";
 import { useSession } from "../api/hooks/useSession";
 import { EventStreamProvider } from "../api/events";
+import { CaptureHost } from "../routes/backlog";
 import { NoticeStrip, noticesAt, ShellLayout } from "../ui/domain";
 import { AuthGate } from "./AuthGate";
 
@@ -33,11 +40,13 @@ export function GatedShell() {
   return (
     <AuthGate session={session}>
       <EventStreamProvider>
-        <ShellLayout
-          notices={banners.map((notice) => (
-            <NoticeStrip key={notice.id} notice={notice} />
-          ))}
-        />
+        <CaptureHost>
+          <ShellLayout
+            notices={banners.map((notice) => (
+              <NoticeStrip key={notice.id} notice={notice} />
+            ))}
+          />
+        </CaptureHost>
       </EventStreamProvider>
     </AuthGate>
   );

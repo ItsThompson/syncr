@@ -12,7 +12,7 @@ import { type RouteObject } from "react-router";
 import { GatedShell } from "../app/GatedShell";
 import { SETUP_PATH, SIGN_IN_PATH } from "../ui/domain/shell/navigation";
 import { AreasRoute } from "./areas";
-import { BacklogRoute } from "./BacklogRoute";
+import { BacklogRoute } from "./backlog";
 import { LearnedRoute } from "./LearnedRoute";
 import { NotFoundRoute } from "./NotFoundRoute";
 import { RootRedirect } from "./RootRedirect";
