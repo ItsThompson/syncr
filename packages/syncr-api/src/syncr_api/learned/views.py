@@ -26,7 +26,9 @@ class LearnedReading:
     render without.
 
     ``unlocks_count_confirmed_volume`` is here for the same reason. A user has to understand that
-    honesty is not penalised, or the whole dataset's integrity is at risk.
+    honesty is not penalised, or the whole dataset's integrity is at risk. So is
+    ``collecting_is_normal``: section 11's Learned-screen table asks for it explicitly, in prose, on
+    the screen.
     """
 
     version: int
@@ -37,6 +39,7 @@ class LearnedReading:
     collecting: int
     thresholds_are_estimates: str
     unlocks_count_confirmed_volume: str
+    collecting_is_normal: str
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

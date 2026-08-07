@@ -1,8 +1,7 @@
 """The three learning routes.
 
 Thin, on purpose. Each validates its shape, resolves who is asking, calls one service method, and
-maps
-the result through that shape's own ``of``. No authorization decision and no persistence.
+maps the result through that shape's own ``of``. No authorization decision and no persistence.
 
 **The two reads write nothing.** No row, no input version bump, and no solve: reading what has been
 learned is a read, and the Learned screen is one a user opens to check syncr against their own

@@ -7,9 +7,8 @@ place, which is a benign degradation: the solver keeps working with slightly old
 
 A one-shot, not a service. There is no server, no loop and no signal handling: the container runs,
 the timer that started it collects the code, and the process is gone. What it does hold is the
-metric
-exposition, written to a file the node exporter's textfile collector reads, because a process that
-has exited cannot be scraped.
+metric exposition, written to a file the node exporter's textfile collector reads, because a process
+that has exited cannot be scraped.
 """
 
 from __future__ import annotations

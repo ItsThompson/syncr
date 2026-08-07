@@ -3,8 +3,7 @@
 The job has no HTTP surface, so nothing serves an exposition here: a one-shot container is not
 scrapeable, and the run instead writes its figures to the registry and the entrypoint pushes or logs
 them. What matters for this module is that the families exist and are named exactly as section 18
-and
-ticket 54's dashboards spell them, because an alert reads a name.
+and ticket 54's dashboards spell them, because an alert reads a name.
 
 ``syncr_learning_samples`` is labelled by PARAMETER, which is the label section 11's own maturity
 table is keyed on: an alert about a gate is an alert about one parameter, and one series per
@@ -51,10 +50,17 @@ SAMPLES = Gauge(
 
 FITS_REJECTED = Counter(
     "syncr_learning_fit_rejected_total",
-    "Fits refused rather than applied, by the parameter refused and the reason it was.",
+    "Parameters not applied after a run, by the parameter and why it was not.",
     labelnames=("parameter", "reason"),
     registry=REGISTRY,
 )
+"""Counts a parameter the run did NOT apply, which is wider than a fit that was refused.
+
+The ``reason`` label separates the two: ``below_threshold`` is a young corpus, which is the ordinary
+case and not a fault, and ``refused`` is a fit the arithmetic would not stand behind. An alert on
+this family has to read the label, because the name alone would suggest every collecting parameter
+is a failure and a new tenant would look like a broken one.
+"""
 
 WEIGHT_SET_VERSION = Gauge(
     "syncr_weight_set_version",

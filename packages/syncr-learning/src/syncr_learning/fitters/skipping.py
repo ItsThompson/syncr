@@ -3,9 +3,8 @@ the day.
 
 Fitted from confirmed blocks, over the bucket each was PLANNED in. A ``skipped`` outcome is a
 refusal and so is a ``moved`` one: the user did not do the work where the solver put it, and that is
-the
-question this parameter answers. Consumed by the objective's misfit term, charged in full, so the
-prior of 0.0 charges nothing.
+the question this parameter answers. Consumed by the objective's misfit term, charged in full, so
+the prior of 0.0 charges nothing.
 
 **Three buckets rather than twenty-four hours, because a refusal is a sparse signal.** A user
 produces a handful a week, and a per-hour probability would never leave its prior. That is the same

@@ -1,8 +1,8 @@
 """The frozen view the weight-set repository returns.
 
-Flat rather than nested. The seven term weights and the five fitted parameters are read by
-different consumers at different times, and grouping them would make every caller reach
-through a container to get one float.
+Flat rather than nested. The seven term weights and the five fitted parameters are read by different
+consumers at different times, and grouping them would make every caller reach through a container to
+get one float.
 """
 
 from __future__ import annotations

@@ -1,16 +1,14 @@
 """Persistence for weight sets: seed version 1, read the active one, list the versions.
 
-``seed_hand_tuned`` is what gives a NEW tenant its version 1. The migration seeds every
-tenant that existed when it ran, which on a fresh database is none, so a tenant created
-afterwards needs the same row from somewhere: account provisioning calls this in the
-transaction that creates the tenant. Without it the first user would have no active weight
-set, and ``PlanRevision.weight_set_version`` is non-optional from the first revision
-onwards.
+``seed_hand_tuned`` is what gives a NEW tenant its version 1. The migration seeds every tenant that
+existed when it ran, which on a fresh database is none, so a tenant created afterwards needs the
+same row from somewhere: account provisioning calls this in the transaction that creates the tenant.
+Without it the first user would have no active weight set, and ``PlanRevision.weight_set_version``
+is non-optional from the first revision onwards.
 
-Activation and reverting are not here. Flipping ``active`` is a user-facing act with a
-re-solve behind it, and it belongs with the screen that offers it:
-:mod:`syncr_api.learned.activation` holds the two statements and the re-solve of future
-weeks they precede.
+Activation and reverting are not here. Flipping ``active`` is a user-facing act with a re-solve
+behind it, and it belongs with the screen that offers it: :mod:`syncr_api.learned.activation` holds
+the two statements and the re-solve of future weeks they precede.
 """
 
 from __future__ import annotations
@@ -51,8 +49,8 @@ class WeightSetRepository(TenantScopedRepository):
             **P0_WEIGHTS,
         )
         self._session.add(seeded)
-        # Flushed here so a second seed for one tenant fails at this call, where the caller
-        # can say what it was doing, rather than at the transaction's commit.
+        # Flushed here so a second seed for one tenant fails at this call, where the caller can say
+        # what it was doing, rather than at the transaction's commit.
         await self._session.flush()
         return _as_record(seeded)
 

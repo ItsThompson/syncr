@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import Final
 
-# ---------------------------------------------------------------------------
-# The tables. Four are facts about weeks that happened, two are declarations, one is the artefact.
+# --------------------------------------------------------------------------- The tables. Four are
+# facts about weeks that happened, two are declarations, one is the artefact.
 # ---------------------------------------------------------------------------
 
 TENANTS: Final = "tenants"
@@ -50,9 +50,8 @@ WRITE_TABLE: Final = WEIGHT_SETS
 NEVER_WRITTEN: Final[tuple[str, ...]] = (PLAN_REVISIONS, PINS, BLOCK_OUTCOMES)
 """The three the learning layer must never write. Asserted over this subpackage's own source."""
 
-# ---------------------------------------------------------------------------
-# The columns each read names.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- The columns each read
+# names. ---------------------------------------------------------------------------
 
 TENANT_ID: Final = "tenant_id"
 ID: Final = "id"
@@ -64,6 +63,7 @@ STATE: Final = "state"
 ACTUAL_MINUTES: Final = "actual_minutes"
 ACTUAL_STARTS_AT: Final = "actual_starts_at"
 ACTUAL_ENDS_AT: Final = "actual_ends_at"
+OCCURRED_AT: Final = "occurred_at"
 CONFIRMED_AT: Final = "confirmed_at"
 OBJECTIVE_DELTA: Final = "objective_delta"
 CONTEXT: Final = "context"
@@ -77,8 +77,8 @@ NAME: Final = "name"
 VERSION: Final = "version"
 ACTIVE: Final = "active"
 
-# ---------------------------------------------------------------------------
-# The keys inside the two JSONB documents this job reads.
+# --------------------------------------------------------------------------- The keys inside the
+# two JSONB documents this job reads.
 # ---------------------------------------------------------------------------
 
 # A stored plan document. Three of its fields are what a fitter reads: the blocks, each block's own
@@ -100,3 +100,41 @@ BINDING_SPLIT_INDEX: Final = "split_index"
 # A stored edit context. Two of its twenty-five fields are what the weight fit reads.
 CONTEXT_MEASUREMENT_DELTA: Final = "measurement_delta"
 CONTEXT_INSIDE_OFF_PLAN: Final = "inside_off_plan"
+
+# The weight-set row's own twelve non-key columns. Named here for the reason every other name in
+# this module is: a literal inside a query cannot be crossed against anything, and
+# `tests/test_solver_agreement.py` crosses each of these against `WeightSet.__table__`.
+ORIGIN: Final = "origin"
+DEADLINE_RISK: Final = "deadline_risk"
+BUDGET_DEVIATION: Final = "budget_deviation"
+TIME_OF_DAY_MISFIT: Final = "time_of_day_misfit"
+FRAGMENTATION: Final = "fragmentation"
+CHURN: Final = "churn"
+CONTEXT_SWITCH: Final = "context_switch"
+STALENESS: Final = "staleness"
+DURATION_MULTIPLIER: Final = "duration_multiplier"
+TIME_OF_DAY_FITNESS: Final = "time_of_day_fitness"
+SKIP_PROBABILITY: Final = "skip_probability"
+CONTEXT_SWITCH_COST: Final = "context_switch_cost"
+CHURN_TOLERANCE: Final = "churn_tolerance"
+FITTED_AT: Final = "fitted_at"
+MATURITY: Final = "maturity"
+
+WEIGHT_SET_COLUMNS: Final[tuple[str, ...]] = (
+    ORIGIN,
+    DEADLINE_RISK,
+    BUDGET_DEVIATION,
+    TIME_OF_DAY_MISFIT,
+    FRAGMENTATION,
+    CHURN,
+    CONTEXT_SWITCH,
+    STALENESS,
+    DURATION_MULTIPLIER,
+    TIME_OF_DAY_FITNESS,
+    SKIP_PROBABILITY,
+    CONTEXT_SWITCH_COST,
+    CHURN_TOLERANCE,
+    FITTED_AT,
+    MATURITY,
+)
+"""Every column the one insert names beyond the three keys, so the set is crossed at once."""

@@ -2,10 +2,10 @@
 
 Three kinds of number live here and each is a different sort of claim.
 
-**The priors.** What a parameter is worth before this user has produced evidence about it. Every
-one equals the hand-tuned figure version 1 ships, because that figure IS the prior belief: a
-second, differently chosen prior would mean the first observation moved the value away from what
-the solver was already using. ``tests/test_solver_agreement.py`` holds each against the api's own
+**The priors.** What a parameter is worth before this user has produced evidence about it. Every one
+equals the hand-tuned figure version 1 ships, because that figure IS the prior belief: a second,
+differently chosen prior would mean the first observation moved the value away from what the solver
+was already using. ``tests/test_solver_agreement.py`` holds each against the api's own
 ``P0_WEIGHTS``.
 
 **The prior weights.** How many observations it takes for the evidence to outweigh the prior.
@@ -31,8 +31,8 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Final
 
-# ---------------------------------------------------------------------------
-# The vocabulary. Restated from `syncr_solver.weights`, crossed against it by the suite.
+# --------------------------------------------------------------------------- The vocabulary.
+# Restated from `syncr_solver.weights`, crossed against it by the suite.
 # ---------------------------------------------------------------------------
 
 OBJECTIVE_TERMS: Final[tuple[str, ...]] = (
@@ -84,10 +84,9 @@ def bucket_of(hour: int) -> TimeBucket:
     return found
 
 
-# ---------------------------------------------------------------------------
-# The parameters this job fits, named once so a metric label, a maturity row and a stored key
-# cannot spell one parameter three ways.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- The parameters this
+# job fits, named once so a metric label, a maturity row and a stored key cannot spell one parameter
+# three ways. ---------------------------------------------------------------------------
 
 DURATION_MULTIPLIER: Final = "duration_multiplier"
 TIME_OF_DAY_FITNESS: Final = "time_of_day_fitness"
@@ -107,8 +106,8 @@ FITTED_PARAMETERS: Final[tuple[str, ...]] = (
 """Every parameter with a gate. Six rows, which is section 11's maturity table plus the weights."""
 
 
-# ---------------------------------------------------------------------------
-# The priors. Each is the figure version 1 ships hand-tuned.
+# --------------------------------------------------------------------------- The priors. Each is
+# the figure version 1 ships hand-tuned.
 # ---------------------------------------------------------------------------
 
 PRIOR_DURATION_MULTIPLIER: Final = 1.0
@@ -135,8 +134,8 @@ says one of them converges differently.
 """
 
 
-# ---------------------------------------------------------------------------
-# The observation ranges. What clamps an outlier, and therefore what bounds its influence.
+# --------------------------------------------------------------------------- The observation
+# ranges. What clamps an outlier, and therefore what bounds its influence.
 # ---------------------------------------------------------------------------
 
 MIN_DURATION_RATIO: Final = 0.25
@@ -157,8 +156,8 @@ MAX_CHURN_TOLERANCE: Final = 40.0
 """Moves. Zero is not a tolerance, which is the solver's own guard, so the floor here is one."""
 
 
-# ---------------------------------------------------------------------------
-# The maturity thresholds. UNVALIDATED ESTIMATES, and the screen says so.
+# --------------------------------------------------------------------------- The maturity
+# thresholds. UNVALIDATED ESTIMATES, and the screen says so.
 # ---------------------------------------------------------------------------
 
 THRESHOLD_DURATION_MULTIPLIER: Final = 12

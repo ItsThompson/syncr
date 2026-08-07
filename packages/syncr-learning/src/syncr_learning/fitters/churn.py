@@ -11,8 +11,7 @@ every move a revision made has a tolerance near zero.
 **The floor is one move rather than zero.** Zero is not a tolerance: it is a shape with no knee at
 all, and the term it shapes would be undefined rather than steep. A user who absorbs no
 rearrangement is expressed by a high churn WEIGHT, which is the number that says how much the term
-matters. That is the
-solver's own guard, restated here as the clamp that makes it unreachable.
+matters. That is the solver's own guard, restated here as the clamp that makes it unreachable.
 """
 
 from __future__ import annotations

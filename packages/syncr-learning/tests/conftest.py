@@ -2,8 +2,7 @@
 
 Most of it is pure and needs none. The storage tier needs a real Postgres, for the reason the api
 suite's own conftest states: an in-memory substitute for a JSONB read would be a second
-implementation
-of the spelling this package exists to keep honest.
+implementation of the spelling this package exists to keep honest.
 
 The tier is skipped only when ``SYNCR_SKIP_DB_TESTS`` is set, never merely because no database
 answered. Reachability is the wrong condition: an unreachable Postgres in an environment that is
@@ -35,8 +34,7 @@ def live_database_url() -> str:
     """The database URL, once it is confirmed reachable. Fails the tier otherwise.
 
     Read through the job's own settings rather than from the environment directly, so the default
-    has
-    one definition and ``DATABASE_URL`` overrides it the way it does for the running container.
+    has one definition and ``DATABASE_URL`` overrides it the way it does for the running container.
     """
     if os.environ.get(SKIP_ENV_VAR, "").strip().lower() in _TRUTHY:
         pytest.skip(f"{SKIP_ENV_VAR} is set")

@@ -8,9 +8,9 @@ and an objection is what an edit records.
 
 One consecutive pair of revisions of one week. The later revision put some blocks somewhere else,
 and each block that moved is a move the user either let stand or pinned back. Moves and drops,
-paired on
-the derived block id, which is the reading the objective's own churn term takes: an ADDITION is not
-churn, because nothing the user was looking at was rearranged by placing something new beside it.
+paired on the derived block id, which is the reading the objective's own churn term takes: an
+ADDITION is not churn, because nothing the user was looking at was rearranged by placing something
+new beside it.
 
 **What this does NOT read is an approval.** A revision that superseded another is a rearrangement
 the user was shown, whether or not they assented to it, and assent is a separate signal with its own

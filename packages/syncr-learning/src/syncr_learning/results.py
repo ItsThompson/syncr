@@ -7,8 +7,7 @@ is how much of ``value`` is still the prior, so "still collecting" is a figure r
 :meth:`FitResult.unfittable`, which carries the sample count and no value. That is not the same as a
 figure at the prior: a prior is a claim the fitter is making, and there are corpora it must refuse
 to make one from -- a difference between two populations where one is empty, a curve over six hours
-of
-the day. Read as "the prior", either would ship a number nobody fitted.
+of the day. Read as "the prior", either would ship a number nobody fitted.
 """
 
 from __future__ import annotations
@@ -56,8 +55,7 @@ class FitResult:
         """A refusal: this many observations, and nothing a solver could apply.
 
         ``shrinkage_weight`` is one, because a result with no value is entirely prior: nothing of
-        the
-        evidence reached a figure, so the honest reading of "how much of the value is the prior" is
-        all of it.
+        the evidence reached a figure, so the honest reading of "how much of the value is the prior"
+        is all of it.
         """
         return cls(value=None, samples=samples, confidence=None, shrinkage_weight=1.0)

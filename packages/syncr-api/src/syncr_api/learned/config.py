@@ -1,15 +1,15 @@
 """The weight set's vocabulary, and the hand-tuned numbers P0 ships.
 
-P0 ships hand-tuned weights through the SAME versioned mechanism fitted weights will use:
-a row per version, one active per tenant, `origin = "hand-tuned"`, and the version recorded
-on every revision, pin, and edit event that was produced under it. The fitted path is not a
-separate code path, so there is nothing to build twice and nothing to switch between.
+P0 ships hand-tuned weights through the SAME versioned mechanism fitted weights will use: a row per
+version, one active per tenant, `origin = "hand-tuned"`, and the version recorded on every revision,
+pin, and edit event that was produced under it. The fitted path is not a separate code path, so
+there is nothing to build twice and nothing to switch between.
 
-The magnitudes below are starting values, and the spec fixes their SHAPE rather than their
-size: ``deadline_risk`` carries a high weight and grows nonlinearly as slack approaches
-zero, which gives it practical dominance over ``budget_deviation`` without a rigid
-lexicographic ordering, because a strict ordering would make a budget deviation of any size
-invisible next to a deadline risk of any size and that is not how the user reasons.
+The magnitudes below are starting values, and the spec fixes their SHAPE rather than their size:
+``deadline_risk`` carries a high weight and grows nonlinearly as slack approaches zero, which gives
+it practical dominance over ``budget_deviation`` without a rigid lexicographic ordering, because a
+strict ordering would make a budget deviation of any size invisible next to a deadline risk of any
+size and that is not how the user reasons.
 
 | Weight | Why this value |
 |---|---|
@@ -21,12 +21,12 @@ invisible next to a deadline risk of any size and that is not how the user reaso
 | ``fragmentation``, ``staleness`` | Shaping terms, felt over weeks rather than within one |
 | ``context_switch`` | The lightest term weight; its per-change cost is the parameter beside it |
 
-The fitted parameters start empty, not at a neutral value. A parameter below its maturity
-gate is not applied at all rather than applied at a reduced weight, so an empty map is what
-"nothing has been learned yet" looks like to the solver.
+The fitted parameters start empty, not at a neutral value. A parameter below its maturity gate is
+not applied at all rather than applied at a reduced weight, so an empty map is what "nothing has
+been learned yet" looks like to the solver.
 
-Retuning any of these ships a NEW version through this same mechanism. That is what the
-versioning is for: comparison and rollback are a row and a flag rather than a redeploy.
+Retuning any of these ships a NEW version through this same mechanism. That is what the versioning
+is for: comparison and rollback are a row and a flag rather than a redeploy.
 """
 
 from __future__ import annotations
@@ -49,9 +49,9 @@ FIRST_WEIGHT_SET_VERSION = 1
 
 ORIGIN_MAX_LENGTH = 16
 
-# The seven objective term weights, plus the two parameters that shape two of those terms.
-# A weight says how much a term matters against the other six; a parameter says the term's
-# internal shape. Two numbers, two jobs: one is scale, one is unit.
+# The seven objective term weights, plus the two parameters that shape two of those terms. A weight
+# says how much a term matters against the other six; a parameter says the term's internal shape.
+# Two numbers, two jobs: one is scale, one is unit.
 P0_WEIGHTS: Final[Mapping[str, float]] = {
     "deadline_risk": 10.0,
     "budget_deviation": 3.0,
@@ -64,8 +64,8 @@ P0_WEIGHTS: Final[Mapping[str, float]] = {
     "churn_tolerance": 3.0,
 }
 
-# The seven term weights, named so a reader of the objective can check the breakdown it
-# returns against the weights that produced it.
+# The seven term weights, named so a reader of the objective can check the breakdown it returns
+# against the weights that produced it.
 OBJECTIVE_TERMS: Final = (
     "deadline_risk",
     "budget_deviation",
@@ -77,8 +77,8 @@ OBJECTIVE_TERMS: Final = (
 )
 
 
-# ---------------------------------------------------------------------------
-# The three routes: the read the Learned screen makes, the version list, and the activation.
+# --------------------------------------------------------------------------- The three routes: the
+# read the Learned screen makes, the version list, and the activation.
 #
 # Two prefixes rather than one, because the two collections answer different questions. `/learned`
 # is the PARAMETERS and their maturity, which is what the screen renders; `/weight-sets` is the

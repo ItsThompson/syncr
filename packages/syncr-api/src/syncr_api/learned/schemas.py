@@ -63,6 +63,7 @@ class LearnedResponse(LearnedSchema):
     collecting: int
     thresholds_are_estimates: str
     unlocks_count_confirmed_volume: str
+    collecting_is_normal: str
 
     @classmethod
     def of(cls, reading: LearnedReading) -> Self:
@@ -75,6 +76,7 @@ class LearnedResponse(LearnedSchema):
             collecting=reading.collecting,
             thresholds_are_estimates=reading.thresholds_are_estimates,
             unlocks_count_confirmed_volume=reading.unlocks_count_confirmed_volume,
+            collecting_is_normal=reading.collecting_is_normal,
         )
 
 

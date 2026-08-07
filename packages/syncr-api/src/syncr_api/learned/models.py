@@ -1,13 +1,12 @@
 """The ``weight_sets`` table: 30 to 50 floats in a row, versioned per tenant.
 
-There is no model registry, no artifact store, and no serialized binary, because the
-artifact is a row. Each fitting run writes a NEW version rather than mutating the current
-one, so comparison and rollback are free, and reverting is a flag rather than reprocessing
-history.
+There is no model registry, no artifact store, and no serialized binary, because the artifact is a
+row. Each fitting run writes a NEW version rather than mutating the current one, so comparison and
+rollback are free, and reverting is a flag rather than reprocessing history.
 
-The PARTIAL UNIQUE index is what enforces "exactly one active version per tenant". Without
-it, activating a version while another is active would be two rows both claiming to be the
-weights in use, and the solve path would pick whichever the scan returned first.
+The PARTIAL UNIQUE index is what enforces "exactly one active version per tenant". Without it,
+activating a version while another is active would be two rows both claiming to be the weights in
+use, and the solve path would pick whichever the scan returned first.
 """
 
 from __future__ import annotations
@@ -51,9 +50,9 @@ class WeightSet(Base, TenantScoped):
     context_switch: Mapped[float] = mapped_column(nullable=False)
     staleness: Mapped[float] = mapped_column(nullable=False)
 
-    # Empty until a fitter has cleared that parameter's maturity gate. A parameter below
-    # its gate is not applied at all, so absence is the correct representation of
-    # "unlearned" and a neutral default would be a fitted-looking number nobody fitted.
+    # Empty until a fitter has cleared that parameter's maturity gate. A parameter below its gate is
+    # not applied at all, so absence is the correct representation of "unlearned" and a neutral
+    # default would be a fitted-looking number nobody fitted.
     duration_multiplier: Mapped[JsonObject] = mapped_column(
         JSONB, nullable=False, server_default=_EMPTY_OBJECT
     )
@@ -76,8 +75,8 @@ class WeightSet(Base, TenantScoped):
         PrimaryKeyConstraint(TENANT_ID_COLUMN, "version"),
         CheckConstraint(values_in("origin", WEIGHT_SET_ORIGINS), name="origin_is_known"),
         CheckConstraint(f"version >= {FIRST_WEIGHT_SET_VERSION}", name="version_starts_at_one"),
-        # A fitted set states when it was fitted, and a hand-tuned set was never fitted at
-        # all, so one column cannot claim what the other denies.
+        # A fitted set states when it was fitted, and a hand-tuned set was never fitted at all, so
+        # one column cannot claim what the other denies.
         CheckConstraint(
             f"(origin = '{FITTED}') = (fitted_at IS NOT NULL)", name="fitted_states_when"
         ),

@@ -22,17 +22,16 @@ session and needs no delimiter that an identifier could contain.
 
 A key is written only for a parameter whose gate passed. An Area the map does not name has no fitted
 correction and gets none, which is "a parameter below its threshold is not applied at all" in
-storage. A neutral default would be a fitted-looking number nobody fitted, and for the
-fitness curve it would be worse than that: read as a default, an absent fitness enters the misfit
-term as the largest charge it can carry, which is the inverse of the rule.
+storage. A neutral default would be a fitted-looking number nobody fitted, and for the fitness curve
+it would be worse than that: read as a default, an absent fitness enters the misfit term as the
+largest charge it can carry, which is the inverse of the rule.
 
 ## The two scalars have no absent state, so the gate is applied before they get here
 
 Their columns are not nullable and version 1 ships them hand-tuned, so a fitted scalar below its
 gate cannot be expressed as absence. :func:`~syncr_learning.gates.gated` is what keeps the figure in
-force
-instead, and this module takes the already-gated values: the fallback it applies is the INCUMBENT's
-number rather than a prior, so a refused fit leaves the solver exactly where it was.
+force instead, and this module takes the already-gated values: the fallback it applies is the
+INCUMBENT's number rather than a prior, so a refused fit leaves the solver exactly where it was.
 """
 
 from __future__ import annotations

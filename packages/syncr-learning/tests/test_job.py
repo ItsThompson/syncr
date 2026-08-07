@@ -13,9 +13,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from syncr_common.metrics import REGISTRY
 from syncr_learning.config import THRESHOLD_DURATION_MULTIPLIER
 from syncr_learning.job import NoWeightsInForce, promotion_candidates, run, run_for_tenant
-from syncr_learning.metrics import PARAMETERS_READY, WEIGHT_SET_VERSION
 from tests.builders import AREA, TENANT, a_week_of, corpus, outcome, pin
 from tests.test_rank import IN_FORCE
 
@@ -224,10 +224,12 @@ class TestTheExitCode:
 
     async def test_the_run_reports_the_wall_time_it_took(self) -> None:
         # The five-minute budget is measured against this figure, so it has to exist on the report
-        # rather than only in a histogram the container cannot be scraped for.
+        # rather than only in a histogram a one-shot container cannot be scraped for. Bounded rather
+        # than non-negative: `>= 0.0` passes on a hardcoded zero, which is the one value that would
+        # mean the figure is not being taken at all.
         report = await run(a_reader(), RecordingWriter(), at=AT)
 
-        assert report.seconds >= 0.0
+        assert 0.0 < report.seconds < 60.0
 
 
 class TestARefusedFitIsNotAFailedRun:
@@ -263,8 +265,10 @@ class TestWhatTheRunReports:
 
         report = await run(reader, writer, at=AT)
 
-        ready = PARAMETERS_READY.labels(tenant=str(TENANT))._value.get()
-        version = WEIGHT_SET_VERSION.labels(tenant=str(TENANT))._value.get()
+        ready = REGISTRY.get_sample_value(
+            "syncr_learning_parameters_ready", {"tenant": str(TENANT)}
+        )
+        version = REGISTRY.get_sample_value("syncr_weight_set_version", {"tenant": str(TENANT)})
 
         assert ready == report.tenants[0].fitted.ready
         assert version == report.tenants[0].version

@@ -3,8 +3,7 @@
 This package must not import ``syncr_solver`` or ``syncr_api``: the solver ships in the api image
 and this one pulls scipy, so the arrow only runs one way. The cost is that four things are spelled
 twice, and this file is what stops the two copies drifting. Both owners are DEV dependencies,
-declared as
-such, and the image's export runs ``--no-dev``.
+declared as such, and the image's export runs ``--no-dev``.
 
 Exhaustive rather than sampled. All twenty-four hours of the bucketing, all seven term names, and
 every key of the stored context and the weight-set row, because a sample passes on the day the two
@@ -23,6 +22,7 @@ from syncr_api.plans import stored_contexts
 from syncr_api.plans.edit_context import EditContext
 from syncr_learning import artifact, config
 from syncr_learning.gates import ParameterMaturity
+from syncr_learning.storage import spelling
 from syncr_solver import weights as solver_weights
 
 
@@ -134,14 +134,22 @@ class TestTheStoredSpelling:
 
 
 class TestTheEditContextKeysTheFitterReads:
-    def test_the_measurement_difference_is_stored_under_the_key_this_package_reads(self) -> None:
-        # The storage adapter reads this key out of the JSONB column. A rename on the writer's side
-        # would silently leave every event unusable for the weight fit, which reads as a quiet user.
-        assert stored_contexts.MEASUREMENT_DELTA == "measurement_delta"
+    def test_the_measurement_difference_key_is_the_same_string_on_both_sides(self) -> None:
+        # CROSSED, not pinned. An earlier version asserted the api's constant against a literal,
+        # which catches an api-side rename and not a learning-side one: and the learning side is the
+        # one that restated the spelling, so it is the side more likely to drift.
+        assert spelling.CONTEXT_MEASUREMENT_DELTA == stored_contexts.MEASUREMENT_DELTA
         assert "measurement_delta" in {one.name for one in dataclasses.fields(EditContext)}
 
-    def test_the_off_plan_flag_is_stored_under_the_key_this_package_reads(self) -> None:
-        assert stored_contexts.INSIDE_OFF_PLAN == "inside_off_plan"
+    def test_the_off_plan_flag_key_is_the_same_string_on_both_sides(self) -> None:
+        assert spelling.CONTEXT_INSIDE_OFF_PLAN == stored_contexts.INSIDE_OFF_PLAN
+        assert "inside_off_plan" in {one.name for one in dataclasses.fields(EditContext)}
+
+    def test_every_context_key_this_package_restates_is_a_field_of_the_context(self) -> None:
+        # The set direction, so a third key restated here with no field to read cannot pass.
+        restated = {spelling.CONTEXT_MEASUREMENT_DELTA, spelling.CONTEXT_INSIDE_OFF_PLAN}
+
+        assert restated <= {one.name for one in dataclasses.fields(EditContext)}
 
     def test_a_stored_measurement_difference_names_the_seven_terms_this_package_expects(
         self,

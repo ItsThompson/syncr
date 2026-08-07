@@ -12,7 +12,10 @@ requires-python = ">=3.12"
 # SQLAlchemy and asyncpg are here because the job's I/O has to be here: the api image
 # must not carry scipy, so the api package cannot depend on this one, so this one
 # cannot borrow the api's repositories. What that costs is a second spelling of the
-# rows this job reads, and `tests/test_stored_spelling.py` keeps the two from drifting.
+# rows this job reads, and two suites keep the copies together:
+# `tests/test_solver_agreement.py` crosses every restated name against its owner in one
+# process, and `tests/test_storage_integration.py` reads back rows the api's own writers
+# produced.
 dependencies = [
     "asyncpg>=0.30.0,<1",
     "numpy>=2.1.0,<3",
@@ -36,7 +39,6 @@ syncr-solver = { workspace = true }
 # package's restated spellings against the packages that own them, in one process. The image
 # excludes them, because its export runs `--no-dev`.
 dev = [
-    "hypothesis>=6.100.0,<7",
     "pytest>=8.3.0,<10",
     "pytest-asyncio>=0.24.0,<2",
     "ruff>=0.8.0,<1",

@@ -6,10 +6,10 @@ user-facing act with a re-solve behind it. This is that act.
 ## Three writes and one loop, in this order
 
 The flip is two statements in one transaction: clear the flag, then set it on the named version.
-Both are built through the scoped base, so the tenant predicate is what the base applies rather
-than something each statement remembers. Postgres's partial unique index over
-``(tenant_id) WHERE active`` refuses two active rows, so the clear has to land first; the index is
-what makes "exactly one active per tenant" true rather than the order of these two lines.
+Both are built through the scoped base, so the tenant predicate is what the base applies rather than
+something each statement remembers. Postgres's partial unique index over ``(tenant_id) WHERE
+active`` refuses two active rows, so the clear has to land first; the index is what makes "exactly
+one active per tenant" true rather than the order of these two lines.
 
 Then every FUTURE week the tenant has planned is invalidated and re-solved. Future only, because a
 past week's approved revision is immutable: re-deriving one would change history rather than the

@@ -1,10 +1,9 @@
 """Turning the stored JSONB of a plan document and an edit context into the values above them.
 
 Split from the reader because it is arithmetic over dictionaries and the reader is I/O. Every
-function
-here takes what ``asyncpg`` handed back and answers with a value or with nothing, and "nothing" is a
-reading rather than an exception: a nightly run over a year of correct rows must not stop at one row
-it cannot rebuild, so an unreadable block is dropped and counted rather than thrown.
+function here takes what ``asyncpg`` handed back and answers with a value or with nothing, and
+"nothing" is a reading rather than an exception: a nightly run over a year of correct rows must not
+stop at one row it cannot rebuild, so an unreadable block is dropped and counted rather than thrown.
 """
 
 from __future__ import annotations
@@ -31,8 +30,7 @@ def planned_blocks(document: object) -> tuple[PlannedBlock, ...]:
     """Every block of a stored document this job can rebuild, in the order the document holds them.
 
     A block that cannot be rebuilt is dropped and reported. The alternatives are worse: raising
-    would
-    lose a whole tenant's night over one row, and defaulting a missing interval would invent a
+    would lose a whole tenant's night over one row, and defaulting a missing interval would invent a
     placement the user never had.
     """
     if not isinstance(document, dict):

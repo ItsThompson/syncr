@@ -19,8 +19,8 @@ fitted(n+1) - fitted(n) = (A + x)/(m + 1) - A/m = (m x - A) / (m (m + 1))
                         = (x - fitted(n)) / (n + k + 1)
 ```
 
-So **one observation moves the value by at most its distance from the current value, divided by
-``n + k + 1``.** Two things follow, and they are the whole of the credibility rule:
+So **one observation moves the value by at most its distance from the current value, divided by ``n
++ k + 1``.** Two things follow, and they are the whole of the credibility rule:
 
 - Every fitter CLAMPS each observation into a documented range, so that distance is bounded by the
   width of the range whatever the row said. A three-hour session against a one-hour plan is clamped
@@ -68,8 +68,8 @@ def shrunk(
 
     An empty list is the prior at a shrinkage weight of one, which is the correct reading rather
     than a refusal: no evidence means the whole of the figure is the prior. What a caller does about
-    that
-    is the GATE's decision, and the gate is what stops an unevidenced figure reaching the solver.
+    that is the GATE's decision, and the gate is what stops an unevidenced figure reaching the
+    solver.
     """
     if prior_weight <= 0:
         raise ConfigError(
@@ -101,8 +101,6 @@ def outlier_bound(
     The threshold appears because a parameter below its gate is neither displayed nor applied, so
     the smallest sample count a displayed figure can have is the gate itself.
     """
-    if threshold < 0:
-        raise ConfigError(f"a threshold of {threshold} observations is not a count")
     return (high - low) / (threshold + prior_weight + 1)
 
 

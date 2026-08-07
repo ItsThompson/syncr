@@ -1,9 +1,8 @@
 """A stored weight set, as the value the objective reads. One direction: nothing writes back.
 
 The solver takes plain floats and maps of them, and knows nothing about versions, origins, maturity,
-or
-when a fit ran. Those are storage's concerns, so the projection happens here rather than the solver
-growing a second constructor that takes a record.
+or when a fit ran. Those are storage's concerns, so the projection happens here rather than the
+solver growing a second constructor that takes a record.
 
 ## The two fitted maps, and the shape each is stored in
 
@@ -19,8 +18,8 @@ fitter, so a malformed value is a defect upstream; taking every solve down over 
 whole product for an optional correction, and the honest fallback is exactly the state of an Area
 nothing has been fitted for. What is NOT tolerated is a value inside the map that would change the
 arithmetic silently: a curve missing an hour is dropped whole rather than read short, because a
-curve applied to some of an
-Area's blocks and not others is the least explainable failure an Area could have.
+curve applied to some of an Area's blocks and not others is the least explainable failure an Area
+could have.
 
 **An absent entry is not the same as one fitted at zero.** A parameter below its maturity gate is
 not applied at all rather than at a reduced weight, and absence is how the weight set expresses
@@ -129,9 +128,8 @@ def _a_curve(value: object) -> tuple[float, ...] | None:
     """A whole day of shares, or nothing because the stored list is not one.
 
     Dropped WHOLE rather than padded or clipped. A curve missing an hour would be applied to some of
-    an
-    Area's blocks and not others depending on when they start, and the solver refuses one anyway, so
-    reading it short would trade an explainable absence for an unexplainable solve failure.
+    an Area's blocks and not others depending on when they start, and the solver refuses one anyway,
+    so reading it short would trade an explainable absence for an unexplainable solve failure.
     """
     if not isinstance(value, list) or len(value) != HOURS_PER_DAY:
         return None

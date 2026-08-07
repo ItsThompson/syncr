@@ -6,8 +6,7 @@ at 50 and no pooler in front of it, for no concurrency it has.
 
 ``pool_pre_ping`` is on for the same reason it is on in the api: the container starts at 03:00,
 which is when the backup runs, and a connection severed by a Postgres restart must be discarded
-before a
-statement is handed to it rather than failing a tenant's night.
+before a statement is handed to it rather than failing a tenant's night.
 """
 
 from __future__ import annotations

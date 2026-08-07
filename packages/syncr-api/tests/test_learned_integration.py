@@ -29,8 +29,11 @@ from syncr_api.learned.config import FITTED, HAND_TUNED
 from syncr_api.learned.maturity import maturity_rows
 from syncr_api.learned.models import WeightSet
 from syncr_api.learned.repository import WeightSetRepository
-from syncr_api.learned.service import NoWeightSetInForce
 from syncr_api.plans.injection import DEFAULT_DEBOUNCE
+
+# One condition, one class: the learned service raises plan storage's, so the test catches the same
+# class the solve path does.
+from syncr_api.plans.production import NoWeightSetInForce
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import SOLVE
 from syncr_domain.weeks import IsoWeek

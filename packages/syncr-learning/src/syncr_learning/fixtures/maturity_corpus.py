@@ -10,9 +10,8 @@ that a fit over it would be meaningless. A gate that only counted samples would 
 them, which is why they are here rather than left to a test to invent.
 
 **Sized from the thresholds rather than from literals.** Revising a threshold is a configuration
-change
-by design, and a fixture holding "eleven" would silently stop straddling the gate the day the gate
-moved.
+change by design, and a fixture holding "eleven" would silently stop straddling the gate the day the
+gate moved.
 """
 
 from __future__ import annotations

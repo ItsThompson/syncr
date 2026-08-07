@@ -20,16 +20,20 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from syncr_api.core.errors import NotFound
-from syncr_api.core.iso_weeks import require_an_iso_week  # noqa: F401 - see `_resolved_weeks`
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.learned.config import WEIGHT_SET_RESOURCE
 from syncr_api.learned.gate_statements import (
+    COLLECTING_IS_NORMAL,
     THRESHOLDS_ARE_ESTIMATES,
     UNLOCKS_COUNT_CONFIRMED_VOLUME,
 )
 from syncr_api.learned.maturity import collecting_count, maturity_rows, ready_count
 from syncr_api.learned.views import ActivatedWeightSet, LearnedReading, WeightSetSummary
+
+# One condition, one class. Plan storage raised it first, on the solve path, and a second class of
+# the same name here would let one caller catch the other's and conclude the tenant was fine.
+from syncr_api.plans.production import NoWeightSetInForce
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
@@ -79,6 +83,7 @@ class LearnedService:
             collecting=collecting_count(rows),
             thresholds_are_estimates=THRESHOLDS_ARE_ESTIMATES,
             unlocks_count_confirmed_volume=UNLOCKS_COUNT_CONFIRMED_VOLUME,
+            collecting_is_normal=COLLECTING_IS_NORMAL,
         )
 
     @measured("learned")
@@ -106,10 +111,6 @@ class LearnedService:
             version=version,
             resolved_weeks=tuple(str(one.iso_week) for one in operations),
         )
-
-
-class NoWeightSetInForce(Exception):
-    """A tenant has no active weight set, so nothing could be reported as learned."""
 
 
 def _summary(stored: WeightSetRecord) -> WeightSetSummary:

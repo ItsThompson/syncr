@@ -1,19 +1,17 @@
 """The Postgres adapter against a real database, seeded through the API's own writers.
 
 What cannot be tested with literals is whether the restated spelling matches the schema. The pure
-tier's agreement test crosses the names the api states as constants; this crosses the rest, and it
-does it
-it the only way that means anything: **the api writes the rows and the learning adapter reads them
-back**. A stored document assembled by hand in a test would be a third spelling, and it would agree
-with this package by construction while disagreeing with production.
+tier's agreement test crosses the names the api states as constants; this crosses the rest, in the
+only way that means anything: **the api writes the rows and the learning adapter reads them back**.
+A stored document assembled by hand in a test would be a third spelling, and it would agree with
+this package by construction while disagreeing with production.
 
 Importing ``syncr_api`` here is a DEV dependency, declared in this member's manifest, and
 ``test_package_boundary.py`` asserts the image installs neither it nor the solver.
 
 The never-writes guard is here rather than in the pure tier because it is stated over the storage
 subpackage's own source AND over the database: the source half says no statement names those tables
-as
-a write, and the runtime half counts their rows across a whole run.
+as a write, and the runtime half counts their rows across a whole run.
 """
 
 from __future__ import annotations
@@ -34,11 +32,21 @@ from syncr_api.areas.repository import AreaRepository
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.plans.config import APPLIED
+from syncr_api.plans.declarations import EditToRecord, PinToHold
+from syncr_api.plans.edit_context import EditContext
+from syncr_api.plans.edits import EditEventRepository
+from syncr_api.plans.pins import PinRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_domain.habits import BindingSource
-from syncr_domain.identity import BindingKind, BindingRef, habit_occurrence_keys
+from syncr_domain.identity import (
+    TASK_OCCURRENCE_KEY,
+    BindingKind,
+    BindingRef,
+    block_id,
+    habit_occurrence_keys,
+)
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import Block, PlanDocument
 from syncr_domain.reasons import Bound, ReasonRecord
@@ -47,6 +55,8 @@ from syncr_learning.artifact import FittedWeightSet
 from syncr_learning.config import OBJECTIVE_TERMS
 from syncr_learning.gates import ParameterMaturity
 from syncr_learning.job import run
+from syncr_learning.preferences import unmeasured
+from syncr_learning.promotion import detect_repeated_pins
 from syncr_learning.storage import spelling
 from syncr_learning.storage.engine import create_database
 from syncr_learning.storage.reader import PostgresCorpusReader
@@ -70,6 +80,10 @@ ZONE = "Europe/London"
 # that projects a stored map into the solver's value refuses a key that is not one, which is what
 # the round trip in this file exists to drive.
 ARTIFACT_AREA = UUID("44444444-4444-4444-8444-444444444444")
+
+# The content every seeded pin names, so three pins across three weeks are three pins of ONE habit,
+# which is what makes the dropped occurrence key the thing under test.
+GYM = UUID("55555555-5555-4555-8555-555555555555")
 
 HAND_TUNED_IN_FORCE = {
     "deadline_risk": 10.0,
@@ -238,6 +252,97 @@ async def _latest_revision(
     return found.id
 
 
+async def seed_pin(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    *,
+    iso_week: IsoWeek,
+    occurrence: int = 0,
+    hour: int = 13,
+) -> None:
+    """One pin through the api's own repository, so the stored binding is production's shape."""
+    binding = BindingRef(
+        kind=BindingKind.HABIT,
+        entity_id=GYM,
+        occurrence_key=habit_occurrence_keys(occurrence + 1)[occurrence],
+        split_index=None,
+    )
+    monday = datetime(
+        iso_week.monday().year, iso_week.monday().month, iso_week.monday().day, tzinfo=UTC
+    )
+    start = monday + timedelta(days=1, hours=hour)
+    async with sessions() as session, session.begin():
+        await PinRepository(session, tenant_id).hold(
+            PinToHold(
+                iso_week=iso_week,
+                block_id=block_id(iso_week, binding),
+                binding=binding,
+                interval=Interval(start, start + timedelta(minutes=60)),
+                superseded_placement=Interval(
+                    start - timedelta(hours=6), start - timedelta(hours=5)
+                ),
+                weight_set_version=1,
+                created_at=AT,
+            )
+        )
+
+
+async def seed_edit(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    *,
+    iso_week: IsoWeek,
+    measured: bool = True,
+) -> None:
+    """One edit event, written through the api's own repository and its own context serializer.
+
+    ``measured=False`` writes the shape a row from before the measurement carries, which is what
+    `E5` leaves in the corpus permanently.
+    """
+    binding = BindingRef(
+        kind=BindingKind.TASK,
+        entity_id=uuid4(),
+        occurrence_key=TASK_OCCURRENCE_KEY,
+        split_index=None,
+    )
+    monday = datetime(
+        iso_week.monday().year, iso_week.monday().month, iso_week.monday().day, tzinfo=UTC
+    )
+    async with sessions() as session, session.begin():
+        await EditEventRepository(session, tenant_id).append(
+            EditToRecord(
+                iso_week=iso_week,
+                binding=binding,
+                proposed=Interval(monday + timedelta(hours=6), monday + timedelta(hours=7)),
+                accepted=Interval(monday + timedelta(hours=13), monday + timedelta(hours=14)),
+                objective_delta=1.25,
+                weight_set_version=1,
+                context=EditContext(
+                    weekday=1,
+                    accepted_start_minute_of_day=780,
+                    proposed_start_minute_of_day=360,
+                    duration_minutes=60,
+                    zone=ZONE,
+                    objective_breakdown=dict.fromkeys(OBJECTIVE_TERMS, 1.0),
+                    measurement_delta=(dict.fromkeys(OBJECTIVE_TERMS, -0.5) if measured else None),
+                    discretionary_minutes=5880,
+                    unallocated_minutes=1000,
+                    blocks_in_day=4,
+                    pinned_blocks_in_week=0,
+                    area_id=None,
+                    area_floor_minutes=None,
+                    area_placed_minutes=0,
+                    area_target_minutes=0,
+                    gap_before_minutes=30,
+                    gap_after_minutes=30,
+                    adjacent_area_before=None,
+                    adjacent_area_after=None,
+                ),
+                created_at=AT,
+            )
+        )
+
+
 class TestTheReaderResolvesWhatTheApiWrote:
     async def test_the_tenant_list_finds_a_seeded_tenant(
         self, sessions: async_sessionmaker[AsyncSession], tenant: TenantId
@@ -350,6 +455,118 @@ class TestTheReaderResolvesWhatTheApiWrote:
         corpus = await PostgresCorpusReader(sessions, now=AT).corpus(tenant)
 
         assert [str(one.iso_week) for one in corpus.revisions] == [str(WEEK)]
+
+    async def test_all_five_reads_carry_the_bound_the_module_claims(
+        self, sessions: async_sessionmaker[AsyncSession], tenant: TenantId
+    ) -> None:
+        """The claim held for three of the five, and the bound IS the budget's justification.
+
+        `edit_events` is the one table `E5` forbids pruning, so it is the one that grows without
+        limit: an unbounded read of it is the one that would eventually cost the nightly budget.
+        """
+        area_id = await the_area(sessions, tenant)
+        document = a_document(area_id, count=2)
+        await seed_revision(sessions, tenant, document)
+        await seed_outcomes(sessions, tenant, document)
+        await seed_edit(sessions, tenant, iso_week=WEEK)
+        await seed_pin(sessions, tenant, iso_week=WEEK)
+        async with sessions() as session, session.begin():
+            await OffPlanPeriodRepository(session, tenant).create(
+                interval=Interval(MONDAY, MONDAY + timedelta(days=2)),
+                keep_frame=False,
+                label="inside the lookback",
+                created_at=AT,
+            )
+
+        inside = await PostgresCorpusReader(sessions, now=AT).corpus(tenant)
+        # A run five years later: every row above is now older than the lookback, so every one of
+        # the five reads has to drop it.
+        much_later = await PostgresCorpusReader(sessions, now=AT + timedelta(days=5 * 365)).corpus(
+            tenant
+        )
+
+        assert (
+            len(inside.revisions),
+            len(inside.outcomes),
+            len(inside.edits),
+            len(inside.pins),
+            len(inside.off_plan),
+        ) == (1, 2, 1, 1, 1)
+        assert much_later.revisions == ()
+        assert much_later.outcomes == ()
+        assert much_later.edits == ()
+        assert much_later.pins == ()
+        assert much_later.off_plan == ()
+
+    async def test_a_span_still_running_is_kept_however_long_ago_it_was_declared(
+        self, sessions: async_sessionmaker[AsyncSession], tenant: TenantId
+    ) -> None:
+        # The off-plan bound is on the span's END, not its start: a long absence declared two years
+        # ago and still running governs the week this run reads.
+        async with sessions() as session, session.begin():
+            await OffPlanPeriodRepository(session, tenant).create(
+                interval=Interval(AT - timedelta(days=800), AT + timedelta(days=30)),
+                keep_frame=False,
+                label="a long absence",
+                created_at=AT - timedelta(days=800),
+            )
+
+        corpus = await PostgresCorpusReader(sessions, now=AT).corpus(tenant)
+
+        assert len(corpus.off_plan) == 1
+
+    async def test_a_pin_the_api_wrote_projects_into_a_promotion_candidate(
+        self, sessions: async_sessionmaker[AsyncSession], tenant: TenantId
+    ) -> None:
+        """The one JSONB shape no other fixture covered: a stored `pins.binding` read back.
+
+        Three pins of one content at one local time across three consecutive weeks, written through
+        the api's own model, so the binding spelling is production's rather than this test's.
+        """
+        weeks = (WEEK, WEEK.following(), WEEK.following().following())
+        for index, week in enumerate(weeks):
+            await seed_pin(sessions, tenant, iso_week=week, occurrence=index)
+
+        corpus = await PostgresCorpusReader(sessions, now=AT).corpus(tenant)
+        candidates = detect_repeated_pins(corpus.pins)
+
+        assert len(corpus.pins) == 3
+        # Three DIFFERENT occurrence keys, which is what makes the dropped key the thing under test.
+        assert len({one.binding.occurrence_key for one in corpus.pins}) == 3
+        assert len(candidates) == 1
+        assert candidates[0].local_time == "13:00"
+        assert candidates[0].consecutive_weeks == 3
+
+    async def test_an_edit_event_the_api_wrote_projects_its_measurement_difference(
+        self, sessions: async_sessionmaker[AsyncSession], tenant: TenantId
+    ) -> None:
+        """The other JSONB shape: `edit_events.context`, read back through the adapter.
+
+        Written through `EditEventRepository.append` and `stored_context`, so the key the fitter
+        reads is the key the api writes rather than one this test chose.
+        """
+        await seed_edit(sessions, tenant, iso_week=WEEK)
+
+        corpus = await PostgresCorpusReader(sessions, now=AT).corpus(tenant)
+
+        assert len(corpus.edits) == 1
+        edit = corpus.edits[0]
+        assert edit.measurement_delta is not None
+        assert set(edit.measurement_delta) == set(OBJECTIVE_TERMS)
+        assert edit.measurement_delta["churn"] == -0.5
+        assert edit.inside_off_plan is False
+
+    async def test_an_edit_written_before_the_measurement_reads_back_as_unmeasured(
+        self, sessions: async_sessionmaker[AsyncSession], tenant: TenantId
+    ) -> None:
+        # The corpus E5 forbids pruning. The absence has to read as a value the fit can exclude, not
+        # as a corrupt row, and this drives it through the real column.
+        await seed_edit(sessions, tenant, iso_week=WEEK, measured=False)
+
+        corpus = await PostgresCorpusReader(sessions, now=AT).corpus(tenant)
+
+        assert corpus.edits[0].measurement_delta is None
+        assert unmeasured(corpus.edits, corpus.off_plan) == 1
 
 
 class TestTheWriterAppends:

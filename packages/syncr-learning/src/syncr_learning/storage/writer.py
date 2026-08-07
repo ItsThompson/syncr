@@ -1,9 +1,8 @@
 """The one write this job performs: append a new weight-set version. No update, no delete.
 
 Each run APPENDS rather than mutating the current row, so comparison and rollback are free and a
-revert
-is a flag. The version is the tenant's own maximum plus one, taken inside the transaction that
-inserts, so two runs landing together cannot read one number and write the same successor: the
+revert is a flag. The version is the tenant's own maximum plus one, taken inside the transaction
+that inserts, so two runs landing together cannot read one number and write the same successor: the
 table's composite primary key is what refuses the second, and the refusal is the guarantee rather
 than the read.
 
@@ -35,26 +34,29 @@ FIRST_VERSION: Final = 1
 # The three JSONB columns carry their TYPE, not only their name. A column built without one is sent
 # to the driver as a raw parameter, and asyncpg cannot encode a dict: the insert fails at the driver
 # rather than at the schema, which is a failure whose message names nothing about weight sets.
+#
+# Every name comes from `spelling`, not from a literal. `spelling`'s own docstring gives the reason:
+# a literal inside a query cannot be crossed against anything, and twelve of these were literals.
 _WEIGHT_SETS = table(
     spelling.WEIGHT_SETS,
     column(spelling.TENANT_ID),
     column(spelling.VERSION),
     column(spelling.ACTIVE),
-    column("origin"),
-    column("deadline_risk"),
-    column("budget_deviation"),
-    column("time_of_day_misfit"),
-    column("fragmentation"),
-    column("churn"),
-    column("context_switch"),
-    column("staleness"),
-    column("duration_multiplier", JSONB),
-    column("time_of_day_fitness", JSONB),
-    column("skip_probability", JSONB),
-    column("context_switch_cost"),
-    column("churn_tolerance"),
-    column("fitted_at"),
-    column("maturity", JSONB),
+    column(spelling.ORIGIN),
+    column(spelling.DEADLINE_RISK),
+    column(spelling.BUDGET_DEVIATION),
+    column(spelling.TIME_OF_DAY_MISFIT),
+    column(spelling.FRAGMENTATION),
+    column(spelling.CHURN),
+    column(spelling.CONTEXT_SWITCH),
+    column(spelling.STALENESS),
+    column(spelling.DURATION_MULTIPLIER, JSONB),
+    column(spelling.TIME_OF_DAY_FITNESS, JSONB),
+    column(spelling.SKIP_PROBABILITY, JSONB),
+    column(spelling.CONTEXT_SWITCH_COST),
+    column(spelling.CHURN_TOLERANCE),
+    column(spelling.FITTED_AT),
+    column(spelling.MATURITY, JSONB),
     column(spelling.CREATED_AT),
 )
 

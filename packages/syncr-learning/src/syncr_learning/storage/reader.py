@@ -13,10 +13,17 @@ The reads are BOUNDED by a lookback, because a corpus grows forever and the nigh
 minutes. The bound is a year of weeks, which is roughly 3,250 timed blocks for one user: past that
 the duration multiplier has long since matured and older rows would move it by less than the outlier
 bound.
+
+**All five reads carry the bound**, each through the column it has. The revisions, the pins and the
+edits filter on ``iso_week``; the outcomes filter on ``occurred_at`` and the off-plan spans on their
+end, because neither table names a week. An earlier version bounded three of the five and said it
+bounded all of them, which matters because the bound IS the justification for the budget, and
+``edit_events`` is the one table ``E5`` forbids pruning: it is the one that grows without limit.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, time
 from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import column, select, table
@@ -36,7 +43,6 @@ from syncr_learning.storage import documents, spelling
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from datetime import datetime
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -70,6 +76,9 @@ _OUTCOMES = table(
     column(spelling.ACTUAL_MINUTES),
     column(spelling.ACTUAL_STARTS_AT),
     column(spelling.ACTUAL_ENDS_AT),
+    # Read for the lookback rather than for a fitter: `block_outcomes` names no week, so this is the
+    # column the bound is applied through.
+    column(spelling.OCCURRED_AT),
     column(spelling.CONFIRMED_AT),
 )
 _EDITS = table(
@@ -136,6 +145,10 @@ class PostgresCorpusReader:
         self._sessions = sessions
         self._from = IsoWeek.containing(now.date())
         self._oldest = _weeks_back(self._from, LOOKBACK_WEEKS)
+        # The same bound as an instant, for the two tables that name no week. Taken from the oldest
+        # week's own Monday rather than from `now` minus a year, so one figure bounds all five
+        # reads.
+        self._since = datetime.combine(self._oldest.monday(), time.min, tzinfo=UTC)
 
     async def tenants(self) -> Sequence[TenantId]:
         """Every tenant, in identifier order, so a run's log reads the same way twice."""
@@ -178,12 +191,15 @@ class PostgresCorpusReader:
             )
             return {str(row.id): row.name for row in rows}
 
-    async def home_zone(self, tenant_id: TenantId) -> str | None:
-        """The zone a template entry's wall time is declared in, which is what a pin groups on."""
-        async with self._sessions() as session:
-            return await session.scalar(
-                select(_SETTINGS.c.home_zone).where(_SETTINGS.c.tenant_id == tenant_id)
-            )
+    async def _home_zone(self, session: AsyncSession, tenant_id: TenantId) -> str | None:
+        """The zone a template entry's wall time is declared in, which is what a pin groups on.
+
+        One statement, called from the one place that needs it. It was a public method with no
+        caller beside an inline copy of the same query, which is two answers to one question.
+        """
+        return await session.scalar(
+            select(_SETTINGS.c.home_zone).where(_SETTINGS.c.tenant_id == tenant_id)
+        )
 
     async def _revisions(
         self, session: AsyncSession, tenant_id: TenantId
@@ -209,7 +225,11 @@ class PostgresCorpusReader:
     async def _outcomes(
         self, session: AsyncSession, tenant_id: TenantId
     ) -> tuple[LoggedOutcome, ...]:
-        rows = await session.execute(select(_OUTCOMES).where(_OUTCOMES.c.tenant_id == tenant_id))
+        rows = await session.execute(
+            select(_OUTCOMES).where(
+                _OUTCOMES.c.tenant_id == tenant_id, _OUTCOMES.c.occurred_at >= self._since
+            )
+        )
         return tuple(
             LoggedOutcome(
                 block_id=row.block_id,
@@ -223,7 +243,9 @@ class PostgresCorpusReader:
 
     async def _edits(self, session: AsyncSession, tenant_id: TenantId) -> tuple[RecordedEdit, ...]:
         rows = await session.execute(
-            select(_EDITS).where(_EDITS.c.tenant_id == tenant_id).order_by(_EDITS.c.created_at)
+            select(_EDITS)
+            .where(_EDITS.c.tenant_id == tenant_id, _EDITS.c.iso_week >= str(self._oldest))
+            .order_by(_EDITS.c.created_at)
         )
         return tuple(
             RecordedEdit(
@@ -240,9 +262,7 @@ class PostgresCorpusReader:
         )
 
     async def _pins(self, session: AsyncSession, tenant_id: TenantId) -> tuple[HeldPin, ...]:
-        zone = await session.scalar(
-            select(_SETTINGS.c.home_zone).where(_SETTINGS.c.tenant_id == tenant_id)
-        )
+        zone = await self._home_zone(session, tenant_id)
         if zone is None:
             # A tenant with no settings row has no home zone, so no wall time a template could hold.
             # Promotion detection is the only reader of pins and it groups on that wall time.
@@ -270,7 +290,15 @@ class PostgresCorpusReader:
     async def _off_plan(
         self, session: AsyncSession, tenant_id: TenantId
     ) -> tuple[OffPlanSpan, ...]:
-        rows = await session.execute(select(_OFF_PLAN).where(_OFF_PLAN.c.tenant_id == tenant_id))
+        rows = await session.execute(
+            select(_OFF_PLAN).where(
+                _OFF_PLAN.c.tenant_id == tenant_id,
+                # Bounded on the span's END rather than its start, so a long holiday declared two
+                # years ago and still running is kept. A span that ENDED before the lookback opens
+                # governs no week this run reads.
+                getattr(_OFF_PLAN.c, spelling.SPAN_END) >= self._since,
+            )
+        )
         return tuple(
             OffPlanSpan(interval=Interval(row.start, getattr(row, spelling.SPAN_END)))
             for row in rows

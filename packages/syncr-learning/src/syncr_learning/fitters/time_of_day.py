@@ -20,10 +20,19 @@ observations also cover :data:`~syncr_learning.config.MIN_DISTINCT_HOURS` differ
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import sqrt
 from statistics import fmean
 from typing import TYPE_CHECKING
 
-from syncr_learning.config import HOURS_PER_DAY, MIN_DISTINCT_HOURS, PRIOR_FITNESS, PRIOR_WEIGHT
+from scipy.stats import norm
+
+from syncr_learning.config import (
+    CONFIDENCE,
+    HOURS_PER_DAY,
+    MIN_DISTINCT_HOURS,
+    PRIOR_FITNESS,
+    PRIOR_WEIGHT,
+)
 from syncr_learning.results import FitResult
 from syncr_learning.shrinkage import shrunk
 
@@ -37,14 +46,20 @@ if TYPE_CHECKING:
 class FittedCurve:
     """One Area's curve, and the summary the Learned screen shows beside it.
 
-    ``result`` carries the SUMMARY figure -- the mean fitness across the day -- because a maturity
-    row displays one number and a bounded meter, and the twenty-four are what the solver reads. The
-    two are not alternatives: the summary is how the row is drawn and the curve is what is applied.
+    ``result`` carries the SUMMARY figure, the mean fitness across the day, because a maturity row
+    displays one number and a bounded meter, and the twenty-four are what the solver reads. The two
+    are not alternatives: the summary is how the row is drawn and the curve is what is applied.
+
+    ``span`` is the curve's own lowest and highest value, and it is a FIELD OF ITS OWN rather than
+    ``result.confidence``. A confidence interval says how sure the estimate is; a range says how
+    much the day varies. They are different quantities, and a range in the interval's field would
+    mislead the first consumer that read one expecting the other.
     """
 
     curve: tuple[float, ...]
     result: FitResult
     distinct_hours: int
+    span: tuple[float, float]
 
     def __post_init__(self) -> None:
         if len(self.curve) != HOURS_PER_DAY:
@@ -64,8 +79,7 @@ class FittedCurve:
         """The hour this Area's work goes worst at, which the plain-language statement names.
 
         A tie goes to the earlier hour, so one corpus always names one hour: without that the
-        sentence
-        the user reads would depend on a mapping's iteration order.
+        sentence the user reads would depend on a mapping's iteration order.
         """
         return min(range(HOURS_PER_DAY), key=lambda hour: (self.curve[hour], hour))
 
@@ -95,13 +109,29 @@ def fit_time_of_day_fitness(
     # Every hour's fit carries a value: `shrunk` answers the empty case with the prior, and a share
     # is already inside 0 to 1, so the curve needs no clamp and no fallback.
     curve = tuple(fit.value if fit.value is not None else prior for fit in fits)
+    samples = len(observations)
     return FittedCurve(
         curve=curve,
         result=FitResult(
             value=fmean(curve),
-            samples=len(observations),
-            confidence=(min(curve), max(curve)),
-            shrinkage_weight=prior_weight / (len(observations) + prior_weight),
+            samples=samples,
+            # The interval around the SUMMARY the row displays, at the same coverage probability and
+            # by the same arithmetic `shrinkage` uses, so the field means one thing everywhere.
+            confidence=_interval_of(curve),
+            shrinkage_weight=prior_weight / (samples + prior_weight),
         ),
         distinct_hours=len(by_hour),
+        span=(min(curve), max(curve)),
     )
+
+
+def _interval_of(curve: tuple[float, ...]) -> tuple[float, float]:
+    """A normal-approximation interval around the curve's mean, at :data:`CONFIDENCE`.
+
+    Built here rather than by :func:`~syncr_learning.shrinkage.shrunk`, because the summary is a
+    mean of twenty-four already-shrunk values rather than a shrinkage of its own.
+    """
+    mean = fmean(curve)
+    variance = sum((one - mean) ** 2 for one in curve) / len(curve)
+    half = float(norm.ppf(0.5 + CONFIDENCE / 2)) * sqrt(variance / len(curve))
+    return (mean - half, mean + half)

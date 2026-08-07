@@ -79,8 +79,7 @@ def detect_repeated_pins(
 
     The longest run is what a group reports. A group spanning five consecutive weeks is one
     candidate of five weeks rather than three of three, because the question is about the pattern
-    and asking it
-    three times is the nag the product's severity discipline forbids.
+    and asking it three times is the nag the product's severity discipline forbids.
     """
     if consecutive_weeks < 2:
         raise ConfigError(
@@ -108,8 +107,7 @@ def _group_of(pin: HeldPin) -> tuple[BindingKind, UUID, int, int]:
     """The identity a pin is grouped under: the content, the weekday, and the minute of the day.
 
     The split index is dropped for the reason the occurrence key is: which chunk of a divided task
-    got
-    pinned is a fact about one week's division, and the structural claim is about the content.
+    got pinned is a fact about one week's division, and the structural claim is about the content.
     """
     local = pin.starts_at.astimezone(resolve_zone(pin.zone))
     return (
