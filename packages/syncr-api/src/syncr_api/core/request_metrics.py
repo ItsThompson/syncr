@@ -61,10 +61,10 @@ UNCLASSIFIED_PROBLEM: Final = "unclassified"
 
 # What a request that produced no response at all is recorded as. A client that disconnected mid
 # request is not syncr failing, so it carries a status class of its own rather than folding into the
-# 5xx class an operator reads as a fault. It is still recorded: a request nothing counted is a
-# request no latency series can see.
+# 5xx class an operator reads as a fault, and it is NOT counted in the error family at all: the
+# latency series already sees the request, and the error family's whole purpose is to say what syncr
+# got wrong. It is still recorded: a request nothing counted is a request no series can see.
 DISCONNECTED_STATUS_CLASS: Final = "disconnected"
-DISCONNECTED_PROBLEM: Final = "client-disconnected"
 
 # The scope key an exception handler writes the rendered problem's type onto. `Request.state` is
 # backed by `scope["state"]`, so a handler running inside this middleware can hand a value out to
@@ -154,9 +154,11 @@ class RequestMetricsMiddleware:
         labels = {"route": route, "method": scope["method"], "status_class": status_class(status)}
         REQUEST_DURATION.labels(**labels).observe(elapsed)
         REQUESTS.labels(**labels).inc()
-        if status is None:
-            ERRORS.labels(route=route, problem_type=DISCONNECTED_PROBLEM).inc()
-        elif status >= ERROR_STATUS_FLOOR:
+        # A disconnect is counted as a REQUEST under its own status class and not as an ERROR. The
+        # user closing a laptop lid is not a failure of this application, and the latency series
+        # already sees the request, so counting it in the error family would put it in the one
+        # family whose whole purpose is to say what syncr got wrong.
+        if status is not None and status >= ERROR_STATUS_FLOOR:
             ERRORS.labels(route=route, problem_type=problem or _problem_type(scope)).inc()
 
     def _template(self, scope: Scope) -> str:

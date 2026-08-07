@@ -142,31 +142,30 @@ monitoring-check:
 #   - did Grafana provision the four dashboards against the datasource they name
 #   - does the cadvisor memory join return a series, or is the panel drawing nothing
 #
-# Needs `just monitoring` first. The two URLs are reachable from inside `app-net` only, so this is
-# run from a container on that network rather than from the host.
+# Needs `just monitoring` first. Run through `docker compose run`, which joins the compose networks
+# itself: Prometheus and Grafana publish no host port, and asking `docker inspect` for the network
+# name does not survive this file's own `{{ }}` interpolation, which is how the first version of the
+# alert probe below came to be unrunnable.
 monitoring-probe:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    docker compose {{monitoring_compose}} exec -T prometheus \
-      sh -c 'wget -qO- http://localhost:9090/api/v1/targets?state=any' >/dev/null
-    docker run --rm --network "$(docker compose {{monitoring_compose}} ps -q prometheus \
-      | head -1 | xargs docker inspect -f '{{{{range $k,$v := .NetworkSettings.Networks}}}}{{{{$k}}}}{{{{end}}}}')" \
-      -v "$PWD/deployments/bin:/probe:ro" python:3.12-alpine \
-      python /probe/stack-probe.py http://prometheus:9090 http://grafana:3000 "${GRAFANA_ADMIN_PASSWORD:-admin}"
+    docker compose {{monitoring_compose}} run --rm --no-deps \
+      -v "$PWD/deployments/bin:/probe:ro" --entrypoint python api \
+      /probe/stack-probe.py http://prometheus:9090 http://grafana:3000 "${GRAFANA_ADMIN_PASSWORD:-admin}"
 
 # Post one alert per severity to the running Alertmanager and report what it did with each.
 #
-# THE ONE ARTEFACT `amtool` CANNOT JUDGE. An inhibit rule whose `equal:` names a label every alert
-# shares is syntactically perfect and silences whole severities: this deployment shipped exactly
-# that, and only posting alerts showed it. A warning coming back `suppressed` beside an unrelated
-# critical is the failure to look for.
+# THE ONE ARTEFACT `amtool` CANNOT JUDGE. An inhibit rule whose matchers name a CLASS rather than a
+# cause is syntactically perfect and silences whole severities: this deployment shipped exactly that,
+# and only posting alerts showed it. A warning coming back `suppressed` beside an unrelated critical is
+# the failure to look for, and the probe exits non-zero on exactly that.
+#
+# Run in the api's own image, which has python, through `docker compose run`. The first version of
+# this recipe used `alpine/curl`, which has no `python3`, so the probe exited 127 having posted its
+# alerts and reported nothing: the probe for the defect that caused the round-1 must-fix had never
+# once run through its own recipe.
 monitoring-alert-probe:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    docker run --rm --network "$(docker compose {{monitoring_compose}} ps -q alertmanager \
-      | head -1 | xargs docker inspect -f '{{{{range $k,$v := .NetworkSettings.Networks}}}}{{{{$k}}}}{{{{end}}}}')" \
-      -v "$PWD/deployments/bin:/probe:ro" --entrypoint sh alpine/curl:latest \
-      /probe/alertmanager-probe.sh http://alertmanager:9093
+    docker compose {{monitoring_compose}} run --rm --no-deps \
+      -v "$PWD/deployments/bin:/probe:ro" --entrypoint python api \
+      /probe/alertmanager-probe.py http://alertmanager:9093
 
 # The api only, on the host, with autoreload. Needs `just dev-infra` and `just migrate`
 dev-api:
