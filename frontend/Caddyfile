@@ -1,0 +1,49 @@
+# Caddy for the deployed frontend. ONE ORIGIN, and that is the whole design.
+#
+# The browser reaches this and nothing else: `cloudflared` fronts this service, and every api path
+# below is reverse-proxied to `api:8000` over `app-net`. Two things depend on that rather than merely
+# benefiting from it, and both are settled elsewhere in the tree:
+#
+#   - the session cookie is `SameSite=Lax`, so a cross-origin unsafe request would not carry it
+#   - every unsafe method is behind an origin check that answers 403 to an origin this deployment
+#     does not serve, so a second origin would be REJECTED rather than only awkward
+#
+# The proxied prefixes are the same list `vite.config.ts` proxies in development, for the same
+# reason. If one moves, both move.
+#
+# `/metrics` IS DELIBERATELY ABSENT. `18-observability.md` states that the exposition is reachable
+# only inside `app-net`; proxying it here would publish every figure about the user's own plan through
+# the tunnel.
+
+{
+	admin off
+	# Cloudflare terminates TLS at the edge and reaches this over the tunnel's own connection, so
+	# there is no certificate to obtain here and nothing to redirect.
+	auto_https off
+	log {
+		format json
+	}
+}
+
+:8080 {
+	encode zstd gzip
+
+	# The api, the browser session, the Authorization Server, and the two health endpoints a deploy
+	# gate reads. Anything not matched here is the single-page application below.
+	@api path /api/* /auth/* /oauth/* /.well-known/* /healthz /readyz
+	handle @api {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		# Vite emits content-hashed asset names, so an asset is immutable and the document is not:
+		# caching `index.html` would serve the previous build's script tags after a deploy.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-store"
+		# Client-side routing: seven routes, one document.
+		try_files {path} /index.html
+		file_server
+	}
+}

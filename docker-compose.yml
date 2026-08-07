@@ -22,6 +22,13 @@
 # overlay, which is a deliberate deviation from section 21's assignment: a limit that
 # exists only in production is a limit nobody has watched work. The overlay's job is
 # then narrower and safer, repinning digests only.
+#
+# WAL ARCHIVING IS ON HERE TOO, for the same reason. `archive_command` copies each
+# completed segment into the `wal_archive` volume, and `python3 -m ops.ship` drains it
+# to the off-host bucket once a minute. Development therefore exercises the same path
+# production depends on; what development does not run is the shipper, so the volume
+# grows with real writes until `just dev-reset` drops it. `docs/runbooks/disk-pressure.md`
+# says so where an operator reads it.
 # =============================================================================
 name: syncr
 
@@ -148,6 +155,23 @@ services:
       - "max_connections=50"
       - "-c"
       - "wal_level=replica"
+      # Continuous archiving, which is what the under-five-minute recovery point rests on. The
+      # command copies a completed segment into a volume `python3 -m ops.ship` drains; it never
+      # talks to a network, so the database container holds no bucket credential and no upload can
+      # block a commit.
+      #
+      # `test ! -f` first, because Postgres may retry a segment it already archived and overwriting
+      # one with a partial copy is the shape that makes a recovery unreplayable.
+      - "-c"
+      - "archive_mode=on"
+      - "-c"
+      - "archive_command=test ! -f /wal-archive/%f && cp %p /wal-archive/%f"
+      # A quiet database never fills a segment, so nothing would be archived for hours and the
+      # recovery point would be the last nightly dump. Two minutes plus the shipper's one-minute
+      # cadence is what fits inside the five-minute objective; the arithmetic is in
+      # `deployments/ops/config.py`, which the runbooks are crossed against.
+      - "-c"
+      - "archive_timeout=120"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-syncr}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-syncr}
@@ -156,6 +180,9 @@ services:
       - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Where `archive_command` writes. Postgres writes here as its own user, and the ops one-shot
+      # that drains it establishes the ownership: see `ops.ship`.
+      - wal_archive:/wal-archive
     networks:
       # data-net exclusively: never reachable from the edge.
       - data-net
@@ -171,6 +198,163 @@ services:
           memory: 2048M
     restart: unless-stopped
 
+  # The static application, and the ONE ORIGIN the browser talks to. Caddy serves the Vite build and
+  # reverse-proxies the api paths to `api:8000`, so the session cookie's `SameSite=Lax` and the origin
+  # check on every unsafe method both hold as they do in development. `frontend/Caddyfile` carries the
+  # list, and the reason `/metrics` is not on it.
+  frontend:
+    image: syncr-frontend:${SYNCR_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    expose:
+      - "8080"
+    networks:
+      - app-net
+    healthcheck:
+      # The document itself, which is the only thing this service is: a 200 here means the build is
+      # present and Caddy is serving it.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    restart: unless-stopped
+
+  # The nightly fitter. A ONE-SHOT, NOT A SERVICE: scipy plus scikit-learn resident is ~800 MB for a
+  # job that runs once a day, which is 10% of host memory held for a process idle 99.9% of the time.
+  #
+  # Two things keep it from becoming resident. `profiles` means no `docker compose up` ever starts it,
+  # and `restart: "no"` means a run that exits is a run that finished. A systemd timer at 03:00 runs
+  # `just learn-once`; `deployments/systemd/` holds the unit and the timer.
+  #
+  # It exits non-zero when a tenant's fit failed, and its exit status is monitored through the
+  # exposition it writes to `TEXTFILE_COLLECTOR_DIR` before exiting: a container that has exited
+  # cannot be scraped, and `LearningJobFailed` reads what it left behind.
+  learning:
+    image: syncr-learning:${SYNCR_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: packages/syncr-learning/Dockerfile
+    profiles: ["scheduled"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-syncr}:${POSTGRES_PASSWORD:-syncr}@postgres:5432/${POSTGRES_DB:-syncr}
+      TEXTFILE_COLLECTOR_DIR: /var/lib/node_exporter/textfile
+    volumes:
+      - textfile_metrics:/var/lib/node_exporter/textfile
+    networks:
+      - app-net
+      - data-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+    restart: "no"
+
+  # The reading a restore is checked against, taken by the API IMAGE because the rotation cursor is a
+  # domain projection rather than a query. Writes one JSON document into the staging volume and exits.
+  # `just backup-now` runs this immediately before the dump, and the dump refuses a document older
+  # than half an hour.
+  fingerprint:
+    image: syncr-api:${SYNCR_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: packages/syncr-api/Dockerfile
+    profiles: ["ops"]
+    command: ["syncr-plan-fingerprint"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-syncr}:${POSTGRES_PASSWORD:-syncr}@postgres:5432/${POSTGRES_DB:-syncr}
+      SYNCR_FINGERPRINT_PATH: /var/backups/syncr/fingerprint.json
+    volumes:
+      - backup_staging:/var/backups/syncr
+    networks:
+      - app-net
+      - data-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    restart: "no"
+
+  # The backup path itself: dump, verify, encrypt, upload, prune, publish. Built FROM the pinned
+  # Postgres image, so `pg_dump` here is the build serving the database and an archive cannot be a
+  # version mismatch discovered during a recovery.
+  #
+  # `profiles` and `restart: "no"` for the same reasons the learning one-shot carries them. Every use
+  # is one explicit step: `just backup-now`, `just wal-ship`, `just restore-drill`.
+  #
+  # It joins `data-net` only. It talks to Postgres and to a bucket, and nothing on `app-net` has any
+  # business reaching it.
+  ops:
+    image: syncr-ops:${SYNCR_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: deployments/ops/Dockerfile
+    profiles: ["ops"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # libpq reads these itself, so no password passes through the `ops` package or any argument
+      # list. The host and the database name are also what the restore step refuses to write to: see
+      # `SYNCR_LIVE_*` in `docker-compose.restore.yml`.
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-syncr}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-syncr}
+      PGDATABASE: ${POSTGRES_DB:-syncr}
+      # The bucket, and the public key the dump is encrypted to. Both arrive from the host secret
+      # file; the PRIVATE key is off-host and is only ever brought to a drill.
+      SYNCR_BACKUP_REMOTE: ${SYNCR_BACKUP_REMOTE:-}
+      SYNCR_BACKUP_PUBLIC_KEY: ${SYNCR_BACKUP_PUBLIC_KEY:-/run/secrets/backup-recipient.asc}
+      SYNCR_BACKUP_ALLOW_LOCAL_REMOTE: ${SYNCR_BACKUP_ALLOW_LOCAL_REMOTE:-}
+      # rclone is configured ENTIRELY from the environment, so the image holds no configuration file
+      # and no credential is written anywhere. `offhost` is the remote name every step uses.
+      RCLONE_CONFIG_OFFHOST_TYPE: ${RCLONE_CONFIG_OFFHOST_TYPE:-}
+      RCLONE_CONFIG_OFFHOST_PROVIDER: ${RCLONE_CONFIG_OFFHOST_PROVIDER:-}
+      RCLONE_CONFIG_OFFHOST_ENDPOINT: ${RCLONE_CONFIG_OFFHOST_ENDPOINT:-}
+      RCLONE_CONFIG_OFFHOST_ACCESS_KEY_ID: ${RCLONE_CONFIG_OFFHOST_ACCESS_KEY_ID:-}
+      RCLONE_CONFIG_OFFHOST_SECRET_ACCESS_KEY: ${RCLONE_CONFIG_OFFHOST_SECRET_ACCESS_KEY:-}
+      RCLONE_CONFIG_OFFHOST_REGION: ${RCLONE_CONFIG_OFFHOST_REGION:-}
+      # WHOSE THE VOLUMES ARE. A fresh named volume belongs to root and neither writer is root: the
+      # api image runs as `syncr` and `archive_command` runs as `postgres`. `python3 -m ops.prepare`
+      # establishes the ownership from these two numbers, and `just uid-check` crosses them against
+      # what the images actually run as, so a base image that renumbers its user fails a check rather
+      # than a backup.
+      SYNCR_APP_UID: "999"
+      SYNCR_POSTGRES_UID: "999"
+    volumes:
+      - backup_staging:/var/backups/syncr
+      - restore_scratch:/var/backups/restore
+      - wal_archive:/wal-archive
+      - textfile_metrics:/var/lib/node_exporter/textfile
+      # The recipient's public key, read-only. The DIRECTORY rather than the file, so a host with no
+      # secrets yet fails on the missing key by name rather than on a missing mount.
+      - ${SYNCR_SECRETS_DIR:-./deployments/secrets}:/run/secrets:ro
+    networks:
+      - data-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: "no"
+
 networks:
   app-net:
     driver: bridge
@@ -182,3 +366,17 @@ networks:
 
 volumes:
   pgdata:
+  # Completed WAL segments, between `archive_command` writing one and `ops.ship` uploading it. Small
+  # by design: a segment lives here for at most one shipper interval.
+  wal_archive:
+  # The dump and the fingerprint, between being written and being uploaded. Both are deleted once
+  # they are in the bucket, because a copy on this host is not a backup.
+  backup_staging:
+  # What a restore drill downloads into, and where the restored copy's fingerprint is written. Its own
+  # volume rather than the staging one, so nothing the nightly job left behind can satisfy a drill.
+  restore_scratch:
+  # The node exporter's textfile collector, and the one volume THREE processes write to: the nightly
+  # learning one-shot, the backup, and the WAL shipper. A one-shot cannot be scraped, so each
+  # publishes by writing a file here. Declared in this file rather than the monitoring overlay,
+  # because two of the three writers are declared here.
+  textfile_metrics:
