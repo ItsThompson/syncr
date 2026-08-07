@@ -115,7 +115,7 @@ def _approved_code(http: TestClient, session: dict[str, str], *, scope: str) -> 
         follow_redirects=False,
     )
     assert response.status_code == 303, response.text
-    delivered = {
+    delivered: dict[str, str] = {
         key: value[0]
         for key, value in parse_qs(urlsplit(response.headers["location"]).query).items()
     }

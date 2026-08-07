@@ -59,6 +59,7 @@ from tests.test_authorization_boundary import CLI_ROUTES
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    import httpx
     from fastapi import FastAPI
 
     from syncr_api.accounts.records import UserRecord
@@ -238,7 +239,7 @@ def test_every_route_in_the_catalog_gets_past_the_perimeter_with_a_token(
     assert refused == {}
 
 
-def _drive(http: TestClient, method: str, path: str, token: dict[str, str]) -> object:
+def _drive(http: TestClient, method: str, path: str, token: dict[str, str]) -> httpx.Response:
     """One request at ``path``, with every path parameter filled in with something plausible."""
     filled = (
         path.replace("{iso_week}", ISO_WEEK)
@@ -247,12 +248,15 @@ def _drive(http: TestClient, method: str, path: str, token: dict[str, str]) -> o
         .replace("{block_id}", "a-block-that-does-not-exist")
         .replace("{date}", "2026-02-10")
     )
-    return http.request(
+    # Annotated on the way out rather than cast: `TestClient` is typed loosely enough that the
+    # response is `Any`, and the caller reads its status.
+    answered: httpx.Response = http.request(
         method,
         filled,
         json={} if method in {"POST", "PUT", "PATCH"} else None,
         headers={**token, IDEMPOTENCY_KEY_HEADER: f"cli-perimeter-{method}-{filled}"},
     )
+    return answered
 
 
 def _a_task(http: TestClient, token: dict[str, str]) -> dict[str, object]:
