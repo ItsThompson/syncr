@@ -247,22 +247,65 @@ def test_a_proposal_the_week_has_moved_past_is_not_served_as_the_weeks_verdict(
     )
 
     view = week_view(http, headers, week)
+    refreshed = http.get(week_path(week, "/verdict"), headers=headers)
 
     assert view["verdict"]["provenance"] == Provenance.PROBE.value
     assert view["proposal"] is not None, "the stale proposal is still rendered as a proposal"
     assert view["inputVersion"] == version
+    # The cheap refresh applies the currency test too, or the strip and the panel would report two
+    # provenances for one week: the composed read alone would leave that half of the rule untested.
+    assert refreshed.status_code == HTTPStatus.OK, refreshed.text
+    assert refreshed.json()["verdict"]["provenance"] == Provenance.PROBE.value
 
 
 def test_the_cheap_refresh_serves_the_same_verdict_the_composed_read_does(
     http: TestClient, a_week_whose_solve_failed_to_pack: tuple[dict[str, str], IsoWeek]
 ) -> None:
-    """One rule, so the strip and the panel cannot report different provenance for one week."""
+    """One rule, so the strip and the panel cannot report different provenance for one week.
+
+    Compared whole on this branch, because a stored verdict is a value rather than a computation:
+    the two routes read one row, so every field including the instant it names is equal.
+    """
     headers, week = a_week_whose_solve_failed_to_pack
 
     refreshed = http.get(week_path(week, "/verdict"), headers=headers)
 
     assert refreshed.status_code == HTTPStatus.OK, refreshed.text
     assert refreshed.json()["verdict"] == week_view(http, headers, week)["verdict"]
+
+
+def test_the_cheap_refresh_agrees_with_the_composed_read_on_the_live_branch_too(
+    http: TestClient,
+    owner: UserRecord,
+    configured: tuple[dict[str, str], str],
+    live_database_url: str,
+) -> None:
+    """The branch that COMPUTES, where the agreement is the one that could fail.
+
+    Two requests are two instants, so the instant each verdict was computed at differs by design
+    and is the one field excluded. Everything the panel and the strip render is compared: a second
+    reading of the rule would show as a different provenance, a different gap, or a different
+    denominator.
+    """
+    headers, _area_id = configured
+    week = this_week()
+    produce_a_plan(live_database_url, owner.tenant_id, week)
+
+    refreshed = http.get(week_path(week, "/verdict"), headers=headers)
+
+    assert refreshed.status_code == HTTPStatus.OK, refreshed.text
+    served = refreshed.json()["verdict"]
+    composed = week_view(http, headers, week)["verdict"]
+    assert served["provenance"] == Provenance.PROBE.value, "this asserted the stored branch again"
+    assert served["computedAt"] != composed["computedAt"], (
+        "two requests reported one instant, so the clock is not the one production reads"
+    )
+    assert _without_its_instant(served) == _without_its_instant(composed)
+
+
+def _without_its_instant(verdict: dict[str, Any]) -> dict[str, Any]:
+    """One verdict with the instant it was computed at removed, and nothing else."""
+    return {name: value for name, value in verdict.items() if name != "computedAt"}
 
 
 def test_a_week_with_no_plan_has_no_verdict_and_one_with_a_plan_has_one(
