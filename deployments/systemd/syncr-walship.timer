@@ -1,0 +1,22 @@
+# Every minute, measured from the END of the previous run rather than on a wall-clock grid.
+#
+# `OnUnitActiveSec` cannot overlap itself: a run that took fifty seconds is followed by the next a
+# minute later, not immediately. `AccuracySec` is tightened from systemd's one-minute default, which
+# would otherwise let the interval drift to two minutes and put the recovery point outside its
+# objective.
+#
+# No `Persistent=true`: a missed minute of shipping is caught up by the next run, which drains
+# everything staged. The nightly dump carries that flag because a missed DAY is not caught up.
+
+[Unit]
+Description=syncr WAL shipping, every minute
+Documentation=file:/opt/syncr/docs/runbooks/backup-stale.md
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=syncr-walship.service
+
+[Install]
+WantedBy=timers.target

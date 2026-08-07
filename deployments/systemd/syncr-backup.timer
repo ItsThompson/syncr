@@ -1,0 +1,17 @@
+# 03:00 host time, which is the hour section 19 states and the hour the runbooks quote.
+#
+# `Persistent=true` runs a missed backup once the host is back rather than skipping to tomorrow. A
+# reboot at 02:55 would otherwise cost a night's copy silently, and BackupStale only notices at 36
+# hours.
+
+[Unit]
+Description=syncr nightly backup at 03:00
+Documentation=file:/opt/syncr/docs/runbooks/backup-stale.md
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+Unit=syncr-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,25 @@
+# The nightly learning run. A TIMER, NOT A SERVICE, and that is a resource decision rather than a
+# scheduling one: scipy plus scikit-learn resident is ~800 MB for a job that runs once a day, which is
+# 10% of host memory held for a process idle 99.9% of the time.
+#
+# THE EXIT STATUS IS MONITORED, which is what makes a failed run visible. The container exits non-zero
+# when a tenant's fit failed and writes its exposition into the textfile collector before exiting, so
+# `LearningJobFailed` reads the file rather than a scrape. `systemctl status syncr-learning` is the
+# other end of the same fact.
+#
+# 03:00, the same hour as the backup, which is why the learning engine turns on `pool_pre_ping`: a
+# connection severed by a Postgres restart must be discarded rather than failing a tenant's night.
+
+[Unit]
+Description=syncr nightly learning run: fit the objective weights from the outcome log
+Documentation=file:/opt/syncr/docs/runbooks/learning-job-failed.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/syncr
+Environment=SYNCR_OPS_COMPOSE=-f docker-compose.yml -f docker-compose.deploy.yml
+ExecStart=/usr/bin/just learn-once
+# Section 19 budgets the run at under five minutes. Six times that is a hang rather than a slow night.
+TimeoutStartSec=30min

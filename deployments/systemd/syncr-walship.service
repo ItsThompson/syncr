@@ -1,0 +1,24 @@
+# WAL shipping. THE OTHER HALF OF THE RECOVERY POINT, and the half that runs every minute.
+#
+# The nightly dump bounds how much is lost to a bit under a day; this bounds it to minutes. Postgres
+# forces a segment switch every 120 seconds and this drains the staging volume every 60, so the newest
+# committed transaction is off-host within three minutes, inside the five-minute objective.
+#
+# It refuses when Postgres reports its own archive_command failing, which is the one condition an empty
+# staging volume cannot be distinguished from. A refusal exits non-zero and writes no timestamp, so
+# BackupStale fires at fifteen minutes of staleness rather than staying quiet.
+
+[Unit]
+Description=syncr WAL shipping: every archived segment, off-host
+Documentation=file:/opt/syncr/docs/runbooks/backup-stale.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/syncr
+Environment=SYNCR_OPS_COMPOSE=-f docker-compose.yml -f docker-compose.deploy.yml
+ExecStart=/usr/bin/just wal-ship
+# Shorter than the interval below plus its accuracy, so a hung upload is killed before the next run
+# starts rather than two shippers draining one directory.
+TimeoutStartSec=45s

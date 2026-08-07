@@ -1,0 +1,17 @@
+# 03:00 host time, the hour section 19 states for the nightly job.
+#
+# `Persistent=true` so a host that was down at 03:00 fits the run in when it returns. A skipped night
+# leaves the previous weight set in force, which is a benign degradation, but `LearningJobFailed` reads
+# a 24-hour window and a skipped night reads the same as a broken one.
+
+[Unit]
+Description=syncr nightly learning run at 03:00
+Documentation=file:/opt/syncr/docs/runbooks/learning-job-failed.md
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+Unit=syncr-learning.service
+
+[Install]
+WantedBy=timers.target
