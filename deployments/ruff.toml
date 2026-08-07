@@ -1,0 +1,8 @@
+# Ruff configuration for the deployment's own tooling.
+#
+# The same rule set as every workspace member, at a LOWER language version. `ops` runs on the Python
+# that `postgres:16.10-bookworm` carries, which is Debian bookworm's 3.11, and the members run 3.12.
+# Without this, a rule that suggests 3.12 syntax would put a construct in this package that the image
+# it runs in cannot parse: a failure at 03:00 in a container, which is the worst place to find one.
+extend = "../ruff.toml"
+target-version = "py311"

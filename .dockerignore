@@ -40,6 +40,9 @@
 docs
 e2e
 deployments
+# ...except the deployment's own `ops` package, which the ops image carries. It is standard library
+# only, so this is the whole of that image's payload.
+!deployments/ops
 
 # `frontend` is deliberately NOT excluded: the SPA image the frontend slice adds
 # needs it in its context, and the JS toolchain excludes above already keep it lean.
