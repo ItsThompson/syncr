@@ -16,12 +16,16 @@ spelling, so a client rendering "Tue, Wed and Thu" reads the same keys the serve
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
+from typing import TYPE_CHECKING, Self
 from uuid import UUID  # noqa: TC003 - as above
 
 from pydantic import ConfigDict, Field
 
 from syncr_api.core.schemas import WireModel
 from syncr_domain.plan import AdjustmentKind  # noqa: TC001 - pydantic resolves at runtime
+
+if TYPE_CHECKING:
+    from syncr_api.plans.records import WeekAdjustmentRecord
 
 _KIND_DESCRIPTION = (
     "Which concession to solve against. One of the four the verdict panel offers: drop_item, "
@@ -67,6 +71,29 @@ class AdjustmentResponse(WireModel):
     created_by_operation_id: UUID = Field(
         description="The operation whose proposal this concession was approved with."
     )
+
+    @classmethod
+    def of(cls, record: WeekAdjustmentRecord) -> Self:
+        """One stored concession on the wire.
+
+        Beside the shape rather than in a route module, because three surfaces render a
+        concession: the week's own list, the approval that persisted one, and the revision that
+        names the ones its plan was solved under.
+
+        The minutes are narrowed here because the column is JSONB, which types its values as
+        objects. What may be in it is a positive count of minutes and nothing else, which the
+        write refuses anything but.
+        """
+        return cls(
+            id=record.id,
+            iso_week=str(record.iso_week),
+            kind=record.kind,
+            target_id=record.target_id,
+            reductions={key: int(value) for key, value in record.reductions.items()},
+            delta_minutes=record.delta_minutes,
+            created_at=record.created_at,
+            created_by_operation_id=record.created_by_operation_id,
+        )
 
 
 class AdjustmentsResponse(WireModel):

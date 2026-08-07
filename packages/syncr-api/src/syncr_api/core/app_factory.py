@@ -22,6 +22,7 @@ from fastapi import APIRouter, FastAPI
 
 from syncr_api.accounts.wiring import build_accounts_router
 from syncr_api.anchors.wiring import build_anchors_router
+from syncr_api.approvals.wiring import build_approvals_router
 from syncr_api.areas.wiring import build_areas_router
 from syncr_api.budgets.wiring import build_budget_router
 from syncr_api.calendars.wiring import build_calendars_router
@@ -94,6 +95,7 @@ FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
     build_conflicts_router,
     build_events_router,
     build_pins_router,
+    build_approvals_router,
 )
 
 # The one place the api's version is stated: the package metadata uv installs from

@@ -1,0 +1,264 @@
+"""The approve route through the real app: the demanded key, the replay, and the two refusals.
+
+Four things only this tier can assert.
+
+**The key is DEMANDED rather than offered**, which no other route in this api does. A request
+without one is refused before anything is read, because approving twice would append two revisions
+to a table with no update and no delete path.
+
+**A retry with the same key replays the stored response** and appends nothing, which is what the
+demand is for.
+
+**The wire shape**, in camelCase, carrying both versions: what the week holds now and what the
+approved plan was solved against.
+
+**The 409 a client renders as "this proposal has been replaced"**, with the refresh action beside
+it.
+
+The last test in this module is an ``xfail`` pinning ticket 1134's collision, which this route's
+shape inherits: bodyless, addressed by a path parameter. It is pinned rather than patched here, for
+the reason ticket 13's review gave: a local fix would close the hole for one route out of the six
+that share it and trade a visible defect for an invisible inconsistency.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from http import HTTPStatus
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
+from syncr_api.approvals.config import APPROVE_PATH
+from syncr_api.concessions.config import ISO_WEEK_FIELD, WEEKS_PREFIX
+from syncr_api.core.app_factory import create_app
+from syncr_api.core.db import create_database, create_db_lifespan
+from syncr_api.core.errors import Conflict, MalformedRequest, ValidationFailed
+from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
+from syncr_api.plans.models import PlanRevision
+from syncr_api.plans.proposals import PendingProposalRepository
+from syncr_api.plans.stored_documents import stored_document
+from syncr_domain.weeks import IsoWeek
+from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
+from tests.plan_documents import a_document
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from syncr_api.accounts.records import UserRecord
+    from syncr_api.core.settings import ServiceSettings
+    from syncr_domain.identifiers import TenantId
+
+pytestmark = pytest.mark.integration
+
+# Far enough ahead that nothing in the week has been reached under the real clock, which is what the
+# route reads: the past rules compare the document against the plan of record as of now.
+WEEK = IsoWeek(2030, 7)
+NEXT_WEEK = IsoWeek(2030, 8)
+SEEDED_AT = datetime(2030, 2, 4, tzinfo=UTC)
+BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
+
+BREAKDOWN: dict[str, Any] = {"deadline_risk": 0.0, "budget_deviation": 0.0}
+A_VERDICT: dict[str, Any] = {"feasible": True, "shortfall_minutes": 0, "provenance": "solver"}
+
+
+def approve_url(week: IsoWeek) -> str:
+    return f"{WEEKS_PREFIX}{APPROVE_PATH}".replace("{iso_week}", str(week))
+
+
+@pytest.fixture
+def owner(live_database_url: str) -> Iterator[UserRecord]:
+    account = provision_owner(live_database_url)
+    yield account
+    remove_tenant(live_database_url, account.tenant_id)
+
+
+@pytest.fixture
+def http(live_database_url: str, settings: ServiceSettings) -> Iterator[TestClient]:
+    database = create_database(live_database_url)
+    app = create_app(settings, lifespan=create_db_lifespan(database.engine))
+    app.state.db = database
+    with TestClient(app, raise_server_exceptions=False) as client:
+        yield client
+
+
+@pytest.fixture
+def signed_in(http: TestClient, owner: UserRecord) -> dict[str, str]:
+    answered = http.post(
+        f"{AUTH_PREFIX}/login",
+        json={"email": owner.email, "password": PASSWORD},
+        headers={"Origin": BROWSER_ORIGIN},
+    )
+    assert answered.status_code == HTTPStatus.OK, answered.text
+    cookie = answered.headers["set-cookie"]
+    token = cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
+    return {"Cookie": f"{SESSION_COOKIE_NAME}={token}", "Origin": BROWSER_ORIGIN}
+
+
+def seed_slot(database_url: str, tenant_id: TenantId, week: IsoWeek = WEEK) -> None:
+    """One proposal awaiting assent, on its own loop and engine as a sync test must."""
+
+    async def seed() -> None:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                await PendingProposalRepository(session, tenant_id).replace(
+                    document=stored_document(a_document(week=week)),
+                    proposal_diff={"added": [], "removed": [], "moved": []},
+                    objective_breakdown=BREAKDOWN,
+                    verdict=A_VERDICT,
+                    weight_set_version=1,
+                    input_version=3,
+                    operation_id=uuid4(),
+                    created_at=SEEDED_AT,
+                )
+        finally:
+            await database.engine.dispose()
+
+    run(seed())
+
+
+def approved_revisions(database_url: str, tenant_id: TenantId) -> list[str]:
+    """Every revision this tenant holds, as ``week/status`` pairs, oldest first."""
+
+    async def read() -> list[str]:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session:
+                found = await session.scalars(
+                    select(PlanRevision)
+                    .where(PlanRevision.tenant_id == tenant_id)
+                    .order_by(PlanRevision.created_at, PlanRevision.id)
+                )
+                return [f"{row.iso_week}/{row.status}" for row in found]
+        finally:
+            await database.engine.dispose()
+
+    return run(read())
+
+
+def post_approval(
+    http: TestClient, headers: dict[str, str], week: IsoWeek = WEEK, *, key: str | None
+) -> tuple[int, dict[str, Any]]:
+    sent = dict(headers) if key is None else {**headers, IDEMPOTENCY_KEY_HEADER: key}
+    answered = http.post(approve_url(week), headers=sent)
+    return answered.status_code, answered.json()
+
+
+class TestTheApproveRoute:
+    def test_approving_answers_with_what_the_transaction_wrote(
+        self, http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+    ) -> None:
+        seed_slot(live_database_url, owner.tenant_id)
+
+        status, body = post_approval(http, signed_in, key=uuid4().hex)
+
+        assert status == HTTPStatus.CREATED, body
+        assert body["isoWeek"] == str(WEEK)
+        assert body["reason"] == "user_approved"
+        assert body["adjustment"] is None
+        assert body["projection"]["kind"] == "projection"
+        # PP5 on the wire: the version the week now holds, and the one the plan was solved against.
+        assert body["solvedAgainstVersion"] == 3
+        assert body["inputVersion"] == 1
+        assert body["approvedAt"]
+        assert body["revisionId"]
+        assert approved_revisions(live_database_url, owner.tenant_id) == [f"{WEEK}/approved"]
+
+    def test_an_approval_without_a_key_is_refused_before_anything_is_read(
+        self, http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+    ) -> None:
+        # The route that DEMANDS the header rather than offering it. Nothing is appended, so the
+        # proposal is still there to approve with a key.
+        seed_slot(live_database_url, owner.tenant_id)
+
+        status, refused = post_approval(http, signed_in, key=None)
+
+        assert status == MalformedRequest.status
+        assert IDEMPOTENCY_KEY_HEADER in refused["detail"]
+        assert approved_revisions(live_database_url, owner.tenant_id) == []
+
+    def test_a_retry_with_the_same_key_replays_the_answer_and_appends_nothing(
+        self, http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+    ) -> None:
+        # Why the key is demanded: the slot is cleared by the first approval, so a retry without the
+        # guarantee would be answered 409 by a client that has no way to tell "already done" from
+        # "someone replaced your proposal". With it, the retry is answered with the first response.
+        seed_slot(live_database_url, owner.tenant_id)
+        key = uuid4().hex
+
+        first = post_approval(http, signed_in, key=key)
+        second = post_approval(http, signed_in, key=key)
+
+        assert first[0] == HTTPStatus.CREATED, first[1]
+        assert second == first
+        assert approved_revisions(live_database_url, owner.tenant_id) == [f"{WEEK}/approved"]
+
+    def test_approving_a_slot_that_has_been_replaced_is_a_conflict_with_a_refresh_in_it(
+        self, http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+    ) -> None:
+        # What the client renders as "this proposal has been replaced" with a refresh action: the
+        # detail names re-reading the week as the thing that still works.
+        seed_slot(live_database_url, owner.tenant_id)
+        post_approval(http, signed_in, key=uuid4().hex)
+
+        status, refused = post_approval(http, signed_in, key=uuid4().hex)
+
+        assert status == Conflict.status
+        assert "has been replaced" in refused["detail"]
+        assert "reading the week again" in refused["detail"]
+
+    def test_a_week_identifier_the_domain_does_not_parse_is_a_422_naming_the_field(
+        self, http: TestClient, signed_in: dict[str, str]
+    ) -> None:
+        # The field is read from where the week routes settled its spelling rather than written out,
+        # so seven routes that name one parameter cannot come to name it two ways.
+        answered = http.post(
+            f"{WEEKS_PREFIX}/2026-W99/approve",
+            headers={**signed_in, IDEMPOTENCY_KEY_HEADER: uuid4().hex},
+        )
+
+        assert answered.status_code == ValidationFailed.status
+        assert answered.json()["errors"][0]["field"] == ISO_WEEK_FIELD
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "ticket 1134: the request fingerprint hashes body bytes only and the route key is the "
+        "handler's name, so a bodyless route addressed by a path parameter collides across "
+        "resources. Delete this marker when the claim is scoped to the resource it addresses."
+    ),
+)
+def test_one_key_across_two_weeks_does_not_silently_skip_the_second(
+    http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+) -> None:
+    # The sixth route of ticket 1134's shape, added knowingly rather than by mirroring: approving is
+    # bodyless and names its week in the path, so two weeks under one key hash identically and the
+    # second approval is answered with the FIRST week's body while its own proposal stays pending.
+    #
+    # Either fix satisfies this test. Folding the request path into the fingerprint makes the second
+    # request a key reused for a different request, which is a 422; namespacing the route key gives
+    # it its own claim and approves the week the caller named.
+    seed_slot(live_database_url, owner.tenant_id, WEEK)
+    seed_slot(live_database_url, owner.tenant_id, NEXT_WEEK)
+    key = uuid4().hex
+
+    first_status, first = post_approval(http, signed_in, WEEK, key=key)
+    second_status, second = post_approval(http, signed_in, NEXT_WEEK, key=key)
+
+    assert first_status == HTTPStatus.CREATED, first
+    assert first["isoWeek"] == str(WEEK)
+    if second_status == HTTPStatus.CREATED:
+        assert second["isoWeek"] == str(NEXT_WEEK)
+        assert approved_revisions(live_database_url, owner.tenant_id) == [
+            f"{WEEK}/approved",
+            f"{NEXT_WEEK}/approved",
+        ]
+    else:
+        assert second_status == ValidationFailed.status

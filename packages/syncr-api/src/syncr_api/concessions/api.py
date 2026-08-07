@@ -16,7 +16,6 @@ approved.
 from __future__ import annotations
 
 from http import HTTPStatus
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -33,23 +32,7 @@ from syncr_api.concessions.schemas import (
 )
 from syncr_api.solving.schemas import OperationResponse
 
-if TYPE_CHECKING:
-    from syncr_api.plans.records import WeekAdjustmentRecord
-
 router = APIRouter()
-
-
-def _as_adjustment(record: WeekAdjustmentRecord) -> AdjustmentResponse:
-    return AdjustmentResponse(
-        id=record.id,
-        iso_week=str(record.iso_week),
-        kind=record.kind,
-        target_id=record.target_id,
-        reductions={key: int(value) for key, value in record.reductions.items()},
-        delta_minutes=record.delta_minutes,
-        created_at=record.created_at,
-        created_by_operation_id=record.created_by_operation_id,
-    )
 
 
 @router.post(
@@ -74,7 +57,7 @@ async def list_adjustments(
 ) -> AdjustmentsResponse:
     """Every approved concession for the week. Writes nothing."""
     found = await service.approved(principal, iso_week)
-    return AdjustmentsResponse(adjustments=[_as_adjustment(record) for record in found])
+    return AdjustmentsResponse(adjustments=[AdjustmentResponse.of(record) for record in found])
 
 
 @router.delete(

@@ -34,6 +34,7 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``overlaps.py`` | the two overlaps nothing may settle quietly, detected against the live plan |
 | ``settled.py`` | what the week has lived, and which of it a candidate may not restate |
 | ``authority.py`` | the authority rule: what auto-applies, what waits, and what collides |
+| ``assent.py`` | what an approval may change: only what its own proposal diff named |
 
 And the week assembler, which turns everything above plus every declaration a tenant holds into
 one resolved ``SolveInputs``:

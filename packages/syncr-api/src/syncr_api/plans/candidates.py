@@ -57,11 +57,19 @@ def as_document(candidate: WeekAdjustment) -> dict[str, object]:
         ADJUSTMENT_ID: str(candidate.adjustment_id),
         KIND: candidate.kind.value,
         TARGET_ID: str(candidate.target_id),
-        REDUCTIONS: {
-            date_occurrence_key(on): minutes for on, minutes in candidate.reductions.items()
-        },
+        REDUCTIONS: stored_reductions(candidate),
         DELTA_MINUTES: candidate.delta_minutes,
     }
+
+
+def stored_reductions(candidate: WeekAdjustment) -> dict[str, int]:
+    """The per-date minutes, keyed the way every column and every reader of one keys them.
+
+    Two writers need this spelling: the operation a request rides on, and the concession table an
+    approval persists into. One statement of it is what lets the fold pair a stored reduction with
+    a frame occurrence without a second derivation.
+    """
+    return {date_occurrence_key(on): minutes for on, minutes in candidate.reductions.items()}
 
 
 def from_document(document: Mapping[str, object], *, dates: Sequence[Date]) -> WeekAdjustment:
