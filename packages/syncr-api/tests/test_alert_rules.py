@@ -9,18 +9,24 @@ inhibit rule that silenced every warning in the deployment.
 So no direction is a list anyone maintains:
 
 - **EXPORTED** is read from the Prometheus registry after importing every module of all six
-  workspace members. Not after importing the modules whose SOURCE constructs a collector: a family
-  declared through a helper defined elsewhere never registers under that rule, and one such family
-  passed the whole crossing when a reviewer tried it.
+  workspace members. That covers a family declared through a helper defined elsewhere, which round
+  1's crossing missed. It does NOT cover a family constructed inside a function body, because
+  importing a module does not run one, so a SECOND reading is crossed against it: every
+  family-shaped string literal on disk must be in the registry. A literal that is not is either a
+  family a process can export and this crossing cannot see, or a name that was never a family, and
+  the second is a short declared list with a written reason per entry.
 - **WATCHED** is read from the alert rules and the four dashboards as they are deployed.
 - **WHICH RULES MUST SAY `absent()`** is derived from the deployment topology: each family maps to
   the member that declares it, each member to the scrape jobs that serve it, and a family whose
   member has no job is produced by something that may never have run.
-- **WHICH PROCESSES NEED A LIVENESS ALERT** is derived from `prometheus.yml`'s own job list, crossed
-  against the `up{job=...}` matchers in the rules, in both directions.
-- **DELIVERY** is read from `alertmanager.yml`. Every inhibit rule must name its source by
-  `alertname`, because the shape that does not is the one that shipped: a blanket
-  `severity=critical` suppressing `severity=warning`, scoped by a label every alert shares.
+- **WHICH PROCESSES NEED A LIVENESS ALERT** is derived from `prometheus.yml`'s own job list: every
+  job named for one of our processes must be read by an `up{job=...}` matcher, and every matcher
+  must name a declared job. Read from the scrape configuration rather than from the member map,
+  because the map is hand-maintained and a sixth job added without a row in it would pass.
+- **DELIVERY** is read from `alertmanager.yml`. Every inhibit rule must name BOTH its source and its
+  targets by `alertname`, because constraining the source alone left the shipped defect one edit
+  away: `alertname="BackupStale"` targeting `severity="warning"` suppressed all seven warnings in a
+  real Alertmanager while 131 tests and `amtool` passed.
 
 What IS declared, in `tests/metric_declarations.py`, is the set of DECISIONS, each with a written
 reason and each crossed as an exact equality.
@@ -35,6 +41,7 @@ that is the one thing `amtool` cannot judge.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import json
 import re
@@ -50,6 +57,7 @@ from tests.metric_declarations import (
     DASHBOARDS,
     EXTERNALLY_PRODUCED,
     JOBS_BY_MEMBER,
+    NOT_A_FAMILY,
     NOT_ALERTED,
     SEVERITY_BY_ALERT,
     SPEC_FAMILIES,
@@ -226,6 +234,23 @@ def scrape_jobs() -> set[str]:
     return set(re.findall(r"^\s*-\s*job_name:\s*(\S+)\s*$", text, re.MULTILINE))
 
 
+# Our own processes' jobs are named for the application; an exporter's job is named for what it
+# exports. That prefix is the whole distinction the liveness floor needs, and reading it off
+# `prometheus.yml` is what makes a SIXTH PROCESS visible without any map being edited.
+OUR_JOB_PREFIX: Final = "syncr-"
+
+
+def our_scrape_jobs() -> set[str]:
+    """Every scrape job that is one of this application's own processes.
+
+    Derived from the scrape configuration rather than from :data:`JOBS_BY_MEMBER`, because that map
+    is hand-maintained: a sixth job added without a row in it would otherwise pass the whole suite.
+    The exporters are correctly out of scope, each covered by an `absent()` term rather than by a
+    liveness matcher.
+    """
+    return {job for job in scrape_jobs() if job.startswith(OUR_JOB_PREFIX)}
+
+
 # ---------------------------------------------------------------------------
 # Reading the dashboards
 # ---------------------------------------------------------------------------
@@ -276,9 +301,12 @@ def exported_families() -> set[str]:
     """Every family this workspace declares, read from the registry.
 
     EVERY module of all six members is imported, not only the modules whose own source constructs a
-    collector. A family declared through a helper defined elsewhere, or created lazily inside a
-    function body, never registers under the narrower rule, so both set differences below would step
-    over it: a reviewer shipped one such family past the entire crossing.
+    collector. A family declared through a helper defined elsewhere never registers under the
+    narrower rule, so both set differences below would step over it: a reviewer shipped one such
+    family past the entire crossing, twice, from two different members.
+
+    Importing a module does not execute a function body, so this alone cannot see a family built
+    lazily inside one. :func:`family_literals` is the second reading that does.
     """
     root = repo_root()
     for package, source in MEMBER_ROOTS.items():
@@ -289,17 +317,55 @@ def exported_families() -> set[str]:
     return {metric.name for metric in REGISTRY.collect() if metric.name.startswith("syncr_")}
 
 
+# A string a source file could be naming a metric family with: the prefix, and nothing a family name
+# cannot contain. A dotted or colon-bearing name is a module path or a service identifier, excluded
+# by shape rather than by a list.
+_FAMILY_SHAPED = re.compile(r"^syncr_[a-z0-9_]+$")
+
+
+def family_literals() -> set[str]:
+    """Every family-shaped string literal in all six members' sources, base-normalised.
+
+    The reading that sees a family a process can export and an import cannot register: a collector
+    constructed inside a function body has its NAME on disk whether or not anything calls the
+    function. Crossed against the registry as an exact equality, so such a family fails rather than
+    being stepped over by both set differences.
+
+    Every literal, not only a call's first argument: two of this deployment's own families are
+    passed by module constant rather than inline, and a rule reading only call arguments missed
+    both.
+    """
+    root = repo_root()
+    found: set[str] = set()
+    for package, source in MEMBER_ROOTS.items():
+        tree = root / source / package
+        for path in sorted(tree.rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text())):
+                if (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and _FAMILY_SHAPED.match(node.value)
+                ):
+                    found.add(base_family(node.value))
+    return found
+
+
 def declaring_member(family: str) -> str | None:
     """Which member's source names this family, or ``None`` when no member does.
 
     Read from the source rather than from the collector, because a collector knows nothing about
     which distribution built it and the `absent()` requirement is stated per member.
+
+    Matched on the family's own name as a whole word, so ``syncr_solve`` cannot be attributed by a
+    substring of ``syncr_solve_total``: the two live in different members, and an attribution that
+    flipped between them would silently change which rules must carry `absent()`.
     """
     root = repo_root()
+    named = re.compile(rf'"{re.escape(family)}(?:_total)?"')
     for package, source in MEMBER_ROOTS.items():
         tree = root / source / package
         for path in tree.rglob("*.py"):
-            if f'"{family}' in path.read_text():
+            if named.search(path.read_text()):
                 return package
     return None
 
@@ -396,6 +462,17 @@ class TestTheExtractionItself:
         assert declaring_member("syncr_write_target_token_age_seconds") == "syncr_api"
         assert declaring_member("syncr_not_a_family") is None
 
+    def test_a_family_is_not_attributed_by_a_prefix_of_a_longer_one(self) -> None:
+        """`syncr_solve` and `syncr_solve_iterations` live in DIFFERENT members.
+
+        A substring match attributed the counter to whichever member the walk reached first, and the
+        two carry the same job set today, so the wrong answer was invisible. It would stop being
+        invisible the moment one member's job set changed, and the `absent()` requirement is derived
+        from this answer.
+        """
+        assert declaring_member("syncr_solve") == "syncr_api"
+        assert declaring_member("syncr_solve_iterations") == "syncr_solver"
+
     def test_both_sides_of_the_crossing_are_non_empty(self) -> None:
         assert len(alerted_families()) > 5
         assert len(drawn_families()) > 20
@@ -451,18 +528,28 @@ class TestDelivery:
     """
 
     def test_no_inhibit_rule_matches_on_severity_alone(self) -> None:
-        """The shape that shipped, forbidden by construction.
+        """The shape that shipped, and the shape it becomes in one edit, both forbidden.
 
         `severity = critical` suppressing `severity = warning`, scoped with `equal: ["deployment"]`.
         `deployment` is an `external_labels` entry, so it is identical on all twelve rules: the rule
         read 'any firing critical suppresses every firing warning'. `BackupStale` fires
         unconditionally until ticket 58 writes its metric, so ten minutes after the stack first
         started, none of the seven warnings was deliverable.
+
+        BOTH SIDES ARE CONSTRAINED, because constraining the source alone left the same defect one
+        edit away: `alertname = "BackupStale"` targeting `severity = "warning"` names its source by
+        alertname, uses one of the twelve, and suppressed all seven warnings in a real Alertmanager
+        while 131 tests and `amtool` passed. A class is not a cause on either side of the arrow.
         """
         for rule in inhibitions():
             assert any(matcher.startswith("alertname=") for matcher in rule.sources), (
                 f"an inhibit rule sourced on {rule.sources} suppresses by class rather than by "
                 "cause. Name the alert whose firing makes the targets redundant."
+            )
+            assert any(matcher.startswith("alertname=") for matcher in rule.targets), (
+                f"an inhibit rule targeting {rule.targets} suppresses a CLASS rather than the "
+                "named alerts one cause makes redundant. Name them, or the rule silences whatever "
+                "else ever carries that label."
             )
 
     def test_every_alert_an_inhibit_rule_names_is_one_of_the_twelve(self) -> None:
@@ -474,27 +561,24 @@ class TestDelivery:
                     continue
                 assert set(value.split("|")) <= set(SEVERITY_BY_ALERT), matcher
 
-    def test_no_inhibit_rule_is_scoped_only_by_a_label_every_alert_shares(self) -> None:
-        """`equal:` narrows nothing when the label it names comes from `external_labels`.
+    def test_an_inhibit_rule_suppresses_fewer_alerts_than_the_deployment_has(self) -> None:
+        """A rule that names most of the twelve as targets is a blanket rule spelled out longhand.
 
-        It is legitimate BESIDE an alertname matcher, which is what actually narrows the rule, and
-        it is what makes the rule a no-op if a second deployment ever shares a channel.
+        The two guards above forbid a class matcher; they do not forbid enumerating eleven alerts.
+        An inhibition worth having names the handful one cause makes redundant, so a target list
+        past half the deployment is the same design error with more typing.
         """
-        external = set(
-            re.findall(
-                r"^\s{4}(\w+):",
-                (deployments() / "prometheus" / "prometheus.yml")
-                .read_text()
-                .partition("external_labels:")[2]
-                .partition("\n\n")[0],
-                re.MULTILINE,
-            )
-        )
-
-        assert external, "prometheus.yml declares no external labels, so this guard reads nothing"
         for rule in inhibitions():
-            assert not set(rule.equal) - external or any(
-                matcher.startswith("alertname=") for matcher in rule.sources
+            named = {
+                name
+                for matcher in rule.targets
+                if matcher.startswith("alertname=")
+                for name in matcher.partition("=")[2].split("|")
+            }
+
+            assert len(named) <= len(SEVERITY_BY_ALERT) // 2, (
+                f"{rule.sources} suppresses {len(named)} of {len(SEVERITY_BY_ALERT)} alerts, which "
+                "is a blanket rule enumerated rather than a cause"
             )
 
 
@@ -504,28 +588,36 @@ class TestLiveness:
     The ticket's own headline finding was a whole process whose registry nothing scraped. The
     equivalent silence is a process nothing watches: every plan-pipeline, calendar and token family
     is recorded in the worker, so a dead worker leaves a frozen gauge reading healthy and an absent
-    counter with no increase. Derived from the scrape configuration, so a fifth process is visible.
+    counter with no increase.
+
+    THE FLOOR IS READ FROM `prometheus.yml`, not from `JOBS_BY_MEMBER`. That map is hand-maintained,
+    so deriving the floor from it meant a sixth scrape job for a new process passed the whole suite
+    unless someone also edited the map. Read from the scrape configuration, a job added anywhere
+    fails until a rule watches it.
     """
 
-    def test_every_scrape_job_that_serves_a_family_has_a_liveness_alert(self) -> None:
-        served = {job for jobs in JOBS_BY_MEMBER.values() for job in jobs}
+    def test_every_job_of_ours_has_a_liveness_alert(self) -> None:
+        ours = our_scrape_jobs()
 
-        assert served <= liveness_jobs(), (
-            f"{sorted(served - liveness_jobs())} export a metric family and no rule reads "
-            "up{job=...} for them, so a stopped process leaves every rule over its families silent"
+        assert ours, "prometheus.yml declares no job of ours, so this floor reads nothing"
+        assert ours <= liveness_jobs(), (
+            f"{sorted(ours - liveness_jobs())} are scraped as processes of this application and no "
+            "rule reads up{job=...} for them, so a stopped process leaves every rule over its "
+            "families silent"
         )
 
     def test_every_liveness_matcher_names_a_job_the_scrape_configuration_declares(self) -> None:
         """The other direction: a matcher naming no job is a term that is always absent."""
         assert liveness_jobs() <= scrape_jobs()
 
-    def test_every_member_names_jobs_the_scrape_configuration_declares(self) -> None:
+    def test_the_member_map_names_only_jobs_of_ours(self) -> None:
+        """The map is still crossed, so a row for an exporter or a typo cannot sit in it unseen."""
         declared_jobs = {job for jobs in JOBS_BY_MEMBER.values() for job in jobs}
 
-        assert declared_jobs <= scrape_jobs()
+        assert declared_jobs <= our_scrape_jobs()
 
     def test_every_member_that_declares_a_family_is_in_the_topology(self) -> None:
-        """A member added to the workspace without a row here would escape the whole guard."""
+        """A member added to the workspace without a row here would escape the absent() guard."""
         declaring = {
             member
             for family in exported_families()
@@ -575,6 +667,34 @@ class TestTheAbsentDiscipline:
 
 class TestTheCrossing:
     """Both directions, derived, and each as an EXACT equality rather than a containment."""
+
+    def test_every_family_shaped_literal_on_disk_is_in_the_registry(self) -> None:
+        """The reading that sees a family an import cannot register.
+
+        A collector constructed inside a function body never registers on import, so the registry
+        walk alone cannot see it and both set differences would step over it while a running process
+        exported it. Its NAME is on disk regardless, which is what this reads.
+
+        Stated as an exact equality against the declared non-families, so a third noise name must be
+        declared deliberately and a declaration for a name that IS a family fails.
+        """
+        assert family_literals() - exported_families() == declared(NOT_A_FAMILY)
+
+    def test_no_declared_non_family_is_actually_a_family(self) -> None:
+        """The other direction: a stale row here would hide a family from the whole crossing."""
+        assert declared(NOT_A_FAMILY) & exported_families() == set()
+
+    def test_every_exported_family_has_its_name_on_disk(self) -> None:
+        """The trivial direction, asserted because it is the positive control for the scan.
+
+        A scan that found nothing would satisfy the equality above by making both sides empty of
+        everything except the declared noise.
+        """
+        assert exported_families() <= family_literals()
+
+    @pytest.mark.parametrize("name", sorted(NOT_A_FAMILY))
+    def test_each_declared_non_family_states_a_reason(self, name: str) -> None:
+        assert len(NOT_A_FAMILY[name]) > 80
 
     def test_every_family_a_rule_or_a_panel_reads_is_exported_or_declared_external(self) -> None:
         """A rule with no family cannot fire, which is the same silence as having no rule."""

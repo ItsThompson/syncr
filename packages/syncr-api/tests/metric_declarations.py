@@ -42,6 +42,26 @@ SEVERITY_BY_ALERT: Final[Mapping[str, str]] = {
 DASHBOARDS: Final = ("product.json", "plan-pipeline.json", "calendar.json", "system.json")
 
 # ---------------------------------------------------------------------------
+# Family-shaped names that are NOT metric families.
+#
+# The literal scan reads every `syncr_`-prefixed string a source file holds, which is what lets it
+# see a family constructed inside a function body: the name is on disk whether or not the function
+# runs. Two names in this workspace have that exact shape and are not families, so they are declared
+# here and crossed as an exact equality. A third noise name arriving without a row fails, and a row
+# for a name that IS a family fails too.
+# ---------------------------------------------------------------------------
+NOT_A_FAMILY: Final[Mapping[str, str]] = {
+    "syncr_events": (
+        "The Postgres NOTIFY channel the event hub fans out from. A channel name, not a metric: it "
+        "is passed to LISTEN and to NOTIFY, and it happens to share the application's own prefix."
+    ),
+    "syncr_session": (
+        "The browser session cookie's name. Shares the prefix for the same reason the channel "
+        "does, and is a wire identifier rather than anything the registry ever holds."
+    ),
+}
+
+# ---------------------------------------------------------------------------
 # WHICH SCRAPE JOB SERVES EACH MEMBER'S FAMILIES.
 #
 # A topology statement, and the one the `absent()` discipline is derived from. A family served by a
@@ -308,11 +328,6 @@ UNWATCHED: Final[Mapping[str, str]] = {
         "The same decorator's error counter. Every failure it counts also surfaces as an HTTP "
         "error, a failed solve outcome, or a contained tenant fault, each of which IS watched: an "
         "alert here would be a second page for a condition already paged."
-    ),
-    "syncr_observability_tenant_failures_total": (
-        "The state reading's own contained fault. Its consequence is that a gauge stops moving, "
-        "and the alerts over those gauges use `absent()` and staleness, so the outage is visible "
-        "through them. An alert on the observability layer failing to observe would be recursive."
     ),
     "syncr_observability_product_failures_total": (
         "The product job's own contained fault. Product metrics answer a question about weeks, so "
