@@ -14,6 +14,13 @@ supersedes | every changed block, accepted |
 | Overridden | an ``edit_events`` row, holding what the solver proposed and what the
 user kept | one changed block, rejected |
 
+**The denominator is EVERY PIN, which is broader than every proposal-class change resolved.** An
+``edit_events`` row is written on every pin, so a pin on a block the solver never placed, and a
+first manual placement, both count as an overridden change. Narrowing it needs the stored edit
+context read for whether a solver placement was displaced, which ticket 1540 carries along with the
+denominator question itself. What must not happen in the meantime is the ratio being described as
+narrower than it is, which is why this paragraph is here and in the Product panel's description.
+
 **The denominator is the changes the user RESOLVED, not the changes they were shown.** A proposal
 replaced in the pending slot before anyone acted on it leaves no permanent row, because the slot is
 one row per week replaced in place: it is not a fact and nobody agreed to it. So this ratio answers

@@ -269,6 +269,11 @@ class TestTheEstimateAccuracyMedian:
     def test_an_area_with_no_measurement_is_absent_rather_than_perfect(self) -> None:
         assert median_ape_by_area([]) == {}
 
+    def test_a_zero_estimate_is_refused_by_the_type_that_divides_by_it(self) -> None:
+        """The invariant lives on the dataclass, not one layer out in the reader that filters."""
+        with pytest.raises(ValueError, match="measures nothing"):
+            Measurement(area_id=uuid4(), estimated_minutes=0, actual_minutes=30)
+
 
 class TestTheChurnFigures:
     def test_a_move_is_a_change_even_though_the_block_id_is_unchanged(self) -> None:
@@ -356,23 +361,31 @@ class TestTheEngagementStreak:
         assert streak_weeks([engaged, lapsed, engaged, engaged]) == 1
 
 
-@pytest.mark.parametrize(
-    ("rows", "expected"),
-    [
-        pytest.param([caught_in_session(), confirmed_by_a_solve()], 1.0, id="perfect-catch"),
-        pytest.param([found_mid_week()], 0.0, id="mid-week-only"),
-    ],
-)
-def test_the_row_counting_formula_would_have_disagreed(
-    rows: list[VerdictEventRecord], expected: float
-) -> None:
+def test_the_row_counting_formula_would_have_disagreed() -> None:
     """The failure the episode unit exists to prevent, measured rather than described.
 
     Counting rows gives 0.5 for a perfectly caught infeasibility, which against an 80% target would
-    ship a metric reading as failure while the product worked correctly.
+    ship a metric reading as failure while the product worked correctly. Both halves are asserted
+    together, so the test SEPARATES the two formulas: replacing the production grouping with row
+    counting fails the first assertion, and the second is what says the two disagree.
     """
+    rows = [caught_in_session(), confirmed_by_a_solve()]
+
     by_rows = sum(one.session_mode_active for one in rows) / len(rows)
 
-    assert caught_early_over({WEEK: rows}, period=PERIOD) == expected
-    if expected == 1.0:
-        assert by_rows == 0.5
+    assert caught_early_over({WEEK: rows}, period=PERIOD) == 1.0
+    assert by_rows == 0.5
+
+
+def test_the_two_formulas_agree_on_a_mid_week_discovery() -> None:
+    """Stated separately because it does NOT discriminate: the row formula also reads 0.0 here.
+
+    Kept because it is the denominator-only case, and asserting it beside the discriminating one is
+    what shows the episode unit changes only the readings it should.
+    """
+    rows = [found_mid_week()]
+
+    by_rows = sum(one.session_mode_active for one in rows) / len(rows)
+
+    assert caught_early_over({WEEK: rows}, period=PERIOD) == 0.0
+    assert by_rows == 0.0

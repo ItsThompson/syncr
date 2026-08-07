@@ -85,7 +85,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(syncr_calendar_events_read_sum[1h]) / rate(syncr_calendar_events_read_count[1h])",
+          "expr": "sum by (provider) (rate(syncr_calendar_events_read_sum[1h])) / sum by (provider) (rate(syncr_calendar_events_read_count[1h]))",
           "legendFormat": "{{provider}} read, mean per attempt"
         },
         {

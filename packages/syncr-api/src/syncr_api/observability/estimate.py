@@ -38,6 +38,16 @@ class Measurement:
     estimated_minutes: int
     actual_minutes: int
 
+    def __post_init__(self) -> None:
+        # The invariant lives on the type that divides by it. A zero estimate is not a divisor, and
+        # the reader that filters these out is one layer away: constructing one directly with a zero
+        # would raise `ZeroDivisionError` from a property rather than being refused here.
+        if self.estimated_minutes <= 0:
+            raise ValueError(
+                "a measurement's estimate is what its error is a percentage OF, so a zero or "
+                f"negative estimate measures nothing: got {self.estimated_minutes}"
+            )
+
     @property
     def absolute_percentage_error(self) -> float:
         """How far the estimate was out, as a percentage of the estimate."""

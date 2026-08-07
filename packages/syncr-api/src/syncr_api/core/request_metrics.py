@@ -59,6 +59,13 @@ UNMATCHED_ROUTE: Final = "unmatched"
 # a 503 nothing counted is a 503 nothing alerts on.
 UNCLASSIFIED_PROBLEM: Final = "unclassified"
 
+# What a request that produced no response at all is recorded as. A client that disconnected mid
+# request is not syncr failing, so it carries a status class of its own rather than folding into the
+# 5xx class an operator reads as a fault. It is still recorded: a request nothing counted is a
+# request no latency series can see.
+DISCONNECTED_STATUS_CLASS: Final = "disconnected"
+DISCONNECTED_PROBLEM: Final = "client-disconnected"
+
 # The scope key an exception handler writes the rendered problem's type onto. `Request.state` is
 # backed by `scope["state"]`, so a handler running inside this middleware can hand a value out to
 # it without the middleware parsing the response body.
@@ -89,9 +96,13 @@ ERRORS = Counter(
 ERROR_STATUS_FLOOR: Final = 400
 
 
-def status_class(status: int) -> str:
-    """``2xx`` for 200, ``4xx`` for 404. Four values, so the label set cannot grow."""
-    return f"{status // 100}xx"
+def status_class(status: int | None) -> str:
+    """``2xx`` for 200, ``4xx`` for 404, and its own class for a request that never answered.
+
+    Five values, so the label set cannot grow. The fifth exists because a client disconnect and a
+    server fault are different events and only one of them is syncr's.
+    """
+    return DISCONNECTED_STATUS_CLASS if status is None else f"{status // 100}xx"
 
 
 class RequestMetricsMiddleware:
@@ -116,9 +127,9 @@ class RequestMetricsMiddleware:
             return
 
         started = time.perf_counter()
-        # A response that never starts (a client disconnect, an exception escaping every handler)
-        # would otherwise leave no status at all, and a request nothing recorded is a request no
-        # latency series can see. 500 is what such a request is to the caller.
+        # A response that never starts is a client that disconnected mid request, and it is recorded
+        # under a status class of its own: a request nothing counted is a request no latency series
+        # can see, and folding it into the 5xx class would read as syncr failing.
         seen = _StatusHolder()
         try:
             await self.app(scope, receive, _watching(send, seen))
@@ -128,19 +139,24 @@ class RequestMetricsMiddleware:
             # request is classified here from the same constant that handler renders, rather than
             # being counted as an error of unknown kind.
             self._recorded(
-                scope, seen.status, time.perf_counter() - started, problem=InternalError.type
+                scope,
+                seen.status if seen.status is not None else 500,
+                time.perf_counter() - started,
+                problem=InternalError.type,
             )
             raise
         self._recorded(scope, seen.status, time.perf_counter() - started)
 
     def _recorded(
-        self, scope: Scope, status: int, elapsed: float, *, problem: str | None = None
+        self, scope: Scope, status: int | None, elapsed: float, *, problem: str | None = None
     ) -> None:
         route = self._template(scope)
         labels = {"route": route, "method": scope["method"], "status_class": status_class(status)}
         REQUEST_DURATION.labels(**labels).observe(elapsed)
         REQUESTS.labels(**labels).inc()
-        if status >= ERROR_STATUS_FLOOR:
+        if status is None:
+            ERRORS.labels(route=route, problem_type=DISCONNECTED_PROBLEM).inc()
+        elif status >= ERROR_STATUS_FLOOR:
             ERRORS.labels(route=route, problem_type=problem or _problem_type(scope)).inc()
 
     def _template(self, scope: Scope) -> str:
@@ -152,10 +168,10 @@ class RequestMetricsMiddleware:
 
 
 class _StatusHolder:
-    """The response status, captured as the response starts."""
+    """The response status, captured as the response starts. ``None`` until one does."""
 
     def __init__(self) -> None:
-        self.status = 500
+        self.status: int | None = None
 
 
 def _watching(send: Send, seen: _StatusHolder) -> Send:

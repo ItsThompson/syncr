@@ -167,6 +167,14 @@ class TestTheStatusClass:
     def test_it_collapses_a_status_onto_its_class(self, status: int, expected: str) -> None:
         assert status_class(status) == expected
 
+    def test_a_request_that_never_answered_is_its_own_class(self) -> None:
+        """A client disconnect and a server fault are different events, and one is not syncr's.
+
+        Folding a disconnect into the 5xx class would put the user closing a laptop lid into the
+        series an operator reads as the application failing.
+        """
+        assert status_class(None) == "disconnected"
+
 
 class TestTheRouteLabel:
     def test_it_carries_the_template_rather_than_the_path_that_matched_it(

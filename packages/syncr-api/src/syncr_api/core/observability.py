@@ -5,9 +5,12 @@ carries no web stack so the offline learning job can measure its own fitters.
 Serving that registry over HTTP is the api's job, and this is where it happens.
 Reachable only inside ``app-net``.
 
-Ticket-owned HTTP request families (route latency, request counts, error counts by
-problem type) are added here alongside the exposition when the observability slice
-lands.
+The HTTP request families are NOT here. They live in ``core.request_metrics``, because rendering a
+registry and recording onto one change on different schedules: this module gains a line when the
+exposition's shape changes, and that one gains a family per instrumented subject.
+
+The worker serves its own copy of this registry through ``observability.exposition``, on a port of
+its own. Two processes, two registries, two scrape jobs.
 """
 
 from __future__ import annotations

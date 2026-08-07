@@ -72,7 +72,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "Proposal acceptance",
-      "description": "Share of the proposal-class block changes the user RESOLVED that they accepted. Target: at or above 60% by week 12. Accepted changes are the blocks an approved revision moved, dropped or added against the plan it superseded; rejected changes are edit-event rows, each one block the user put somewhere else. A proposal replaced in the pending slot before anyone acted on it leaves no permanent row, so it is in neither half.",
+      "description": "Share of the proposal-class block changes the user RESOLVED that they accepted. Target: at or above 60% by week 12. Accepted changes are the blocks an approved revision moved, dropped or added against the plan it superseded. THE DENOMINATOR IS EVERY PIN, which is broader than every proposal-class change resolved: an edit-event row is written on every pin, so a first manual placement counts as an override too. A proposal replaced in the pending slot before anyone acted on it leaves no permanent row, so it is in neither half. Ticket 1540 carries both the narrowing and the presented-denominator question.",
       "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
       "targets": [
