@@ -135,6 +135,18 @@ def instant(payload: JsonMapping, name: str, path: str) -> datetime:
     return moment
 
 
+def optional_instant(payload: JsonMapping, name: str, path: str) -> datetime | None:
+    """A member that is an RFC 3339 instant with an offset, or explicitly null.
+
+    Absent reads as null. Present is read by :func:`instant`, so the offset rule and its refusal
+    are stated once: a wire that carries an instant carries the same instant whether or not the
+    member is nullable.
+    """
+    if payload.get(name) is None:
+        return None
+    return instant(payload, name, path)
+
+
 def _named(path: str, name: str) -> str:
     return f"{path}.{name}" if path else name
 

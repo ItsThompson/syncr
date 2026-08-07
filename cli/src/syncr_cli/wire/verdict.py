@@ -20,8 +20,7 @@ did says ``[after solving]``. The product never asserts a certainty it does not 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from syncr_cli.errors import MalformedResponse
 from syncr_cli.wire.reading import (
@@ -29,10 +28,13 @@ from syncr_cli.wire.reading import (
     boolean,
     integer,
     mappings,
-    optional_text,
+    optional_instant,
     text,
 )
 from syncr_domain.feasibility.verdict import Provenance, hours_and_minutes
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 # What the ledger prints after the headline, per provenance. The words are the spec's.
 PROVENANCE_TAGS: dict[Provenance, str] = {
@@ -64,7 +66,7 @@ class Shortfall:
             minutes=_gap_minutes(payload, path),
             against=_names(payload, "against", path),
             honoring=_names(payload, "honoring", path),
-            deadline=_optional_instant(payload, "deadline", path),
+            deadline=optional_instant(payload, "deadline", path),
         )
 
     def statement(self, *, deadline: str | None) -> str:
@@ -180,24 +182,6 @@ def _optional_mappings(payload: JsonMapping, name: str, path: str) -> list[JsonM
     if payload.get(name) is None:
         return []
     return mappings(payload, name, path)
-
-
-def _optional_instant(payload: JsonMapping, name: str, path: str) -> datetime | None:
-    raw = optional_text(payload, name, path)
-    if raw is None:
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError as error:
-        raise MalformedResponse(
-            f"{path}.{name} is {raw!r}, which is not an RFC 3339 instant."
-        ) from error
-    if moment.tzinfo is None:
-        raise MalformedResponse(
-            f"{path}.{name} is {raw!r}, which states no UTC offset. This CLI will not guess a "
-            "zone for a deadline."
-        )
-    return moment
 
 
 def _joined(names: tuple[str, ...]) -> str:

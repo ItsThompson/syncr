@@ -6,6 +6,11 @@ own exit code because it says "come back later" rather than "you asked wrongly".
 got an answer with a failing status carries problem details, which are reported verbatim: the
 api composes a detail that names what still works, and re-wording it here would lose that.
 
+**A form body and a JSON body are two methods rather than one with a flag.** The OAuth endpoints
+take ``application/x-www-form-urlencoded`` because RFC 6749 says so, and every product mutation
+takes JSON. A caller states which by the method it calls, so no request can be sent with the wrong
+encoding for its endpoint.
+
 **Nothing here writes a credential anywhere.** The bearer token is attached to the request and
 never appears in a message, a repr, or an exception. A transport failure names the method and the
 URL, and a URL this package builds carries no secret: the authorization code and the refresh
@@ -68,9 +73,32 @@ class Transport:
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    def get(self, url: str, *, headers: Mapping[str, str] | None = None) -> Any:
+    def get(
+        self,
+        url: str,
+        *,
+        params: Mapping[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> Any:
         """A read, as a parsed JSON document."""
-        return self._json(self._send("GET", url, headers=headers))
+        return self._json(self._send("GET", url, params=params, headers=headers))
+
+    def post_json(
+        self,
+        url: str,
+        body: Mapping[str, Any],
+        *,
+        params: Mapping[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> Any:
+        """A JSON write, which is what every product mutation takes."""
+        return self._json(self._send("POST", url, body=body, params=params, headers=headers))
+
+    def put_json(
+        self, url: str, body: Mapping[str, Any], *, headers: Mapping[str, str] | None = None
+    ) -> Any:
+        """A JSON replacement, which is what recording a block's outcome is."""
+        return self._json(self._send("PUT", url, body=body, headers=headers))
 
     def post_form(
         self, url: str, form: Mapping[str, str], *, headers: Mapping[str, str] | None = None
@@ -90,10 +118,19 @@ class Transport:
         url: str,
         *,
         form: Mapping[str, str] | None = None,
+        body: Mapping[str, Any] | None = None,
+        params: Mapping[str, str] | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> httpx.Response:
         try:
-            response = self._client.request(method, url, data=form, headers=dict(headers or {}))
+            response = self._client.request(
+                method,
+                url,
+                data=form,
+                json=body,
+                params=params,
+                headers=dict(headers or {}),
+            )
         except httpx.TimeoutException as error:
             raise ApiUnreachable(
                 f"{method} {url} did not answer within {REQUEST_TIMEOUT_SECONDS:.0f}s. Nothing "
