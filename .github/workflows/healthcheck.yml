@@ -1,0 +1,45 @@
+name: Healthcheck
+
+# A SCHEDULED EXTERNAL PROBE, and it exists to close the one monitoring gap a single-host deployment
+# has: Prometheus, Alertmanager and Grafana all run on the same host as the application, so a fully-down
+# host cannot report that it is down. Nothing on the host can tell you the host is gone.
+#
+# So the probe runs somewhere else, and THIS WORKFLOW FAILING IS THE NOTIFICATION. GitHub emails the
+# repository's watchers on a failed scheduled run, which is a channel that does not depend on the host
+# being up. There is deliberately no webhook to Alertmanager here: routing an outside-the-host signal
+# back through a service on the host would reintroduce the dependency this exists to remove.
+#
+# EVERY FIFTEEN MINUTES, which is the same cadence as the horizon maintainer's tick and fine enough that
+# an hour of downtime, which this deployment accepts, is caught in its first quarter. GitHub's scheduler
+# is not punctual under load; that is acceptable for a signal whose alternative is nothing at all.
+#
+# It probes THREE paths through the tunnel and shares one script with the deploy's own verification, so
+# the scheduled check and the release check cannot drift into two different claims.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  # A probe that queued behind a previous one would report on a moment that has passed.
+  group: healthcheck
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    # Well under the schedule interval, so a hung run cannot overlap the next.
+    timeout-minutes: 5
+    # The tunnel hostname is a secret, and an environment keeps it out of every other workflow.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe /healthz, /readyz and / through the tunnel
+        env:
+          BASE_URL: ${{ secrets.PUBLIC_BASE_URL }}
+        run: ./.github/scripts/probe-deployment.sh

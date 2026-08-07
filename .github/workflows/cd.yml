@@ -1,0 +1,185 @@
+name: CD
+
+# On a tag, or manually. Never on a push to a branch: a deploy is a decision.
+#
+# TWO IMAGES, ONE DEPLOY. The frontend and the backend are built and pushed together and the host
+# restarts them together, because a version-skew window would be a problem invented rather than solved.
+#
+# EVERY IMAGE IS PINNED BY DIGEST, and this workflow is where the digests come from: `docker/build-push`
+# reports the digest of what it pushed, this writes the four of them into a file on the host, and
+# `just deploy` reads that file. A floating tag would make a redeploy an unreviewed change and would
+# leave a rollback with no version to name.
+#
+# ROLLBACK IS RE-DEPLOYING THE PREVIOUS DIGESTS. `just deploy` records the last set that reached
+# readiness in `deployments/digests.previous.env` and re-deploys it when a deploy does not, so the
+# rollback is in the recipe rather than in this workflow: the host can roll back with no network to
+# GitHub, which is the state a bad deploy is most likely to leave.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  # Never two deploys at once. `cancel-in-progress: false`, deliberately: cancelling a deploy
+  # mid-migration is worse than queueing behind it.
+  group: cd
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Pushing to the repository's own container registry.
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build and push the three images this deployment runs, and report each digest.
+  #
+  # A matrix rather than three jobs, so a fourth image is one row. Each entry names the Dockerfile and
+  # the variable `docker-compose.deploy.yml` reads its digest from, which is the one place those two
+  # facts are connected.
+  # ---------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # One failed image must not leave the others pushed and the digest file half written.
+      fail-fast: true
+      matrix:
+        include:
+          - image: syncr-api
+            dockerfile: packages/syncr-api/Dockerfile
+            variable: SYNCR_API_DIGEST
+          - image: syncr-frontend
+            dockerfile: frontend/Dockerfile
+            variable: SYNCR_FRONTEND_DIGEST
+          - image: syncr-learning
+            dockerfile: packages/syncr-learning/Dockerfile
+            variable: SYNCR_LEARNING_DIGEST
+          - image: syncr-ops
+            dockerfile: deployments/ops/Dockerfile
+            variable: SYNCR_OPS_DIGEST
+    outputs:
+      # A matrix job's outputs collapse onto one value, so the digests are collected from the artifacts
+      # below rather than from here. Kept empty deliberately: see `assemble`.
+      noop: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          # The tag is for a human reading the registry. THE DIGEST IS WHAT DEPLOYS.
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Record the digest this build produced
+        run: |
+          printf '%s=%s/%s/%s@%s\n' \
+            '${{ matrix.variable }}' \
+            '${{ env.REGISTRY }}' \
+            '${{ github.repository_owner }}' \
+            '${{ matrix.image }}' \
+            '${{ steps.push.outputs.digest }}' > digest.env
+          cat digest.env
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.image }}
+          path: digest.env
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Assemble the four digests into one file, and deploy it.
+  #
+  # SEPARATE FROM THE BUILD, because a partial digest file is a deploy of a stack whose images are from
+  # two different commits. `needs: build` with `fail-fast: true` above means this runs only when all
+  # four pushed.
+  # ---------------------------------------------------------------------------
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The tunnel hostname and the SSH credential are environment secrets, so a deploy to production is
+    # gated on whatever protection rules that environment carries.
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          merge-multiple: false
+          path: digests
+
+      - name: Assemble deployments/digests.env
+        run: |
+          set -euo pipefail
+          cat digests/*/digest.env > digests.env
+          echo "--- the release this deploys:"
+          cat digests.env
+          # Four images, four lines. A short file is a stack whose images are from two commits.
+          test "$(wc -l < digests.env)" -eq 4
+
+      - name: Copy it to the host
+        # `appleboy/scp-action` and `ssh-action` are the two steps that need the host's credential.
+        # The key is a deploy key with no other reach; `rotate-secrets.md` is how it is replaced.
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: digests.env
+          target: /opt/syncr/deployments/
+          strip_components: 0
+
+      - name: Deploy, and roll back if it does not reach readiness
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # `just deploy` is the whole procedure and it is the same command a person runs on the host:
+          # pull the pinned digests, run migrations as a one-shot BEFORE api and worker start, restart
+          # the three services that carry code, wait for /readyz, and re-deploy the previous digests on
+          # failure. The recipe exits non-zero when it rolled back, so this step is red either way and
+          # the host is left ready.
+          script: |
+            set -euo pipefail
+            cd /opt/syncr
+            git fetch --tags origin
+            git checkout --detach '${{ github.ref_name }}'
+            just deploy
+
+  # ---------------------------------------------------------------------------
+  # Prove the deployment answers through the tunnel, from outside the host.
+  #
+  # The deploy waited for `/readyz` from INSIDE the api container, which is the only place it is
+  # reachable. This is the other end: the tunnel, the frontend's proxy, and the api, in one request.
+  # ---------------------------------------------------------------------------
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe /healthz and /readyz through the tunnel
+        env:
+          BASE_URL: ${{ secrets.PUBLIC_BASE_URL }}
+        run: ./.github/scripts/probe-deployment.sh
