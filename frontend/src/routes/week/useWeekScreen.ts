@@ -38,6 +38,17 @@ export type WeekScreenState =
       readonly extent: Extent;
       readonly visibleHours: number;
       readonly readings: WeekReadings;
+      /** Each Area's name by id, so a floor clause names the Area rather than a digest. */
+      readonly areaNames: ReadonlyMap<string, string>;
+      /**
+       * The week as it was read, for the six fields the grid does not draw from.
+       *
+       * The pins, the proposal, the conflicts, the verdict, the adjustments and the input version are what the
+       * INTERACTION reads: which block is a proposal target, which overlap is unanswered, which pin a `p` releases,
+       * and which version a late response is older than. The grid still knows nothing about a response; what changed
+       * is that the screen's own behaviour needs the payload as well as the model cut from it.
+       */
+      readonly view: WeekView;
     };
 
 /** The declared bounds, from two wall times the settings carry. An unreadable one falls back to the whole day. */
@@ -75,6 +86,8 @@ export function useWeekScreen(isoWeek: string): WeekScreenState {
      * offers a level at which the modal block loses its title. */
     visibleHours: settings.data.visibleHours,
     readings: view.readings,
+    areaNames: new Map(areas.data.areas.map((area) => [area.id, area.name])),
+    view,
   };
 }
 
