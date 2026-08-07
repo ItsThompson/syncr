@@ -20,8 +20,18 @@
 #
 # WHERE A RULE READS A FAMILY THAT MAY NOT EXIST YET, IT SAYS SO WITH `absent()`. A rule stated only
 # as a threshold is silent while its series is missing, and a missing series is usually the more
-# serious condition: no backup has ever run, or the exporter is down. That is the alert inversion
-# this deployment has shipped four times, and it is closed here by construction.
+# serious condition: no backup has ever run, the nightly learning container has no timer, or the
+# exporter is down. That is the alert inversion this deployment has shipped four times, and it is
+# closed here by construction.
+#
+# WHICH RULES MUST SAY IT IS DERIVED, NOT LISTED. `test_alert_rules.py` maps every family to the
+# workspace member that declares it and every member to the scrape job that serves it. A family whose
+# declaring member has NO job, and a family this application does not export at all, are both produced
+# by something that may never have run, so a rule reading one must carry `absent()`. A family served
+# by a job is covered instead by that job's liveness alert, and the same test crosses the job list in
+# `prometheus.yml` against the `up{job=...}` matchers here in BOTH directions: a scrape job with no
+# liveness alert fails, and a liveness matcher naming no job fails. A fifth rule and a fifth PROCESS
+# are therefore both visible, which a list of four names could not do.
 
 groups:
   - name: syncr-critical
@@ -86,21 +96,34 @@ groups:
             dump.
           runbook: docs/runbooks/backup-stale.md
 
-      # Everything is down. Readiness is not a metric a stopped process can publish, so the condition
-      # is read from the two signals that survive the process: the database exporter's own `pg_up`,
-      # and whether Prometheus can reach the api at all.
+      # Every family in the plan pipeline, the calendar and the token age is recorded in the WORKER
+      # process, so this rule covers all three processes rather than only the database. Without the
+      # worker's liveness, a dead or wedged worker takes `WriteTargetTokenExpiring`,
+      # `ProjectionFailing`, `SolveFailing`, `SourceStale`, `HorizonNotMaintained` and
+      # `SupersededRatioHigh` silent at once: a frozen gauge reads healthy and an absent counter has
+      # no increase. That is the same silence ticket 1302 was filed for, one process up.
+      #
+      # Readiness is not a metric a stopped process can publish, so the condition is read from the
+      # signals that survive the process: the database exporter's own `pg_up`, and whether Prometheus
+      # can reach each of our two processes at all.
       - alert: DatabaseUnreachable
         expr: >-
           pg_up == 0 or absent(pg_up)
           or up{job="syncr-api"} == 0 or absent(up{job="syncr-api"})
+          or up{job="syncr-worker"} == 0 or absent(up{job="syncr-worker"})
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: The database or the api is unreachable, so nothing in the product is answering.
+          summary: >-
+            The database, the api or the worker is unreachable. Check which target Prometheus has
+            lost before assuming the database: a dead worker leaves the whole plan pipeline
+            unmonitored while the api still answers.
           surviving: >-
             The calendar on the phone still holds the last projected plan, so today and tomorrow are
-            still visible to the user. Nothing is lost: every write is in Postgres or was refused.
+            still visible to the user. Nothing is lost: every write is in Postgres or was refused. If
+            only the WORKER is gone, every screen still reads and every verdict still computes; what
+            has stopped is solving, projecting, calendar polling and the horizon.
           runbook: docs/runbooks/database-unreachable.md
 
   - name: syncr-warning
