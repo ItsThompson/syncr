@@ -59,8 +59,10 @@ from syncr_api.plans.pins import PinRepository
 from syncr_api.plans.placements import StoredPlacements
 from syncr_api.plans.readiness import MinimumInputs
 from syncr_api.plans.reality import BlockOutcomeRepository
+from syncr_api.plans.recording import VerdictRecorder
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.service import WeekService
+from syncr_api.plans.verdict_events import VerdictEventRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.preferences.repository import PreferenceRepository
 from syncr_api.routines.repository import RoutineRepository
@@ -80,6 +82,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_api.core.clock import Clock
+    from syncr_api.plans.surfaces import VerdictSurface
     from syncr_domain.identifiers import TenantId
 
 # The window a caller that states none gets: the documented default, which is also what the
@@ -126,6 +129,27 @@ def build_week_assembler(
         versions=WeekInputVersionRepository(transaction, tenant_id),
         revisions=PlanRepository(transaction, tenant_id),
         caller=caller,
+    )
+
+
+def build_verdict_recorder(
+    transaction: AsyncSession,
+    tenant_id: TenantId,
+    *,
+    surface: VerdictSurface,
+    session_mode_active: bool,
+) -> VerdictRecorder:
+    """One recorder, scoped to ``tenant_id``, bound to the surface and the session state asking.
+
+    Both are bound here for the reason ``caller`` is bound on the assembler: the wiring is where the
+    answer is already known, and a per-call argument is one a service could pass wrongly or forget.
+    What that buys beyond tidiness is that the set of surfaces with a producer is the set of call
+    sites of this function, which a test can read out of the source.
+    """
+    return VerdictRecorder(
+        VerdictEventRepository(transaction, tenant_id),
+        surface=surface,
+        session_mode_active=session_mode_active,
     )
 
 

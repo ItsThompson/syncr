@@ -17,7 +17,9 @@ from typing import Final, Literal
 
 from sqlalchemy import text
 
+from syncr_api.plans.surfaces import VerdictSurface
 from syncr_domain import plan as plan_document
+from syncr_domain.feasibility import Provenance
 from syncr_domain.identity import BLOCK_ID_LENGTH
 
 PLAN_REVISIONS_TABLE = "plan_revisions"
@@ -81,12 +83,15 @@ UNANSWERED_CONFLICT: Final = text(f"resolved_at IS NULL OR resolution = '{KEPT_B
 # the conflict target that upsert names.
 ONE_PIN_PER_BLOCK_INDEX: Final = "uq_pins_tenant_id_block_id"
 
-# A verdict's provenance. `probe` proves infeasibility only; `solver` is authoritative.
-VERDICT_PROVENANCES: Final = ("probe", "solver")
+# A verdict's provenance. `probe` proves infeasibility only; `solver` is authoritative. The
+# vocabulary is the domain's, where the two claims are defined, and the tuple the check constraint
+# reads is derived from it so the column and the verdict cannot disagree.
+VERDICT_PROVENANCES: Final = tuple(one.value for one in Provenance)
 
 # Where a verdict was computed. A read is absent from this set on purpose: no read path
-# appends a verdict event, and `maintainer` is what records a time-driven transition.
-VERDICT_SURFACES: Final = ("pin", "mutation", "tradeoff", "solve", "cli", "maintainer")
+# appends a verdict event, and `maintainer` is what records a time-driven transition. Derived from
+# the enum every writer names its surface by, for the reason above.
+VERDICT_SURFACES: Final = tuple(one.value for one in VerdictSurface)
 
 # The four tradeoff concessions an approval can persist. The vocabulary is the assembler's
 # and the reason record's, in the domain package, and the tuple the check constraint reads is

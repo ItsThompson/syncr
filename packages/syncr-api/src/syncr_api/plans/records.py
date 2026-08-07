@@ -35,6 +35,8 @@ if TYPE_CHECKING:
         RevisionReason,
         RevisionStatus,
     )
+    from syncr_api.plans.surfaces import VerdictSurface
+    from syncr_domain.feasibility import Provenance, ShortfallKind
     from syncr_domain.identifiers import (
         AnchorId,
         BlockOutcomeId,
@@ -43,6 +45,7 @@ if TYPE_CHECKING:
         PinId,
         PlanRevisionId,
         TenantId,
+        VerdictEventId,
     )
     from syncr_domain.identity import BindingRef, BlockId
     from syncr_domain.intervals import Interval
@@ -210,3 +213,31 @@ class BlockOutcomeRecord:
             actual_minutes=self.actual_minutes,
             actual_interval=self.actual_interval,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class VerdictEventRecord:
+    """One recorded verdict transition, exactly as it was stored.
+
+    ``feasible`` is the reading the user was shown rather than :attr:`Verdict.feasible`, which is
+    always ``False`` on a probe verdict: capacity arithmetic may not claim a week works, so what a
+    probe that found nothing reports is that it found no gap. The projection that writes this states
+    that translation once; a reader of this record reads "the week was reported able to hold its
+    commitments".
+
+    ``shortfall_kinds`` carries no duplicates and holds the kinds in the order the verdict named
+    them, so two rows recording one verdict are equal by value.
+    """
+
+    id: VerdictEventId
+    tenant_id: TenantId
+    iso_week: IsoWeek
+    occurred_at: datetime
+    provenance: Provenance
+    feasible: bool
+    shortfall_minutes: int
+    shortfall_kinds: tuple[ShortfallKind, ...]
+    surface: VerdictSurface
+    session_mode_active: bool
+    input_version: int
+    caused_by_operation_id: OperationId | None

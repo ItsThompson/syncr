@@ -34,3 +34,4 @@ type BlockOutcomeId = UUID
 type ConflictId = UUID
 type PinId = UUID
 type EditEventId = UUID
+type VerdictEventId = UUID

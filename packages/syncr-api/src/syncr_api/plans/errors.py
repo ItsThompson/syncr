@@ -1,4 +1,4 @@
-"""The six rejections the plan side raises, and why none is a ``SyncrError``.
+"""The seven rejections the plan side raises, and why none is a ``SyncrError``.
 
 A revision reaches storage from a Pydantic model that has already validated it, and every
 document-describing column is derived rather than passed in. So a document that cannot
@@ -64,4 +64,15 @@ class ClassificationRejected(Exception):
     caller that composed the pair rather than anything a request carried, and both would
     otherwise commit: the first as a whole week proposed as new, the second as a move applied
     under a revision saying only empty space was filled.
+    """
+
+
+class VerdictNotRecordable(Exception):
+    """A transition row whose surface, provenance and cause could not describe one verdict.
+
+    The same class as the others: the surface is bound where a component is composed and the
+    provenance comes off the verdict, so a row where the two disagree is a miswiring rather than
+    anything a request carried. It is refused at construction because ``VE1`` never prunes these
+    rows, so a wrong field is a permanent hole in the corpus the product metric is computed from,
+    and the write is the only moment it can be caught.
     """

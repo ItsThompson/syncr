@@ -20,10 +20,16 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``pins.py`` | ``PinRepository``: the live constraint a pin is, held, priced and released |
 | ``edits.py`` | ``EditEventRepository``: the training corpus, appended and never pruned |
 | ``edit_context.py`` | the feature snapshot one edit carries, and what makes it a feature vector |
-| ``declarations.py`` | what a caller states when it writes a pin and the event beside it |
+| ``declarations.py`` | what a caller states when it writes a pin, its event, or a transition |
+| ``surfaces.py`` | the six places a verdict is computed, and the two facts about each |
+| ``verdict_events.py`` | ``VerdictEventRepository``: the transitions, appended and never pruned |
+| ``verdict_transitions.py`` | what counts as a transition, and what a verdict looks like as a row |
+| ``recording.py`` | ``VerdictRecorder``: the only writer of one, bound to its surface |
+| ``verdict_metrics.py`` | the transition counter, and the label set a writer can produce |
+| ``episodes.py`` | the episode: the unit the early-catch product metric counts |
 | ``reality.py`` | the outcome log: one row per block, recorded and corrected in place |
 | ``habit_log.py`` | the same log keyed by habit, for the rotation cursor and outstanding debt |
-| ``errors.py`` | the six rejections a plan write or a plan read raises, none a caller's fault |
+| ``errors.py`` | the seven rejections a plan write or a plan read raises, none a caller's fault |
 | ``stored_values.py`` | the leaf forms a stored document is built from: an instant, a span, an id |
 | ``stored_clauses.py`` | the six reason clauses, one stored form each |
 | ``stored_reasons.py`` | a block's reason record, and which of the six kinds a stored object is |
