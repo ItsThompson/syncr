@@ -43,7 +43,8 @@ if TYPE_CHECKING:
 
 # The columns a replacement leaves alone: the row's identity, and the concession it is a
 # concession for. Keeping `id` is deliberate, because a plan document already records the
-# adjustments it was solved under by identifier.
+# adjustments it was solved under by identifier, and a replacement that minted a new one would
+# leave every earlier document naming a row that no longer exists.
 _RETAINED_COLUMNS = frozenset({"id", TENANT_ID_COLUMN, "iso_week", "kind", "target_id"})
 
 
@@ -58,12 +59,19 @@ class WeekAdjustmentRepository(TenantScopedRepository):
         target_id: UUID,
         created_at: datetime,
         created_by_operation_id: OperationId,
+        adjustment_id: UUID | None = None,
         reductions: JsonDocument | None = None,
         delta_minutes: int | None = None,
     ) -> WeekAdjustmentRecord:
-        """Record this concession, replacing any earlier one for the same kind and target."""
+        """Record this concession, replacing any earlier one for the same kind and target.
+
+        ``adjustment_id`` is the identifier the plan document being approved beside this row already
+        names, so an approval passes the one its candidate carried and the two cannot disagree. A
+        caller with no document mints one, which is what makes the parameter optional rather than
+        every caller inventing the same fallback.
+        """
         values = {
-            "id": uuid4(),
+            "id": adjustment_id or uuid4(),
             TENANT_ID_COLUMN: self.tenant_id,
             "iso_week": str(iso_week),
             "kind": kind,

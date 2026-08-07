@@ -279,6 +279,11 @@ class ApprovalService:
         Read back through the one reader of a serialized candidate, so the concession stored is
         the one the assembler folded when it produced the document being approved.
 
+        **The row takes the candidate's own identifier**, because the document being appended beside
+        it already names that identifier: the solver writes the ids of the concessions it solved
+        under into ``PlanDocument.adjustments``, so a row minted with a fresh one would leave the
+        approved revision naming a concession nothing holds.
+
         Approving the same tradeoff twice does not double its effect, and the unique index on
         ``(week, kind, target)`` is what makes that true rather than this upsert having been
         written correctly.
@@ -292,6 +297,7 @@ class ApprovalService:
             target_id=candidate.target_id,
             created_at=now,
             created_by_operation_id=pending.operation_id,
+            adjustment_id=candidate.adjustment_id,
             reductions=stored_reductions(candidate),
             delta_minutes=candidate.delta_minutes,
         )

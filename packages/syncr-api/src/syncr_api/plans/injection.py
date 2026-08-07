@@ -184,6 +184,10 @@ def build_week_service(
     three figures on the summary strip are the ones the pie review divides: a second composition of
     that arithmetic here is exactly the disagreement the composed view exists to prevent.
 
+    The concession repository is here for the HISTORY rather than for the composed read: a revision
+    names the concessions its plan was solved under by identifier, and one read of the week's own
+    rows answers every row of the page.
+
     The operation lifecycle is the solving module's, and it is the only creation path for an
     operation: a second one here would be a second reading of the state machine.
 
@@ -198,6 +202,7 @@ def build_week_service(
     return WeekService(
         budgets=build_budget_service(transaction, tenant_id),
         revisions=revisions,
+        adjustments=WeekAdjustmentRepository(transaction, tenant_id),
         versions=WeekInputVersionRepository(transaction, tenant_id),
         operations=operations,
         coordinator=build_solve_coordinator(transaction, tenant_id, clock=clock, debounce=debounce),

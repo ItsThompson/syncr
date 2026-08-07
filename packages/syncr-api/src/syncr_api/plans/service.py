@@ -56,6 +56,7 @@ from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.plans.currency import plan_currency
 from syncr_api.plans.emptiness import Horizon, empty_week
+from syncr_api.plans.history import revision_page
 from syncr_api.plans.readings import week_readings
 from syncr_api.plans.stored_documents import plan_document
 from syncr_api.plans.week_config import HISTORY_PAGE
@@ -73,6 +74,7 @@ if TYPE_CHECKING:
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
     from syncr_api.offplan.repository import OffPlanPeriodRepository
+    from syncr_api.plans.adjustments import WeekAdjustmentRepository
     from syncr_api.plans.confirmations import DayConfirmationReader
     from syncr_api.plans.emptiness import EmptyWeek
     from syncr_api.plans.readiness import MinimumInputs
@@ -100,6 +102,7 @@ class WeekService:
         *,
         budgets: BudgetService,
         revisions: PlanRepository,
+        adjustments: WeekAdjustmentRepository,
         versions: WeekInputVersionRepository,
         operations: OperationRepository,
         coordinator: SolveCoordinator,
@@ -111,6 +114,7 @@ class WeekService:
     ) -> None:
         self._budgets = budgets
         self._revisions = revisions
+        self._adjustments = adjustments
         self._versions = versions
         self._operations = operations
         self._coordinator = coordinator
@@ -162,14 +166,21 @@ class WeekService:
     async def revisions(self, principal: Principal, iso_week: str) -> WeekRevisions:
         """One page of a week's revision history, newest first. Read-only, like the table it reads.
 
-        One row more than the page is asked for and dropped, so the truncation is measured rather
-        than guessed: a page exactly as long as its bound is indistinguishable from a truncated one
-        without it.
+        One row more than the page is asked for and used twice, so neither answer is guessed: it is
+        what makes the truncation measured, because a page exactly as long as its bound is
+        indistinguishable from a truncated one without it, and it is the plan the oldest row on the
+        page changed, which is what lets that row say what it auto-applied.
+
+        The week's concessions are read once for the whole page rather than per revision. A document
+        names the ones it was solved under by identifier, and one read answers every row.
         """
         require_scope(principal, Scope.PLAN_READ)
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
-        found = await self._revisions.history(week, limit=HISTORY_PAGE + 1)
-        return WeekRevisions(revisions=found[:HISTORY_PAGE], truncated=len(found) > HISTORY_PAGE)
+        return revision_page(
+            await self._revisions.history(week, limit=HISTORY_PAGE + 1),
+            held=await self._adjustments.for_week(week),
+            page=HISTORY_PAGE,
+        )
 
     @measured("weeks")
     async def verdict(self, principal: Principal, iso_week: str) -> None:

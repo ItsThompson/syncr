@@ -32,7 +32,7 @@ import ast
 import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import func, select
@@ -79,6 +79,9 @@ pytestmark = pytest.mark.integration
 # Before the week begins, so nothing in it has been reached and every placement is still the
 # product's to revise.
 BEFORE_THE_WEEK = datetime(2026, 2, 8, tzinfo=UTC)
+# Later the same day, which is when the approvals happen: a revision appended at the same instant as
+# the one it supersedes leaves "the live plan" decided by a tie-break rather than by time.
+AT_APPROVAL = datetime(2026, 2, 8, 12, 0, tzinfo=UTC)
 # Mid-morning on the week's Monday, so a block at 09:00 has been reached and one at 17:00 has not.
 MID_MORNING = datetime(2026, 2, 9, 10, 0, tzinfo=UTC)
 
@@ -123,8 +126,8 @@ def principal_of(owner: UserRecord) -> Principal:
     return Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset(Scope))
 
 
-def a_week(*blocks: Block) -> PlanDocument:
-    return a_document(week=WEEK, blocks=blocks)
+def a_week(*blocks: Block, **overrides: Any) -> PlanDocument:
+    return a_document(week=WEEK, blocks=blocks, **overrides)
 
 
 def a_moved(live: Block, candidate: Block) -> dict[str, Any]:
@@ -133,11 +136,11 @@ def a_moved(live: Block, candidate: Block) -> dict[str, Any]:
     return dict(stored_proposal_diff(ProposalDiff(moved=(change,))))
 
 
-def a_breach(*, minutes: int = 80) -> dict[str, object]:
+def a_breach(*, minutes: int = 80, adjustment_id: UUID | None = None) -> dict[str, object]:
     """A candidate concession riding in the slot, as the operation carries one."""
     return as_document(
         WeekAdjustment(
-            adjustment_id=uuid4(),
+            adjustment_id=adjustment_id or uuid4(),
             kind=AdjustmentKind.BREACH_FLOOR,
             target_id=FITNESS,
             reductions={},
@@ -193,7 +196,7 @@ async def approve(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
     *,
-    at: datetime = BEFORE_THE_WEEK,
+    at: datetime = AT_APPROVAL,
     week: str = str(WEEK),
 ) -> ApprovedWeek:
     async with sessions() as session, session.begin():
@@ -263,7 +266,7 @@ class TestWhatOneApprovalWrites:
         row = stored[-1]
         assert row.id == approved.revision.id
         assert row.reason == RevisionReason.USER_APPROVED.value
-        assert row.approved_at == BEFORE_THE_WEEK
+        assert row.approved_at == AT_APPROVAL
         assert row.iso_week == str(WEEK)
         assert [block["title"] for block in row.document["blocks"]] == ["habit · something"]
         assert row.document["blocks"][0]["interval"]["start"] == between(17, 18).start.isoformat()
@@ -367,6 +370,30 @@ class TestWhatOneApprovalWrites:
 
         assert approved.adjustment is None
         assert await concessions_of(sessions, owner.tenant_id) == []
+
+    async def test_the_stored_concession_takes_the_identifier_the_approved_document_names(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """The pairing the verdict panel and the history both read, asserted on the two rows.
+
+        A solved document records the concessions it was solved under by identifier, and for a
+        candidate that identifier is the one the request minted and the worker folded. A row created
+        with a fresh one would leave the approved revision naming a concession the week does not
+        hold, and the history would report the plan as solved under nothing.
+        """
+        conceded = uuid4()
+        await seed_slot(
+            sessions,
+            owner.tenant_id,
+            a_week(adjustments=(conceded,)),
+            candidate=a_breach(adjustment_id=conceded),
+        )
+
+        approved = await approve(sessions, owner)
+
+        held = await concessions_of(sessions, owner.tenant_id)
+        assert [one.id for one in held] == [conceded]
+        assert approved.revision.document["adjustments"] == [str(conceded)]
 
 
 class TestApprovalIsOneTransaction:

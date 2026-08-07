@@ -26,7 +26,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -40,10 +40,13 @@ from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import Conflict, MalformedRequest, ValidationFailed
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
+from syncr_api.plans.candidates import as_document
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.stored_documents import stored_document
+from syncr_domain.plan import AdjustmentKind
 from syncr_domain.weeks import IsoWeek
+from syncr_solver.inputs import WeekAdjustment
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 from tests.plan_documents import a_document
 
@@ -65,6 +68,9 @@ BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 
 BREAKDOWN: dict[str, Any] = {"deadline_risk": 0.0, "budget_deviation": 0.0}
 A_VERDICT: dict[str, Any] = {"feasible": True, "shortfall_minutes": 0, "provenance": "solver"}
+# What the breach the tradeoff slot carries concedes, so the history's figure is checked against the
+# one the candidate stated rather than against a literal written twice.
+BREACH_MINUTES = 80
 
 
 def approve_url(week: IsoWeek) -> str:
@@ -100,15 +106,39 @@ def signed_in(http: TestClient, owner: UserRecord) -> dict[str, str]:
     return {"Cookie": f"{SESSION_COOKIE_NAME}={token}", "Origin": BROWSER_ORIGIN}
 
 
-def seed_slot(database_url: str, tenant_id: TenantId, week: IsoWeek = WEEK) -> None:
-    """One proposal awaiting assent, on its own loop and engine as a sync test must."""
+def seed_slot(
+    database_url: str,
+    tenant_id: TenantId,
+    week: IsoWeek = WEEK,
+    *,
+    conceded: UUID | None = None,
+) -> None:
+    """One proposal awaiting assent, on its own loop and engine as a sync test must.
+
+    ``conceded`` makes it a tradeoff proposal: the candidate rides in the slot and the document
+    names the identifier it was solved under, which is the pair the worker writes.
+    """
+    document = a_document(week=week, adjustments=() if conceded is None else (conceded,))
+    candidate = (
+        None
+        if conceded is None
+        else as_document(
+            WeekAdjustment(
+                adjustment_id=conceded,
+                kind=AdjustmentKind.BREACH_FLOOR,
+                target_id=uuid4(),
+                reductions={},
+                delta_minutes=BREACH_MINUTES,
+            )
+        )
+    )
 
     async def seed() -> None:
         database = create_database(database_url)
         try:
             async with database.sessionmaker() as session, session.begin():
                 await PendingProposalRepository(session, tenant_id).replace(
-                    document=stored_document(a_document(week=week)),
+                    document=stored_document(document),
                     proposal_diff={"added": [], "removed": [], "moved": []},
                     objective_breakdown=BREAKDOWN,
                     verdict=A_VERDICT,
@@ -116,6 +146,7 @@ def seed_slot(database_url: str, tenant_id: TenantId, week: IsoWeek = WEEK) -> N
                     input_version=3,
                     operation_id=uuid4(),
                     created_at=SEEDED_AT,
+                    candidate_adjustment=candidate,
                 )
         finally:
             await database.engine.dispose()
@@ -225,6 +256,36 @@ class TestTheApproveRoute:
 
         assert answered.status_code == ValidationFailed.status
         assert answered.json()["errors"][0]["field"] == ISO_WEEK_FIELD
+
+    def test_the_history_names_the_concession_the_approved_plan_was_solved_under(
+        self, http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+    ) -> None:
+        """``US-PLAN-07``'s third criterion, end to end over both routes.
+
+        The document the worker produced records the concessions it was solved under by identifier,
+        the approval persists the row under that identifier, and the history pairs the two. A week
+        that absorbed a concession must not read as simply feasible, and this is where a reader sees
+        which one it was and when they approved it.
+        """
+        conceded = uuid4()
+        seed_slot(live_database_url, owner.tenant_id, conceded=conceded)
+
+        approved = post_approval(http, signed_in, key=uuid4().hex)
+        history = http.get(f"{WEEKS_PREFIX}/{WEEK}/revisions", headers=signed_in)
+
+        assert approved[0] == HTTPStatus.CREATED, approved[1]
+        assert history.status_code == HTTPStatus.OK, history.text
+        listed = history.json()["revisions"]
+        assert len(listed) == 1
+        assert listed[0]["status"] == "approved"
+        assert listed[0]["reason"] == "tradeoff_approved"
+        assert listed[0]["approvedAt"] == approved[1]["approvedAt"]
+        assert [one["id"] for one in listed[0]["adjustments"]] == [str(conceded)]
+        assert listed[0]["adjustments"][0]["kind"] == "breach_floor"
+        assert listed[0]["adjustments"][0]["deltaMinutes"] == BREACH_MINUTES
+        assert listed[0]["revokedAdjustments"] == 0
+        assert listed[0]["autoApplied"] == []
+        assert history.json()["truncated"] is False
 
 
 @pytest.mark.xfail(

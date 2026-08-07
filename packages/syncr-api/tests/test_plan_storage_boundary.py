@@ -35,9 +35,11 @@ import pytest
 from sqlalchemy import Column, Index, MetaData, String, Table, Uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from syncr_api.core.app_factory import create_app
 from syncr_api.core.columns import json_key, values_in
 from syncr_api.core.orm import Base
 from syncr_api.core.repository import TenantScopedReader, TenantScopedRepository
+from syncr_api.core.settings import API_PREFIX
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
 from syncr_api.idempotency.config import IDEMPOTENCY_KEYS_TABLE
 from syncr_api.idempotency.models import IdempotencyKey  # noqa: F401 - registers its table
@@ -61,17 +63,31 @@ from syncr_api.plans.config import (
     WEEK_INPUT_VERSIONS_TABLE,
 )
 from syncr_api.plans.habit_log import HabitOutcomeLog
-from syncr_api.plans.models import PlanRevision  # noqa: F401 - registers the plan-side tables
+from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import BINDING, ENTITY_ID, KIND
+from syncr_api.plans.week_config import REVISIONS_PATH
 from syncr_api.solving.config import NON_TERMINAL_STATUSES, OPERATIONS_TABLE, SOLVE
 from syncr_api.solving.models import Operation  # noqa: F401 - registers its table
-from tests.boundaries import package_mapped_classes, public_methods, table_names
+from tests.boundaries import (
+    METHODS_WITHOUT_A_BODY,
+    api_routes,
+    package_mapped_classes,
+    public_methods,
+    route_identity,
+    table_names,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
+
+    from syncr_api.core.settings import ServiceSettings
+
+# The path segment the history hangs off. Read from the week routes' own constant, so a rename moves
+# this rule with it rather than leaving it examining a path nothing answers.
+REVISIONS_SEGMENT = REVISIONS_PATH.split("/")[-1]
 
 # Names that say a method changes or removes a stored row. A repository over an append-only
 # table must expose none of them, at any depth of its inheritance.
@@ -222,6 +238,70 @@ def test_the_revision_repository_inherits_no_way_to_change_a_row() -> None:
     assert not hasattr(PlanRepository, "scoped_delete")
     assert issubclass(PlanRepository, TenantScopedReader)
     assert not issubclass(PlanRepository, TenantScopedRepository)
+
+
+# The statements that would change or remove a revision, spelled against the mapped class itself so
+# a rename of the model carries them. Both the bare constructors and the scoped builders are named:
+# the repository over this table inherits neither, and any OTHER module could compose one.
+WRITES_A_REVISION = tuple(
+    f"{builder}({PlanRevision.__name__}"
+    for builder in ("update", "delete", "scoped_update", "scoped_delete")
+)
+
+
+def modules_that_would_change_a_revision(source_root: Path) -> list[str]:
+    """Every module of this package that composes a write against the plan of record."""
+    return sorted(
+        str(path.relative_to(source_root))
+        for path in source_root.rglob("*.py")
+        if any(spelling in path.read_text(encoding="utf-8") for spelling in WRITES_A_REVISION)
+    )
+
+
+def test_no_module_of_the_api_composes_a_write_against_the_plan_of_record(
+    source_root: Path,
+) -> None:
+    """``US-PLAN-07``: the history is read-only, and no action on it can mutate a revision.
+
+    The repository's own surface is asserted above, which covers the one class that owns the table.
+    This is the other half: a module that imported the mapped class could compose an ``UPDATE`` or a
+    ``DELETE`` over it without touching that class at all, and nothing else would notice.
+    """
+    assert modules_that_would_change_a_revision(source_root) == []
+
+
+def test_the_write_walk_reports_a_module_that_would_change_one() -> None:
+    # The control. Without it the rule passes forever the day the spellings stop matching what a
+    # writer would be written as.
+    invented = "await session.execute(update(PlanRevision).values(status='applied'))"
+
+    assert any(spelling in invented for spelling in WRITES_A_REVISION)
+
+
+def test_every_route_that_answers_with_the_history_is_a_read(settings: ServiceSettings) -> None:
+    """The runtime half of the same rule, over whatever routes exist rather than over a list.
+
+    A history a user can reach through an unsafe method is a history a client could be asked to
+    change, whatever the repository allows. Bounded by the app's own route table, so a second route
+    over revisions added later is examined without this test being edited.
+    """
+    app = create_app(settings)
+
+    unsafe = sorted(
+        f"{method} {path}"
+        for route in api_routes(app)
+        for method, path in route_identity(route)
+        if REVISIONS_SEGMENT in path and method not in METHODS_WITHOUT_A_BODY
+    )
+    reads = sorted(
+        path
+        for route in api_routes(app)
+        for method, path in route_identity(route)
+        if REVISIONS_SEGMENT in path and method == "GET"
+    )
+
+    assert unsafe == []
+    assert reads == [f"{API_PREFIX}/weeks/{{iso_week}}/revisions"]
 
 
 def test_the_surface_check_reports_a_repository_that_could_change_a_row() -> None:

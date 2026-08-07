@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from syncr_api.offplan.records import OffPlanPeriodRecord
     from syncr_api.plans.emptiness import EmptyWeek
     from syncr_api.plans.readings import WeekReadings
-    from syncr_api.plans.records import PlanRevisionRecord
+    from syncr_api.plans.records import PlanRevisionRecord, WeekAdjustmentRecord
     from syncr_api.solving.records import OperationRecord
     from syncr_domain.intervals import Interval
     from syncr_domain.plan import PlanDocument
@@ -43,6 +43,22 @@ class WeekView:
 
 
 @dataclass(frozen=True, slots=True)
+class WeekRevision:
+    """One revision as the history lists it, and the two things its own row cannot say.
+
+    ``auto_applied`` names what this revision added without asking, which is a difference between
+    two revisions rather than a column. ``adjustments`` names the concessions the plan was solved
+    under, which the document holds by identifier, and ``revoked_adjustments`` counts the ones the
+    week no longer holds, so a plan is never reported as conceded less than it was.
+    """
+
+    record: PlanRevisionRecord
+    auto_applied: tuple[str, ...]
+    adjustments: tuple[WeekAdjustmentRecord, ...]
+    revoked_adjustments: int
+
+
+@dataclass(frozen=True, slots=True)
 class WeekRevisions:
     """One page of a week's history, and whether the week holds more than the page.
 
@@ -50,5 +66,5 @@ class WeekRevisions:
     history a client cannot tell from a whole one.
     """
 
-    revisions: Sequence[PlanRevisionRecord]
+    revisions: Sequence[WeekRevision]
     truncated: bool

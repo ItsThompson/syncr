@@ -29,7 +29,7 @@ from pydantic import Field
 # Runtime imports, every one of them: pydantic resolves a field's annotation while the app is being
 # built, so a nested model or a closed vocabulary named in one has to be importable then. Ruff
 # cannot see that ``WireModel`` extends ``BaseModel`` from another module, so each import says so.
-from syncr_api.concessions.schemas import AdjustmentResponse  # noqa: TC001
+from syncr_api.concessions.schemas import AdjustmentResponse
 from syncr_api.core.schemas import WireModel, WireSpan
 from syncr_api.offplan.schemas import OffPlanPeriodResponse
 from syncr_api.plans.config import RevisionReason, RevisionStatus  # noqa: TC001
@@ -41,8 +41,7 @@ from syncr_api.solving.schemas import OperationResponse
 if TYPE_CHECKING:
     from syncr_api.plans.emptiness import EmptyWeek
     from syncr_api.plans.readings import WeekReadings
-    from syncr_api.plans.records import PlanRevisionRecord
-    from syncr_api.plans.week_views import WeekRevisions, WeekView
+    from syncr_api.plans.week_views import WeekRevision, WeekRevisions, WeekView
 
 
 class WeekReadingsResponse(WireModel):
@@ -237,9 +236,23 @@ class WeekRevisionResponse(WireModel):
         description="When the user assented. Null for an applied revision."
     )
     input_version: int = Field(description="The input snapshot the revision was produced from.")
+    auto_applied: list[str] = Field(
+        description="What this revision added without asking, by block title. Empty for an "
+        "approved revision, whose changes the user assented to, and empty for the first plan a "
+        "week ever had, which added everything."
+    )
+    adjustments: list[AdjustmentResponse] = Field(
+        description="The approved concessions this plan was solved under, so a week never reads as "
+        "feasible for a reason the user cannot see."
+    )
+    revoked_adjustments: int = Field(
+        description="How many concessions this plan was solved under have been revoked since, and "
+        "so cannot be named. Zero for every plan whose concessions the week still holds."
+    )
 
     @classmethod
-    def of(cls, record: PlanRevisionRecord) -> Self:
+    def of(cls, revision: WeekRevision) -> Self:
+        record = revision.record
         return cls(
             id=record.id,
             created_at=record.created_at,
@@ -247,6 +260,9 @@ class WeekRevisionResponse(WireModel):
             reason=record.reason,
             approved_at=record.approved_at,
             input_version=record.input_version,
+            auto_applied=list(revision.auto_applied),
+            adjustments=[AdjustmentResponse.of(one) for one in revision.adjustments],
+            revoked_adjustments=revision.revoked_adjustments,
         )
 
 
@@ -268,7 +284,7 @@ class WeekRevisionsResponse(WireModel):
     @classmethod
     def of(cls, page: WeekRevisions) -> Self:
         return cls(
-            revisions=[WeekRevisionResponse.of(record) for record in page.revisions],
+            revisions=[WeekRevisionResponse.of(one) for one in page.revisions],
             truncated=page.truncated,
         )
 
