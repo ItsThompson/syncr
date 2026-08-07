@@ -87,6 +87,11 @@ class CalendarSourceRecord:
     external_id: str
     included: bool
     horizon_days: int | None
+    # When the user added it. Carried on the record because staleness for a source that has NEVER
+    # been read successfully has to be measured from something that does not move, and every other
+    # instant on the row does: the last attempt is refreshed by each failed poll, so a feed added
+    # with a wrong URL would report one poll interval of staleness forever.
+    created_at: datetime
     sync_state: SyncStateRecord = field(default_factory=SyncStateRecord)
 
     @property

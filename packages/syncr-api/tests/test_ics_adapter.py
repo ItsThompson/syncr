@@ -71,6 +71,7 @@ def source(**overrides: object) -> CalendarSourceRecord:
         "external_id": FEED_URL,
         "included": True,
         "horizon_days": None,
+        "created_at": NOW - timedelta(days=30),
         "sync_state": SyncStateRecord(),
     }
     return CalendarSourceRecord(**{**defaults, **overrides})  # type: ignore[arg-type]

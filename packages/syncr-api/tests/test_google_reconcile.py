@@ -105,6 +105,7 @@ TARGET = CalendarSourceRecord(
     external_id=CALENDAR,
     included=True,
     horizon_days=14,
+    created_at=NOW - timedelta(days=30),
     sync_state=SyncStateRecord(),
 )
 

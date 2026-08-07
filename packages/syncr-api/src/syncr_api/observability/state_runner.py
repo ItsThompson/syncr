@@ -101,7 +101,9 @@ class StateGaugeRunner:
 
 
 async def _observe_tenant(session: AsyncSession, tenant_id: TenantId, *, now: datetime) -> None:
-    observed_state(await CalendarSourceRepository(session, tenant_id).list_all(), now=now)
+    observed_state(
+        tenant_id, await CalendarSourceRepository(session, tenant_id).list_all(), now=now
+    )
     observed_credential(
         tenant_id, await GoogleCredentialRepository(session, tenant_id).read(), now=now
     )

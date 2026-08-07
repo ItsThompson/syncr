@@ -72,6 +72,7 @@ def a_source(*, included: bool = True) -> CalendarSourceRecord:
         external_id="https://example.ac.uk/timetable.ics",
         included=included,
         horizon_days=None,
+        created_at=EARLIER,
         sync_state=SyncStateRecord(
             last_success_at=EARLIER, last_attempt_at=EARLIER, anchors_current=7
         ),

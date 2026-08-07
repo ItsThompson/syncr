@@ -207,6 +207,7 @@ def _a_source(source_id: Any, tenant_id: TenantId) -> Any:
         external_id=TIMETABLE,
         included=True,
         horizon_days=None,
+        created_at=NOW,
     )
 
 

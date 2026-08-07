@@ -19,6 +19,23 @@ would then say a feed was fresh because nobody had looked at it, which is precis
 alert stated at 24 hours. So both are set from stored state on a duty that runs whether or not
 anything else happened. :func:`observed_state` is that reading, and it takes the source rows.
 
+**A SOURCE THAT HAS NEVER SUCCEEDED IS MEASURED FROM WHEN THE USER ADDED IT.** Not from its last
+attempt: every failed poll refreshes that instant, so a feed added with a wrong URL, a feed the
+publisher took down before syncr ever read it, or a Google calendar whose grant was never valid
+would report one poll interval of staleness forever and read as FRESHER than a healthy feed polled
+twenty minutes ago. ``created_at`` is the one instant on the row that does not move, so a
+never-synced source crosses the 24-hour threshold a day after it was added, which is the condition
+the alert is stated over.
+
+## A source the user removes takes its series with it
+
+These two are labelled gauges set by iterating current rows, and nothing in the client library
+removes a child. The worker is long-lived, so without :func:`_forgotten` a source the user deleted
+would keep its last reading until the process restarted: if that reading was over 24 hours,
+``SourceStale`` would fire forever on a source that no longer exists, which is an alert for a
+condition the user cannot act on. The children are removed rather than the family cleared, so no
+series goes momentarily absent and one tenant's reading cannot wipe another's.
+
 ## Why the label is a source id and not a source name
 
 A display name is the user's own words. The logger redacts a field called ``name`` for exactly that
@@ -43,6 +60,11 @@ if TYPE_CHECKING:
 
     from syncr_api.calendars.events import FetchOutcome
     from syncr_api.calendars.records import CalendarSourceRecord
+    from syncr_domain.identifiers import TenantId
+
+# Which source ids each tenant's last reading published, so a source the user removed can have its
+# series removed rather than left at its last value.
+_PUBLISHED: dict[TenantId, frozenset[str]] = {}
 
 # The same two values the projection uses, read from it rather than restated: a read that came back
 # is a success whether the feed had changed or not, and a read that did not is a failure. An
@@ -133,32 +155,47 @@ def observed_attempt(
         EVENTS_REJECTED.labels(provider=source.provider, reason=rejection.kind).inc()
 
 
-def observed_state(sources: Iterable[CalendarSourceRecord], *, now: datetime) -> None:
-    """Set the two state gauges from stored rows, for every source a tenant holds.
+def observed_state(
+    tenant_id: TenantId, sources: Iterable[CalendarSourceRecord], *, now: datetime
+) -> None:
+    """Set the two state gauges from stored rows, for every source this tenant holds.
 
-    Staleness is measured from the last SUCCESS, so a source failing every poll grows a reading that
-    an alert at 24 hours can fire on. A source nobody has ever read successfully is the same
-    condition as one last read a long time ago, and reporting it as zero would make the newest
-    possible failure look like the healthiest possible feed: it is reported as the age of the
-    source's own record of never having worked, which is the time since its first attempt, and as
-    zero only while it has not been attempted at all.
+    Staleness is measured from the last SUCCESS, and from the instant the user ADDED the source when
+    there has never been one: every other instant on the row moves when a poll fails, so a feed that
+    has never worked would otherwise report one poll interval of staleness forever.
+
+    A source this tenant no longer holds has its two series removed, so a deleted source cannot go
+    on contributing to the maximum the alert reads.
     """
-    for source in sources:
+    held = tuple(sources)
+    for source in held:
         state = source.sync_state
         ANCHORS_CURRENT.labels(source_id=str(source.id)).set(state.anchors_current)
         SOURCE_STALENESS.labels(source_id=str(source.id)).set(
-            _staleness_seconds(state.last_success_at, state.last_attempt_at, now=now)
+            _staleness_seconds(state.last_success_at, source.created_at, now=now)
         )
+    _forgotten(tenant_id, {str(source.id) for source in held})
+
+
+def _forgotten(tenant_id: TenantId, present: set[str]) -> None:
+    """Remove the two series of every source this tenant published before and no longer holds.
+
+    The published set is tracked here rather than read off the collector, because the client library
+    exposes no public way to enumerate a family's children and a private attribute is not a
+    contract. Kept per tenant, so one tenant's reading cannot remove another's series.
+    """
+    for source_id in _PUBLISHED.get(tenant_id, frozenset()) - present:
+        ANCHORS_CURRENT.remove(source_id)
+        SOURCE_STALENESS.remove(source_id)
+    _PUBLISHED[tenant_id] = frozenset(present)
 
 
 def _staleness_seconds(
-    last_success_at: datetime | None, last_attempt_at: datetime | None, *, now: datetime
+    last_success_at: datetime | None, created_at: datetime, *, now: datetime
 ) -> float:
-    if last_success_at is not None:
-        return max((now - last_success_at).total_seconds(), 0.0)
-    if last_attempt_at is not None:
-        return max((now - last_attempt_at).total_seconds(), 0.0)
-    return 0.0
+    """Seconds since this source was last read successfully, or since the user added it."""
+    since = last_success_at if last_success_at is not None else created_at
+    return max((now - since).total_seconds(), 0.0)
 
 
 seed_the_sync_families()

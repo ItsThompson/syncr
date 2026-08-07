@@ -123,6 +123,7 @@ def source(
         external_id=external_id,
         included=True,
         horizon_days=None,
+        created_at=START,
         sync_state=SyncStateRecord(
             last_success_at=attempted, last_attempt_at=attempted, anchors_current=anchors
         ),

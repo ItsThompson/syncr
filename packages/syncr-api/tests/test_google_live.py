@@ -25,7 +25,7 @@ runbook records where it lives afterwards.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -282,6 +282,7 @@ async def a_development_target(client: GoogleCalendarClient) -> CalendarSourceRe
         external_id=development.calendar_id,
         included=True,
         horizon_days=HORIZON_DAYS,
+        created_at=datetime.now(UTC),
         sync_state=SyncStateRecord(),
     )
 

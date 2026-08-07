@@ -179,6 +179,7 @@ def source(display_name: str = "Personal", *, included: bool = True) -> Calendar
         external_id="primary",
         included=included,
         horizon_days=None,
+        created_at=NOW,
         sync_state=SyncStateRecord(),
     )
 

@@ -112,6 +112,7 @@ def record(
         external_id=external_id,
         included=included,
         horizon_days=horizon_days,
+        created_at=NOW,
         sync_state=sync_state or SyncStateRecord(),
     )
 

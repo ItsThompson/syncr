@@ -38,7 +38,10 @@ from tests.live_tenants import provision_owner, remove_tenant
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
 
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from syncr_api.accounts.records import UserRecord
+    from syncr_api.calendars.records import CalendarSourceRecord
     from syncr_api.core.settings import ServiceSettings
 
 NOW = datetime(2026, 2, 26, 9, 0, tzinfo=UTC)
@@ -46,6 +49,25 @@ NOW = datetime(2026, 2, 26, 9, 0, tzinfo=UTC)
 TOKEN_AGE = "syncr_write_target_token_age_seconds"
 STALENESS = "syncr_source_staleness_seconds"
 ANCHORS = "syncr_anchors_current"
+
+# The threshold `SourceStale` is stated over, quoted so a reading is asserted against the figure an
+# alert actually fires on rather than against a number this file chose.
+SOURCE_STALE_THRESHOLD = 86400
+
+
+async def a_source(
+    session: AsyncSession, owner: UserRecord, *, added: datetime
+) -> CalendarSourceRecord:
+    """One included ICS anchor source, added at ``added`` and never yet read."""
+    return await CalendarSourceRepository(session, owner.tenant_id).create(
+        provider=ICS,
+        role=ANCHOR_SOURCE,
+        display_name="A timetable",
+        external_id=f"https://example.test/{uuid4()}.ics",
+        included=True,
+        horizon_days=None,
+        created_at=added,
+    )
 
 
 def sample(name: str, **labels: str) -> float:
@@ -118,17 +140,8 @@ class TestTheStateGauges:
         failing every time still crosses the 24-hour threshold `SourceStale` fires on.
         """
         async with context.database.sessionmaker() as session, session.begin():
-            sources = CalendarSourceRepository(session, owner.tenant_id)
-            created = await sources.create(
-                provider=ICS,
-                role=ANCHOR_SOURCE,
-                display_name="A timetable",
-                external_id=f"https://example.test/{uuid4()}.ics",
-                included=True,
-                horizon_days=None,
-                created_at=NOW - timedelta(days=30),
-            )
-            await sources.save_sync_state(
+            created = await a_source(session, owner, added=NOW - timedelta(days=30))
+            await CalendarSourceRepository(session, owner.tenant_id).save_sync_state(
                 created.id,
                 SyncStateRecord(
                     last_success_at=NOW - timedelta(days=2),
@@ -142,6 +155,57 @@ class TestTheStateGauges:
 
         assert sample(STALENESS, source_id=str(created.id)) == 172800.0
         assert sample(ANCHORS, source_id=str(created.id)) == 7.0
+
+    async def test_a_source_that_has_never_succeeded_is_stale_from_when_it_was_added(
+        self, context: WorkerContext, owner: UserRecord
+    ) -> None:
+        """BREAK IT: a feed added two days ago that has NEVER been read, attempted a minute ago.
+
+        The reading this test exists for. Measured from the last ATTEMPT, this read 60 seconds
+        against an 86400 threshold, because every failed poll refreshes that instant: a feed added
+        with a wrong URL read FRESHER than a healthy feed polled twenty minutes ago, forever. The
+        instant the user added it is the one on the row that does not move.
+        """
+        async with context.database.sessionmaker() as session, session.begin():
+            created = await a_source(session, owner, added=NOW - timedelta(days=2))
+            await CalendarSourceRepository(session, owner.tenant_id).save_sync_state(
+                created.id,
+                SyncStateRecord(
+                    last_success_at=None,
+                    last_attempt_at=NOW - timedelta(minutes=1),
+                    last_error="no such host",
+                    anchors_current=0,
+                ),
+            )
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+
+        assert sample(STALENESS, source_id=str(created.id)) == 172800.0
+        assert sample(STALENESS, source_id=str(created.id)) > SOURCE_STALE_THRESHOLD
+
+    async def test_a_source_the_user_removes_takes_its_series_with_it(
+        self, context: WorkerContext, owner: UserRecord
+    ) -> None:
+        """BREAK IT: publish a stale source, delete it, and read the gauge again.
+
+        Nothing in the client library removes a child of a labelled gauge, and the worker is
+        long-lived. Without the removal, a source the user deleted would keep its last reading until
+        the process restarted, so `SourceStale` would fire forever on a source that no longer
+        exists: an alert for a condition the user cannot act on, which section 18 forbids.
+        """
+        async with context.database.sessionmaker() as session, session.begin():
+            created = await a_source(session, owner, added=NOW - timedelta(days=2))
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+        assert sample(STALENESS, source_id=str(created.id)) > SOURCE_STALE_THRESHOLD
+
+        async with context.database.sessionmaker() as session, session.begin():
+            await CalendarSourceRepository(session, owner.tenant_id).remove(created.id)
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+
+        assert sample(STALENESS, source_id=str(created.id)) == 0.0
+        assert f'source_id="{created.id}"' not in generate_latest(REGISTRY).decode()
 
 
 class TestTheProductJob:

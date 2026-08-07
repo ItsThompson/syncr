@@ -456,4 +456,5 @@ A_WRITE_TARGET = CalendarSourceRecord(
     external_id="syncr@group.calendar.google.com",
     included=True,
     horizon_days=14,
+    created_at=NOW,
 )

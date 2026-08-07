@@ -248,6 +248,7 @@ def _as_record(row: CalendarSource) -> CalendarSourceRecord:
         external_id=row.external_id,
         included=row.included,
         horizon_days=row.horizon_days,
+        created_at=row.created_at,
         sync_state=SyncStateRecord(
             last_success_at=row.last_success_at,
             last_attempt_at=row.last_attempt_at,
