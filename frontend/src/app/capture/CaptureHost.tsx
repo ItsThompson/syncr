@@ -134,13 +134,19 @@ export function CaptureHost({ children }: CaptureHostProps) {
     () => ({
       open: (opening: CaptureOpening = {}) => {
         const wasOn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        /* NAMED-AS-NULL IS NOT THE SAME AS NOT NAMED. A caller whose control will not survive its own write
+         * names one that will, and if the ref it names is empty it means "return to nothing" rather than "fall
+         * back to the control I already know is doomed": `??` would have re-admitted the very defect review 46
+         * found on the empty backlog's prompt. Unreachable today, because the band renders before the prompt
+         * can be pressed, which is why it is stated here rather than left to hold by accident. */
+        const returnFocusTo = "returnFocusTo" in opening ? (opening.returnFocusTo ?? null) : wasOn;
         setState((held) =>
           held.isOpen
             ? held
             : {
                 isOpen: true,
                 draft: emptyDraft(opening.areaId),
-                returnFocusTo: opening.returnFocusTo ?? wasOn,
+                returnFocusTo,
                 generation: held.generation + 1,
                 refusedAt: null,
               },
@@ -182,19 +188,33 @@ export function CaptureHost({ children }: CaptureHostProps) {
    *
    * The generation is captured before the request and compared after it, so a send whose dialog the reader has
    * dismissed or replaced changes nothing: it neither closes a form the reader is typing into nor states a
-   * refusal about a draft that no longer exists. The lock is released either way, because the request has
-   * answered whoever it belonged to.
+   * refusal about a draft that no longer exists.
+   *
+   * THE LOCK IS RELEASED IN A `finally`, because a lock taken before an `await` and released after it is a lock
+   * a rejection keeps for the rest of the session: the form would then refuse every later capture with no way
+   * back. Review 46 found this as the fifth continuation, after the four the generation answers.
+   *
+   * IT IS NOT DRIVEN, AND THAT IS NOT THE SAME AS UNTESTABLE. No production call site can make this reject:
+   * `apply` answers a `Problem` rather than throwing, by construction, and the SWR filter-mutate the write ends
+   * with resolves even when the re-read fails, which review 46 measured at 500 and at transport failure, with
+   * and without a subscriber. A test would have to force a shape the wiring cannot produce, which is the one
+   * defect class this epic keeps finding. What the `finally` is for is the day SWR's behaviour changes: if a
+   * rejection ever becomes reachable here, drive it by making `write.submit` reject and assert the control is
+   * enabled again.
    */
   const submit = async (held: CaptureDraft, generation: number) => {
     if (!taken()) return;
 
-    const applied = await write.submit(bodyOf(held, deadlineInstantOf(held.deadline, zone)));
+    try {
+      const applied = await write.submit(bodyOf(held, deadlineInstantOf(held.deadline, zone)));
 
-    released();
-    setState((current) => {
-      if (current.generation !== generation) return current;
-      return applied ? closedAfter(current) : { ...current, refusedAt: generation };
-    });
+      setState((current) => {
+        if (current.generation !== generation) return current;
+        return applied ? closedAfter(current) : { ...current, refusedAt: generation };
+      });
+    } finally {
+      released();
+    }
   };
 
   /* The refusal is shown only to the opening it was refused for. A send the reader dismissed can still answer,

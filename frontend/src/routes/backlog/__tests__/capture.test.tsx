@@ -371,8 +371,6 @@ describe("a second submit while the first is in flight", () => {
     expect(stub.captured).toHaveLength(1);
   });
 
-  /* The lock is released on BOTH endings. A reader whose capture was refused has to be able to send again after
-     fixing the member the api named, so a refusal that left the lock taken would be a form that never sends. */
   /* THE PATH THE DISABLED CONTROL DOES NOT COVER, because the dismiss controls stay live while it is disabled:
      submit, Escape, `n`, retype, submit. The request from the first opening is still open, so the lock has to
      survive the dismiss; releasing it on close is what let two identical tasks be captured. On a slow connection

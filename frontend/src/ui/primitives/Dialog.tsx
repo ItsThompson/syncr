@@ -20,14 +20,11 @@
  *
  * AN ELEMENT THAT NO LONGER EXISTS IS NOT AN ELEMENT TO RETURN TO. `focus()` on a detached node is a no-op, so
  * suppressing Radix's own restoration and then calling it left the reader on the document body with Radix
- * already told to stand down. The check is therefore whether the named node is still CONNECTED.
- *
- * THAT CHECK IS NOT DEMONSTRABLE IN THIS TEST ENVIRONMENT, and saying so is better than a test that pretends:
- * jsdom lands on the body either way, because Radix's own restoration does not work here at all, which is the
- * measurement `returnFocusTo` exists because of. In a browser the two differ for a dialog Radix CAN see the
- * trigger of. What holds the promise regardless is the caller side: a caller whose own control will not survive
- * its own write names one that will, which is what the empty backlog's prompt does and what `capture.test.tsx`
- * drives end to end.
+ * already told to stand down. The check is therefore whether the named node is still CONNECTED, and what it
+ * promises is that a detached node is not touched: `Dialog.test.tsx` spies on the named node's own `focus` to
+ * hold it. Where focus then LANDS is a different question and not one jsdom can answer, because Radix's own
+ * restoration does not work in this environment at all, which is the measurement `returnFocusTo` exists because
+ * of. The two were conflated once, and the conclusion drawn from it was that the check could not be tested.
  *
  * WHERE IT GOES ON OPEN IS THE FAMILY'S POLICY AND NOT THE CALLER'S: the first control in the body, through
  * Radix's own `onOpenAutoFocus`. See `FIRST_CONTROL` below.

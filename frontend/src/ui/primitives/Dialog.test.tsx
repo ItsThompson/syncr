@@ -8,6 +8,7 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { ReactElement } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -121,12 +122,37 @@ describe("Dialog", () => {
   });
 });
 
+/** Close a dialog whose caller named `named`, and wait for it to go. */
+async function closedOnto(
+  named: HTMLElement,
+  rerender: (next: ReactElement) => void,
+): Promise<void> {
+  rerender(
+    <Dialog
+      isOpen={false}
+      onOpenChange={vi.fn<(next: boolean) => void>()}
+      returnFocusTo={named}
+      title="Approve week"
+    >
+      <p>91 blocks.</p>
+    </Dialog>,
+  );
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+}
+
 /* WHERE FOCUS GOES ON CLOSE, WHICH THE CALLER NAMES.
  *
  * A dialog opened by a keystroke has no trigger for Radix to go back to, and what it does instead was MEASURED
  * rather than assumed: it lands the reader on the document body. The first test below is that measurement, kept
  * as a test so the day Radix restores focus itself is a day this reddens and the prop can go. The second is the
- * behaviour the caller gets by naming the element. */
+ * behaviour the caller gets by naming the element.
+ *
+ * THE THIRD PAIR IS ABOUT A NAMED NODE THAT NO LONGER EXISTS, and what it asserts is deliberately narrow: not
+ * where focus LANDS, which jsdom cannot answer, but that the detached node is not TOUCHED. Spying on the node's
+ * own `focus` is what separates the two questions. This ticket first concluded the check was untestable, which
+ * was false and was worse than a gap: a source comment saying so would have told the next maintainer not to try. */
 describe("the dialog's close focus", () => {
   function renderAfterFocusing(returnFocusTo?: HTMLElement | null) {
     const outside = document.createElement("button");
@@ -172,6 +198,43 @@ describe("the dialog's close focus", () => {
     await waitFor(() => {
       expect(outside).toHaveFocus();
     });
+  });
+
+  /** A node the caller named, and a spy on the one thing the guard promises about it. */
+  function watching(isConnected: boolean) {
+    const named = document.createElement("button");
+    named.textContent = "the control the caller named";
+    document.body.append(named);
+    const focused = vi.spyOn(named, "focus");
+    const rendered = renderDialog({ returnFocusTo: named, isOpen: true });
+    if (!isConnected) named.remove();
+    return { named, focused, ...rendered };
+  }
+
+  /* THE CASE REVIEW 46 FOUND, from the production side: the empty backlog's prompt is replaced by a table before
+     the dialog closes, so the element the caller named has left the document. Focusing it would do nothing, and
+     suppressing Radix's own restoration for it leaves the reader nowhere.
+
+     WHAT IS ASSERTED IS THAT THE NODE IS NOT TOUCHED, not where focus lands. The second question is unanswerable
+     here because Radix's own fallback also lands on the body; the first is exactly the guard's contract. */
+  it("does not touch a named node that has left the document", async () => {
+    const { named, focused, rerender } = watching(false);
+
+    await closedOnto(named, rerender);
+
+    expect(named.isConnected).toBe(false);
+    expect(focused).not.toHaveBeenCalled();
+  });
+
+  /* The control on the pair. Without it the assertion above would pass for a component that never focused
+     anything at all, which is the shape of a guard written to be satisfied. */
+  it("does touch one that is still there", async () => {
+    const { named, focused, rerender } = watching(true);
+
+    await closedOnto(named, rerender);
+
+    expect(named.isConnected).toBe(true);
+    expect(focused).toHaveBeenCalledTimes(1);
   });
 });
 
