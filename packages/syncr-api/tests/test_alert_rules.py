@@ -26,7 +26,10 @@ So no direction is a list anyone maintains:
 - **DELIVERY** is read from `alertmanager.yml`. Every inhibit rule must name BOTH its source and its
   targets by `alertname`, because constraining the source alone left the shipped defect one edit
   away: `alertname="BackupStale"` targeting `severity="warning"` suppressed all seven warnings in a
-  real Alertmanager while 131 tests and `amtool` passed.
+  real Alertmanager while 131 tests and `amtool` passed. The reader opens `*_matchers:` blocks only,
+  so the legacy `source_match:` map form is forbidden outright AND the rule count is crossed against
+  the region's own list entries: a rule this file cannot open is a rule it cannot guard, and
+  Alertmanager honours it regardless.
 
 What IS declared, in `tests/metric_declarations.py`, is the set of DECISIONS, each with a written
 reason and each crossed as an exact equality.
@@ -35,7 +38,7 @@ Nothing here needs a running Prometheus, and nothing here needs a YAML library. 
 files' shape is fixed and this repository owns them, so the readers below are narrow parsers over
 that shape.
 What the files MEAN to Prometheus and Alertmanager is checked by `just monitoring-check`; what
-Alertmanager DOES with a firing alert is checked by `deployments/bin/alertmanager-probe.sh`, because
+Alertmanager DOES with a firing alert is checked by `deployments/bin/alertmanager-probe.py`, because
 that is the one thing `amtool` cannot judge.
 """
 
@@ -67,15 +70,25 @@ from tests.metric_declarations import (
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
+
 # The workspace members that can declare a metric family, and where each one's source lives.
-MEMBER_ROOTS: Final[Mapping[str, str]] = {
-    "syncr_common": "packages/syncr-common/src",
-    "syncr_domain": "packages/syncr-domain/src",
-    "syncr_solver": "packages/syncr-solver/src",
-    "syncr_api": "packages/syncr-api/src",
-    "syncr_learning": "packages/syncr-learning/src",
-    "syncr_cli": "cli/src",
-}
+#
+# DERIVED FROM `[tool.uv.workspace] members`, which is the list the build itself trusts, because the
+# hand-maintained version was the last hinge in this file: a seventh member added without a row in
+# it escaped the registry walk, the literal scan and both set differences at once. Every member
+# keeps its importable package under exactly one `src/<package>` directory, which is the layout `uv`
+# requires of a member and the only assumption made here.
+def member_roots() -> Mapping[str, str]:
+    """Every workspace member's import package, mapped to the source root that holds it."""
+    root = repo_root()
+    text = (root / "pyproject.toml").read_text()
+    _, _, region = text.partition("[tool.uv.workspace]")
+    listed, _, _ = region.partition("]")
+    found: dict[str, str] = {}
+    for member in re.findall(r'"([^"]+)"', listed):
+        (package,) = sorted((root / member / "src").glob("*/__init__.py"))
+        found[package.parent.name] = f"{member}/src"
+    return found
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -187,11 +200,42 @@ def inhibitions() -> list[Inhibition]:
 
     Read at all, which is the point: the previous version of this file never opened
     `alertmanager.yml`, and the defect that shipped lived there and nowhere else.
+
+    This reads the `*_matchers:` spelling ONLY, which is why
+    :meth:`TestDelivery.test_no_inhibit_rule_uses_the_legacy_matcher_syntax` forbids the other one,
+    and :meth:`TestDelivery.test_this_file_s_reader_sees_every_rule_alertmanager_will_load` counts
+    the list entries independently of any spelling. Alertmanager still honours the pre-0.22
+    `source_match:` map form, so a rule written that way was loaded, suppressed all seven warnings,
+    and was invisible to this function.
     """
+    return [_inhibition(block) for block in _inhibit_blocks(inhibit_region())]
+
+
+def inhibit_region() -> str:
+    """The inhibit-rules region of `alertmanager.yml`, as text."""
     text = (deployments() / "alertmanager" / "alertmanager.yml").read_text()
     _, _, region = text.partition("inhibit_rules:")
     region, _, _ = region.partition("\nreceivers:")
-    return [_inhibition(block) for block in _inhibit_blocks(region)]
+    return region
+
+
+def inhibit_entries(region: str) -> int:
+    """How many list entries the inhibit-rules region holds, whatever spelling each one uses.
+
+    A YAML sequence entry opens with `- ` at the sequence's own indentation, and a matcher is a
+    nested sequence indented further, so the outermost `- ` depth in the region IS the rule level.
+    Counting there reads the file the way Alertmanager's loader does, by structure rather than by
+    the key that follows, so a rule written in ANY accepted spelling is counted. It is the figure
+    :func:`inhibitions` must agree with, and `amtool check-config` reports the same number.
+    """
+    openers = [
+        len(line) - len(line.lstrip())
+        for line in region.splitlines()
+        if re.match(r"^\s*-\s+\S", line)
+    ]
+    if not openers:
+        return 0
+    return openers.count(min(openers))
 
 
 def _inhibit_blocks(region: str) -> Iterator[str]:
@@ -238,6 +282,12 @@ def scrape_jobs() -> set[str]:
 # exports. That prefix is the whole distinction the liveness floor needs, and reading it off
 # `prometheus.yml` is what makes a SIXTH PROCESS visible without any map being edited.
 OUR_JOB_PREFIX: Final = "syncr-"
+
+# The most alerts one cause can plausibly make redundant, which is what caps an inhibit rule's
+# target list. Four is what this deployment's largest rule names: a process that is gone is the
+# cause of four duties that stopped. Deliberately NOT derived from the twelve, because half the
+# deployment was the previous cap and six of twelve is six of the seven warnings.
+MOST_ALERTS_ONE_CAUSE_MAKES_REDUNDANT: Final = 4
 
 
 def our_scrape_jobs() -> set[str]:
@@ -309,7 +359,7 @@ def exported_families() -> set[str]:
     lazily inside one. :func:`family_literals` is the second reading that does.
     """
     root = repo_root()
-    for package, source in MEMBER_ROOTS.items():
+    for package, source in member_roots().items():
         tree = root / source / package
         for path in sorted(tree.rglob("*.py")):
             module = package + "".join(f".{part}" for part in path.relative_to(tree).parts)
@@ -321,6 +371,20 @@ def exported_families() -> set[str]:
 # cannot contain. A dotted or colon-bearing name is a module path or a service identifier, excluded
 # by shape rather than by a list.
 _FAMILY_SHAPED = re.compile(r"^syncr_[a-z0-9_]+$")
+
+# What the client library calls a collector. A family's name is such a call's first positional
+# argument.
+_COLLECTORS: Final = ("Counter", "Gauge", "Histogram", "Summary", "Info", "Enum")
+_CLIENT_LIBRARY: Final = "prometheus_client"
+
+
+def member_sources() -> Iterator[tuple[str, Path]]:
+    """Every Python file of every workspace member, with the package it belongs to."""
+    root = repo_root()
+    for package, source in member_roots().items():
+        tree = root / source / package
+        for path in sorted(tree.rglob("*.py")):
+            yield package, path
 
 
 def family_literals() -> set[str]:
@@ -334,19 +398,72 @@ def family_literals() -> set[str]:
     Every literal, not only a call's first argument: two of this deployment's own families are
     passed by module constant rather than inline, and a rule reading only call arguments missed
     both.
+
+    WHAT THIS READING CANNOT SEE ON ITS OWN is a name that is never written whole:
+    `Gauge(f"{_PREFIX}_assembled", ...)` inside a function body exports a family no literal here
+    matches. :func:`collector_names_are_plain_literals` is what makes that shape a failure instead
+    of a hole, by requiring the name to BE a literal at every construction site.
     """
-    root = repo_root()
     found: set[str] = set()
-    for package, source in MEMBER_ROOTS.items():
-        tree = root / source / package
-        for path in sorted(tree.rglob("*.py")):
-            for node in ast.walk(ast.parse(path.read_text())):
-                if (
-                    isinstance(node, ast.Constant)
-                    and isinstance(node.value, str)
-                    and _FAMILY_SHAPED.match(node.value)
-                ):
-                    found.add(base_family(node.value))
+    for _, path in member_sources():
+        for node in ast.walk(ast.parse(path.read_text())):
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and _FAMILY_SHAPED.match(node.value)
+            ):
+                found.add(base_family(node.value))
+    return found
+
+
+def collector_names_are_plain_literals() -> list[str]:
+    """Every collector construction whose name argument is not a plain string constant.
+
+    The closing half of the literal reading. A family assembled from parts is exported by a running
+    process and invisible to a scan for whole names, so the fix is to forbid the assembly rather
+    than to widen the scan: a name built from a prefix constant is unreadable off the page by a
+    person too. A module-level constant IS accepted, because its value is a literal one
+    `ast.Constant` away and :func:`family_literals` already sees it.
+
+    WHICH `Counter` IS THE CLIENT LIBRARY'S IS RESOLVED PER FILE, from that file's own imports,
+    rather than by matching the bare name. `collections.Counter` is called in two members for
+    tallying, and a reading that keyed on the name alone reported both as unnamed families. A
+    hand-written exclusion list would have hidden the next such collision instead of resolving it.
+    """
+    offenders: list[str] = []
+    for _, path in member_sources():
+        tree = ast.parse(path.read_text())
+        local = _client_library_names(tree)
+        if not local:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            called = node.func
+            name = called.attr if isinstance(called, ast.Attribute) else getattr(called, "id", "")
+            if name not in local:
+                continue
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                continue
+            if isinstance(first, ast.Name):  # a module constant, whose value is a literal on disk
+                continue
+            offenders.append(f"{path.name}:{node.lineno} {name}(...)")
+    return offenders
+
+
+def _client_library_names(tree: ast.Module) -> set[str]:
+    """The names this module can construct a collector with, as it imported them."""
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == _CLIENT_LIBRARY:
+            found |= {
+                (alias.asname or alias.name) for alias in node.names if alias.name in _COLLECTORS
+            }
+        if isinstance(node, ast.Import) and any(
+            alias.name == _CLIENT_LIBRARY for alias in node.names
+        ):
+            found |= set(_COLLECTORS)  # reached as `prometheus_client.Gauge(...)`
     return found
 
 
@@ -362,7 +479,7 @@ def declaring_member(family: str) -> str | None:
     """
     root = repo_root()
     named = re.compile(rf'"{re.escape(family)}(?:_total)?"')
-    for package, source in MEMBER_ROOTS.items():
+    for package, source in member_roots().items():
         tree = root / source / package
         for path in tree.rglob("*.py"):
             if named.search(path.read_text()):
@@ -482,6 +599,61 @@ class TestTheExtractionItself:
         assert len(inhibitions()) >= 1
         assert scrape_jobs() >= {"syncr-api", "syncr-worker", "node", "cadvisor", "postgres"}
 
+    def test_the_member_roots_are_the_workspace_s_own_members(self) -> None:
+        """Derived from `[tool.uv.workspace] members`, which is the list the build already trusts.
+
+        The last hand-maintained hinge in this file. A seventh member added without a row in the old
+        map escaped the registry walk, the literal scan and both set differences at once, and only a
+        reviewer reading the map would notice. This asserts the derivation found all six and
+        resolved each to a real source tree, so an empty or partial read cannot satisfy the sets it
+        feeds.
+        """
+        roots = member_roots()
+
+        assert set(roots) == {
+            "syncr_common",
+            "syncr_domain",
+            "syncr_solver",
+            "syncr_api",
+            "syncr_learning",
+            "syncr_cli",
+        }
+        assert roots["syncr_cli"] == "cli/src", "the one member that is not under packages/"
+        for package, source in roots.items():
+            assert (repo_root() / source / package / "__init__.py").is_file()
+
+    def test_the_entry_count_sees_a_rule_the_block_reader_cannot_open(self) -> None:
+        """The positive control for the count equality, and the escape it was built for.
+
+        Without this, an entry counter that always returned `len(inhibitions())` would satisfy the
+        equality forever. The legacy map form below is what a real Alertmanager loaded and honoured
+        while this file's block reader saw nothing, so the counter must see two where the reader
+        sees one.
+        """
+        legacy = (
+            '\n  - source_matchers:\n      - alertname = "A"\n    target_matchers:\n'
+            '      - alertname = "B"\n'
+            "  - source_match:\n      alertname: WriteTargetTokenExpiring\n"
+            "    target_match:\n      severity: warning\n"
+        )
+
+        assert inhibit_entries(legacy) == 2
+        assert len(list(_inhibit_blocks(legacy))) == 1
+
+    def test_every_collector_in_the_workspace_names_its_family_with_a_literal(self) -> None:
+        """The closing half of the literal reading, and the shape it could not see.
+
+        `Gauge(f"{_PREFIX}_assembled", ...)` inside a function body is exported by a running process
+        and matched by no whole-name literal on disk, so the crossing stepped over it: measured, a
+        plain interpreter that calls such a function exports the family while this suite passed. The
+        fix is to forbid the assembly rather than widen the scan, because a name built from parts is
+        unreadable off the page by a person too.
+
+        The reading resolves which `Counter` is the client library's from each file's own imports:
+        `collections.Counter` is called in two members and a name-only match reported both.
+        """
+        assert collector_names_are_plain_literals() == []
+
 
 class TestTheTwelve:
     def test_there_are_exactly_twelve_rules(self) -> None:
@@ -512,6 +684,26 @@ class TestTheTwelve:
         assert annotations["surviving"].strip()
         assert annotations["summary"].strip()
         assert annotations["runbook"].strip()
+
+    @pytest.mark.parametrize("name", sorted(SEVERITY_BY_ALERT))
+    def test_the_runbook_each_alert_names_is_a_file_that_exists(self, name: str) -> None:
+        """A pointer that does not resolve is worse than no pointer.
+
+        The assertion above asserted the string was non-empty, and a reader concluded a runbook was
+        present: EIGHT of the twelve pointed at files that did not exist, and a previous review had
+        recommended adding a note to one of them without either of us noticing it had never been
+        written. That is this ticket's own defect class, in the guard rather than in the code: the
+        set the assertion can see is not the set its name claims to bound.
+
+        Resolved from the repository root, because that is what the annotation's path is relative to
+        and what an operator reading the alert will type.
+        """
+        stated = named(name).annotations["runbook"]
+
+        assert (repo_root() / stated).is_file(), (
+            f"{name} points at {stated}, which does not exist. An operator following it at 03:00 "
+            "finds nothing, which is the failure this deployment's whole alerting surface is for."
+        )
 
     @pytest.mark.parametrize("name", sorted(SEVERITY_BY_ALERT))
     def test_each_rule_waits_before_it_fires(self, name: str) -> None:
@@ -552,6 +744,48 @@ class TestDelivery:
                 "else ever carries that label."
             )
 
+    def test_no_inhibit_rule_uses_the_legacy_matcher_syntax(self) -> None:
+        """THE PARSER ABOVE READS `*_matchers:`. ALERTMANAGER ALSO HONOURS THE OLDER MAP FORM.
+
+        The third distinct route back to the shipped defect, and the one that walked past every
+        instrument here. `source_match:` with a mapping under it is pre-0.22 syntax, still loaded by
+        v0.28.0, still accepted by `amtool`, and INVISIBLE to :func:`_inhibit_blocks`. Written as
+        `source_match: {alertname: WriteTargetTokenExpiring}` targeting `target_match:
+        {severity: warning}`, it passed the whole suite, passed `amtool` with three rules while this
+        file's reader saw two, exited the probe at 0 because the probe never posts that source, and
+        suppressed ALL SEVEN warnings in a real Alertmanager.
+
+        It is not an exotic spelling: it is what every pre-0.22 example shows, so it is the form a
+        future editor is most likely to paste. One supported spelling, and the guards above then
+        cover everything Alertmanager will honour.
+        """
+        text = (deployments() / "alertmanager" / "alertmanager.yml").read_text()
+
+        for legacy in ("source_match:", "target_match:", "source_match_re:", "target_match_re:"):
+            assert legacy not in text, (
+                f"{legacy} is honoured by Alertmanager and invisible to this file's reader, so a "
+                "rule written with it escapes every guard here. Use `source_matchers:` and "
+                "`target_matchers:`."
+            )
+
+    def test_this_file_s_reader_sees_every_rule_alertmanager_will_load(self) -> None:
+        """The equality that catches the whole class, whatever spelling the next one arrives in.
+
+        Forbidding the legacy keys closes the route that was measured. This closes the CLASS: the
+        number of rules this file's reader returns must equal the number of list entries the region
+        holds, counted by indentation and so blind to which key opens each one. A rule in any
+        spelling the parser cannot open makes the two disagree. `amtool check-config` prints the
+        same figure, which is how the escape was found: amtool said three and :func:`inhibitions`
+        said two.
+        """
+        region = inhibit_region()
+
+        assert inhibit_entries(region) == len(inhibitions()), (
+            f"the inhibit-rules region holds {inhibit_entries(region)} entries and this file's "
+            f"reader sees {len(inhibitions())}. A rule it cannot open is a rule it cannot guard, "
+            "and Alertmanager will honour it. Compare `amtool check-config`'s own count."
+        )
+
     def test_every_alert_an_inhibit_rule_names_is_one_of_the_twelve(self) -> None:
         """A rule naming an alert that does not exist is dead, and a typo reads as one."""
         for rule in inhibitions():
@@ -565,8 +799,17 @@ class TestDelivery:
         """A rule that names most of the twelve as targets is a blanket rule spelled out longhand.
 
         The two guards above forbid a class matcher; they do not forbid enumerating eleven alerts.
-        An inhibition worth having names the handful one cause makes redundant, so a target list
-        past half the deployment is the same design error with more typing.
+
+        THE CAP IS ON WHAT AN INHIBITION IS, not on half the file. Half of twelve is six, and six of
+        the twelve is SIX OF THE SEVEN WARNINGS: measured with both sides naming alertnames, so the
+        both-sides guard does not help, one rule suppressed `SolveFailing`, `SourceStale`,
+        `SupersededRatioHigh`, `ProbeSlow`, `AssemblySlow` and `HorizonNotMaintained` at once and
+        this assertion passed. A cap at half the deployment does not bound the harm it exists to
+        bound.
+
+        Four is what an inhibition plausibly is: the largest rule this deployment ships names four,
+        one cause making four duties redundant. A cause that makes five alerts redundant is a
+        different design, and it should have to argue for itself here.
         """
         for rule in inhibitions():
             named = {
@@ -576,9 +819,10 @@ class TestDelivery:
                 for name in matcher.partition("=")[2].split("|")
             }
 
-            assert len(named) <= len(SEVERITY_BY_ALERT) // 2, (
-                f"{rule.sources} suppresses {len(named)} of {len(SEVERITY_BY_ALERT)} alerts, which "
-                "is a blanket rule enumerated rather than a cause"
+            assert len(named) <= MOST_ALERTS_ONE_CAUSE_MAKES_REDUNDANT, (
+                f"{rule.sources} suppresses {len(named)} alerts, past the "
+                f"{MOST_ALERTS_ONE_CAUSE_MAKES_REDUNDANT} one cause plausibly makes redundant. "
+                "That is a blanket rule enumerated rather than a cause."
             )
 
 

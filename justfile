@@ -151,21 +151,25 @@ monitoring-probe:
       -v "$PWD/deployments/bin:/probe:ro" --entrypoint python api \
       /probe/stack-probe.py http://prometheus:9090 http://grafana:3000 "${GRAFANA_ADMIN_PASSWORD:-admin}"
 
-# Post one alert per severity to the running Alertmanager and report what it did with each.
+# Post EVERY alert this deployment declares to the running Alertmanager and check what it suppressed.
 #
 # THE ONE ARTEFACT `amtool` CANNOT JUDGE. An inhibit rule whose matchers name a CLASS rather than a
 # cause is syntactically perfect and silences whole severities: this deployment shipped exactly that,
-# and only posting alerts showed it. A warning coming back `suppressed` beside an unrelated critical is
-# the failure to look for, and the probe exits non-zero on exactly that.
+# and only posting alerts showed it.
+#
+# The check is an EQUALITY, not an emptiness: with all twelve firing, the set Alertmanager suppressed
+# must be exactly the set the declared rules name as targets. That is what lets the probe catch a rule
+# its own reader cannot see, which is how the legacy `source_match:` map form escaped every guard.
 #
 # Run in the api's own image, which has python, through `docker compose run`. The first version of
 # this recipe used `alpine/curl`, which has no `python3`, so the probe exited 127 having posted its
 # alerts and reported nothing: the probe for the defect that caused the round-1 must-fix had never
-# once run through its own recipe.
+# once run through its own recipe. The WHOLE `deployments` directory is mounted rather than `bin`,
+# because the probe reads both configuration files to decide what to post and what to expect.
 monitoring-alert-probe:
     docker compose {{monitoring_compose}} run --rm --no-deps \
-      -v "$PWD/deployments/bin:/probe:ro" --entrypoint python api \
-      /probe/alertmanager-probe.py http://alertmanager:9093
+      -v "$PWD/deployments:/deployments:ro" --entrypoint python api \
+      /deployments/bin/alertmanager-probe.py http://alertmanager:9093
 
 # The api only, on the host, with autoreload. Needs `just dev-infra` and `just migrate`
 dev-api:
