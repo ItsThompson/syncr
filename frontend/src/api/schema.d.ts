@@ -719,6 +719,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/learned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What has been learned, and what is still collecting
+         * @description Per-parameter maturity, values, sample counts and plain-language statements. A read.
+         */
+        get: operations["read_learned_api_v1_learned_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/off-plan": {
         parameters: {
             query?: never;
@@ -1459,6 +1479,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/weight-sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every version, with origin and active flag
+         * @description The versions this account holds, newest first. Writes nothing.
+         */
+        get: operations["list_weight_sets_api_v1_weight_sets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/weight-sets/{version}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate a version, or revert to an earlier one
+         * @description Put ``version`` in force and re-solve every future week. Past weeks are immutable.
+         */
+        post: operations["activate_weight_set_api_v1_weight_sets__version__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -1650,6 +1710,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivatedResponse
+         * @description The version now in force, and the future weeks the activation re-solved.
+         */
+        ActivatedResponse: {
+            /**
+             * Resolvedweeks
+             * @description The FUTURE weeks re-solved. A past week's approved revision is immutable.
+             */
+            resolvedWeeks: string[];
+            /** Version */
+            version: number;
+        };
         ActualMinutes: number;
         /**
          * AddCalendarSourceRequest
@@ -3466,6 +3539,30 @@ export interface components {
             }[];
         };
         /**
+         * LearnedResponse
+         * @description Everything the Learned screen renders.
+         */
+        LearnedResponse: {
+            /** Collecting */
+            collecting: number;
+            /** Collectingisnormal */
+            collectingIsNormal: string;
+            /** Fittedat */
+            fittedAt: string | null;
+            /** Origin */
+            origin: string;
+            /** Parameters */
+            parameters: components["schemas"]["ParameterResponse"][];
+            /** Ready */
+            ready: number;
+            /** Thresholdsareestimates */
+            thresholdsAreEstimates: string;
+            /** Unlockscountconfirmedvolume */
+            unlocksCountConfirmedVolume: string;
+            /** Version */
+            version: number;
+        };
+        /**
          * LedgerRowResponse
          * @description One row of the day, in the order the ledger renders its columns.
          */
@@ -3856,6 +3953,47 @@ export interface components {
              * @description The times of day this owner's work should happen, at most 6 of them, returned earliest first. Each sits inside one local day, so its end is later than its start and a stretch across midnight is refused. They may not overlap: two that do describe one window. An empty list means this owner names no time of day, and on a habit's or a task's preference that is a statement rather than an omission, because a preference replaces its Area's windows wholly: it means this one thing has no preferred time even though the rest of its Area does. Required and not defaulted, so a forgotten key is refused rather than read as that statement: opting one habit out of its Area's windows is a placement decision and has to be made on purpose.
              */
             windows: components["schemas"]["TimeWindowRequest"][];
+        };
+        /**
+         * ParameterResponse
+         * @description One row of the Learned screen.
+         */
+        ParameterResponse: {
+            /**
+             * Parameter
+             * @description The parameter, with its key where it has one.
+             */
+            parameter: string;
+            /**
+             * Plainlanguage
+             * @description What this row means, in the user's own terms.
+             */
+            plainLanguage: string;
+            /**
+             * Samples
+             * @description Observations behind it.
+             */
+            samples: number;
+            /**
+             * Shrinkageweight
+             * @description How much of the value is still the prior, from 0 to 1.
+             */
+            shrinkageWeight: number;
+            /**
+             * State
+             * @description `collecting` or `ready`.
+             */
+            state: string;
+            /**
+             * Threshold
+             * @description How many it needs before it is applied. An ESTIMATE.
+             */
+            threshold: number;
+            /**
+             * Value
+             * @description The fitted figure, or null while collecting.
+             */
+            value: number | null;
         };
         /**
          * PeriodSpan
@@ -5661,6 +5799,37 @@ export interface components {
             zoneByDate: {
                 [key: string]: string;
             };
+        };
+        /**
+         * WeightSetResponse
+         * @description One version, as the list renders it.
+         */
+        WeightSetResponse: {
+            /** Active */
+            active: boolean;
+            /** Collecting */
+            collecting: number;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Fittedat */
+            fittedAt: string | null;
+            /** Origin */
+            origin: string;
+            /** Ready */
+            ready: number;
+            /** Version */
+            version: number;
+        };
+        /**
+         * WeightSetsResponse
+         * @description Every version this account holds, newest first.
+         */
+        WeightSetsResponse: {
+            /** Versions */
+            versions: components["schemas"]["WeightSetResponse"][];
         };
         WireDecimal: number;
         /**
@@ -9137,6 +9306,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreferenceResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_learned_api_v1_learned_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearnedResponse"];
                 };
             };
             /** @description Authentication required */
@@ -13023,6 +13257,139 @@ export interface operations {
             };
             /** @description Conflict with the current state */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_weight_sets_api_v1_weight_sets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeightSetsResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    activate_weight_set_api_v1_weight_sets__version__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The version to put in force. */
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivatedResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

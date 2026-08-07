@@ -1,6 +1,29 @@
 {
   "components": {
     "schemas": {
+      "ActivatedResponse": {
+        "description": "The version now in force, and the future weeks the activation re-solved.",
+        "properties": {
+          "resolvedWeeks": {
+            "description": "The FUTURE weeks re-solved. A past week's approved revision is immutable.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Resolvedweeks",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "resolvedWeeks"
+        ],
+        "title": "ActivatedResponse",
+        "type": "object"
+      },
       "ActualMinutes": {
         "maximum": 1440.0,
         "minimum": 1.0,
@@ -3421,6 +3444,71 @@
         "title": "JsonWebKeySet",
         "type": "object"
       },
+      "LearnedResponse": {
+        "description": "Everything the Learned screen renders.",
+        "properties": {
+          "collecting": {
+            "title": "Collecting",
+            "type": "integer"
+          },
+          "collectingIsNormal": {
+            "title": "Collectingisnormal",
+            "type": "string"
+          },
+          "fittedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fittedat"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/ParameterResponse"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "integer"
+          },
+          "thresholdsAreEstimates": {
+            "title": "Thresholdsareestimates",
+            "type": "string"
+          },
+          "unlocksCountConfirmedVolume": {
+            "title": "Unlockscountconfirmedvolume",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "origin",
+          "fittedAt",
+          "parameters",
+          "ready",
+          "collecting",
+          "thresholdsAreEstimates",
+          "unlocksCountConfirmedVolume",
+          "collectingIsNormal"
+        ],
+        "title": "LearnedResponse",
+        "type": "object"
+      },
       "LedgerRowResponse": {
         "description": "One row of the day, in the order the ledger renders its columns.",
         "properties": {
@@ -4264,6 +4352,64 @@
           "strength"
         ],
         "title": "OverridePreferenceRequest",
+        "type": "object"
+      },
+      "ParameterResponse": {
+        "description": "One row of the Learned screen.",
+        "properties": {
+          "parameter": {
+            "description": "The parameter, with its key where it has one.",
+            "title": "Parameter",
+            "type": "string"
+          },
+          "plainLanguage": {
+            "description": "What this row means, in the user's own terms.",
+            "title": "Plainlanguage",
+            "type": "string"
+          },
+          "samples": {
+            "description": "Observations behind it.",
+            "title": "Samples",
+            "type": "integer"
+          },
+          "shrinkageWeight": {
+            "description": "How much of the value is still the prior, from 0 to 1.",
+            "title": "Shrinkageweight",
+            "type": "number"
+          },
+          "state": {
+            "description": "`collecting` or `ready`.",
+            "title": "State",
+            "type": "string"
+          },
+          "threshold": {
+            "description": "How many it needs before it is applied. An ESTIMATE.",
+            "title": "Threshold",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The fitted figure, or null while collecting.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "parameter",
+          "samples",
+          "threshold",
+          "state",
+          "value",
+          "shrinkageWeight",
+          "plainLanguage"
+        ],
+        "title": "ParameterResponse",
         "type": "object"
       },
       "PeriodSpan": {
@@ -7226,6 +7372,76 @@
           "readings"
         ],
         "title": "WeekViewResponse",
+        "type": "object"
+      },
+      "WeightSetResponse": {
+        "description": "One version, as the list renders it.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "collecting": {
+            "title": "Collecting",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "fittedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fittedat"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "origin",
+          "active",
+          "fittedAt",
+          "createdAt",
+          "ready",
+          "collecting"
+        ],
+        "title": "WeightSetResponse",
+        "type": "object"
+      },
+      "WeightSetsResponse": {
+        "description": "Every version this account holds, newest first.",
+        "properties": {
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/WeightSetResponse"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions"
+        ],
+        "title": "WeightSetsResponse",
         "type": "object"
       },
       "WireDecimal": {
@@ -11588,6 +11804,78 @@
         "summary": "Replace a habit's preference whole. It replaces its Area's",
         "tags": [
           "preferences"
+        ]
+      }
+    },
+    "/api/v1/learned": {
+      "get": {
+        "description": "Per-parameter maturity, values, sample counts and plain-language statements. A read.",
+        "operationId": "read_learned_api_v1_learned_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearnedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "What has been learned, and what is still collecting",
+        "tags": [
+          "learned"
         ]
       }
     },
@@ -16406,6 +16694,164 @@
         "summary": "The verdict alone, for a cheap refresh. Writes nothing",
         "tags": [
           "weeks"
+        ]
+      }
+    },
+    "/api/v1/weight-sets": {
+      "get": {
+        "description": "The versions this account holds, newest first. Writes nothing.",
+        "operationId": "list_weight_sets_api_v1_weight_sets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeightSetsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Every version, with origin and active flag",
+        "tags": [
+          "learned"
+        ]
+      }
+    },
+    "/api/v1/weight-sets/{version}/activate": {
+      "post": {
+        "description": "Put ``version`` in force and re-solve every future week. Past weeks are immutable.",
+        "operationId": "activate_weight_set_api_v1_weight_sets__version__activate_post",
+        "parameters": [
+          {
+            "description": "The version to put in force.",
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "description": "The version to put in force.",
+              "minimum": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Activate a version, or revert to an earlier one",
+        "tags": [
+          "learned"
         ]
       }
     },
