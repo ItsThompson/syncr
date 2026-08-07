@@ -9,8 +9,14 @@
  * A control added to this header by a later ticket inherits the correct ring without knowing the rule
  * exists, which is the whole reason the rule is written against a container.
  *
- * Radix owns the modal behaviour: focus is trapped while open, returned to the trigger on close, and Escape
- * closes. None of that is reimplemented here, and there is no fade in either direction.
+ * Radix owns the modal behaviour: focus is trapped while open, Escape closes, and there is no fade in either
+ * direction.
+ *
+ * WHERE FOCUS GOES ON CLOSE IS THE CALLER'S TO NAME, through `returnFocusTo`. Radix restores focus itself when
+ * the dialog was opened by a trigger it can see; measured in this environment, a dialog opened by a KEYSTROKE
+ * closes onto the document body instead, which is nowhere. The element the reader was on when the chord fired is
+ * something only the caller holds, so it is the caller that names it, and the return is driven through Radix's
+ * own `onCloseAutoFocus` rather than around it.
  *
  * `isOpen` is the caller's, because a dialog in this product is opened by a route, a keyboard chord or a
  * verdict row, and each of those already owns the state that decides. */
@@ -33,10 +39,17 @@ export interface DialogProps {
   /** Announced to a screen reader with the title. A dialog whose body is prose needs none. */
   readonly description?: string | undefined;
   /**
+   * The element focus returns to when the dialog closes. Absent leaves the return to Radix.
+   *
+   * Named by the caller because only the caller knows: a dialog opened by a keystroke has no trigger to go back
+   * to, and where the reader was is what the caller read at the moment it decided to open.
+   */
+  readonly returnFocusTo?: HTMLElement | null | undefined;
+  /**
    * The panel, which is the element a caller measures or scrolls.
    *
-   * Focus is Radix's: it is trapped in the panel while open and returned to the trigger on close, so a
-   * caller does not need this node to place the caret.
+   * Focus is Radix's: it is trapped in the panel while open, so a caller does not need this node to place the
+   * caret.
    */
   readonly ref?: Ref<HTMLDivElement> | undefined;
 }
@@ -48,14 +61,27 @@ export function Dialog({
   children,
   footer,
   description,
+  returnFocusTo,
   ref,
 }: DialogProps) {
+  /* Radix types its optional props as `?: T`, and under `exactOptionalPropertyTypes` an explicit undefined is an
+     error, so the handler is omitted rather than passed when the caller names no element. */
+  const closeFocus =
+    returnFocusTo === undefined || returnFocusTo === null
+      ? {}
+      : {
+          onCloseAutoFocus: (event: Event) => {
+            event.preventDefault();
+            returnFocusTo.focus();
+          },
+        };
+
   return (
     <RadixDialog.Root open={isOpen} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         {/* The scrim is the centring container, so the panel needs no transform: see overlay.css. */}
         <RadixDialog.Overlay className="overlay__scrim">
-          <RadixDialog.Content ref={ref} className="overlay dialog">
+          <RadixDialog.Content ref={ref} className="overlay dialog" {...closeFocus}>
             <header className="on-ink-surface dialog__header">
               <RadixDialog.Title>{title}</RadixDialog.Title>
               <RadixDialog.Close className="dialog__dismiss" aria-label="Close">

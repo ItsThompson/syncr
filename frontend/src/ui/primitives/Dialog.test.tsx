@@ -8,7 +8,7 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -93,6 +93,60 @@ describe("Dialog", () => {
     expect(
       screen.getByRole("dialog", { description: "Approving writes the week to the calendar." }),
     ).toBeInTheDocument();
+  });
+});
+
+/* WHERE FOCUS GOES ON CLOSE, WHICH THE CALLER NAMES.
+ *
+ * A dialog opened by a keystroke has no trigger for Radix to go back to, and what it does instead was MEASURED
+ * rather than assumed: it lands the reader on the document body. The first test below is that measurement, kept
+ * as a test so the day Radix restores focus itself is a day this reddens and the prop can go. The second is the
+ * behaviour the caller gets by naming the element. */
+describe("the dialog's close focus", () => {
+  function renderAfterFocusing(returnFocusTo?: HTMLElement | null) {
+    const outside = document.createElement("button");
+    outside.textContent = "where the reader was";
+    document.body.append(outside);
+    outside.focus();
+
+    const rendered = renderDialog(
+      returnFocusTo === undefined ? {} : { returnFocusTo, isOpen: true },
+    );
+    return { outside, ...rendered };
+  }
+
+  it("lands on the document body when nothing names an element, which is why the prop exists", async () => {
+    const { outside, rerender } = renderAfterFocusing();
+
+    rerender(
+      <Dialog isOpen={false} onOpenChange={vi.fn<(next: boolean) => void>()} title="Approve week">
+        <p>91 blocks.</p>
+      </Dialog>,
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    expect(outside).not.toHaveFocus();
+  });
+
+  it("returns the reader to the element the caller named", async () => {
+    const { outside, rerender } = renderAfterFocusing(null);
+
+    rerender(
+      <Dialog
+        isOpen={false}
+        onOpenChange={vi.fn<(next: boolean) => void>()}
+        returnFocusTo={outside}
+        title="Approve week"
+      >
+        <p>91 blocks.</p>
+      </Dialog>,
+    );
+
+    await waitFor(() => {
+      expect(outside).toHaveFocus();
+    });
   });
 });
 
