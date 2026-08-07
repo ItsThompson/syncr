@@ -43,7 +43,7 @@ resolved."
 contributing none to any plan, which is the panel disagreeing with every other surface about one
 source.
 
-## A source the user removes or excludes takes its series with it
+## A source the user removes or excludes takes its series with it, and so does a tenant
 
 These two are labelled gauges set by iterating current rows, and nothing in the client library
 removes a child. The worker is long-lived, so without :func:`_reconciled` a source the user deleted
@@ -56,6 +56,14 @@ series goes momentarily absent and one tenant's reading cannot wipe another's.
 Every source a tenant holds has an anchor count, including an excluded one, whose count is zero and
 worth drawing. Only an INCLUDED source has a staleness worth alerting on, so an excluded source's
 staleness child is removed by the same mechanism that removes a deleted source's.
+
+**THE TENANT DIMENSION IS RECONCILED TOO, which is the same seam one level up.** A source is
+reconciled when its tenant is observed, so a tenant that stops being enumerated is never visited
+again and keeps every child at its last value forever. ``SourceStale`` reads a maximum across every
+tenant, so one departed tenant with a stale source would fire it permanently, and no poll could ever
+clear it. :func:`forget_tenants` closes that, and the duty calls it with the tenant list it just
+read rather than with the tenants it managed to read: a tenant whose read RAISED is still a tenant,
+and forgetting it would delete live series on a transient fault.
 
 ## Why the label is a source id and not a source name
 
@@ -76,7 +84,7 @@ from syncr_api.calendars.projection_metrics import FAILED, PROJECTION_OUTCOMES, 
 from syncr_common.metrics import REGISTRY
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Collection, Iterable
     from datetime import datetime
 
     from syncr_api.calendars.events import FetchOutcome
@@ -147,6 +155,12 @@ SOURCE_STALENESS = Gauge(
     registry=REGISTRY,
 )
 
+# Which gauge each reconciliation key removes from, so a key cannot drift from the family it names.
+_GAUGE_BY_FAMILY: Final[dict[str, Gauge]] = {
+    ANCHORS: ANCHORS_CURRENT,
+    STALENESS: SOURCE_STALENESS,
+}
+
 
 def seed_the_sync_families() -> None:
     """Export every provider-and-outcome series at zero before the first attempt.
@@ -198,30 +212,51 @@ def observed_state(
     have their staleness child removed, so the maximum the alert reads cannot see either.
     """
     held = tuple(sources)
+    published: dict[str, set[str]] = {ANCHORS: set(), STALENESS: set()}
     for source in held:
+        source_id = str(source.id)
         # The record's own property rather than the sync-state column: zero for an excluded source,
         # whatever its last successful sync read, which is the figure every other surface uses.
-        ANCHORS_CURRENT.labels(source_id=str(source.id)).set(source.anchor_count)
-    for source in held:
+        ANCHORS_CURRENT.labels(source_id=source_id).set(source.anchor_count)
+        published[ANCHORS].add(source_id)
         if not source.included:
             continue
-        SOURCE_STALENESS.labels(source_id=str(source.id)).set(
+        SOURCE_STALENESS.labels(source_id=source_id).set(
             _staleness_seconds(source.sync_state.last_success_at, source.created_at, now=now)
         )
-    _reconciled(ANCHORS_CURRENT, ANCHORS, tenant_id, {str(one.id) for one in held})
-    _reconciled(
-        SOURCE_STALENESS, STALENESS, tenant_id, {str(one.id) for one in held if one.included}
-    )
+        published[STALENESS].add(source_id)
+    for family, present in published.items():
+        _reconciled(family, tenant_id, present)
 
 
-def _reconciled(gauge: Gauge, family: str, tenant_id: TenantId, present: set[str]) -> None:
-    """Remove every child of ``gauge`` this tenant published before and no longer publishes.
+def forget_tenants(present: Collection[TenantId]) -> None:
+    """Remove every child published for a tenant this deployment no longer enumerates.
+
+    The tenant end of the same reconciliation. :func:`_reconciled` prunes a tenant's sources when
+    that tenant is observed, which leaves a tenant that stops being enumerated frozen at its last
+    reading in a long-lived worker. ``SourceStale`` reads a maximum across tenants, so one departed
+    tenant holding a stale source fires it forever with nothing able to clear it.
+
+    Called with the tenants the duty ENUMERATED, not the ones it read successfully: a contained
+    fault means a tenant went unobserved this tick, not that it is gone, and forgetting it would
+    delete live series whenever a read raised.
+    """
+    kept = {str(one) for one in present}
+    for family, tenant_id in [key for key in _PUBLISHED if str(key[1]) not in kept]:
+        gauge = _GAUGE_BY_FAMILY[family]
+        for source_id in _PUBLISHED.pop((family, tenant_id)):
+            gauge.remove(source_id)
+
+
+def _reconciled(family: str, tenant_id: TenantId, present: set[str]) -> None:
+    """Remove every child of this family's gauge this tenant published before and no longer does.
 
     The published set is tracked here rather than read off the collector, because the client library
     exposes no public way to enumerate a family's children and a private attribute is not a
     contract. Kept per family and per tenant: the two families reconcile against different sets,
     because an excluded source keeps an anchor count of zero and loses its staleness entirely.
     """
+    gauge = _GAUGE_BY_FAMILY[family]
     for source_id in _PUBLISHED.get((family, tenant_id), frozenset()) - present:
         gauge.remove(source_id)
     _PUBLISHED[(family, tenant_id)] = frozenset(present)

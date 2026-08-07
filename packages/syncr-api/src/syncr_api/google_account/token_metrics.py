@@ -15,6 +15,12 @@ where a refresh is attempted is absent exactly when refreshes have stopped being
 is ticket 30's other finding stated as a rule. So the reading is one row per tenant, taken from the
 credential table on a schedule, and a deployment with no Google connection reports zero rather than
 nothing: an absent series and a healthy one must not be the same reading.
+
+**A TENANT THAT STOPS BEING ENUMERATED HAS ITS SERIES REMOVED.** The alert reads a maximum across
+tenants, and nothing in the client library removes a child, so in a long-lived worker a departed
+tenant whose credential was failing would hold this deployment's most dangerous alert firing forever
+with no repair available. :func:`forget_tenants` is that reconciliation, and it mirrors the one the
+two per-source gauges carry.
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ from prometheus_client import Gauge
 from syncr_common.metrics import REGISTRY
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
     from datetime import datetime
 
     from syncr_api.google_account.records import GoogleCredentialRecord
@@ -37,6 +44,11 @@ TOKEN_AGE = Gauge(
     labelnames=("tenant",),
     registry=REGISTRY,
 )
+
+# Which tenants this process has published a series for, so a tenant that disappears can have it
+# removed. Tracked here for the same reason the source gauges track theirs: the client library
+# offers no public way to enumerate a family's children.
+_PUBLISHED: set[str] = set()
 
 
 def observed_credential(
@@ -52,3 +64,18 @@ def observed_credential(
     TOKEN_AGE.labels(tenant=str(tenant_id)).set(
         0.0 if failing_since is None else max((now - failing_since).total_seconds(), 0.0)
     )
+    _PUBLISHED.add(str(tenant_id))
+
+
+def forget_tenants(present: Collection[TenantId]) -> None:
+    """Remove this gauge's series for every tenant the deployment no longer enumerates.
+
+    Called with the tenants the duty ENUMERATED rather than the ones it read successfully. A
+    contained fault means a tenant went unobserved this tick, not that it is gone: forgetting it
+    would delete a live series on a transient fault, and the alert would then read healthy for the
+    one tenant whose state could not be established.
+    """
+    kept = {str(one) for one in present}
+    for tenant in _PUBLISHED - kept:
+        TOKEN_AGE.remove(tenant)
+        _PUBLISHED.discard(tenant)

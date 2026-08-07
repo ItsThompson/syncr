@@ -33,7 +33,7 @@ from syncr_api.observability.product_runner import ProductMetricRunner
 from syncr_api.observability.state_runner import StateGaugeRunner
 from syncr_api.worker.main import WorkerContext
 from syncr_common.metrics import REGISTRY
-from tests.live_tenants import provision_owner, remove_tenant
+from tests.live_tenants import delete_tenant, provision_owner, remove_tenant
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -282,6 +282,79 @@ class TestTheStateGauges:
 
         assert sample(ANCHORS, source_id=str(created.id)) == 0.0
         assert f'{ANCHORS}{{source_id="{created.id}"}}' in generate_latest(REGISTRY).decode()
+
+    async def test_a_tenant_the_duty_no_longer_enumerates_is_forgotten_by_every_family(
+        self, context: WorkerContext, owner: UserRecord
+    ) -> None:
+        """BREAK IT: publish a stale source and a failing token, remove the tenant, observe again.
+
+        The deleted-source end one level up, and the one this ticket's own enumeration of criterion
+        16 found last. A tenant's children are pruned only while that tenant is still enumerated, so
+        a tenant that leaves `TenantRepository.list_ids()` is never visited again and holds every
+        child at its last value for the life of the worker. `SourceStale` and
+        `WriteTargetTokenExpiring` both read a maximum ACROSS tenants, so one departed tenant fires
+        either of them forever, and no poll and no reconnect can clear it.
+
+        DERIVED RATHER THAN LISTED: the assertion is that NO family in the whole exposition still
+        names the gone tenant or its sources. A fourth tenant-dimensioned family added later without
+        a reconciliation fails this without the test being touched, which a per-family assertion
+        could not do.
+        """
+        async with context.database.sessionmaker() as session, session.begin():
+            created = await a_source(session, owner, added=NOW - timedelta(days=10))
+            credentials = GoogleCredentialRepository(session, owner.tenant_id)
+            await credentials.connect(
+                encrypted_refresh_token="ciphertext",
+                granted_scopes=("https://www.googleapis.com/auth/calendar",),
+                at=NOW - timedelta(days=30),
+            )
+            await credentials.record_refresh_failure(at=NOW - timedelta(days=2), reason="invalid")
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+        assert sample(STALENESS, source_id=str(created.id)) > SOURCE_STALE_THRESHOLD
+        assert sample(TOKEN_AGE, tenant=str(owner.tenant_id)) > 0.0
+
+        await delete_tenant(context.database.sessionmaker, owner.tenant_id)
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+        exposition = generate_latest(REGISTRY).decode()
+
+        assert str(owner.tenant_id) not in exposition, (
+            "a tenant the duty no longer enumerates still has a series, so an alert reading max() "
+            "across tenants can see it forever"
+        )
+        assert str(created.id) not in exposition
+
+    async def test_a_tenant_whose_read_raises_keeps_its_series(
+        self, context: WorkerContext, owner: UserRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other side of the forgetting, and the reason it reads the ENUMERATED list.
+
+        Forgetting the tenants that were read successfully would have been the shorter code and it
+        would be wrong: a per-tenant fault is CONTAINED here, so a transient failure would delete a
+        live tenant's series and leave `WriteTargetTokenExpiring` reading absent for the one tenant
+        whose state could not be established. A tenant that went unobserved is not a tenant that
+        went away.
+        """
+        async with context.database.sessionmaker() as session, session.begin():
+            created = await a_source(session, owner, added=NOW - timedelta(days=10))
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+        assert sample(STALENESS, source_id=str(created.id)) > SOURCE_STALE_THRESHOLD
+
+        from syncr_api.observability import state_runner
+
+        async def raising(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("the read did not come back")
+
+        monkeypatch.setattr(state_runner, "_observe_tenant", raising)
+
+        read = await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(
+            context, now=NOW
+        )
+
+        assert read == 0, "the fault has to be contained for this test to be about anything"
+        assert sample(STALENESS, source_id=str(created.id)) > SOURCE_STALE_THRESHOLD
 
 
 class TestTheProductJob:

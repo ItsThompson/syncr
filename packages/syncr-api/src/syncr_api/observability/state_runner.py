@@ -14,6 +14,15 @@ over a table that holds a plan carries its tenant, so this enumerates tenants an
 repositories rather than issuing one unscoped read. A tenant whose read raises is counted and the
 tenants after it are still observed: a duty that dropped the rest would take the alerting for the
 whole deployment down with one bad row.
+
+**AND A TENANT THAT STOPS BEING ENUMERATED IS FORGOTTEN.** All three families here are labelled, and
+nothing in the client library removes a child, so a per-tenant reconciliation prunes a tenant's
+sources only while that tenant is still visited. A tenant that leaves the list is never visited
+again and holds every child at its last value for the life of the process: ``SourceStale`` and
+``WriteTargetTokenExpiring`` both read a maximum across tenants, so one departed tenant fires either
+of them forever with no repair available. The forgetting is done with the tenant list this duty just
+ENUMERATED, deliberately not with the tenants it read successfully, because a contained fault means
+a tenant went unobserved rather than away.
 """
 
 from __future__ import annotations
@@ -24,8 +33,10 @@ from prometheus_client import Counter
 
 from syncr_api.accounts.repository import TenantRepository
 from syncr_api.calendars.repository import CalendarSourceRepository
+from syncr_api.calendars.sync_metrics import forget_tenants as forget_source_tenants
 from syncr_api.calendars.sync_metrics import observed_state
 from syncr_api.google_account.repository import GoogleCredentialRepository
+from syncr_api.google_account.token_metrics import forget_tenants as forget_token_tenants
 from syncr_api.google_account.token_metrics import observed_credential
 from syncr_common.logging import get_logger
 from syncr_common.metrics import REGISTRY, measured
@@ -85,6 +96,11 @@ class StateGaugeRunner:
         read = 0
         for tenant_id in tenants:
             read += await self._observed_tenant(context, tenant_id, now=now)
+        # Every tenant that was ENUMERATED, not every tenant that was read: a contained fault above
+        # means a tenant went unobserved this tick rather than away, and forgetting it would delete
+        # a live series and leave the alert reading healthy for the one tenant in doubt.
+        forget_source_tenants(tenants)
+        forget_token_tenants(tenants)
         return read
 
     async def _observed_tenant(
