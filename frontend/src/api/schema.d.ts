@@ -1048,7 +1048,7 @@ export interface paths {
         };
         /**
          * The backlog, with the counts its header states
-         * @description The tasks either filter selects, oldest first, and the two figures the header states.
+         * @description The tasks the filters select, oldest first, and the two figures the header states.
          */
         get: operations["list_tasks_api_v1_tasks_get"];
         put?: never;
@@ -2299,12 +2299,12 @@ export interface components {
         BacklogHeader: {
             /**
              * Atriskcount
-             * @description How many open tasks the current week's verdict reports a deadline shortfall for. Over the same population as openCount, so the figure and the marked rows are one answer. Recomputed on every read rather than on a timer, and nothing pushes it: the event stream carries no verdict member, because only a conflict notifies.
+             * @description How many open tasks the current week's verdict reports a deadline shortfall for. Over the same population as openCount, so the figure and the marked rows are one answer, and unaffected by the status and atRisk filters for the reason openCount is: narrowing the table to the marked rows does not change how many of them there are. Recomputed on every read rather than on a timer, and nothing pushes it: the event stream carries no verdict member, because only a conflict notifies.
              */
             atRiskCount: number;
             /**
              * Opencount
-             * @description How many tasks are open. Unaffected by the status filter, because a count of open tasks that reported zero while the table showed completed ones would not be one. Narrowed by the area filter, which narrows the whole screen.
+             * @description How many tasks are open. Unaffected by the status and atRisk filters, because a count of open tasks that reported zero while the table showed completed ones would not be one. Narrowed by the area filter, which narrows the whole screen.
              */
             openCount: number;
         };
@@ -11235,6 +11235,8 @@ export interface operations {
             query?: {
                 areaId?: string | null;
                 status?: components["schemas"]["TaskStatus"] | null;
+                /** @description True selects the rows the current week's verdict marks, false the rest, and absent every row. It narrows the rows only: both header figures are over the Area's open tasks whatever this is set to, so the count and the marked rows stay one answer. The narrowing is the server's because the determination is: a client that filtered the list itself would show a count and a row set that disagree. */
+                atRisk?: boolean | null;
             };
             header?: never;
             path?: never;
