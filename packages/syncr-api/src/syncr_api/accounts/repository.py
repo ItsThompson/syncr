@@ -15,6 +15,11 @@ without a tenant.
 No method commits. One request is one transaction, opened and committed by
 :func:`syncr_api.core.db.get_transaction`, so a service that writes two rows cannot
 leave one behind.
+
+Each class carries :func:`~syncr_api.core.db_metrics.measure_reads` explicitly, because the hook
+that applies it to every scoped repository is on the base these three do not extend. Without it the
+session lookup on the hot path of every authenticated request would be the one read
+``syncr_db_query_duration_seconds`` could not see.
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ from sqlalchemy import select, update
 
 from syncr_api.accounts.models import BrowserSession, Tenant, User
 from syncr_api.accounts.records import SessionRecord, UserRecord
+from syncr_api.core.db_metrics import measure_reads
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -36,6 +42,7 @@ if TYPE_CHECKING:
     from syncr_domain.identifiers import TenantId, UserId
 
 
+@measure_reads
 class TenantRepository:
     """Reads the tenants a deployment holds.
 
@@ -54,6 +61,7 @@ class TenantRepository:
         return list(found)
 
 
+@measure_reads
 class UserRepository:
     """Reads and creates the one user a tenant holds."""
 
@@ -108,6 +116,7 @@ class UserRepository:
         return _as_user_record(user)
 
 
+@measure_reads
 class SessionRepository:
     """Reads, creates, slides, and revokes browser sessions."""
 

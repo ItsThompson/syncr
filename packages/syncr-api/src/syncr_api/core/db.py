@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import (
 # importable at runtime or FastAPI treats `request` as a validated query field.
 from starlette.requests import Request  # noqa: TC002
 
+from syncr_api.core.db_metrics import observe_pool
 from syncr_common.health import CheckResult
 from syncr_common.logging import get_logger
 
@@ -63,8 +64,13 @@ _log = get_logger("syncr.db")
 
 
 def create_db_engine(database_url: str, *, echo: bool = False) -> AsyncEngine:
-    """Build the async engine backed by a bounded connection pool."""
-    return create_async_engine(
+    """Build the async engine backed by a bounded connection pool.
+
+    The pool gauge is attached here rather than at a call site, so every engine this application
+    builds is one ``syncr_db_pool_in_use`` reads: a pool saturating is not a condition the process
+    will reach a line to report.
+    """
+    engine = create_async_engine(
         database_url,
         pool_size=POOL_SIZE,
         max_overflow=MAX_OVERFLOW,
@@ -72,6 +78,8 @@ def create_db_engine(database_url: str, *, echo: bool = False) -> AsyncEngine:
         pool_pre_ping=True,
         echo=echo,
     )
+    observe_pool(engine)
+    return engine
 
 
 def create_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

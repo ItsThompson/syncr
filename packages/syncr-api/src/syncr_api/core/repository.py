@@ -24,6 +24,10 @@ There is deliberately no ``scoped_insert``. A scope is a column value on an inse
 a predicate, so there would be nothing for a helper to add and nothing for a test to
 look for.
 
+Every public coroutine method a subclass defines is timed onto
+``syncr_db_query_duration_seconds``. It is hooked here rather than decorated per repository, so a
+repository added by a later ticket is measured without anyone remembering to ask for it.
+
 Authorization is NOT here. A repository decides what rows are in scope; whether the
 caller may act on them is the service layer's decision, made against an explicit
 principal.
@@ -35,6 +39,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import delete, select, update
 
+from syncr_api.core.db_metrics import measure_reads
 from syncr_api.core.tenancy import TenantScoped
 
 if TYPE_CHECKING:
@@ -55,6 +60,10 @@ class TenantScopedReader:
     def __init__(self, session: AsyncSession, tenant_id: TenantId) -> None:
         self._session = session
         self._tenant_id = tenant_id
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        measure_reads(cls)
 
     @property
     def tenant_id(self) -> TenantId:

@@ -1,0 +1,166 @@
+"""The two database families, read out of the exposition a scraper reads.
+
+The pool gauge is driven by CHECKING OUT connections and watching it rise, then releasing them and
+watching it fall, because a gauge asserted only at rest is a gauge nobody has seen move.
+
+The read histogram is driven through a real repository against a real database, so the wrap the
+scoped base installs is exercised where it actually runs. One test asserts the failing exit is timed
+too: a read that raises after a lock wait is the reading an operator most wants.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from uuid import uuid4
+
+import pytest
+from prometheus_client import generate_latest
+from sqlalchemy import text
+
+from syncr_api.accounts.repository import TenantRepository
+from syncr_api.core.db import create_db_engine, create_sessionmaker
+from syncr_api.core.db_metrics import READ_BUCKETS, measure_reads
+from syncr_api.core.repository import TenantScopedReader
+from syncr_common.metrics import REGISTRY
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
+POOL_IN_USE = "syncr_db_pool_in_use"
+READ_COUNT = "syncr_db_query_duration_seconds_count"
+
+
+def sample(name: str, **labels: str) -> float:
+    """One sample out of the rendered exposition. Zero when the series does not exist yet."""
+    wanted = ",".join(f'{key}="{value}"' for key, value in sorted(labels.items()))
+    prefix = f"{name}{{{wanted}}} " if wanted else f"{name} "
+    for line in generate_latest(REGISTRY).decode().splitlines():
+        if line.startswith(prefix):
+            return float(line.removeprefix(prefix))
+    return 0.0
+
+
+@pytest.fixture
+async def engine(live_database_url: str) -> AsyncIterator[AsyncEngine]:
+    """An engine of this module's own, so checking connections out disturbs no other suite."""
+    built = create_db_engine(live_database_url)
+    try:
+        yield built
+    finally:
+        await built.dispose()
+
+
+class TestThePoolGauge:
+    async def test_it_is_present_before_any_connection_is_taken(self, engine: AsyncEngine) -> None:
+        """A gauge nothing has set yet must still be readable, or the alert has no series.
+
+        Ticket 30's lesson stated as a test: a gauge set only when work happens is absent exactly
+        when the work is not happening.
+        """
+        assert POOL_IN_USE in generate_latest(REGISTRY).decode()
+
+    async def test_it_rises_while_a_connection_is_checked_out_and_falls_after(
+        self, engine: AsyncEngine
+    ) -> None:
+        at_rest = sample(POOL_IN_USE)
+
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+            while_held = sample(POOL_IN_USE)
+
+        assert while_held - at_rest == 1.0
+        assert sample(POOL_IN_USE) == at_rest
+
+    async def test_two_connections_read_as_two(self, engine: AsyncEngine) -> None:
+        at_rest = sample(POOL_IN_USE)
+
+        async with engine.connect() as first, engine.connect() as second:
+            await first.execute(text("SELECT 1"))
+            await second.execute(text("SELECT 1"))
+
+            assert sample(POOL_IN_USE) - at_rest == 2.0
+
+
+class TestTheReadHistogram:
+    async def test_the_buckets_are_the_latency_budgets_rather_than_the_library_defaults(
+        self,
+    ) -> None:
+        """A read at 100 ms has spent the whole week-assembly budget in one call."""
+        assert 0.1 in READ_BUCKETS
+        assert max(READ_BUCKETS) == float("inf")
+
+    async def test_a_scoped_repository_read_is_timed_under_its_own_class_and_method(
+        self, engine: AsyncEngine
+    ) -> None:
+        labels = {"repository": "TenantRepository", "method": "list_ids"}
+        before = sample(READ_COUNT, **labels)
+
+        async with create_sessionmaker(engine)() as session:
+            await TenantRepository(session).list_ids()
+
+        assert sample(READ_COUNT, **labels) - before == 1.0
+
+    async def test_a_read_that_raises_is_timed_too(self, engine: AsyncEngine) -> None:
+        """A read failing after a lock wait is a latency reading, not a sample to drop."""
+
+        class BrokenReader(TenantScopedReader):
+            async def read(self) -> None:
+                raise RuntimeError("the statement did not come back")
+
+        labels = {"repository": "BrokenReader", "method": "read"}
+        before = sample(READ_COUNT, **labels)
+
+        async with create_sessionmaker(engine)() as session:
+            with pytest.raises(RuntimeError):
+                await BrokenReader(session, uuid4()).read()
+
+        assert sample(READ_COUNT, **labels) - before == 1.0
+
+    async def test_the_wrap_keeps_the_method_recognisable(self) -> None:
+        """The public surface is what three storage rules are asserted over, so it must survive."""
+
+        class Reader(TenantScopedReader):
+            async def read_one(self) -> int:
+                """A docstring a boundary test may read."""
+                return 1
+
+        assert Reader.read_one.__name__ == "read_one"
+        assert Reader.read_one.__doc__ == "A docstring a boundary test may read."
+
+    async def test_a_private_method_is_not_a_series(self) -> None:
+        """The label set is bounded by the public surface, not by every helper a class holds."""
+
+        class Reader(TenantScopedReader):
+            async def _helper(self) -> int:
+                return 1
+
+        assert not hasattr(Reader._helper, "__wrapped__")
+
+    async def test_an_inherited_method_is_timed_once_under_the_class_that_defined_it(self) -> None:
+        """Two series for one call would double every figure the dashboard draws."""
+
+        class Base(TenantScopedReader):
+            async def read_one(self) -> int:
+                return 1
+
+        class Derived(Base):
+            pass
+
+        assert Derived.read_one is Base.read_one
+
+
+class TestTheExplicitApplication:
+    def test_it_wraps_only_what_a_class_defines(self) -> None:
+        class Plain:
+            async def read(self) -> int:
+                return 1
+
+            def sync_read(self) -> int:
+                return 1
+
+        measure_reads(Plain)
+
+        assert hasattr(Plain.read, "__wrapped__")
+        assert not hasattr(Plain.sync_read, "__wrapped__")
