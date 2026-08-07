@@ -1048,7 +1048,7 @@ export interface paths {
         };
         /**
          * The backlog, with the counts its header states
-         * @description The tasks either filter selects, oldest first, and how many are open.
+         * @description The tasks either filter selects, oldest first, and the two figures the header states.
          */
         get: operations["list_tasks_api_v1_tasks_get"];
         put?: never;
@@ -1379,6 +1379,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/weeks/{iso_week}/proposal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The pending proposal, or 404 when the slot is empty
+         * @description What this week is asking assent for, and what the solve that proposed it proved.
+         */
+        get: operations["read_proposal_api_v1_weeks__iso_week__proposal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/weeks/{iso_week}/reject-block": {
         parameters: {
             query?: never;
@@ -1468,7 +1488,7 @@ export interface paths {
         };
         /**
          * The verdict alone, for a cheap refresh. Writes nothing
-         * @description The week's verdict. Always null in this deployment, and this read appends no event.
+         * @description The week's verdict, null when the week holds no plan, and this read appends no event.
          */
         get: operations["read_verdict_api_v1_weeks__iso_week__verdict_get"];
         put?: never;
@@ -1783,7 +1803,7 @@ export interface components {
              * Deltaminutes
              * @description How much this concession lowers the figure it names, in minutes: an increment against that figure as it stands rather than an absolute target. Set for breach_floor, null otherwise.
              */
-            deltaMinutes?: number | null;
+            deltaMinutes: number | null;
             /**
              * Id
              * Format: uuid
@@ -1796,7 +1816,7 @@ export interface components {
              * Reductions
              * @description Per-date minutes, for reduce_routine only, keyed by the local date the occurrence materializes on. Empty for the other three kinds. The enumerator chose the distribution, so this is the record of which nights the concession touched.
              */
-            reductions?: {
+            reductions: {
                 [key: string]: number;
             };
             /**
@@ -2279,7 +2299,7 @@ export interface components {
         BacklogHeader: {
             /**
              * Atriskcount
-             * @description How many open tasks the current verdict reports a deadline shortfall for. Always zero until the feasibility probe exists, because the count comes from the verdict's shortfalls rather than from a comparison made here.
+             * @description How many open tasks the current week's verdict reports a deadline shortfall for. Over the same population as openCount, so the figure and the marked rows are one answer. Recomputed on every read rather than on a timer, and nothing pushes it: the event stream carries no verdict member, because only a conflict notifies.
              */
             atRiskCount: number;
             /**
@@ -2287,6 +2307,87 @@ export interface components {
              * @description How many tasks are open. Unaffected by the status filter, because a count of open tasks that reported zero while the table showed completed ones would not be one. Narrowed by the area filter, which narrows the whole screen.
              */
             openCount: number;
+        };
+        /**
+         * BacklogTaskResponse
+         * @description One task as the BACKLOG lists it: everything above, plus whether it is at risk.
+         *
+         *     A shape of its own rather than a field on ``TaskResponse``, because at-risk is a fact about the
+         *     week's verdict rather than about the row. The five routes that answer about one task would have
+         *     to assemble a week to state it truthfully, and a mutation that computed a verdict would owe a
+         *     recorded transition; answering false there instead would be a claim none of them checked. So the
+         *     marking is on the read that has the figure beside it, and nowhere else.
+         */
+        BacklogTaskResponse: {
+            /**
+             * Areaid
+             * Format: uuid
+             * @description The one Area this task's time counts toward. Required on capture, and declared once: the hours already recorded against a task were attributed to this Area, so moving it would rewrite reported history.
+             */
+            areaId: string;
+            /**
+             * Atrisk
+             * @description Whether the current week's verdict reports a deadlineCapacity shortfall naming this task. The server's determination, not a comparison a client makes: the same shortfall the verdict panel renders, so a task cannot be at risk on one screen and fine on another. False for a task with no deadline and for a week with no plan.
+             */
+            atRisk: boolean;
+            /**
+             * Completedat
+             * @description When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read.
+             */
+            completedAt: string | null;
+            /**
+             * Deadline
+             * @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.
+             */
+            deadline: string | null;
+            /**
+             * Eligibleforsolving
+             * @description Whether the next solve may place this task: open, with work left. A captured task is eligible immediately.
+             */
+            eligibleForSolving: boolean;
+            /**
+             * Estimateminutes
+             * @description Total work in minutes, 1 to 10080. Defaults to 30, which is two grid steps: the smallest estimate the default minimum chunk can divide. Never reduced by recording time against the task; remaining work is the difference.
+             */
+            estimateMinutes: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Minchunkminutes
+             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             */
+            minChunkMinutes: number;
+            /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
+            priority: components["schemas"]["Priority"];
+            /**
+             * Projectid
+             * @description The time-boxed push this task belongs to, or null for none. Its Area has to be this task's Area, because a project sits in exactly one Area and an hour is attributable to one.
+             */
+            projectId: string | null;
+            /**
+             * Recordedminutes
+             * @description Minutes confirmed against this task. Accumulated from outcomes, left intact by completing, so the time spent survives in reports.
+             */
+            recordedMinutes: number;
+            /**
+             * Remainingminutes
+             * @description Work left: the estimate less what was recorded, never negative. Recording more than was estimated reports zero rather than a negative figure.
+             */
+            remainingMinutes: number;
+            /**
+             * Splittable
+             * @description Whether the solver may divide this task across several placements. Defaults to true; false means atomic, so it is placed as one block of the whole estimate or not placed.
+             */
+            splittable: boolean;
+            status: components["schemas"]["TaskStatus"];
+            /**
+             * Title
+             * @description What the work is, in the user's own words. Required on capture.
+             */
+            title: string;
         };
         /**
          * BindingKind
@@ -2338,6 +2439,32 @@ export interface components {
          * @enum {string}
          */
         BindingTarget: "routine" | "habit";
+        /**
+         * BlockChangeResponse
+         * @description One block a candidate plan wants to add, drop, or move, and why.
+         */
+        BlockChangeResponse: {
+            /** @description Where the candidate wants it. Null for a removal, which wants nowhere. */
+            after: components["schemas"]["WireSpan"] | null;
+            /**
+             * Areaid
+             * @description The Area this block is charged to. Null for the frame and for an imported commitment.
+             */
+            areaId: string | null;
+            /** @description Where the live plan holds this block. Null for an addition, which replaces nothing. */
+            before: components["schemas"]["WireSpan"] | null;
+            /** @description What the block's content IS. Travels with the change because a change is stated over the identity rather than over the digest. */
+            binding: components["schemas"]["BindingResponse"];
+            /**
+             * Blockid
+             * @description The block this change names, a digest of the week and the binding, so it pairs with a rendered block without the client composing one.
+             */
+            blockId: string;
+            /** @description Why the CANDIDATE wants this change. For a removal there is no candidate block, so it is the last thing the live plan said about the block it is dropping. */
+            reason: components["schemas"]["ReasonResponse"];
+            /** Title */
+            title: string;
+        };
         /**
          * BlockResponse
          * @description One thing that happens in the week, and why it is where it is.
@@ -2920,13 +3047,13 @@ export interface components {
              */
             isoWeek: string;
             overlap: components["schemas"]["WireSpan"];
-            /** @description How it was answered: one of `moved`, `kept-both`, `retyped`. */
-            resolution?: components["schemas"]["ConflictResolution"] | null;
+            /** @description How it was answered: one of `moved`, `kept-both`, `retyped`. Null while it is unanswered. */
+            resolution: components["schemas"]["ConflictResolution"] | null;
             /**
              * Resolvedat
              * @description Null while the conflict is still waiting for an answer.
              */
-            resolvedAt?: string | null;
+            resolvedAt: string | null;
         };
         /**
          * ConflictsResponse
@@ -3996,6 +4123,47 @@ export interface components {
             value: number | null;
         };
         /**
+         * PendingProposalResponse
+         * @description The proposal a week is holding, as its own route answers with it.
+         *
+         *     **The candidate plan document is deliberately absent.** A proposal IS the difference between
+         *     the plan of record and a candidate, and that difference is what the grid renders: the live plan
+         *     is already on the week view this route sits beside, so carrying the whole candidate week would
+         *     put a second document in a payload whose reader has one.
+         */
+        PendingProposalResponse: {
+            /** @description The concession this proposal was solved under, or null for an ordinary proposal. It is not persisted until the proposal is approved, and it carries the identifier the approval will persist it under. */
+            candidateAdjustment: components["schemas"]["AdjustmentResponse"] | null;
+            /**
+             * Createdat
+             * Format: date-time
+             * @description When that solve landed.
+             */
+            createdAt: string;
+            /**
+             * Inputversion
+             * @description The input state this proposal was SOLVED against. Lower than the week's own when the week moved on while the proposal waited, which is permitted: approval is never blocked, and the solve that mutation enqueued proposes any correction.
+             */
+            inputVersion: number;
+            /** Isoweek */
+            isoWeek: string;
+            /**
+             * Operationid
+             * Format: uuid
+             * @description The solve that put this proposal in the slot.
+             */
+            operationId: string;
+            /** @description What is waiting for assent. Empty in all three lists is possible and means the solve found nothing that needed asking about. */
+            proposal: components["schemas"]["ProposalDiffResponse"];
+            /** @description What the solve that produced this proposal proved about the week. Its provenance is solver, because an attempted placement knows the answer. */
+            verdict: components["schemas"]["VerdictResponse"];
+            /**
+             * Weightsetversion
+             * @description The weight set that produced the candidate document, carried because an approved revision says which weights produced its plan.
+             */
+            weightSetVersion: number;
+        };
+        /**
          * PeriodSpan
          * @description The half-open interval the period covers, ``[start, end)``.
          *
@@ -4286,6 +4454,31 @@ export interface components {
          * @enum {string}
          */
         ProposalBasis: "floor_holds_it" | "never_met" | "sustained_under" | "sustained_over" | "already_there";
+        /**
+         * ProposalDiffResponse
+         * @description The assent-requiring changes between the plan of record and a candidate plan.
+         *
+         *     Three lists, and one block appears in exactly one of them: two changes naming one block would
+         *     leave the reader to decide which of them the plan is proposing, and it proposes one thing per
+         *     block.
+         */
+        ProposalDiffResponse: {
+            /**
+             * Added
+             * @description Blocks the candidate wants to put somewhere they displace something. An addition into free time needs no assent and is applied rather than proposed.
+             */
+            added: components["schemas"]["BlockChangeResponse"][];
+            /**
+             * Moved
+             * @description Blocks the candidate wants elsewhere. Both placements are carried and they differ: a move that leaves a block where it is is not a change at all.
+             */
+            moved: components["schemas"]["BlockChangeResponse"][];
+            /**
+             * Removed
+             * @description Blocks the candidate wants to drop. syncr may add without asking and may never remove without asking.
+             */
+            removed: components["schemas"]["BlockChangeResponse"][];
+        };
         /**
          * ProposedShareResponse
          * @description One row of the proposed revision: what is declared, what happened, and what to declare.
@@ -5111,7 +5304,7 @@ export interface components {
         TasksResponse: {
             header: components["schemas"]["BacklogHeader"];
             /** Tasks */
-            tasks: components["schemas"]["TaskResponse"][];
+            tasks: components["schemas"]["BacklogTaskResponse"][];
         };
         /**
          * TemplateCreateRequest
@@ -5720,15 +5913,16 @@ export interface components {
          * WeekVerdictResponse
          * @description The week's verdict alone, for a cheap refresh.
          *
-         *     Always null, and this read writes nothing at all: no ``VerdictEvent`` is appended by any read
-         *     path. Ticket 44 supplies the verdict, and ticket 43 owns the only writer of a transition.
+         *     The same rule the composed read serves, so the two cannot report different provenance for one
+         *     week: the pending slot's verdict while its input version is current, and a live probe otherwise.
+         *
+         *     Null exactly when the week holds no plan, which is the biconditional the composed read states.
+         *
+         *     This read writes nothing at all: no ``VerdictEvent`` is appended by any read path.
          */
         WeekVerdictResponse: {
-            /**
-             * Verdict
-             * @description Always null: no read computes a verdict in this deployment.
-             */
-            verdict: null;
+            /** @description The week's verdict, or null when the week holds no plan. Reading it appends no transition: a read computes a verdict for display and records nothing. */
+            verdict: components["schemas"]["VerdictResponse"] | null;
         };
         /**
          * WeekViewResponse
@@ -5743,16 +5937,16 @@ export interface components {
         WeekViewResponse: {
             /**
              * Adjustments
-             * @description Always empty: the concessions a week holds are read through the adjustments route in this deployment.
+             * @description The approved concessions this week holds, in the order the assembler folds them. Listed above the verdict's shortfalls, so a week that has absorbed a concession does not read as simply feasible.
              */
             adjustments: components["schemas"]["AdjustmentResponse"][];
-            /** @description Always null: a candidate concession rides on an operation and is not read back into this view yet. */
+            /** @description The concession the pending proposal was solved under, awaiting approval, or null. Not persisted until the proposal is approved, and it carries the identifier the approval will persist it under. */
             candidateAdjustment: components["schemas"]["AdjustmentResponse"] | null;
             /**
              * Conflicts
-             * @description Always empty: the conflicts a week holds are read through the conflicts route in this deployment.
+             * @description Every overlap raised in this week, answered ones included: the open ones hold a banner and the answered ones are what a repeated collision is computed over.
              */
-            conflicts: null[];
+            conflicts: components["schemas"]["ConflictResponse"][];
             /** @description Why live is null. Null exactly when live is populated. */
             emptyReason: components["schemas"]["EmptyReason"] | null;
             /** @description The facts behind emptyReason. Null exactly when live is populated. */
@@ -5775,23 +5969,17 @@ export interface components {
             operation: components["schemas"]["OperationResponse"] | null;
             /**
              * Pins
-             * @description Always empty: nothing records a pin in this deployment.
+             * @description The user's own placements for this week, each with what the solver had chosen instead and what overriding it cost. Pins do not carry forward to the next week.
              */
-            pins: null[];
-            /**
-             * Proposal
-             * @description Always null: nothing produces a proposal in this deployment.
-             */
-            proposal: null;
+            pins: components["schemas"]["PinResponse"][];
+            /** @description The changes this week is proposing and waiting for assent to, or null when its slot is empty. What the grid renders proposal targets from. */
+            proposal: components["schemas"]["ProposalDiffResponse"] | null;
             /** @description The strip's figures. Null exactly when live is null. */
             readings: components["schemas"]["WeekReadingsResponse"] | null;
             /** @description The week's real span. 167 or 169 hours across a daylight-saving transition, and something else again across a travel boundary. */
             span: components["schemas"]["WireSpan"];
-            /**
-             * Verdict
-             * @description Always null: no read computes a verdict in this deployment.
-             */
-            verdict: null;
+            /** @description Whether this week can hold its commitments, and by how much it cannot. Null exactly when live is null. Its provenance is solver while the week holds a current proposal, because that is the only place an attempted placement's finding is kept. */
+            verdict: components["schemas"]["VerdictResponse"] | null;
             /**
              * Zonebydate
              * @description The zone active on each of the week's dates NOW, keyed by ISO date. The mapping inside live is the one captured when the plan was produced, and the two differ wherever a travel override was declared afterwards.
@@ -12884,6 +13072,73 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_proposal_api_v1_weeks__iso_week__proposal_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingProposalResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -126,6 +126,8 @@
           "isoWeek",
           "kind",
           "targetId",
+          "reductions",
+          "deltaMinutes",
           "createdAt",
           "createdByOperationId"
         ],
@@ -1113,7 +1115,7 @@
         "description": "The two counts the backlog's header band states.",
         "properties": {
           "atRiskCount": {
-            "description": "How many open tasks the current verdict reports a deadline shortfall for. Always zero until the feasibility probe exists, because the count comes from the verdict's shortfalls rather than from a comparison made here.",
+            "description": "How many open tasks the current week's verdict reports a deadline shortfall for. Over the same population as openCount, so the figure and the marked rows are one answer. Recomputed on every read rather than on a timer, and nothing pushes it: the event stream carries no verdict member, because only a conflict notifies.",
             "title": "Atriskcount",
             "type": "integer"
           },
@@ -1128,6 +1130,127 @@
           "atRiskCount"
         ],
         "title": "BacklogHeader",
+        "type": "object"
+      },
+      "BacklogTaskResponse": {
+        "description": "One task as the BACKLOG lists it: everything above, plus whether it is at risk.\n\nA shape of its own rather than a field on ``TaskResponse``, because at-risk is a fact about the\nweek's verdict rather than about the row. The five routes that answer about one task would have\nto assemble a week to state it truthfully, and a mutation that computed a verdict would owe a\nrecorded transition; answering false there instead would be a claim none of them checked. So the\nmarking is on the read that has the figure beside it, and nowhere else.",
+        "properties": {
+          "areaId": {
+            "description": "The one Area this task's time counts toward. Required on capture, and declared once: the hours already recorded against a task were attributed to this Area, so moving it would rewrite reported history.",
+            "format": "uuid",
+            "title": "Areaid",
+            "type": "string"
+          },
+          "atRisk": {
+            "description": "Whether the current week's verdict reports a deadlineCapacity shortfall naming this task. The server's determination, not a comparison a client makes: the same shortfall the verdict panel renders, so a task cannot be at risk on one screen and fine on another. False for a task with no deadline and for a week with no plan.",
+            "title": "Atrisk",
+            "type": "boolean"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read.",
+            "title": "Completedat"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.",
+            "title": "Deadline"
+          },
+          "eligibleForSolving": {
+            "description": "Whether the next solve may place this task: open, with work left. A captured task is eligible immediately.",
+            "title": "Eligibleforsolving",
+            "type": "boolean"
+          },
+          "estimateMinutes": {
+            "description": "Total work in minutes, 1 to 10080. Defaults to 30, which is two grid steps: the smallest estimate the default minimum chunk can divide. Never reduced by recording time against the task; remaining work is the difference.",
+            "title": "Estimateminutes",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "minChunkMinutes": {
+            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "title": "Minchunkminutes",
+            "type": "integer"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority",
+            "description": "How much the objective prefers this task over another in the same Area. Defaults to 'normal'."
+          },
+          "projectId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The time-boxed push this task belongs to, or null for none. Its Area has to be this task's Area, because a project sits in exactly one Area and an hour is attributable to one.",
+            "title": "Projectid"
+          },
+          "recordedMinutes": {
+            "description": "Minutes confirmed against this task. Accumulated from outcomes, left intact by completing, so the time spent survives in reports.",
+            "title": "Recordedminutes",
+            "type": "integer"
+          },
+          "remainingMinutes": {
+            "description": "Work left: the estimate less what was recorded, never negative. Recording more than was estimated reports zero rather than a negative figure.",
+            "title": "Remainingminutes",
+            "type": "integer"
+          },
+          "splittable": {
+            "description": "Whether the solver may divide this task across several placements. Defaults to true; false means atomic, so it is placed as one block of the whole estimate or not placed.",
+            "title": "Splittable",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "title": {
+            "description": "What the work is, in the user's own words. Required on capture.",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "areaId",
+          "projectId",
+          "title",
+          "estimateMinutes",
+          "recordedMinutes",
+          "remainingMinutes",
+          "deadline",
+          "priority",
+          "minChunkMinutes",
+          "splittable",
+          "status",
+          "completedAt",
+          "eligibleForSolving",
+          "atRisk"
+        ],
+        "title": "BacklogTaskResponse",
         "type": "object"
       },
       "BindingKind": {
@@ -1201,6 +1324,74 @@
         ],
         "title": "BindingTarget",
         "type": "string"
+      },
+      "BlockChangeResponse": {
+        "description": "One block a candidate plan wants to add, drop, or move, and why.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WireSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the candidate wants it. Null for a removal, which wants nowhere."
+          },
+          "areaId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Area this block is charged to. Null for the frame and for an imported commitment.",
+            "title": "Areaid"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WireSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the live plan holds this block. Null for an addition, which replaces nothing."
+          },
+          "binding": {
+            "$ref": "#/components/schemas/BindingResponse",
+            "description": "What the block's content IS. Travels with the change because a change is stated over the identity rather than over the digest."
+          },
+          "blockId": {
+            "description": "The block this change names, a digest of the week and the binding, so it pairs with a rendered block without the client composing one.",
+            "title": "Blockid",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReasonResponse",
+            "description": "Why the CANDIDATE wants this change. For a removal there is no candidate block, so it is the last thing the live plan said about the block it is dropping."
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blockId",
+          "binding",
+          "title",
+          "areaId",
+          "reason",
+          "before",
+          "after"
+        ],
+        "title": "BlockChangeResponse",
+        "type": "object"
       },
       "BlockResponse": {
         "description": "One thing that happens in the week, and why it is where it is.",
@@ -2342,7 +2533,7 @@
                 "type": "null"
               }
             ],
-            "description": "How it was answered: one of `moved`, `kept-both`, `retyped`."
+            "description": "How it was answered: one of `moved`, `kept-both`, `retyped`. Null while it is unanswered."
           },
           "resolvedAt": {
             "anyOf": [
@@ -2365,7 +2556,9 @@
           "blockId",
           "binding",
           "overlap",
-          "detectedAt"
+          "detectedAt",
+          "resolvedAt",
+          "resolution"
         ],
         "title": "ConflictResponse",
         "type": "object"
@@ -4412,6 +4605,68 @@
         "title": "ParameterResponse",
         "type": "object"
       },
+      "PendingProposalResponse": {
+        "description": "The proposal a week is holding, as its own route answers with it.\n\n**The candidate plan document is deliberately absent.** A proposal IS the difference between\nthe plan of record and a candidate, and that difference is what the grid renders: the live plan\nis already on the week view this route sits beside, so carrying the whole candidate week would\nput a second document in a payload whose reader has one.",
+        "properties": {
+          "candidateAdjustment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustmentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The concession this proposal was solved under, or null for an ordinary proposal. It is not persisted until the proposal is approved, and it carries the identifier the approval will persist it under."
+          },
+          "createdAt": {
+            "description": "When that solve landed.",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "inputVersion": {
+            "description": "The input state this proposal was SOLVED against. Lower than the week's own when the week moved on while the proposal waited, which is permitted: approval is never blocked, and the solve that mutation enqueued proposes any correction.",
+            "title": "Inputversion",
+            "type": "integer"
+          },
+          "isoWeek": {
+            "title": "Isoweek",
+            "type": "string"
+          },
+          "operationId": {
+            "description": "The solve that put this proposal in the slot.",
+            "format": "uuid",
+            "title": "Operationid",
+            "type": "string"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/ProposalDiffResponse",
+            "description": "What is waiting for assent. Empty in all three lists is possible and means the solve found nothing that needed asking about."
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/VerdictResponse",
+            "description": "What the solve that produced this proposal proved about the week. Its provenance is solver, because an attempted placement knows the answer."
+          },
+          "weightSetVersion": {
+            "description": "The weight set that produced the candidate document, carried because an approved revision says which weights produced its plan.",
+            "title": "Weightsetversion",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "isoWeek",
+          "proposal",
+          "verdict",
+          "candidateAdjustment",
+          "inputVersion",
+          "weightSetVersion",
+          "operationId",
+          "createdAt"
+        ],
+        "title": "PendingProposalResponse",
+        "type": "object"
+      },
       "PeriodSpan": {
         "description": "The half-open interval the period covers, ``[start, end)``.\n\nPresent because it is what the denominator was derived from. It may be 167 or 169 hours\nacross a daylight-saving transition, and something else again in a zone whose transition is\nnot an hour, so a reader that needs the length reads these two instants rather than assuming\none.",
         "properties": {
@@ -4945,6 +5200,42 @@
         ],
         "title": "ProposalBasis",
         "type": "string"
+      },
+      "ProposalDiffResponse": {
+        "description": "The assent-requiring changes between the plan of record and a candidate plan.\n\nThree lists, and one block appears in exactly one of them: two changes naming one block would\nleave the reader to decide which of them the plan is proposing, and it proposes one thing per\nblock.",
+        "properties": {
+          "added": {
+            "description": "Blocks the candidate wants to put somewhere they displace something. An addition into free time needs no assent and is applied rather than proposed.",
+            "items": {
+              "$ref": "#/components/schemas/BlockChangeResponse"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "moved": {
+            "description": "Blocks the candidate wants elsewhere. Both placements are carried and they differ: a move that leaves a block where it is is not a change at all.",
+            "items": {
+              "$ref": "#/components/schemas/BlockChangeResponse"
+            },
+            "title": "Moved",
+            "type": "array"
+          },
+          "removed": {
+            "description": "Blocks the candidate wants to drop. syncr may add without asking and may never remove without asking.",
+            "items": {
+              "$ref": "#/components/schemas/BlockChangeResponse"
+            },
+            "title": "Removed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "added",
+          "removed",
+          "moved"
+        ],
+        "title": "ProposalDiffResponse",
+        "type": "object"
       },
       "ProposedShareResponse": {
         "description": "One row of the proposed revision: what is declared, what happened, and what to declare.",
@@ -6317,7 +6608,7 @@
           },
           "tasks": {
             "items": {
-              "$ref": "#/components/schemas/TaskResponse"
+              "$ref": "#/components/schemas/BacklogTaskResponse"
             },
             "title": "Tasks",
             "type": "array"
@@ -7206,12 +7497,18 @@
         "type": "object"
       },
       "WeekVerdictResponse": {
-        "description": "The week's verdict alone, for a cheap refresh.\n\nAlways null, and this read writes nothing at all: no ``VerdictEvent`` is appended by any read\npath. Ticket 44 supplies the verdict, and ticket 43 owns the only writer of a transition.",
+        "description": "The week's verdict alone, for a cheap refresh.\n\nThe same rule the composed read serves, so the two cannot report different provenance for one\nweek: the pending slot's verdict while its input version is current, and a live probe otherwise.\n\nNull exactly when the week holds no plan, which is the biconditional the composed read states.\n\nThis read writes nothing at all: no ``VerdictEvent`` is appended by any read path.",
         "properties": {
           "verdict": {
-            "description": "Always null: no read computes a verdict in this deployment.",
-            "title": "Verdict",
-            "type": "null"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VerdictResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The week's verdict, or null when the week holds no plan. Reading it appends no transition: a read computes a verdict for display and records nothing."
           }
         },
         "required": [
@@ -7224,7 +7521,7 @@
         "description": "The Week screen's whole read, in one request.\n\n**Every field is required and the nullable ones are nullable**, which is section 13's own shape\nand the one thirty-six other response fields in this api already take. A field with a default is\nOPTIONAL in the generated document, so a client would have to narrow ``undefined`` as well as\n``null`` and ``if (view.emptyReason === null)`` would not be sound against its own types. The\nserver populates all sixteen on every answer, so the contract says so.",
         "properties": {
           "adjustments": {
-            "description": "Always empty: the concessions a week holds are read through the adjustments route in this deployment.",
+            "description": "The approved concessions this week holds, in the order the assembler folds them. Listed above the verdict's shortfalls, so a week that has absorbed a concession does not read as simply feasible.",
             "items": {
               "$ref": "#/components/schemas/AdjustmentResponse"
             },
@@ -7240,12 +7537,12 @@
                 "type": "null"
               }
             ],
-            "description": "Always null: a candidate concession rides on an operation and is not read back into this view yet."
+            "description": "The concession the pending proposal was solved under, awaiting approval, or null. Not persisted until the proposal is approved, and it carries the identifier the approval will persist it under."
           },
           "conflicts": {
-            "description": "Always empty: the conflicts a week holds are read through the conflicts route in this deployment.",
+            "description": "Every overlap raised in this week, answered ones included: the open ones hold a banner and the answered ones are what a repeated collision is computed over.",
             "items": {
-              "type": "null"
+              "$ref": "#/components/schemas/ConflictResponse"
             },
             "title": "Conflicts",
             "type": "array"
@@ -7312,17 +7609,23 @@
             "description": "The non-terminal solve or materialize for this week, if one is in flight. Either changes what the grid holds, and the field exists so a client knows what to follow."
           },
           "pins": {
-            "description": "Always empty: nothing records a pin in this deployment.",
+            "description": "The user's own placements for this week, each with what the solver had chosen instead and what overriding it cost. Pins do not carry forward to the next week.",
             "items": {
-              "type": "null"
+              "$ref": "#/components/schemas/PinResponse"
             },
             "title": "Pins",
             "type": "array"
           },
           "proposal": {
-            "description": "Always null: nothing produces a proposal in this deployment.",
-            "title": "Proposal",
-            "type": "null"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProposalDiffResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The changes this week is proposing and waiting for assent to, or null when its slot is empty. What the grid renders proposal targets from."
           },
           "readings": {
             "anyOf": [
@@ -7340,9 +7643,15 @@
             "description": "The week's real span. 167 or 169 hours across a daylight-saving transition, and something else again across a travel boundary."
           },
           "verdict": {
-            "description": "Always null: no read computes a verdict in this deployment.",
-            "title": "Verdict",
-            "type": "null"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VerdictResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether this week can hold its commitments, and by how much it cannot. Null exactly when live is null. Its provenance is solver while the week holds a current proposal, because that is the only place an attempted placement's finding is kept."
           },
           "zoneByDate": {
             "additionalProperties": {
@@ -13878,7 +14187,7 @@
     },
     "/api/v1/tasks": {
       "get": {
-        "description": "The tasks either filter selects, oldest first, and how many are open.",
+        "description": "The tasks either filter selects, oldest first, and the two figures the header states.",
         "operationId": "list_tasks_api_v1_tasks_get",
         "parameters": [
           {
@@ -16230,6 +16539,89 @@
         ]
       }
     },
+    "/api/v1/weeks/{iso_week}/proposal": {
+      "get": {
+        "description": "What this week is asking assent for, and what the solve that proposed it proved.",
+        "operationId": "read_proposal_api_v1_weeks__iso_week__proposal_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "The pending proposal, or 404 when the slot is empty",
+        "tags": [
+          "weeks"
+        ]
+      }
+    },
     "/api/v1/weeks/{iso_week}/reject-block": {
       "post": {
         "description": "Refuse one change without refusing the rest, which is what makes a rejection teach.",
@@ -16616,7 +17008,7 @@
     },
     "/api/v1/weeks/{iso_week}/verdict": {
       "get": {
-        "description": "The week's verdict. Always null in this deployment, and this read appends no event.",
+        "description": "The week's verdict, null when the week holds no plan, and this read appends no event.",
         "operationId": "read_verdict_api_v1_weeks__iso_week__verdict_get",
         "parameters": [
           {
