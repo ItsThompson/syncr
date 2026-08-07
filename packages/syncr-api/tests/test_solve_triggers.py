@@ -189,8 +189,18 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         solves=True,
         module="concessions/service.py",
     ),
-    Trigger("tradeoff approved", bumps=True, solves=False, module=None, owner="42"),
-    Trigger("proposal approved", bumps=True, solves=False, module=None, owner="42"),
+    Trigger(
+        "tradeoff approved",
+        bumps=True,
+        solves=False,
+        module="approvals/service.py",
+    ),
+    Trigger(
+        "proposal approved",
+        bumps=True,
+        solves=False,
+        module="approvals/service.py",
+    ),
     Trigger(
         "week adjustment revoked",
         bumps=True,
@@ -347,21 +357,19 @@ class TestTheTriggerTable:
 
         assert any(spelling in body for spelling in BUMPS_A_VERSION), trigger.row
 
-    def test_a_row_with_no_module_is_one_whose_endpoint_does_not_exist(self) -> None:
-        """The three rows the walk above cannot read, named rather than skipped.
+    def test_every_row_that_bumps_names_a_module_that_exists(self) -> None:
+        """Every row the table says invalidates a week now has somewhere to read that from.
 
-        Each bumps according to the table and has nothing in the tree to read it from, because the
-        endpoint has not been built: two approvals. Naming them here means the set is
-        asserted rather than reported once per run as a skip nobody reads.
+        Two rows had no module until ticket 42 built the approval endpoint, and they were named here
+        rather than skipped, because a skip reports forever and says nothing. What replaced that
+        assertion is this one: the set of unreadable rows is EMPTY, and a row added later without an
+        endpoint fails here rather than quietly leaving the walk above with nothing to read.
         """
         unreadable = {
             one.row: one.owner for one in TRIGGER_TABLE if one.module is None and one.bumps
         }
 
-        assert unreadable == {
-            "tradeoff approved": "42",
-            "proposal approved": "42",
-        }
+        assert unreadable == {}
 
     @pytest.mark.parametrize(
         "trigger",
@@ -396,12 +404,16 @@ class TestTheTriggerTable:
         [one for one in TRIGGER_TABLE if not one.solves and one.module is not None],
         ids=lambda one: one.row,
     )
-    def test_a_row_that_never_solves_is_a_row_that_changes_no_plan_input(
-        self, trigger: Trigger
-    ) -> None:
-        # `kept-both` is the whole of this set among the wired rows. The two approval rows bump and
-        # do not solve, and they belong to ticket 42, so they carry an owner rather than a module.
-        assert trigger.row == "conflict resolved as kept-both"
+    def test_a_row_that_never_solves_states_why_it_asks_for_nothing(self, trigger: Trigger) -> None:
+        # Three rows, and two reasons. `kept-both` records a decision and changes nothing at all.
+        # The two approvals change the LIVE PLAN and still ask for nothing: the bump is what a
+        # RUNNING solve has to see, and the document the user approved IS the plan of record, so a
+        # solve requested here would propose changing what they just accepted.
+        assert trigger.row in {
+            "conflict resolved as kept-both",
+            "tradeoff approved",
+            "proposal approved",
+        }
 
     def test_reading_a_screen_and_moving_the_viewport_reach_neither(self) -> None:
         """The two rows that must reach nothing at all, and they have no module by construction.
@@ -467,7 +479,7 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
         for one in TRIGGER_TABLE:
             if one.owner is None:
                 continue
-            assert one.owner in {"42", "1400", "1403"}, one.row
+            assert one.owner in {"1400", "1403"}, one.row
 
     def test_only_five_rows_reach_the_coordinator_today(self) -> None:
         # The five live triggers, one of which bypasses the debounce by design. The burst of pins
