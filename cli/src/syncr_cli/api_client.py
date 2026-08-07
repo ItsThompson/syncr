@@ -61,6 +61,14 @@ ROUTES: Final = frozenset(
         OPERATION,
     }
 )
+"""Eleven templates, which the api's own census counts as twelve.
+
+The two figures are the same boundary counted two ways and both are right. This set holds PATHS,
+because what a path names is a resource and a resource is what a boundary is about. The census in
+``tests/test_authorization_boundary.py`` holds ``(method, path)`` pairs, because what a route
+declares is a perimeter and a perimeter is per method. ``/tasks`` is the whole of the difference:
+``GET`` lists the backlog and ``POST`` captures a task, one resource and two routes.
+"""
 
 # The query parameter that bypasses the debounce a solve would otherwise wait out.
 IMMEDIATE: Final = "immediate"

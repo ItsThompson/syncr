@@ -187,10 +187,13 @@ def test_the_catalog_is_the_thirteen_commands_section_17_names() -> None:
     assert len(COMMANDS) == 13
 
 
-def test_the_route_inventory_is_exactly_the_eleven_this_catalog_needs() -> None:
+def test_the_route_inventory_is_exactly_the_eleven_paths_this_catalog_needs() -> None:
     # An exact set rather than a membership check, because the boundary is what this client CANNOT
-    # reach: a twelfth route is a widening, and it should be a diff a reviewer reads rather than a
+    # reach: a twelfth path is a widening, and it should be a diff a reviewer reads rather than a
     # method somebody added. The words below then say what the widening must not be.
+    #
+    # Eleven PATHS here and twelve `(method, path)` pairs in the api's census, which are the same
+    # boundary counted two ways: `/tasks` serves both `GET` and `POST`.
     expected = {
         "/areas",
         "/tasks",

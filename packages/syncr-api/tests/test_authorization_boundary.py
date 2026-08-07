@@ -63,6 +63,7 @@ from syncr_api.pins.config import PINS_PATH
 from syncr_api.plans.week_config import SOLVE_PATH, WEEK_PATH
 from syncr_api.solving.config import OPERATION_PATH, OPERATIONS_PREFIX
 from syncr_api.tasks.config import TASK_COMPLETE_PATH, TASKS_PREFIX
+from syncr_api.tasks.service import TaskService, WeekVerdict
 from syncr_common.health import HEALTHZ_ENDPOINT, READYZ_ENDPOINT
 from tests.boundaries import (
     METHODS_WITHOUT_A_BODY,
@@ -139,7 +140,12 @@ ROUTES_WITHOUT_AN_ORIGIN_CHECK = frozenset(
 )
 
 # The routes that serve the CLI's bearer token as well as the browser's cookie, which is section
-# 17's command catalog and nothing else. Each one is here because a shipped command needs it:
+# 17's command catalog and nothing else. Twelve `(method, path)` pairs, across ELEVEN distinct
+# paths: `/tasks` appears twice because `GET` lists the backlog and `POST` captures a task, and a
+# perimeter is declared per method rather than per resource. `syncr_cli.api_client.ROUTES` counts
+# the same boundary as eleven paths, and says so.
+#
+# Each one is here because a shipped command needs it:
 #
 #   GET  /areas                    `week show` names the Area on every row
 #   GET  /tasks                    `task list` and `backlog list`
@@ -321,6 +327,20 @@ def test_the_service_class_walk_finds_the_service_this_module_ships(source_root:
     assert public_methods(SessionService) == ["describe", "log_out"]
     # The value type in the same module is a return shape, not a service.
     assert SessionDescription not in discovered
+
+
+def test_the_walk_excludes_a_collaborator_protocol_and_still_finds_its_service(
+    source_root: Path,
+) -> None:
+    # The other exclusion, with the service that declares it beside it. A `Protocol` in a
+    # `service.py` is the interface of a collaborator the service reads THROUGH, so it takes no
+    # principal and authorizes nothing; the class that implements it is elsewhere and comes under
+    # the rule where it lives. Asserted in both directions, so the exclusion cannot quietly widen to
+    # cover the service in the same module.
+    discovered = service_classes(source_root)
+
+    assert WeekVerdict not in discovered
+    assert TaskService in discovered
 
 
 def test_every_unsafe_route_carries_the_origin_check(app: FastAPI) -> None:
