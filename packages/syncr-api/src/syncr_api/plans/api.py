@@ -1,4 +1,4 @@
-"""The four week routes.
+"""The five week routes.
 
 Thin, on purpose. Each handler resolves who is asking, calls exactly one service method, and maps
 the result onto a response shape through that shape's own ``of``, so this module holds no mapping of
@@ -7,10 +7,11 @@ its own: the wire shape of a value belongs beside the shape.
 The week is a path segment and its shape is validated in the service, by the domain parser that owns
 the identifier, so no pattern is declared here that could drift from it.
 
-**Three of the four are reads and they write nothing at all**: no revision, no operation, no version
-bump, and no ``VerdictEvent``. The fourth asks for a solve and answers with the operation to follow
-rather than with a plan, because the plan does not exist yet: a request that answered with a week
-would be answering with the week it is about to replace.
+**Four of the five are reads and they write nothing at all**: no revision, no operation, no version
+bump, and no ``VerdictEvent``. Three of the four compute a verdict, which is what a read may do and
+what ``VE6`` forbids it from recording. The fifth asks for a solve and answers with the operation to
+follow rather than with a plan, because the plan does not exist yet: a request that answered with a
+week would be answering with the week it is about to replace.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from fastapi import APIRouter, Query
 
 from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep
 from syncr_api.plans.injection import WeekServiceDep
+from syncr_api.plans.proposal_schemas import PendingProposalResponse
 from syncr_api.plans.schemas import (
     WeekRevisionsResponse,
     WeekVerdictResponse,
@@ -28,6 +30,7 @@ from syncr_api.plans.schemas import (
 )
 from syncr_api.plans.week_config import (
     IMMEDIATE_PARAMETER,
+    PROPOSAL_PATH,
     REVISIONS_PATH,
     SOLVE_PATH,
     VERDICT_PATH,
@@ -63,9 +66,16 @@ async def read_revisions(
 async def read_verdict(
     iso_week: str, principal: PrincipalDep, service: WeekServiceDep
 ) -> WeekVerdictResponse:
-    """The week's verdict. Always null in this deployment, and this read appends no event."""
-    await service.verdict(principal, iso_week)
-    return WeekVerdictResponse(verdict=None)
+    """The week's verdict, null when the week holds no plan, and this read appends no event."""
+    return WeekVerdictResponse.of(await service.verdict(principal, iso_week))
+
+
+@router.get(PROPOSAL_PATH, summary="The pending proposal, or 404 when the slot is empty")
+async def read_proposal(
+    iso_week: str, principal: PrincipalDep, service: WeekServiceDep
+) -> PendingProposalResponse:
+    """What this week is asking assent for, and what the solve that proposed it proved."""
+    return PendingProposalResponse.of(await service.proposal(principal, iso_week))
 
 
 @router.post(

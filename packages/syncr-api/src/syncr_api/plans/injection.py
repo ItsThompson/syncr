@@ -55,14 +55,18 @@ from syncr_api.outcomes.confirmations import RecordedDayConfirmations
 from syncr_api.outcomes.planned_days import PlannedDayReader
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.assembler import AssemblyCaller, WeekAssembler
+from syncr_api.plans.conflicts import PlanConflictRepository
 from syncr_api.plans.pins import PinRepository
 from syncr_api.plans.placements import StoredPlacements
+from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.readiness import MinimumInputs
 from syncr_api.plans.reality import BlockOutcomeRepository
 from syncr_api.plans.recording import VerdictRecorder
 from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.served_verdicts import CurrentWeekVerdict, ServedVerdict
 from syncr_api.plans.service import WeekService
 from syncr_api.plans.verdict_events import VerdictEventRepository
+from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.preferences.repository import PreferenceRepository
 from syncr_api.routines.repository import RoutineRepository
@@ -132,6 +136,38 @@ def build_week_assembler(
     )
 
 
+def build_served_verdict(transaction: AsyncSession, tenant_id: TenantId) -> ServedVerdict:
+    """The reader that decides which verdict a read serves, scoped to ``tenant_id``.
+
+    The assembler and the probe both carry the ``request`` caller label, because both callers of
+    this are request-path reads and the assembly histogram's alert is scoped to the interactive
+    caller: a read's assembly labelled ``maintainer`` would be a request's cost hidden behind a
+    background figure the alert deliberately ignores.
+    """
+    return ServedVerdict(
+        proposals=PendingProposalRepository(transaction, tenant_id),
+        assembler=build_week_assembler(transaction, tenant_id, caller=AssemblyCaller.REQUEST),
+        probe=WeekProbe(caller=ProbeCaller.REQUEST),
+    )
+
+
+def build_current_week_verdict(
+    transaction: AsyncSession, tenant_id: TenantId, *, clock: Clock
+) -> CurrentWeekVerdict:
+    """The verdict of the week a tenant is living in, for the backlog's at-risk column.
+
+    Composed here rather than in the backlog's own wiring, because it is the SAME rule the Week
+    screen's read serves and the same assembler behind it: two compositions of it would be two
+    answers to whether a task is at risk.
+    """
+    return CurrentWeekVerdict(
+        served=build_served_verdict(transaction, tenant_id),
+        versions=WeekInputVersionRepository(transaction, tenant_id),
+        settings=SettingsRepository(transaction, tenant_id),
+        clock=clock,
+    )
+
+
 def build_verdict_recorder(
     transaction: AsyncSession,
     tenant_id: TenantId,
@@ -175,18 +211,23 @@ def build_week_service(
     """One week service, scoped to ``tenant_id``, reading time from ``clock``.
 
     Split from the dependency above for the same reason ``build_week_assembler`` is a function of a
-    tenant: the composition is ten collaborators, and a caller that wants one against a stated
-    instant should not have to restate all ten. The horizon a week is compared against and the days
-    a figure is charged to both move at local midnight, so an instant is what a test of either must
-    be able to fix.
+    tenant: the composition is fourteen collaborators, and a caller that wants one against a stated
+    instant should not have to restate all fourteen. The horizon a week is compared against and the
+    days a figure is charged to both move at local midnight, so an instant is what a test of either
+    must be able to fix.
 
     The budget service is the api's own, acquired through its dependency rather than rebuilt, so the
     three figures on the summary strip are the ones the pie review divides: a second composition of
     that arithmetic here is exactly the disagreement the composed view exists to prevent.
 
-    The concession repository is here for the HISTORY rather than for the composed read: a revision
-    names the concessions its plan was solved under by identifier, and one read of the week's own
-    rows answers every row of the page.
+    The concession repository serves the HISTORY as well as the composed read: a revision names the
+    concessions its plan was solved under by identifier, and one read of the week's own rows answers
+    every row of the page and the view's own list.
+
+    The served verdict carries an assembler of its own, which is the dominant cost of any read whose
+    week has no current proposal. It is composed through its own builder rather than inline, because
+    the backlog acquires the same rule and two compositions of it would be two answers to whether a
+    week can hold its commitments.
 
     The operation lifecycle is the solving module's, and it is the only creation path for an
     operation: a second one here would be a second reading of the state machine.
@@ -203,6 +244,10 @@ def build_week_service(
         budgets=build_budget_service(transaction, tenant_id),
         revisions=revisions,
         adjustments=WeekAdjustmentRepository(transaction, tenant_id),
+        proposals=PendingProposalRepository(transaction, tenant_id),
+        pins=PinRepository(transaction, tenant_id),
+        conflicts=PlanConflictRepository(transaction, tenant_id),
+        verdicts=build_served_verdict(transaction, tenant_id),
         versions=WeekInputVersionRepository(transaction, tenant_id),
         operations=operations,
         coordinator=build_solve_coordinator(transaction, tenant_id, clock=clock, debounce=debounce),

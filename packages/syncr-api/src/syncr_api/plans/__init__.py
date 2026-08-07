@@ -69,23 +69,27 @@ one resolved ``SolveInputs``:
 | ``tradeoff_targets.py`` | which targets a gap names, per kind: the selection half |
 | ``tradeoff_labels.py`` | the words a tradeoff is offered in, per kind |
 | ``candidates.py`` | a candidate concession's path to the worker, and the reductions read |
+| ``at_risk.py`` | which tasks a verdict puts at risk, which the backlog reads and nothing else |
 
 And the week routes, which compose everything above into the Week screen's whole read:
 
 | Module | Holds |
 |---|---|
-| ``week_config.py`` | the four paths and the resource name the week routes read |
+| ``week_config.py`` | the five paths and the resource name the week routes read |
 | ``service.py`` | ``WeekService``: the composed read, the history, the verdict, and the solve |
 | ``history.py`` | one page of that history: what each revision auto-applied, and what it conceded |
-| ``week_views.py`` | the two shapes it answers with, which the wire schemas describe |
-| ``api.py`` | the four routes, each calling one service method |
+| ``pending_reads.py`` | the proposal a week is holding, as the value its route answers with |
+| ``served_verdicts.py`` | which verdict a read serves: the current slot's, or a live probe |
+| ``week_views.py`` | the three shapes it answers with, which the wire schemas describe |
+| ``api.py`` | the five routes, each calling one service method |
 | ``wiring.py`` | the prefix, the tag, the origin check, and the statuses they answer |
 | ``emptiness.py`` | why a week holds no plan, and the facts the two actions need |
 | ``readings.py`` | the eight figures the strip shows and the review divides |
 | ``currency.py`` | how current a week's plan is, from the week's own operation state |
 | ``confirmations.py`` | the seam answering which of a week's days the user has confirmed |
-| ``schemas.py`` | the wire shapes the four routes answer with |
+| ``schemas.py`` | the wire shapes the five routes answer with |
 | ``document_schemas.py`` | a stored document on the wire: the blocks and the two kinds of gap |
+| ``proposal_schemas.py`` | a proposal on the wire: the changes waiting, and the slot holding them |
 | ``verdict_schemas.py`` | a verdict on the wire, and the weaker reading a probe verdict renders |
 | ``clause_schemas.py`` | the six reason clauses on the wire, discriminated by kind |
 """

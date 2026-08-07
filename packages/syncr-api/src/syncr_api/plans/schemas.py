@@ -1,13 +1,16 @@
 """The wire shapes the week routes answer with.
 
 ``WeekViewResponse`` is section 13's ``WeekView``, field for field, so the generated TypeScript
-needs no hand-written companion type. The document it carries is ``document_schemas.py``.
+needs no hand-written companion type. The document it carries is ``document_schemas.py``, the diff
+is ``proposal_schemas.py``, and the verdict is ``verdict_schemas.py``.
 
-**Five fields are present and always empty**, because the components that populate them do not
-exist yet: the verdict, the pending proposal, the candidate concession, the approved concessions,
-the pins, and the conflicts. Present rather than omitted, so the contract the frontend generates
-is the contract the screen will read, and a client written against it needs no change when each is
-filled. Each says so on itself.
+**Six fields that shipped present-and-always-empty now carry what they name**: the verdict, the
+pending proposal, the candidate concession, the approved concessions, the pins, and the conflicts.
+The contract's SHAPE is what did not change, which is what the placeholders were for.
+
+**Each of the six reuses the wire shape its owning module already declares.** A concession, a pin
+and a conflict each cross the wire from a route of their own as well as from here, and a second
+declaration of any of them is how two surfaces would come to render one value differently.
 
 **``emptyReason`` is a word and ``emptyWeek`` is the facts.** The word is the closed vocabulary the
 screen has an empty state for; the object beside it carries what the two actions need, which no
@@ -30,18 +33,23 @@ from pydantic import Field
 # built, so a nested model or a closed vocabulary named in one has to be importable then. Ruff
 # cannot see that ``WireModel`` extends ``BaseModel`` from another module, so each import says so.
 from syncr_api.concessions.schemas import AdjustmentResponse
+from syncr_api.conflicts.schemas import ConflictResponse
 from syncr_api.core.schemas import WireModel, WireSpan
 from syncr_api.offplan.schemas import OffPlanPeriodResponse
+from syncr_api.pins.schemas import PinResponse
 from syncr_api.plans.config import RevisionReason, RevisionStatus  # noqa: TC001
 from syncr_api.plans.currency import PlanCurrency  # noqa: TC001
 from syncr_api.plans.document_schemas import PlanDocumentResponse
 from syncr_api.plans.emptiness import EmptyReason  # noqa: TC001
+from syncr_api.plans.proposal_schemas import ProposalDiffResponse
+from syncr_api.plans.verdict_schemas import VerdictResponse
 from syncr_api.solving.schemas import OperationResponse
 
 if TYPE_CHECKING:
     from syncr_api.plans.emptiness import EmptyWeek
     from syncr_api.plans.readings import WeekReadings
     from syncr_api.plans.week_views import WeekRevision, WeekRevisions, WeekView
+    from syncr_domain.feasibility import Verdict
 
 
 class WeekReadingsResponse(WireModel):
@@ -157,26 +165,33 @@ class WeekViewResponse(WireModel):
     empty_week: EmptyWeekResponse | None = Field(
         description="The facts behind emptyReason. Null exactly when live is populated.",
     )
-    # Ticket 44 wires the verdict, the proposal, the candidate concession, the approved
-    # concessions, the pins, and the conflicts into this response. Each field ships now, always
-    # null or empty, so the generated contract does not change shape when they are filled.
-    proposal: None = Field(
-        description="Always null: nothing produces a proposal in this deployment."
+    proposal: ProposalDiffResponse | None = Field(
+        description="The changes this week is proposing and waiting for assent to, or null when "
+        "its slot is empty. What the grid renders proposal targets from."
     )
     candidate_adjustment: AdjustmentResponse | None = Field(
-        description="Always null: a candidate concession rides on an operation and is not read "
-        "back into this view yet.",
+        description="The concession the pending proposal was solved under, awaiting approval, or "
+        "null. Not persisted until the proposal is approved, and it carries the identifier the "
+        "approval will persist it under.",
     )
     adjustments: list[AdjustmentResponse] = Field(
-        description="Always empty: the concessions a week holds are read through the adjustments "
-        "route in this deployment.",
+        description="The approved concessions this week holds, in the order the assembler folds "
+        "them. Listed above the verdict's shortfalls, so a week that has absorbed a concession "
+        "does not read as simply feasible.",
     )
-    pins: list[None] = Field(description="Always empty: nothing records a pin in this deployment.")
-    conflicts: list[None] = Field(
-        description="Always empty: the conflicts a week holds are read through the conflicts route "
-        "in this deployment.",
+    pins: list[PinResponse] = Field(
+        description="The user's own placements for this week, each with what the solver had chosen "
+        "instead and what overriding it cost. Pins do not carry forward to the next week."
     )
-    verdict: None = Field(description="Always null: no read computes a verdict in this deployment.")
+    conflicts: list[ConflictResponse] = Field(
+        description="Every overlap raised in this week, answered ones included: the open ones hold "
+        "a banner and the answered ones are what a repeated collision is computed over.",
+    )
+    verdict: VerdictResponse | None = Field(
+        description="Whether this week can hold its commitments, and by how much it cannot. Null "
+        "exactly when live is null. Its provenance is solver while the week holds a current "
+        "proposal, because that is the only place an attempted placement's finding is kept."
+    )
     off_plan: list[OffPlanPeriodResponse] = Field(
         description="Every declared off-plan span reaching into this week, unclipped, so a "
         "Friday-to-Monday span reads the same in both weeks it touches.",
@@ -199,9 +214,8 @@ class WeekViewResponse(WireModel):
 
         The zone mapping is emitted in date order, so two reads of one week are byte-identical.
 
-        The six fields no component populates yet are passed explicitly rather than defaulted, so
-        the emptiness is a statement at the one place the response is built rather than a property
-        of the schema that a client would then read as an absent field.
+        Every field is passed explicitly rather than defaulted, so what a payload carries is a
+        statement at the one place the response is built rather than a property of the schema.
         """
         return cls(
             iso_week=str(view.iso_week),
@@ -210,12 +224,16 @@ class WeekViewResponse(WireModel):
             live=None if view.live is None else PlanDocumentResponse.of(view.live),
             empty_reason=None if view.empty is None else view.empty.reason,
             empty_week=None if view.empty is None else EmptyWeekResponse.of(view.empty),
-            proposal=None,
-            candidate_adjustment=None,
-            adjustments=[],
-            pins=[],
-            conflicts=[],
-            verdict=None,
+            proposal=(None if view.proposal is None else ProposalDiffResponse.of(view.proposal)),
+            candidate_adjustment=(
+                None
+                if view.candidate_adjustment is None
+                else AdjustmentResponse.of(view.candidate_adjustment)
+            ),
+            adjustments=[AdjustmentResponse.of(one) for one in view.adjustments],
+            pins=[PinResponse.of(one) for one in view.pins],
+            conflicts=[ConflictResponse.of(one) for one in view.conflicts],
+            verdict=None if view.verdict is None else VerdictResponse.of(view.verdict),
             off_plan=[OffPlanPeriodResponse.of(period) for period in view.off_plan],
             operation=None if view.operation is None else OperationResponse.of(view.operation),
             input_version=view.input_version,
@@ -293,8 +311,19 @@ class WeekRevisionsResponse(WireModel):
 class WeekVerdictResponse(WireModel):
     """The week's verdict alone, for a cheap refresh.
 
-    Always null, and this read writes nothing at all: no ``VerdictEvent`` is appended by any read
-    path. Ticket 44 supplies the verdict, and ticket 43 owns the only writer of a transition.
+    The same rule the composed read serves, so the two cannot report different provenance for one
+    week: the pending slot's verdict while its input version is current, and a live probe otherwise.
+
+    Null exactly when the week holds no plan, which is the biconditional the composed read states.
+
+    This read writes nothing at all: no ``VerdictEvent`` is appended by any read path.
     """
 
-    verdict: None = Field(description="Always null: no read computes a verdict in this deployment.")
+    verdict: VerdictResponse | None = Field(
+        description="The week's verdict, or null when the week holds no plan. Reading it appends "
+        "no transition: a read computes a verdict for display and records nothing."
+    )
+
+    @classmethod
+    def of(cls, verdict: Verdict | None) -> Self:
+        return cls(verdict=None if verdict is None else VerdictResponse.of(verdict))

@@ -1,20 +1,30 @@
-"""``WeekService``: the Week screen's whole read, its history, and the request to solve it.
+"""``WeekService``: the Week screen's whole read, its history, its verdict, its proposal, its solve.
 
-Four methods, and the first is why this endpoint exists at all: composing the week from six separate
+Five methods, and the first is why this endpoint exists at all: composing the week from ten separate
 routes would make the one screen a user lives in the one place where a chatty API is visibly slow.
 
-## The read writes nothing, and that is structural rather than remembered
+## Every read here writes nothing, and that is structural rather than remembered
 
-It appends no revision, creates no operation, bumps no version, and appends no ``VerdictEvent``.
-Every collaborator below is either a reader or, in the budget's case, a service whose own read is
-stated to write nothing. Navigating between weeks with ``[`` and ``]`` is not a mutation, so a week
-fifty weeks out has no plan and says why instead of quietly queueing work.
+No revision, no operation, no version bump, and no ``VerdictEvent``. Every collaborator below is
+either a reader or, in the budget's case, a service whose own read is stated to write nothing.
+Navigating between weeks with ``[`` and ``]`` is not a mutation, so a week fifty weeks out has no
+plan and says why instead of quietly queueing work.
+
+**That includes the verdict, which four of the five reads now compute.** ``VE6`` forbids a read from
+appending a transition, and ``VE8`` is the same argument from the metric's side: a transition a read
+observes is recorded by the next mutation or by the maintainer's next tick.
 
 ## ``live`` is nullable, and the reason is carried beside it
 
 A week the plan horizon maintainer has not reached has no plan. The alternatives were a read that
 queues work and a fabricated empty document, and both are worse than a null with a stated reason.
 Which reason, and the facts the screen's two actions need, is ``emptiness.py``.
+
+## ``verdict`` is null exactly when ``live`` is, and which verdict it is, is a rule
+
+A week with no plan has had nothing computed about it, so a verdict beside it would be a claim about
+nothing. Which of two verdicts a week WITH a plan serves is ``served_verdicts.py``, and it is the
+one rule that lets a packing failure survive a read at all.
 
 ## The three figures on the strip are the budget report's, not the document's
 
@@ -23,7 +33,13 @@ the strip cannot disagree with the same figure in the review: they are one arith
 occupancy read, not two implementations that agree today. The document's own three figures are as of
 the instant it was produced and are deliberately absent from the wire.
 
-## Three costs are accepted here rather than pushed onto a collaborator
+**One figure is on this payload twice today and the two disagree**, and it is not this module's to
+fix: ``readings.discretionaryMinutes`` is the budget's, whose occupancy reader fills one of four
+subtrahends, and ``verdict.discretionaryMinutes`` is the probe's, which subtracts all four. Ticket
+1310 owns the seam that closes it, and both figures move when it lands because the week service
+acquires the budget service rather than recomputing its arithmetic.
+
+## Four costs are accepted here rather than pushed onto a collaborator
 
 **The off-plan periods are read twice**, once as intervals inside the budget's denominator and once
 as records for the screen's gutter. They are two shapes of one small indexed read, and a reader
@@ -36,6 +52,10 @@ query parameter.
 **A week with no plan costs two extra reads**, the minimum inputs, and neither is on the path a week
 WITH a plan takes. The home zone the horizon is resolved in is not among them: it rides on the
 budget's view beside the zones, from the one read of the profile that both come from.
+
+**A week whose pending slot is empty or stale costs a whole assembly**, which is the dominant cost
+of this read when it is paid. It is what a live verdict is computed from, and the alternative is a
+verdict field that is null on every week between an approval and the next solve.
 
 ## ``operation`` reports either plan operation, not only a solve
 
@@ -50,17 +70,20 @@ from typing import TYPE_CHECKING
 
 from syncr_api.calendars.horizons import read_horizon_days
 from syncr_api.concessions.config import ISO_WEEK_FIELD
-from syncr_api.core.errors import Conflict
+from syncr_api.core.errors import Conflict, NotFound
 from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
+from syncr_api.plans.candidates import awaiting_approval
 from syncr_api.plans.currency import plan_currency
 from syncr_api.plans.emptiness import Horizon, empty_week
 from syncr_api.plans.history import revision_page
+from syncr_api.plans.pending_reads import pending_proposal
 from syncr_api.plans.readings import week_readings
 from syncr_api.plans.stored_documents import plan_document
-from syncr_api.plans.week_config import HISTORY_PAGE
-from syncr_api.plans.week_views import WeekRevisions, WeekView
+from syncr_api.plans.stored_proposals import read_proposal_diff
+from syncr_api.plans.week_config import HISTORY_PAGE, WEEK_RESOURCE
+from syncr_api.plans.week_views import PendingProposal, WeekRevisions, WeekView
 from syncr_api.solving.config import PLAN_KINDS
 from syncr_api.user_settings.zone_reading import local_date
 from syncr_common.logging import get_logger
@@ -76,22 +99,23 @@ if TYPE_CHECKING:
     from syncr_api.offplan.repository import OffPlanPeriodRepository
     from syncr_api.plans.adjustments import WeekAdjustmentRepository
     from syncr_api.plans.confirmations import DayConfirmationReader
+    from syncr_api.plans.conflicts import PlanConflictRepository
     from syncr_api.plans.emptiness import EmptyWeek
+    from syncr_api.plans.pins import PinRepository
+    from syncr_api.plans.proposals import PendingProposalRepository
     from syncr_api.plans.readiness import MinimumInputs
     from syncr_api.plans.readings import WeekReadings
     from syncr_api.plans.repository import PlanRepository
+    from syncr_api.plans.served_verdicts import ServedVerdict
     from syncr_api.plans.versions import WeekInputVersionRepository
     from syncr_api.solving.coordinator import SolveCoordinator
     from syncr_api.solving.records import OperationRecord
     from syncr_api.solving.repository import OperationRepository
+    from syncr_domain.feasibility import Verdict
     from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
 
 _log = get_logger("syncr.weeks")
-
-# What the week view reports when nothing has referenced the week yet. Versions start at one, so
-# zero is a value no row can hold and reads as "untracked" rather than as a version.
-UNTRACKED_VERSION = 0
 
 
 class WeekService:
@@ -103,6 +127,10 @@ class WeekService:
         budgets: BudgetService,
         revisions: PlanRepository,
         adjustments: WeekAdjustmentRepository,
+        proposals: PendingProposalRepository,
+        pins: PinRepository,
+        conflicts: PlanConflictRepository,
+        verdicts: ServedVerdict,
         versions: WeekInputVersionRepository,
         operations: OperationRepository,
         coordinator: SolveCoordinator,
@@ -115,6 +143,10 @@ class WeekService:
         self._budgets = budgets
         self._revisions = revisions
         self._adjustments = adjustments
+        self._proposals = proposals
+        self._pins = pins
+        self._conflicts = conflicts
+        self._verdicts = verdicts
         self._versions = versions
         self._operations = operations
         self._coordinator = coordinator
@@ -131,8 +163,14 @@ class WeekService:
         ``now`` is read once and passed to everything below it, which is the discipline the horizon
         maintainer states: a tick that read the clock per collaborator could compute a horizon from
         one date and a per-day figure from another, and at local midnight the two would differ by a
-        day. Today the two consumers of it are on opposite branches, so at most one reads it per
-        request and the invariant is cheap rather than load-bearing.
+        day. Three consumers read it now, the horizon, the per-day figures and the assembly a live
+        verdict is computed from, and the verdict's own instant is stamped from it, so a client
+        comparing the verdict's instant with the week beside it reads one instant rather than two.
+
+        The version is read once and used twice, as the figure the view reports and as the currency
+        test the served verdict applies to the pending slot. Two reads of that counter could
+        straddle a bump, and the pair would then disagree about which input state this answer is
+        about.
         """
         require_scope(principal, Scope.PLAN_READ)
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
@@ -141,26 +179,33 @@ class WeekService:
         live = await self._revisions.latest(week)
         document = None if live is None else plan_document(live.document)
         in_flight = await self._operations.in_flight_of(week, kinds=PLAN_KINDS)
+        version = await self._versions.tracked_version(week)
+        held = await self._proposals.find(week)
         return WeekView(
             iso_week=week,
             span=budget.span,
             zone_by_date=budget.zone_by_date,
             live=document,
             empty=None if document is not None else await self._why_empty(week, budget, now=now),
+            proposal=None if held is None else read_proposal_diff(held.proposal_diff, week),
+            candidate_adjustment=None if held is None else awaiting_approval(held),
+            adjustments=await self._adjustments.for_week(week),
+            pins=await self._pins.for_week(week),
+            conflicts=await self._conflicts.for_week(week),
             off_plan=await self._off_plan.for_span(budget.span),
+            verdict=(
+                None
+                if document is None
+                else await self._verdicts.for_week(week, now=now, input_version=version)
+            ),
             operation=in_flight,
-            input_version=await self._tracked_version(week),
+            input_version=version,
             readings=(
                 None
                 if document is None
                 else await self._readings(document, budget=budget, in_flight=in_flight, now=now)
             ),
         )
-
-    async def _tracked_version(self, week: IsoWeek) -> int:
-        """The week's input version, or the value no row can hold when nothing has referenced it."""
-        current = await self._versions.current(week)
-        return UNTRACKED_VERSION if current is None else current
 
     @measured("weeks")
     async def revisions(self, principal: Principal, iso_week: str) -> WeekRevisions:
@@ -183,16 +228,49 @@ class WeekService:
         )
 
     @measured("weeks")
-    async def verdict(self, principal: Principal, iso_week: str) -> None:
-        """The week's verdict alone, for a cheap refresh. Always ``None``, and writes nothing.
+    async def verdict(self, principal: Principal, iso_week: str) -> Verdict | None:
+        """The week's verdict alone, for a cheap refresh. Writes nothing.
 
-        The identifier is still parsed, so a malformed week is refused rather than answered with a
-        null that reads as "this week has no verdict". Ticket 44 computes the verdict here, and it
-        appends no ``VerdictEvent`` when it does: a read is deliberately absent from the surfaces a
-        transition may be recorded from.
+        The same rule the composed read serves, so the cheap refresh and the whole read cannot
+        report different provenance for one week: the slot's verdict while its input version is
+        current, and a live probe otherwise.
+
+        ``None`` exactly when the week holds no plan, which is the same biconditional the view
+        states: nothing has been computed about such a week, and a verdict about a plan that does
+        not exist would be a claim about nothing.
+
+        It appends no ``VerdictEvent`` on either branch. ``VE6``: a read is deliberately absent from
+        the surfaces a transition may be recorded from, and ``VE8`` is the other half of the same
+        argument -- a fresh probe here would flip provenance back from ``solver`` after every solve.
         """
         require_scope(principal, Scope.PLAN_READ)
-        require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
+        week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
+        if await self._revisions.latest(week) is None:
+            return None
+        return await self._verdicts.for_week(
+            week, now=self._clock(), input_version=await self._versions.tracked_version(week)
+        )
+
+    @measured("weeks")
+    async def proposal(self, principal: Principal, iso_week: str) -> PendingProposal:
+        """The proposal this week is holding, or a 404 because its slot is empty.
+
+        A 404 rather than a null body: the slot is a resource with at most one occupant, so an empty
+        one is an absent resource. A null would have to be told apart from a proposal that proposes
+        nothing, and the diff's own emptiness already means that.
+
+        The stored diff and the stored verdict are both rebuilt through the domain's own
+        constructors, so a corrupt row is refused here rather than rendered.
+        """
+        require_scope(principal, Scope.PLAN_READ)
+        week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
+        held = await self._proposals.find(week)
+        if held is None:
+            raise NotFound(
+                f"That {WEEK_RESOURCE} is proposing nothing: its plan of record is what it holds, "
+                "and there is nothing awaiting your assent."
+            )
+        return pending_proposal(held)
 
     @measured("weeks")
     async def request_solve(
@@ -221,7 +299,7 @@ class WeekService:
         # This control changes no input, so the version it reports is the one the week already
         # holds: it is what the client's response says was acknowledged, and it is not the guard.
         return await self._coordinator.request_solve(
-            week, await self._tracked_version(week), immediate=immediate
+            week, await self._versions.tracked_version(week), immediate=immediate
         )
 
     async def _readings(
