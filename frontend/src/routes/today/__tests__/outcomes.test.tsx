@@ -499,6 +499,26 @@ describe("confirming the day", () => {
     expect(dates).toEqual([]);
   });
 
+  /* A CHORD IS ONE GESTURE. `c` names no screen, so `g c` resolves the chord to nothing and must reach no
+     binding: the shell consumes that keystroke. Before it did, `g c` confirmed the day, which bumps the
+     solve-input version of this week and every later one. */
+  it("does nothing on g c, because the chord consumed the keystroke", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const dates: string[] = [];
+    apiServer.use(
+      http.post(CONFIRM, ({ params }) => {
+        dates.push(String(params.date));
+        return HttpResponse.json(buildDay());
+      }),
+    );
+    await screen.findByText(GYM);
+
+    await userEvent.setup().keyboard("gc");
+
+    expect(dates).toEqual([]);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Today");
+  });
+
   it("confirms on c, and every row reads as recorded before the api answers", async () => {
     const stub = await renderToday(onHostToday(buildDay()));
     const { held, release } = heldResponse();

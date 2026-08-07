@@ -1,4 +1,4 @@
-/* `g` then a letter, and the three cases in which it must do nothing. */
+/* `g` then a letter, the three cases in which it must do nothing, and the keystroke it consumes. */
 
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -74,5 +74,28 @@ describe("useScreenChords", () => {
     await userEvent.keyboard("gb");
 
     expect(titleOf()).toBe("Backlog");
+  });
+});
+
+/* A CHORD IS ONE GESTURE, so the keystroke that resolves it reaches no other binding. Two listeners answering one
+ * keystroke is how `g c` came to confirm a day and `g ?` to open the help overlay, and the exposure is worse for a
+ * route that pins: a stray pin is a hard constraint the solver then honours. The route half of this rule is
+ * asserted where the route's own fixtures are, in `routes/today/__tests__/outcomes.test.tsx` and
+ * `routes/week/__tests__/pinning.test.tsx`. */
+describe("the keystroke that resolves a chord", () => {
+  it("does not reach a shell binding: g ? opens no help overlay", async () => {
+    renderAt("/week");
+
+    await userEvent.keyboard("g?");
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("still opens the help overlay when no chord is pending", async () => {
+    renderAt("/week");
+
+    await userEvent.keyboard("?");
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 });
