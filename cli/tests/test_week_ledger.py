@@ -26,9 +26,9 @@ from tests import payloads
 TUESDAY = "2026-02-10"
 
 AREA_NAMES = {
-    payloads.FITNESS_ID: "Fitness",
-    payloads.CAREER_ID: "Career",
-    payloads.TRANSIT_ID: "Transit",
+    str(payloads.FITNESS_ID): "Fitness",
+    str(payloads.CAREER_ID): "Career",
+    str(payloads.TRANSIT_ID): "Transit",
 }
 
 

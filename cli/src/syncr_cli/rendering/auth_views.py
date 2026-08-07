@@ -2,7 +2,8 @@
 
 Each is a payload with no body group: nothing an authorization command says belongs below a
 verdict, because none of them changes a plan. The three share that emptiness and the way they print
-an instant, so both live on one base rather than being written out three times.
+an instant with every other payload that carries no week, so both answers come off
+:class:`~syncr_cli.rendering.views.PlainView`.
 
 **No credential appears in either rendering.** The principal, the scopes, and where the token is
 kept are what these report. The refresh token and the access token are reported by their existence
@@ -16,7 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
-from syncr_cli.rendering.human import iso_deadline
+from syncr_cli.rendering.views import PlainView
 
 if TYPE_CHECKING:
     from syncr_cli.auth.claims import TokenClaims
@@ -30,27 +31,8 @@ _LABEL: Final = 10
 UNKNOWN_EXPIRY: Final = "an unstated time"
 
 
-class AuthView:
-    """What every authorization payload shares: no body, and a plain instant.
-
-    An authorization command's payload never accompanies a verdict, so it never has to render a
-    deadline in a week's zone. Stated once here rather than three times.
-
-    ``__slots__`` is empty and present: without it, the three ``slots=True`` dataclasses below would
-    inherit a ``__dict__`` from this base and the declaration would buy nothing.
-    """
-
-    __slots__ = ()
-
-    def body_lines(self) -> list[str]:
-        return []
-
-    def render_deadline(self, moment: datetime) -> str:
-        return iso_deadline(moment)
-
-
 @dataclass(frozen=True, slots=True)
-class LoginView(AuthView):
+class LoginView(PlainView):
     """What a completed authorization reports: the scopes granted, and where the token is."""
 
     api_url: str
@@ -76,7 +58,7 @@ class LoginView(AuthView):
 
 
 @dataclass(frozen=True, slots=True)
-class LogoutView(AuthView):
+class LogoutView(PlainView):
     """What a logout reports: whether there was a grant to revoke, and that it is gone."""
 
     api_url: str
@@ -98,7 +80,7 @@ class LogoutView(AuthView):
 
 
 @dataclass(frozen=True, slots=True)
-class StatusView(AuthView):
+class StatusView(PlainView):
     """Who this machine is authenticated as, what it may do, and where its token lives."""
 
     api_url: str

@@ -1,39 +1,54 @@
 """``week show``: the week, as a plan.
 
-One read command, and the one that proves the whole spine: it authenticates with a bearer token,
-reads the composed week view, names its Areas, renders the ledger for a person and the api's own
-payload for an agent, and exits 8 when the week cannot hold its commitments.
+The read that proves the whole spine: it authenticates with a bearer token, reads the composed week
+view, names its Areas, renders the ledger for a person and the api's own payload for an agent, and
+exits 8 when the week cannot hold its commitments.
 
 **Two reads, not one.** A block carries the Area it is charged to as an identifier, and a ledger
-of identifiers is not a ledger. The Areas are a bounded collection -- as many as a person holds
-life categories -- so naming them costs one small request rather than a lookup per block.
+of identifiers is not a ledger. How the second read degrades when it fails is
+:mod:`syncr_cli.areas`, which the backlog's rendering shares: one policy, so a ``--`` means the
+same thing on both surfaces.
 
-**An Area read that fails does not fail the ledger.** The week is what was asked for; a name is
-how a row reads. So a refused or unreadable Area list leaves the rows naming no Area rather than
-losing the whole week, and the notice says so.
+**One composition of the week's ledger, reached by three commands.** ``plan show`` prints the same
+ledger and ``plan solve --wait`` prints its heading group, so both read the week through
+:func:`read_week` rather than composing a second one: two compositions of one view is how two
+surfaces come to disagree about a figure.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from uuid import UUID
 
-from syncr_cli.errors import CliError
+from syncr_cli.areas import area_names
 from syncr_cli.parser import add_verb, register_command
 from syncr_cli.rendering.ledger import WeekLedger
 from syncr_cli.results import CliResult
-from syncr_cli.wire.reading import mapping, mappings, text
 from syncr_cli.wire.week import WeekView
 
 if TYPE_CHECKING:
-    from syncr_cli.api_client import ApiClient
-    from syncr_cli.notices import Notices
     from syncr_cli.parser import Invocation, Parser, Verbs
     from syncr_cli.runtime import Runtime
 
 NOUN = "week"
 
-AREAS_DOCUMENT = "areas"
+
+@dataclass(frozen=True, slots=True)
+class ReadWeek:
+    """One week's read: the view it came from, and the ledger that prints it."""
+
+    view: WeekView
+    ledger: WeekLedger
+
+    def as_result(self) -> CliResult:
+        """This read as the result a command answers with: the ledger, the verdict, the operation.
+
+        The operation is one this read merely saw rather than one it dispatched, so it is reported
+        for a caller to follow and does not decide the exit code.
+        """
+        return CliResult.succeeded(
+            self.ledger, verdict=self.view.verdict, operation=self.view.operation
+        )
 
 
 def register(nouns: Verbs, shared: Parser) -> None:
@@ -59,25 +74,13 @@ def register(nouns: Verbs, shared: Parser) -> None:
 
 def show(runtime: Runtime, _invocation: Invocation) -> CliResult:
     """Read one week and answer with everything three renderings need."""
-    week = WeekView.read(runtime.client.read_week(str(runtime.settings.week)))
-    return CliResult.succeeded(
-        WeekLedger(week=week, area_names=area_names(runtime.client, runtime.notices)),
-        verdict=week.verdict,
-        operation=week.operation,
+    return read_week(runtime).as_result()
+
+
+def read_week(runtime: Runtime) -> ReadWeek:
+    """The configured week, and the ledger that prints it."""
+    view = WeekView.read(runtime.client.read_week(str(runtime.settings.week)))
+    return ReadWeek(
+        view=view,
+        ledger=WeekLedger(week=view, area_names=area_names(runtime.client, runtime.notices)),
     )
-
-
-def area_names(client: ApiClient, notices: Notices) -> dict[UUID, str]:
-    """Every Area of this tenant, by identifier, or nothing and a notice saying why."""
-    try:
-        payload = mapping(client.list_areas(), AREAS_DOCUMENT)
-        return {
-            UUID(text(area, "id", AREAS_DOCUMENT)): text(area, "name", AREAS_DOCUMENT)
-            for area in mappings(payload, "areas", AREAS_DOCUMENT)
-        }
-    except (CliError, ValueError) as error:
-        notices.state(
-            f"the Areas could not be read ({error}), so the ledger's Area column reads '--'. "
-            "The week itself is unaffected."
-        )
-        return {}

@@ -23,7 +23,6 @@ from syncr_domain.zones import resolve_zone
 
 if TYPE_CHECKING:
     from datetime import datetime
-    from uuid import UUID
 
     from syncr_cli.wire.reading import JsonMapping
     from syncr_cli.wire.week import Readings, WeekView
@@ -41,11 +40,12 @@ class WeekLedger:
 
     ``area_names`` is a separate read: a block carries the Area it is charged to as an
     identifier, and the ledger prints Areas by name because a column of identifiers is not a
-    ledger. An Area the read did not name renders as no Area rather than as a raw identifier.
+    ledger. Keyed by the identifier as the wire spells it, so one map serves this surface and the
+    backlog's. An Area the read did not name renders as no Area rather than as a raw identifier.
     """
 
     week: WeekView
-    area_names: dict[UUID, str] = field(default_factory=dict)
+    area_names: dict[str, str] = field(default_factory=dict)
 
     @property
     def payload(self) -> JsonMapping:

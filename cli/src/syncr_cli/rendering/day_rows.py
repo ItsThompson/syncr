@@ -24,7 +24,6 @@ from syncr_domain.zones import resolve_zone
 
 if TYPE_CHECKING:
     from datetime import date
-    from uuid import UUID
 
     from syncr_domain.intervals import Interval
 
@@ -64,7 +63,7 @@ class Layout:
     title: int
 
     @classmethod
-    def of(cls, entries: tuple[Entry, ...], area_names: dict[UUID, str]) -> Layout:
+    def of(cls, entries: tuple[Entry, ...], area_names: dict[str, str]) -> Layout:
         areas = [area_cell(entry, area_names) for entry in entries]
         return cls(
             duration=duration_column_width([entry.minutes for entry in entries]),
@@ -79,7 +78,7 @@ def day_sections(
     zone_by_date: dict[date, str],
     span: Interval,
     entries: tuple[Entry, ...],
-    area_names: dict[UUID, str],
+    area_names: dict[str, str],
 ) -> tuple[DaySection, ...]:
     """Every date of the week, in order, with its rows already spelled."""
     layout = Layout.of(entries, area_names)
@@ -113,7 +112,7 @@ def day_heading(on: date) -> str:
     return f"{on:%a %d}"
 
 
-def area_cell(entry: Entry, area_names: dict[UUID, str]) -> str:
+def area_cell(entry: Entry, area_names: dict[str, str]) -> str:
     """The Area column for one row.
 
     An Area this read did not name renders as no Area, which is the honest answer: the ledger
@@ -121,18 +120,18 @@ def area_cell(entry: Entry, area_names: dict[UUID, str]) -> str:
     """
     if entry.area_id is None:
         return NO_AREA
-    return area_names.get(entry.area_id, NO_AREA)
+    return area_names.get(str(entry.area_id), NO_AREA)
 
 
 def _rows(
-    entries: list[Entry], *, zone: str, layout: Layout, area_names: dict[UUID, str]
+    entries: list[Entry], *, zone: str, layout: Layout, area_names: dict[str, str]
 ) -> tuple[str, ...]:
     if not entries:
         return (f"{ROW_INDENT}{NOTHING_PLANNED}",)
     return tuple(_row(entry, zone=zone, layout=layout, area_names=area_names) for entry in entries)
 
 
-def _row(entry: Entry, *, zone: str, layout: Layout, area_names: dict[UUID, str]) -> str:
+def _row(entry: Entry, *, zone: str, layout: Layout, area_names: dict[str, str]) -> str:
     """One row: the wall times, the duration, the Area, the title, then the words.
 
     The gap after the wall times is one space rather than two, because the duration is right-aligned
