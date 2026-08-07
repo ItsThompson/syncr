@@ -175,7 +175,7 @@ class TestTheThreePathsAreTheOnesTheCriterionNames:
             "WeightSetResponse",
         } <= set(document["components"]["schemas"])
 
-    def test_the_committed_contract_carries_every_path_the_app_declares(
+    def test_the_committed_contract_carries_every_path_and_schema_the_app_declares(
         self, settings: ServiceSettings
     ) -> None:
         """The gap that let a stale frontend contract merge, closed where a developer will see it.
@@ -185,18 +185,27 @@ class TestTheThreePathsAreTheOnesTheCriterionNames:
         list, so a backend change that adds a route goes red in CI and green everywhere a developer
         looks.
 
-        Compared as the PATH SET rather than byte for byte: byte equality is the `contract` job's
-        own job, and doing it here would make this test fail on a sibling's unrelated regeneration,
-        which is a red test that teaches nothing. A route absent from the committed document is the
-        failure that matters, and it is exactly the one this ticket shipped.
-        """
-        declared = set(create_app(settings).openapi()["paths"])
-        committed = set(json.loads(CONTRACT.read_text(encoding="utf-8"))["paths"])
+        **Paths AND schema names, because paths alone miss the likelier drift.** Once the three
+        routes exist, the next staleness is a changed response model on an existing path rather than
+        a new path, and a path-only comparison cannot see one: measured, dropping
+        `ParameterResponse` from the committed document leaves a path-only check green.
 
-        assert declared - committed == set(), (
-            "the committed frontend contract is missing a path the app declares. "
+        Compared as two SETS rather than byte for byte: byte equality is the `contract` job's own
+        job, and doing it here would redden on a sibling's unrelated regeneration, which is a red
+        test that teaches nothing. What matters is that nothing the app declares is absent.
+        """
+        declared = create_app(settings).openapi()
+        committed = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        hint = (
+            "the committed frontend contract is missing something the app declares. "
             "Run `just contract` and commit frontend/openapi.json with schema.d.ts."
         )
+
+        assert set(declared["paths"]) - set(committed["paths"]) == set(), hint
+        assert (
+            set(declared["components"]["schemas"]) - set(committed["components"]["schemas"])
+            == set()
+        ), hint
 
 
 class TestTheLearnedRead:
