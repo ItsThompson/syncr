@@ -19,7 +19,7 @@ these documents cannot be a shape production never produces.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -202,6 +202,34 @@ class TestTheFingerprintReader:
         with pytest.raises(FingerprintUnreadable, match="no row counts"):
             read(document(counts={}), tmp_path)
 
+    def test_a_document_with_no_digests_is_a_refusal(self, tmp_path: Path) -> None:
+        """THE MIRROR OF THE COUNTS REFUSAL, and it had no test until a reviewer deleted it.
+
+        With the raise replaced by `return {}`, 212 tests passed either way, and the only content
+        claim then read "every one of the 0 tables hashes identically, so the rows came back byte
+        for byte" as a PASS. That is a drill reporting success over nothing, which is the class the
+        digest was added to close.
+        """
+        with pytest.raises(FingerprintUnreadable, match="no content digests"):
+            read(document(digests={}), tmp_path)
+
+    def test_a_digest_that_is_not_a_string_is_a_refusal(self, tmp_path: Path) -> None:
+        with pytest.raises(FingerprintUnreadable, match="as the digest"):
+            read(document(digests={"public.pins": 12}), tmp_path)  # type: ignore[dict-item]
+
+    def test_an_empty_digest_is_a_refusal(self, tmp_path: Path) -> None:
+        """An empty string is not a hash, and it would compare equal to another empty string."""
+        with pytest.raises(FingerprintUnreadable, match="as the digest"):
+            read(document(digests={"public.pins": ""}), tmp_path)
+
+    def test_a_document_missing_the_digest_key_is_a_refusal(self, tmp_path: Path) -> None:
+        """The key is in `DOCUMENT_KEYS`, so an older document is refused rather than half-read."""
+        incomplete = document()
+        del incomplete[fingerprint.KEY_DIGESTS]
+
+        with pytest.raises(FingerprintUnreadable, match=fingerprint.KEY_DIGESTS):
+            read(incomplete, tmp_path)
+
     def test_a_count_that_is_not_a_number_is_a_refusal(self, tmp_path: Path) -> None:
         with pytest.raises(FingerprintUnreadable, match="as the count"):
             read(document(counts={"public.pins": "many"}), tmp_path)  # type: ignore[dict-item]
@@ -276,6 +304,21 @@ class TestTheVerdict:
         ]
 
         assert f"{len(EVIDENCE_TABLES)} tables hashes identically" in finding.claim
+
+    def test_a_comparison_over_zero_hashed_tables_fails(self, tmp_path: Path) -> None:
+        """THE TWO GUARDS ARE INDEPENDENT NOW, not sequential.
+
+        `ops.fingerprint` refuses a document with no digests, so the verdict could only be reached
+        this way by a caller building one directly. With the parser's refusal deleted, this claim
+        held over zero tables and printed "byte for byte": a claim that cannot fail.
+        """
+        before = read(document(), tmp_path, "b.json")
+        hollow = replace(before, content_digests={})
+
+        verdict = compare(hollow, hollow, elapsed_seconds=17)
+
+        assert not verdict.held
+        assert "no table was hashed before the dump" in str(verdict.failures[0])
 
     def test_a_lost_row_fails(self, tmp_path: Path) -> None:
         """The whole reconciliation: count in, count out."""

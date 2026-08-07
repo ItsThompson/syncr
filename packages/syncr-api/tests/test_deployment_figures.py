@@ -13,6 +13,8 @@ in any one of them silently moves the recovery point.
 
 from __future__ import annotations
 
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
@@ -22,6 +24,7 @@ from ops.config import (
     BACKUP_METRIC,
     BACKUP_STALE_AFTER_SECONDS,
     DAILY_COPIES,
+    EVIDENCE_TABLES,
     MONTHLY_COPIES,
     NIGHTLY_HOUR,
     RECOVERY_POINT_OBJECTIVE_SECONDS,
@@ -31,8 +34,10 @@ from ops.config import (
     WAL_STALE_AFTER_SECONDS,
     WEEKLY_COPIES,
 )
+from ops.fingerprint import Fingerprint
 from ops.process import Result
 from ops.restore import RestoreRefused, require_empty
+from ops.verdict import compare
 
 from tests.test_alert_rules import named as alert_named
 from tests.test_alert_rules import repo_root
@@ -72,6 +77,26 @@ SECTION_21_RUNBOOKS: Final = (
 SYSTEMD: Final = Path("deployments/systemd")
 
 
+def _claims() -> int:
+    """How many claims the verdict prints, read from the verdict rather than from a runbook."""
+    reading = Fingerprint(
+        taken_at=datetime(2026, 8, 7, 3, tzinfo=UTC),
+        expected_head="head",
+        applied_revision="head",
+        row_counts=dict.fromkeys(EVIDENCE_TABLES, 1),
+        content_digests=dict.fromkeys(EVIDENCE_TABLES, "digest"),
+        cursors=(),
+    )
+    return len(compare(reading, reading, elapsed_seconds=1).findings)
+
+
+def _number(count: int) -> str:
+    """The English word a runbook writes a small count as."""
+    words = {7: "seven", 8: "eight", 9: "nine"}
+    assert count in words, f"the verdict prints {count} claims and nothing here spells that"
+    return words[count]
+
+
 def _every_runbook() -> tuple[str, ...]:
     """Every runbook in the directory, which is the set a rule about runbooks has to be stated over.
 
@@ -79,6 +104,44 @@ def _every_runbook() -> tuple[str, ...]:
     are runbooks too, and one of them is the file this ticket rewrote.
     """
     return tuple(sorted(path.name for path in (repo_root() / RUNBOOKS).glob("*.md")))
+
+
+# systemd's own default PATH for a service, which is where `/usr/bin/env just` looks. Not
+# configurable in these units and not the shell's: a unit inherits this and nothing else.
+SYSTEMD_DEFAULT_PATH: Final = (
+    Path("/usr/local/sbin"),
+    Path("/usr/local/bin"),
+    Path("/usr/sbin"),
+    Path("/usr/bin"),
+    Path("/sbin"),
+    Path("/bin"),
+)
+
+_ENV: Final = "/usr/bin/env"
+
+
+def _exec_start(content: str) -> str:
+    """One unit's `ExecStart` value, or the empty string when it has none."""
+    for line in content.splitlines():
+        if line.startswith("ExecStart="):
+            return line.partition("=")[2].strip()
+    return ""
+
+
+def _where_the_runbook_installs_just() -> Path:
+    """Where the deploy runbook puts the `just` binary, read from the command it tells you to run.
+
+    `tar -xz -C <directory> just` is that command. Read rather than restated: the whole point of
+    this crossing is that a second copy of the path is what went wrong.
+    """
+    import re
+
+    found = re.search(r"tar -xz -C (\S+) just", read(DEPLOY_AND_ROLLBACK))
+    assert found is not None, (
+        "the deploy runbook no longer states where it installs `just`, so nothing crosses the "
+        "units against it"
+    )
+    return Path(found.group(1)) / "just"
 
 
 def read(relative: Path) -> str:
@@ -202,6 +265,45 @@ class TestTheRestoreRunbookFigures:
 
         assert "data read back" in runbook
         assert "empty archive" in runbook
+
+    def test_it_quotes_the_number_of_claims_the_verdict_actually_prints(self) -> None:
+        """CROSSED AGAINST THE VERDICT, because the sample block quoted two different figures.
+
+        One sentence said seven claims after the eighth landed, and the sample's digest line quoted
+        5, which is `len(EVIDENCE_TABLES)` from a test fixture, beside a table-presence line quoting
+        the real 36 in the same code block. An operator comparing the printed verdict against the
+        runbook had no way to tell which was right.
+        """
+        runbook = read(RESTORE_FROM_BACKUP)
+
+        assert f"the {_number(_claims())} claims it prints" in runbook
+        assert "seven claims" not in runbook
+        assert "the 5 tables hashes identically" not in runbook, (
+            "that figure is a test fixture's, not a run's"
+        )
+
+    def test_the_sample_verdict_is_a_real_run_rather_than_a_fixture(self) -> None:
+        """Both figures in the sample block are the ones two real drills printed."""
+        runbook = read(RESTORE_FROM_BACKUP)
+
+        assert "every one of the 36 tables the dump was taken over is present" in runbook
+        assert "every one of the 36 tables hashes identically" in runbook
+
+    def test_step_six_does_not_write_to_the_bucket(self) -> None:
+        """Step 6 is where the operator DECIDES whether the restore is correct.
+
+        `just backup-now` uploads a dump, runs retention over the listing, and publishes the nightly
+        success gauge. Doing that at step 6 puts possibly-wrong data in the bucket as the newest
+        copy, prunes against it, and moves the one series `BackupStale` reads about the NIGHTLY
+        path.
+        """
+        runbook = read(RESTORE_FROM_BACKUP)
+        step_six = runbook.partition("### 6. Verify with data")[2].partition("### 7.")[0]
+
+        assert "run --rm fingerprint" in step_six
+        assert "just backup-now" not in step_six.partition("**Do not run")[0]
+        assert "Do not run `just backup-now` here" in step_six
+        assert "once you have accepted the restore" in runbook.lower()
 
     def test_it_states_that_the_drill_is_re_executed_after_a_change_to_the_backup_path(
         self,
@@ -354,10 +456,62 @@ class TestTheTimersAgreeWithTheConfiguration:
     )
     def test_each_unit_runs_a_recipe_rather_than_a_command(self, unit: str) -> None:
         """The schedule and a manual run cannot drift into two procedures if there is one."""
-        content = read(SYSTEMD / unit)
+        content = directives(SYSTEMD / unit)
 
-        assert "ExecStart=/usr/bin/just " in content
+        assert " just " in _exec_start(content), "the unit runs a recipe, not a command"
         assert "Type=oneshot" in content
+
+    @pytest.mark.parametrize(
+        "unit", ["syncr-backup.service", "syncr-walship.service", "syncr-learning.service"]
+    )
+    def test_each_unit_can_execute_the_binary_the_runbook_installs(self, unit: str) -> None:
+        """DERIVED FROM THE RUNBOOK, because a pinned literal certified the wrong path.
+
+        The units read `/usr/bin/just` and the runbook installs to `/usr/local/bin/just`. That is
+        where a hand-installed binary belongs, and where the release tarball goes, since `just` is
+        not in Debian's repositories. So all three units would have failed at 203/EXEC on their
+        first firing: the WAL shipper within a minute, the backup and the fitter at 03:00.
+
+        And the deployment would have read HEALTHY. `systemctl list-timers` lists a timer whether or
+        not its service can execute, step 10 starts no service, and the two commands after it run in
+        a shell that finds the binary on PATH, so both gauges go fresh and `BackupStale` goes quiet
+        for a reason.
+
+        The old assertion was `"ExecStart=/usr/bin/just " in content`: a value nothing else in the
+        tree agreed with, pinned in the guard written to hold these files honest.
+
+        Two shapes satisfy this, and both are checked against the runbook rather than against a
+        constant: an ABSOLUTE path equal to the runbook's install directory, or `/usr/bin/env just`,
+        which resolves through systemd's own PATH provided that directory is on it.
+        """
+        started = _exec_start(directives(SYSTEMD / unit))
+        binary = started.split()[0]
+        installed = _where_the_runbook_installs_just()
+
+        if binary == _ENV:
+            assert started.split()[1] == "just", started
+            assert installed.parent in SYSTEMD_DEFAULT_PATH, (
+                f"the runbook installs just to {installed}, which is not on systemd's own PATH "
+                f"({SYSTEMD_DEFAULT_PATH}), so `{_ENV} just` cannot find it"
+            )
+        else:
+            assert Path(binary) == installed, (
+                f"{unit} runs {binary} and the runbook installs just to {installed}"
+            )
+
+    def test_the_reading_finds_both_ends_it_crosses(self) -> None:
+        """The positive control: an empty read on either side would make the crossing vacuous."""
+        assert _where_the_runbook_installs_just().name == "just"
+        for unit in ("syncr-backup.service", "syncr-walship.service", "syncr-learning.service"):
+            assert _exec_start(directives(SYSTEMD / unit))
+
+    def test_the_runbook_starts_a_service_rather_than_only_enabling_a_timer(self) -> None:
+        """The step that catches the path disagreement at deploy time rather than at 03:00."""
+        runbook = read(DEPLOY_AND_ROLLBACK)
+
+        assert "systemctl start syncr-walship.service" in runbook
+        assert "systemctl status syncr-walship.service" in runbook
+        assert "command -v just" in runbook, "and the operator records where the binary landed"
 
     @pytest.mark.parametrize(
         "unit", ["syncr-backup.service", "syncr-walship.service", "syncr-learning.service"]
@@ -449,6 +603,25 @@ class TestTheShellVariablesTheRunbooksUse:
             "from it runs it with an empty value"
         )
 
+    @pytest.mark.parametrize("name", _every_runbook())
+    def test_every_variable_is_defined_before_it_is_used(self, name: str) -> None:
+        """An operator pastes from the top down, so a definition below the first use is no help.
+
+        The set comparison above is order-insensitive. It would pass a runbook whose conventions
+        block sat at the bottom. Every one is at the top today, which is what this keeps true.
+        """
+        content = read(RUNBOOKS / name)
+
+        late = sorted(
+            variable
+            for variable in _variables_used_in(content) - self.SUPPLIED_BY_THE_READER
+            if _first_definition(content, variable) > _first_use(content, variable)
+        )
+
+        assert late == [], (
+            f"{name} uses {late} above where it defines them, and an operator reads it downwards"
+        )
+
     def test_it_reads_every_runbook_rather_than_the_eleven_section_21_names(self) -> None:
         """THE SET THIS BOUNDS IS EVERY FILE IN THE DIRECTORY, and the first version was not.
 
@@ -493,6 +666,76 @@ class TestTheShellVariablesTheRunbooksUse:
             stated = content.partition('OPS="')[2].partition('"')[0]
             assert stated in justfile, f"{name} defines an OPS set the justfile does not carry"
 
+    def test_the_local_drill_refuses_on_a_host_that_has_a_recorded_release(self) -> None:
+        """An instrument refuses rather than relying on its name.
+
+        `just drill-local` composes the one file that sets the off-host escape hatch. On a deployed
+        host it would generate a throwaway keypair, dump the LIVE database to that host's own disk
+        under it, restore into a locally-built image, and print "the data came back": every guard
+        satisfied and nothing proven about the real bucket or the real key.
+
+        `deployments/digests.env` is the fact that distinguishes a host from a workstation, and
+        `just deploy` is the only thing that writes it.
+
+        THE ORDER IS THE POINT. The refusal was the first statement of `drill-local`'s body, and
+        `drill-keys` is a dependency, so `just` ran it first: a run on a host wrote a throwaway
+        keypair into `deployments/secrets` and only then refused. Measured, on this checkout.
+        """
+        guard = _recipe_body("_refuse-a-local-drill-on-a-deployed-host")
+
+        assert "deployments/digests.env" in guard
+        assert "exit 1" in guard
+        assert "just restore-drill" in guard, "and it names the recipe to run instead"
+
+        dependencies = _dependencies_of("drill-local")
+        assert "_refuse-a-local-drill-on-a-deployed-host" in dependencies
+        assert dependencies.index("_refuse-a-local-drill-on-a-deployed-host") < dependencies.index(
+            "drill-keys"
+        ), "just runs dependencies left to right, so the refusal has to come before the keygen"
+
+    def test_the_recipes_read_the_digest_file_in_one_place(self) -> None:
+        """One definition, four callers, and the callers keep their own argument quoting.
+
+        The first version wrapped `docker compose` in a `_compose +ARGS` recipe, and `{{ARGS}}`
+        interpolates a space-joined string into a shell, which re-splits it: a caller writing
+        `run --rm ops sh -c 'psql -c "..."'` lost the quoting one layer down. A sourced snippet
+        keeps `"$@"` intact.
+        """
+        justfile = read(Path("justfile"))
+
+        assert 'read_digests := "set -a; [ -f deployments/digests.env ]' in justfile
+        for recipe in ("backup-now", "wal-ship", "learn-once", "restore-drill"):
+            assert "{{read_digests}}" in _recipe_body(recipe), recipe
+        # No RECIPE by that name, read at the start of a line: the comment explaining the correction
+        # names it, and a substring test over the whole file would find that instead.
+        assert not any(line.startswith("_compose") for line in justfile.splitlines()), (
+            "the wrapper recipe that re-split its arguments is gone"
+        )
+
+
+def _recipe_body(name: str) -> str:
+    """One `just` recipe's body, from its opening line to the next unindented one."""
+    lines = read(Path("justfile")).splitlines()
+    opener = next(
+        index
+        for index, line in enumerate(lines)
+        if line.startswith(f"{name}:") or line.startswith(f"{name} ")
+    )
+    body: list[str] = []
+    for line in lines[opener + 1 :]:
+        if line and not line.startswith((" ", "\t")):
+            break
+        body.append(line)
+    return "\n".join(body)
+
+
+def _dependencies_of(name: str) -> list[str]:
+    """The recipes `just` runs before ``name``, in the order it runs them."""
+    for line in read(Path("justfile")).splitlines():
+        if line.startswith(f"{name}:"):
+            return line.partition(":")[2].split()
+    raise AssertionError(f"the justfile declares no recipe named {name}")
+
 
 class TheDestructiveTeardown:
     """Nothing in this tree may TELL anyone to run `docker compose down -v`.
@@ -506,20 +749,42 @@ class TheDestructiveTeardown:
 
     So the rule is stated over the whole tree rather than over the recipe: every occurrence must be
     either inside the one recipe whose name says what it destroys, or on a line that forbids it.
+
+    TWICE NOW THE READING WAS NARROWER THAN THE RULE. The first version read five suffixes and one
+    filename, so nine planted lines produced four catches: a systemd unit running
+    `ExecStart=/usr/bin/docker compose down -v` was invisible, which is the one file type where a
+    SCHEDULED teardown would live and no human reads it first. And the exemption was a substring
+    test on `"not"`, so `Nothing`, `Note`, `cannot`, `Another` and `Notice` each exempted a line
+    that instructed the command. Both are closed below and both have negative controls.
     """
 
     # The one recipe allowed to run it. Its name says what it does, and it names the dev stack's own
     # compose files, which is a different project from the deployed one.
     ALLOWED_RECIPE = "dev-reset"
 
-    # A line that mentions it while forbidding it. Both words are ordinary English and neither can
-    # be written by accident on a line that instructs the command.
-    FORBIDDING = ("never", "not")
+    # A line that mentions it while FORBIDDING it. Whole phrases rather than a word that hides
+    # inside five ordinary ones: a line reading "Note: run `docker compose down -v`" contains `not`
+    # and instructs the command.
+    FORBIDDING = ("never", "do not", "don't", "not safe", "must not")
 
     # The one file allowed to quote the forbidden instruction without forbidding it: this one, which
     # cannot state the rule without naming the string. Declared rather than pattern-matched, so a
     # second file claiming the same exemption fails.
     DECLARING_FILE = "packages/syncr-api/tests/test_deployment_figures.py"
+
+    # The nine file types a reviewer planted the instruction in, four of which the first reading
+    # saw. The walk's positive control rather than its input: the walk reads every text file.
+    PLANTED = (
+        "invented.py",
+        "invented.md",
+        "invented.yml",
+        "invented.service",
+        "invented.timer",
+        "Dockerfile",
+        "invented.toml",
+        "invented.sh",
+        "extensionless-script",
+    )
 
 
 class TestTheDestructiveTeardown:
@@ -529,7 +794,7 @@ class TestTheDestructiveTeardown:
             for path, number, line in _lines_mentioning("down -v")
             if path != TheDestructiveTeardown.DECLARING_FILE
             and not _inside_dev_reset(path, number)
-            and not any(word in line.lower() for word in TheDestructiveTeardown.FORBIDDING)
+            and not _forbids(line)
         ]
 
         assert offenders == [], (
@@ -538,37 +803,123 @@ class TestTheDestructiveTeardown:
         )
 
     def test_the_reading_sees_the_line_that_shipped(self, tmp_path: Path) -> None:
-        """The positive control, over the WALK, with the exact line a reviewer found on a terminal.
+        """The positive control, over the WALK, in every file type a reviewer planted it in.
 
         Driven against a tree of its own rather than against the repository, because the rule's
         whole point is that a NEW file cannot reintroduce the instruction, and a control that could
         not see one in a file this suite does not already know about would prove nothing.
+
+        NINE TYPES, because the first version of the walk read five suffixes and one filename and
+        therefore saw four of these.
         """
         shipped = (
             "`just restore-drill` does that with `docker compose down -v` on the scratch instance."
         )
-        (tmp_path / "invented.py").write_text(f'raise Refused("{shipped}")\n', encoding="utf-8")
+        for name in TheDestructiveTeardown.PLANTED:
+            (tmp_path / name).write_text(f"{shipped}\n", encoding="utf-8")
         (tmp_path / "innocent.md").write_text(
             "Never run `docker compose down -v` here.\n", encoding="utf-8"
         )
+        (tmp_path / "an-image.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff down -v")
 
         found = _lines_mentioning("down -v", root=tmp_path)
-        offenders = [
-            path
-            for path, _, line in found
-            if not any(word in line.lower() for word in TheDestructiveTeardown.FORBIDDING)
-        ]
+        offenders = {path for path, _, line in found if not _forbids(line)}
 
-        assert len(found) == 2, "the walk reads both file types"
-        assert offenders == ["invented.py"], "and only the one that instructs it is an offender"
+        assert offenders == set(TheDestructiveTeardown.PLANTED), (
+            "the walk reads every text file type, and only the ones that instruct it are offenders"
+        )
+        assert "an-image.png" not in {path for path, _, _ in found}, "a binary file is not read"
 
-    def test_the_reading_covers_more_than_one_file_type(self) -> None:
-        """A guard over one extension would have missed this one, which lived in a `.py`."""
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Nothing else clears it: run `docker compose down -v` on the host.",
+            "Note: run `docker compose down -v` to reset the stack.",
+            "You cannot skip this. Run `docker compose down -v`.",
+            "Another option is `docker compose down -v`.",
+            "Notice the volume: `docker compose down -v`.",
+        ],
+    )
+    def test_a_word_that_merely_contains_not_does_not_exempt_a_line(self, line: str) -> None:
+        """All five were exempted by the substring test, and `Note:` begins a runbook line."""
+        assert not _forbids(line), line
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Never `docker compose down -v`: it is scoped to the project.",
+            "Do not run `docker compose down -v` here.",
+            "`down -v` is not safe against this project.",
+            "You must not use `docker compose down -v` on the host.",
+        ],
+    )
+    def test_an_explicit_negation_exempts_a_line(self, line: str) -> None:
+        """The other direction: every occurrence in the tree today is one of these shapes."""
+        assert _forbids(line), line
+
+    def test_the_reading_covers_every_file_type_that_carries_the_string(self) -> None:
+        """An EXACT set rather than a count, which is what round 1 asked for on another reading.
+
+        `>= 2` passed with three suffixes. It would keep passing if the walk narrowed to two, which
+        is exactly how the systemd units came to be invisible.
+        """
         suffixes = {
             Path(path).suffix or Path(path).name for path, _, _ in _lines_mentioning("down -v")
         }
 
-        assert len(suffixes) >= 2, suffixes
+        assert suffixes == {".py", ".yml", "justfile"}, (
+            "these are the file types that carry the string TODAY: the refusal message, the "
+            "restore overlay's comment, this module, and the two recipes. A new one is a "
+            "deliberate change."
+        )
+
+    def test_the_walk_reads_nothing_git_ignores(self) -> None:
+        """The ignore list is a hand-written set, so it is crossed against git's own answer.
+
+        Reading every text file pulled in `.pytest_cache/v/cache/nodeids`, which holds this module's
+        parametrized test ids and so the five lines that instruct the command: a guard failing on
+        its own negative controls. Rather than patch the list and hope, this asks git which paths
+        are ignored and requires the walk to have read none of them.
+        """
+        read_paths = sorted({path for path, _, _ in _lines_mentioning("docker")})
+        assert read_paths, "the walk read nothing, so this asserts nothing"
+
+        ignored = subprocess.run(
+            # `git` from the PATH the developer and CI both have, like every other call here.
+            ["git", "check-ignore", "--stdin"],  # noqa: S607
+            cwd=repo_root(),
+            input="\n".join(read_paths),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert ignored.stdout.strip() == "", (
+            f"the walk read paths git ignores, which are generated rather than the tree: "
+            f"{ignored.stdout.strip().splitlines()}"
+        )
+
+    def test_nothing_the_walk_skips_is_a_tracked_file(self) -> None:
+        """THE OTHER DIRECTION, and it caught two entries.
+
+        The test above only checks that what the walk READ is not ignored. That leaves the list free
+        to grow an entry naming a TRACKED file, which narrows the reading below the rule and is the
+        exact defect this class exists to prevent: the first version of `_NOT_SOURCE` grew `uv.lock`
+        and `package-lock.json`, both tracked, on the way to fixing something else.
+        """
+        tracked = subprocess.run(  # noqa: S603 - a literal argv over a module constant, no shell
+            # `git` from the PATH the developer and CI both have, like every other call here.
+            ["git", "ls-files", "--", *_NOT_SOURCE],  # noqa: S607
+            cwd=repo_root(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert tracked.stdout.strip() == "", (
+            f"the walk skips tracked files, so the rule is stated over less than the tree: "
+            f"{tracked.stdout.strip().splitlines()}"
+        )
 
     def test_the_refusal_names_the_command_the_recipe_actually_runs(self) -> None:
         """The remedy an operator is given has to be the one the drill uses."""
@@ -592,28 +943,59 @@ def _answering(stdout: str) -> Run:
     return cast("Run", run)
 
 
-def _lines_mentioning(fragment: str, *, root: Path | None = None) -> list[tuple[str, int, str]]:
-    """Every line of every source, document, recipe and Compose file that names ``fragment``.
+def _forbids(line: str) -> bool:
+    """Whether this line mentions the command while forbidding it.
 
-    The tree is walked rather than a list of files read, because the point of the rule is that a NEW
-    file cannot reintroduce the instruction.
+    Whole phrases, because the first version tested for the substring `not`, and five ordinary
+    English words contain it.
+    """
+    lowered = line.lower()
+    return any(phrase in lowered for phrase in TheDestructiveTeardown.FORBIDDING)
+
+
+def _lines_mentioning(fragment: str, *, root: Path | None = None) -> list[tuple[str, int, str]]:
+    """Every line of every TEXT file in the tree that names ``fragment``.
+
+    Every text file, not a list of suffixes. The first version read five suffixes and one filename,
+    which made systemd units invisible: the one operational file type where a scheduled teardown
+    would live. A file is text if it decodes as UTF-8, which is the question this reading has to ask
+    anyway, so a PNG or a compiled artefact is skipped by the read rather than by a list.
     """
     walking = root if root is not None else repo_root()
     found: list[tuple[str, int, str]] = []
     for path in sorted(walking.rglob("*")):
         if not path.is_file() or _ignored(path.relative_to(walking)):
             continue
-        if path.suffix not in {".py", ".md", ".yml", ".yaml", ".sh"} and path.name != "justfile":
+        try:
+            content = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
             continue
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        for number, line in enumerate(content.splitlines(), start=1):
             if fragment in line:
                 found.append((str(path.relative_to(walking)), number, line))
     return found
 
 
-# Directories a walk of a working tree must not enter: two are build output, one is another
-# project's dependency tree, and one is this repository's own history.
-_NOT_SOURCE = (".git", ".venv", "node_modules", ".mypy_cache", ".ruff_cache", "__pycache__", "dist")
+# What a walk of a working tree must not enter or read: build output, another project's dependency
+# tree, this repository's own history, and the test caches. EVERY ENTRY IS SOMETHING GIT IGNORES,
+# which `test_the_walk_reads_nothing_git_ignores` asserts rather than trusts, so this list cannot
+# quietly grow to exclude a tracked file the rule covers.
+#
+# Broadening the reading to every text file made it read `.pytest_cache/v/cache/nodeids`, which
+# holds this module's own parametrized test ids, and so the five lines that instruct the command.
+_NOT_SOURCE = (
+    ".git",
+    ".venv",
+    "node_modules",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    ".hypothesis",
+    "__pycache__",
+    "htmlcov",
+    "dist",
+    "coverage",
+)
 
 
 def _ignored(relative: Path) -> bool:
@@ -690,3 +1072,33 @@ def _keys_the_environment_file_documents() -> set[str]:
 
     text = read(Path(".env.example"))
     return set(re.findall(r"^([A-Z][A-Z0-9_]*)=", text, re.MULTILINE))
+
+
+def _first_use(document: str, variable: str) -> int:
+    """Where a document first expands ``variable``, as a line number."""
+    import re
+
+    pattern = re.compile(rf"\$\{{?{re.escape(variable)}\}}?\b")
+    for number, line in enumerate(document.splitlines(), start=1):
+        if pattern.search(line):
+            return number
+    return len(document.splitlines()) + 1
+
+
+def _first_definition(document: str, variable: str) -> int:
+    """Where a document first defines ``variable``, as a line number.
+
+    Sourcing the host secret file counts, and it defines every key `.env.example` documents, so the
+    line that sources it is the definition line for those.
+    """
+    import re
+
+    assignment = re.compile(rf"^(?:export\s+)?{re.escape(variable)}=")
+    sourcing = re.compile(r"\.\s+\.?/?\.env\b")
+    documented = _keys_the_environment_file_documents()
+    for number, line in enumerate(document.splitlines(), start=1):
+        if assignment.match(line):
+            return number
+        if variable in documented and sourcing.search(line):
+            return number
+    return len(document.splitlines()) + 1
