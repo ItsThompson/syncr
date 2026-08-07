@@ -23,11 +23,19 @@ missing, and the user is told by the Week screen's own empty state.
 week WITH a plan while this one plans the weeks without: the two costs are unrelated, and a
 histogram
 that mixed them could not be read.
+
+``syncr_maintainer_verdict_transitions_total`` is duty 2's, labeled by the direction the week moved
+in, and both directions are exported at zero before the first tick. It counts a subset of what
+``syncr_verdict_transitions_total{surface="maintainer"}`` counts and is kept separate because it is
+the series an operator watches per direction: a rise in weeks becoming impossible with no user
+action is a product signal, and a rise in weeks recovering is not the same event.
 """
 
 from __future__ import annotations
 
-from prometheus_client import Gauge, Histogram
+from enum import StrEnum
+
+from prometheus_client import Counter, Gauge, Histogram
 
 from syncr_common.metrics import REGISTRY
 
@@ -43,3 +51,41 @@ MAINTAINER_TICK_DURATION = Histogram(
     labelnames=("duty",),
     registry=REGISTRY,
 )
+
+MAINTAINER_VERDICT_TRANSITIONS = Counter(
+    "syncr_maintainer_verdict_transitions_total",
+    "Time-driven verdict transitions the maintainer recorded, by the direction the week moved.",
+    labelnames=("direction",),
+    registry=REGISTRY,
+)
+
+
+class TransitionDirection(StrEnum):
+    """Which way a week moved. The one label on the maintainer's transition counter.
+
+    Read from the row that was written rather than from the verdict that was probed, because the row
+    carries the reading the corpus holds: a probe verdict's own ``feasible`` field is always false.
+    """
+
+    TO_INFEASIBLE = "to_infeasible"
+    TO_FEASIBLE = "to_feasible"
+
+    @classmethod
+    def of(cls, *, feasible: bool) -> TransitionDirection:
+        """The direction a recorded transition to ``feasible`` moved in."""
+        return cls.TO_FEASIBLE if feasible else cls.TO_INFEASIBLE
+
+
+def seed_the_transition_directions() -> None:
+    """Export both directions at zero, before the first tick records one.
+
+    A labeled family does not exist until a label is used, so a counter nobody has incremented is
+    absent from the exposition rather than zero, and an alert or a rate stated over an absent series
+    answers nothing. Called at import, because the module that defines the instrument knows its
+    vocabulary.
+    """
+    for direction in TransitionDirection:
+        MAINTAINER_VERDICT_TRANSITIONS.labels(direction=direction.value)
+
+
+seed_the_transition_directions()

@@ -18,13 +18,16 @@ from typing import Final
 class MaintainerDuty(StrEnum):
     """Which duty a tick spent its time on. The one label on the tick histogram.
 
-    One member today. The label exists from the start because the second duty, recording
-    time-driven verdict transitions, probes every week WITH a plan while this one plans the weeks
-    without: the two costs are unrelated and a histogram that mixed them could not be read. A label
-    added later would leave the first duty's whole history unlabeled.
+    Two duties with unrelated costs, which is why the label exists rather than one histogram over
+    both: duty 1 plans the weeks WITHOUT a plan, and a tick on which every week already has one
+    costs one indexed read per week; duty 2 assembles and probes every week WITH one, which is
+    roughly 288 assemblies a day. A histogram that mixed them could not be read, and the label was
+    added before the second duty existed so the first duty's whole history is comparable across the
+    change.
     """
 
     HORIZON = "horizon"
+    VERDICTS = "verdicts"
 
 
 # How often the maintainer plans. Fifteen minutes bounds the lag between a week entering the horizon

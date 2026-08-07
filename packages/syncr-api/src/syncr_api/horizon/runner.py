@@ -24,10 +24,20 @@ the duty reported healthy.
 
 **The FIRST tick schedules rather than plans.** A process that restarts often would otherwise run a
 pass on every boot, and a pass reads a revision per horizon week per tenant.
+
+**Duty 2 runs over the weeks duty 1 already resolved**, so the tick reads each tenant's zone and
+horizon once and both duties are evaluated against one instant and one horizon. It is timed under
+its own label because its cost is unrelated: duty 1 skips a planned week with one indexed read, and
+duty 2 assembles every week that has a plan.
+
+**When to come back is decided before duty 2 runs.** Duty 2 contains its own faults per week and per
+tenant, but a fault in the containment itself must not leave the runner due immediately, because
+that would re-run duty 1 on every tick of the loop.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from prometheus_client import Counter
@@ -36,11 +46,13 @@ from syncr_api.accounts.repository import TenantRepository
 from syncr_api.horizon.config import MAINTAINER_INTERVAL, MaintainerDuty
 from syncr_api.horizon.maintainer import HorizonPass, PlanHorizonMaintainer
 from syncr_api.horizon.metrics import HORIZON_WEEKS_WITHOUT_PLAN, MAINTAINER_TICK_DURATION
+from syncr_api.horizon.verdicts import TimeDrivenVerdicts, VerdictPass
 from syncr_api.horizon.weeks import next_local_midnight
 from syncr_common.logging import get_logger
 from syncr_common.metrics import REGISTRY
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime, timedelta
 
     from syncr_api.core.clock import Clock
@@ -58,6 +70,22 @@ TENANT_PASS_FAILURES = Counter(
 )
 
 _log = get_logger("syncr.horizon")
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedHorizon:
+    """What duty 1 leaves behind: when the next pass is due, and the weeks it resolved.
+
+    The weeks are carried rather than recomputed because duty 2 runs over the same set, and a second
+    resolution would read every tenant's zone and horizon again and could answer differently: a pass
+    that crossed local midnight between its two duties would probe a week it had not planned.
+
+    A tenant whose horizon could not be read holds no entry, which is what keeps its contained fault
+    counted once rather than once per duty.
+    """
+
+    due_at: datetime
+    weeks: Mapping[TenantId, tuple[IsoWeek, ...]]
 
 
 class PlanHorizonRunner:
@@ -85,10 +113,16 @@ class PlanHorizonRunner:
             self._next_due_at = self._next_due_at or now + self._interval
             return
         with MAINTAINER_TICK_DURATION.labels(duty=MaintainerDuty.HORIZON.value).time():
-            self._next_due_at = await self.plan(context, now=now)
+            planned = await self.plan(context, now=now)
+        self._next_due_at = planned.due_at
+        with MAINTAINER_TICK_DURATION.labels(duty=MaintainerDuty.VERDICTS.value).time():
+            await self.record_transitions(context, planned.weeks, now=now)
 
-    async def plan(self, context: WorkerContext, *, now: datetime) -> datetime:
-        """One pass over every tenant's horizon. Answers when the next pass is due.
+    async def plan(self, context: WorkerContext, *, now: datetime) -> PlannedHorizon:
+        """Duty 1: one pass over every tenant's horizon, planning the weeks that hold no plan.
+
+        Answers when the next pass is due and which weeks it resolved, which is what duty 2 runs
+        over.
 
         The gauge is SET from the pass's own tally rather than nudged per week, so a contained fault
         leaves an honest number: a gauge incremented per week would drift permanently the first time
@@ -99,21 +133,45 @@ class PlanHorizonRunner:
 
         total = HorizonPass()
         midnights: list[datetime] = []
+        resolved: dict[TenantId, tuple[IsoWeek, ...]] = {}
         for tenant_id in tenants:
-            tally, midnight = await self._tenant(context, tenant_id, now=now)
+            tally, midnight, weeks = await self._tenant(context, tenant_id, now=now)
             total = total.plus(tally)
             if midnight is not None:
                 midnights.append(midnight)
+            if weeks:
+                resolved[tenant_id] = weeks
 
         HORIZON_WEEKS_WITHOUT_PLAN.set(total.without_a_plan)
         if total.weeks or total.tenants_failed:
             _log.info("horizon.pass.completed", **total.as_log_fields())
-        return min([now + self._interval, *midnights])
+        return PlannedHorizon(due_at=min([now + self._interval, *midnights]), weeks=resolved)
+
+    async def record_transitions(
+        self,
+        context: WorkerContext,
+        weeks: Mapping[TenantId, tuple[IsoWeek, ...]],
+        *,
+        now: datetime,
+    ) -> VerdictPass:
+        """Duty 2: probe every resolved week that has a plan, and record what changed.
+
+        The only writer for a week that became impossible because Monday's slack went unused. Each
+        week is probed in a transaction of its own, so one week's transition cannot be lost to
+        another week's failure.
+        """
+        total = VerdictPass()
+        for tenant_id, resolved in weeks.items():
+            for iso_week in resolved:
+                total = total.plus(await self._transition(context, tenant_id, iso_week, now=now))
+        if total.weeks:
+            _log.info("horizon.verdicts.completed", **total.as_log_fields())
+        return total
 
     async def _tenant(
         self, context: WorkerContext, tenant_id: TenantId, *, now: datetime
-    ) -> tuple[HorizonPass, datetime | None]:
-        """One tenant's horizon, week by week, and when its local date next changes.
+    ) -> tuple[HorizonPass, datetime | None, tuple[IsoWeek, ...]]:
+        """One tenant's horizon, week by week, when its local date next changes, and its weeks.
 
         The zone and the week list are read in a session of their own and each week is then planned
         in a transaction of its own, so a week that fails rolls back its own write and nothing else.
@@ -122,7 +180,7 @@ class PlanHorizonRunner:
         pass: ``local_date`` resolves the stored ``home_zone`` through the zone layer, which refuses
         an identifier it does not know. Answers with no midnight in that case, because a tenant
         whose zone cannot be read has no knowable midnight either, so the interval is the only bound
-        left.
+        left, and with no weeks, so duty 2 does not re-read what has already failed once.
         """
         try:
             async with context.database.sessionmaker() as reader:
@@ -132,12 +190,12 @@ class PlanHorizonRunner:
         except Exception:  # noqa: BLE001 - one tenant's fault must not stop the others
             TENANT_PASS_FAILURES.inc()
             _log.exception("horizon.tenant.failed", tenant_id=str(tenant_id))
-            return HorizonPass(tenants_failed=1), None
+            return HorizonPass(tenants_failed=1), None, ()
 
         total = HorizonPass()
         for iso_week in weeks:
             total = total.plus(await self._week(context, tenant_id, iso_week, now=now))
-        return total, next_local_midnight(now, zone)
+        return total, next_local_midnight(now, zone), weeks
 
     async def _week(
         self, context: WorkerContext, tenant_id: TenantId, iso_week: IsoWeek, *, now: datetime
@@ -157,3 +215,25 @@ class PlanHorizonRunner:
         except Exception:  # noqa: BLE001 - one week's fault must not stop the others
             _log.exception("horizon.week.failed", tenant_id=str(tenant_id), iso_week=str(iso_week))
             return HorizonPass(weeks=1, failed=1)
+
+    async def _transition(
+        self, context: WorkerContext, tenant_id: TenantId, iso_week: IsoWeek, *, now: datetime
+    ) -> VerdictPass:
+        """One week's duty-2 probe, in its own transaction, with its own fault contained.
+
+        ``VE5``: the transaction is the job that computed the verdict, so a tick cannot record a
+        week's transition partially, and a week whose assembly raises leaves no row at all.
+
+        The fault is contained here so the weeks after this one are still probed. What counts it is
+        ``syncr_method_errors_total{component="horizon_verdicts"}`` from the raise itself, because a
+        recording duty that failed on every week would otherwise leave both transition counters at
+        zero, which reads exactly like a week nobody's plan changed.
+        """
+        try:
+            async with context.database.sessionmaker() as session, session.begin():
+                return await TimeDrivenVerdicts(session, tenant_id).record(iso_week, now=now)
+        except Exception:  # noqa: BLE001 - one week's fault must not stop the others
+            _log.exception(
+                "horizon.verdict.failed", tenant_id=str(tenant_id), iso_week=str(iso_week)
+            )
+            return VerdictPass(weeks=1, failed=1)

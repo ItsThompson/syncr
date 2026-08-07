@@ -31,7 +31,7 @@ between weeks is not a mutation.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Final
@@ -42,7 +42,7 @@ from sqlalchemy import select, update
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.repository import AreaRepository
-from syncr_api.calendars.config import ANCHOR_SOURCE, HORIZON_DAYS_DEFAULT, ICS, WRITE_TARGET
+from syncr_api.calendars.config import HORIZON_DAYS_DEFAULT, WRITE_TARGET
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import (
@@ -73,13 +73,24 @@ from syncr_api.solving.models import Operation
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
 from syncr_api.user_settings.models import Settings
-from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.worker.main import WorkerContext
 from syncr_common.metrics import REGISTRY
 from syncr_domain.plan import RevisionReason
 from syncr_domain.templates import WeekPattern
-from syncr_domain.weeks import IsoWeek, Weekday
+from syncr_domain.weeks import Weekday
 from tests.boundaries import read_paths
+from tests.live_horizons import (
+    AUCKLAND,
+    LAST_WEEK,
+    LONDON,
+    NEXT_WEEK,
+    NOW,
+    THIRD_WEEK,
+    THIS_WEEK,
+    Ticking,
+    declare_a_write_target,
+    declare_the_minimum,
+)
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -93,45 +104,11 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-LONDON = "Europe/London"
-AUCKLAND = "Pacific/Auckland"
 BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
-
-# Monday of 2026-W07, mid-morning in London, so a fortnight's horizon covers W07 and W08 and the
-# week list is the two-week case rather than the three-week one.
-NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
-LAST_WEEK = IsoWeek(2026, 6)
-THIS_WEEK = IsoWeek(2026, 7)
-NEXT_WEEK = IsoWeek(2026, 8)
-THIRD_WEEK = IsoWeek(2026, 9)
 
 # A fortnight from a Monday touches two weeks; three weeks needs one more day than the fortnight's
 # last, so 15 days is the shortest widening that brings a third week in.
 THREE_WEEKS_OF_DAYS = 15
-
-
-class Ticking:
-    """A clock that advances a millisecond per read, as a real one does.
-
-    Two assertions rest on that. Every operation one pass creates takes a distinct
-    ``scheduled_for``, so the order the weeks were planned in is readable from the rows. And every
-    revision one pass appends carries the SAME ``created_at``, because the pass reads the clock
-    once and passes that instant down: a pass reading it per week would stamp each revision
-    differently.
-    """
-
-    STEP = timedelta(milliseconds=1)
-
-    def __init__(self, at: datetime = NOW) -> None:
-        self.at = at
-
-    def __call__(self) -> datetime:
-        read = self.at
-        self.at += self.STEP
-        return read
-
-    def advance(self, by: timedelta) -> None:
-        self.at += by
 
 
 @pytest.fixture
@@ -174,60 +151,6 @@ async def context(live_database_url: str) -> AsyncIterator[WorkerContext]:
     await database.engine.dispose()
 
 
-async def declare_the_minimum(
-    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, *, home_zone: str = LONDON
-) -> None:
-    """Areas, a day shape, a weight set, and a home zone: the least a plan can exist from.
-
-    Deliberately less than a declared week. What the maintainer decides is whether a week HAS a
-    plan and whether one CAN exist, and a fuller week would make this suite a second test of the
-    assembler's resolutions.
-    """
-    async with sessions() as session, session.begin():
-        settings = SettingsRepository(session, tenant_id)
-        locked = await settings.lock(created_at=NOW)
-        await settings.write(
-            visible_hours=locked.visible_hours,
-            day_start=locked.day_start,
-            day_end=locked.day_end,
-            review_cadence=locked.review_cadence,
-            home_zone=home_zone,
-        )
-        await AreaRepository(session, tenant_id).create(
-            parent_id=None,
-            name="Career",
-            pigment_index=1,
-            budget_percent=Decimal(30),
-            floor_hours=Decimal(3),
-            created_at=NOW,
-        )
-        day_type = await DayTypeRepository(session, tenant_id).create(
-            name="Weekday", created_at=NOW
-        )
-        await WeekPatternRepository(session, tenant_id).replace(
-            WeekPattern(dict.fromkeys(Weekday, day_type.id))
-        )
-        await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
-
-
-async def declare_a_write_target(
-    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, *, horizon_days: int
-) -> None:
-    """A projection target with a stated horizon, which is what decides how many weeks are kept."""
-    async with sessions() as session, session.begin():
-        sources = CalendarSourceRepository(session, tenant_id)
-        target = await sources.create(
-            provider=ICS,
-            role=ANCHOR_SOURCE,
-            display_name="Phone",
-            external_id="https://example.test/plan.ics",
-            included=True,
-            horizon_days=None,
-            created_at=NOW,
-        )
-        await sources.designate_write_target(target.id, horizon_days=horizon_days)
-
-
 async def revisions_of(
     sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
 ) -> list[PlanRevision]:
@@ -255,8 +178,13 @@ async def operations_of(
 async def a_pass(
     context: WorkerContext, clock: Ticking, *, now: datetime | None = None
 ) -> datetime:
-    """One maintainer pass over every tenant, at one instant read from the clock."""
-    return await PlanHorizonRunner(clock=clock).plan(context, now=now or clock())
+    """One duty-1 pass over every tenant, at one instant read from the clock.
+
+    Answers when the next pass is due, which is what every caller here asserts on. The weeks the
+    pass resolved are duty 2's input and are driven in ``test_horizon_verdicts.py``.
+    """
+    planned = await PlanHorizonRunner(clock=clock).plan(context, now=now or clock())
+    return planned.due_at
 
 
 def weeks_without_a_plan() -> float:
