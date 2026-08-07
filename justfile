@@ -323,7 +323,7 @@ fmt:
 # Every frontend static gate. The pre-commit hook runs this, and so does CI, so the hook and
 # the gate cannot drift.
 #
-# Eight checks, none of which the others can cover:
+# Nine checks, none of which the others can cover:
 #   oxlint          the language and React rules, plus the kit's import zones by SPECIFIER
 #   stylelint       the design rules that live in CSS: no raw color, no motion, no radius
 #   prettier        formatting, so twenty tickets of TypeScript accumulate no drift
@@ -332,6 +332,7 @@ fmt:
 #   check-channels  each state channel assigned in exactly one file under the kit
 #   check-imports   the kit's import zones again, by RESOLVED DIRECTORY rather than by specifier
 #   check-bundle    the built stylesheet, declaration by declaration, read with postcss
+#   check-render    a RENDERED PIXEL, in a headless browser, over the built stylesheet
 #
 # Three of them overlap deliberately, because each takes a different INPUT and each input has a blind
 # spot the others cover. oxlint matches a specifier's spelling, and three holes reached review that
@@ -342,13 +343,32 @@ fmt:
 # class on an element, which is how `backdrop-filter` shipped for three review iterations with every
 # other check green.
 #
+# THE NINTH READS A COMPOSED RESULT, which is the one input none of the other eight has. Every one of
+# them reads a declaration, a class list, an attribute or the built text, and all three real defects on
+# the week grid were compositions: a `border` shorthand collapsing three edges into four, the same
+# shorthand taking the Area's 2px top rule, and `-webkit-line-clamp` supplying an end-ellipsis that no
+# reading of `white-space` or `text-overflow` could see. Each was found by a person opening a browser
+# once, and 2216 tests were green through all three.
+#
+# IT REFUSES RATHER THAN SKIPS WHEN NO BROWSER IS PRESENT. A check that passes when it cannot look
+# reports a claim it never tested, which is the suppression shape this repository has been bitten by
+# twice. No browser is a declared dependency: the check probes the ones a developer already has, and
+# GitHub's ubuntu runner images ship `/usr/bin/google-chrome`, which is one of the paths it probes. An
+# operator on a machine with neither points SYNCR_CHROME at one.
+#
+# IT RUNS IN THE PRE-COMMIT HOOK, AND THAT IS A COST STATED RATHER THAN HIDDEN: the whole recipe measures
+# 17 seconds with it and 6 without, because it builds the stylesheet a second time and invokes Chromium
+# twice. It stays here anyway. This recipe IS the hook, and moving the one gate that reads a pixel to
+# pre-push or to CI alone would leave it unarmed exactly where the three defects it exists to catch were
+# written. Ten seconds a commit is the price of the input none of the other eight has.
+#
 # Every check runs even when an earlier one fails: one red linter must not hide the rest.
 lint-frontend:
     #!/usr/bin/env bash
     set -uo pipefail
     cd frontend
     failed=0
-    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels lint:imports lint:bundle; do
+    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels lint:imports lint:bundle lint:render; do
       echo "--- $check"
       npm run --silent "$check" || failed=1
     done
