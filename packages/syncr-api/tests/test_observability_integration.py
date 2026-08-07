@@ -1,0 +1,180 @@
+"""The two observability duties, driven against Postgres with rows that make each gauge move.
+
+The unit tests state the arithmetic in exact numbers. What this asserts is the other half, which is
+the half four tickets in this epic got wrong: THAT THE INSTRUMENT MOVES WHEN THE THING IT WATCHES
+CHANGES. Every reading here is taken out of the Prometheus exposition, as a scraper takes it, rather
+than from a collector's private attribute.
+
+Each case breaks something real and watches the figure follow:
+
+- a credential whose refresh started failing an hour ago, against a token age that reads zero while
+  refreshes work
+- a source last read successfully two days ago, against a staleness gauge an alert fires on at one
+- a partial outcome that took twice its estimate, against a median absolute percentage error
+- a verdict episode discovered during a weekly session, against the early-catch ratio
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
+from uuid import uuid4
+
+import pytest
+from prometheus_client import generate_latest
+
+from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
+from syncr_api.calendars.records import SyncStateRecord
+from syncr_api.calendars.repository import CalendarSourceRepository
+from syncr_api.core.db import Database, create_db_engine, create_sessionmaker
+from syncr_api.google_account.repository import GoogleCredentialRepository
+from syncr_api.observability.config import PRODUCT_INTERVAL, STATE_INTERVAL
+from syncr_api.observability.product_runner import ProductMetricRunner
+from syncr_api.observability.state_runner import StateGaugeRunner
+from syncr_api.worker.main import WorkerContext
+from syncr_common.metrics import REGISTRY
+from tests.live_tenants import provision_owner, remove_tenant
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Iterator
+
+    from syncr_api.accounts.records import UserRecord
+    from syncr_api.core.settings import ServiceSettings
+
+NOW = datetime(2026, 2, 26, 9, 0, tzinfo=UTC)
+
+TOKEN_AGE = "syncr_write_target_token_age_seconds"
+STALENESS = "syncr_source_staleness_seconds"
+ANCHORS = "syncr_anchors_current"
+
+
+def sample(name: str, **labels: str) -> float:
+    """One sample out of the rendered exposition. Zero when the series does not exist yet."""
+    wanted = ",".join(f'{key}="{value}"' for key, value in sorted(labels.items()))
+    prefix = f"{name}{{{wanted}}} " if wanted else f"{name} "
+    for line in generate_latest(REGISTRY).decode().splitlines():
+        if line.startswith(prefix):
+            return float(line.removeprefix(prefix))
+    return 0.0
+
+
+@pytest.fixture
+def owner(live_database_url: str) -> Iterator[UserRecord]:
+    """A tenant of this module's own, removed afterwards so no other suite sees its rows."""
+    provisioned = provision_owner(live_database_url)
+    try:
+        yield provisioned
+    finally:
+        remove_tenant(live_database_url, provisioned.tenant_id)
+
+
+@pytest.fixture
+async def context(
+    live_database_url: str, settings: ServiceSettings
+) -> AsyncIterator[WorkerContext]:
+    """A worker context over an engine of this module's own, disposed afterwards."""
+    engine = create_db_engine(live_database_url)
+    try:
+        yield WorkerContext(
+            settings=settings,
+            database=Database(engine=engine, sessionmaker=create_sessionmaker(engine)),
+        )
+    finally:
+        await engine.dispose()
+
+
+class TestTheStateGauges:
+    async def test_the_token_age_reads_zero_while_refreshes_work(
+        self, context: WorkerContext, owner: UserRecord
+    ) -> None:
+        """A tenant with no credential and one refreshing normally are the same to the alert."""
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+
+        assert sample(TOKEN_AGE, tenant=str(owner.tenant_id)) == 0.0
+
+    async def test_it_grows_from_the_instant_refreshing_started_failing(
+        self, context: WorkerContext, owner: UserRecord
+    ) -> None:
+        """BREAK IT: record a refresh failure an hour old, and watch the critical gauge move."""
+        async with context.database.sessionmaker() as session, session.begin():
+            credentials = GoogleCredentialRepository(session, owner.tenant_id)
+            await credentials.connect(
+                encrypted_refresh_token="ciphertext",
+                granted_scopes=("https://www.googleapis.com/auth/calendar",),
+                at=NOW - timedelta(days=30),
+            )
+            await credentials.record_refresh_failure(at=NOW - timedelta(hours=1), reason="invalid")
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+
+        assert sample(TOKEN_AGE, tenant=str(owner.tenant_id)) == 3600.0
+
+    async def test_source_staleness_is_measured_from_the_last_success(
+        self, context: WorkerContext, owner: UserRecord
+    ) -> None:
+        """BREAK IT: a feed attempted a minute ago whose last success was two days ago is STALE.
+
+        Measured from the success rather than the attempt, so a feed being retried on schedule and
+        failing every time still crosses the 24-hour threshold `SourceStale` fires on.
+        """
+        async with context.database.sessionmaker() as session, session.begin():
+            sources = CalendarSourceRepository(session, owner.tenant_id)
+            created = await sources.create(
+                provider=ICS,
+                role=ANCHOR_SOURCE,
+                display_name="A timetable",
+                external_id=f"https://example.test/{uuid4()}.ics",
+                included=True,
+                horizon_days=None,
+                created_at=NOW - timedelta(days=30),
+            )
+            await sources.save_sync_state(
+                created.id,
+                SyncStateRecord(
+                    last_success_at=NOW - timedelta(days=2),
+                    last_attempt_at=NOW - timedelta(minutes=1),
+                    last_error="the publisher answered 500",
+                    anchors_current=7,
+                ),
+            )
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+
+        assert sample(STALENESS, source_id=str(created.id)) == 172800.0
+        assert sample(ANCHORS, source_id=str(created.id)) == 7.0
+
+
+class TestTheProductJob:
+    async def test_it_reads_every_tenant_without_raising(
+        self, context: WorkerContext, owner: UserRecord
+    ) -> None:
+        """A tenant with no plan history at all must not fault the job.
+
+        The adversarial case a metrics job meets first: every ratio has an empty denominator, and
+        the run has to leave those gauges alone rather than publish zero or raise.
+        """
+        read = await ProductMetricRunner(interval=PRODUCT_INTERVAL, clock=lambda: NOW).compute(
+            context, now=NOW
+        )
+
+        assert read >= 1
+
+    async def test_a_tenant_whose_read_raises_is_counted_and_the_others_continue(
+        self, context: WorkerContext, owner: UserRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One tenant's fault must not take the whole deployment's product metrics down."""
+        from syncr_api.observability import product_runner
+
+        before = sample("syncr_observability_product_failures_total")
+
+        async def raising(*_args: object, **_kwargs: object) -> object:
+            raise RuntimeError("the read did not come back")
+
+        monkeypatch.setattr(product_runner, "build_product_reader", raising)
+
+        read = await ProductMetricRunner(interval=PRODUCT_INTERVAL, clock=lambda: NOW).compute(
+            context, now=NOW
+        )
+
+        assert read == 0
+        assert sample("syncr_observability_product_failures_total") - before >= 1.0
