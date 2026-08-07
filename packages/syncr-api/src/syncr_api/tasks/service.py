@@ -123,6 +123,20 @@ class Backlog:
     at_risk: frozenset[TaskId]
 
 
+def _admitted(
+    tasks: tuple[TaskRecord, ...], at_risk: frozenset[TaskId], wanted: bool | None
+) -> tuple[TaskRecord, ...]:
+    """The rows the at-risk filter admits, out of the rows the other filters selected.
+
+    ``None`` is the absent filter and admits every row. Stated over the derived SET rather than as a
+    predicate over a task, because whether a task is at risk is not a fact about the task: it is
+    what the week's verdict said about it.
+    """
+    if wanted is None:
+        return tasks
+    return tuple(task for task in tasks if (task.id in at_risk) is wanted)
+
+
 class TaskService:
     """Read and change one tenant's backlog."""
 
@@ -149,13 +163,22 @@ class TaskService:
         *,
         area_id: AreaId | None = None,
         status: TaskStatus | None = None,
+        at_risk: bool | None = None,
     ) -> Backlog:
-        """The backlog, narrowed by either filter, with the two header figures over the same Area.
+        """The backlog, narrowed by any filter, with the two header figures over the same Area.
 
-        Both header figures deliberately ignore the status filter. Filtering the table to completed
-        tasks does not change how many are open or how many are at risk, and a header that said it
-        did would be reporting the page rather than the backlog. So the at-risk set is derived over
-        the Area's OPEN tasks, read for that purpose, rather than over whatever the page holds.
+        Every header figure deliberately ignores the status and at-risk filters. Filtering the
+        table to completed tasks does not change how many are open or how many are at risk, and a
+        header that said it did would be reporting the page rather than the backlog. So the at-risk
+        set is derived over the Area's OPEN tasks, read for that purpose, rather than over whatever
+        the page holds.
+
+        **The at-risk filter narrows using the set this method already derived**, which is why it
+        is applied here and not in a ``WHERE`` clause. At-risk is not a column: it is the verdict's
+        determination, so a caller that narrowed the list itself would show a count and a row set
+        that disagree. The filter therefore selects from the marked set rather than recomputing it,
+        and asking for the marked rows on a status that excludes open tasks answers with none, which
+        is the honest intersection of two filters rather than a third rule.
 
         **This service computes no comparison of its own.** A task is at risk when the week's
         verdict reports a ``deadline_capacity`` shortfall naming it, which is the same shortfall the
@@ -167,13 +190,15 @@ class TaskService:
         That is the price of the figure being the panel's rather than a cheap one computed twice.
         """
         require_scope(principal, Scope.PLAN_READ)
+        selected = await self._tasks.list_all(area_id=area_id, status=status)
+        marked = tasks_at_risk(
+            await self._verdict.read(),
+            await self._tasks.list_all(area_id=area_id, status=TaskStatus.OPEN),
+        )
         return Backlog(
-            tasks=await self._tasks.list_all(area_id=area_id, status=status),
+            tasks=_admitted(selected, marked, at_risk),
             open_count=await self._tasks.count_open(area_id=area_id),
-            at_risk=tasks_at_risk(
-                await self._verdict.read(),
-                await self._tasks.list_all(area_id=area_id, status=TaskStatus.OPEN),
-            ),
+            at_risk=marked,
         )
 
     @measured("tasks")

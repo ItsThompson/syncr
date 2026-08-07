@@ -90,9 +90,18 @@ async def list_tasks(
     service: TaskServiceDep,
     area_id: UUID | None = Query(default=None, alias="areaId"),
     status: TaskStatus | None = Query(default=None),
+    at_risk: bool | None = Query(
+        default=None,
+        alias="atRisk",
+        description="True selects the rows the current week's verdict marks, false the rest, and "
+        "absent every row. It narrows the rows only: both header figures are over the Area's open "
+        "tasks whatever this is set to, so the count and the marked rows stay one answer. The "
+        "narrowing is the server's because the determination is: a client that filtered the list "
+        "itself would show a count and a row set that disagree.",
+    ),
 ) -> TasksResponse:
-    """The tasks either filter selects, oldest first, and the two figures the header states."""
-    backlog = await service.list_all(principal, area_id=area_id, status=status)
+    """The tasks the filters select, oldest first, and the two figures the header states."""
+    backlog = await service.list_all(principal, area_id=area_id, status=status, at_risk=at_risk)
     return TasksResponse(
         header=BacklogHeader(open_count=backlog.open_count, at_risk_count=len(backlog.at_risk)),
         tasks=[_as_backlog_row(task, backlog.at_risk) for task in backlog.tasks],
