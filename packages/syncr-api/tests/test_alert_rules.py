@@ -1,7 +1,7 @@
 """The alert-to-metric crossing, DERIVED in every direction, and the file that decides delivery.
 
 A family with no rule and a rule with no family are two halves of the same defect, and this
-deployment has shipped it five times: a counter that incremented before its document existed, a
+deployment has shipped it repeatedly: a counter that incremented before its document existed, a
 gauge that could not fire for a duty failing every pass, a critical alert on a metric no process
 exported, an SSE reconnect counter that stayed at zero through a killed backend, and an Alertmanager
 inhibit rule that silenced every warning in the deployment.
@@ -198,8 +198,8 @@ def _folded(region: str, *, key: str) -> str:
 def inhibitions() -> list[Inhibition]:
     """Every inhibit rule the Alertmanager configuration declares.
 
-    Read at all, which is the point: the previous version of this file never opened
-    `alertmanager.yml`, and the defect that shipped lived there and nowhere else.
+    Read at all, which is the point: the crossing above says nothing about whether a firing rule
+    reaches anyone, and the defect that shipped lived in `alertmanager.yml` and nowhere else.
 
     This reads the `*_matchers:` spelling ONLY, which is why
     :meth:`TestDelivery.test_no_inhibit_rule_uses_the_legacy_matcher_syntax` forbids the other one,

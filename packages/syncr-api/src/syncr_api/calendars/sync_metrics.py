@@ -25,21 +25,21 @@ twenty minutes ago. ``created_at`` is the one instant on the row that does not m
 never-synced source crosses the 24-hour threshold a day after it was added, which is the condition
 the alert is stated over.
 
-**AN EXCLUDED SOURCE PUBLISHES NO STALENESS AT ALL.** Not a growing reading, which is what an
-earlier version of this module argued for and got backwards. The reasoning was: a poll-driven gauge
+**AN EXCLUDED SOURCE PUBLISHES NO STALENESS AT ALL.** Not a growing reading, which is the
+conclusion the obvious argument reaches and gets backwards. That argument runs: a poll-driven gauge
 freezes at whatever the last poll saw, and an excluded source is never polled, so it would read as
 fresh because nobody had looked. The premise is right and the conclusion is not. The user asked for
 zero anchors from that source, so it going unread is the EXPECTED OUTCOME of their own instruction
 rather than a fault, and `SourceStale` reads a maximum over sources precisely so one stale feed
-fires it: a growing reading meant the alert stuck firing forever on a source the user had switched
+fires it: a growing reading means the alert sticks firing forever on a source the user switched
 off, reachable by one ``PATCH`` with ``included: false``. The record states the principle this
-broke, one property away: "the user asked for zero anchors from it, so a stale error from before the
-exclusion must not render as a failure: that would be syncr reporting a problem the user already
+breaks, one property away: "the user asked for zero anchors from it, so a stale error from before
+the exclusion must not render as a failure: that would be syncr reporting a problem the user already
 resolved."
 
 **The anchor count comes from the record's own property, not from the sync-state column.**
 ``anchor_count`` is zero for an excluded source whatever the last successful sync read, and
-``anchors_current`` is the raw column. Reading the column drew seven anchors for a source
+``anchors_current`` is the raw column. Reading the column draws seven anchors for a source
 contributing none to any plan, which is the panel disagreeing with every other surface about one
 source.
 

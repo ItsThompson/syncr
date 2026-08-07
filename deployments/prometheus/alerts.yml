@@ -21,7 +21,7 @@
 # WHERE A RULE READS A FAMILY THAT MAY NOT EXIST YET, IT SAYS SO WITH `absent()`. A rule stated only
 # as a threshold is silent while its series is missing, and a missing series is usually the more
 # serious condition: no backup has ever run, the nightly learning container has no timer, or the
-# exporter is down. That is the alert inversion this deployment has shipped four times, and it is
+# exporter is down. That is the alert inversion this deployment has shipped repeatedly, and it is
 # closed here by construction.
 #
 # WHICH RULES MUST SAY IT IS DERIVED, NOT LISTED. `test_alert_rules.py` maps every family to the
