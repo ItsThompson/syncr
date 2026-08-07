@@ -62,6 +62,7 @@ COPY --from=builder --chown=syncr:syncr /app/packages /app/packages
 ENV PATH="/app/.venv/bin:$PATH"
 
 USER syncr
-# The nightly job entrypoint lands with the fitters. Until then the image exists so
-# the boundary it enforces is testable from the first commit.
-CMD ["python", "-c", "import syncr_learning; print('syncr-learning image ready')"]
+# A one-shot, not a service: the timer that starts the container collects the exit code, and a
+# failed fit exits non-zero so the failure is visible to the monitoring stack rather than silently
+# producing no new version.
+CMD ["python", "-m", "syncr_learning.entrypoint"]

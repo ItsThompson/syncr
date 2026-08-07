@@ -110,6 +110,11 @@ dev-api:
 dev-worker:
     cd packages/syncr-api && uv run --no-sync syncr-worker
 
+# The nightly learning job, once, against the dev database. A one-shot: it exits, and non-zero when
+# any tenant's fit failed. Needs `just dev-infra` and `just migrate`
+learn:
+    cd packages/syncr-learning && uv run --no-sync python -m syncr_learning.entrypoint
+
 # The Vite dev server. Proxies the api paths to `just dev-api`, so the browser talks to one
 # origin and the client's `credentials: include` behaves as it will in the deployed stack
 dev-frontend:
@@ -191,7 +196,7 @@ test-solver:
 test-api:
     cd packages/syncr-api && uv run --no-sync pytest
 
-# The offline learning suite
+# The offline learning suite. The storage tier needs Postgres: `just dev-infra`
 test-learning:
     cd packages/syncr-learning && uv run --no-sync pytest
 

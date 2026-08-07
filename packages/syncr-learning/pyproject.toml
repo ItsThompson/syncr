@@ -3,25 +3,46 @@ name = "syncr-learning"
 version = "0.1.0"
 description = "syncr offline learning: feature extraction and parameter fitting, run as a nightly one-shot. The only member that may depend on scipy or scikit-learn."
 requires-python = ">=3.12"
-# scipy and scikit-learn land here when the fitters do. They are ~800 MB resident
-# for a job that runs nightly, which is why this is a scheduled one-shot and not a
-# service, and why no other member may pull them.
+# scipy and scikit-learn are HERE and nowhere else. They are ~800 MB resident for a
+# job that runs nightly, which is why this is a scheduled one-shot and not a service,
+# and why no other member may pull them. scikit-learn brings numpy and scipy with it;
+# both are named anyway, because this package imports each directly and a transitive
+# dependency is not a declaration.
+#
+# SQLAlchemy and asyncpg are here because the job's I/O has to be here: the api image
+# must not carry scipy, so the api package cannot depend on this one, so this one
+# cannot borrow the api's repositories. What that costs is a second spelling of the
+# rows this job reads, and `tests/test_stored_spelling.py` keeps the two from drifting.
 dependencies = [
+    "asyncpg>=0.30.0,<1",
+    "numpy>=2.1.0,<3",
     "pydantic>=2.9.0,<3",
+    "scikit-learn>=1.5.0,<2",
+    "scipy>=1.14.0,<2",
+    "sqlalchemy[asyncio]>=2.0.36,<3",
     "syncr-common",
     "syncr-domain",
 ]
 
 [tool.uv.sources]
+syncr-api = { workspace = true }
 syncr-common = { workspace = true }
 syncr-domain = { workspace = true }
+syncr-solver = { workspace = true }
 
 [dependency-groups]
+# `syncr-api` and `syncr-solver` are DEV-ONLY, and the boundary suite holds that: no module
+# of this package may import either. They are here so the two agreement tests can hold this
+# package's restated spellings against the packages that own them, in one process. The image
+# excludes them, because its export runs `--no-dev`.
 dev = [
+    "hypothesis>=6.100.0,<7",
     "pytest>=8.3.0,<10",
     "pytest-asyncio>=0.24.0,<2",
     "ruff>=0.8.0,<1",
     "mypy>=1.13.0,<3",
+    "syncr-api",
+    "syncr-solver",
 ]
 
 [build-system]
@@ -44,6 +65,13 @@ plugins = ["pydantic.mypy"]
 strict = true
 mypy_path = "src"
 files = ["src/syncr_learning", "tests"]
+
+# Neither ships a py.typed marker and neither has official stubs: scipy's are a separate,
+# partial package and scikit-learn publishes none at all. Narrowed to the two rather than
+# relaxed globally, so a missing stub anywhere else is still an error here.
+[[tool.mypy.overrides]]
+module = ["scipy.*", "sklearn.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]

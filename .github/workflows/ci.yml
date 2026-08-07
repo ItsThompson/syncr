@@ -91,6 +91,25 @@ jobs:
   test-learning:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The fitters are pure and need nothing. The storage adapter restates every table this job reads,
+    # because the api image must not carry scipy and so the api cannot depend on this member: what the
+    # restated spelling actually resolves to is decidable only against a real schema.
+    services:
+      postgres:
+        image: postgres:16.10-bookworm
+        env:
+          POSTGRES_USER: syncr
+          POSTGRES_PASSWORD: syncr
+          POSTGRES_DB: syncr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U syncr -d syncr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://syncr:syncr@localhost:5432/syncr
     steps:
       - uses: actions/checkout@v4
 
@@ -104,6 +123,9 @@ jobs:
 
       - name: Sync the workspace
         run: uv sync --all-packages --frozen
+
+      - name: Apply migrations as a pre-traffic one-shot
+        run: just migrate
 
       - name: Learning and CLI suites
         run: |

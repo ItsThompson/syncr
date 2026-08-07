@@ -1,0 +1,320 @@
+"""The five fitters, and the corpora each of them must refuse.
+
+The adversarial cases are the point of this file: an empty corpus, a corpus of one, a corpus where
+every row is identical, a metric that is undefined on the data, and a corpus constructed to be
+unfittable. Each is a shape a nightly job over real data will meet, and each has to produce a stated
+answer rather than a number.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from syncr_learning.config import (
+    MAX_CHURN_TOLERANCE,
+    MAX_DURATION_RATIO,
+    MIN_CHURN_TOLERANCE,
+    PRIOR_CHURN_TOLERANCE,
+    PRIOR_CONTEXT_SWITCH_COST,
+    PRIOR_DURATION_MULTIPLIER,
+    PRIOR_FITNESS,
+    PRIOR_SKIP_PROBABILITY,
+    PRIOR_WEIGHT,
+    THRESHOLD_TIME_OF_DAY_FITNESS,
+    TimeBucket,
+)
+from syncr_learning.fitters import (
+    fit_churn_tolerance,
+    fit_context_switch_cost,
+    fit_duration_multiplier,
+    fit_skip_probability,
+    fit_time_of_day_fitness,
+)
+from syncr_learning.fitters.duration import median_actual_minutes, median_planned_minutes
+from syncr_learning.observations import (
+    ChurnObservation,
+    DurationObservation,
+    SkipObservation,
+    SwitchObservation,
+    TimeOfDayObservation,
+)
+from tests.builders import AREA
+
+
+def durations(count: int, *, planned: int = 60, actual: int = 82) -> list[DurationObservation]:
+    return [
+        DurationObservation(area_id=AREA, planned_minutes=planned, actual_minutes=actual)
+        for _ in range(count)
+    ]
+
+
+class TestDurationMultiplier:
+    def test_an_empty_corpus_is_the_prior_at_full_shrinkage(self) -> None:
+        result = fit_duration_multiplier([])
+
+        assert result.value == PRIOR_DURATION_MULTIPLIER
+        assert result.samples == 0
+        assert result.shrinkage_weight == 1.0
+
+    def test_the_ratio_is_actual_over_planned_rather_than_the_difference(self) -> None:
+        # A multiplier scales an estimate, so an Area whose 60m blocks run to 82 and one whose 30m
+        # blocks run to 41 must fit the same figure. A difference would fit 22 and 11.
+        long_blocks = fit_duration_multiplier(durations(20, planned=60, actual=82))
+        short_blocks = fit_duration_multiplier(durations(20, planned=30, actual=41))
+
+        assert long_blocks.value == pytest.approx(short_blocks.value)
+
+    def test_twenty_agreeing_observations_pull_the_value_most_of_the_way(self) -> None:
+        result = fit_duration_multiplier(durations(20))
+
+        expected = (20 * (82 / 60) + PRIOR_WEIGHT * PRIOR_DURATION_MULTIPLIER) / (20 + PRIOR_WEIGHT)
+        assert result.value == pytest.approx(expected)
+
+    def test_a_three_hour_session_against_a_one_hour_plan_is_clamped(self) -> None:
+        # The credibility rule, at the observation rather than at the formula. Unclamped this enters
+        # as 3.0; clamped it enters at the ceiling, and the outlier bound follows from that.
+        absurd = [DurationObservation(area_id=AREA, planned_minutes=60, actual_minutes=1200)]
+        result = fit_duration_multiplier(absurd)
+
+        expected = (MAX_DURATION_RATIO + PRIOR_WEIGHT * PRIOR_DURATION_MULTIPLIER) / (
+            1 + PRIOR_WEIGHT
+        )
+        assert result.value == pytest.approx(expected)
+
+    def test_a_corpus_where_every_row_is_identical_has_a_point_interval(self) -> None:
+        # It is fittable and its uncertainty is genuinely nothing: twenty rows saying one thing have
+        # no spread, and inventing one would invent the uncertainty the interval reports.
+        result = fit_duration_multiplier(durations(20))
+
+        assert result.confidence is not None
+        assert result.confidence[0] == pytest.approx(result.confidence[1])
+
+    def test_a_block_planned_for_nothing_is_refused_at_the_observation(self) -> None:
+        with pytest.raises(ValueError, match="divide by nothing"):
+            DurationObservation(area_id=AREA, planned_minutes=0, actual_minutes=82)
+
+    def test_a_partial_of_no_minutes_is_a_skip_and_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="is a skip"):
+            DurationObservation(area_id=AREA, planned_minutes=60, actual_minutes=0)
+
+    def test_the_medians_the_statement_quotes_are_the_middle_values(self) -> None:
+        mixed = [
+            DurationObservation(area_id=AREA, planned_minutes=60, actual_minutes=minutes)
+            for minutes in (70, 82, 95)
+        ]
+
+        assert median_actual_minutes(mixed) == 82
+        assert median_planned_minutes(mixed) == 60
+        assert median_actual_minutes([]) is None
+
+    def test_an_even_count_takes_the_whole_minute_mean_of_the_middle_two(self) -> None:
+        pair = [
+            DurationObservation(area_id=AREA, planned_minutes=60, actual_minutes=minutes)
+            for minutes in (80, 83)
+        ]
+
+        assert median_actual_minutes(pair) == 81
+
+
+class TestTimeOfDayFitness:
+    def test_an_empty_corpus_is_the_prior_at_every_hour(self) -> None:
+        curve = fit_time_of_day_fitness([])
+
+        assert curve.curve == (PRIOR_FITNESS,) * 24
+        assert curve.distinct_hours == 0
+        assert curve.covers_enough_of_the_day is False
+
+    def test_the_prior_charges_nothing_in_the_term_that_reads_it(self) -> None:
+        # The misfit term charges `1 - fitness`, so an unobserved hour has to enter at 1.0 or the
+        # curve would penalise every hour the user has not yet worked in.
+        assert PRIOR_FITNESS == 1.0
+
+    def test_an_hour_the_user_always_skips_is_fitted_below_an_hour_they_always_finish(self) -> None:
+        observed = [
+            *(TimeOfDayObservation(area_id=AREA, hour=6, went_well=False) for _ in range(20)),
+            *(TimeOfDayObservation(area_id=AREA, hour=18, went_well=True) for _ in range(20)),
+        ]
+        curve = fit_time_of_day_fitness(observed)
+
+        assert curve.curve[6] < curve.curve[18]
+        assert curve.worst_hour == 6
+        assert curve.distinct_hours == 2
+
+    def test_thirty_observations_at_one_hour_do_not_cover_enough_of_the_day(self) -> None:
+        # The gate that a total-only count would pass. Twenty-three hours would sit at the prior
+        # while the curve claimed to be fitted, which is a metric undefined on the data it read.
+        crowded = [
+            TimeOfDayObservation(area_id=AREA, hour=7, went_well=True)
+            for _ in range(THRESHOLD_TIME_OF_DAY_FITNESS)
+        ]
+        curve = fit_time_of_day_fitness(crowded)
+
+        assert curve.result.samples == THRESHOLD_TIME_OF_DAY_FITNESS
+        assert curve.covers_enough_of_the_day is False
+
+    def test_the_same_count_spread_across_the_day_does_cover_it(self) -> None:
+        spread = [
+            TimeOfDayObservation(area_id=AREA, hour=index % 8, went_well=True)
+            for index in range(THRESHOLD_TIME_OF_DAY_FITNESS)
+        ]
+        curve = fit_time_of_day_fitness(spread)
+
+        assert curve.covers_enough_of_the_day is True
+
+    def test_an_hour_no_local_day_has_is_refused_at_the_observation(self) -> None:
+        with pytest.raises(ValueError, match="hour of a local day"):
+            TimeOfDayObservation(area_id=AREA, hour=24, went_well=True)
+
+    def test_a_tie_names_the_earlier_hour_so_one_corpus_names_one_hour(self) -> None:
+        flat = fit_time_of_day_fitness(
+            [TimeOfDayObservation(area_id=AREA, hour=hour, went_well=True) for hour in range(24)]
+        )
+
+        assert flat.worst_hour == 0
+        assert flat.best_hour == 0
+
+
+class TestSkipProbability:
+    def test_an_empty_corpus_is_the_prior_of_refusing_nothing(self) -> None:
+        result = fit_skip_probability([])
+
+        assert result.value == PRIOR_SKIP_PROBABILITY == 0.0
+
+    def test_a_bucket_the_user_always_refuses_fits_above_one_they_never_do(self) -> None:
+        always = [
+            SkipObservation(area_id=AREA, bucket=TimeBucket.MORNING, was_refused=True)
+            for _ in range(20)
+        ]
+        never = [
+            SkipObservation(area_id=AREA, bucket=TimeBucket.EVENING, was_refused=False)
+            for _ in range(20)
+        ]
+        refused = fit_skip_probability(always)
+        kept = fit_skip_probability(never)
+
+        assert refused.value is not None
+        assert kept.value is not None
+        assert refused.value > kept.value
+        assert 0.0 <= kept.value <= refused.value <= 1.0
+
+    def test_the_fitted_share_never_leaves_zero_to_one(self) -> None:
+        # The solver refuses a share outside it, so a fitter that could produce one would fail every
+        # solve after the version was activated.
+        for refusals in range(21):
+            observed = [
+                SkipObservation(
+                    area_id=AREA, bucket=TimeBucket.MORNING, was_refused=index < refusals
+                )
+                for index in range(20)
+            ]
+            value = fit_skip_probability(observed).value
+            assert value is not None
+            assert 0.0 <= value <= 1.0
+
+
+class TestContextSwitchCost:
+    def test_a_corpus_with_no_within_area_pairs_is_not_fittable(self) -> None:
+        # The metric is a DIFFERENCE between two populations. With one empty it is undefined, and
+        # returning the prior would ship a hand-tuned number dressed as a measurement.
+        across_only = [SwitchObservation(gap_minutes=45, changed_area=True) for _ in range(40)]
+        result = fit_context_switch_cost(across_only)
+
+        assert result.is_fitted is False
+        assert result.value is None
+        assert result.samples == 40
+
+    def test_a_corpus_with_no_cross_area_pairs_is_not_fittable_either(self) -> None:
+        within_only = [SwitchObservation(gap_minutes=5, changed_area=False) for _ in range(40)]
+        result = fit_context_switch_cost(within_only)
+
+        assert result.is_fitted is False
+        assert result.samples == 0
+
+    def test_the_price_is_the_extra_room_left_across_a_change(self) -> None:
+        observed = [
+            *(SwitchObservation(gap_minutes=45, changed_area=True) for _ in range(30)),
+            *(SwitchObservation(gap_minutes=15, changed_area=False) for _ in range(30)),
+        ]
+        result = fit_context_switch_cost(observed)
+
+        expected = (30 * 30.0 + PRIOR_WEIGHT * PRIOR_CONTEXT_SWITCH_COST) / (30 + PRIOR_WEIGHT)
+        assert result.value == pytest.approx(expected)
+
+    def test_a_user_who_leaves_no_more_room_across_a_change_fits_a_low_price(self) -> None:
+        # The floor: a negative extra is clamped to zero, because a negative price would pay the
+        # plan for changing Area.
+        observed = [
+            *(SwitchObservation(gap_minutes=5, changed_area=True) for _ in range(30)),
+            *(SwitchObservation(gap_minutes=60, changed_area=False) for _ in range(30)),
+        ]
+        result = fit_context_switch_cost(observed)
+
+        assert result.value is not None
+        assert result.value >= 0.0
+        assert result.value == pytest.approx(
+            PRIOR_WEIGHT * PRIOR_CONTEXT_SWITCH_COST / (30 + PRIOR_WEIGHT)
+        )
+
+    def test_the_sample_count_is_the_cross_area_pairs_not_the_whole_corpus(self) -> None:
+        # A corpus of one switch and forty same-Area pairs must not clear a gate about switches.
+        observed = [
+            SwitchObservation(gap_minutes=45, changed_area=True),
+            *(SwitchObservation(gap_minutes=15, changed_area=False) for _ in range(40)),
+        ]
+
+        assert fit_context_switch_cost(observed).samples == 1
+
+    def test_a_negative_gap_is_refused_at_the_observation(self) -> None:
+        with pytest.raises(ValueError, match="room the week left"):
+            SwitchObservation(gap_minutes=-30, changed_area=True)
+
+
+class TestChurnTolerance:
+    def test_an_empty_corpus_is_the_prior(self) -> None:
+        assert fit_churn_tolerance([]).value == PRIOR_CHURN_TOLERANCE
+
+    def test_a_user_who_absorbs_eight_moves_fits_near_eight(self) -> None:
+        observed = [ChurnObservation(moves=8, overridden=0) for _ in range(30)]
+        result = fit_churn_tolerance(observed)
+
+        expected = (30 * 8.0 + PRIOR_WEIGHT * PRIOR_CHURN_TOLERANCE) / (30 + PRIOR_WEIGHT)
+        assert result.value == pytest.approx(expected)
+
+    def test_a_user_who_pins_back_every_move_fits_at_the_floor_not_at_zero(self) -> None:
+        # Zero is not a tolerance: it is a shape with no knee, and the term it shapes would be
+        # undefined rather than steep. The solver's own guard refuses zero, so the clamp makes it
+        # unreachable from here.
+        observed = [ChurnObservation(moves=6, overridden=6) for _ in range(30)]
+        result = fit_churn_tolerance(observed)
+
+        assert result.value is not None
+        assert result.value >= MIN_CHURN_TOLERANCE
+        assert result.value == pytest.approx(
+            (30 * MIN_CHURN_TOLERANCE + PRIOR_WEIGHT * PRIOR_CHURN_TOLERANCE) / (30 + PRIOR_WEIGHT)
+        )
+
+    def test_a_rearrangement_that_moved_nothing_is_not_evidence_about_tolerance(self) -> None:
+        # A quiet week shows the user no rearrangement, so they absorbed none: counting it would
+        # drag every tolerance toward the floor as weeks pass.
+        quiet = [ChurnObservation(moves=0, overridden=0) for _ in range(30)]
+        result = fit_churn_tolerance(quiet)
+
+        assert result.samples == 0
+        assert result.value == PRIOR_CHURN_TOLERANCE
+
+    def test_more_overrides_than_moves_absorbs_nothing_rather_than_a_negative(self) -> None:
+        # A user may pin a block the revision left alone, so the two counts are over overlapping but
+        # not nested sets.
+        assert ChurnObservation(moves=2, overridden=5).absorbed == 0
+
+    def test_an_absurd_absorption_is_clamped_to_the_ceiling(self) -> None:
+        observed = [ChurnObservation(moves=500, overridden=0) for _ in range(30)]
+        result = fit_churn_tolerance(observed)
+
+        assert result.value == pytest.approx(
+            (30 * MAX_CHURN_TOLERANCE + PRIOR_WEIGHT * PRIOR_CHURN_TOLERANCE) / (30 + PRIOR_WEIGHT)
+        )
+
+    def test_a_negative_count_is_refused_at_the_observation(self) -> None:
+        with pytest.raises(ValueError, match="can be negative"):
+            ChurnObservation(moves=-1, overridden=0)
