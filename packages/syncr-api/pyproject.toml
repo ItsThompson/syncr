@@ -44,6 +44,7 @@ syncr-api = "syncr_api.api.main:main"
 syncr-worker = "syncr_api.worker.main:main"
 syncr-bootstrap-user = "syncr_api.accounts.bootstrap:main"
 syncr-rotate-oauth-key = "syncr_api.oauth.rotation:main"
+syncr-plan-fingerprint = "syncr_api.recovery.main:main"
 
 [dependency-groups]
 dev = [
@@ -81,10 +82,15 @@ src = ["src", "tests"]
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
 strict = true
-mypy_path = "src"
+# `../../deployments` puts the deployment's own `ops` package on the path under its real name, so
+# `import ops.retention` resolves the same way it does inside the backup image.
+mypy_path = "src:../../deployments"
 # `scripts` holds the committed OpenAPI exporter, which a CI job executes. A script a gate runs
-# belongs inside the gate.
-files = ["src/syncr_api", "alembic", "scripts", "tests"]
+# belongs inside the gate. `../../deployments/ops` is the nightly backup, the WAL shipper and the
+# restore drill: it is not a workspace member, because it must run beside `pg_dump` in an image with
+# no application package in it, and this is the one member with a database and a migration chain to
+# check it against.
+files = ["src/syncr_api", "alembic", "scripts", "tests", "../../deployments/ops"]
 
 # asyncpg ships no type information. It is normally reached only through SQLAlchemy's own typed
 # surface; the event listener is the one place that connects with the driver directly, because
@@ -96,8 +102,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 # "." puts the packaged `tests` on the import path so test modules use absolute
 # imports (`from tests.conftest import ...`); "src" keeps first-party `syncr_api`
-# imports resolving.
-pythonpath = ["src", "."]
+# imports resolving. "../../deployments" is what makes `import ops.dump` in a test resolve to the
+# same package the backup image runs.
+pythonpath = ["src", ".", "../../deployments"]
 testpaths = ["tests"]
 # `-m "not google_live"` is what keeps the one suite that talks to a real provider out of the
 # default run: it needs credentials nobody commits, a network, and a real account's quota. Run it
