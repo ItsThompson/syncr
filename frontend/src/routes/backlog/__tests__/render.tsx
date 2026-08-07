@@ -34,6 +34,15 @@ export interface BacklogStub {
   /** What the next capture answers with instead of a 201: the status and the problem given. */
   readonly refuseCaptureWith: (status: number, problem: JsonBodyType) => void;
   readonly refuseCompletionWith: (status: number, problem: JsonBodyType) => void;
+  /**
+   * Hold every capture open until `releaseCapture` is called.
+   *
+   * A write's in-flight window is a state the screen holds for one round trip, so asserting anything about it
+   * needs a response whose timing the test owns. Released before the test ends, so the invalidation that follows
+   * is asserted rather than left running past the assertion.
+   */
+  readonly holdCapture: () => void;
+  readonly releaseCapture: () => void;
 }
 
 export interface BacklogStubInput {
@@ -49,6 +58,8 @@ export function stubBacklog(input: BacklogStubInput = {}): BacklogStub {
   let answered = input.backlog ?? buildBacklog();
   let captureRefusal: { status: number; problem: JsonBodyType } | null = null;
   let completionRefusal: { status: number; problem: JsonBodyType } | null = null;
+  let held: Promise<void> | null = null;
+  let release: (() => void) | null = null;
 
   apiServer.use(
     http.get(`${origin}/api/v1/areas`, () => HttpResponse.json(input.areas ?? buildAreas())),
@@ -61,6 +72,7 @@ export function stubBacklog(input: BacklogStubInput = {}): BacklogStub {
     }),
     http.post(`${origin}/api/v1/tasks`, async ({ request }) => {
       captured.push(await request.json().catch(() => null));
+      if (held !== null) await held;
       if (captureRefusal !== null) {
         return HttpResponse.json(captureRefusal.problem, { status: captureRefusal.status });
       }
@@ -87,6 +99,16 @@ export function stubBacklog(input: BacklogStubInput = {}): BacklogStub {
     },
     refuseCompletionWith: (status, problem) => {
       completionRefusal = { status, problem };
+    },
+    holdCapture: () => {
+      held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    },
+    releaseCapture: () => {
+      release?.();
+      held = null;
+      release = null;
     },
   };
 }

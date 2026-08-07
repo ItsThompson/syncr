@@ -318,6 +318,78 @@ describe("a refusal the api answers with", () => {
   });
 });
 
+describe("a second submit while the first is in flight", () => {
+  /* A CAPTURE WRITES, so a double-tap that sent twice would put two tasks in one reader's backlog from a gesture
+     they make by accident. The response is held open, which is what makes the window observable. */
+  it("is refused, so two rapid clicks capture one task", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.holdCapture();
+    await pressN();
+    await fillTitle("Kontron take-home");
+    await chooseArea("Career");
+    const submit = screen.getByRole("button", { name: "Capture" });
+
+    await userEvent.click(submit);
+    await waitFor(() => {
+      expect(stub.captured).toHaveLength(1);
+    });
+    expect(submit).toBeDisabled();
+    await userEvent.click(submit);
+
+    expect(stub.captured).toHaveLength(1);
+    stub.releaseCapture();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: CAPTURE })).not.toBeInTheDocument();
+    });
+  });
+
+  /* THE ATTRIBUTE ALONE IS NARROWER THAN IT LOOKS. `disabled` reaches the DOM on the next render, and the two
+     clicks of a double-tap can both dispatch before one commits, so the two events are fired here with no render
+     between them. That is the shape a real double-tap produces, and it is why the lock is a ref. */
+  it("is refused even when both clicks land before a render, which is a double-tap", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.holdCapture();
+    await pressN();
+    await fillTitle("Kontron take-home");
+    await chooseArea("Career");
+    const submit = screen.getByRole("button", { name: "Capture" });
+
+    submit.click();
+    submit.click();
+    submit.click();
+
+    await waitFor(() => {
+      expect(stub.captured).toHaveLength(1);
+    });
+    stub.releaseCapture();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: CAPTURE })).not.toBeInTheDocument();
+    });
+    expect(stub.captured).toHaveLength(1);
+  });
+
+  /* The lock is released on BOTH endings. A reader whose capture was refused has to be able to send again after
+     fixing the member the api named, so a refusal that left the lock taken would be a form that never sends. */
+  it("lets the reader send again after a refusal", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.refuseCaptureWith(503, buildProblem({ title: "Service unavailable", status: 503 }));
+    await pressN();
+    await fillTitle("Kontron take-home");
+    await chooseArea("Career");
+
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await screen.findByRole("status", { name: "Service unavailable" });
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+
+    await waitFor(() => {
+      expect(stub.captured).toHaveLength(2);
+    });
+  });
+});
+
 describe("where the reader ends up", () => {
   it("returns focus to the control the reader was on when they submitted", async () => {
     const stub = await renderBacklog({ backlog: buildBacklog() });

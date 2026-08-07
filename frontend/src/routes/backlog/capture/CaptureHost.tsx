@@ -17,9 +17,17 @@
  * `n` must not wait for it.
  *
  * THE DRAFT IS DISCARDED WHEN THE DIALOG CLOSES AND KEPT WHILE IT IS REFUSED. A reader whose title was too long
- * has to be able to fix the title, and a reader who just captured a task wants an empty form the next time. */
+ * has to be able to fix the title, and a reader who just captured a task wants an empty form the next time.
+ *
+ * ONE SEND AT A TIME, because a capture WRITES. Two clicks of an ordinary double-tap would otherwise put two
+ * tasks in the backlog, which is duplicate durable data from a gesture a reader makes by accident. The lock is a
+ * ref and the disabled control is what tells the reader: `disabled` reaches the DOM on the next render, and
+ * nothing guarantees a render commits between the two clicks of a double-tap, so an attribute alone is a
+ * narrower guard than it looks. `Idempotency-Key` would make the api answer the second request with the first
+ * one's task and is the better answer, but sending it is a policy for every write in this client rather than for
+ * this form: ticket 1462 owns that decision. */
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useAreas } from "../../../api/hooks/useAreas";
 import { useTaskCapture } from "../../../api/hooks/useBacklog";
@@ -44,7 +52,7 @@ import {
  * narrow is that the read is the shell's and is already in flight when the screen draws. */
 const ZONE_BEFORE_SETTINGS = "UTC";
 
-/** Whether the dialog is shown, what the form holds, and where the reader was when it opened. */
+/** Whether the dialog is shown, what the form holds, where the reader was, and whether a send is in flight. */
 interface CaptureState {
   readonly isOpen: boolean;
   readonly draft: CaptureDraft;
@@ -56,6 +64,13 @@ interface CaptureState {
    * dialog has the focus and the answer is gone.
    */
   readonly returnFocusTo: HTMLElement | null;
+  /** True while a capture is in flight, which is what disables the control. */
+  readonly isSending: boolean;
+}
+
+/** A closed dialog with an empty form, which is what opening and closing both start from. */
+function atRest(returnFocusTo: HTMLElement | null): CaptureState {
+  return { isOpen: false, draft: emptyDraft(), returnFocusTo, isSending: false };
 }
 
 export interface CaptureHostProps {
@@ -66,11 +81,10 @@ export function CaptureHost({ children }: CaptureHostProps) {
   const areas = useAreas();
   const settings = useSettings();
   const write = useTaskCapture();
-  const [state, setState] = useState<CaptureState>(() => ({
-    isOpen: false,
-    draft: emptyDraft(),
-    returnFocusTo: null,
-  }));
+  const [state, setState] = useState<CaptureState>(() => atRest(null));
+  /* THE LOCK, and it is a ref because it has to answer inside the click handler rather than at the next render.
+   * The state below is the same fact, for the control the reader sees; both move in `submit` and nowhere else. */
+  const inFlight = useRef(false);
 
   const zone = settings.status === "ready" ? settings.data.homeZone : ZONE_BEFORE_SETTINGS;
   const listed = areas.status === "ready" ? areas.data.areas : [];
@@ -86,7 +100,9 @@ export function CaptureHost({ children }: CaptureHostProps) {
       open: (areaId?: string) => {
         const wasOn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         setState((held) =>
-          held.isOpen ? held : { isOpen: true, draft: emptyDraft(areaId), returnFocusTo: wasOn },
+          held.isOpen
+            ? held
+            : { isOpen: true, draft: emptyDraft(areaId), returnFocusTo: wasOn, isSending: false },
         );
       },
       isAvailable: true,
@@ -101,19 +117,29 @@ export function CaptureHost({ children }: CaptureHostProps) {
    *
    * The element focus returns to is kept through the close, because Radix reads it while the dialog is closing. */
   const close = () => {
-    setState((held) => ({ isOpen: false, draft: emptyDraft(), returnFocusTo: held.returnFocusTo }));
+    setState((held) => atRest(held.returnFocusTo));
+    inFlight.current = false;
     write.clear();
   };
 
+  /**
+   * Send the draft, once.
+   *
+   * The lock is taken before anything else and released on both endings, so a second click while the first
+   * request is open is refused rather than sent. A refusal keeps the dialog and the draft, so the reader can fix
+   * the member the api named and send again.
+   */
   const submit = async (held: CaptureDraft) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setState((current) => ({ ...current, isSending: true }));
+
     const applied = await write.submit(bodyOf(held, deadlineInstantOf(held.deadline, zone)));
-    if (applied) {
-      setState((current) => ({
-        isOpen: false,
-        draft: emptyDraft(),
-        returnFocusTo: current.returnFocusTo,
-      }));
-    }
+
+    inFlight.current = false;
+    setState((current) =>
+      applied ? atRest(current.returnFocusTo) : { ...current, isSending: false },
+    );
   };
 
   return (
@@ -121,7 +147,7 @@ export function CaptureHost({ children }: CaptureHostProps) {
       {children}
       <CaptureDialog
         areas={listed.map((area) => ({ id: area.id, name: area.name }))}
-        canSubmit={isSubmittable(state.draft)}
+        canSubmit={isSubmittable(state.draft) && !state.isSending}
         draft={state.draft}
         isOpen={state.isOpen}
         onDraftChange={(draft) => setState((held) => ({ ...held, draft }))}
