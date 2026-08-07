@@ -7,9 +7,14 @@ the bump floors at is assertable without waiting for a Monday. The bump itself i
 
 The tests worth reading are the ones about what does NOT happen. Completing a task twice writes
 nothing, bumps nothing, and does not move the completion's instant. Completing a dropped task is
-refused rather than silently accepted. And the open count deliberately ignores the status filter,
-because a header that reported zero open tasks while the table showed completed ones would not be
-a count of open tasks.
+refused rather than silently accepted. And both header figures deliberately ignore the status
+filter, because a header that reported zero open tasks while the table showed completed ones would
+not be a count of open tasks.
+
+**The at-risk set is the week verdict's determination**, so the verdict is STATED here rather than
+assembled and the tests are about which tasks each gap names. The arithmetic that decides that is
+real and is driven over its own cases in ``test_at_risk_tasks.py``; what these assert is that this
+service reads it rather than comparing a deadline against a capacity of its own.
 
 T1 is asserted against the MERGED pair on a patch, not against the fields one request carried:
 lowering an estimate under a stored minimum chunk violates the same invariant as raising the
@@ -38,6 +43,7 @@ from syncr_api.user_settings.config import ReviewCadence
 from syncr_api.user_settings.records import SettingsRecord
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
+from syncr_domain.feasibility import Provenance, Shortfall, ShortfallKind, Verdict
 from syncr_domain.projects import ProjectStatus
 from syncr_domain.tasks import (
     DEFAULT_ESTIMATE_MINUTES,
@@ -61,6 +67,9 @@ LONDON = "Europe/London"
 NOW = datetime(2026, 8, 2, 9, 0, tzinfo=UTC)
 LATER = datetime(2026, 8, 2, 17, 30, tzinfo=UTC)
 WEEK_31 = IsoWeek.parse("2026-W31")
+
+# A deadline inside the week ``NOW`` falls in, which is the week the at-risk reader answers about.
+A_DEADLINE = datetime(2026, 8, 6, 9, 0, tzinfo=UTC)
 
 AN_HOUR = 60
 
@@ -233,6 +242,24 @@ class RecordingWeekInputVersions:
         self.bumped.append(weeks)
 
 
+class StatedVerdict:
+    """The current week's verdict, stated rather than assembled.
+
+    The service depends on the question rather than on plan storage's reader, so a test states what
+    the week's verdict says and the at-risk arithmetic is exercised over it. The arithmetic itself
+    is the real :func:`~syncr_api.plans.at_risk.tasks_at_risk`, driven end to end in
+    ``test_at_risk_tasks.py`` over the cases a service test cannot reach.
+    """
+
+    def __init__(self, verdict: Verdict | None = None) -> None:
+        self._verdict = verdict
+        self.reads = 0
+
+    async def read(self) -> Verdict | None:
+        self.reads += 1
+        return self._verdict
+
+
 @pytest.fixture
 def principal() -> Principal:
     return Principal(tenant_id=uuid4(), user_id=uuid4(), scopes=ALL_SCOPES)
@@ -303,6 +330,7 @@ def build(
     areas: list[AreaRecord] | None = None,
     projects: list[ProjectRecord] | None = None,
     tasks: list[TaskRecord] | None = None,
+    verdict: Verdict | None = None,
     now: DateTime = NOW,
 ) -> tuple[TaskService, FakeTaskRepository]:
     stored = FakeTaskRepository(principal.tenant_id, tasks)
@@ -313,6 +341,7 @@ def build(
         bump=BacklogWideBump(
             versions=versions, settings=FakeSettingsRepository(principal.tenant_id)
         ),
+        verdict=StatedVerdict(verdict),
         clock=lambda: now,
     )
     return service, stored
@@ -1031,6 +1060,192 @@ async def test_a_read_bumps_nothing(
     await service.read(principal, stored.id)
 
     assert versions.bumped == []
+
+
+# --------------------------------------------------------------------------------
+# The at-risk set: the verdict's determination, over the same population as the open count
+# --------------------------------------------------------------------------------
+
+
+def a_deadline_gap(*names: str, area_id: AreaId) -> Shortfall:
+    """The gap the probe raises for work that does not fit before the instant it is due."""
+    return Shortfall(
+        kind=ShortfallKind.DEADLINE_CAPACITY,
+        minutes=80,
+        against=names,
+        honoring=("the 4h still uncommitted before it",),
+        deadline=A_DEADLINE,
+        area_id=area_id,
+    )
+
+
+def a_verdict(*shortfalls: Shortfall) -> Verdict:
+    return Verdict(
+        feasible=False,
+        provenance=Provenance.PROBE,
+        computed_at=NOW,
+        input_version=4,
+        discretionary_minutes=6720,
+        shortfalls=shortfalls,
+    )
+
+
+async def test_the_at_risk_set_is_the_verdicts_and_no_comparison_of_this_services_own(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    """Two tasks due at the same instant, and the verdict names one of them.
+
+    A service that compared a deadline against a capacity of its own would have no way to tell them
+    apart, because both are open, both are due, and both have the same remaining work.
+    """
+    area = an_area(principal.tenant_id)
+    named = a_task(principal.tenant_id, area.id, title="Leetcode", deadline=A_DEADLINE)
+    other = a_task(principal.tenant_id, area.id, title="Mock interview", deadline=A_DEADLINE)
+    service, _ = build(
+        principal,
+        versions,
+        areas=[area],
+        tasks=[named, other],
+        verdict=a_verdict(a_deadline_gap("Leetcode", area_id=area.id)),
+    )
+
+    backlog = await service.list_all(principal)
+
+    assert backlog.at_risk == {named.id}
+
+
+async def test_a_week_whose_verdict_found_no_gap_puts_nothing_at_risk(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    area = an_area(principal.tenant_id)
+    service, _ = build(
+        principal,
+        versions,
+        areas=[area],
+        tasks=[a_task(principal.tenant_id, area.id, deadline=A_DEADLINE)],
+        verdict=a_verdict(),
+    )
+
+    assert (await service.list_all(principal)).at_risk == frozenset()
+
+
+async def test_a_week_with_no_plan_puts_nothing_at_risk(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    """``None`` is what the reader answers for a week the maintainer has not reached."""
+    area = an_area(principal.tenant_id)
+    service, _ = build(
+        principal,
+        versions,
+        areas=[area],
+        tasks=[a_task(principal.tenant_id, area.id, deadline=A_DEADLINE)],
+        verdict=None,
+    )
+
+    assert (await service.list_all(principal)).at_risk == frozenset()
+
+
+async def test_the_at_risk_set_ignores_the_status_filter_the_way_the_open_count_does(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    """Filtering the table to completed tasks does not change how many are at risk.
+
+    The set is derived over the Area's OPEN tasks rather than over the page, so the header's figure
+    and the marked rows are one answer even when the page holds neither.
+    """
+    area = an_area(principal.tenant_id)
+    named = a_task(principal.tenant_id, area.id, title="Leetcode", deadline=A_DEADLINE)
+    service, _ = build(
+        principal,
+        versions,
+        areas=[area],
+        tasks=[
+            named,
+            a_task(
+                principal.tenant_id,
+                area.id,
+                title="done one",
+                status=TaskStatus.COMPLETED,
+                completed_at=NOW,
+            ),
+        ],
+        verdict=a_verdict(a_deadline_gap("Leetcode", area_id=area.id)),
+    )
+
+    filtered = await service.list_all(principal, status=TaskStatus.COMPLETED)
+
+    assert [task.title for task in filtered.tasks] == ["done one"]
+    assert filtered.at_risk == {named.id}
+
+
+async def test_the_at_risk_set_honors_the_area_filter_because_it_narrows_the_screen(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    """The gap belongs to one Area, and so does the screen when the filter is on."""
+    career = an_area(principal.tenant_id, "Career")
+    fitness = an_area(principal.tenant_id, "Fitness")
+    career_task = a_task(principal.tenant_id, career.id, title="Leetcode", deadline=A_DEADLINE)
+    service, _ = build(
+        principal,
+        versions,
+        areas=[career, fitness],
+        tasks=[career_task, a_task(principal.tenant_id, fitness.id, deadline=A_DEADLINE)],
+        verdict=a_verdict(a_deadline_gap("Leetcode", area_id=career.id)),
+    )
+
+    assert (await service.list_all(principal)).at_risk == {career_task.id}
+    assert (await service.list_all(principal, area_id=fitness.id)).at_risk == frozenset()
+
+
+async def test_a_completed_task_the_verdict_still_names_is_not_at_risk(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    """The population is the open tasks, so a task that has left the backlog cannot be in the set.
+
+    A verdict is computed from an assembly and the backlog is read after it, so a task completed
+    between the two is named by a gap nothing has recomputed yet.
+    """
+    area = an_area(principal.tenant_id)
+    done = a_task(
+        principal.tenant_id,
+        area.id,
+        title="Leetcode",
+        deadline=A_DEADLINE,
+        status=TaskStatus.COMPLETED,
+        completed_at=NOW,
+    )
+    service, _ = build(
+        principal,
+        versions,
+        areas=[area],
+        tasks=[done],
+        verdict=a_verdict(a_deadline_gap("Leetcode", area_id=area.id)),
+    )
+
+    assert (await service.list_all(principal)).at_risk == frozenset()
+
+
+async def test_reading_the_backlog_reads_the_verdict_once(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    """One read of the week's verdict per backlog read, because it costs a whole assembly."""
+    area = an_area(principal.tenant_id)
+    stored = FakeTaskRepository(principal.tenant_id, [a_task(principal.tenant_id, area.id)])
+    reader = StatedVerdict(a_verdict())
+    service = TaskService(
+        tasks=stored,
+        areas=FakeAreaRepository(principal.tenant_id, [area]),
+        projects=FakeProjectRepository(principal.tenant_id, None),
+        bump=BacklogWideBump(
+            versions=versions, settings=FakeSettingsRepository(principal.tenant_id)
+        ),
+        verdict=reader,
+        clock=lambda: NOW,
+    )
+
+    await service.list_all(principal)
+
+    assert reader.reads == 1
 
 
 # --------------------------------------------------------------------------------

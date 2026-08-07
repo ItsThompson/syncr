@@ -25,16 +25,18 @@ import asyncio
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 
 from syncr_api.accounts.models import Tenant
 from syncr_api.accounts.passwords import hash_password
 from syncr_api.accounts.repository import UserRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_database
+from tests.boundaries import mapped_classes
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
+    from pathlib import Path
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -89,3 +91,35 @@ def remove_tenant(database_url: str, tenant_id: TenantId) -> None:
             await database.engine.dispose()
 
     run(remove())
+
+
+def row_counts(database_url: str, tenant_id: TenantId, source_root: Path) -> dict[str, int]:
+    """How many rows this tenant holds in every scoped table the application declares.
+
+    Bounded by the mapped classes rather than by a list, so a table a later feature module adds is
+    counted without a caller being extended. Counts rather than values, because a read may
+    legitimately touch a column: what it may not do is bring a row into existence.
+
+    Here rather than in one suite because three now compare these counts across a read, and a helper
+    imported from a test module couples the two suites that share it.
+    """
+
+    async def count() -> dict[str, int]:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session:
+                counted = {}
+                for model in mapped_classes(source_root):
+                    scope = getattr(model, "tenant_id", None)
+                    table = getattr(model, "__tablename__", None)
+                    if scope is None or table is None:
+                        continue
+                    total = await session.scalar(
+                        select(func.count()).select_from(model).where(scope == tenant_id)
+                    )
+                    counted[str(table)] = int(total or 0)
+                return counted
+        finally:
+            await database.engine.dispose()
+
+    return run(count())
