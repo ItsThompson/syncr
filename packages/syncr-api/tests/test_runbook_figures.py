@@ -13,11 +13,13 @@ operator searching the file for "lease" has to find what the lease is.
 from __future__ import annotations
 
 import importlib
+from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import pytest
 
+from syncr_api.calendars.config import SYNC_INTERVAL
 from syncr_api.calendars.google_config import WRITE_DEADLINE_SECONDS
 from syncr_api.calendars.injection import UNARMED
 from syncr_api.calendars.projection_errors import ProjectionFailed, ProjectionRefused
@@ -27,6 +29,7 @@ from syncr_api.calendars.schemas import SyncStateResponse
 from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
 from syncr_api.google_account.models import GoogleCredential
 from syncr_api.google_account.notices import WRITE_TARGET_EXPIRED
+from syncr_api.horizon.config import MAINTAINER_INTERVAL
 from syncr_api.solving.config import (
     FAILED_RETENTION,
     LEASE,
@@ -38,9 +41,7 @@ from syncr_api.solving.config import (
 from syncr_api.solving.config import SUPERSEDED as SUPERSEDED_STATUS
 from syncr_api.solving.maintenance import MAINTENANCE_INTERVAL
 from syncr_common.metrics import REGISTRY
-
-if TYPE_CHECKING:
-    from datetime import timedelta
+from tests.test_alert_rules import named as alert_named
 
 RUNBOOKS: Final = Path(__file__).resolve().parents[3] / "docs" / "runbooks"
 
@@ -48,6 +49,8 @@ STUCK_OPERATION = RUNBOOKS / "stuck-operation.md"
 SOLVE_FAILING = RUNBOOKS / "solve-failing.md"
 DEBOUNCE_TUNING = RUNBOOKS / "debounce-tuning.md"
 GOOGLE_TOKEN_EXPIRED = RUNBOOKS / "google-token-expired.md"
+SOURCE_STALE = RUNBOOKS / "source-stale.md"
+HORIZON_NOT_MAINTAINED = RUNBOOKS / "horizon-not-maintained.md"
 
 
 def read(runbook: Path) -> str:
@@ -63,9 +66,20 @@ def days(value: timedelta) -> int:
     return value.days
 
 
+def hours(value: timedelta) -> int:
+    return int(value.total_seconds() // 3600)
+
+
 @pytest.mark.parametrize(
     "runbook",
-    [STUCK_OPERATION, SOLVE_FAILING, DEBOUNCE_TUNING, GOOGLE_TOKEN_EXPIRED],
+    [
+        STUCK_OPERATION,
+        SOLVE_FAILING,
+        DEBOUNCE_TUNING,
+        GOOGLE_TOKEN_EXPIRED,
+        SOURCE_STALE,
+        HORIZON_NOT_MAINTAINED,
+    ],
     ids=lambda one: one.name,
 )
 def test_the_runbook_exists_and_states_a_trigger(runbook: Path) -> None:
@@ -322,3 +336,59 @@ class TestTheDebounceRunbook:
         # for has no endpoint to produce it yet. A runbook that implied otherwise would have an
         # operator tuning against a figure nothing in this deployment has ever exercised.
         assert "not readings taken from this" in read(DEBOUNCE_TUNING)
+
+
+def alert_waits(name: str) -> timedelta:
+    """How long an alert rule waits before it fires, as the deployed file states it."""
+    stated = alert_named(name).holds_for
+    unit = stated[-1]
+    value = int(stated[:-1])
+    return {
+        "s": timedelta(seconds=value),
+        "m": timedelta(minutes=value),
+        "h": timedelta(hours=value),
+        "d": timedelta(days=value),
+    }[unit]
+
+
+class TestADutyCadenceAgainstTheAlertThatWatchesIt:
+    """Two figures that must stay ordered, crossed here because nothing else crosses them.
+
+    Each of these alerts reads a gauge a periodic duty publishes, so ONE MISSED PASS MUST NOT FIRE
+    IT. That safety is a relationship between two constants in two different files, decided by
+    neither: a reviewer found it holding only by coincidence. Raising a duty's interval past its
+    alert's `for` window turns every ordinary pass into a page, and this is what fails when someone
+    does.
+
+    The re-inclusion case is what made it worth crossing. A source excluded and then re-included
+    republishes its pre-exclusion staleness at once, so the reading is immediately over the
+    threshold and stays there until the next poll succeeds. It is not a spurious page only because
+    the poll interval is shorter than the wait.
+    """
+
+    def test_a_source_is_polled_more_often_than_its_alert_waits(self) -> None:
+        assert alert_waits("SourceStale") > SYNC_INTERVAL, (
+            f"sources are polled every {minutes(SYNC_INTERVAL)}m and SourceStale waits "
+            f"{alert_named('SourceStale').holds_for}. A poll interval at or past the wait makes "
+            "one missed poll a page, and makes a re-included source page immediately."
+        )
+
+    def test_the_horizon_is_maintained_more_often_than_its_alert_waits(self) -> None:
+        assert alert_waits("HorizonNotMaintained") > MAINTAINER_INTERVAL, (
+            f"the maintainer plans every {minutes(MAINTAINER_INTERVAL)}m and "
+            f"HorizonNotMaintained waits {alert_named('HorizonNotMaintained').holds_for}. The "
+            "gauge is legitimately non-zero for up to one pass whenever the horizon extends."
+        )
+
+    def test_the_source_runbook_quotes_both_figures_from_the_code(self) -> None:
+        """So an operator reading it sees the relationship rather than one half of it."""
+        text = read(SOURCE_STALE)
+
+        assert f"**{minutes(SYNC_INTERVAL)} minutes**" in text
+        assert f"**{minutes(alert_waits('SourceStale'))} minutes**" in text
+
+    def test_the_horizon_runbook_quotes_both_figures_from_the_code(self) -> None:
+        text = read(HORIZON_NOT_MAINTAINED)
+
+        assert f"**{minutes(MAINTAINER_INTERVAL)} minutes**" in text
+        assert f"**{hours(alert_waits('HorizonNotMaintained'))} hours**" in text

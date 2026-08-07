@@ -15,9 +15,42 @@ Reading anchors keeps working. Solving keeps working. The plan keeps updating. O
 
 ## Surviving capability, which the notice must state
 
-- Anchor sources still sync, so external commitments are still read.
-- The plan is still solved and still correct in syncr.
+- **ICS anchor sources still sync**, so a timetable published as a feed is still read.
+- **A Google-provider anchor source does NOT.** One credential per tenant serves both the anchor reads
+  and the write target, so a revoked grant stops both, and `SourceStale` follows about a day later on
+  every Google source. That pair is one repair, and it is a named Alertmanager inhibit rule for that
+  reason: `WriteTargetTokenExpiring` suppresses `SourceStale`.
+- The plan is still solved and still correct in syncr, against whatever it last read.
 - Writes to the calendar are failing, so the phone is stale from the timestamp in the banner.
+
+## If this alert is firing and the token age reads ZERO
+
+**Check this before working through the procedure below, because in this case nothing is wrong with the
+token and the first three steps will all say so.**
+
+The alert has a second cause:
+
+```
+or increase(syncr_observability_tenant_failures_total[15m]) > 0
+```
+
+The token age gauge is set by the worker's state duty, whose per-tenant fault is **contained and
+counted rather than raised**. So a duty that raises on every tick leaves the gauge at its last value,
+and its last value is 0, which is the healthy reading. Without that disjunct this alert would stay
+quiet while writes to the calendar failed. Measured: with the per-tenant read raising, the gauge holds
+**0.0 with its series present** while the counter increments.
+
+Tell the two causes apart:
+
+```
+syncr_write_target_token_age_seconds              # > 0 means a real token problem: continue below
+increase(syncr_observability_tenant_failures_total[15m])   # > 0 means the state duty is raising
+```
+
+If the counter is what fired, read the worker log for the `observability.state.tenant_failed` event.
+**The likely cause is a mis-rotated `GOOGLE_TOKEN_ENCRYPTION_KEY`**: the credential read raises on
+every tick, no gauge moves, `refresh_failing_since` stays NULL, and every product surface looks
+healthy. `rotate-oauth-signing-key.md` covers the key's own procedure.
 
 ## The reconnect path
 
@@ -156,5 +189,3 @@ The last three are worth understanding rather than acting on. A write is retried
 ## Still to be written
 
 Nothing. The five open items this runbook carried are answered above.
-
-One gap remains and it is not in this procedure: `syncr_write_target_token_age_seconds` is not exported, so `WriteTargetTokenExpiring` cannot fire and this failure has no ALERT. It is visible in the product, in the api, and in the log. Ticket 1302 owns it, along with a rule for `syncr_projection_tenant_failures_total`, which is the only signal for a pass that raised outside a stated failure, and the arming gauge that lets `ProjectionFailing` be stated as failures AND writes enabled.

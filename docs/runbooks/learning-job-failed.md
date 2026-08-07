@@ -1,0 +1,82 @@
+# The nightly learning run has failed, or has never reported
+
+> **This alert fires on every deployment today, and that is the correct reading rather than a defect.**
+> The learning container has no timer yet: that is **ticket 1532**. Until it lands, no run has ever
+> reported, the `absent()` term is true, and this alert fires an hour after the monitoring stack starts.
+> Either sequence the stack after ticket 1532, or post an Alertmanager silence for `LearningJobFailed`
+> **with an expiry**. Do not remove the `absent()` term: that restores the silence it exists to break.
+
+## Trigger
+
+`LearningJobFailed` fires. It is **info**, the only alert in this deployment at that severity.
+
+```
+absent(syncr_learning_run_duration_seconds_count)
+or increase(syncr_learning_run_duration_seconds_count{outcome="failed"}[24h]) > 0
+```
+
+It waits **1 hour**.
+
+## Why it is info and why it exists at all
+
+**Benign, but it should not be invisible.** The solver keeps working with the weight set already in
+force, so every plan is still produced and still correct. The parameters are slightly stale, which is
+the whole cost. Nothing degrades for the user and there is nothing to do at 03:00.
+
+It is an alert rather than nothing because a nightly job that has silently stopped is indistinguishable
+from one that is working, and the drift is invisible: plans stay correct while the weights stop
+improving.
+
+## Surviving capability
+
+- **Every plan is still produced and still correct**, using the weight set already promoted.
+- Solving, projecting, pinning and confirming are all unaffected.
+- What is stale is the weights, by one night per missed run.
+
+## How a run reports at all
+
+The learning run is a **separate process in a separate distribution**, and it is not scraped: a process
+that exits cannot be scraped. It writes its own exposition to a file the node exporter's **textfile
+collector** reads, at `syncr_learning.prom` in `textfile_collector_dir`, before exiting.
+
+That is three things that can break and they look identical from Prometheus:
+
+1. **The run did not happen.** No timer. That is the state today.
+2. **The run happened and failed.** It exits non-zero when a tenant's pass failed, and it writes its
+   figures **before** exiting, so a failed run is readable as a `failed` outcome on its duration family
+   rather than as an absent series.
+3. **The run happened, succeeded, and the file did not reach Prometheus.** Check the textfile directory,
+   the `--collector.textfile.directory` flag, and the `node` job.
+
+Rule out the third first, because in that case nothing is wrong:
+
+```
+node_textfile_scrape_error       # 1 when the exporter could not parse a file in that directory
+up{job="node"}
+syncr_learning_run_duration_seconds_count
+```
+
+## First checks when a run has failed
+
+```
+increase(syncr_learning_run_duration_seconds_count{outcome="failed"}[24h])
+syncr_learning_run_duration_seconds_count
+```
+
+Then the run's own log. The events to look for are `learning.promotion.candidate` and the per-tenant
+failure it exits non-zero for. A failed pass for one tenant does not stop the others: the run continues
+and reports the failure.
+
+## What to do
+
+Nothing urgent, and nothing at night. A missed night is a night of stale weights. If runs fail
+repeatedly, the weights are frozen at the last promoted set, which is a correct state rather than a
+broken one, and the investigation is a normal-hours one.
+
+## Still to be written
+
+- **The timer itself.** Ticket 1532. Until then this alert's first disjunct is the true reading.
+- The diagnosis of a failing pass: which stage of the learning run failed and what a candidate weight
+  set that was not promoted means. The run logs its promotion decision; nothing explains a rejection.
+- Whether a run that fails for every tenant should be a warning rather than info. It is info today
+  because the cost does not change with the number of failing tenants: the weights are stale either way.
