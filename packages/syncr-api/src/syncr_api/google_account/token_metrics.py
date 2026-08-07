@@ -1,0 +1,54 @@
+"""``syncr_write_target_token_age_seconds``: why the age is the CONDITION's, not a token's.
+
+Section 18 defines the gauge and ``WriteTargetTokenExpiring`` as the critical alert on it: "the plan
+silently stops reaching the phone. The most dangerous failure in the product." Ticket 30 found that
+no process exported the metric, so that alert could not fire, and filed ticket 1302. This is it.
+
+**The age measured is the age of the FAILURE, not of the credential.** A refresh token has no
+expiry a client can read, and a healthy credential that has been connected for a year is not a
+condition anyone should be paged about. What ``refresh_failing_since`` records is when refreshing
+STARTED failing, which is the quantity a threshold is stated against: writes have not reached the
+calendar since that instant. A credential refreshing normally reports zero.
+
+**Set from stored rows on a duty that runs whether or not anything else happens.** A gauge written
+where a refresh is attempted is absent exactly when refreshes have stopped being attempted, which
+is ticket 30's other finding stated as a rule. So the reading is one row per tenant, taken from the
+credential table on a schedule, and a deployment with no Google connection reports zero rather than
+nothing: an absent series and a healthy one must not be the same reading.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from prometheus_client import Gauge
+
+from syncr_common.metrics import REGISTRY
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from syncr_api.google_account.records import GoogleCredentialRecord
+    from syncr_domain.identifiers import TenantId
+
+TOKEN_AGE = Gauge(
+    "syncr_write_target_token_age_seconds",
+    "Seconds the write target's credential has been failing to refresh. Zero when it is not.",
+    labelnames=("tenant",),
+    registry=REGISTRY,
+)
+
+
+def observed_credential(
+    tenant_id: TenantId, credential: GoogleCredentialRecord | None, *, now: datetime
+) -> None:
+    """Set the gauge for one tenant, from the row as stored.
+
+    A tenant with no credential and a tenant whose credential refreshes normally both report zero,
+    which is the same thing to an alert: the plan is reaching the calendar, or there is no calendar
+    for it to reach. What the alert fires on is the third case, and only that case grows.
+    """
+    failing_since = credential.refresh_failing_since if credential is not None else None
+    TOKEN_AGE.labels(tenant=str(tenant_id)).set(
+        0.0 if failing_since is None else max((now - failing_since).total_seconds(), 0.0)
+    )

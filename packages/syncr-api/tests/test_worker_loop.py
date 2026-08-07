@@ -84,10 +84,26 @@ def test_every_duty_now_has_a_body() -> None:
 
 
 def test_the_registry_is_the_duties_that_have_a_body() -> None:
-    """Plus the OAuth expiry sweep, which is periodic work rather than a duty of the plan."""
-    from syncr_api.oauth.cleanup import SWEEP_INTERVAL, OAuthSweepRunner
+    """Plus the periodic work that is not a duty of the plan at all.
 
-    sweep = OAuthSweepRunner(interval=SWEEP_INTERVAL, clock=lambda: datetime.now(UTC))
+    Three runners are in that class: the OAuth expiry sweep, and the two observability readings.
+    None of them produces or projects a plan; all three are on the loop because the loop is where
+    periodic work happens. Asserted as an exact set difference, so a runner added to the registry
+    without a reason stated here fails rather than joining the tick unnoticed.
+    """
+    from syncr_api.oauth.cleanup import SWEEP_INTERVAL, OAuthSweepRunner
+    from syncr_api.observability.config import PRODUCT_INTERVAL, STATE_INTERVAL
+    from syncr_api.observability.product_runner import ProductMetricRunner
+    from syncr_api.observability.state_runner import StateGaugeRunner
+
+    def clock() -> datetime:
+        return datetime.now(UTC)
+
+    beside_the_plan = {
+        OAuthSweepRunner(interval=SWEEP_INTERVAL, clock=clock).__name__,
+        StateGaugeRunner(interval=STATE_INTERVAL, clock=clock).__name__,
+        ProductMetricRunner(interval=PRODUCT_INTERVAL, clock=clock).__name__,
+    }
     named = {getattr(runner, "__name__", repr(runner)) for runner in RUNNERS}
     duties = {
         runner.__name__
@@ -96,7 +112,7 @@ def test_the_registry_is_the_duties_that_have_a_body() -> None:
     }
 
     assert duties <= named
-    assert named - duties == {sweep.__name__}
+    assert named - duties == beside_the_plan
 
 
 def test_each_runner_that_has_a_body_carries_a_stable_name() -> None:

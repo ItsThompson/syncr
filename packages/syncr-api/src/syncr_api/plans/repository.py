@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
     from syncr_api.core.columns import JsonDocument
     from syncr_domain.identifiers import PlanRevisionId
+    from syncr_domain.intervals import Interval
 
 # How many revisions a week's history read returns by default. A week appends 3 to 6, so
 # this covers a whole week's history without a caller stating a number.
@@ -112,6 +113,25 @@ class PlanRepository(TenantScopedReader):
         """This week's revisions, newest first."""
         rows = await self._session.scalars(self._week(iso_week).limit(limit))
         return [_as_record(row) for row in rows]
+
+    async def approved_in(self, span: Interval) -> tuple[PlanRevisionRecord, ...]:
+        """Every revision the user assented to inside ``span``, oldest first.
+
+        Across weeks rather than within one, because this is what the proposal-acceptance metric's
+        numerator is counted over: a period, not a week. Ordered by the instant of ASSENT rather
+        than of creation, because assent is the act being counted and a proposal may be approved
+        days after the solve that produced it.
+        """
+        rows = await self._session.scalars(
+            self.scoped_select(PlanRevision)
+            .where(
+                PlanRevision.status == APPROVED,
+                PlanRevision.approved_at >= span.start,
+                PlanRevision.approved_at < span.end,
+            )
+            .order_by(PlanRevision.approved_at.asc(), PlanRevision.id.asc())
+        )
+        return tuple(_as_record(row) for row in rows)
 
     def _week(self, iso_week: IsoWeek) -> Select[tuple[PlanRevision]]:
         """This week's revisions, newest first. The one statement of that order.

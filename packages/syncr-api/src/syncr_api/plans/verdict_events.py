@@ -12,6 +12,10 @@ not at all.
 Two reads rather than one. :meth:`latest` is what the transition rule compares against, one indexed
 row per decision, and it is the whole cost of a tick that changes nothing. :meth:`for_week` hands
 back the week's rows oldest first, which is the order the episode definition is stated in.
+
+:meth:`since` is the third, and it belongs to the two product metrics rather than to the rule. It
+answers which weeks a period touched and which of them saw a weekly session, in one read, because a
+metric job walking a year of weeks one read at a time would issue fifty-two.
 """
 
 from __future__ import annotations
@@ -31,6 +35,8 @@ from syncr_domain.feasibility import Provenance, ShortfallKind
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from sqlalchemy import Select
 
     from syncr_api.plans.declarations import VerdictToRecord
@@ -78,6 +84,21 @@ class VerdictEventRepository(TenantScopedReader):
     async def for_week(self, iso_week: IsoWeek) -> list[VerdictEventRecord]:
         """Every transition this week holds, oldest first: the order an episode is read in."""
         rows = await self._session.scalars(self._week(iso_week).order_by(*_OLDEST_FIRST))
+        return [_as_record(row) for row in rows]
+
+    async def since(self, instant: datetime) -> list[VerdictEventRecord]:
+        """Every transition recorded at or after ``instant``, oldest first, across every week.
+
+        NOT the rows an episode is computed from. An episode's boundaries depend on the rows BEFORE
+        this instant, so a caller counting episodes reads the weeks this answers and then reads each
+        of those weeks in full. What this is for is deciding which weeks a period touched at all,
+        and which of them saw a weekly session.
+        """
+        rows = await self._session.scalars(
+            self.scoped_select(VerdictEvent)
+            .where(VerdictEvent.occurred_at >= instant)
+            .order_by(*_OLDEST_FIRST)
+        )
         return [_as_record(row) for row in rows]
 
     def _week(self, iso_week: IsoWeek) -> Select[tuple[VerdictEvent]]:

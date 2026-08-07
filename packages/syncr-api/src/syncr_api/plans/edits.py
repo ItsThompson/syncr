@@ -18,11 +18,15 @@ expressed: the edit is real and the exclusion is the learning layer's rule, not 
 
 **``E2``: the objective delta is stored, never recomputed.** Nothing here recomputes one, and there
 is no write that could: the only statement is an insert.
+
+One read beside the write, and it is the churn metric's. What it answers is narrower than a record:
+which binding was edited, in which week, and when. That is every field the re-pin count reads, and a
+full record would be a reader's shape invented for a caller that does not want it.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 from uuid import uuid4
 
 from sqlalchemy import insert
@@ -31,11 +35,24 @@ from syncr_api.core.repository import TenantScopedReader
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
 from syncr_api.plans.facts import EditEvent
 from syncr_api.plans.stored_contexts import stored_context
-from syncr_api.plans.stored_documents import stored_binding
+from syncr_api.plans.stored_documents import BINDING, read_binding, stored_binding
+from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from syncr_api.plans.declarations import EditToRecord
     from syncr_domain.identifiers import EditEventId
+    from syncr_domain.identity import BindingRef
+    from syncr_domain.intervals import Interval
+
+
+class EditedBlock(NamedTuple):
+    """Which block one edit named, and when it was recorded."""
+
+    iso_week: IsoWeek
+    binding: BindingRef
+    created_at: datetime
 
 
 class EditEventRepository(TenantScopedReader):
@@ -71,3 +88,23 @@ class EditEventRepository(TenantScopedReader):
             .returning(EditEvent.id)
         )
         return written.one()
+
+    async def for_span(self, span: Interval) -> tuple[EditedBlock, ...]:
+        """Every edit recorded inside ``span``, oldest first.
+
+        Oldest first is what makes a re-pin decidable: the count is edits that are not the FIRST for
+        their week and binding, so the order is the definition rather than a convenience.
+        """
+        rows = await self._session.scalars(
+            self.scoped_select(EditEvent)
+            .where(EditEvent.created_at >= span.start, EditEvent.created_at < span.end)
+            .order_by(EditEvent.created_at.asc(), EditEvent.id.asc())
+        )
+        return tuple(
+            EditedBlock(
+                iso_week=IsoWeek.parse(row.iso_week),
+                binding=read_binding(row.binding, field=BINDING),
+                created_at=row.created_at,
+            )
+            for row in rows
+        )

@@ -23,6 +23,10 @@ the loop's resolution, not any runner's schedule.
 The five duties and their order are :data:`WORKER_DUTIES`, which is declared as data so
 the structure is one table rather than a comment: a duty whose runner does not exist yet
 is a row with no runner rather than a commented-out line, and a test reads the table.
+
+**The loop serves its own Prometheus exposition.** Every family the plan pipeline declares is
+recorded in THIS process, and the api's ``/metrics`` renders the api's registry, so without a
+surface here the whole pipeline is instrumented and unscrapeable.
 """
 
 from __future__ import annotations
@@ -43,6 +47,10 @@ from syncr_api.core.db import create_database
 from syncr_api.core.settings import WORKER_SERVICE, ServiceSettings, build_service_settings
 from syncr_api.horizon.runner import PlanHorizonRunner
 from syncr_api.oauth.cleanup import SWEEP_INTERVAL, OAuthSweepRunner
+from syncr_api.observability.config import PRODUCT_INTERVAL, STATE_INTERVAL
+from syncr_api.observability.exposition import serve_worker_metrics
+from syncr_api.observability.product_runner import ProductMetricRunner
+from syncr_api.observability.state_runner import StateGaugeRunner
 from syncr_api.solving.maintenance import MAINTENANCE_INTERVAL, OperationMaintenanceRunner
 from syncr_api.solving.runner import SolveRunner
 from syncr_common.logging import (
@@ -126,9 +134,15 @@ WORKER_DUTIES: tuple[Duty, ...] = (
 # The OAuth expiry sweep is not one of the five. It is not part of the plan pipeline at all:
 # it removes the Authorization Server's expired rows, and it runs on the loop because the
 # loop is where periodic work happens rather than because it is a duty of the plan.
+#
+# The two observability readings are not duties of the plan either, and they are LAST for a reason
+# that is not tidiness: the state reading is what keeps three families readable, so it runs after
+# every duty that could have changed what it reads and reports the state the tick actually left.
 RUNNERS: tuple[Runner, ...] = (
     *(duty.runner for duty in WORKER_DUTIES if duty.runner is not None),
     OAuthSweepRunner(interval=SWEEP_INTERVAL, clock=utc_now),
+    StateGaugeRunner(interval=STATE_INTERVAL, clock=utc_now),
+    ProductMetricRunner(interval=PRODUCT_INTERVAL, clock=utc_now),
 )
 
 _log = get_logger(WORKER_SERVICE)
@@ -219,4 +233,8 @@ def main() -> None:
     configure_logging(
         environment=context.settings.environment, log_level=context.settings.log_level
     )
+    # Before the loop, so a worker that cannot bind its exposition fails at boot rather than running
+    # unscrapeable. Started in the entrypoint rather than the factory for the reason logging is:
+    # binding a port is a process-global side effect a test must not have to fight.
+    serve_worker_metrics()
     asyncio.run(serve(context))
