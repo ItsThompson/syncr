@@ -219,6 +219,9 @@ def writing_members(repository: type) -> list[str]:
 def test_the_revision_repository_exposes_append_and_reads_and_nothing_else() -> None:
     assert public_methods(PlanRepository) == [
         "append",
+        # The period read the proposal-acceptance metric's numerator is counted over. A read across
+        # weeks rather than within one, which is why it is not `history`.
+        "approved_in",
         "find",
         "history",
         "latest",
