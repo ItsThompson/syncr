@@ -23,6 +23,7 @@ from syncr_api.observability.estimate import Measurement, median_ape_by_area
 from syncr_api.plans.records import VerdictEventRecord
 from syncr_api.plans.surfaces import VerdictSurface
 from syncr_domain.feasibility import Provenance, ShortfallKind
+from syncr_domain.identity import BindingKind, BindingRef
 from syncr_domain.intervals import Interval
 from syncr_domain.weeks import IsoWeek
 
@@ -37,6 +38,11 @@ ANOTHER_WEEK = IsoWeek.parse("2026-W08")
 PERIOD_START = datetime(2026, 2, 2, tzinfo=UTC)
 PERIOD = Interval(PERIOD_START, PERIOD_START + timedelta(weeks=4))
 BEFORE_THE_PERIOD = PERIOD_START - timedelta(days=3)
+
+
+def a_binding() -> BindingRef:
+    """One task's content identity, which is what a pin names and a re-pin counts by."""
+    return BindingRef(kind=BindingKind.TASK, entity_id=uuid4(), occurrence_key="00")
 
 
 def row(
@@ -290,7 +296,7 @@ class TestTheChurnFigures:
         assert acceptance_ratio(accepted=0, overridden=0) is None
 
     def test_only_the_second_edit_of_one_binding_in_one_week_is_a_re_pin(self) -> None:
-        binding = uuid4()
+        binding = a_binding()
 
         assert repin_count([(WEEK, binding)]) == 0
         assert repin_count([(WEEK, binding), (WEEK, binding)]) == 1
@@ -298,9 +304,13 @@ class TestTheChurnFigures:
 
     def test_the_same_binding_in_two_weeks_is_two_first_pins(self) -> None:
         """A pin binds one week and does not carry forward, so next week's pin corrects nothing."""
-        binding = uuid4()
+        binding = a_binding()
 
         assert repin_count([(WEEK, binding), (ANOTHER_WEEK, binding)]) == 0
+
+    def test_two_bindings_in_one_week_are_two_first_pins(self) -> None:
+        """Counted by the block the user moved, so pinning two blocks is not a correction."""
+        assert repin_count([(WEEK, a_binding()), (WEEK, a_binding())]) == 0
 
 
 class TestTheEngagementStreak:
