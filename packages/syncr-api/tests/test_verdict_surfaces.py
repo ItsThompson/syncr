@@ -7,10 +7,21 @@ than from a list this file keeps.
 
 **Every surface has a producer, or a stated reason and a guard that expires with it.** The producers
 are read out of the source as the set of places a recorder is COMPOSED, because that is where the
-surface is bound. Two members have no producer today: ``mutation``, because no other mutation
-computes a verdict yet, and ``cli``, because no product route accepts a CLI credential at all. The
-second exemption is asserted rather than asserted-to-be-fine: the day a route accepts a bearer
-principal, this file reddens.
+surface is bound. One member has no producer today: ``mutation``, because no other mutation computes
+a verdict yet. ``cli`` gained one the day a product route began accepting a bearer token: the pin
+path binds it, because a pin made by ``syncr block move`` and a pin made by dragging a block are the
+same write computed on two different surfaces.
+
+**The guard that said no product route accepts a CLI credential is re-keyed rather than deleted.**
+Ticket 43 keyed it on ``require_bearer_principal`` being declared on a route, which was the shape a
+CLI route was expected to have. Ticket 1500 settled that question the other way: one dependency
+accepts either credential and chooses by what the request presents, so a route serving both declares
+``require_client_principal`` and the bearer resolution is reached inside it rather than beside it. A
+guard on the old key would have sat green while twelve routes admitted a CLI token, which is the
+failure mode this file exists to prevent. So the key is now the function that actually admits one,
+and what is asserted is the rule the old guard was standing in for: a package the CLI can reach that
+computes a verdict binds the CLI surface. Which routes the CLI reaches is
+``tests/test_authorization_boundary.py``'s inventory, read here rather than restated.
 
 **Every production caller of the probe records what it found.** Stated over the packages that call
 the probe rather than over a list of services, so a mutation added later that computes a verdict and
@@ -59,16 +70,16 @@ from syncr_api.core.settings import (
     build_service_settings,
 )
 from syncr_api.horizon.runner import PlanHorizonRunner
-from syncr_api.oauth.injection import require_bearer_principal
 from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.facts import VerdictEvent
 from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
 from syncr_api.worker.main import WorkerContext
-from tests.boundaries import api_routes, read_paths, resolved_dependencies
+from tests.boundaries import METHODS_WITHOUT_A_BODY, RouteView, api_routes, read_paths
 from tests.live_horizons import LATE_IN_THE_WEEK, THIS_WEEK, Ticking, declare_the_minimum
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
+from tests.test_authorization_boundary import accepts_a_cli_credential
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -91,17 +102,16 @@ SURFACE_KEYWORD = "surface"
 # reviewer reads, because the corpus these write into is never pruned.
 PRODUCERS = {
     VerdictSurface.PIN: {"pins/injection.py"},
+    VerdictSurface.CLI: {"pins/injection.py"},
     VerdictSurface.TRADEOFF: {"concessions/injection.py"},
     VerdictSurface.SOLVE: {"solving/dispatch.py"},
     VerdictSurface.MAINTAINER: {"horizon/verdicts.py"},
 }
 
-# The two members no production path can reach yet, and why. `mutation` is the surface for any other
+# The one member no production path can reach yet, and why. `mutation` is the surface for any other
 # mutation's probe, and no other mutation computes a verdict: the fifteen rows of ticket 40's
-# trigger table that bump a version and ask for no solve are ticket 1403's. `cli` cannot be reached
-# because no product route accepts a CLI credential; ticket 1500 owns that, and the guard below
-# expires with it.
-WITHOUT_A_PRODUCER = {VerdictSurface.MUTATION, VerdictSurface.CLI}
+# trigger table that bump a version and ask for no solve are ticket 1403's.
+WITHOUT_A_PRODUCER = {VerdictSurface.MUTATION}
 
 # The methods a caller computes a verdict through. Read as names because they are the probe's whole
 # public surface.
@@ -149,30 +159,65 @@ def test_every_surface_with_a_producer_is_composed_where_this_file_says(source_r
     assert {surface.name: modules for surface, modules in PRODUCERS.items()} == composed
 
 
-def test_the_six_members_are_the_producers_plus_the_two_that_have_none() -> None:
+def test_the_six_members_are_the_producers_plus_the_one_that_has_none() -> None:
     """So a seventh member cannot be added without deciding which of the two lists it joins."""
     assert set(VerdictSurface) == set(PRODUCERS) | WITHOUT_A_PRODUCER
 
 
-def test_no_product_route_accepts_a_cli_credential(settings: ServiceSettings) -> None:
-    """The ``cli`` exemption, asserted rather than assumed, over the app's own dependency trees.
+def test_every_cli_reachable_mutation_that_records_a_verdict_binds_the_cli_surface(
+    settings: ServiceSettings, source_root: Path
+) -> None:
+    """The rule ticket 43's expiring guard was standing in for, keyed on what admits a CLI token.
 
-    ``VerdictSurface.CLI`` has no producer because a CLI cannot reach a mutation that computes a
-    verdict: every product route resolves a browser session. Ticket 1500 is what changes that, and
-    this reddens on the commit that does, which is the point: whoever lets a bearer credential
-    through has to wire the surface with it.
+    Derived from two inventories rather than from a name here: the packages owning a route that
+    accepts a bearer credential and can change state, and the modules that compose a recorder. Their
+    intersection is the set of modules that record a transition for a CLI caller, and each one has
+    to bind ``VerdictSurface.CLI``, or a CLI mutation's row lands in the corpus attributed to the
+    browser.
+
+    Mutations only, because ``VE6`` says a read appends nothing: a read that computes a verdict to
+    render it has no surface to record under, which is why no member names one.
+
+    A CLI mutation added later in a module that records fails here without this file naming it.
     """
     routes = [route for route in api_routes(create_app(settings)) if route.path.startswith("/api")]
     assert routes, "no product route was found, so this asserted nothing"
 
-    reached = {
-        route.path for route in routes if require_bearer_principal in resolved_dependencies(route)
+    changing_state_for_the_cli = {
+        _package_of(route)
+        for route in routes
+        if accepts_a_cli_credential(route) and route.methods - METHODS_WITHOUT_A_BODY
     }
-
-    assert reached == set(), (
-        "a product route now accepts a CLI credential, so VerdictSurface.CLI has a reachable "
-        "caller and needs a recorder bound to it"
+    recorded = {
+        module: surfaces
+        for module, surfaces in _surfaces_by_module(source_root).items()
+        if module.split("/")[0] in changing_state_for_the_cli
+    }
+    assert recorded, (
+        "no module both records a verdict and serves a CLI mutation, so this asserted nothing. "
+        "If that is now true, the CLI surface has no producer and belongs in WITHOUT_A_PRODUCER."
     )
+
+    missing = sorted(module for module, surfaces in recorded.items() if "CLI" not in surfaces)
+
+    assert missing == [], (
+        f"{missing} record a verdict for a caller that may be the CLI and never bind "
+        f"{VerdictSurface.CLI.value}, so a CLI mutation's transition is attributed to a browser."
+    )
+
+
+def _surfaces_by_module(source_root: Path) -> dict[str, set[str]]:
+    """The inverse of :data:`PRODUCERS`, read out of the source the same way it is."""
+    inverted: dict[str, set[str]] = {}
+    for surface, modules in composed_surfaces(source_root).items():
+        for module in modules:
+            inverted.setdefault(module, set()).add(surface)
+    return inverted
+
+
+def _package_of(route: RouteView) -> str:
+    """Which feature package owns a route, read off the module its handler is defined in."""
+    return str(route.endpoint.__module__).removeprefix("syncr_api.").split(".")[0]
 
 
 # --------------------------------------------------------------------------------

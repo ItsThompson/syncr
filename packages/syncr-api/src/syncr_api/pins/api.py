@@ -29,7 +29,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from starlette.responses import Response
 
-from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep
 from syncr_api.idempotency.injection import IdempotencyGuardDep
 from syncr_api.pins.config import (
     PIN_PATH,
@@ -59,7 +59,7 @@ router = APIRouter()
 async def create_pin(
     iso_week: str,
     body: PinCreateRequest,
-    principal: PrincipalDep,
+    principal: ClientPrincipalDep,
     guard: IdempotencyGuardDep,
     service: PinServiceDep,
 ) -> PinnedResponse:

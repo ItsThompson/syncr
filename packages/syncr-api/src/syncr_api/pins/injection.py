@@ -18,10 +18,12 @@ makes ``syncr_assembly_duration_seconds{caller="request"}`` and
 through. The assembly is the dominant cost by an order of magnitude and the two are watched together
 for exactly that reason.
 
-The verdict recorder is bound to the ``pin`` surface and to whether this request states that the
+The verdict recorder is bound to the surface the request's own credential names -- ``pin`` for a
+browser's drag, ``cli`` for ``syncr block move`` -- and to whether this request states that the
 weekly session is open, because ``VE3`` says only the caller knows the second: a transition recorded
 during a session is what the early-catch metric's numerator counts, and the service that records it
-cannot ask.
+cannot ask. Two literal compositions rather than one with a conditional surface, so
+``tests/test_verdict_surfaces.py`` can read which surface this module binds out of the source.
 """
 
 from __future__ import annotations
@@ -33,9 +35,10 @@ from fastapi import Depends, Request
 # FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and these
 # two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
 # NameError while the app is being constructed.
-from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
+from syncr_api.accounts.injection import ClientPrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.clock import utc_now
+from syncr_api.core.credentials import CredentialKind, presented_credential
 from syncr_api.core.session_mode import SessionModeDep  # noqa: TC001
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.pins.service import PinService
@@ -61,12 +64,13 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_api.core.clock import Clock
+    from syncr_api.plans.recording import VerdictRecorder
     from syncr_domain.identifiers import TenantId
 
 
 def get_pin_service(
     request: Request,
-    principal: PrincipalDep,
+    principal: ClientPrincipalDep,
     transaction: TransactionDep,
     session_mode: SessionModeDep,
 ) -> PinService:
@@ -82,6 +86,39 @@ def get_pin_service(
         clock=utc_now,
         debounce=configured_debounce(request),
         session_mode_active=session_mode,
+        credential=presented_credential(request),
+    )
+
+
+def _recorder_for(
+    transaction: AsyncSession,
+    tenant_id: TenantId,
+    *,
+    credential: CredentialKind,
+    session_mode_active: bool,
+) -> VerdictRecorder:
+    """The recorder for this request, bound to the surface its credential names.
+
+    A pin made from the CLI and a pin made by dragging a block are the same write and two different
+    surfaces: ``VerdictSurface`` exists to say where a transition was computed, and attributing a
+    CLI mutation to the browser's surface would put a row in the corpus that names the wrong caller.
+
+    Two calls rather than one with the surface chosen into a variable, because
+    ``tests/test_verdict_surfaces.py`` reads the bound surface out of this module's source: a
+    surface behind a name is a surface that guard cannot see.
+    """
+    if credential is CredentialKind.BEARER:
+        return build_verdict_recorder(
+            transaction,
+            tenant_id,
+            surface=VerdictSurface.CLI,
+            session_mode_active=session_mode_active,
+        )
+    return build_verdict_recorder(
+        transaction,
+        tenant_id,
+        surface=VerdictSurface.PIN,
+        session_mode_active=session_mode_active,
     )
 
 
@@ -92,6 +129,7 @@ def build_pin_service(
     clock: Clock,
     debounce: timedelta = DEFAULT_DEBOUNCE,
     session_mode_active: bool = False,
+    credential: CredentialKind = CredentialKind.SESSION,
 ) -> PinService:
     """One pin service, scoped to ``tenant_id``, reading time from ``clock``.
 
@@ -104,6 +142,10 @@ def build_pin_service(
     ``session_mode_active`` defaults to false, which is what a caller that is not a browser with the
     weekly session open is. The dependency above passes what the request stated, so the default is
     the honest reading for a caller that states nothing rather than a value it could get wrong.
+
+    ``credential`` defaults to the browser's, which is what a caller that is not answering an HTTP
+    request is: the conflict path reaches this builder to release a pin, and a release computes no
+    verdict at all. The dependency above passes what the request presented.
     """
     return PinService(
         assembler=build_week_assembler(transaction, tenant_id, caller=AssemblyCaller.REQUEST),
@@ -112,10 +154,10 @@ def build_pin_service(
         proposals=PendingProposalRepository(transaction, tenant_id),
         pins=PinRepository(transaction, tenant_id),
         edits=EditEventRepository(transaction, tenant_id),
-        verdicts=build_verdict_recorder(
+        verdicts=_recorder_for(
             transaction,
             tenant_id,
-            surface=VerdictSurface.PIN,
+            credential=credential,
             session_mode_active=session_mode_active,
         ),
         versions=WeekInputVersionRepository(transaction, tenant_id),
