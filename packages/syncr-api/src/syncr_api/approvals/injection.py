@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession  # noqa: TC002
 # FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and these
 # two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
 # NameError while the app is being constructed.
-from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
+from syncr_api.accounts.injection import ClientPrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.approvals.service import ApprovalService
 from syncr_api.core.clock import Clock, utc_now
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
@@ -38,7 +38,9 @@ from syncr_api.solving.repository import OperationRepository
 from syncr_domain.identifiers import TenantId  # noqa: TC001 - as above
 
 
-def get_approval_service(principal: PrincipalDep, transaction: TransactionDep) -> ApprovalService:
+def get_approval_service(
+    principal: ClientPrincipalDep, transaction: TransactionDep
+) -> ApprovalService:
     """The approval service, wired for this request and scoped to this tenant."""
     return build_approval_service(transaction, principal.tenant_id, clock=utc_now)
 

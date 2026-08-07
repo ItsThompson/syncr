@@ -21,7 +21,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
-from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep
 from syncr_api.areas.declarations import (
     AreaChange,
     AreaDeclaration,
@@ -88,7 +88,7 @@ def _as_project(record: ProjectRecord) -> ProjectResponse:
 
 
 @areas_router.get("", summary="Every Area, with the state of the pigment ramp")
-async def list_areas(principal: PrincipalDep, service: AreaServiceDep) -> AreasResponse:
+async def list_areas(principal: ClientPrincipalDep, service: AreaServiceDep) -> AreasResponse:
     """The Areas, in the order the ramp dealt their pigments."""
     view = await service.list_all(principal)
     return AreasResponse(areas=[_as_area(area) for area in view.areas], ramp=_as_ramp(view.ramp))

@@ -22,7 +22,7 @@ from fastapi import Depends
 from starlette.requests import Request  # noqa: TC002
 
 from syncr_api.accounts.injection import (  # noqa: TC001 - resolved at runtime by FastAPI
-    PrincipalDep,
+    ClientPrincipalDep,
     TransactionDep,
 )
 from syncr_api.core.clock import utc_now
@@ -47,7 +47,7 @@ BLANK_KEY_DETAIL = (
 
 
 async def get_idempotency_guard(
-    request: Request, transaction: TransactionDep, principal: PrincipalDep
+    request: Request, transaction: TransactionDep, principal: ClientPrincipalDep
 ) -> IdempotencyGuard:
     """The guard for this request, scoped to the caller's tenant.
 

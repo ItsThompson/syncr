@@ -39,7 +39,7 @@ from fastapi import Depends, Request
 # FastAPI resolves these annotations at RUNTIME to build the dependency graph, and both names are
 # only reachable from an annotation, so under TYPE_CHECKING they would resolve to a NameError while
 # the app is being constructed.
-from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
+from syncr_api.accounts.injection import ClientPrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.anchors.repository import AnchorRepository
 from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.areas.repository import AreaRepository
@@ -154,7 +154,7 @@ def build_verdict_recorder(
 
 
 def get_week_service(
-    request: Request, principal: PrincipalDep, transaction: TransactionDep
+    request: Request, principal: ClientPrincipalDep, transaction: TransactionDep
 ) -> WeekService:
     """The week service, wired for this request and scoped to this tenant."""
     return build_week_service(

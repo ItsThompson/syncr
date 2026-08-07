@@ -25,7 +25,11 @@ from fastapi import Depends, Request
 # FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and these
 # two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
 # NameError while the app is being constructed.
-from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
+from syncr_api.accounts.injection import (  # noqa: TC001
+    ClientPrincipalDep,
+    PrincipalDep,
+    TransactionDep,
+)
 from syncr_api.core.clock import utc_now
 from syncr_api.solving.coordinator import SolveCoordinator
 from syncr_api.solving.lifecycle import OperationLifecycle
@@ -40,7 +44,9 @@ if TYPE_CHECKING:
     from syncr_domain.identifiers import TenantId
 
 
-def get_operation_service(principal: PrincipalDep, transaction: TransactionDep) -> OperationService:
+def get_operation_service(
+    principal: ClientPrincipalDep, transaction: TransactionDep
+) -> OperationService:
     """The operation read service, wired for this request and scoped to this tenant."""
     return OperationService(OperationRepository(transaction, principal.tenant_id))
 

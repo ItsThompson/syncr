@@ -19,7 +19,7 @@ from http import HTTPStatus
 
 from fastapi import APIRouter, Query
 
-from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep
 from syncr_api.plans.injection import WeekServiceDep
 from syncr_api.plans.schemas import (
     WeekRevisionsResponse,
@@ -45,7 +45,7 @@ _IMMEDIATE_DESCRIPTION = (
 
 @router.get(WEEK_PATH, summary="The composed week view. Writes nothing")
 async def read_week(
-    iso_week: str, principal: PrincipalDep, service: WeekServiceDep
+    iso_week: str, principal: ClientPrincipalDep, service: WeekServiceDep
 ) -> WeekViewResponse:
     """The Week screen's whole read: the plan, or the reason there is none."""
     return WeekViewResponse.of(await service.read(principal, iso_week))
@@ -75,7 +75,7 @@ async def read_verdict(
 )
 async def request_solve(
     iso_week: str,
-    principal: PrincipalDep,
+    principal: ClientPrincipalDep,
     service: WeekServiceDep,
     immediate: bool = Query(
         default=False, alias=IMMEDIATE_PARAMETER, description=_IMMEDIATE_DESCRIPTION

@@ -24,7 +24,7 @@ from fastapi import Depends
 # FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and these
 # two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
 # NameError while the app is being constructed.
-from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
+from syncr_api.accounts.injection import ClientPrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository, ProjectRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.plans.versions import WeekInputVersionRepository
@@ -34,7 +34,7 @@ from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
 
-def get_task_service(principal: PrincipalDep, transaction: TransactionDep) -> TaskService:
+def get_task_service(principal: ClientPrincipalDep, transaction: TransactionDep) -> TaskService:
     """The Task service, wired for this request and scoped to this tenant."""
     return TaskService(
         tasks=TaskRepository(transaction, principal.tenant_id),

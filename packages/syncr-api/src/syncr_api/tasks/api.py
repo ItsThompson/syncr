@@ -25,7 +25,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
-from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep
 from syncr_api.core.patches import stated, stated_unless_null
 from syncr_api.idempotency.injection import IdempotencyGuardDep
 from syncr_api.tasks.config import TASK_COMPLETE_PATH, TASK_PATH
@@ -78,7 +78,7 @@ def _as_task(record: TaskRecord) -> TaskResponse:
 
 @router.get("", summary="The backlog, with the counts its header states")
 async def list_tasks(
-    principal: PrincipalDep,
+    principal: ClientPrincipalDep,
     service: TaskServiceDep,
     area_id: UUID | None = Query(default=None, alias="areaId"),
     status: TaskStatus | None = Query(default=None),
@@ -94,7 +94,7 @@ async def list_tasks(
 @router.post("", status_code=HTTPStatus.CREATED, summary="Capture a task. A title and an Area")
 async def capture_task(
     body: TaskCreateRequest,
-    principal: PrincipalDep,
+    principal: ClientPrincipalDep,
     guard: IdempotencyGuardDep,
     service: TaskServiceDep,
 ) -> TaskResponse:
@@ -167,7 +167,7 @@ async def drop_task(
 @router.post(TASK_COMPLETE_PATH, summary="Complete a task. Recorded time is left intact")
 async def complete_task(
     task_id: UUID,
-    principal: PrincipalDep,
+    principal: ClientPrincipalDep,
     guard: IdempotencyGuardDep,
     service: TaskServiceDep,
 ) -> TaskResponse:

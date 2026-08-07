@@ -26,7 +26,7 @@ from http import HTTPStatus
 
 from fastapi import APIRouter
 
-from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.accounts.injection import ClientPrincipalDep
 from syncr_api.approvals.config import APPROVE_PATH, APPROVE_ROUTE
 from syncr_api.approvals.injection import ApprovalServiceDep
 from syncr_api.approvals.schemas import WeekApprovedResponse
@@ -42,7 +42,7 @@ router = APIRouter()
 )
 async def approve_week(
     iso_week: str,
-    principal: PrincipalDep,
+    principal: ClientPrincipalDep,
     guard: KeyedIdempotencyGuardDep,
     service: ApprovalServiceDep,
 ) -> WeekApprovedResponse:

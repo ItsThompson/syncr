@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Path
 
-from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep
 from syncr_api.idempotency.injection import IdempotencyGuardDep
 from syncr_api.outcomes.config import (
     CONFIRM_PATH,
@@ -117,7 +117,7 @@ def _as_backfill(backfill: Backfill) -> ConfirmRangeResponse:
 async def record_outcome(
     block_id: Annotated[str, Path(description="The block's derived identity.")],
     body: OutcomeRequest,
-    principal: PrincipalDep,
+    principal: ClientPrincipalDep,
     guard: IdempotencyGuardDep,
     service: OutcomeServiceDep,
 ) -> OutcomeResponse:
@@ -145,7 +145,7 @@ async def record_outcome(
 
 @days_router.get(DAY_PATH, summary="The Today ledger for one date")
 async def read_day(
-    date: Annotated[date, _DATE], principal: PrincipalDep, service: OutcomeServiceDep
+    date: Annotated[date, _DATE], principal: ClientPrincipalDep, service: OutcomeServiceDep
 ) -> DayResponse:
     """The day's blocks in time order, grouped into what has ended and what has not."""
     return _as_day(await service.read_day(principal, date))
@@ -154,7 +154,7 @@ async def read_day(
 @days_router.post(CONFIRM_PATH, summary="Confirm one day, converting presumption into record")
 async def confirm_day(
     date: Annotated[date, _DATE],
-    principal: PrincipalDep,
+    principal: ClientPrincipalDep,
     guard: IdempotencyGuardDep,
     service: OutcomeServiceDep,
 ) -> DayResponse:

@@ -20,7 +20,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
-from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep
 from syncr_api.solving.config import (
     OPERATION_PATH,
     PAGE_LIMIT_DEFAULT,
@@ -77,7 +77,7 @@ async def list_operations(
     summary="Read one operation's current status",
 )
 async def read_operation(
-    operation_id: UUID, principal: PrincipalDep, operations: OperationServiceDep
+    operation_id: UUID, principal: ClientPrincipalDep, operations: OperationServiceDep
 ) -> OperationResponse:
     """The operation's current truth, so a client that missed a push is not left with a stuck UI."""
     return OperationResponse.of(await operations.report(principal, operation_id))

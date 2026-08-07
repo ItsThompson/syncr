@@ -10,12 +10,16 @@ synthetic input that breaks it. The second half is the important one. A rule who
 cannot fail is indistinguishable from a rule nobody is enforcing, and the failure mode is
 silent.
 
-The three rules:
+The four rules:
 
 1. Every route resolves a principal, except the ones named below.
 2. Every service method takes that principal FIRST, so authorizing is not optional.
 3. No route module can reach persistence, so it has no way to skip the service layer.
 4. No route module checks a scope, so authorization is decided in one place per request.
+
+A fifth census sits beside them, because two credential kinds now reach this api. Which routes
+serve the CLI's bearer token as well as the browser's cookie is an inventory here, asserted
+exactly and in both directions, so widening the CLI's reach is a diff a reviewer reads.
 """
 
 from __future__ import annotations
@@ -27,8 +31,17 @@ import pytest
 from fastapi import Depends, FastAPI
 
 from syncr_api.accounts.config import AUTH_PREFIX
-from syncr_api.accounts.injection import require_principal, require_trusted_origin
+from syncr_api.accounts.injection import (
+    ClientPrincipalDep,
+    PrincipalDep,
+    require_client_principal,
+    require_principal,
+    require_trusted_origin,
+)
 from syncr_api.accounts.service import SessionDescription, SessionService
+from syncr_api.approvals.config import APPROVE_PATH
+from syncr_api.areas.config import AREAS_PREFIX
+from syncr_api.concessions.config import WEEKS_PREFIX
 from syncr_api.core.observability import METRICS_ENDPOINT
 from syncr_api.core.principal import require_scope
 from syncr_api.oauth.config import (
@@ -39,9 +52,21 @@ from syncr_api.oauth.config import (
     WELL_KNOWN_PREFIX,
 )
 from syncr_api.oauth.metadata import DISCOVERY_PATH
+from syncr_api.outcomes.config import (
+    BLOCKS_PREFIX,
+    CONFIRM_PATH,
+    DAY_PATH,
+    DAYS_PREFIX,
+    OUTCOME_PATH,
+)
+from syncr_api.pins.config import PINS_PATH
+from syncr_api.plans.week_config import SOLVE_PATH, WEEK_PATH
+from syncr_api.solving.config import OPERATION_PATH, OPERATIONS_PREFIX
+from syncr_api.tasks.config import TASK_COMPLETE_PATH, TASKS_PREFIX
 from syncr_common.health import HEALTHZ_ENDPOINT, READYZ_ENDPOINT
 from tests.boundaries import (
     METHODS_WITHOUT_A_BODY,
+    RouteView,
     api_routes,
     imported_modules,
     principal_position,
@@ -113,6 +138,44 @@ ROUTES_WITHOUT_AN_ORIGIN_CHECK = frozenset(
     }
 )
 
+# The routes that serve the CLI's bearer token as well as the browser's cookie, which is section
+# 17's command catalog and nothing else. Each one is here because a shipped command needs it:
+#
+#   GET  /areas                    `week show` names the Area on every row
+#   GET  /tasks                    `task list` and `backlog list`
+#   POST /tasks                    `task add`
+#   POST /tasks/{id}/complete      `task done`
+#   GET  /operations/{id}          `plan solve --wait` polls this to a terminal status
+#   GET  /weeks/{isoWeek}          `week show`, `plan show`, and the summary a wait prints
+#   POST /weeks/{isoWeek}/solve    `plan solve`
+#   PUT  /blocks/{id}/outcome      `block done`, `block skip`, `block partial`
+#   GET  /days/{date}              `plan show --date`
+#   POST /days/{date}/confirm      `day confirm`
+#   POST /weeks/{isoWeek}/pins     `block move`
+#   POST /weeks/{isoWeek}/approve  `plan approve`
+#
+# Enumerated rather than granted by prefix or by scope. `admin` already guards calendar setup,
+# template editing and the pie review in the service layer, and the CLI never requests it, but a
+# route added to one of those modules that needed only `plan:read` would then be reachable by a
+# stolen CLI token without anyone deciding that. So the default is closed and this list is the
+# whole of the exception, in a file whose diff a reviewer reads as what it is.
+CLI_ROUTES = frozenset(
+    {
+        ("GET", AREAS_PREFIX),
+        ("GET", TASKS_PREFIX),
+        ("POST", TASKS_PREFIX),
+        ("POST", f"{TASKS_PREFIX}{TASK_COMPLETE_PATH}"),
+        ("GET", f"{OPERATIONS_PREFIX}{OPERATION_PATH}"),
+        ("GET", f"{WEEKS_PREFIX}{WEEK_PATH}"),
+        ("POST", f"{WEEKS_PREFIX}{SOLVE_PATH}"),
+        ("PUT", f"{BLOCKS_PREFIX}{OUTCOME_PATH}"),
+        ("GET", f"{DAYS_PREFIX}{DAY_PATH}"),
+        ("POST", f"{DAYS_PREFIX}{CONFIRM_PATH}"),
+        ("POST", f"{WEEKS_PREFIX}{PINS_PATH}"),
+        ("POST", f"{WEEKS_PREFIX}{APPROVE_PATH}"),
+    }
+)
+
 # What a route module must not be able to reach. Anything here would let a handler read
 # or write rows without passing through a service method, which is where authorization
 # lives.
@@ -151,6 +214,30 @@ def authenticated_routes(app: FastAPI) -> list[tuple[str, str, Callable[..., obj
     return found
 
 
+def resolves_a_principal(route: RouteView) -> bool:
+    """Whether this route resolves a principal at all, by either perimeter.
+
+    Two perimeters, one answer: ``require_principal`` is the browser-only one and
+    ``require_client_principal`` accepts either credential. A route declaring the first resolves the
+    second as its sub-dependency, so a route with neither declared is a route with no credential.
+    """
+    resolved = resolved_dependencies(route)
+    return require_principal in resolved or require_client_principal in resolved
+
+
+def accepts_a_cli_credential(route: RouteView) -> bool:
+    """Whether a bearer token reaches this route.
+
+    Read off the dependency tree rather than from a list, and it takes both halves to answer.
+    ``require_client_principal`` is resolved by every route that reaches a shared service or the
+    idempotency guard, because those are wired for either caller; what distinguishes a route the CLI
+    can use is that it does NOT also declare ``require_principal``, which is the same resolution
+    with a bearer credential refused.
+    """
+    resolved = resolved_dependencies(route)
+    return require_client_principal in resolved and require_principal not in resolved
+
+
 def test_the_application_has_routes_that_this_file_examines(app: FastAPI) -> None:
     # Every assertion below iterates over routes, so all of them pass vacuously on an
     # app with none. This is the control for the other route tests' subject matter.
@@ -164,15 +251,29 @@ def test_every_route_resolves_a_principal_or_is_named_as_not_needing_one(
         f"{method} {path}"
         for route in api_routes(app)
         for method, path in sorted(route_identity(route))
-        if (method, path) not in UNAUTHENTICATED_ROUTES
-        and require_principal not in resolved_dependencies(route)
+        if (method, path) not in UNAUTHENTICATED_ROUTES and not resolves_a_principal(route)
     ]
 
     assert unguarded == [], (
-        f"{unguarded} resolve no principal. Declare `PrincipalDep` on the handler, or "
+        f"{unguarded} resolve no principal. Declare `PrincipalDep` on the handler, "
+        "`ClientPrincipalDep` and an entry in CLI_ROUTES if the CLI needs it, or "
         "add the route to UNAUTHENTICATED_ROUTES with a reason if it genuinely needs "
         "no credential."
     )
+
+
+def test_the_routes_serving_the_cli_are_exactly_the_ones_named_here(app: FastAPI) -> None:
+    # Both directions in one assertion. A route that starts accepting a bearer token without being
+    # named here fails, and a name here whose route stopped accepting one fails too, so a stale
+    # entry cannot outlive the route it was written for.
+    reached = {
+        (method, path)
+        for route in api_routes(app)
+        for method, path in sorted(route_identity(route))
+        if accepts_a_cli_credential(route)
+    }
+
+    assert reached == CLI_ROUTES
 
 
 def test_every_route_maps_to_a_service_method_taking_a_principal(app: FastAPI) -> None:
@@ -246,8 +347,7 @@ def test_the_routes_exempt_from_the_origin_check_read_no_cookie(app: FastAPI) ->
         f"{method} {path}"
         for route in api_routes(app)
         for method, path in sorted(route_identity(route))
-        if (method, path) in ROUTES_WITHOUT_AN_ORIGIN_CHECK
-        and require_principal in resolved_dependencies(route)
+        if (method, path) in ROUTES_WITHOUT_AN_ORIGIN_CHECK and resolves_a_principal(route)
     ]
 
     assert exempt == [], (
@@ -267,6 +367,7 @@ def test_every_exempt_route_actually_exists(app: FastAPI) -> None:
 
     assert declared >= ROUTES_WITHOUT_AN_ORIGIN_CHECK
     assert declared >= UNAUTHENTICATED_ROUTES
+    assert declared >= CLI_ROUTES
 
 
 def route_modules(source_root: Path) -> list[Path]:
@@ -362,6 +463,14 @@ async def _handler_touching_no_service() -> str:
     return "nothing was authorized"
 
 
+async def _handler_taking_either_credential(principal: ClientPrincipalDep) -> str:
+    return str(principal.tenant_id)
+
+
+async def _handler_taking_a_session(principal: PrincipalDep) -> str:
+    return str(principal.tenant_id)
+
+
 def test_the_service_method_check_reports_a_method_without_a_principal() -> None:
     calls = service_calls(_handler_calling_an_unauthorized_service)
 
@@ -377,13 +486,22 @@ def test_the_principal_check_reports_a_route_that_resolves_none() -> None:
     control = FastAPI()
     control.get("/unguarded")(_handler_touching_no_service)
 
-    unguarded = [
-        route
-        for route in api_routes(control)
-        if require_principal not in resolved_dependencies(route)
-    ]
+    unguarded = [route for route in api_routes(control) if not resolves_a_principal(route)]
 
     assert len(unguarded) == 1
+
+
+def test_the_cli_census_discriminates_between_the_two_perimeters() -> None:
+    # The census reads an exact set off the real app, so its own discrimination needs a control:
+    # a route declaring the either-credential perimeter has to be reported and a route declaring
+    # the browser-only one has to not be, or the set could be right for the wrong reason.
+    control = FastAPI()
+    control.get("/for-the-cli")(_handler_taking_either_credential)
+    control.get("/for-the-browser")(_handler_taking_a_session)
+
+    reached = {route.path for route in api_routes(control) if accepts_a_cli_credential(route)}
+
+    assert reached == {"/for-the-cli"}
 
 
 def test_the_origin_check_reports_an_unsafe_route_without_it() -> None:
