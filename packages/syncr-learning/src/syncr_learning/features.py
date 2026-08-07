@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Final
 from syncr_domain.identity import block_id
 from syncr_domain.outcomes import COMPLETION_STATES, MINUTES_STATE, OutcomeState
 from syncr_domain.zones import resolve_zone
-from syncr_learning.config import bucket_of
+from syncr_learning.config import MAX_SWITCH_COST_MINUTES, bucket_of
 from syncr_learning.exclusions import is_off_plan
 from syncr_learning.observations import (
     DurationObservation,
@@ -65,7 +65,6 @@ if TYPE_CHECKING:
     )
 
 MINUTES_AN_HOUR: Final = 60
-MINUTES_A_DAY: Final = 24 * MINUTES_AN_HOUR
 SECONDS_A_MINUTE: Final = 60
 
 # The states that say the user did not do the work WHEN it was planned. `skipped` did not happen at
@@ -173,7 +172,11 @@ def local_hour(at: Instant, revision: StoredRevision) -> int:
     zones = revision.zone_by_date
     if not zones:
         return at.hour
-    zone = zones.get(at.date()) or next(iter(zones.values()))
+    # A date the profile does not name falls back to the EARLIEST date's zone, not to whichever
+    # entry the mapping happens to hold first. Reachable for a `moved` outcome that landed outside
+    # the week the plan captured, and an insertion-order answer would make one corpus produce two
+    # hours.
+    zone = zones.get(at.date()) or zones[min(zones)]
     return at.astimezone(resolve_zone(zone)).hour
 
 
@@ -213,14 +216,25 @@ def _switches(lived: Sequence[LivedBlock]) -> Iterable[SwitchObservation]:
     Adjacency is over the blocks that carry an Area, in span order, which is the set the objective's
     own context-switch term walks.
 
-    A pair whose gap is longer than a day is dropped. A night's sleep leaves hours of room and would
-    swamp the difference the price is measured as, which is the same reading the solver's term takes
-    when it says a gap that long absorbs any price. A pair that overlaps is dropped for the opposite
-    reason: a negative gap is not room the week left.
+    **A pair is evidence only while its gap could BE a switch price.** The objective charges the
+    price against the gap the schedule leaves, so a gap at least as long as the most a switch can
+    cost absorbs any price and costs nothing: the solver's own term says exactly that. Such a gap
+    carries no information about the price, so the bound is that ceiling,
+    :data:`~syncr_learning.config.MAX_SWITCH_COST_MINUTES`, and not a figure of this module's own.
+
+    That bound is what excludes a night's sleep, and it matters more than it sounds. A night is
+    eight to eighteen hours, so a rule stated at a DAY keeps every day boundary, and the clamp then
+    admits each one at its ceiling. Measured: a user whose every real gap is ten minutes, both
+    within an Area and across one, fitted 18.4 minutes from 27 overnight boundaries alone. The clamp
+    does not bound that case; it creates it. The same ceiling also excludes a morning block and an
+    evening block of one day, which is not a switch either and which a day rule would have kept.
+
+    A pair that overlaps is dropped for the opposite reason: a negative gap is not room the week
+    left.
     """
     for first, second in pairwise(lived):
         elapsed = second.planned.start - first.planned.end
         minutes = int(elapsed.total_seconds() // SECONDS_A_MINUTE)
-        if minutes < 0 or minutes > MINUTES_A_DAY:
+        if minutes < 0 or minutes > MAX_SWITCH_COST_MINUTES:
             continue
         yield SwitchObservation(gap_minutes=minutes, changed_area=first.area_id != second.area_id)
