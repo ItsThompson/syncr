@@ -40,6 +40,11 @@ if TYPE_CHECKING:
 
 _log = get_logger("syncr.verdicts")
 
+# What a caller with no weekly session reports, which is every caller that is not a browser with one
+# open: the worker's two, and a client that has no session concept at all. Named so the two worker
+# call sites state the same thing rather than a bare ``False`` each.
+NO_SESSION_IS_OPEN = False
+
 
 class VerdictRecorder:
     """Records one week's verdict transitions from one surface, for one caller's session state."""

@@ -17,6 +17,11 @@ makes ``syncr_assembly_duration_seconds{caller="request"}`` and
 ``syncr_probe_duration_seconds{caller= "request"}`` the pair a regression in either is attributable
 through. The assembly is the dominant cost by an order of magnitude and the two are watched together
 for exactly that reason.
+
+The verdict recorder is bound to the ``pin`` surface and to whether this request states that the
+weekly session is open, because ``VE3`` says only the caller knows the second: a transition recorded
+during a session is what the early-catch metric's numerator counts, and the service that records it
+cannot ask.
 """
 
 from __future__ import annotations
@@ -31,14 +36,20 @@ from fastapi import Depends, Request
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.clock import utc_now
+from syncr_api.core.session_mode import read_session_mode
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.pins.service import PinService
 from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.edits import EditEventRepository
-from syncr_api.plans.injection import DEFAULT_DEBOUNCE, build_week_assembler
+from syncr_api.plans.injection import (
+    DEFAULT_DEBOUNCE,
+    build_verdict_recorder,
+    build_week_assembler,
+)
 from syncr_api.plans.pins import PinRepository
 from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.injection import build_solve_coordinator, configured_debounce
@@ -62,6 +73,7 @@ def get_pin_service(
         principal.tenant_id,
         clock=utc_now,
         debounce=configured_debounce(request),
+        session_mode_active=read_session_mode(request),
     )
 
 
@@ -71,14 +83,19 @@ def build_pin_service(
     *,
     clock: Clock,
     debounce: timedelta = DEFAULT_DEBOUNCE,
+    session_mode_active: bool = False,
 ) -> PinService:
     """One pin service, scoped to ``tenant_id``, reading time from ``clock``.
 
     Split from the dependency above for the reason the week service's builder is: the composition is
-    ten collaborators, and a caller that wants one against a stated instant should not have to
-    restate all ten. ``debounce`` defaults to the documented value rather than being required, and
-    the dependency above passes what this deployment configured, so a caller that states nothing
+    eleven collaborators, and a caller that wants one against a stated instant should not have to
+    restate all eleven. ``debounce`` defaults to the documented value rather than being required,
+    and the dependency above passes what this deployment configured, so a caller that states nothing
     gets the default the environment variable also defaults to.
+
+    ``session_mode_active`` defaults to false, which is what a caller that is not a browser with the
+    weekly session open is. The dependency above passes what the request stated, so the default is
+    the honest reading for a caller that states nothing rather than a value it could get wrong.
     """
     return PinService(
         assembler=build_week_assembler(transaction, tenant_id, caller=AssemblyCaller.REQUEST),
@@ -87,6 +104,12 @@ def build_pin_service(
         proposals=PendingProposalRepository(transaction, tenant_id),
         pins=PinRepository(transaction, tenant_id),
         edits=EditEventRepository(transaction, tenant_id),
+        verdicts=build_verdict_recorder(
+            transaction,
+            tenant_id,
+            surface=VerdictSurface.PIN,
+            session_mode_active=session_mode_active,
+        ),
         versions=WeekInputVersionRepository(transaction, tenant_id),
         weights=WeightSetRepository(transaction, tenant_id),
         coordinator=build_solve_coordinator(transaction, tenant_id, clock=clock, debounce=debounce),

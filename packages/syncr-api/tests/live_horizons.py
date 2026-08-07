@@ -32,6 +32,13 @@ AUCKLAND = "Pacific/Auckland"
 # Monday of 2026-W07, mid-morning in London, so a fortnight's horizon covers W07 and W08 and the
 # week list is the two-week case rather than the three-week one.
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
+
+# Sunday of the same week at 22:00, where February in London is UTC. The week's span ends at the
+# following Monday's local midnight, so two hours of capacity are left and the Area's three-hour
+# floor cannot be reached: the week is impossible and nothing but the clock made it so.
+LATE_IN_THE_WEEK = datetime(2026, 2, 15, 22, 0, tzinfo=UTC)
+CAPACITY_LEFT_MINUTES = 120
+
 LAST_WEEK = IsoWeek(2026, 6)
 THIS_WEEK = IsoWeek(2026, 7)
 NEXT_WEEK = IsoWeek(2026, 8)

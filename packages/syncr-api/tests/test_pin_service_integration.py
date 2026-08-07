@@ -47,6 +47,8 @@ from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.placements import constrains_a_solve
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
+from syncr_api.plans.surfaces import VerdictSurface
+from syncr_api.plans.verdict_events import VerdictEventRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import PENDING, SOLVE
 from syncr_domain.feasibility import Provenance
@@ -69,6 +71,7 @@ if TYPE_CHECKING:
     from syncr_api.accounts.records import UserRecord
     from syncr_api.core.principal import Principal
     from syncr_api.pins.service import PinnedWeek
+    from syncr_api.plans.records import VerdictEventRecord
     from syncr_domain.identifiers import TenantId
 
 pytestmark = pytest.mark.integration
@@ -707,6 +710,147 @@ class TestLiveVerdict:
         assert result.operation is not None
         assert result.operation.kind == SOLVE
         assert result.operation.status == PENDING
+
+
+# ---------------------------------------------------------------------------
+# VE2 and VE5: the transition the pin path records, and the burst that does not
+# ---------------------------------------------------------------------------
+
+
+class TestVerdictTransitionRecording:
+    """Ticket 43's half of the pin transaction: the row the drag leaves in the corpus.
+
+    The seeded week is not short of capacity, so the verdict the pin computes finds no gap. It is
+    still the FIRST verdict this week has, which ``VE2`` makes a transition: what the corpus needs
+    is the baseline, because a later flip is only a flip against something.
+    """
+
+    async def test_a_pin_records_the_verdict_it_computed(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """One row, naming the pin surface, the version the pin left, and the pin's own instant.
+
+        ``feasible`` is asserted true against a verdict whose own ``feasible`` field is false, which
+        is the translation the recorder makes: capacity arithmetic may not claim a week works, so a
+        row copying that field would open an infeasibility episode on every drag of a healthy week.
+        """
+        await _seed_a_pinnable_week(sessions, owner)
+
+        result = await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+
+        assert result.verdict.feasible is False, "a probe verdict never claims a week works"
+        assert result.verdict.capacity_is_sufficient
+        (one,) = await _transitions(sessions, owner)
+        assert one.surface is VerdictSurface.PIN
+        assert one.provenance is Provenance.PROBE
+        assert one.feasible is True
+        assert one.shortfall_minutes == 0
+        assert one.shortfall_kinds == ()
+        assert one.session_mode_active is False
+        assert one.caused_by_operation_id is None
+        assert one.input_version == result.verdict.input_version
+        assert one.occurred_at == result.verdict.computed_at
+
+    async def test_a_burst_of_twelve_pins_writes_at_most_one_row(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """``VE2``, and the figure the invariant states. Twelve drags, one row.
+
+        Each drag recomputes the same verdict, and a verdict recomputed identically is not news. The
+        edit events are counted beside it as the control: twelve preferences were really expressed,
+        so the single row is a rule rather than eleven requests that did nothing.
+        """
+        await _seed_a_pinnable_week(sessions, owner)
+
+        for minute in range(12):
+            await _pin(sessions, owner, datetime(2026, 2, 12, 10, minute, tzinfo=UTC))
+
+        assert len(await _transitions(sessions, owner)) == 1
+        assert await _row_count(sessions, EDIT_EVENTS_TABLE) == 12
+
+    async def test_a_failure_writing_the_transition_rolls_back_the_pin(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """``VE5``: a mutation cannot commit without the transition it caused.
+
+        The same shape as ``E1``'s test one row along, and for the same reason: the corpus is never
+        pruned, so a transition lost at the moment it happened is lost permanently.
+        """
+        await _seed_a_pinnable_week(sessions, owner)
+        pins_before = await _row_count(sessions, PINS_TABLE)
+
+        with (
+            patch(
+                "syncr_api.plans.verdict_events.VerdictEventRepository.append",
+                side_effect=RuntimeError("simulated write failure"),
+            ),
+            pytest.raises(RuntimeError, match="simulated write failure"),
+        ):
+            await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+
+        assert await _row_count(sessions, PINS_TABLE) == pins_before
+        assert await _row_count(sessions, EDIT_EVENTS_TABLE) == 0
+        assert await _transitions(sessions, owner) == []
+
+    async def test_releasing_a_pin_records_nothing(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """The release computes no verdict, so it has none to record.
+
+        Deliberate rather than missing: the release asks for a solve, and the transition that solve
+        finds is recorded on the commit path with ``solver`` provenance, which is a stronger finding
+        than the arithmetic this path would have run.
+        """
+        await _seed_a_pinnable_week(sessions, owner)
+        held = await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+        before = await _transitions(sessions, owner)
+
+        async with sessions() as session, session.begin():
+            service = build_pin_service(session, owner.tenant_id, clock=lambda: NOW)
+            await service.unpin(_principal(owner), str(WEEK), held.pin.id)
+
+        assert await _transitions(sessions, owner) == before
+
+    async def test_a_pin_made_during_a_weekly_session_says_so(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """``VE3``: the value comes from the caller, and the caller is the client.
+
+        Bound where the service is composed, so the numerator of the early-catch metric is what the
+        client stated rather than what this application guessed. The route's own reading of the
+        header is driven in ``test_verdict_surfaces.py``.
+        """
+        await _seed_a_pinnable_week(sessions, owner)
+
+        async with sessions() as session, session.begin():
+            service = build_pin_service(
+                session, owner.tenant_id, clock=lambda: NOW, session_mode_active=True
+            )
+            await service.pin(
+                _principal(owner),
+                str(WEEK),
+                PinRequested(block_id=BLOCK_ID, start=datetime(2026, 2, 12, 10, 0, tzinfo=UTC)),
+            )
+
+        (one,) = await _transitions(sessions, owner)
+        assert one.session_mode_active is True
+
+
+async def _seed_a_pinnable_week(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    """The week every test in the class above pins in: one block, one Area, one task."""
+    await _seed_plan(sessions, owner.tenant_id, a_plan(blocks=(a_block(14, 15, day_offset=3),)))
+    await _seed_area(sessions, owner.tenant_id)
+    await _seed_task(sessions, owner.tenant_id)
+
+
+async def _transitions(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> list[VerdictEventRecord]:
+    """This week's transitions, read back through the repository that wrote them."""
+    async with sessions() as session:
+        return await VerdictEventRepository(session, owner.tenant_id).for_week(WEEK)
 
 
 class TestUnpin:

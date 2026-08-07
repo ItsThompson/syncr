@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING
 from syncr_api.horizon.metrics import MAINTAINER_VERDICT_TRANSITIONS, TransitionDirection
 from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.injection import build_verdict_recorder, build_week_assembler
+from syncr_api.plans.recording import NO_SESSION_IS_OPEN
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
@@ -58,7 +59,7 @@ if TYPE_CHECKING:
     from syncr_domain.weeks import IsoWeek
 
 # A background probe is not a user planning their week, and the worker could not know if it were.
-NO_SESSION_IS_OPEN = False
+# The value itself is the recorder's, because the solve runner reports the same thing.
 
 _log = get_logger("syncr.horizon")
 

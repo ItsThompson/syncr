@@ -11,6 +11,11 @@ caller. The probe carries the matching label for the same reason.
 
 The operation lifecycle is the solving module's, and it is the only creation path for an operation:
 a second one here would be a second reading of the state machine.
+
+The verdict recorder is bound to the ``tradeoff`` surface and to whether this request states that
+the weekly session is open, because ``VE3`` says only the caller knows the second. A tradeoff is
+asked for during a weekly session more often than not, so a surface that reported false here would
+under-report the metric's numerator on its most likely path.
 """
 
 from __future__ import annotations
@@ -25,9 +30,11 @@ from fastapi import Depends, Request
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.concessions.service import ConcessionService
 from syncr_api.core.clock import utc_now
+from syncr_api.core.session_mode import read_session_mode
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.assembler import AssemblyCaller
-from syncr_api.plans.injection import build_week_assembler
+from syncr_api.plans.injection import build_verdict_recorder, build_week_assembler
+from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.injection import build_solve_coordinator, configured_debounce
@@ -45,6 +52,12 @@ def get_concession_service(
         ),
         probe=WeekProbe(caller=ProbeCaller.REQUEST),
         adjustments=WeekAdjustmentRepository(transaction, principal.tenant_id),
+        verdicts=build_verdict_recorder(
+            transaction,
+            principal.tenant_id,
+            surface=VerdictSurface.TRADEOFF,
+            session_mode_active=read_session_mode(request),
+        ),
         coordinator=build_solve_coordinator(
             transaction,
             principal.tenant_id,

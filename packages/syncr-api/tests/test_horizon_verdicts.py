@@ -51,6 +51,7 @@ from syncr_api.horizon.metrics import TransitionDirection
 from syncr_api.horizon.runner import PlanHorizonRunner
 from syncr_api.horizon.verdicts import TimeDrivenVerdicts, VerdictPass
 from syncr_api.offplan.repository import OffPlanPeriodRepository
+from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.declarations import VerdictToRecord
 from syncr_api.plans.facts import VerdictEvent
 from syncr_api.plans.models import PlanRevision
@@ -64,6 +65,8 @@ from syncr_domain.plan import RevisionReason
 from tests.live_horizons import (
     AREA_FLOOR_HOURS,
     AUCKLAND,
+    CAPACITY_LEFT_MINUTES,
+    LATE_IN_THE_WEEK,
     NEXT_WEEK,
     NOW,
     THIRD_WEEK,
@@ -88,8 +91,6 @@ pytestmark = pytest.mark.integration
 # Sunday of 2026-W07 at 22:00 in London, where February is UTC. The week's span ends at the
 # following Monday's local midnight, so two hours of capacity are left and the Area's three-hour
 # floor cannot be reached: the gap is 60 minutes and nothing but the clock produced it.
-LATE_IN_THE_WEEK = datetime(2026, 2, 15, 22, 0, tzinfo=UTC)
-CAPACITY_LEFT_MINUTES = 120
 FLOOR_MINUTES = int(AREA_FLOOR_HOURS) * 60
 EXPECTED_GAP_MINUTES = FLOOR_MINUTES - CAPACITY_LEFT_MINUTES
 
@@ -543,6 +544,36 @@ def _tick_count(duty: MaintainerDuty) -> float:
     )
     assert sample is not None, f"{duty.value} was not exported, so nothing could read it"
     return sample
+
+
+async def test_the_assemblies_duty_2_performs_are_visible_on_the_assembly_histogram(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord, context: WorkerContext
+) -> None:
+    """Note 7 from ``reviews/spec-review-5.md``, as a measurement rather than a sentence.
+
+    Duty 2 performs roughly 288 full ASSEMBLIES a day, not 288 bare probes: the probe arithmetic is
+    sub-millisecond and the assembly is the cost. ``syncr_assembly_duration_seconds{caller=
+    "maintainer"}`` is what makes them visible, so the figure an operator would read before
+    shortening the interval is asserted to move once per week probed.
+    """
+    await declare_the_minimum(sessions, owner.tenant_id)
+    clock = Ticking(LATE_IN_THE_WEEK)
+    runner = PlanHorizonRunner(clock=clock)
+    planned = await runner.plan(context, now=LATE_IN_THE_WEEK)
+    before = _assemblies_by_the_maintainer()
+
+    tally = await runner.record_transitions(context, planned.weeks, now=LATE_IN_THE_WEEK)
+
+    probed = sum(len(weeks) for weeks in planned.weeks.values())
+    assert tally.weeks == probed, "duty 2 probed a different set of weeks than duty 1 resolved"
+    assert _assemblies_by_the_maintainer() == before + probed
+
+
+def _assemblies_by_the_maintainer() -> float:
+    sample = REGISTRY.get_sample_value(
+        "syncr_assembly_duration_seconds_count", {"caller": AssemblyCaller.MAINTAINER.value}
+    )
+    return 0.0 if sample is None else sample
 
 
 async def test_a_tenant_far_east_probes_the_week_its_own_date_names(

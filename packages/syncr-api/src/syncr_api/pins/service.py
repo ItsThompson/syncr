@@ -12,6 +12,7 @@ pin(week, blockId, start)
   │     ├── assembler.assemble(week, now)                ONE assembly. Reads the pin back
   │     ├── probe(inputs.for_probe())                    provenance = probe, sub-millisecond
   │     ├── pins.price(delta)  +  editEvents.append(...) E1: the pair, or neither
+  │     ├── verdicts.record(week, verdict)               VE2: only if it TRANSITIONED
   │     └── coordinator.request_solve(week, version)
   └── { pin, verdict, operation }
 ```
@@ -30,6 +31,12 @@ assembler for the week that already holds one, and the table already states that
 **``E1``: the edit event is written in the same transaction as the pin.** A pin without its event is
 a training label with no features, and the features are a fact about an instant that has passed, so
 the loss is unrecoverable. Nothing between the two writes can commit one without the other.
+
+**``VE5``: the verdict transition is written in the same transaction too**, and only when the
+verdict is a transition. So a burst of twelve drags writes at most one row, and a pin cannot commit
+without the transition it caused: the row feeds a product metric whose data is unrecoverable after
+the fact. The release path records none, because it computes no verdict; the transition its solve
+produces is recorded on the commit path, and the one time passing produces is the maintainer's.
 
 ## Rejecting a proposed move is pinning the block where it already is
 
@@ -91,6 +98,7 @@ if TYPE_CHECKING:
     from syncr_api.plans.edits import EditEventRepository
     from syncr_api.plans.pins import PinRepository
     from syncr_api.plans.proposals import PendingProposalRepository
+    from syncr_api.plans.recording import VerdictRecorder
     from syncr_api.plans.records import PinRecord
     from syncr_api.plans.repository import PlanRepository
     from syncr_api.plans.verdicts import WeekProbe
@@ -133,6 +141,7 @@ class PinService:
         proposals: PendingProposalRepository,
         pins: PinRepository,
         edits: EditEventRepository,
+        verdicts: VerdictRecorder,
         versions: WeekInputVersionRepository,
         weights: WeightSetRepository,
         coordinator: SolveCoordinator,
@@ -146,6 +155,7 @@ class PinService:
         self._proposals = proposals
         self._pins = pins
         self._edits = edits
+        self._verdicts = verdicts
         self._versions = versions
         self._weights = weights
         self._coordinator = coordinator
@@ -265,6 +275,7 @@ class PinService:
         post_pin_inputs = await self._assembler.assemble(week, now)
         verdict = self._probe.verdict_for(post_pin_inputs)
         priced = await self._pins.price(record.id, objective_delta=price.objective_delta)
+        transition = await self._verdicts.record(week, verdict)
         event = await self._edits.append(
             EditToRecord(
                 iso_week=week,
@@ -299,6 +310,7 @@ class PinService:
             moved=block.interval != accepted,
             feasible=verdict.feasible,
             shortfalls=len(verdict.shortfalls),
+            verdict_event_id=None if transition is None else str(transition.id),
         )
         return PinnedWeek(
             pin=priced,

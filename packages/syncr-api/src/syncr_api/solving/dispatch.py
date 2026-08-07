@@ -17,8 +17,8 @@ op = coordinator.claim_next()               already claimed when this is called
   └── TRANSACTION 2  write, guarded
         ├── SELECT version ... FOR UPDATE
         ├── moved  ──▶ ROLLBACK. finish(op, Superseded), which enqueues ONE follow-up
-        └── held   ──▶ adopt, bump if the live plan changed, enqueue the projection if it did,
-                       finish(op, Succeeded)
+        └── held   ──▶ adopt, record the verdict transition, bump if the live plan changed,
+                       enqueue the projection if it did, finish(op, Succeeded)
 ```
 
 ## The version is stamped when the inputs are LOADED, not when the operation is created
@@ -60,6 +60,11 @@ version row, the row the guard created, which the follow-up is then guarded agai
 back instead would leave the follow-up finding no row either, superseded for the same reason,
 forever.
 
+The verdict transition is inside that transaction and after that guard, which is ``VE5`` and what
+makes it meaningful here: a discarded solve records nothing, because the plan it was about is not
+the plan the week holds. A row for it would tell the product metric that a week was confirmed
+impossible by a result nobody adopted.
+
 ## Failure names what still works, and the last attempt keeps the inputs it read
 
 Every failure answers with a stated cause and leaves the previous live plan untouched and still
@@ -85,11 +90,13 @@ from syncr_api.plans.authority import classify
 from syncr_api.plans.candidates import from_document
 from syncr_api.plans.conflicts import PlanConflictRepository
 from syncr_api.plans.errors import ClassificationRejected
-from syncr_api.plans.injection import build_week_assembler
+from syncr_api.plans.injection import build_verdict_recorder, build_week_assembler
 from syncr_api.plans.production import NoWeightSetInForce, WeekProducer
 from syncr_api.plans.proposals import PendingProposalRepository
+from syncr_api.plans.recording import NO_SESSION_IS_OPEN
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_verdicts import stored_verdict
+from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.checkpoints import watching_the_version
 from syncr_api.solving.config import (
@@ -121,6 +128,7 @@ if TYPE_CHECKING:
     from syncr_api.core.clock import Clock
     from syncr_api.core.db import Database
     from syncr_api.plans.authority import Classification
+    from syncr_api.plans.recording import VerdictRecorder
     from syncr_api.solving.config import SolveFailure
     from syncr_api.solving.coordinator import SolveCoordinator
     from syncr_api.solving.records import OperationRecord
@@ -304,6 +312,10 @@ class SolveDispatch:
                 reason=RevisionReason.AUTO_APPLIED_FILL.value,
                 at=now,
             )
+            # VE5, and it is the guard that makes it meaningful: a solve whose version moved returns
+            # above without writing, so a superseded solve records no transition. VE4's diagnostic
+            # pair is what this row is: the probe's warning, confirmed by an attempted placement.
+            await self._recorder(session).record(week, solved.verdict, caused_by=op.id)
             if adopted.changed_the_live_plan():
                 # The live plan IS a solve input, so the version moves with it, and the projection
                 # is enqueued for the same reason and under the same condition: a replaced proposal
@@ -479,6 +491,21 @@ class SolveDispatch:
 
     def _lifecycle(self, session: AsyncSession) -> OperationLifecycle:
         return OperationLifecycle(OperationRepository(session, self._tenant_id), self._clock)
+
+    def _recorder(self, session: AsyncSession) -> VerdictRecorder:
+        """The transition writer for this path, bound to the surface and to no open session.
+
+        ``VE3``: the worker cannot know whether the user's weekly session is open, so it reports
+        false. ``18-observability.md`` states that plainly and the episode definition depends on it:
+        the FIRST row of an episode decides whether the infeasibility was caught early, so a
+        confirming row that claimed a session was open would report a miss as a catch.
+        """
+        return build_verdict_recorder(
+            session,
+            self._tenant_id,
+            surface=VerdictSurface.SOLVE,
+            session_mode_active=NO_SESSION_IS_OPEN,
+        )
 
     def _producer(self, session: AsyncSession, revisions: PlanRepository) -> WeekProducer:
         return WeekProducer(

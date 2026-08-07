@@ -13,6 +13,11 @@ floor by more than it reserves, or to concede anything at all on a week that is 
 service assembles the week, probes it, enumerates what could close each gap, and requires the
 requested concession to be one syncr actually offered.
 
+That probe is a verdict, so the transition it finds is recorded in the request's own transaction,
+under the ``tradeoff`` surface. Nothing else about the request persists, which is the point below,
+and the transition is not an exception to it: a row saying the week was found impossible is a fact
+about the week rather than a concession the user has agreed to.
+
 The candidate then rides on the operation, which is the only object that crosses from the request to
 the worker, and the worker folds it in as an argument to the assembly. Nothing is written to the
 concession table, which WA2 requires and a test asserts.
@@ -63,6 +68,7 @@ if TYPE_CHECKING:
     from syncr_api.core.principal import Principal
     from syncr_api.plans.adjustments import WeekAdjustmentRepository
     from syncr_api.plans.assembler import WeekAssembler
+    from syncr_api.plans.recording import VerdictRecorder
     from syncr_api.plans.records import WeekAdjustmentRecord
     from syncr_api.plans.tradeoffs import Offer
     from syncr_api.plans.verdicts import WeekProbe
@@ -84,6 +90,7 @@ class ConcessionService:
         assembler: WeekAssembler,
         probe: WeekProbe,
         adjustments: WeekAdjustmentRepository,
+        verdicts: VerdictRecorder,
         coordinator: SolveCoordinator,
         current: WeekInputVersionRepository,
         versions: WeekInputVersions,
@@ -92,6 +99,7 @@ class ConcessionService:
         self._assembler = assembler
         self._probe = probe
         self._adjustments = adjustments
+        self._verdicts = verdicts
         self._coordinator = coordinator
         self._current = current
         self._versions = versions
@@ -189,6 +197,11 @@ class ConcessionService:
         """
         inputs = await self._assembler.assemble(week, self._clock())
         offered = self._probe.offered_verdict_for(inputs)
+        # Recorded beside the probe that found it, in the request's own transaction. A request that
+        # is then refused rolls the row back with everything else, and the transition it saw is
+        # written by the next mutation or by the maintainer's next tick, at most fifteen minutes
+        # later: the same answer the design gives for a transition a read observes.
+        await self._verdicts.record(week, offered.verdict)
         offer = offered.offered((requested.kind, requested.target_id))
         if offer is None:
             raise ValidationFailed(

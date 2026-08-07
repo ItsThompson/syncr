@@ -511,18 +511,29 @@ async def test_the_tick_is_timed_under_its_own_duty(
     context: WorkerContext,
     clock: Ticking,
 ) -> None:
-    """Labeled by duty, because the second duty's cost is unrelated to this one's."""
+    """Labeled by duty, because the second duty's cost is unrelated to this one's.
+
+    A delta rather than an absolute count: the histogram is process-wide, and duty 2's own suite
+    ticks the same runner, so a figure read as a total would depend on which suites ran first.
+    """
     await declare_the_minimum(sessions, owner.tenant_id)
     runner = PlanHorizonRunner(clock=clock)
     await runner(context)  # the first tick schedules
     clock.advance(MAINTAINER_INTERVAL)
+    before = _ticks_timed_under(MaintainerDuty.HORIZON)
 
     await runner(context)
 
+    assert _ticks_timed_under(MaintainerDuty.HORIZON) == before + 1
+
+
+def _ticks_timed_under(duty: MaintainerDuty) -> float:
+    """The tick histogram's count for one duty, read as a scraper reads it."""
     counted = REGISTRY.get_sample_value(
-        "syncr_maintainer_tick_duration_seconds_count", {"duty": MaintainerDuty.HORIZON.value}
+        "syncr_maintainer_tick_duration_seconds_count", {"duty": duty.value}
     )
-    assert counted == 1
+    assert counted is not None, f"{duty.value} was not exported, so nothing could read it"
+    return counted
 
 
 async def test_a_tenant_whose_week_raises_does_not_stop_another_tenants(

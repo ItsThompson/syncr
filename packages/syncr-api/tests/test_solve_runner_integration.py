@@ -50,13 +50,16 @@ from syncr_api.core.settings import (
 )
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.plans.assembler import AssemblyCaller
-from syncr_api.plans.injection import build_week_assembler
+from syncr_api.plans.episodes import caught_early_ratio, episodes
+from syncr_api.plans.injection import build_verdict_recorder, build_week_assembler
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.placements import WeekPlacements
 from syncr_api.plans.production import WeekProducer
 from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import plan_document
+from syncr_api.plans.surfaces import VerdictSurface
+from syncr_api.plans.verdict_events import VerdictEventRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import (
     FAILED,
@@ -82,7 +85,7 @@ from syncr_api.templates.repository import DayTypeRepository, WeekPatternReposit
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.worker.main import WorkerContext
 from syncr_common.metrics import REGISTRY
-from syncr_domain.feasibility import Provenance, Verdict
+from syncr_domain.feasibility import Provenance, Shortfall, ShortfallKind, Verdict
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import Block, PlanDocument
 from syncr_domain.reasons import Bound, DerivationSource, ReasonRecord
@@ -99,6 +102,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
     from syncr_api.accounts.records import UserRecord
+    from syncr_api.plans.records import VerdictEventRecord
     from syncr_api.solving.records import OperationRecord
     from syncr_domain.identifiers import TenantId
     from syncr_domain.weeks import IsoWeek as IsoWeekType
@@ -1004,3 +1008,177 @@ async def a_solve_whose_lease_expires(
 def _sample(family: str, labels: dict[str, str] | None = None) -> float:
     """One metric value, read as a scraper reads it rather than through a private attribute."""
     return REGISTRY.get_sample_value(family, labels or {}) or 0.0
+
+
+# ---------------------------------------------------------------------------
+# The verdict transition the commit path records
+# ---------------------------------------------------------------------------
+
+
+class TestTheVerdictTransition:
+    """``VE4`` and ``VE5`` on the one path that can produce a ``solver`` verdict at all.
+
+    A solve's verdict is a stronger finding than the arithmetic every other surface reaches: it
+    attempted a placement. So a week already reported short by a pin's probe is CONFIRMED here, and
+    the pair of rows is what lets the metric tell a capacity warning from an authoritative finding
+    while counting one episode.
+    """
+
+    async def test_a_succeeded_solve_records_its_verdict_and_names_the_operation(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """One row, and it names the operation that produced it: the cause a reader can follow.
+
+        ``session_mode_active`` is false because the worker cannot know, which ``18`` states and the
+        episode definition depends on: the FIRST row of an episode decides whether it was caught
+        early, so a confirming row claiming a session was open would report a miss as a catch.
+        """
+        await declare_the_minimum(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+
+        finished = await a_solve(sessions, context, owner, clock)
+
+        assert finished.status == SUCCEEDED
+        (one,) = await transitions_of(sessions, owner)
+        assert one.surface is VerdictSurface.SOLVE
+        assert one.provenance is Provenance.SOLVER
+        assert one.caused_by_operation_id == finished.id
+        assert one.feasible is True
+        assert one.session_mode_active is False
+
+    async def test_a_superseded_solve_records_nothing(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``VE5`` at the boundary the guard draws: no revision, no proposal, and no transition.
+
+        A row for a discarded solve would tell the product metric that a week was confirmed by a
+        result nobody adopted, and the plan it was about is not the plan the week holds.
+        """
+        await declare_the_minimum(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+        await requested(sessions, owner, clock)
+        claim = await claimed(sessions, owner, clock)
+        dispatch = dispatch_reading_the_live_plan(context, owner.tenant_id, clock)
+        loaded = await dispatch._loaded(claim, WEEK)
+        await bump(sessions, owner, clock)
+        solved = await dispatch._solved(loaded, WEEK)
+
+        finished = await dispatch._written(
+            claim, WEEK, loaded, solved, classification_of(dispatch, loaded, solved)
+        )
+
+        assert finished.status == SUPERSEDED
+        assert await transitions_of(sessions, owner) == []
+
+    async def test_a_probe_warning_a_solve_confirms_is_two_rows_and_one_episode(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        live_plan_is_read: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``VE4`` and ``VE9`` together, which is the pair ``18``'s trace is drawn from.
+
+        The pin's row is written through the production recorder bound to the pin surface, because
+        what is under test here is what the SOLVE path adds to it; the pin service's own path is
+        driven in ``test_pin_service_integration.py``.
+
+        Counting rows would answer 0.5 for an infeasibility caught perfectly during a session, which
+        is why the unit is the episode: both figures are asserted, because the one that must not be
+        used is the one a later reader would reach for first.
+        """
+        await declare_the_minimum(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+        await _a_pin_warns_the_week_is_short(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _confirming_the_shortfall)
+
+        finished = await a_solve(sessions, context, owner, clock)
+
+        assert finished.status == SUCCEEDED
+        recorded = await transitions_of(sessions, owner)
+        assert [(one.surface, one.provenance, one.feasible) for one in recorded] == [
+            (VerdictSurface.PIN, Provenance.PROBE, False),
+            (VerdictSurface.SOLVE, Provenance.SOLVER, False),
+        ]
+        (episode,) = episodes(recorded)
+        assert episode.first is recorded[0]
+        assert episode.caught_early is True
+        assert episode.is_open, "nothing has reported the week able to hold its commitments yet"
+        assert caught_early_ratio([episode]) == 1.0
+        caught_by_row = sum(one.session_mode_active for one in recorded) / len(recorded)
+        assert caught_by_row == 0.5, (
+            "the row-counting formula tops out here, which is why the unit is the episode"
+        )
+
+
+async def transitions_of(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> list[VerdictEventRecord]:
+    async with sessions() as session:
+        return await VerdictEventRepository(session, owner.tenant_id).for_week(WEEK)
+
+
+async def _a_pin_warns_the_week_is_short(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord, clock: Ticking
+) -> None:
+    """The row a drag during a weekly session leaves, written through the production recorder."""
+    async with sessions() as session, session.begin():
+        await build_verdict_recorder(
+            session,
+            owner.tenant_id,
+            surface=VerdictSurface.PIN,
+            session_mode_active=True,
+        ).record(WEEK, _SHORT_BY_AN_HOUR)
+
+
+# What the arithmetic found, and what the solve then confirms: one gap, one provenance stronger.
+_SHORT_BY_AN_HOUR = Verdict(
+    feasible=False,
+    provenance=Provenance.PROBE,
+    computed_at=NOW,
+    input_version=1,
+    discretionary_minutes=6000,
+    shortfalls=(
+        Shortfall(
+            kind=ShortfallKind.FLOORS_EXCEED_CAPACITY,
+            minutes=60,
+            against=("every Area floor",),
+            honoring=("2h of capacity left in the week",),
+        ),
+    ),
+)
+
+
+def _confirming_the_shortfall(inputs: Any, _weights: Any, **_asked: Any) -> Any:
+    """A solver that places a block and reports the same gap the arithmetic warned about."""
+    document = _one_block_at(inputs, 10)
+    return SolveResult(
+        document=document,
+        objective_breakdown=_NO_COST,
+        verdict=Verdict(
+            feasible=False,
+            provenance=Provenance.SOLVER,
+            computed_at=document.blocks[0].interval.start,
+            input_version=1,
+            discretionary_minutes=6000,
+            shortfalls=_SHORT_BY_AN_HOUR.shortfalls,
+        ),
+        blocked_log=(),
+        iterations=1,
+    )
