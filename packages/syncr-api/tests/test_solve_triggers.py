@@ -404,15 +404,50 @@ class TestTheTriggerTable:
         ids=lambda one: one.row,
     )
     def test_a_row_that_never_solves_states_why_it_asks_for_nothing(self, trigger: Trigger) -> None:
-        # Three rows, and two reasons. `kept-both` records a decision and changes nothing at all.
-        # The two approvals change the LIVE PLAN and still ask for nothing: the bump is what a
-        # RUNNING solve has to see, and the document the user approved IS the plan of record, so a
-        # solve requested here would propose changing what they just accepted.
+        """Three rows, and two reasons.
+
+        ``kept-both`` records a decision and changes nothing at all. The two approvals change the
+        LIVE PLAN and still ask for nothing: the bump is what a RUNNING solve has to see, and the
+        document the user approved IS the plan of record, so a solve requested here would propose
+        changing what they just accepted.
+
+        The source half of this rule is the test below, which cannot be stated over every row of
+        this set.
+        """
         assert trigger.row in {
             "conflict resolved as kept-both",
             "tradeoff approved",
             "proposal approved",
         }
+
+    @pytest.mark.parametrize(
+        "trigger",
+        [
+            one
+            for one in TRIGGER_TABLE
+            if not one.solves
+            and one.module is not None
+            and not any(other.solves and other.module == one.module for other in TRIGGER_TABLE)
+        ],
+        ids=lambda one: one.row,
+    )
+    def test_a_module_whose_every_row_asks_for_nothing_requests_no_solve(
+        self, trigger: Trigger
+    ) -> None:
+        """The source half, and what makes the name half above a guard rather than a restatement.
+
+        Its sibling reads the module's source for the bump. Without the same reading here, a module
+        behind one of these rows could gain a solve request and every test in this file would still
+        pass, which is what the reverse guard one screen down cannot cover for a row with no owner.
+
+        Stated over the rows whose module serves NO row that solves, which is derived from the table
+        rather than listed: ``conflicts/service.py`` answers both resolutions, so the source of the
+        module says nothing about the ``kept-both`` branch, and
+        ``test_the_kept_both_branch_is_the_one_that_bumps_nothing`` is that branch's own assertion.
+        """
+        body = module_source(trigger.module)
+
+        assert REQUESTS_A_SOLVE not in body, trigger.row
 
     def test_reading_a_screen_and_moving_the_viewport_reach_neither(self) -> None:
         """The two rows that must reach nothing at all, and they have no module by construction.

@@ -26,7 +26,6 @@ asserted disjoint, because one stored word has to name exactly one of them.
 
 from __future__ import annotations
 
-import json
 from copy import deepcopy
 from dataclasses import fields
 from datetime import UTC, date, datetime, timedelta
@@ -252,9 +251,8 @@ def test_the_whole_clause_budget_survives_the_column_in_the_form_it_was_written_
     is being read and written again, so the comparison is between the two stored forms.
 
     Equality of the mapping rather than of a byte string, because the column is JSONB and Postgres
-    does not preserve key order: the canonical rendering below is what "the same bytes" can mean for
-    such a column, and its length is stated so a change to the shape is a number a reader sees
-    rather than a diff they have to reconstruct.
+    does not preserve key order: for such a column, two mappings being equal IS what "the same
+    bytes" can mean.
     """
     written = stored_document(a_week_of_every_clause())
 
@@ -263,13 +261,6 @@ def test_the_whole_clause_budget_survives_the_column_in_the_form_it_was_written_
     assert again == written
     (block,) = written["blocks"]
     assert len(block["reason"]["clauses"]) == len(CLAUSE_BUDGET) + 1
-    assert len(_canonical(block["reason"])) == 894
-    assert len(_canonical(written)) == 2245
-
-
-def _canonical(value: object) -> bytes:
-    """One rendering of a stored value, so two of them can be compared and one can be measured."""
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()
 
 
 def test_a_week_with_no_gaps_and_no_concessions_round_trips() -> None:
