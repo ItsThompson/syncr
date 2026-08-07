@@ -535,6 +535,39 @@ def test_a_status_outside_the_vocabulary_is_refused_rather_than_ignored(
     assert response.status_code == ValidationFailed.status, response.text
 
 
+def test_the_at_risk_filter_partitions_the_list_and_moves_neither_header_figure(
+    http: TestClient, signed_in: dict[str, str], area: str
+) -> None:
+    """``atRisk`` is served rather than documented, which is what ticket 1521 asked for.
+
+    This tenant has no plan, so the current week's verdict is ``None`` and nothing is marked. That
+    makes the assertion here the shape of the filter rather than the determination behind it: the
+    two values partition the list, and neither moves a header figure. **The filter over a week that
+    really does mark a task is driven in ``test_at_risk_integration.py``**, against the week read's
+    own shortfalls, because a suite with no verdict cannot tell a working filter from one that
+    answers nothing.
+    """
+    capture(http, signed_in, areaId=area, title="one")
+    capture(http, signed_in, areaId=area, title="two")
+
+    marked = http.get(f"{TASKS}?atRisk=true", headers=signed_in).json()
+    rest = http.get(f"{TASKS}?atRisk=false", headers=signed_in).json()
+
+    assert [task["title"] for task in marked["tasks"]] == []
+    assert [task["title"] for task in rest["tasks"]] == ["one", "two"]
+    for answered in (marked, rest):
+        assert answered["header"] == {"openCount": 2, "atRiskCount": 0}
+
+
+def test_an_at_risk_value_that_is_not_a_boolean_is_refused_rather_than_ignored(
+    http: TestClient, signed_in: dict[str, str], area: str
+) -> None:
+    """A misspelled filter must not read as the absent one, which would answer every row."""
+    response = http.get(f"{TASKS}?atRisk=maybe", headers=signed_in)
+
+    assert response.status_code == ValidationFailed.status, response.text
+
+
 def test_the_list_is_oldest_first(http: TestClient, signed_in: dict[str, str], area: str) -> None:
     for title in ("first", "second", "third"):
         capture(http, signed_in, areaId=area, title=title)

@@ -1232,6 +1232,119 @@ async def test_a_completed_task_the_verdict_still_names_is_not_at_risk(
     assert (await service.list_all(principal)).at_risk == frozenset()
 
 
+async def test_the_at_risk_filter_selects_the_rows_the_verdict_marks(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    """``atRisk=true`` narrows the rows to the marked set, and to nothing else.
+
+    Two tasks due at the same instant with the same remaining work, and the verdict names one: a
+    narrowing computed from the rows rather than from the verdict's own names could not tell them
+    apart, which is the whole reason the filter is served here rather than applied by a client.
+    """
+    area = an_area(principal.tenant_id)
+    named = a_task(principal.tenant_id, area.id, title="Leetcode", deadline=A_DEADLINE)
+    other = a_task(principal.tenant_id, area.id, title="Mock interview", deadline=A_DEADLINE)
+    service, _ = build(
+        principal,
+        versions,
+        areas=[area],
+        tasks=[named, other],
+        verdict=a_verdict(a_deadline_gap("Leetcode", area_id=area.id)),
+    )
+
+    filtered = await service.list_all(principal, at_risk=True)
+
+    assert [task.id for task in filtered.tasks] == [named.id]
+
+
+async def test_the_at_risk_filter_inverted_selects_every_row_the_verdict_does_not_mark(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    """``atRisk=false`` is the complement, so the two answers partition the unfiltered list.
+
+    Asserted as a partition rather than as one membership, because a filter that answered the same
+    rows for both values would pass a test that only drove the true case.
+    """
+    area = an_area(principal.tenant_id)
+    named = a_task(principal.tenant_id, area.id, title="Leetcode", deadline=A_DEADLINE)
+    other = a_task(principal.tenant_id, area.id, title="Mock interview", deadline=A_DEADLINE)
+    service, _ = build(
+        principal,
+        versions,
+        areas=[area],
+        tasks=[named, other],
+        verdict=a_verdict(a_deadline_gap("Leetcode", area_id=area.id)),
+    )
+
+    marked = await service.list_all(principal, at_risk=True)
+    rest = await service.list_all(principal, at_risk=False)
+    every = await service.list_all(principal)
+
+    assert [task.id for task in rest.tasks] == [other.id]
+    assert {task.id for task in marked.tasks} | {task.id for task in rest.tasks} == {
+        task.id for task in every.tasks
+    }
+
+
+async def test_the_at_risk_filter_leaves_both_header_figures_alone(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    """Narrowing the table to the marked rows does not change how many of them there are.
+
+    The same rule ``openCount`` already has for the status filter, and for the same reason: a header
+    reporting the page rather than the backlog would disagree with itself as a filter moved.
+    """
+    area = an_area(principal.tenant_id)
+    named = a_task(principal.tenant_id, area.id, title="Leetcode", deadline=A_DEADLINE)
+    service, _ = build(
+        principal,
+        versions,
+        areas=[area],
+        tasks=[named, a_task(principal.tenant_id, area.id, title="Mock interview")],
+        verdict=a_verdict(a_deadline_gap("Leetcode", area_id=area.id)),
+    )
+
+    for wanted in (None, True, False):
+        answered = await service.list_all(principal, at_risk=wanted)
+        assert answered.open_count == 2, wanted
+        assert answered.at_risk == {named.id}, wanted
+
+
+async def test_asking_for_the_marked_rows_among_completed_ones_answers_with_none(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    """The two filters intersect rather than one overriding the other.
+
+    The marked set is derived over the Area's OPEN tasks, so no completed row can be in it. The
+    empty answer is the intersection of the filters the caller sent, and the header still states the
+    figures over the open population, which is what keeps this an intersection rather than a bug.
+    """
+    area = an_area(principal.tenant_id)
+    named = a_task(principal.tenant_id, area.id, title="Leetcode", deadline=A_DEADLINE)
+    service, _ = build(
+        principal,
+        versions,
+        areas=[area],
+        tasks=[
+            named,
+            a_task(
+                principal.tenant_id,
+                area.id,
+                title="done one",
+                status=TaskStatus.COMPLETED,
+                completed_at=NOW,
+            ),
+        ],
+        verdict=a_verdict(a_deadline_gap("Leetcode", area_id=area.id)),
+    )
+
+    filtered = await service.list_all(principal, status=TaskStatus.COMPLETED, at_risk=True)
+
+    assert filtered.tasks == ()
+    assert filtered.at_risk == {named.id}
+    assert filtered.open_count == 1
+
+
 async def test_reading_the_backlog_reads_the_verdict_once(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:

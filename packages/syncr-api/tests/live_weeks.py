@@ -532,8 +532,13 @@ def week_view(http: TestClient, headers: dict[str, str], iso_week: object) -> di
     return payload
 
 
-def backlog(http: TestClient, headers: dict[str, str]) -> dict[str, Any]:
-    answered = http.get(TASKS_PREFIX, headers=headers)
+def backlog(http: TestClient, headers: dict[str, str], **filters: object) -> dict[str, Any]:
+    """The backlog read, optionally narrowed by the filters the route serves.
+
+    The filters are passed as query parameters rather than assembled into a path, so a suite states
+    them by the names the route publishes and cannot spell one that would silently be ignored.
+    """
+    answered = http.get(TASKS_PREFIX, params=filters, headers=headers)
     assert answered.status_code == HTTPStatus.OK, answered.text
     payload: dict[str, Any] = answered.json()
     return payload
