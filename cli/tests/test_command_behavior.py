@@ -560,6 +560,71 @@ def test_a_backlog_read_survives_areas_it_could_not_name(tmp_path: Path) -> None
     assert "the Areas could not be read" in ran.stderr
 
 
+def test_a_read_that_times_out_says_nothing_was_changed(tmp_path: Path) -> None:
+    # A read that never answered changed nothing and may say so. The safe half of the pair below.
+    with FakeApi() as api:
+        _serving(api, tmp_path)
+        api.answer("GET", TASKS_PATH, Answer.raw(b"", 200))
+
+        ran = drive(
+            ("task", "list"),
+            base_url=api.base_url,
+            home=tmp_path,
+            env=NO_KEYCHAIN,
+        )
+
+    detail = ran.document["problem"]["detail"]
+    assert "Nothing was changed." in detail
+    assert "cannot be told from here" not in detail
+
+
+def test_a_mutation_whose_answer_cannot_be_read_does_not_claim_nothing_changed(
+    tmp_path: Path,
+) -> None:
+    """The rule this surface cannot afford to get wrong, in the direction that is false by default.
+
+    A capture that answered 201 with a body this build cannot read HAS created a task. Saying
+    "nothing was changed" beside a task that now exists is a lie to the one reader that acts on the
+    sentence, so the message states that the outcome cannot be told from here and that retrying the
+    same command is safe, which is true because the key makes it so.
+    """
+    with FakeApi() as api:
+        _serving(api, tmp_path)
+        api.answer("POST", TASKS_PATH, Answer.raw(b"created, but not as JSON", 201))
+
+        ran = drive(
+            ("task", "add", "Leetcode", "--area", str(payloads.CAREER_ID)),
+            base_url=api.base_url,
+            home=tmp_path,
+            env=NO_KEYCHAIN,
+        )
+
+    detail = ran.document["problem"]["detail"]
+    assert ran.code is ExitCode.FAILURE, ran.stdout
+    assert "Nothing was changed." not in detail
+    assert "cannot be told from here" in detail
+    assert "Idempotency-Key" in detail
+
+
+def test_a_mutation_whose_response_is_missing_a_member_says_the_same(tmp_path: Path) -> None:
+    # The other way a mutation's answer is unreadable: valid JSON missing a member this build reads.
+    # It reaches the wire readers rather than the transport, and they cannot know the method either.
+    with FakeApi() as api:
+        _serving(api, tmp_path)
+        api.answer("POST", TASKS_PATH, Answer.json({"id": "only-an-id"}, status=201))
+
+        ran = drive(
+            ("task", "add", "Leetcode", "--area", str(payloads.CAREER_ID)),
+            base_url=api.base_url,
+            home=tmp_path,
+            env=NO_KEYCHAIN,
+        )
+
+    detail = ran.document["problem"]["detail"]
+    assert "Nothing was changed." not in detail
+    assert "cannot be told from here" in detail
+
+
 def _serving(api: FakeApi, home: Path) -> None:
     api.answer("GET", DISCOVERY_PATH, Answer.json(payloads.metadata(api.base_url)))
     api.answer("POST", "/oauth/token", Answer.json(payloads.token_response()))

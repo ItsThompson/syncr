@@ -10,6 +10,10 @@ a success does, so ``--json`` answers with a document whatever happened.
 | A response this build cannot read | ``syncr:cli-malformed-response``, exit 1 |
 | A domain rule refusing a value the api sent | the same, exit 1 |
 
+The last two do not claim the request changed nothing. They arrive after the api answered, so a
+mutation this build could not read the answer of has been applied; they say the outcome cannot be
+told from here and that retrying with the same key is safe.
+
 The boundary covers rendering as well as the command, because a renderer reaches the domain and a
 value the domain refuses is a boundary input like any other.
 
@@ -32,7 +36,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from syncr_cli.config_file import config_path, read_config
-from syncr_cli.errors import CliError, MalformedResponse
+from syncr_cli.errors import OUTCOME_UNKNOWN, CliError, MalformedResponse
 from syncr_cli.http import Transport
 from syncr_cli.parser import parse
 from syncr_cli.rendering.human import render_human
@@ -73,7 +77,7 @@ def run(argv: Sequence[str], *, host: Host, transport: Transport) -> ExitCode:
     except DomainError as error:
         result = CliResult.failed(
             MalformedResponse(
-                f"the API sent a value this CLI cannot use: {error}. Nothing was changed."
+                f"the API sent a value this CLI cannot use: {error}. {OUTCOME_UNKNOWN}"
             ).problem
         )
     return _write(result, host=host, output=runtime.settings.output)
@@ -100,7 +104,7 @@ def _write(result: CliResult, *, host: Host, output: OutputFormat) -> ExitCode:
     except DomainError as error:
         result = CliResult.failed(
             MalformedResponse(
-                f"the API sent a value this CLI cannot print: {error}. Nothing was changed."
+                f"the API sent a value this CLI cannot print: {error}. {OUTCOME_UNKNOWN}"
             ).problem
         )
         rendered = _render(result, output)

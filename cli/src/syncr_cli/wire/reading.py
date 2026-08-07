@@ -11,6 +11,11 @@ document rather than a translation of it.
 
 The one thing a reader will not do is coerce. A duration is an integer minute count on this
 wire and a string that happens to parse is a contract violation, so it is reported as one.
+
+**A reader does not claim the request changed nothing.** It reads a response and cannot know which
+method produced it, and a ``POST`` that answered 201 with a body this build cannot parse applied
+something. So the refusals here say the outcome cannot be told from here and that retrying with the
+same key is safe, which is true either way.
 """
 
 from __future__ import annotations
@@ -18,7 +23,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from syncr_cli.errors import MalformedResponse
+from syncr_cli.errors import OUTCOME_UNKNOWN, MalformedResponse
+from syncr_domain.intervals import Interval, IntervalError
 
 # The shape of any parsed JSON. Named so a payload carried for re-emission is typed as data
 # rather than as `Any`, which would silently accept an object no renderer can serialize.
@@ -37,8 +43,8 @@ def member(payload: JsonMapping, name: str, path: str) -> JsonValue:
     """One member of ``payload``, or a refusal naming the member that is missing."""
     if name not in payload:
         raise MalformedResponse(
-            f"the API's response has no {_named(path, name)}, which this command reads. Nothing "
-            "was changed. Check that the API and this CLI are the same version."
+            f"the API's response has no {_named(path, name)}, which this command reads. "
+            f"{OUTCOME_UNKNOWN} Check that the API and this CLI are the same version."
         )
     return payload[name]
 
@@ -147,12 +153,32 @@ def optional_instant(payload: JsonMapping, name: str, path: str) -> datetime | N
     return instant(payload, name, path)
 
 
+def span(payload: JsonMapping, name: str, path: str) -> Interval:
+    """A member that is a half-open span of two instants, running forward.
+
+    Every span on this wire has that shape, and three payloads carry one, so the construction and
+    its refusal are stated once here rather than per reader: a pin's placement, a day row's slot and
+    a week's block are the same value in three responses.
+    """
+    bounds = nested(payload, name, path)
+    where = _named(path, name)
+    start = instant(bounds, "start", where)
+    end = instant(bounds, "end", where)
+    try:
+        return Interval(start, end)
+    except IntervalError as error:
+        raise MalformedResponse(
+            f"{where} runs from {start.isoformat()} to {end.isoformat()}, which is not a span. "
+            "Every span on this wire is half-open and runs forward."
+        ) from error
+
+
 def _named(path: str, name: str) -> str:
     return f"{path}.{name}" if path else name
 
 
 def _wrong(path: str, expected: str, found: Any) -> str:
     return (
-        f"{path} is {found!r}, and this command reads {expected} there. Nothing was changed. "
+        f"{path} is {found!r}, and this command reads {expected} there. {OUTCOME_UNKNOWN} "
         "Check that the API and this CLI are the same version."
     )

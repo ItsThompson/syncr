@@ -11,6 +11,12 @@ take ``application/x-www-form-urlencoded`` because RFC 6749 says so, and every p
 takes JSON. A caller states which by the method it calls, so no request can be sent with the wrong
 encoding for its endpoint.
 
+**A failure says what it can truthfully say about the request's effect.** A read that never answered
+changed nothing. A write that timed out may have been applied before the answer went missing, so it
+says the outcome cannot be told from here and that retrying with the same key is safe: this is the
+surface whose whole premise is that an agent reads the sentence, and "nothing was changed" beside a
+task that now exists is the one kind of wrong that surface cannot afford.
+
 **Nothing here writes a credential anywhere.** The bearer token is attached to the request and
 never appears in a message, a repr, or an exception. A transport failure names the method and the
 URL, and a URL this package builds carries no secret: the authorization code and the refresh
@@ -24,11 +30,17 @@ from typing import TYPE_CHECKING, Any, Final
 
 import httpx
 
-from syncr_cli.errors import ApiRefused, ApiUnreachable, MalformedResponse
+from syncr_cli.errors import OUTCOME_UNKNOWN, ApiRefused, ApiUnreachable, MalformedResponse
 from syncr_cli.problems import read_problem
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+# The methods that cannot have changed anything, so a failure on one may say so. Every other method
+# may have been applied before the answer went missing, and `OUTCOME_UNKNOWN` is what those say.
+SAFE_METHODS: Final = frozenset({"GET", "HEAD", "OPTIONS"})
+
+NOTHING_WAS_CHANGED: Final = "Nothing was changed."
 
 # How long any single request may take. Not the same figure as the operation-wait timeout, which
 # bounds a poll loop rather than one exchange: a read is budgeted in hundreds of milliseconds and
@@ -133,8 +145,8 @@ class Transport:
             )
         except httpx.TimeoutException as error:
             raise ApiUnreachable(
-                f"{method} {url} did not answer within {REQUEST_TIMEOUT_SECONDS:.0f}s. Nothing "
-                "was changed. The API may be starting or overloaded; retry shortly."
+                f"{method} {url} did not answer within {REQUEST_TIMEOUT_SECONDS:.0f}s. "
+                f"{_effect_of(method)} The API may be starting or overloaded; retry shortly."
             ) from error
         except httpx.HTTPError as error:
             raise ApiUnreachable(
@@ -152,5 +164,16 @@ class Transport:
         except (json.JSONDecodeError, UnicodeDecodeError) as error:
             raise MalformedResponse(
                 f"{response.request.method} {response.request.url} answered "
-                f"{response.status_code} with a body that is not JSON."
+                f"{response.status_code} with a body that is not JSON. "
+                f"{_effect_of(response.request.method)}"
             ) from error
+
+
+def _effect_of(method: str) -> str:
+    """What a failure on ``method`` may truthfully claim about the request's effect.
+
+    A ``GET`` that never answered changed nothing and can say so. A ``POST`` that timed out may have
+    been applied before the answer went missing, so claiming otherwise would be a false statement to
+    the one reader that acts on it.
+    """
+    return NOTHING_WAS_CHANGED if method.upper() in SAFE_METHODS else OUTCOME_UNKNOWN

@@ -11,7 +11,7 @@ fails review: where a capability degraded, it names what still works.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Final
 
 from syncr_cli.problems import (
     CLI_API_UNREACHABLE,
@@ -27,6 +27,17 @@ from syncr_cli.problems import (
 if TYPE_CHECKING:
     from syncr_cli.exit_codes import ExitCode
     from syncr_cli.wire.operation import Operation
+
+
+# What a failure says about the request's effect when it cannot know one way or the other. A read
+# that could not be parsed changed nothing, and a write that timed out after the server committed
+# changed something; the two are indistinguishable from here. This is the surface whose whole
+# premise is that an agent reads the sentence, so the sentence does not guess: it says what is safe.
+OUTCOME_UNKNOWN: Final = (
+    "Whether it was applied cannot be told from here. Retrying the same command is safe: every "
+    "mutation carries an Idempotency-Key, and the API replays the first response rather than "
+    "applying it twice."
+)
 
 
 class CliError(Exception):
