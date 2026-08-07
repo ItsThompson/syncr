@@ -34,5 +34,7 @@
 }
 
 .date-picker__panel {
-  z-index: 40;
+  /* Above a dialog's scrim, at 50 in `overlay.css`, for the reason `.select__content` is: a date field is a
+     control a dialog can contain, and a month grid below the scrim is one the reader cannot click. */
+  z-index: 60;
 }
