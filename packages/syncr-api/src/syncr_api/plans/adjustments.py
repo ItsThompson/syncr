@@ -44,7 +44,11 @@ if TYPE_CHECKING:
 # The columns a replacement leaves alone: the row's identity, and the concession it is a
 # concession for. Keeping `id` is deliberate, because a plan document already records the
 # adjustments it was solved under by identifier, and a replacement that minted a new one would
-# leave every earlier document naming a row that no longer exists.
+# leave every earlier document naming a row that no longer exists. What it costs is the other end
+# of that pair: the document written beside a REPLACEMENT names the new candidate's identifier and
+# this row keeps the replaced one's, so the history counts that concession as one it cannot name.
+# Ticket 1422 owns the choice; the state is unreachable through the shipped routes, because a
+# concession the week already holds is not re-offered.
 _RETAINED_COLUMNS = frozenset({"id", TENANT_ID_COLUMN, "iso_week", "kind", "target_id"})
 
 
