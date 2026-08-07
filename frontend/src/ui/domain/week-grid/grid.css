@@ -146,3 +146,26 @@
   height: 0;
   border-top: var(--now-rule) solid var(--ink-bright);
 }
+
+/* THE INSERTION MARKER, WHICH IS THE ONLY THING THAT MOVES DURING A DRAG. Dashed says provisional; solid at this
+   weight would read as a block's own edge. It sits above every block, because it is where the reader is aiming, and
+   it carries its own reading so the eye does not have to travel to the axis. */
+.week-insertion {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 7;
+  height: 0;
+  border-top: var(--rule-emphasis) dashed var(--ink-deep);
+}
+
+.week-insertion__at {
+  position: absolute;
+  left: 3px;
+  top: 2px;
+  padding: 0 2px;
+  background-color: var(--paper-raised);
+  color: var(--ink-deep);
+  font-size: var(--fs-eyebrow);
+  font-variant-numeric: tabular-nums;
+}

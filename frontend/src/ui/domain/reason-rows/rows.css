@@ -1,0 +1,33 @@
+/* Layer 2: THE LABELLED ROW SET. Reason clauses, and the detail panel's definition rows.
+ *
+ * ROWS, NEVER A PARAGRAPH. A definition list is the markup that says so: a term and its description, which is what
+ * a clause is. `dl` also survives forced-colors mode without a fill, because the structure is the encoding.
+ *
+ * THE LABEL COLUMN IS FIXED AT --clause-label-w so the eye reads down it. It does not wrap and it does not
+ * truncate: the widest kind, `instead of`, measures 64.6px inside a 76px column, and a wider one would need the
+ * token retuned rather than the row degraded. */
+
+@import "./tokens.css";
+
+.reason-rows {
+  display: grid;
+  grid-template-columns: var(--clause-label-w) minmax(0, 1fr);
+  gap: 3px 9px;
+  margin: 0;
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
+}
+
+.reason-rows__label {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}
+
+.reason-rows__value {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}

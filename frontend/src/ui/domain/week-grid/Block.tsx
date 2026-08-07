@@ -16,7 +16,7 @@
  * ITS CONTENT SITS IN ONE BLOCK CHILD, because a button centres its content and a calendar block's title is
  * top-aligned. `block.css` carries the measurement that found it. */
 
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties, type PointerEvent } from "react";
 
 import { GlyphSlot } from "../marks";
 import { blockPaint } from "./blockPaint";
@@ -49,6 +49,10 @@ export interface BlockProps {
   readonly block: GridBlock;
   readonly placement: BlockPlacement;
   readonly states?: BlockStates | undefined;
+  /** Selecting is the reader's, so it arrives from whatever owns selection. */
+  readonly onSelect?: (() => void) | undefined;
+  /** A drag begins here, and the pointer position is what the grid turns into a quarter hour. */
+  readonly onPointerDown?: ((event: PointerEvent<HTMLButtonElement>) => void) | undefined;
 }
 
 /** A style object carrying the two values that are per-block rather than per-class. */
@@ -61,10 +65,18 @@ const PLACES = 3;
 /* A stable empty reading, so a block at rest does not take a fresh object on every render. */
 const AT_REST: BlockStates = {};
 
-export function Block({ block, placement, states = AT_REST }: BlockProps) {
+export function Block({ block, placement, states = AT_REST, onSelect, onPointerDown }: BlockProps) {
   const tier = tierFor(placement.heightPx);
   const lines = titleLineCount(placement.heightPx);
   const isAnchor = block.origin === "anchor";
+  const self = useRef<HTMLButtonElement>(null);
+
+  /* SELECTION MOVES FOCUS, which is what makes the keyboard reach every block at every tier: `j` and `k` do not care
+   * how tall a block is, and a sliver-tier block gets the focus ring the kit already assigns rather than a second
+   * cursor invented for the grid. Focusing here rather than from the grid keeps it one statement per block. */
+  useEffect(() => {
+    if (states.isSelected === true && self.current !== null) self.current.focus();
+  }, [states.isSelected]);
 
   const style: BlockStyle = {
     top: `${placement.topPx.toFixed(PLACES)}px`,
@@ -86,6 +98,9 @@ export function Block({ block, placement, states = AT_REST }: BlockProps) {
       data-selected={states.isSelected === true ? "" : undefined}
       data-split={placement.across.isSplit ? "" : undefined}
       data-tier={tier}
+      onClick={onSelect}
+      onPointerDown={onPointerDown}
+      ref={self}
       style={style}
       type="button"
     >

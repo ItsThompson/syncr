@@ -1,0 +1,101 @@
+/* Layer 2: THE VERDICT PANEL. A fixed height, and rows that scroll inside it.
+ *
+ * THE HEIGHT IS A CORRECTNESS RULE. The panel sits at the head of the Week screen, above the grid, and a panel that
+ * grew and shrank as pins accumulate would shift the grid under the cursor mid-drag. So --verdict-h is reserved
+ * whatever the rows say, and adding a pin changes the rows and never the height.
+ *
+ * A FOURTH TRADEOFF ROW IS PARTIALLY VISIBLE, and that is the whole scroll affordance: the clipped edge is what
+ * makes the scroll discoverable, so no scrollbar has to be drawn. 226px holds the lead sentence plus three rows,
+ * which is what sets the token, and `scrollbar-width: none` is what keeps the fourth row's edge the only cue. A
+ * scrollbar would also change the width of the rows as they grow, which is motion by another name.
+ *
+ * AMBER, AT PANEL VOLUME, BECAUSE IT IS A NOTICE AND NOT A FAILURE. The week is impossible, not broken.
+ * Infeasibility is the most valuable output this product has, and rendering it in the pigment reserved for breakage
+ * would teach a reader to dismiss it. The left rule and the wash are the notice layer's own amber pairing.
+ *
+ * A CONCESSION ROW SITS ABOVE THE GAPS, so a week that has absorbed one never reads as simply feasible. */
+
+@import "./tokens.css";
+
+.verdict-panel {
+  display: flex;
+  height: var(--verdict-h);
+  flex-direction: column;
+  border: var(--hairline) solid var(--rule-strong);
+  border-left: var(--rule-emphasis) solid var(--signal-amber);
+  background-color: var(--amber-wash);
+  color: var(--text-on-wash);
+}
+
+/* The lead sentence and its provenance line, which do not scroll: the rows do. */
+.verdict-panel__head {
+  flex: 0 0 auto;
+  padding: 9px 11px 7px;
+  border-bottom: var(--hairline) solid var(--rule);
+}
+
+.verdict-panel__headline {
+  margin: 0;
+  color: var(--ink-deep);
+  font-size: var(--fs-prose);
+  line-height: var(--lh-chrome);
+}
+
+.verdict-panel__provenance {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+}
+
+/* THE ROWS SCROLL AND THE PANEL DOES NOT. `min-height: 0` is what lets a flex child scroll at all. */
+.verdict-panel__rows {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 0 11px;
+}
+
+.verdict-panel__rows::-webkit-scrollbar {
+  display: none;
+}
+
+.verdict-panel__row {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: var(--hairline) solid var(--rule);
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
+}
+
+.verdict-panel__row:last-child {
+  border-bottom: 0;
+}
+
+.verdict-panel__statement {
+  min-width: 0;
+  margin: 0;
+}
+
+.verdict-panel__recovers {
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* An approved concession is a fact rather than an offer, so its row carries no control and reads quieter. */
+.verdict-panel__concession {
+  color: var(--text-muted);
+}
+
+.verdict-panel__gap {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+}

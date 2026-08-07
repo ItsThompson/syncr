@@ -17,18 +17,35 @@
  * own mirror of --bp-compact, so the threshold is stated once in the whole frontend rather than a third time here.
  *
  * ONE REDRAW, NEVER A SETTLE. A zoom change or a re-solve replaces the props and the grid renders once. There is
- * no transition, here or anywhere: motion is zero, without exception. */
+ * no transition, here or anywhere: motion is zero, without exception.
+ *
+ * INTERACTION ARRIVES AS ONE PROP AND SELECTION IS NOT HELD HERE. Every state a block can be in is a prop, so a
+ * read-only render passes none of them and this component remembers nothing about what the reader has chosen. The
+ * one exception is the DRAG, and it is not an exception to that rule: what the drag holds is a marker position, and
+ * only this component can turn a pointer position into a quarter hour, because only it knows pixels per minute. */
 
 import { useRef } from "react";
 
 import { canvasHeightPx, gridHeightPx, pxPerMinute } from "./geometry";
 import { DAY_HEADER_H_PX } from "./metrics";
 import { useObservedHeight } from "./useObservedHeight";
+import { useDiscreteDrag, type BlockDrop } from "./useDiscreteDrag";
 import { clampVisibleHours } from "./zoom";
-import { DayColumn } from "./DayColumn";
+import { DayColumn, type ColumnInteraction } from "./DayColumn";
 import { TimeAxis } from "./TimeAxis";
 import type { Extent, WeekDay } from "./types";
 import "./grid.css";
+
+/** What the grid needs from whatever owns interaction. Absent leaves the grid read-only, which is a real state. */
+export interface GridInteraction extends Omit<ColumnInteraction, "onDragBegin"> {
+  /**
+   * A drop that states a placement, once, on release.
+   *
+   * The grid owns the pointer mechanics because it owns the geometry: only it can turn a pointer position into a
+   * quarter hour. What it hands back is an instant, so a caller sends it without re-deriving a wall time.
+   */
+  readonly onDrop?: ((drop: BlockDrop) => void) | undefined;
+}
 
 export interface WeekGridProps {
   readonly days: readonly WeekDay[];
@@ -39,11 +56,20 @@ export interface WeekGridProps {
   readonly labels: readonly string[];
   /** Now, as an instant, so each column decides for itself whether the rule falls inside it. */
   readonly nowMs: number | null;
+  readonly interaction?: GridInteraction | undefined;
 }
 
 const MILLISECONDS_IN_MINUTE = 60_000;
+const NO_INTERACTION: GridInteraction = {};
 
-export function WeekGrid({ days, extent, visibleHours, labels, nowMs }: WeekGridProps) {
+export function WeekGrid({
+  days,
+  extent,
+  visibleHours,
+  labels,
+  nowMs,
+  interaction = NO_INTERACTION,
+}: WeekGridProps) {
   const viewport = useRef<HTMLDivElement>(null);
   /* Named for what it IS rather than for where it came from: the measurement OR the reference display's height where
    * nothing has been laid out. In the one component whose fix was about not confusing a constant with a measurement,
@@ -52,9 +78,14 @@ export function WeekGrid({ days, extent, visibleHours, labels, nowMs }: WeekGrid
   const hours = clampVisibleHours(visibleHours, gridPx);
   const pxPerMin = pxPerMinute(gridPx, hours);
   const canvasPx = canvasHeightPx(extent, pxPerMin);
+  const drag = useDiscreteDrag({ extent, pxPerMin, onDrop: interaction.onDrop });
 
   return (
-    <div className="week-grid max-narrow:overflow-x-auto" ref={viewport}>
+    <div
+      className="week-grid max-narrow:overflow-x-auto"
+      data-dragging={drag.isDragging ? "" : undefined}
+      ref={viewport}
+    >
       <TimeAxis
         canvasHeightPx={canvasPx}
         extent={extent}
@@ -67,6 +98,8 @@ export function WeekGrid({ days, extent, visibleHours, labels, nowMs }: WeekGrid
             canvasHeightPx={canvasPx}
             day={day}
             extent={extent}
+            insertionMin={drag.insertion?.date === day.date ? drag.insertion.atMin : null}
+            interaction={{ ...interaction, onDragBegin: drag.begin }}
             key={day.date}
             label={labels[index] ?? day.date}
             nowMin={nowOffsetIn([day], nowMs)}

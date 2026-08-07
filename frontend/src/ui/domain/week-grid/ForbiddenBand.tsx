@@ -17,23 +17,32 @@
  * 10px chip. It is knocked out over its own background for the reason the hour label is, that uppercase
  * micro-type over a hatch reads as a smudge rather than as a word. */
 
+import { BandLabel } from "./BandLabel";
 import type { Box } from "./geometry";
 import "./band.css";
 
 export interface ForbiddenBandProps extends Box {
   /** What the gutter says. Null where the payload carries no label for this kind of gap yet. */
   readonly label: string | null;
+  /**
+   * Activating the gutter label, where the caller has something for it to do.
+   *
+   * An empty slot's label opens capture prefilled with the slot's Area and duration, which is what turns the slot
+   * from a dead end into an invitation. A band with nothing behind it renders its label as text: a control that did
+   * nothing would be worse than a reading.
+   */
+  readonly onActivate?: (() => void) | undefined;
 }
 
 const PLACES = 3;
 
-export function ForbiddenBand({ topPx, heightPx, label }: ForbiddenBandProps) {
+export function ForbiddenBand({ topPx, heightPx, label, onActivate }: ForbiddenBandProps) {
   return (
     <div
       className="week-band"
       style={{ top: `${topPx.toFixed(PLACES)}px`, height: `${heightPx.toFixed(PLACES)}px` }}
     >
-      {label === null ? null : <span className="week-band__label">{label}</span>}
+      {label === null ? null : <BandLabel label={label} onActivate={onActivate} />}
     </div>
   );
 }

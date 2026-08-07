@@ -82,8 +82,34 @@ const READINGS: domain.StripReadings = {
   blockCount: 91,
   planCurrency: "current",
 };
+
+const SHORTFALL: domain.VerdictShortfall = {
+  id: "deadline_capacity:career",
+  kind: "deadline_capacity",
+  shortfall: "1h20m",
+  against: ["F&F Past Papers"],
+  honoring: ["Fitness floor 5h"],
+  deadline: "Fri 09:00",
+};
+
+const TRADEOFF: domain.VerdictTradeoff = {
+  kind: "accept_partial",
+  label: "Accept partial delivery on F&F Past Papers",
+  targetId: "t1",
+  recovers: "1h20m",
+};
+
+const VERDICT: domain.PanelVerdict = {
+  provenance: "probe",
+  isFeasible: false,
+  capacityIsSufficient: false,
+  shortfalls: [SHORTFALL],
+  tradeoffs: [TRADEOFF],
+};
+
 const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   AreaChip: () => <domain.AreaChip name="Career" pigment="01" />,
+  BandLabel: () => <domain.BandLabel label="no eligible Career content" />,
   AreaLegend: () => (
     <domain.AreaLegend
       label="Share of discretionary time"
@@ -95,6 +121,11 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   ),
   CommandPalette: () => (
     <domain.CommandPalette actions={[]} onSelect={vi.fn<(id: string) => void>()} />
+  ),
+  ConcessionRow: () => (
+    <domain.ConcessionRow
+      concession={{ id: "a1", label: "Fitness floor breached by 1h20m", approvedOn: "Sun 09 Feb" }}
+    />
   ),
   DataBar: () => <domain.DataBar value={3.5} max={6} label="3.5h, 58% of the leader" />,
   DayColumn: () => (
@@ -130,6 +161,7 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   ),
   GlyphSlot: () => <domain.GlyphSlot isPinned />,
   GridLines: () => <domain.GridLines extent={EXTENT} pxPerMin={0.87} />,
+  InsertionMarker: () => <domain.InsertionMarker atMin={780} topPx={365} />,
   HelpOverlay: () => <domain.HelpOverlay />,
   KeyHint: () => <domain.KeyHint keys="j" />,
   LedgerRow: () => <domain.LedgerRow timeRange="10:00-10:30" duration="30m" title="Clean" />,
@@ -149,7 +181,9 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
     />
   ),
   Plate: () => <domain.Plate name="astrolabe" />,
+  ReasonRows: () => <domain.ReasonRows rows={[{ label: "pinned", value: "Tue 05:30" }]} />,
   ShellLayout: () => <domain.ShellLayout />,
+  ShortfallRow: () => <domain.ShortfallRow shortfall={SHORTFALL} />,
   SidebarNav: () => <domain.SidebarNav screens={SCREENS} currentPath="/week" />,
   SidebarNavItem: () => <domain.SidebarNavItem screen={SCREENS[0]} isCurrent />,
   StackedBars: () => (
@@ -199,6 +233,8 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
     />
   ),
   Wordmark: () => <domain.Wordmark />,
+  TradeoffRow: () => <domain.TradeoffRow tradeoff={TRADEOFF} />,
+  VerdictPanel: () => <domain.VerdictPanel verdict={VERDICT} />,
 };
 
 describe("every component the layer exports", () => {

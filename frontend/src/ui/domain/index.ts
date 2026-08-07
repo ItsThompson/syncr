@@ -16,6 +16,8 @@
  *   wizard    first run's numbered steps, with a caret on the current one and no progress bar
  *   plate     the dithered illustration plates, which are never behind data
  *   week-grid the seven-column proportional grid: geometry, the tier ladder, overlap, the bands and the strip
+ *   verdict-panel  the week's feasibility at panel volume: the lead sentence, the concessions, the gaps, the offers
+ *   reason-rows    the labelled-row set a reason record and a definition list are both drawn as
  *
  * The week grid renders `WeekDay`s and knows nothing about a response: turning one into the other is the route's
  * business, because `contract` is the only directory above this layer a component may read. */
@@ -25,8 +27,10 @@ export * from "./ledger";
 export * from "./marks";
 export * from "./notices";
 export * from "./plate";
+export * from "./reason-rows";
 export * from "./shell";
 export * from "./status";
 export * from "./table";
+export * from "./verdict-panel";
 export * from "./week-grid";
 export * from "./wizard";

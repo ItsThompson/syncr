@@ -26,6 +26,15 @@ export interface KeyBinding {
   readonly key: string;
   /** True for a chord: Command on an Apple platform, Control everywhere else. */
   readonly withPlatformModifier?: boolean | undefined;
+  /**
+   * True for a binding that REQUIRES Shift, such as `Shift+ArrowUp`.
+   *
+   * Opt-in rather than a two-sided rule, because `event.key` already distinguishes most shifted keys: `?` and `X`
+   * are shifted on nearly every layout and are bound by their own key values. The keys that need this are the ones
+   * whose value does not change when Shift is held -- the arrows -- where a binding that ignored Shift would fire on
+   * a bare arrow press as well, and a bare arrow belongs to the scroll.
+   */
+  readonly withShift?: boolean | undefined;
 }
 
 /** True on a platform whose primary modifier is Command rather than Control. */
@@ -39,16 +48,22 @@ export function hasPlatformModifier(event: KeyboardEvent): boolean {
   return isApplePlatform() ? event.metaKey : event.ctrlKey;
 }
 
-function matches(key: string, withPlatformModifier: boolean, event: KeyboardEvent): boolean {
+function matches(
+  key: string,
+  withPlatformModifier: boolean,
+  withShift: boolean,
+  event: KeyboardEvent,
+): boolean {
   if (event.repeat) return false;
   if (event.key !== key) return false;
+  if (withShift && !event.shiftKey) return false;
   if (withPlatformModifier) return hasPlatformModifier(event);
   if (event.metaKey || event.ctrlKey || event.altKey) return false;
   return !isTyping(event.target);
 }
 
 export function useKeyBinding(binding: KeyBinding, onMatch: () => void): void {
-  const { key, withPlatformModifier = false } = binding;
+  const { key, withPlatformModifier = false, withShift = false } = binding;
   const latest = useRef(onMatch);
 
   useEffect(() => {
@@ -56,12 +71,12 @@ export function useKeyBinding(binding: KeyBinding, onMatch: () => void): void {
   });
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!matches(key, withPlatformModifier, event)) return;
+      if (!matches(key, withPlatformModifier, withShift, event)) return;
       event.preventDefault();
       latest.current();
     };
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [key, withPlatformModifier]);
+  }, [key, withPlatformModifier, withShift]);
 }

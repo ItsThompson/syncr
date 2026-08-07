@@ -12,20 +12,31 @@
  *   overlap     the sweep, the columns, and the stagger past depth three
  *   readings    the strip's three figures, and the word that qualifies the block count
  *
- * WHAT IS NOT HERE. Interaction is not: the discrete drag, keyboard traversal, pinning, the verdict panel and the
- * detail panel arrive with whatever owns them, and every state a block can be in is a PROP here rather than a
- * thing this family decides. Nor is the wire: the grid renders `WeekDay`s, and turning a response into one is the
- * route's business, because the kit does not know what a response is. */
+ * WHAT IS NOT HERE. Selection is not, and neither is the write: which block is selected, what a pin sends and what a
+ * verdict says arrive as props, because the kit does not know what a response is. What IS here is the pointer
+ * mechanics of the drag, because turning a pointer position into a quarter hour needs pixels per minute, and this
+ * family is the only thing that has it. The grid renders `WeekDay`s, and turning a response into one is the route's
+ * business. */
 
+export { BandLabel, type BandLabelProps } from "./BandLabel";
 export { Block, type BlockPlacement, type BlockProps, type BlockStates } from "./Block";
-export { DayColumn, type DayColumnProps } from "./DayColumn";
+export { DayColumn, type ColumnInteraction, type DayColumnProps } from "./DayColumn";
 export { EmptyWeek, type EmptyWeekProps, type EmptyWeekReason } from "./EmptyWeek";
 export { ForbiddenBand, type ForbiddenBandProps } from "./ForbiddenBand";
 export { GridLines, type GridLinesProps } from "./GridLines";
+export { InsertionMarker, type InsertionMarkerProps } from "./InsertionMarker";
 export { NowRule, type NowRuleProps } from "./NowRule";
 export { SummaryStrip, type SummaryStripProps, type VerdictReading } from "./SummaryStrip";
 export { TimeAxis, type TimeAxisProps } from "./TimeAxis";
-export { WeekGrid, type WeekGridProps } from "./WeekGrid";
+export {
+  useDiscreteDrag,
+  type BlockDrop,
+  type DiscreteDrag,
+  type DiscreteDragOptions,
+  type DragOrigin,
+  type InsertionAt,
+} from "./useDiscreteDrag";
+export { WeekGrid, type GridInteraction, type WeekGridProps } from "./WeekGrid";
 
 export {
   boxOf,
