@@ -87,6 +87,31 @@ describe("Dialog", () => {
     expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
   });
 
+  /* THE CARET LANDS ON THE FIRST CONTROL IN THE BODY, not on the dismiss control in the header. Radix's own
+     choice is the first tabbable node in the panel, which is the dismiss button, so a reader who opened a form
+     by a chord and started typing would type nothing. */
+  it("puts the caret on the first control in the body", async () => {
+    render(
+      <Dialog isOpen onOpenChange={vi.fn<(next: boolean) => void>()} title="Capture a task">
+        <input aria-label="Task" type="text" />
+      </Dialog>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "Task" })).toHaveFocus();
+    });
+  });
+
+  /* A body with no control at all keeps Radix's own choice rather than reaching for something to focus: the help
+     overlay's body is a table, and the dismiss control is the only thing in it a keyboard can use. */
+  it("leaves the choice to Radix where the body holds no control", async () => {
+    renderDialog({ footer: undefined, children: <p>91 blocks.</p> });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
+    });
+  });
+
   it("carries a description where the body is not prose", () => {
     renderDialog({ description: "Approving writes the week to the calendar." });
 

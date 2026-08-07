@@ -18,15 +18,24 @@
  * something only the caller holds, so it is the caller that names it, and the return is driven through Radix's
  * own `onCloseAutoFocus` rather than around it.
  *
+ * WHERE IT GOES ON OPEN IS THE FAMILY'S POLICY AND NOT THE CALLER'S: the first control in the body, through
+ * Radix's own `onOpenAutoFocus`. See `FIRST_CONTROL` below.
+ *
  * `isOpen` is the caller's, because a dialog in this product is opened by a route, a keyboard chord or a
  * verdict row, and each of those already owns the state that decides. */
 
-import type { ReactNode, Ref } from "react";
+import { useRef, type ReactNode, type Ref } from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 
 import "./Dialog.css";
 import "./glyphs.css";
 import "./overlay.css";
+
+/* WHAT THE CARET LANDS ON WHEN A DIALOG OPENS: the first control in the BODY, not the dismiss control in the
+ * header. Radix focuses the first tabbable node in the panel, which is the header's dismiss button, so a reader
+ * who opened a form by a chord and started typing would type nothing. A dialog whose body holds no control at all
+ * keeps Radix's own choice, which is what the help overlay wants. */
+const FIRST_CONTROL = 'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])';
 
 export interface DialogProps {
   readonly isOpen: boolean;
@@ -76,19 +85,32 @@ export function Dialog({
           },
         };
 
+  const body = useRef<HTMLDivElement>(null);
+  const openFocus = (event: Event): void => {
+    const first = body.current?.querySelector<HTMLElement>(FIRST_CONTROL);
+    if (first === null || first === undefined) return;
+    event.preventDefault();
+    first.focus();
+  };
+
   return (
     <RadixDialog.Root open={isOpen} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         {/* The scrim is the centring container, so the panel needs no transform: see overlay.css. */}
         <RadixDialog.Overlay className="overlay__scrim">
-          <RadixDialog.Content ref={ref} className="overlay dialog" {...closeFocus}>
+          <RadixDialog.Content
+            ref={ref}
+            className="overlay dialog"
+            onOpenAutoFocus={openFocus}
+            {...closeFocus}
+          >
             <header className="on-ink-surface dialog__header">
               <RadixDialog.Title>{title}</RadixDialog.Title>
               <RadixDialog.Close className="dialog__dismiss" aria-label="Close">
                 <span className="glyph glyph--cross" aria-hidden="true" />
               </RadixDialog.Close>
             </header>
-            <div className="dialog__body">
+            <div className="dialog__body" ref={body}>
               {description === undefined ? null : (
                 <RadixDialog.Description className="sr-only">{description}</RadixDialog.Description>
               )}

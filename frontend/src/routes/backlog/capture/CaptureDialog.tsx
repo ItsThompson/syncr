@@ -11,7 +11,16 @@
  * THE MINIMUM CHUNK'S REFUSAL IS RENDERED AT ITS OWN ROW, with the reason, and the submit stays disabled while
  * it stands: a reader is told at the field rather than after a round trip. The rule itself is the domain's, and
  * a refusal the api returns lands on the same rows through the same prop, so the sentence a reader sees when the
- * two ever disagree is the boundary's own. */
+ * two ever disagree is the boundary's own.
+ *
+ * A REQUIRED FIELD NOBODY HAS FILLED IN YET IS INCOMPLETE RATHER THAN WRONG. Its refusal is not drawn and the
+ * field is not marked invalid: the required mark on the label and the disabled control are what say a title and
+ * an Area are still needed, and a form that opened already complaining would be making a claim about the reader
+ * rather than about a value. A value that is present and refused is stated at its own row.
+ *
+ * THE CARET LANDS IN THE TITLE, because `n` is a promise about speed: a reader who presses it and starts typing
+ * has to be typing the title. That is the `Dialog` family's own policy rather than something arranged here: the
+ * caret goes to the first control in the body, and the title is the first row. */
 
 import { NoticeCard, type Notice } from "../../../ui/domain";
 import { FormRow } from "../../../ui/layout";
@@ -80,6 +89,11 @@ export function CaptureDialog({
     onDraftChange({ ...draft, [field]: value });
   };
 
+  /* A refusal about a value the reader has not supplied yet is not drawn: an empty required field is incomplete
+     rather than wrong, and it still disables the submit. */
+  const stated = (field: "title" | "areaId", value: string): string | undefined =>
+    value === "" ? undefined : refusals[field];
+
   return (
     <Dialog
       isOpen={isOpen}
@@ -94,12 +108,12 @@ export function CaptureDialog({
       }
     >
       {refusal === undefined ? null : <NoticeCard notice={refusal} />}
-      <FormRow error={refusals.title} isRequired label="Task">
+      <FormRow error={stated("title", draft.title)} isRequired label="Task">
         {(field) => (
           <Input
             describedBy={field.describedBy}
             id={field.id}
-            isInvalid={refusals.title !== undefined}
+            isInvalid={stated("title", draft.title) !== undefined}
             isRequired
             onValueChange={(next) => change("title", next)}
             placeholder="What the work is"
@@ -107,12 +121,12 @@ export function CaptureDialog({
           />
         )}
       </FormRow>
-      <FormRow error={refusals.areaId} isRequired label="Area">
+      <FormRow error={stated("areaId", draft.areaId)} isRequired label="Area">
         {(field) => (
           <Select
             describedBy={field.describedBy}
             id={field.id}
-            isInvalid={refusals.areaId !== undefined}
+            isInvalid={stated("areaId", draft.areaId) !== undefined}
             isRequired
             onValueChange={(next) => change("areaId", next)}
             options={areas.map((area) => ({ value: area.id, label: area.name }))}

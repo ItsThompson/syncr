@@ -56,6 +56,31 @@ describe("opening capture", () => {
     expect(stub.queries).toEqual([]);
   });
 
+  /* `n` promises speed, so the first keystroke after it has to reach the title. Radix would leave the focus on
+     the first control in the panel, which is the dismiss button. */
+  it("puts the caret in the title, so a reader can press n and type", async () => {
+    stubBacklog();
+    await renderSignedInAt("/areas");
+
+    await pressN();
+
+    expect(screen.getByRole("textbox", { name: /Task/ })).toHaveFocus();
+  });
+
+  /* An untouched required field is incomplete rather than invalid: marking it would be a claim about the reader
+     rather than about a value, and the required mark plus the disabled control already say what is needed. */
+  it("opens without complaining about the two values nobody has typed yet", async () => {
+    stubBacklog();
+    await renderSignedInAt("/areas");
+
+    await pressN();
+
+    expect(screen.queryByText("A task needs a title.")).toBeNull();
+    expect(screen.queryByText(/needs an Area/)).toBeNull();
+    expect(screen.getByRole("textbox", { name: /Task/ })).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByRole("button", { name: "Capture" })).toBeDisabled();
+  });
+
   it("does not open while the reader is typing into a field", async () => {
     await renderBacklog();
     await screen.findByRole("table", { name: "The backlog" });
@@ -126,6 +151,8 @@ describe("what the form requires", () => {
     await chooseArea("Career");
 
     expect(screen.getByRole("button", { name: "Capture" })).toBeDisabled();
+    /* Present and wrong, so it IS stated: the row a reader has typed into is the row that can be told it is
+       holding something no title could be. */
     expect(screen.getByText("A task needs a title.")).toBeInTheDocument();
   });
 
