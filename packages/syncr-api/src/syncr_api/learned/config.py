@@ -33,6 +33,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final, Literal
 
+from syncr_api.core.settings import API_PREFIX
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -73,3 +75,23 @@ OBJECTIVE_TERMS: Final = (
     "context_switch",
     "staleness",
 )
+
+
+# ---------------------------------------------------------------------------
+# The three routes: the read the Learned screen makes, the version list, and the activation.
+#
+# Two prefixes rather than one, because the two collections answer different questions. `/learned`
+# is the PARAMETERS and their maturity, which is what the screen renders; `/weight-sets` is the
+# VERSIONS, which is what a comparison and a revert address. Nesting the second under the first
+# would make the screen's own path the address of a row it does not render.
+# ---------------------------------------------------------------------------
+
+LEARNED_PREFIX: Final = f"{API_PREFIX}/learned"
+WEIGHT_SETS_PREFIX: Final = f"{API_PREFIX}/weight-sets"
+
+# Relative to each router's own prefix.
+LEARNED_PATH: Final = ""
+WEIGHT_SETS_PATH: Final = ""
+ACTIVATE_PATH: Final = "/{version}/activate"
+
+WEIGHT_SET_RESOURCE: Final = "weight set"

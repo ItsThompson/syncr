@@ -8,6 +8,7 @@ also produce from a corpus it read and refused: the count is what says the row n
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import OutcomeState
@@ -28,6 +29,10 @@ from tests.builders import (
     revision,
     span,
 )
+
+if TYPE_CHECKING:
+    from syncr_domain.identifiers import AreaId
+    from syncr_learning.facts import TenantCorpus
 
 
 class TestUnconfirmedDaysAreExcludedFromEveryFitter:
@@ -269,6 +274,73 @@ class TestSeveralWeeks:
         )
 
         assert len(extract(both).durations) == 12
+
+
+class TestEveryDerivedBooleanTakesBothValues:
+    """A boolean that is structurally one value looks like a fitted feature and teaches nothing.
+
+    A fitness curve over rows that all say ``went_well`` is a curve of ones, and no assertion on the
+    curve's shape can tell that from a user who genuinely finishes everything.
+
+    So each boolean an observation carries is driven to BOTH values from a real corpus, which is the
+    check a test of one value cannot make.
+    """
+
+    def test_went_well_is_true_for_a_completion_and_false_for_a_skip(self) -> None:
+        done = extract(a_week_of(1, state=OutcomeState.COMPLETED, actual_minutes=None))
+        missed = extract(a_week_of(1, state=OutcomeState.SKIPPED, actual_minutes=None))
+
+        assert [one.went_well for one in done.time_of_day] == [True]
+        assert [one.went_well for one in missed.time_of_day] == [False]
+
+    def test_was_refused_is_true_for_a_skip_and_a_move_and_false_for_the_rest(self) -> None:
+        # Both directions over the whole vocabulary, so a state added to it lands on a stated side
+        # rather than defaulting to "not refused".
+        refused: dict[OutcomeState, bool] = {}
+        for state in OutcomeState:
+            minutes = 82 if state is OutcomeState.PARTIAL else None
+            actual = Interval(at(hour=9), at(hour=10)) if state is OutcomeState.MOVED else None
+            observed = extract(
+                corpus(
+                    revisions=[revision(blocks=[planned()])],
+                    outcomes=[outcome(state=state, actual_minutes=minutes, actual=actual)],
+                )
+            )
+            refused[state] = observed.skips[0].was_refused
+
+        assert {state for state, was in refused.items() if was} == {
+            OutcomeState.SKIPPED,
+            OutcomeState.MOVED,
+        }
+        assert set(refused) == set(OutcomeState)
+
+    def test_changed_area_is_true_across_two_areas_and_false_within_one(self) -> None:
+        across = extract(_two_blocks(OTHER_AREA))
+        within = extract(_two_blocks(AREA))
+
+        assert [one.changed_area for one in across.switches] == [True]
+        assert [one.changed_area for one in within.switches] == [False]
+
+    def test_is_confirmed_is_read_from_the_column_rather_than_being_constant(self) -> None:
+        # The one boolean loaded rather than derived. Both values have to reach the extractor, or
+        # the unconfirmed-day exclusion would be a rule with nothing to exclude.
+        assert extract(a_week_of(1, is_confirmed=True)).total() > 0
+        assert extract(a_week_of(1, is_confirmed=False)).total() == 0
+
+
+def _two_blocks(second_area: AreaId) -> TenantCorpus:
+    """Two adjacent confirmed blocks two hours apart, the second in ``second_area``."""
+    return corpus(
+        revisions=[
+            revision(
+                blocks=[
+                    planned(index=0, area_id=AREA, interval=span(hour=9, minutes=60)),
+                    planned(index=1, area_id=second_area, interval=span(hour=11, minutes=60)),
+                ]
+            )
+        ],
+        outcomes=[outcome(index=0), outcome(index=1)],
+    )
 
 
 _TERMS = (

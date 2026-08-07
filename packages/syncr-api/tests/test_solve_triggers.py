@@ -212,8 +212,7 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         "weight set activated or reverted",
         bumps=True,
         solves=True,
-        module="reviews/service.py",
-        owner="1403",
+        module="learned/activation.py",
     ),
     Trigger(
         "a week enters the projection horizon",
@@ -432,7 +431,7 @@ class TestTheTriggerTable:
 
 
 class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
-    """Sixteen rows ask for a solve and reach none. Named here so the gap is countable.
+    """Fourteen rows ask for a solve and reach none. Named here so the gap is countable.
 
     Building this enumeration is what made them visible, and BOTH directions are guarded, which is
     what makes the table's own claim true: a row that loses its bump fails the walk above, and a row
@@ -443,17 +442,17 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
     """
 
     def test_the_unwired_count_is_what_the_walk_found(self) -> None:
-        """Sixteen rows ask for a solve and reach none.
+        """Fourteen rows ask for a solve and reach none.
 
-        Fifteen of them are mutations a person makes. The sixteenth is the horizon maintainer, which
-        is not a mutation at all, because time passing is what triggers it, and which materializes
-        instead of solving: that is ticket 1400.
+        Thirteen of them are mutations a person makes. The fourteenth is the horizon maintainer,
+        which is not a mutation at all, because time passing is what triggers it, and which
+        materializes instead of solving: that is ticket 1400.
         """
         unwired = [one for one in TRIGGER_TABLE if one.solves and one.owner is not None]
         by_a_person = [one for one in unwired if one.owner != "1400"]
 
-        assert len(unwired) == 15
-        assert len(by_a_person) == 14
+        assert len(unwired) == 14
+        assert len(by_a_person) == 13
 
     @pytest.mark.parametrize(
         "trigger",
@@ -481,8 +480,8 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
                 continue
             assert one.owner in {"1400", "1403"}, one.row
 
-    def test_only_five_rows_reach_the_coordinator_today(self) -> None:
-        # The five live triggers, one of which bypasses the debounce by design. The burst of pins
+    def test_only_six_rows_reach_the_coordinator_today(self) -> None:
+        # The six live triggers, one of which bypasses the debounce by design. The burst of pins
         # the window was measured against is the first, which is now wired.
         wired = [one.row for one in TRIGGER_TABLE if one.solves and one.owner is None]
 
@@ -492,6 +491,7 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
             "re-solve control",
             "tradeoff requested",
             "week adjustment revoked",
+            "weight set activated or reverted",
         ]
 
     def test_the_solve_kind_has_exactly_one_creation_path(self) -> None:
@@ -595,12 +595,20 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
         """The other direction, so the table and the tree are crossed rather than read separately.
 
         A package that bumps and appears in no row is a mutation section 10 does not describe, which
-        is either a missing row or a bump nothing asked for. ``solving`` is the one exception and it
-        is not a trigger: the solve dispatch bumps because its own adoption changed the live plan.
+        is either a missing row or a bump nothing asked for. Two packages are exceptions and neither
+        is a trigger of its own.
+
+        ``solving`` bumps because the solve dispatch's own adoption changed the live plan.
+
+        ``reviews`` bumps because applying the pie review's proposed percentages IS the "area
+        budget, floor, or percentage edited" row, reached from a second surface. That row names
+        ``areas/service.py``, which is the same mutation's other surface, and ``module`` holds one
+        path: naming the second here rather than widening the field is the smaller change, and it is
+        the limit the package granularity already has.
         """
         named = {one.module.split("/")[0] for one in TRIGGER_TABLE if one.module is not None}
 
-        assert packages_that_bump() - named - {"solving"} == set()
+        assert packages_that_bump() - named - {"solving", "reviews"} == set()
 
     def test_the_allowlist_holds_exactly_one_route(self, settings: ServiceSettings) -> None:
         # Section 10 puts one row in it: `kept-both`, which records a decision and changes neither a

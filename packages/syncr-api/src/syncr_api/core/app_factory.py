@@ -35,6 +35,7 @@ from syncr_api.events.hub import EventHub
 from syncr_api.events.wiring import build_events_router
 from syncr_api.google_account.wiring import build_google_account_router
 from syncr_api.habits.wiring import build_habits_router
+from syncr_api.learned.wiring import build_learned_router
 from syncr_api.oauth.wiring import build_oauth_router
 from syncr_api.offplan.wiring import build_off_plan_router
 from syncr_api.outcomes.wiring import build_outcomes_router
@@ -96,6 +97,7 @@ FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
     build_events_router,
     build_pins_router,
     build_approvals_router,
+    build_learned_router,
 )
 
 # The one place the api's version is stated: the package metadata uv installs from

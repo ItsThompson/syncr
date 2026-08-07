@@ -8,7 +8,9 @@ set, and ``PlanRevision.weight_set_version`` is non-optional from the first revi
 onwards.
 
 Activation and reverting are not here. Flipping ``active`` is a user-facing act with a
-re-solve behind it, and it belongs with the screen that offers it.
+re-solve behind it, and it belongs with the screen that offers it:
+:mod:`syncr_api.learned.activation` holds the two statements and the re-solve of future
+weeks they precede.
 """
 
 from __future__ import annotations
