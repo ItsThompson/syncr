@@ -8,6 +8,11 @@ over the digest.
 ``blockId`` is on the wire as well as the binding, because that is what the grid pairs a conflict
 with a rendered block on. It is a digest of the week and the binding, so nothing on the client
 composes one: it is read and compared.
+
+**Every field is required and the nullable ones are nullable**, which is this api's own convention.
+A field with a default is OPTIONAL in the generated document, so a client would have to narrow
+``undefined`` as well as ``null`` on a key the server always sends. The Week screen's whole read
+carries a list of these, and its own sixteen fields are declared under the same rule.
 """
 
 from __future__ import annotations
@@ -49,10 +54,10 @@ class ConflictResponse(WireModel):
     overlap: WireSpan
     detected_at: datetime
     resolved_at: datetime | None = Field(
-        default=None, description="Null while the conflict is still waiting for an answer."
+        description="Null while the conflict is still waiting for an answer."
     )
     resolution: ConflictResolution | None = Field(
-        default=None, description=f"How it was answered: one of {_RESOLUTIONS}."
+        description=f"How it was answered: one of {_RESOLUTIONS}. Null while it is unanswered."
     )
 
     @classmethod

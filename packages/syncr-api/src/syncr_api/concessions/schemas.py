@@ -8,6 +8,12 @@ minutes a breach takes come from the week's own verdict, which is what stops a c
 concession syncr did not offer. The field descriptions say so, because they reach the OpenAPI
 document and therefore every caller.
 
+**Every field is required and the nullable ones are nullable**, which is this api's own convention
+and what a client narrowing ``adjustment.deltaMinutes === null`` needs: a field with a default is
+OPTIONAL in the generated document, so a caller would have to narrow ``undefined`` as well. Three
+surfaces render a concession and one of them is the Week screen's whole read, whose sixteen fields
+are declared under the same rule.
+
 **A concession is returned with its reductions keyed by date.** The wire spelling of a date is its
 ISO form, which is the key the stored column, the frame occurrence, and the fold all use: one
 spelling, so a client rendering "Tue, Wed and Thu" reads the same keys the server folded.
@@ -65,8 +71,8 @@ class AdjustmentResponse(WireModel):
     iso_week: str
     kind: AdjustmentKind
     target_id: UUID
-    reductions: dict[str, int] = Field(default_factory=dict, description=_REDUCTIONS_DESCRIPTION)
-    delta_minutes: int | None = Field(default=None, description=_DELTA_DESCRIPTION)
+    reductions: dict[str, int] = Field(description=_REDUCTIONS_DESCRIPTION)
+    delta_minutes: int | None = Field(description=_DELTA_DESCRIPTION)
     created_at: datetime
     created_by_operation_id: UUID = Field(
         description="The operation whose proposal this concession was approved with."
