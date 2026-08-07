@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { apiServer } from "../../../testing/apiServer";
 import { renderAt } from "../../../testing/renderRoute";
-import { GRID_H_PX } from "../../../ui/domain";
+import { GRID_H_PX, travelFloorPx } from "../../../ui/domain";
 import {
   APPLICATION,
   BLOCK_APPLICATION,
@@ -48,7 +48,6 @@ const PINS = `${window.location.origin}/api/v1/weeks/${ISO_WEEK}/pins`;
 const AXIS_START_MIN = 360;
 const VISIBLE_HOURS = 12;
 const PX_PER_MIN = GRID_H_PX / (VISIBLE_HOURS * 60);
-const SNAP_MINUTES = 15;
 
 /** An ordinary trackpad click's movement, which must never state a placement. */
 const SLOP_PX = 3;
@@ -275,18 +274,38 @@ describe("the drag that issues no request", () => {
   /* THE FLOOR IS NOT A REFUSAL OF EVERY DRAG, which is the control the sweep above needs: one snap step of travel is
    * the smallest movement that can mean a placement, and just past it the pin is posted. A pixel of slack rather than
    * the exact figure, because `(y + step) - y` is not bit-identical to `step` and a test pinned to a knife edge
-   * measures the arithmetic of doubles rather than the rule. */
+   * measures the arithmetic of doubles rather than the rule. The figure is the drag's own, so the test cannot drift
+   * from the floor it is testing. */
   it("posts on a release a snap step from the press, which is the smallest travel that means one", async () => {
     await renderWeek();
     const pins = recordPins();
     const from = offsetOf(540);
 
     fireEvent.pointerDown(blockOf(LEETCODE), { clientY: from });
-    fireEvent.pointerMove(window, { clientY: from + SNAP_MINUTES * PX_PER_MIN + 1 });
+    fireEvent.pointerMove(window, { clientY: from + travelFloorPx(PX_PER_MIN) + 1 });
     fireEvent.pointerUp(window);
 
     await waitFor(() => expect(pins.bodies).toHaveLength(1));
     expect(pins.bodies[0]).toMatchObject({ start: "2026-02-09T09:15:00.000Z" });
+  });
+
+  /* THE HAIRLINE STATES WHAT THE RELEASE WILL DO, which below the floor is "nothing moves". A marker at 09:15 over a
+   * release that keeps 09:00 is the two halves of one rule disagreeing, in exactly the band the floor created. */
+  it("holds the hairline at the block's own quarter while the travel is under the floor", async () => {
+    await renderWeek();
+    recordPins();
+    /* 09:07:24, just under the 09:00/09:15 midpoint: one pixel lower is a different quarter under the cursor. */
+    const midpoint = offsetOf(547.4);
+
+    fireEvent.pointerDown(blockOf(LEETCODE), { clientY: midpoint });
+    fireEvent.pointerMove(window, { clientY: midpoint + 1 });
+
+    expect(document.querySelector(".week-insertion")?.textContent).toBe("09:00");
+
+    fireEvent.pointerMove(window, { clientY: midpoint + travelFloorPx(PX_PER_MIN) + 1 });
+
+    expect(document.querySelector(".week-insertion")?.textContent).toBe("09:30");
+    fireEvent.pointerUp(window);
   });
 
   /* THE PLATFORM TAKING THE POINTER AWAY IS NOT A DROP. Without this the drag stayed live after a `pointercancel`,
@@ -326,7 +345,7 @@ describe("the drag that issues no request", () => {
     expect(pins.bodies).toEqual([]);
   });
 
-  it("cancels when the pointer is released outside the column it started in", async () => {
+  it("cancels when the pointer is released above the column it started in", async () => {
     await renderWeek();
     const pins = recordPins();
 
@@ -334,6 +353,27 @@ describe("the drag that issues no request", () => {
     /* Above the canvas: the reader has stated no placement, and clamping to the top edge would turn a slip into a
      * hard constraint on the solver. */
     fireEvent.pointerMove(window, { clientY: -40 });
+    fireEvent.pointerUp(window);
+
+    await settle();
+    expect(pins.bodies).toEqual([]);
+    expect(document.querySelector(".week-insertion")).toBeNull();
+  });
+
+  /* THE HORIZONTAL AXIS, WHICH THE VERTICAL CASE ABOVE DOES NOT COVER. `clientX` was read nowhere in the drag, so a
+   * release beside the starting column was not outside anything: it was read against that column, and dragging
+   * Monday's block over Tuesday at 13:00 posted MONDAY 13:00 -- a placement in a day the reader had left.
+   *
+   * WHAT THIS TEST CAN AND CANNOT SEE. The stubbed box is the SAME for every canvas, so no test here can tell one
+   * column from another: what is asserted is that a position outside the origin box horizontally states nothing, not
+   * that the position was over Tuesday. Whether a drag should instead RETARGET to the column under the cursor is
+   * ticket 1494, and a real box per column is on 1493's list. */
+  it("cancels when the pointer is released beside the column it started in", async () => {
+    await renderWeek();
+    const pins = recordPins();
+
+    fireEvent.pointerDown(blockOf(LEETCODE), { clientX: 60, clientY: offsetOf(540) });
+    fireEvent.pointerMove(window, { clientX: 620, clientY: offsetOf(780) });
     fireEvent.pointerUp(window);
 
     await settle();

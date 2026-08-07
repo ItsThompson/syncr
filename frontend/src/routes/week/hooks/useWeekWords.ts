@@ -24,6 +24,7 @@ import type { WeekScreenState } from "../useWeekScreen";
 import type { WeekView } from "../../../api/hooks/useWeek";
 import type { WeekInteraction } from "./useWeekScreenInteraction";
 import type { LabelledRow, Notice, PanelVerdict, VerdictConcession } from "../../../ui/domain";
+import type { Problem } from "../../../contract";
 
 /** What the detail panel renders about the selected block, or null when nothing is selected. */
 export interface DetailReading {
@@ -72,7 +73,9 @@ export function useWeekWords({ screen, interaction, homeZone }: WeekWordsInput):
   const notices: Notice[] = [];
   const failure = interaction.operation.failure;
   if (failure !== null) notices.push(solveFailedNotice(failure.operationId, failure.statement));
-  for (const problem of refusals(interaction)) notices.push(refusedNotice(problem));
+  for (const refused of refusals(interaction)) {
+    notices.push(refusedNotice(refused.write, refused.problem));
+  }
 
   return {
     verdict,
@@ -84,15 +87,25 @@ export function useWeekWords({ screen, interaction, homeZone }: WeekWordsInput):
   };
 }
 
-/** Every refusal standing on the screen, in the order the writes are made. One notice each. */
-function refusals(interaction: WeekInteraction) {
-  return [
-    interaction.pinning.problem,
-    interaction.writes.approve.problem,
-    interaction.writes.requestTradeoff.problem,
-    interaction.writes.resolveConflict.problem,
-    interaction.writes.rejectMove.problem,
-  ].filter((problem) => problem !== null);
+/**
+ * Every refusal standing on the screen, in the order the writes are made. One notice each.
+ *
+ * THE WRITE TRAVELS WITH THE PROBLEM, because two of these five can be refused with the same problem type -- a pin and
+ * an approval both answering `409` -- and a notice's identity is what a list keys on.
+ */
+function refusals(interaction: WeekInteraction): { write: string; problem: Problem }[] {
+  const refused: { write: string; problem: Problem }[] = [];
+  const writes: [string, Problem | null][] = [
+    ["pin", interaction.pinning.problem],
+    ["approve", interaction.writes.approve.problem],
+    ["tradeoff", interaction.writes.requestTradeoff.problem],
+    ["conflict", interaction.writes.resolveConflict.problem],
+    ["reject", interaction.writes.rejectMove.problem],
+  ];
+  for (const [write, problem] of writes) {
+    if (problem !== null) refused.push({ write, problem });
+  }
+  return refused;
 }
 
 function bannersOf(

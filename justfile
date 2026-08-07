@@ -380,16 +380,29 @@ fmt:
 # pre-push or to CI alone would leave it unarmed exactly where the three defects it exists to catch were
 # written. Ten seconds a commit is the price of the input none of the other eight has.
 #
+# THE RECIPE COUNTS ITS OWN CHECKS AND SAYS SO AT THE END, and that is not decoration. Six of the nine print
+# `ok` themselves and three are third-party tools with their own success lines, so a reader counting `ok`
+# counted six of nine, and a check that had silently stopped running looked exactly like the three that never
+# said it. The tail line names how many ran, which is the figure the eight-of-nine loop this recipe already
+# paid for would have contradicted.
+#
 # Every check runs even when an earlier one fails: one red linter must not hide the rest.
 lint-frontend:
     #!/usr/bin/env bash
     set -uo pipefail
     cd frontend
     failed=0
+    ran=0
     for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels lint:imports lint:bundle lint:render; do
       echo "--- $check"
+      ran=$((ran + 1))
       npm run --silent "$check" || failed=1
     done
+    if [ "$failed" -eq 0 ]; then
+      echo "--- $ran check(s) ran, all ok"
+    else
+      echo "--- $ran check(s) ran, at least one FAILED" >&2
+    fi
     exit "$failed"
 
 # Apply the frontend formatter. The Python members' equivalent is `just fmt`

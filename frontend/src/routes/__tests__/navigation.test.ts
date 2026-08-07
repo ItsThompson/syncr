@@ -8,7 +8,7 @@
  * TWO CLAIMS, BECAUSE ONE OF THEM CANNOT SEE EVERYTHING. A literal in-app path in the source is judgeable by reading
  * it. An href that arrives as a PROP or as DATA is not: a notice's action may point at an account page this product
  * does not serve, so `NoticePanel` and `NoticeStrip` are right to draw a raw anchor. So the second claim is an
- * inventory: the raw anchors in this application are exactly these two, and a third one has to be argued for here
+ * inventory: the raw anchors in this application are exactly these three, and a fourth one has to be argued for here
  * rather than merely written. That is what catches the case a regex cannot.
  *
  * The reader is `testing/layerRules.ts`'s, which blanks comments first, so prose about an anchor cannot answer a

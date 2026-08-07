@@ -29,6 +29,7 @@ export { NowRule, type NowRuleProps } from "./NowRule";
 export { SummaryStrip, type SummaryStripProps, type VerdictReading } from "./SummaryStrip";
 export { TimeAxis, type TimeAxisProps } from "./TimeAxis";
 export {
+  travelFloorPx,
   useDiscreteDrag,
   type BlockDrop,
   type DiscreteDrag,

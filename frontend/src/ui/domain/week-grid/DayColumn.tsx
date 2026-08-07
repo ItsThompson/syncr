@@ -107,7 +107,9 @@ export function DayColumn({
               /* CAPTURED, so a release anywhere reaches this drag. Without it a mouse released outside the viewport
                * delivers no `pointerup` to the page and the drag never ends. */
               event.currentTarget.setPointerCapture(event.pointerId);
-              interaction.onDragBegin?.(originOf(block, day, canvas.current, event.clientY));
+              interaction.onDragBegin?.(
+                originOf(block, day, canvas.current, event.clientX, event.clientY),
+              );
             }}
             onSelect={() => {
               interaction.onSelect?.(block.id);
@@ -132,6 +134,7 @@ function originOf(
   block: GridBlock,
   day: WeekDay,
   canvas: HTMLElement | null,
+  pointerX: number,
   pointerY: number,
 ): DragOrigin {
   return {
@@ -140,6 +143,7 @@ function originOf(
     fromMin: block.span.startMin,
     dayStartMs: day.startMs,
     canvas,
+    pointerX,
     pointerY,
   };
 }

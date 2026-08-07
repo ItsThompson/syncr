@@ -336,12 +336,16 @@ describe("the two controls in the band", () => {
     await waitFor(() => expect(solves).toEqual(["?immediate=true"]));
   });
 
-  it("Shift+A approves the pending proposal", async () => {
+  /* THE ONE ROUTE THAT DEMANDS THE HEADER. Omitting `Idempotency-Key` on an approval is a 400 rather than a lost
+   * guarantee, so it is asserted on the wire here as well as on the pin route. It is sent UNTYPED, because the api
+   * reads it off the request object rather than declaring it as a parameter, so it is absent from the document every
+   * generated client is built from: ticket 1134. */
+  it("Shift+A approves the pending proposal, with the Idempotency-Key the route demands", async () => {
     await renderWeek(buildWeekView({ proposal: buildProposal() }));
-    let approved = 0;
+    const keys: (string | null)[] = [];
     apiServer.use(
-      http.post(`${WEEK}/approve`, () => {
-        approved += 1;
+      http.post(`${WEEK}/approve`, ({ request }) => {
+        keys.push(request.headers.get("Idempotency-Key"));
         return HttpResponse.json(
           {
             revisionId: "8c2d0e01-0000-4000-8000-000000000001",
@@ -360,13 +364,19 @@ describe("the two controls in the band", () => {
 
     await userEvent.keyboard("{Shift>}A{/Shift}");
 
-    await waitFor(() => expect(approved).toBe(1));
+    await waitFor(() => expect(keys).toHaveLength(1));
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it("states the plan currency as a word in the SCHEDULED cell's sub-line", async () => {
+  it("states the plan currency as a word in the SCHEDULED cell's sub-line, and nowhere else", async () => {
     await renderWeek(buildWeekView({ operation: buildOperation({ status: "running" }) }));
 
     await waitFor(() => expect(screen.getByText("91 · solving")).toBeInTheDocument());
+    /* ONE SURFACE STATES IT. Currency rides in that sub-line BECAUSE it qualifies the block count, so a second
+     * surface stating the same word is the drift the rule exists to prevent: the band printed it too. The count is
+     * asserted rather than the absence of one element, because `findByText` throws only on two matches of ONE text
+     * node and the band's node read `91 blocks · solving · 12h visible`, which no query for either would see. */
+    expect(screen.getAllByText(/solving/)).toHaveLength(1);
     /* NEVER A SPINNER, and the unpinned remainder is not degraded while a solve runs. */
     expect(screen.getByLabelText(`${LEETCODE} · Career`)).not.toHaveAttribute("data-solving");
   });

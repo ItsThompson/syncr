@@ -25,9 +25,7 @@
      sentence plus three tradeoff rows, so the fourth row's clipped edge is what makes the scroll discoverable with
      no scrollbar affordance.
 
-     IT IS NOT THE STRIP'S HEIGHT AND DOES NOT SHARE ONE WITH IT. The two are declared together because they are one
-     decision -- both are reserved so the grid beneath them cannot shift under the cursor mid-drag -- and the strip's
-     verdict CELL takes the strip's own 64px. An earlier comment here claimed the panel and that cell shared this
-     value; they do not, and a claim a stylesheet does not make is worse than no claim. */
+     IT IS NOT THE STRIP'S HEIGHT. The strip's verdict CELL takes the strip's own 64px, so the two are two values and
+     one decision: both are reserved so the grid beneath them cannot shift under the cursor mid-drag. */
   --verdict-h: 226px;
 }

@@ -51,10 +51,17 @@ export function solveFailedNotice(operationId: string, statement: string): Notic
   };
 }
 
-/** A write the api refused. Panel volume, amber: the reader's plan is untouched and the reason is the api's own. */
-export function refusedNotice(problem: Problem): Notice {
+/**
+ * A write the api refused. Panel volume, amber: the reader's plan is untouched and the reason is the api's own.
+ *
+ * THE IDENTITY CARRIES THE WRITE AS WELL AS THE PROBLEM, because five writes on this screen render through one notice
+ * list and two of them can be refused with the same problem type: a pin and an approval both answering `409` would
+ * otherwise be two notices under one React key. The write is the caller's own word for itself, so the reader also gets
+ * a distinguishable one when two notices stand at once.
+ */
+export function refusedNotice(write: string, problem: Problem): Notice {
   return {
-    id: `refused:${problem.type}`,
+    id: `refused:${write}:${problem.type}`,
     volume: "panel",
     pigment: "amber",
     title: problem.title,
