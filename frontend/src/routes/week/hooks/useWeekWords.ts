@@ -49,7 +49,7 @@ export interface WeekWordsInput {
   readonly homeZone: string;
 }
 
-const TEMPLATES_HREF = "/templates";
+const TEMPLATES_PATH = "/templates";
 
 export function useWeekWords({ screen, interaction, homeZone }: WeekWordsInput): WeekWords {
   const view = viewOf(screen);
@@ -142,7 +142,7 @@ function bannersOf(
       ],
       /* A MATERIALIZED TEMPLATE ENTRY OFFERS TWO PATHS AND CHOOSES NEITHER: pin this occurrence elsewhere, which is
        * `Move the block` above, or edit the template that produced it, which is a different screen. */
-      templateHref: conflict.binding.kind === "template_entry" ? TEMPLATES_HREF : undefined,
+      templatePath: conflict.binding.kind === "template_entry" ? TEMPLATES_PATH : undefined,
     }));
 }
 

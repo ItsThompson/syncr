@@ -20,7 +20,7 @@ export interface BannerConflict {
   readonly id: string;
   readonly notice: Notice;
   readonly answers: readonly ConflictAnswer[];
-  readonly templateHref?: string | undefined;
+  readonly templatePath?: string | undefined;
 }
 
 export interface WeekHeadProps {
@@ -46,7 +46,7 @@ export function WeekHead({ notices, conflicts, verdict, concessions, onPropose }
           answers={conflict.answers}
           key={conflict.id}
           notice={conflict.notice}
-          templateHref={conflict.templateHref}
+          templatePath={conflict.templatePath}
         />
       ))}
       {verdict === null ? null : (

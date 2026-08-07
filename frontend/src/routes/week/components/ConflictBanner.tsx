@@ -12,7 +12,10 @@
  *
  * A MATERIALIZED TEMPLATE ENTRY OFFERS TWO PATHS AND CHOOSES NEITHER, which is `US-TPL-03`'s rule: pin this occurrence
  * elsewhere, or edit the template that produced it. The first is `moved` on this occurrence; the second is a different
- * screen, so it is a link rather than a write. */
+ * screen, so it is a `Link` rather than a write -- a `Link` and not a raw anchor, because an anchor to a route this
+ * application owns reloads the document and throws away a cache the reader is about to come back to. */
+
+import { Link } from "react-router";
 
 import { NoticeStrip, type Notice } from "../../../ui/domain";
 import { Button } from "../../../ui/primitives";
@@ -26,11 +29,11 @@ export interface ConflictAnswer {
 export interface ConflictBannerProps {
   readonly notice: Notice;
   readonly answers: readonly ConflictAnswer[];
-  /** Where the template that produced this occurrence is edited, for a materialized entry. */
-  readonly templateHref?: string | undefined;
+  /** The route the template that produced this occurrence is edited on, for a materialized entry. */
+  readonly templatePath?: string | undefined;
 }
 
-export function ConflictBanner({ notice, answers, templateHref }: ConflictBannerProps) {
+export function ConflictBanner({ notice, answers, templatePath }: ConflictBannerProps) {
   return (
     <div className="flex flex-col gap-2">
       <NoticeStrip notice={notice} />
@@ -40,9 +43,9 @@ export function ConflictBanner({ notice, answers, templateHref }: ConflictBanner
             {answer.label}
           </Button>
         ))}
-        {templateHref === undefined ? null : (
+        {templatePath === undefined ? null : (
           <Button asChild rank="secondary" size="sm">
-            <a href={templateHref}>Edit the template</a>
+            <Link to={templatePath}>Edit the template</Link>
           </Button>
         )}
       </div>
