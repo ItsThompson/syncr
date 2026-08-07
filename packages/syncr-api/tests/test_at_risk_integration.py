@@ -31,8 +31,10 @@ own half is ``test_week_view_integration.py``.
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
+from statistics import quantiles
 from typing import TYPE_CHECKING, Any, get_args
 from zoneinfo import ZoneInfo
 
@@ -42,15 +44,18 @@ from fastapi.testclient import TestClient
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.events.config import EVENT_TYPES, EventType
+from syncr_api.tasks.config import TASKS_PREFIX
 from syncr_domain.feasibility import ShortfallKind
 from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import provision_owner, remove_tenant
 from tests.live_weeks import (
     AN_HOUR,
     AUCKLAND,
+    BLOCKS_IN_A_FULL_WEEK,
     LONDON,
     a_candidate_moving_one_block,
     a_solved_deadline_gap,
+    append_a_full_week,
     backlog,
     capture_a_task,
     declare_the_minimum,
@@ -74,6 +79,14 @@ if TYPE_CHECKING:
     from syncr_api.core.settings import ServiceSettings
 
 pytestmark = pytest.mark.integration
+
+# The measurement's shape, and the ceiling this suite fails at. The budget is p95 under 150 ms; the
+# ceiling is deliberately looser, because a developer's machine and a CI runner are not the
+# deployment, and the measured figure is reported rather than asserted. Twenty deadlined tasks is
+# review 44's own shape, which is what makes this figure comparable to the one it recorded.
+LATENCY_SAMPLES = 30
+CATASTROPHIC_MILLISECONDS = 1000
+DEADLINED_TASKS = 20
 
 
 @pytest.fixture
@@ -262,6 +275,54 @@ def test_a_task_the_week_has_room_for_is_not_marked(
     assert marked[seeded["comfortable"]] is False
 
 
+def test_the_at_risk_filter_narrows_to_the_set_the_weeks_verdict_names(
+    http: TestClient, a_week_a_task_cannot_fit_in: tuple[dict[str, str], IsoWeek, dict[str, Any]]
+) -> None:
+    """Ticket 1521: the filter the route catalog claims, over a week that really marks a task.
+
+    The right-hand side is derived from the WEEK READ's own shortfalls, not from the backlog's
+    marks, for the reason every equality in this suite is: a filter compared against the marks it
+    filtered on would agree whatever either computed. What this pins is that the narrowing happens
+    where the determination is made, so the rows a caller receives and the count beside them are one
+    answer.
+
+    Both values are driven, because a filter that answered an empty list for ``true`` and everything
+    for ``false`` would pass a test that only asked for one of them, and this suite's own
+    ``test_tasks_routes_integration.py`` half runs on a tenant with no verdict at all.
+    """
+    headers, week, seeded = a_week_a_task_cannot_fit_in
+    every = backlog(http, headers)
+    derived = at_risk_by_the_weeks_verdict(week_view(http, headers, week), every["tasks"])
+    assert derived == {seeded["impossible"]}, "the fixture week was not tight enough to show a gap"
+
+    narrowed = backlog(http, headers, atRisk="true")
+    rest = backlog(http, headers, atRisk="false")
+
+    assert {task["id"] for task in narrowed["tasks"]} == derived
+    assert {task["id"] for task in rest["tasks"]} == {
+        task["id"] for task in every["tasks"]
+    } - derived
+    assert seeded["comfortable"] in {task["id"] for task in rest["tasks"]}
+
+
+def test_the_at_risk_filter_moves_neither_header_figure(
+    http: TestClient, a_week_a_task_cannot_fit_in: tuple[dict[str, str], IsoWeek, dict[str, Any]]
+) -> None:
+    """The header is over the Area's open tasks whatever the filter selects.
+
+    Otherwise a reader who narrowed the table to the marked rows would see ``1 of 1 at risk``, which
+    is a count of the page rather than of the backlog. The same rule ``openCount`` already carries
+    for the status filter.
+    """
+    headers, _week, _seeded = a_week_a_task_cannot_fit_in
+
+    unfiltered = backlog(http, headers)["header"]
+
+    assert unfiltered == {"openCount": 2, "atRiskCount": 1}
+    for wanted in ("true", "false"):
+        assert backlog(http, headers, atRisk=wanted)["header"] == unfiltered, wanted
+
+
 def test_a_week_with_no_plan_marks_nothing_beside_a_week_read_that_has_no_verdict(
     http: TestClient,
     owner: UserRecord,
@@ -421,3 +482,66 @@ def test_no_event_builder_puts_a_verdict_on_the_stream(source_root: Path) -> Non
     envelopes = (source_root / "events" / "envelopes.py").read_text()
 
     assert "Verdict" not in envelopes
+
+
+# --------------------------------------------------------------------------------
+# The budget, measured. Ticket 1443
+# --------------------------------------------------------------------------------
+
+
+def test_the_backlog_read_is_well_under_its_budget_on_a_full_week(
+    http: TestClient,
+    owner: UserRecord,
+    configured: tuple[dict[str, str], str],
+    live_database_url: str,
+) -> None:
+    """Ticket **1443**: p95 under 150 ms on a full week, measured rather than asserted.
+
+    The at-risk column made this route pay for a whole solve-input assembly, and section 19 had no
+    row for it. The shape measured is the one the week's own budget is stated over, a week holding
+    ``BLOCKS_IN_A_FULL_WEEK`` blocks, with twenty deadlined tasks so the marking is doing real work
+    rather than answering over an empty backlog.
+
+    Measured on the branch that PAYS: the week's pending slot is empty, so the read assembles and
+    probes. A week whose slot is current serves a stored verdict and is the cheaper of the two.
+
+    The ceiling this suite fails at is the same one ``test_week_view_integration.py`` uses and is
+    several times the budget, because a developer's machine and a CI runner are not the deployment.
+    The figure is printed so a regression is visible without the run turning red on a slow host.
+    """
+    headers, area_id = configured
+    week = this_week()
+    due = datetime.combine(week.dates()[-1], datetime.min.time(), tzinfo=UTC) + timedelta(hours=9)
+    for index in range(DEADLINED_TASKS):
+        capture_a_task(
+            http,
+            headers,
+            area_id,
+            title=f"deadlined {index}",
+            estimateMinutes=2 * AN_HOUR,
+            deadline=due.isoformat(),
+        )
+    append_a_full_week(live_database_url, owner.tenant_id, week)
+
+    populated = backlog(http, headers)
+    assert populated["header"]["openCount"] == DEADLINED_TASKS
+    assert week_view(http, headers, week)["verdict"] is not None, (
+        "the week served no verdict, so this measures the cheap path rather than the assembly"
+    )
+
+    elapsed = []
+    for _ in range(LATENCY_SAMPLES):
+        started = time.perf_counter()
+        answered = http.get(TASKS_PREFIX, headers=headers)
+        elapsed.append((time.perf_counter() - started) * 1000)
+        assert answered.status_code == HTTPStatus.OK, answered.text
+
+    ordered = sorted(elapsed)
+    p95 = quantiles(ordered, n=20)[-1]
+    print(
+        f"\nGET /api/v1/tasks on a {BLOCKS_IN_A_FULL_WEEK}-block week with {DEADLINED_TASKS} "
+        f"deadlined tasks over {LATENCY_SAMPLES} reads: "
+        f"p50 {ordered[len(ordered) // 2]:.1f} ms, p95 {p95:.1f} ms, max {ordered[-1]:.1f} ms"
+    )
+
+    assert p95 < CATASTROPHIC_MILLISECONDS, ordered
