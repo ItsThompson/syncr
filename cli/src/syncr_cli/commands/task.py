@@ -77,7 +77,7 @@ def register(nouns: Verbs, shared: Parser) -> None:
             "syncr task list --json | jq '.data.tasks[].title'",
         ),
     )
-    _filter_arguments(listing)
+    filter_arguments(listing)
     done = register_command(
         verbs,
         noun=NOUN,
@@ -219,10 +219,23 @@ def _capture_arguments(command: argparse.ArgumentParser) -> None:
     )
 
 
-def _filter_arguments(command: argparse.ArgumentParser) -> None:
+def filter_arguments(
+    command: argparse.ArgumentParser,
+    *,
+    status_help: str = "only tasks in this status. Every status when omitted",
+) -> None:
+    """The two filters both list commands take, declared once.
+
+    Shared rather than restated, the way ``_block_argument`` is: ``backlog list`` declared
+    ``--area`` without ``stated_identifier`` and so forwarded a whitespace-only value to the api
+    instead of refusing it here with exit 2, which is what two spellings of one argument buys. Only
+    the wording
+    of ``--status`` differs between the two, because only its default meaning does.
+    """
     command.add_argument(
-        "--area", metavar="AREA_ID", type=stated_identifier, help="only tasks in this Area"
+        "--area",
+        metavar="AREA_ID",
+        type=stated_identifier,
+        help="only the tasks in this Area, header counts included",
     )
-    command.add_argument(
-        "--status", choices=STATUSES, help="only tasks in this status. Every status when omitted"
-    )
+    command.add_argument("--status", choices=STATUSES, help=status_help)

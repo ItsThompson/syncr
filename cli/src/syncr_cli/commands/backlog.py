@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from syncr_cli.commands.task import STATUSES, read_backlog
+from syncr_cli.commands.task import filter_arguments, read_backlog
 from syncr_cli.parser import add_verb, register_command
 from syncr_cli.results import CliResult
 
@@ -48,14 +48,9 @@ def register(nouns: Verbs, shared: Parser) -> None:
             "syncr backlog list --json | jq '.data.header.atRiskCount'",
         ),
     )
-    listing.add_argument(
-        "--area", metavar="AREA_ID", help="only the tasks in this Area, header counts included"
-    )
-    listing.add_argument(
-        "--status",
-        choices=STATUSES,
-        help=f"read another status instead of the '{OPEN}' work the backlog holds",
-    )
+    # The same two filters ``task list`` takes, from the same declaration: two spellings of one
+    # argument is how this one came to accept a whitespace-only Area that the other refuses.
+    filter_arguments(listing, status_help=f"read another status instead of the '{OPEN}' work")
 
 
 def listed(runtime: Runtime, invocation: Invocation) -> CliResult:

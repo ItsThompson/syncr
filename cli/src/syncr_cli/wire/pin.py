@@ -13,13 +13,14 @@ verdict is what it cost.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
-from syncr_cli.errors import MalformedResponse
 from syncr_cli.wire.operation import Operation
-from syncr_cli.wire.reading import JsonMapping, instant, mapping, nested, text
+from syncr_cli.wire.reading import JsonMapping, mapping, nested, span, text
 from syncr_cli.wire.verdict import Verdict
-from syncr_domain.intervals import Interval, IntervalError
+
+if TYPE_CHECKING:
+    from syncr_domain.intervals import Interval
 
 PINNED_PATH = "pinned"
 
@@ -46,25 +47,11 @@ class Pinned:
             pin_id=text(pin, "id", where),
             iso_week=text(pin, "isoWeek", where),
             block_id=text(pin, "blockId", where),
-            interval=_span(pin, "interval", where),
-            superseded_placement=_span(pin, "supersededPlacement", where),
+            interval=span(pin, "interval", where),
+            superseded_placement=span(pin, "supersededPlacement", where),
             verdict=Verdict.read(nested(payload, "verdict", PINNED_PATH), f"{PINNED_PATH}.verdict"),
             operation=Operation.read(
                 nested(payload, "operation", PINNED_PATH), f"{PINNED_PATH}.operation"
             ),
             payload=payload,
         )
-
-
-def _span(payload: JsonMapping, name: str, path: str) -> Interval:
-    span = nested(payload, name, path)
-    where = f"{path}.{name}"
-    start = instant(span, "start", where)
-    end = instant(span, "end", where)
-    try:
-        return Interval(start, end)
-    except IntervalError as error:
-        raise MalformedResponse(
-            f"{where} runs from {start.isoformat()} to {end.isoformat()}, which is not a span. "
-            "Every span on this wire is half-open and runs forward."
-        ) from error

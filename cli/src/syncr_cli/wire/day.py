@@ -25,16 +25,17 @@ from syncr_cli.wire.reading import (
     integer,
     mapping,
     mappings,
-    nested,
     optional_instant,
     optional_nested,
     optional_text,
+    span,
     text,
 )
-from syncr_domain.intervals import Interval, IntervalError
 
 if TYPE_CHECKING:
     from datetime import datetime
+
+    from syncr_domain.intervals import Interval
 
 DAY_PATH = "day"
 OUTCOME_PATH = "outcome"
@@ -94,7 +95,7 @@ class LedgerRow:
         recorded = optional_nested(payload, "outcome", path)
         return cls(
             block_id=text(payload, "blockId", path),
-            interval=_interval(payload, path),
+            interval=span(payload, "interval", path),
             duration_minutes=integer(payload, "durationMinutes", path),
             area_name=optional_text(payload, "areaName", path) or NO_AREA,
             title=text(payload, "title", path),
@@ -157,20 +158,6 @@ def _date(payload: JsonMapping) -> date:
     except ValueError as error:
         raise MalformedResponse(
             f"day.date is {raw!r}, which is not an ISO date such as '2026-02-10'."
-        ) from error
-
-
-def _interval(payload: JsonMapping, path: str) -> Interval:
-    span = nested(payload, "interval", path)
-    where = f"{path}.interval"
-    start = instant(span, "start", where)
-    end = instant(span, "end", where)
-    try:
-        return Interval(start, end)
-    except IntervalError as error:
-        raise MalformedResponse(
-            f"{where} runs from {start.isoformat()} to {end.isoformat()}, which is not a span. "
-            "Every span on this wire is half-open and runs forward."
         ) from error
 
 

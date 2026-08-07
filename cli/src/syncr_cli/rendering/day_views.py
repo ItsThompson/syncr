@@ -22,6 +22,8 @@ from syncr_cli.rendering.views import PlainView
 from syncr_domain.zones import resolve_zone
 
 if TYPE_CHECKING:
+    from zoneinfo import ZoneInfo
+
     from syncr_cli.wire.day import DayLedger, LedgerRow
     from syncr_cli.wire.reading import JsonMapping
 
@@ -69,8 +71,18 @@ class DayLedgerView(PlainView):
         areas = max(len(row.area_name) for row in rows)
         titles = min(TITLE_COLUMN_LIMIT, max(len(row.title) for row in rows))
         ahead = {row.block_id for row in self.day.ahead}
+        # Resolved once per ledger rather than once per row: it is one zone for the whole day, and a
+        # lookup per row is a lookup per row.
+        zone = resolve_zone(self.day.zone)
         return [
-            self._row(row, width=width, areas=areas, titles=titles, ahead=row.block_id in ahead)
+            self._row(
+                row,
+                width=width,
+                areas=areas,
+                titles=titles,
+                ahead=row.block_id in ahead,
+                zone=zone,
+            )
             for row in rows
         ]
 
@@ -82,10 +94,19 @@ class DayLedgerView(PlainView):
             f"{self.day.unconfirmed_days} {_plural('day', self.day.unconfirmed_days)} unconfirmed",
         ]
 
-    def _row(self, row: LedgerRow, *, width: int, areas: int, titles: int, ahead: bool) -> str:
+    def _row(
+        self,
+        row: LedgerRow,
+        *,
+        width: int,
+        areas: int,
+        titles: int,
+        ahead: bool,
+        zone: ZoneInfo,
+    ) -> str:
         """One row: the wall times, the duration, the Area, the title, then the words."""
         line = (
-            f"{ROW_INDENT}{self._wall_times(row)} "
+            f"{ROW_INDENT}{_wall_times(row, zone)} "
             f"{minutes_cell(row.duration_minutes, width)}{COLUMN_SEPARATOR}"
             f"{row.area_name.ljust(areas)}{COLUMN_SEPARATOR}"
             f"{row.title.ljust(titles)}"
@@ -94,12 +115,12 @@ class DayLedgerView(PlainView):
             line = f"{line}{COLUMN_SEPARATOR}{marker}"
         return line.rstrip()
 
-    def _wall_times(self, row: LedgerRow) -> str:
-        """A row's span as wall clock times in the zone the day's bounds were resolved in."""
-        resolved = resolve_zone(self.day.zone)
-        start = row.interval.start.astimezone(resolved)
-        end = row.interval.end.astimezone(resolved)
-        return f"{start:%H:%M}-{end:%H:%M}"
+
+def _wall_times(row: LedgerRow, zone: ZoneInfo) -> str:
+    """A row's span as wall clock times in the zone the day's bounds were resolved in."""
+    start = row.interval.start.astimezone(zone)
+    end = row.interval.end.astimezone(zone)
+    return f"{start:%H:%M}-{end:%H:%M}"
 
 
 def _markers(row: LedgerRow, *, ahead: bool) -> list[str]:

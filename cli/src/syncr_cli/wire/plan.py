@@ -18,17 +18,17 @@ from syncr_cli.errors import MalformedResponse
 from syncr_cli.wire.reading import (
     JsonMapping,
     boolean,
-    instant,
     mappings,
-    nested,
     optional_text,
+    span,
     text,
 )
 from syncr_domain.identity import Origin
-from syncr_domain.intervals import Interval, IntervalError
 
 if TYPE_CHECKING:
     from datetime import datetime
+
+    from syncr_domain.intervals import Interval
 
 # The origins the ledger names in the marker column, and the ones it deliberately leaves blank.
 # Two sets rather than one, so the partition is assertable against the vocabulary: an origin that
@@ -83,7 +83,7 @@ class Block:
     def read(cls, payload: JsonMapping, path: str) -> Self:
         return cls(
             id=text(payload, "id", path),
-            interval=_interval(payload, path),
+            interval=span(payload, "interval", path),
             origin=text(payload, "origin", path),
             title=text(payload, "title", path),
             area_id=_optional_id(payload, "areaId", path),
@@ -116,7 +116,7 @@ class ForbiddenWindow:
 
     @classmethod
     def read(cls, payload: JsonMapping, path: str) -> Self:
-        return cls(interval=_interval(payload, path), label=text(payload, "label", path))
+        return cls(interval=span(payload, "interval", path), label=text(payload, "label", path))
 
     def as_entry(self) -> Entry:
         return Entry(
@@ -162,20 +162,6 @@ class PlanDocument:
         return tuple(
             sorted(rows, key=lambda row: (row.interval.start, row.interval.end, row.title))
         )
-
-
-def _interval(payload: JsonMapping, path: str) -> Interval:
-    span = nested(payload, "interval", path)
-    where = f"{path}.interval"
-    start = instant(span, "start", where)
-    end = instant(span, "end", where)
-    try:
-        return Interval(start, end)
-    except IntervalError as error:
-        raise MalformedResponse(
-            f"{where} runs from {start.isoformat()} to {end.isoformat()}, which is not a span. "
-            "Every span on this wire is half-open and runs forward."
-        ) from error
 
 
 def _optional_id(payload: JsonMapping, name: str, path: str) -> UUID | None:
