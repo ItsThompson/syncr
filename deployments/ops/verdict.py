@@ -117,7 +117,22 @@ def _contents_hash_identically(before: Fingerprint, after: Fingerprint) -> Findi
     a comparison. At 03:00 on a deployment with one user the window is seconds, and the remedy is to
     re-run the drill; taking both readings inside one `pg_export_snapshot()` would remove the window
     entirely and is recorded as not taken.
+
+    A reading over ZERO tables REFUSES rather than passing. `ops.fingerprint` already declines to
+    parse a document with no digests, but the two guards were sequential rather than independent:
+    with the parser's refusal deleted, this claim read "every one of the 0 tables hashes
+    identically, so the rows came back byte for byte" and held. A claim that cannot fail is not a
+    claim.
     """
+    if not before.content_digests:
+        return Finding(
+            held=False,
+            claim=(
+                "no table was hashed before the dump, so nothing about the rows themselves is "
+                "comparable and this drill says nothing about content. The fingerprint the "
+                "manifest was written from is the thing to look at."
+            ),
+        )
     differing = {
         table: (digest[:12], after.content_digests[table][:12])
         for table, digest in before.content_digests.items()

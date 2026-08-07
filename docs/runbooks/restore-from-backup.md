@@ -65,14 +65,14 @@ Six steps, none of which touches the live database:
 | 5 boot | The api against the copy, waiting for its own `/readyz` | A copy `/readyz` will not serve |
 | 6 compare | The same fingerprint reader, against the manifest | Rows lost; **content that changed with the counts intact**; a cursor that re-derives differently; a drill with nothing to lose |
 
-**Read the seven claims it prints.** The exit status is not the result: `pg_restore` exits 0 having
+**Read the eight claims it prints.** The exit status is not the result: `pg_restore` exits 0 having
 restored an empty archive, which is why the pass condition is data read back.
 
 ```
 RESTORE DRILL
   PASS  every one of the 36 tables the dump was taken over is present
   PASS  no table came back short: 11 rows before the dump, 11 after the restore
-  PASS  every one of the 5 tables hashes identically, so the rows came back byte for byte
+  PASS  every one of the 36 tables hashes identically, so the rows came back byte for byte
   PASS  the plan history, outcomes, pins, adjustments and edit events all held rows before the dump
   PASS  1 of 1 rotation cursors had advanced before the dump
   PASS  all 1 rotation cursors re-derive to the variant they were on
@@ -139,6 +139,7 @@ docker compose $OPS run --rm -e PGDATABASE=syncr_restored ops \
   pg_restore --dbname syncr_restored --no-owner --no-privileges --exit-on-error \
   /var/backups/restore/restore.dump
 ```
+
 For point-in-time recovery, WAL replay needs a `recovery.signal` and a `restore_command` in the
 restored data directory rather than a `pg_restore` into a running server. That path is **not verified
 on this deployment**: see "Not verified" below.
@@ -160,24 +161,39 @@ just await-ready
 
 ### 6. Verify with data, not with a green container
 
+**A READ, and nothing else.** This is the step where you decide whether the restore is correct, so
+nothing here writes to the bucket:
+
 ```
-just backup-now                                   # its first step writes a fingerprint of the live database
+docker compose $OPS run --rm fingerprint          # writes a fingerprint of the live database
 ```
 
 Compare it against the manifest that came with the dump: the same eight claims, by hand. Then look at
 the product: the Week screen for a past week, the Today ledger, one Area's budget. **A stack that boots
 is not a stack that recovered.**
 
-### 7. Turn the timers back on
+**Do not run `just backup-now` here.** It takes a real dump, uploads it, runs retention over the
+listing, and publishes `syncr_backup_last_success_timestamp_seconds`. At this step that would put
+possibly-wrong data in the bucket as the newest copy, prune against it, and move the one series
+`BackupStale` reads to tell you whether the NIGHTLY path works. There is a step for it below, after you
+have accepted the restore.
+
+### 7. Turn the timers back on, and back up what you recovered to
 
 ```
 systemctl start syncr-backup.timer syncr-learning.timer
 systemctl start syncr-walship.timer
+```
+
+Then, **once you have accepted the restore** and only then:
+
+```
 just backup-now                                   # a fresh copy of what you just recovered to
 ```
 
-The last line matters: the recovered database has no backup of its own until one runs, and the WAL
-lineage changed when the restore did.
+That line matters and its order matters: the recovered database has no backup of its own until one
+runs, the WAL lineage changed when the restore did, and this is also what moves the nightly success
+gauge, which must not be moved by a recovery that was still being judged.
 
 ## What a FAIL means, claim by claim
 
