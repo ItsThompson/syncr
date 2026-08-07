@@ -17,7 +17,6 @@ Requires=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/syncr
-Environment=SYNCR_OPS_COMPOSE=-f docker-compose.yml -f docker-compose.deploy.yml
 ExecStart=/usr/bin/just wal-ship
 # Shorter than the interval below plus its accuracy, so a hung upload is killed before the next run
 # starts rather than two shippers draining one directory.

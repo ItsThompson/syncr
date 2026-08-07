@@ -1,15 +1,13 @@
 # The nightly backup. Installed on the host; see docs/runbooks/deploy-and-rollback.md.
 #
 # It runs `just backup-now`, which is the SAME command a person runs by hand, so the schedule and a
-# manual run cannot drift into two procedures.
-#
-# SYNCR_OPS_COMPOSE adds the digest pins, so the nightly job runs the reviewed image rather than
-# whatever happens to be tagged on the host. Without it the recipe composes the base file only, which
-# is what a developer and the restore drill want.
+# manual run cannot drift into two procedures. That includes the digest pins: `ops_compose`'s DEFAULT
+# carries them, so this unit sets no compose seam and a human invocation resolves the same images.
 #
 # `docker compose` reads the project's own `.env` for interpolation, and that file IS the host secret
 # file: mode 0600, never in the repository, holding the bucket credentials, the Postgres password, and
-# the two encryption keys. Nothing is passed on this unit's command line.
+# the two encryption keys. The release's digests come from `deployments/digests.env`, which the recipe
+# reads. Nothing is passed on this unit's command line.
 
 [Unit]
 Description=syncr nightly backup: dump, verify, encrypt, upload off-host, prune, publish
@@ -23,7 +21,6 @@ Requires=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/syncr
-Environment=SYNCR_OPS_COMPOSE=-f docker-compose.yml -f docker-compose.deploy.yml
 ExecStart=/usr/bin/just backup-now
 # A run that hangs on a network is a run that must end, or the next one overlaps it. Well inside the
 # nightly window and far outside a real dump, which is seconds on a database of this size.

@@ -1,9 +1,10 @@
-# Every minute, measured from the END of the previous run rather than on a wall-clock grid.
+# Every minute, measured from the previous ACTIVATION.
 #
-# `OnUnitActiveSec` cannot overlap itself: a run that took fifty seconds is followed by the next a
-# minute later, not immediately. `AccuracySec` is tightened from systemd's one-minute default, which
-# would otherwise let the interval drift to two minutes and put the recovery point outside its
-# objective.
+# `OnUnitActiveSec` is relative to when the unit was last activated, not to when it finished:
+# `OnUnitInactiveSec` is the from-the-end one. So a fifty-second run is followed ten seconds later,
+# and what makes an overlap impossible is `TimeoutStartSec=45s` in the service, which is under this
+# interval. `AccuracySec` is tightened from systemd's one-minute default, which would otherwise let
+# the interval drift to two minutes and put the recovery point outside its objective.
 #
 # No `Persistent=true`: a missed minute of shipping is caught up by the next run, which drains
 # everything staged. The nightly dump carries that flag because a missed DAY is not caught up.

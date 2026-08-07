@@ -22,6 +22,12 @@
 # as the database is not a backup. That refusal has exactly one escape hatch, it is
 # named, and this file is the only thing in the tree that sets it. A production stack
 # composing this file would be visible in one `docker compose config`.
+#
+# IT IS ALSO WHAT MAKES THE DRILL RUNNABLE WITHOUT A RELEASE. `just restore-drill`
+# composes `docker-compose.deploy.yml`, which requires the recorded digests, so a drill
+# on a deployed host cannot prove a backup against an image built there. `just
+# drill-local` composes this file INSTEAD of that overlay, so the drill's own services
+# fall back to a local tag: an instrument nobody can run is an instrument nobody has run.
 # =============================================================================
 name: syncr
 

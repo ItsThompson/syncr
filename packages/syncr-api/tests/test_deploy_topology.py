@@ -101,13 +101,48 @@ DATA_NET_SERVICES: Final[Mapping[str, str]] = {
 # that restarts them would hold their memory all day: the fitter alone is ~800 MB while running.
 ONE_SHOTS: Final = ("learning", "ops", "fingerprint")
 
+# Every third-party image the deploy overlay pins LITERALLY, with the tag each digest was read from.
+# An exact list rather than a count, so a pin that goes missing while another is added is visible.
+THIRD_PARTY_TAGS: Final = (
+    "postgres:16.10-bookworm",
+    "prom/prometheus:v3.1.0",
+    "prom/alertmanager:v0.28.0",
+    "grafana/grafana:11.5.1",
+    "prom/node-exporter:v1.8.2",
+    "gcr.io/cadvisor/cadvisor:v0.52.1",
+    "prometheuscommunity/postgres-exporter:v0.16.0",
+)
 
-def resolved(*files: str, profiles: tuple[str, ...] = ("ops", "scheduled")) -> dict[str, Any]:
+
+def resolved(
+    *files: str,
+    profiles: tuple[str, ...] = ("ops", "scheduled"),
+    digests: bool = True,
+) -> dict[str, Any]:
     """The deployed configuration, as Compose resolves it.
 
     EVERY PROFILE, because `docker compose config` omits a profile-gated service entirely and three
     of the deployed services are gated. Without them the set this module reads is not the set it
     claims to bound, which is this repository's most repeated defect.
+
+    ``digests`` stands in for the release `just deploy` records on the host. With it false, this is
+    a machine that has never deployed, which is the state `just drill-local` runs in.
+    """
+    completed = _compose_config(*files, profiles=profiles, digests=digests)
+    assert completed.returncode == 0, completed.stderr
+    parsed: dict[str, Any] = json.loads(completed.stdout)
+    return parsed
+
+
+def _compose_config(
+    *files: str,
+    profiles: tuple[str, ...] = ("ops", "scheduled"),
+    digests: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    """Run `docker compose config` over these files, with or without a recorded release.
+
+    `docker` is resolved from the PATH this declares, which a developer and CI both have; an
+    absolute path would differ between the two.
     """
     command = ["docker", "compose"]
     for name in files:
@@ -115,17 +150,15 @@ def resolved(*files: str, profiles: tuple[str, ...] = ("ops", "scheduled")) -> d
     for profile in profiles:
         command += ["--profile", profile]
     command += ["config", "--format", "json"]
-    completed = subprocess.run(  # noqa: S603 - a fixed argv, no shell
+    environ = {"PATH": "/usr/bin:/bin:/usr/local/bin"}
+    return subprocess.run(  # noqa: S603 - a fixed argv, and no shell
         command,
         cwd=repo_root(),
-        env={**REQUIRED_VARIABLES, "PATH": "/usr/bin:/bin:/usr/local/bin"},
+        env={**REQUIRED_VARIABLES, **environ} if digests else environ,
         capture_output=True,
         text=True,
         check=False,
     )
-    assert completed.returncode == 0, completed.stderr
-    parsed: dict[str, Any] = json.loads(completed.stdout)
-    return parsed
 
 
 @pytest.fixture(scope="module")
@@ -220,23 +253,8 @@ class TestEveryImageIsPinned:
 
     def test_a_deploy_without_the_digest_file_refuses(self) -> None:
         """The reading that proves the `:?` form does what the comment says it does."""
-        # `docker` is resolved from the PATH this test declares, which is what a developer and CI
-        # both have; an absolute path would differ between the two.
-        completed = subprocess.run(
-            [  # noqa: S607 - `docker` from the PATH above, which a developer and CI both have
-                "docker",
-                "compose",
-                "-f",
-                "docker-compose.yml",
-                "-f",
-                "docker-compose.deploy.yml",
-                "config",
-            ],
-            cwd=repo_root(),
-            env={"PATH": "/usr/bin:/bin:/usr/local/bin"},
-            capture_output=True,
-            text=True,
-            check=False,
+        completed = _compose_config(
+            "docker-compose.yml", "docker-compose.deploy.yml", profiles=(), digests=False
         )
 
         assert completed.returncode != 0
@@ -255,11 +273,81 @@ class TestEveryImageIsPinned:
         assert found["fingerprint"]["image"] == found["api"]["image"]
 
     def test_the_third_party_digests_are_literal(self) -> None:
-        """Knowable now, so reviewed here, with the tag beside each one."""
+        """Knowable now, so reviewed here, with the tag beside each one.
+
+        An EXACT count over an enumerated list, in the style `MEMORY_LIMITS` and `DATA_NET_SERVICES`
+        use: a `>=` stops noticing when one pin goes missing and another is added.
+        """
         overlay = _text("docker-compose.deploy.yml")
 
-        assert overlay.count("@sha256:") >= 7
-        assert "# postgres:16.10-bookworm" in overlay
+        for tag in THIRD_PARTY_TAGS:
+            assert f"# {tag}" in overlay, tag
+        assert overlay.count("@sha256:") == len(THIRD_PARTY_TAGS)
+
+
+class TestTheDrillRunsWhatProductionRuns:
+    """A drill that restored into a host-built image would prove the backup against something else.
+
+    The reviewer's finding, and it was invisible until the configuration was RESOLVED: every human
+    invocation of the ops and drill recipes composed the base file alone, which names
+    `syncr-api:latest` and `syncr-ops:latest`. A digest pull creates no such tag, and both files
+    carry a `build:` section, so the deployed host would have BUILT the images from its checkout:
+    at step 11 of the first deployment, which is the criterion the epic cannot waive.
+    """
+
+    # The drill's own three, plus the two ops one-shots the recipes run. None is in section 19's
+    # resource table and all five must resolve the release's digests on a host.
+    DRILL_SERVICES = (
+        "ops",
+        "fingerprint",
+        "api-restore",
+        "fingerprint-restore",
+        "postgres-restore",
+    )
+
+    DRILL_FILES = ("docker-compose.yml", "docker-compose.restore.yml", "docker-compose.deploy.yml")
+    LOCAL_FILES = (
+        "docker-compose.yml",
+        "docker-compose.restore.yml",
+        "docker-compose.drill-local.yml",
+    )
+
+    def test_every_drill_service_resolves_a_digest_on_a_host(self) -> None:
+        """With the release recorded, which is the state `just deploy` leaves the host in."""
+        found = services(resolved(*self.DRILL_FILES))
+
+        for name in self.DRILL_SERVICES:
+            assert "@sha256:" in found[name]["image"], name
+
+    def test_the_drill_aborts_on_a_host_with_no_recorded_release(self) -> None:
+        """Rather than building one.
+
+        The requirement lives in the deploy overlay, and this is why the drill composes it:
+        interpolation happens per file BEFORE merging, so a requirement inside
+        `docker-compose.restore.yml` would fire for `just drill-local` too, which has no digests.
+        """
+        completed = _compose_config(*self.DRILL_FILES, digests=False)
+
+        assert completed.returncode != 0
+        assert "is missing a value" in completed.stderr
+
+    def test_the_local_drill_resolves_without_a_release(self) -> None:
+        """And this is what makes the instrument runnable: `just drill-local` composes no pins."""
+        found = services(resolved(*self.LOCAL_FILES, digests=False))
+
+        for name in ("ops", "fingerprint", "api-restore", "fingerprint-restore"):
+            assert found[name]["image"].endswith(":latest"), name
+
+    def test_the_scratch_database_is_the_digest_production_pins(self) -> None:
+        """`docker-compose.restore.yml` claims it runs the same Postgres. This reads that claim."""
+        deployed = services(resolved(*DEPLOYED_FILES))["postgres"]["image"]
+        scratch = services(resolved(*self.DRILL_FILES))["postgres-restore"]["image"]
+
+        assert scratch == deployed
+
+    def test_the_drill_never_composes_the_tunnel(self) -> None:
+        """A drill has no business being reachable."""
+        assert "cloudflared" not in services(resolved(*self.DRILL_FILES))
 
 
 class TestTheResourceBudget:

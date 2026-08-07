@@ -20,19 +20,27 @@ monitoring_compose := "-f docker-compose.yml -f docker-compose.dev.yml -f docker
 # production recipe passes exactly this set, so "what is deployed" has one spelling.
 deploy_compose := "-f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.deploy.yml -f docker-compose.tunnel.yml"
 
-# What the one-shot recipes below compose with. Base-only by default, which is what a developer and
-# the restore drill want; the deployed host sets SYNCR_OPS_COMPOSE to add the digest pins, so the
-# nightly timer runs the reviewed image rather than whatever is tagged locally. The systemd units in
-# `deployments/systemd/` set it, and `docs/runbooks/deploy-and-rollback.md` says why.
-ops_compose := env_var_or_default("SYNCR_OPS_COMPOSE", "-f docker-compose.yml")
+# What the one-shot recipes below compose with. THE DIGEST PINS ARE IN THE DEFAULT, because every
+# recipe here is one a runbook tells an operator to run on the deployed host, and a base-file-only
+# composition resolves `syncr-api:latest` and `syncr-ops:latest`, which a digest pull NEVER creates:
+# compose would then build them on the host, and the drill would prove the backup against an image
+# the deployment does not run. `just drill-local` overrides this, because a development machine has
+# no digests. See `docs/runbooks/deploy-and-rollback.md`, "what pins what".
+ops_compose := env_var_or_default(
+    "SYNCR_OPS_COMPOSE",
+    "-f docker-compose.yml -f docker-compose.deploy.yml"
+)
 
 # The restore drill's own topology: a scratch Postgres, an api booted against it, and the same
 # fingerprint reader the manifest was written with. Never composed with the tunnel: a drill has no
-# business being reachable.
+# business being reachable. Carries the pins for the reason above.
 #
 # Overridable so `just drill-local` can add the local-bucket overlay without a second copy of the six
 # steps. A recipe that exists twice is a recipe that gets fixed once.
-restore_compose := env_var_or_default("SYNCR_RESTORE_COMPOSE", "-f docker-compose.yml -f docker-compose.restore.yml")
+restore_compose := env_var_or_default(
+    "SYNCR_RESTORE_COMPOSE",
+    "-f docker-compose.yml -f docker-compose.restore.yml -f docker-compose.deploy.yml"
+)
 
 # Every Python member, in dependency order, so lint and test output reads bottom-up.
 members := "packages/syncr-common packages/syncr-domain packages/syncr-solver packages/syncr-api packages/syncr-learning cli"
@@ -298,8 +306,8 @@ test-frontend:
 
 # --- Lint and format --------------------------------------------------------
 
-# Every static gate: ruff, the format check, mypy, and the hook config
-lint: lint-style typecheck lint-hooks
+# Every static gate: ruff, the format check, mypy, the deployment's own package, and the hook config
+lint: lint-style typecheck lint-ops lint-hooks
 
 # ruff check plus the format check over every member
 lint-style:
@@ -323,6 +331,23 @@ typecheck:
       (cd "$member" && uv run --no-sync mypy) || failed=1
     done
     exit "$failed"
+
+# The deployment's own `ops` package: ruff at ITS language version, and mypy at the runtime's.
+#
+# `just lint-style` iterates the six workspace members and `deployments` is not one, so nothing in
+# `just lint` or in CI ever entered that directory: measured, a PEP 695 `type` alias placed there
+# passed mypy at 3.12 and was caught only by a hand-run `ruff check`, which left `deployments/ruff.toml`
+# enforced by a skippable pre-commit hook alone. That file exists for exactly one reason, in its own
+# header: `ops` runs on the Python `postgres:16.10-bookworm` carries, and a 3.12 construct there is a
+# SyntaxError on `import ops.dump` at 03:00 inside a container.
+#
+# mypy is run a SECOND time here, at 3.11, because the api member's own invocation type-checks this
+# package at 3.12 and therefore accepts what the image cannot parse. The two together are what make the
+# language version a gate rather than a comment.
+lint-ops:
+    cd deployments && uv run --no-sync ruff check .
+    cd deployments && uv run --no-sync ruff format --check .
+    cd deployments && uv run --no-sync mypy --python-version 3.11 --strict ops
 
 # Validate lefthook.yml. Nothing else reads it, and with no_auto_install the
 # installed hooks can drift from the file, so a malformed config must fail a gate
@@ -601,8 +626,9 @@ await-ready seconds="120":
 #
 # ROLLBACK IS RE-DEPLOYING THE PREVIOUS DIGESTS, which is why they are recorded. `digests.env` is what
 # cd.yml writes; `digests.previous.env` is the last set that reached readiness, so it is written AFTER
-# a deploy proves ready rather than before. A schema rollback is a restore rather than a deploy, which
-# is why migrations are forward-only and reviewed.
+# a deploy proves ready rather than before. The rollback pulls with `--policy missing`, because the
+# host it runs on may be the one that cannot reach the registry. A schema rollback is a restore rather
+# than a deploy, which is why migrations are forward-only and reviewed.
 deploy:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -617,7 +643,12 @@ deploy:
       # shellcheck disable=SC1090
       . "$1"
       set +a
-      docker compose {{deploy_compose}} pull --quiet || return 1
+      # `--policy missing` on a rollback, and this is the load-bearing difference between the two
+      # calls: the state a bad deploy is most likely to leave is a host that cannot reach the
+      # registry, and every previous image is already in the local store because a prior deploy
+      # pulled it. A plain `pull` would fail the rollback at its first command, which contradicted
+      # the rationale this whole arrangement is written from.
+      docker compose {{deploy_compose}} pull --quiet --policy "$2" || return 1
       docker compose {{deploy_compose}} up -d postgres || return 1
       docker compose {{deploy_compose}} run --rm --no-deps api alembic upgrade head || return 1
       docker compose {{deploy_compose}} up -d --no-deps api worker frontend || return 1
@@ -625,7 +656,7 @@ deploy:
         node_exporter cadvisor postgres_exporter || return 1
       just await-ready
     }
-    if deploy_from "$current"; then
+    if deploy_from "$current" always; then
       cp "$current" "$previous"
       echo "deployed, ready, and recorded $previous as the release to roll back to"
       exit 0
@@ -637,7 +668,7 @@ deploy:
       exit 1
     fi
     echo "re-deploying the previous digests from $previous" >&2
-    if deploy_from "$previous"; then
+    if deploy_from "$previous" missing; then
       echo "rolled back to the previous release, which is ready" >&2
       exit 1
     fi
@@ -646,6 +677,26 @@ deploy:
 
 # --- Backup and recovery ----------------------------------------------------
 # An untested backup is a belief. `just restore-drill` is the only thing here that proves otherwise.
+
+# Run one `docker compose` invocation with the release's recorded digests in the environment.
+#
+# THE ONE PLACE THE DIGEST FILE IS READ, and every recipe below goes through it. `cd.yml` writes
+# `deployments/digests.env` on the host and `just deploy` records the last set that reached readiness;
+# compose interpolates those variables and the deploy overlay requires them, so without this every
+# human invocation on the host would resolve a `:latest` tag that a digest pull never created and
+# compose would build one from the checkout.
+#
+# Absent locally, which is correct: `just drill-local` composes files that need no digest, and any
+# other recipe run without them stops at compose's own message naming the variable.
+[private]
+_compose +ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    set -a
+    # shellcheck disable=SC1091
+    [ -f deployments/digests.env ] && . deployments/digests.env
+    set +a
+    exec docker compose {{ARGS}}
 
 # Take one backup now: the fingerprint, then the dump. Both steps, in that order.
 #
@@ -661,9 +712,9 @@ deploy:
 # The nightly timer runs this recipe rather than the two commands, so the schedule and a manual run
 # cannot drift. See `deployments/systemd/syncr-backup.service`.
 backup-now:
-    docker compose {{ops_compose}} run --rm ops python3 -m ops.prepare
-    docker compose {{ops_compose}} run --rm fingerprint
-    docker compose {{ops_compose}} run --rm ops python3 -m ops.dump
+    just _compose {{ops_compose}} run --rm ops python3 -m ops.prepare
+    just _compose {{ops_compose}} run --rm fingerprint
+    just _compose {{ops_compose}} run --rm ops python3 -m ops.dump
 
 # Ship every archived WAL segment off-host. Runs once a minute from a timer.
 #
@@ -672,7 +723,7 @@ backup-now:
 # publishing a fresh timestamp for an empty directory would claim a five-minute recovery point while
 # none existed.
 wal-ship:
-    docker compose {{ops_compose}} run --rm ops python3 -m ops.ship
+    just _compose {{ops_compose}} run --rm ops python3 -m ops.ship
 
 # Cross the user ids the ops container chowns volumes to against what the images actually run as.
 #
@@ -686,8 +737,12 @@ uid-check:
     failed=0
     # `--profile ops`, because `docker compose config` omits a profile-gated service and the ops
     # service is where these are declared: without it this read returns nothing and compares nothing.
+    #
+    # THE BASE FILE, named explicitly rather than `ops_compose`: what this crosses is a DECLARATION
+    # against the images two Dockerfiles produce, which is true of the checkout rather than of a
+    # release, so it must be runnable on a machine that has no recorded digests.
     declared() {
-      docker compose {{ops_compose}} --profile ops config \
+      docker compose -f docker-compose.yml --profile ops config \
         | awk -v key="$1:" '$1 == key {gsub(/"/, "", $2); print $2; exit}'
     }
     check() {
@@ -713,7 +768,7 @@ uid-check:
 # the timer runs: the container exits non-zero when a tenant's fit failed, and writes its exposition to
 # the textfile collector before exiting, which is how `LearningJobFailed` can see a run at all.
 learn-once:
-    docker compose {{ops_compose}} --profile scheduled run --rm learning
+    just _compose {{ops_compose}} --profile scheduled run --rm learning
 
 # THE RESTORE DRILL. Restore the newest off-host backup into a clean database, boot the stack against
 # it, and confirm the data came back.
@@ -740,7 +795,7 @@ restore-drill:
     set -uo pipefail
     SYNCR_DRILL_STARTED_AT="$(date +%s)"
     export SYNCR_DRILL_STARTED_AT
-    drill() { docker compose {{restore_compose}} "$@"; }
+    drill() { just _compose {{restore_compose}} "$@"; }
     # SURGICAL, BY SERVICE NAME. Never `down -v`: that is scoped to the PROJECT, and a local run
     # proved what that means here, deleting `pgdata`, the staging volume and the bucket. On the
     # deployed host the drill's own teardown would have destroyed the live database. The scratch
@@ -816,10 +871,20 @@ drill-seed:
 drill-local: drill-keys
     #!/usr/bin/env bash
     set -uo pipefail
+    # THE DEVELOPMENT ENCRYPTION KEY, exported here rather than worked around in the compose files.
+    #
+    # `docker-compose.yml` interpolates `${GOOGLE_TOKEN_ENCRYPTION_KEY:-}`, and an empty value
+    # OVERRIDES the settings layer's own safe development default, so the api refuses to start by
+    # name: measured, on a checkout with no `.env` at all. That refusal is the guard working, and it
+    # must stay for production, where a Fernet key from this repository would be a stored refresh
+    # token in the clear. So the value comes from `.env.example`, where it is documented as the
+    # development default, and it is exported for this recipe only.
+    export GOOGLE_TOKEN_ENCRYPTION_KEY="${GOOGLE_TOKEN_ENCRYPTION_KEY:-ZGV2LW9ubHktZ29vZ2xlLXRva2VuLWVuY3J5cHQta2U=}"
     # TWO overlay sets, and the difference matters: the backup runs against the LIVE database and the
     # drill runs against the scratch one. `docker-compose.restore.yml` is what repoints the ops
     # container at the scratch instance, so composing it into the backup would take a dump of a
-    # database that is not running.
+    # database that is not running. Neither set carries the deploy overlay, which is what lets both
+    # resolve a local tag on a machine that has never deployed.
     backup_overlays="-f docker-compose.yml -f docker-compose.drill-local.yml"
     drill_overlays="-f docker-compose.yml -f docker-compose.restore.yml -f docker-compose.drill-local.yml"
     echo "=== 1 a database, with no host port published"
