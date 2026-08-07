@@ -270,12 +270,18 @@ def test_no_module_of_the_api_composes_a_write_against_the_plan_of_record(
     assert modules_that_would_change_a_revision(source_root) == []
 
 
-def test_the_write_walk_reports_a_module_that_would_change_one() -> None:
-    # The control. Without it the rule passes forever the day the spellings stop matching what a
-    # writer would be written as.
-    invented = "await session.execute(update(PlanRevision).values(status='applied'))"
+def test_the_write_walk_reports_a_module_that_would_change_one(tmp_path: Path) -> None:
+    # The control, and it runs the WALK rather than the pattern: a rule whose subject set resolved
+    # to no files would pass forever, which is the failure every other walk in this file has its own
+    # control for. The invented module is written into a directory of its own, so it can never reach
+    # the package the rule is stated over.
+    invented = tmp_path / "revisions"
+    invented.mkdir()
+    (invented / "rewriting.py").write_text(
+        "await session.execute(update(PlanRevision).values(status='applied'))\n", encoding="utf-8"
+    )
 
-    assert any(spelling in invented for spelling in WRITES_A_REVISION)
+    assert modules_that_would_change_a_revision(tmp_path) == ["revisions/rewriting.py"]
 
 
 def test_every_route_that_answers_with_the_history_is_a_read(settings: ServiceSettings) -> None:

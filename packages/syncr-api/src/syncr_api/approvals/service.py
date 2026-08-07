@@ -3,7 +3,7 @@
 ```
 approve(week)
   └── ONE TRANSACTION
-        ├── weekVersion.held(week)     THE LOCK. Taken before anything is read
+        ├── weekVersion.hold(week)     THE LOCK. Taken before anything is read
         ├── read the slot. Empty ──▶ 409. There is nothing left to approve
         ├── refuse a document that changes anything the proposal did not show (assent.py)
         ├── pending.clear(week)
@@ -195,8 +195,9 @@ class ApprovalService:
         now = self._clock()
         # Before the slot and the live plan are read, because what is read decides the refusal and
         # an adoption committing in between would be invisible to it. The module docstring says why
-        # this row, and why one lock covers every path that appends.
-        await self._versions.held(week)
+        # this row, and why one lock covers every path that appends. The answer is discarded: what
+        # this call is for is the hold, and `current` is what answers the figure.
+        await self._versions.hold(week)
         pending = await self._proposals.find(week)
         if pending is None:
             raise Conflict(REPLACED_DETAIL)

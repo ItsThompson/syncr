@@ -8,8 +8,13 @@ conditional write then fails, and exactly one follow-up is enqueued.
 **It is also the lock a read-then-write decision is serialized on**, which is the same row doing
 the same job from the other side. A caller that reads the live plan, decides something from what it
 read, and then writes has to hold something across all three, or the plan it decided against can be
-replaced before the write lands. :meth:`WeekInputVersionRepository.held` is that hold, and it is
+replaced before the write lands. :meth:`WeekInputVersionRepository.hold` is that hold, and it is
 this row rather than a lock of its own because the conditional write already takes this one.
+
+**Whoever takes this row takes it first.** It is the only lock this api holds across several writes,
+so the order two transactions take their rows in is decided entirely by where this one sits: a
+caller that writes another table before it inverts the order against every caller that does not,
+and two such transactions deadlock. The rule is stated on :meth:`hold` where a caller reads it.
 
 Two states need care, and both are normal rather than exceptional.
 
@@ -80,13 +85,21 @@ class WeekInputVersionRepository(TenantScopedRepository):
             .with_only_columns(WeekInputVersion.version)
         )
 
-    async def held(self, iso_week: IsoWeek) -> int | None:
-        """The week's version, with the row locked until the caller's transaction ends.
+    async def hold(self, iso_week: IsoWeek) -> int | None:
+        """Take this week's version row until the caller's transaction ends, and say what it holds.
 
         For a caller that has to READ the week, decide something from what it read, and write: this
         is the row every such decision is serialized on, so the decision cannot be made against a
         live plan that another transaction replaces before the write lands. ``current`` answers the
         same question and holds nothing, which is what a caller reporting a figure wants.
+
+        **Named for the acquisition rather than for the answer**, because the answer is what
+        ``current`` is for: a caller that only needs the serialization discards it.
+
+        **Every caller that takes this row must take it FIRST.** The row is the one lock this api
+        holds across several writes, so a caller that touches another table before it inverts the
+        order against every caller that does not, and two such transactions deadlock. Ticket 1423
+        carries the one inversion that exists today.
 
         **A missing row is not locked and needs no lock**, which is the opposite of
         :meth:`holds_version`'s reading of the same absence and is right for the same reason. This

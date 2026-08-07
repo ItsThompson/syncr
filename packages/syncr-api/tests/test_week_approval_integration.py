@@ -423,13 +423,21 @@ class TestApprovalIsOneTransaction:
     async def test_two_approvals_of_one_slot_append_one_revision(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """Two clicks, two transactions, two different keys, and one slot.
+        """Two clicks, two transactions, two different keys, and one slot, on a VIRGIN week.
 
-        The ``DELETE`` is the claim: whichever transaction takes the row owns the approval, and the
-        other blocks on its lock and then finds nothing to delete. Run concurrently rather than in
-        sequence, because what is being asserted is the lock rather than the read.
+        This week has no version row, so the lock above has nothing to take and the ``DELETE``'s own
+        answer is the whole mechanism: whichever transaction deletes the row owns the approval, and
+        the other blocks on it and then finds nothing to delete. Run concurrently rather than in
+        sequence, because what is asserted is the lock rather than the read.
+
+        The state production actually reaches is the test below, where the week has a version row
+        and the loser is refused before it gets this far. Both are driven, because the service says
+        which mechanism holds in which state and an unexercised half of that claim is a claim.
         """
         await seed_slot(sessions, owner.tenant_id, a_week())
+        # The state this test is about, asserted rather than assumed: with no row there is nothing
+        # for the lock to take, so the DELETE's answer is the whole mechanism.
+        assert await version_of(sessions, owner.tenant_id) is None
 
         answers = await asyncio.gather(
             approve(sessions, owner), approve(sessions, owner), return_exceptions=True
@@ -440,6 +448,38 @@ class TestApprovalIsOneTransaction:
         assert "has been replaced" in refused[0].detail
         assert len(await revisions_of(sessions, owner.tenant_id)) == 1
         assert await projections_of(sessions, owner.tenant_id) == 1
+
+    async def test_two_approvals_of_a_week_that_holds_a_version_row_append_one_revision(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """The same race in the state production reaches, where the LOCK is what resolves it.
+
+        A week that holds a pending proposal always holds a live revision and therefore a version
+        row: the slot has one writer, that writer cannot fill a slot on a week with no live plan
+        (everything classifies as a fill there, so the proposal diff is empty), and a revision is
+        never deleted. So this is the interleaving a user can produce, and the loser never reaches
+        the DELETE: it waits on the version row and then reads a slot that is already gone.
+        """
+        live = a_week(a_block_holding(GYM, between(9, 10)))
+        await seed_live_plan(sessions, owner.tenant_id, live)
+        await seed_slot(sessions, owner.tenant_id, live)
+        async with sessions() as session, session.begin():
+            await WeekInputVersionRepository(session, owner.tenant_id).bump(
+                WEEK, at=BEFORE_THE_WEEK
+            )
+
+        answers = await asyncio.gather(
+            approve(sessions, owner), approve(sessions, owner), return_exceptions=True
+        )
+
+        refused = [one for one in answers if isinstance(one, Conflict)]
+        assert len(refused) == 1, answers
+        assert "has been replaced" in refused[0].detail
+        stored = await revisions_of(sessions, owner.tenant_id)
+        assert [one.status for one in stored] == ["applied", "approved"]
+        assert await projections_of(sessions, owner.tenant_id) == 1
+        # One bump, from the one approval that ran: the loser wrote nothing at all.
+        assert await version_of(sessions, owner.tenant_id) == 2
 
     async def test_approving_a_week_whose_slot_is_empty_says_what_still_works(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
