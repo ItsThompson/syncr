@@ -47,6 +47,10 @@ NO_AREA: Final = "--"
 
 DUE: Final = "due "
 
+# The word a row carries when the current verdict reports a deadline shortfall naming the task. A
+# word rather than a color or a symbol: a pipe strips both and does not strip a word.
+AT_RISK: Final = "at risk"
+
 
 @dataclass(frozen=True, slots=True)
 class BacklogView(PlainView):
@@ -122,7 +126,7 @@ class TaskView(PlainView):
 
 
 def _markers(task: Task) -> list[str]:
-    """The words a task's row carries: its status, its priority, and its deadline.
+    """The words a task's row carries: its status, its priority, its deadline, and its risk.
 
     Words rather than color, and never a symbol: a pipe strips color and a pipe does not strip a
     word, which is the rule every surface in this product follows.
@@ -130,6 +134,8 @@ def _markers(task: Task) -> list[str]:
     markers = [task.status, task.priority]
     if task.deadline is not None:
         markers.append(f"{DUE}{iso_deadline(task.deadline)}")
+    if task.at_risk:
+        markers.append(AT_RISK)
     return markers
 
 

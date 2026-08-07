@@ -7,6 +7,11 @@ member this package does not render would be a claim about the contract nothing 
 risk when the feasibility probe reports a deadline shortfall naming it, and a client that compared a
 deadline against a capacity of its own would put a task at risk on one surface and fine on another.
 So the count is read and printed, and nothing here derives one.
+
+**A task's own at-risk mark is read as absent-is-false**, which is the same smaller claim the
+verdict reader makes. The header count is on the contract today and the per-task field is arriving;
+reading it optionally means the marker appears the day the field does, and a build without it prints
+a backlog rather than refusing one.
 """
 
 from __future__ import annotations
@@ -45,6 +50,7 @@ class Task:
     priority: str
     status: str
     eligible_for_solving: bool
+    at_risk: bool
     payload: JsonMapping
 
     @classmethod
@@ -60,6 +66,7 @@ class Task:
             priority=text(payload, "priority", path),
             status=text(payload, "status", path),
             eligible_for_solving=boolean(payload, "eligibleForSolving", path),
+            at_risk=_at_risk(payload, path),
             payload=payload,
         )
 
@@ -67,6 +74,22 @@ class Task:
     def read_one(cls, body: object, path: str) -> Self:
         """One task, as a capture or a completion answers with it."""
         return cls.read(mapping(body, path), path)
+
+
+def _at_risk(payload: JsonMapping, path: str) -> bool:
+    """Whether the current verdict reports a deadline shortfall naming this task.
+
+    Absent reads as false rather than being required. The header's count is on the contract and the
+    per-task field is arriving with the probe that produces it, so the smaller claim is the one a
+    later contract is less likely to falsify: a build reading a response without the field prints a
+    backlog rather than refusing one, and the marker appears the day the field does.
+
+    Present and not a boolean is refused, because that is a contract violation rather than an
+    absence.
+    """
+    if payload.get("atRisk") is None:
+        return False
+    return boolean(payload, "atRisk", path)
 
 
 @dataclass(frozen=True, slots=True)
