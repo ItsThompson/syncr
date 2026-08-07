@@ -207,6 +207,82 @@ class TestTheStateGauges:
         assert sample(STALENESS, source_id=str(created.id)) == 0.0
         assert f'source_id="{created.id}"' not in generate_latest(REGISTRY).decode()
 
+    async def test_a_source_the_user_excludes_publishes_no_staleness_at_all(
+        self, context: WorkerContext, owner: UserRecord
+    ) -> None:
+        """BREAK IT: exclude a source that was already a day stale, and read the gauge again.
+
+        An excluded source is never polled, so a reading for it grows without bound. `SourceStale`
+        is a maximum over sources, so a growing reading stuck the alert firing forever on a source
+        the user switched off DELIBERATELY: the expected outcome of their own instruction, which
+        section 18's second clause forbids alerting on. Measured before the fix at 864000.0 against
+        an 86400 threshold, reachable by one PATCH.
+
+        The record states the principle one property away: "the user asked for zero anchors from it,
+        so a stale error from before the exclusion must not render as a failure".
+
+        THE INPUT IS A SHAPE PRODUCTION EMITS, in the order production emits it. A source is polled
+        while included, which is what writes `last_success_at` (`sync.SourceSyncer.sync` ->
+        `save_sync_state`); the user then excludes it, through `PATCH /calendar-sources/{id}` ->
+        `api.py:96` -> `service.change_source:170` -> `set_inclusion`. This test calls that same
+        writer, one layer below the HTTP edge.
+        """
+        async with context.database.sessionmaker() as session, session.begin():
+            created = await a_source(session, owner, added=NOW - timedelta(days=10))
+            await CalendarSourceRepository(session, owner.tenant_id).save_sync_state(
+                created.id,
+                SyncStateRecord(
+                    last_success_at=NOW - timedelta(days=10),
+                    last_attempt_at=NOW - timedelta(days=10),
+                    anchors_current=7,
+                ),
+            )
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+        assert sample(STALENESS, source_id=str(created.id)) == 864000.0
+        assert sample(ANCHORS, source_id=str(created.id)) == 7.0
+
+        async with context.database.sessionmaker() as session, session.begin():
+            await CalendarSourceRepository(session, owner.tenant_id).set_inclusion(
+                created.id, included=False, display_name=None
+            )
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+
+        assert sample(STALENESS, source_id=str(created.id)) == 0.0
+        assert f'{STALENESS}{{source_id="{created.id}"}}' not in generate_latest(REGISTRY).decode()
+
+    async def test_an_excluded_source_still_draws_its_anchor_count_as_zero(
+        self, context: WorkerContext, owner: UserRecord
+    ) -> None:
+        """The anchor gauge reads the record's own property, not the raw sync-state column.
+
+        `anchor_count` is zero for an excluded source whatever its last successful sync read, which
+        is the figure every other surface uses. Reading the column drew seven anchors for a source
+        contributing none to any plan, so the panel disagreed with the product about one source.
+
+        The series stays, unlike the staleness one: zero anchors from an excluded source is a true
+        and useful reading, and nothing alerts on it.
+
+        Same production shape as the test above, and the service's own docstring states the intent
+        it is checked against: "Excluding one reports zero anchors immediately rather than at the
+        next poll, which is what the read model's excluded state renders." The exposition renders it
+        now too.
+        """
+        async with context.database.sessionmaker() as session, session.begin():
+            sources = CalendarSourceRepository(session, owner.tenant_id)
+            created = await a_source(session, owner, added=NOW - timedelta(days=10))
+            await sources.save_sync_state(
+                created.id,
+                SyncStateRecord(last_success_at=NOW - timedelta(hours=1), anchors_current=7),
+            )
+            await sources.set_inclusion(created.id, included=False, display_name=None)
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+
+        assert sample(ANCHORS, source_id=str(created.id)) == 0.0
+        assert f'{ANCHORS}{{source_id="{created.id}"}}' in generate_latest(REGISTRY).decode()
+
 
 class TestTheProductJob:
     async def test_it_reads_every_tenant_without_raising(

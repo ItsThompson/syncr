@@ -14,10 +14,8 @@ An attempt produces a duration, an outcome, a count of events read and a set of 
 four are recorded where the attempt happens.
 
 Staleness and the anchor count are not attempt-shaped. A gauge set only when a source is polled
-freezes at whatever the last poll saw, and an EXCLUDED source is never polled at all: the reading
-would then say a feed was fresh because nobody had looked at it, which is precisely backwards for an
-alert stated at 24 hours. So both are set from stored state on a duty that runs whether or not
-anything else happened. :func:`observed_state` is that reading, and it takes the source rows.
+freezes at whatever the last poll saw, so both are set from stored state on a duty that runs whether
+or not anything else happened. :func:`observed_state` is that reading, and it takes the source rows.
 
 **A SOURCE THAT HAS NEVER SUCCEEDED IS MEASURED FROM WHEN THE USER ADDED IT.** Not from its last
 attempt: every failed poll refreshes that instant, so a feed added with a wrong URL, a feed the
@@ -27,14 +25,37 @@ twenty minutes ago. ``created_at`` is the one instant on the row that does not m
 never-synced source crosses the 24-hour threshold a day after it was added, which is the condition
 the alert is stated over.
 
-## A source the user removes takes its series with it
+**AN EXCLUDED SOURCE PUBLISHES NO STALENESS AT ALL.** Not a growing reading, which is what an
+earlier version of this module argued for and got backwards. The reasoning was: a poll-driven gauge
+freezes at whatever the last poll saw, and an excluded source is never polled, so it would read as
+fresh because nobody had looked. The premise is right and the conclusion is not. The user asked for
+zero anchors from that source, so it going unread is the EXPECTED OUTCOME of their own instruction
+rather than a fault, and `SourceStale` reads a maximum over sources precisely so one stale feed
+fires it: a growing reading meant the alert stuck firing forever on a source the user had switched
+off, reachable by one ``PATCH`` with ``included: false``. The record states the principle this
+broke, one property away: "the user asked for zero anchors from it, so a stale error from before the
+exclusion must not render as a failure: that would be syncr reporting a problem the user already
+resolved."
+
+**The anchor count comes from the record's own property, not from the sync-state column.**
+``anchor_count`` is zero for an excluded source whatever the last successful sync read, and
+``anchors_current`` is the raw column. Reading the column drew seven anchors for a source
+contributing none to any plan, which is the panel disagreeing with every other surface about one
+source.
+
+## A source the user removes or excludes takes its series with it
 
 These two are labelled gauges set by iterating current rows, and nothing in the client library
-removes a child. The worker is long-lived, so without :func:`_forgotten` a source the user deleted
+removes a child. The worker is long-lived, so without :func:`_reconciled` a source the user deleted
 would keep its last reading until the process restarted: if that reading was over 24 hours,
 ``SourceStale`` would fire forever on a source that no longer exists, which is an alert for a
 condition the user cannot act on. The children are removed rather than the family cleared, so no
 series goes momentarily absent and one tenant's reading cannot wipe another's.
+
+**The two families reconcile against DIFFERENT sets, and that is the whole of the exclusion rule.**
+Every source a tenant holds has an anchor count, including an excluded one, whose count is zero and
+worth drawing. Only an INCLUDED source has a staleness worth alerting on, so an excluded source's
+staleness child is removed by the same mechanism that removes a deleted source's.
 
 ## Why the label is a source id and not a source name
 
@@ -62,9 +83,14 @@ if TYPE_CHECKING:
     from syncr_api.calendars.records import CalendarSourceRecord
     from syncr_domain.identifiers import TenantId
 
-# Which source ids each tenant's last reading published, so a source the user removed can have its
-# series removed rather than left at its last value.
-_PUBLISHED: dict[TenantId, frozenset[str]] = {}
+# Which source ids each tenant's last reading published, per family, so a source the user removed or
+# excluded can have its series removed rather than left at its last value. Keyed by family as well
+# as tenant, because the two families reconcile against different sets.
+_PUBLISHED: dict[tuple[str, TenantId], frozenset[str]] = {}
+
+# The two family names, used as the reconciliation key so it cannot drift from the gauge it removes.
+ANCHORS: Final = "syncr_anchors_current"
+STALENESS: Final = "syncr_source_staleness_seconds"
 
 # The same two values the projection uses, read from it rather than restated: a read that came back
 # is a success whether the feed had changed or not, and a read that did not is a failure. An
@@ -107,15 +133,16 @@ EVENTS_REJECTED = Counter(
 )
 
 ANCHORS_CURRENT = Gauge(
-    "syncr_anchors_current",
-    "Anchors one source currently holds, by source identifier.",
+    ANCHORS,
+    "Anchors one source currently contributes to the plan. Zero for an excluded source.",
     labelnames=("source_id",),
     registry=REGISTRY,
 )
 
 SOURCE_STALENESS = Gauge(
-    "syncr_source_staleness_seconds",
-    "Seconds since one source was last read successfully, by source identifier.",
+    STALENESS,
+    "Seconds since one INCLUDED source was last read successfully, by source identifier. "
+    "An excluded source has no series: it is not polled by the user's own instruction.",
     labelnames=("source_id",),
     registry=REGISTRY,
 )
@@ -164,30 +191,40 @@ def observed_state(
     there has never been one: every other instant on the row moves when a poll fails, so a feed that
     has never worked would otherwise report one poll interval of staleness forever.
 
-    A source this tenant no longer holds has its two series removed, so a deleted source cannot go
-    on contributing to the maximum the alert reads.
+    An EXCLUDED source publishes no staleness at all. It is never polled, so a reading for it would
+    grow without bound and stick the alert firing on a source the user switched off deliberately.
+
+    A source this tenant no longer holds, and an included source that has since been excluded, both
+    have their staleness child removed, so the maximum the alert reads cannot see either.
     """
     held = tuple(sources)
     for source in held:
-        state = source.sync_state
-        ANCHORS_CURRENT.labels(source_id=str(source.id)).set(state.anchors_current)
+        # The record's own property rather than the sync-state column: zero for an excluded source,
+        # whatever its last successful sync read, which is the figure every other surface uses.
+        ANCHORS_CURRENT.labels(source_id=str(source.id)).set(source.anchor_count)
+    for source in held:
+        if not source.included:
+            continue
         SOURCE_STALENESS.labels(source_id=str(source.id)).set(
-            _staleness_seconds(state.last_success_at, source.created_at, now=now)
+            _staleness_seconds(source.sync_state.last_success_at, source.created_at, now=now)
         )
-    _forgotten(tenant_id, {str(source.id) for source in held})
+    _reconciled(ANCHORS_CURRENT, ANCHORS, tenant_id, {str(one.id) for one in held})
+    _reconciled(
+        SOURCE_STALENESS, STALENESS, tenant_id, {str(one.id) for one in held if one.included}
+    )
 
 
-def _forgotten(tenant_id: TenantId, present: set[str]) -> None:
-    """Remove the two series of every source this tenant published before and no longer holds.
+def _reconciled(gauge: Gauge, family: str, tenant_id: TenantId, present: set[str]) -> None:
+    """Remove every child of ``gauge`` this tenant published before and no longer publishes.
 
     The published set is tracked here rather than read off the collector, because the client library
     exposes no public way to enumerate a family's children and a private attribute is not a
-    contract. Kept per tenant, so one tenant's reading cannot remove another's series.
+    contract. Kept per family and per tenant: the two families reconcile against different sets,
+    because an excluded source keeps an anchor count of zero and loses its staleness entirely.
     """
-    for source_id in _PUBLISHED.get(tenant_id, frozenset()) - present:
-        ANCHORS_CURRENT.remove(source_id)
-        SOURCE_STALENESS.remove(source_id)
-    _PUBLISHED[tenant_id] = frozenset(present)
+    for source_id in _PUBLISHED.get((family, tenant_id), frozenset()) - present:
+        gauge.remove(source_id)
+    _PUBLISHED[(family, tenant_id)] = frozenset(present)
 
 
 def _staleness_seconds(
