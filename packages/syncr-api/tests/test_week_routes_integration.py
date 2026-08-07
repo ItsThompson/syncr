@@ -43,7 +43,6 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 
@@ -79,8 +78,14 @@ from syncr_api.solving.repository import OperationRepository
 from syncr_api.templates.config import DAY_TYPES_PREFIX, WEEK_PATTERN_PREFIX
 from syncr_domain.plan import RevisionReason
 from syncr_domain.weeks import IsoWeek, Weekday
-from tests.boundaries import mapped_classes, read_paths
-from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
+from tests.boundaries import read_paths
+from tests.live_tenants import (
+    PASSWORD,
+    provision_owner,
+    remove_tenant,
+    row_counts,
+    run,
+)
 from tests.plan_documents import a_block, a_document, a_zone_map, between
 
 if TYPE_CHECKING:
@@ -382,35 +387,6 @@ def enqueue_a_solve(database_url: str, tenant_id: TenantId, iso_week: IsoWeek) -
     run(enqueue())
 
 
-def row_counts(database_url: str, tenant_id: TenantId, source_root: Path) -> dict[str, int]:
-    """How many rows this tenant holds in every scoped table the application declares.
-
-    Bounded by the mapped classes rather than by a list, so a table a later feature module adds is
-    counted here without this test being extended. Counts rather than values, because a read may
-    legitimately touch a column: what it may not do is bring a row into existence.
-    """
-
-    async def count() -> dict[str, int]:
-        database = create_database(database_url)
-        try:
-            async with database.sessionmaker() as session:
-                counted = {}
-                for model in mapped_classes(source_root):
-                    scope = getattr(model, "tenant_id", None)
-                    table = getattr(model, "__tablename__", None)
-                    if scope is None or table is None:
-                        continue
-                    total = await session.scalar(
-                        select(func.count()).select_from(model).where(scope == tenant_id)
-                    )
-                    counted[str(table)] = int(total or 0)
-                return counted
-        finally:
-            await database.engine.dispose()
-
-    return run(count())
-
-
 def week_view(http: TestClient, headers: dict[str, str], iso_week: object) -> dict[str, Any]:
     answered = http.get(week_path(iso_week), headers=headers)
     assert answered.status_code == HTTPStatus.OK, answered.text
@@ -436,11 +412,39 @@ def hours(span: dict[str, str]) -> float:
 # --------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("suffix", ["", "/revisions", "/verdict"])
-def test_every_week_read_needs_a_credential(http: TestClient, suffix: str) -> None:
-    answered = http.get(week_path(this_week(), suffix))
+def every_week_read(settings: ServiceSettings) -> list[str]:
+    """Every parameterized GET under the week prefix, read off the app's own route table.
 
-    assert answered.status_code == HTTPStatus.UNAUTHORIZED
+    Bounded by the routes rather than by a list, so a week read a later ticket adds is driven by the
+    guards below without that ticket remembering to extend one. Five exist: the composed view, the
+    history, the verdict, the pending proposal, and the concession list another module declares on
+    the same prefix.
+    """
+    return [
+        path
+        for path in read_paths(create_app(settings), parameterized=True)
+        if path.startswith(WEEKS_PREFIX)
+    ]
+
+
+def test_every_week_read_needs_a_credential(http: TestClient, settings: ServiceSettings) -> None:
+    """Driven over the app's own route table, so a week read added later is covered here."""
+    paths = every_week_read(settings)
+    assert paths, "no week read was found, so this asserted nothing"
+
+    for path in paths:
+        answered = http.get(path.replace("{iso_week}", str(this_week())))
+
+        assert answered.status_code == HTTPStatus.UNAUTHORIZED, path
+
+
+def test_the_reads_driven_above_include_the_four_this_module_owns(
+    settings: ServiceSettings,
+) -> None:
+    """Named so the arrival of a fifth week route is a diff, and so the walk is not empty."""
+    assert set(every_week_read(settings)) >= {
+        week_path("{iso_week}", suffix) for suffix in ("", "/proposal", "/revisions", "/verdict")
+    }
 
 
 def test_requesting_a_solve_needs_a_credential(http: TestClient) -> None:
@@ -514,20 +518,26 @@ def test_the_composed_read_answers_with_the_plan_and_everything_beside_it(
     assert view["inputVersion"] >= 1
 
 
-def test_the_fields_no_component_populates_yet_are_present_and_empty(
+def test_the_fields_a_materialized_week_has_nothing_to_put_in_are_present_and_empty(
     http: TestClient, a_planned_week: tuple[dict[str, str], IsoWeek]
 ) -> None:
-    """Present rather than omitted, so the generated contract does not change shape when filled."""
+    """A week the maintainer materialized has no proposal, no concession, no pin and no conflict.
+
+    Present rather than omitted, which is what lets a client narrow ``null`` alone. The verdict is
+    the one of the six that is NOT empty here: a week with a plan always has one, and this week's
+    reports what capacity arithmetic could prove about it.
+    """
     headers, week = a_planned_week
 
     view = week_view(http, headers, week)
 
-    assert view["verdict"] is None
     assert view["proposal"] is None
     assert view["candidateAdjustment"] is None
     assert view["adjustments"] == []
     assert view["pins"] == []
     assert view["conflicts"] == []
+    assert view["verdict"] is not None
+    assert view["verdict"]["provenance"] == "probe"
 
 
 def test_the_wire_document_does_not_carry_the_three_figures_the_readings_carry_live(
@@ -662,10 +672,14 @@ def test_the_reason_and_the_readings_are_present_exactly_when_the_plan_is_absent
     live_database_url: str,
     named: str,
 ) -> None:
-    """``emptyReason`` is null exactly when ``live`` is populated, and so are the other three.
+    """``emptyReason`` is null exactly when ``live`` is populated, and so are the other four.
 
     Driven over five weeks in three states rather than asserted once, because the invariant is a
     biconditional and a suite that only ever read one state would hold half of it.
+
+    The verdict is one of the four, and it is the one whose null side is a claim rather than an
+    absence: a week the maintainer has not reached has had nothing computed about it, so a verdict
+    beside it would be a statement about a plan that does not exist.
     """
     if named == "planned":
         produce_a_plan(live_database_url, owner.tenant_id, this_week())
@@ -679,6 +693,7 @@ def test_the_reason_and_the_readings_are_present_exactly_when_the_plan_is_absent
 
     absent = view["live"] is None
     assert (view["readings"] is None) is absent
+    assert (view["verdict"] is None) is absent
     assert (view["emptyReason"] is not None) is absent
     assert (view["emptyWeek"] is not None) is absent
 
@@ -1056,13 +1071,25 @@ def test_driving_every_week_route_leaves_the_stored_revision_untouched(
     owner: UserRecord,
     a_planned_week: tuple[dict[str, str], IsoWeek],
     live_database_url: str,
+    settings: ServiceSettings,
 ) -> None:
-    """Including the one route that writes: requesting a solve appends no revision either."""
+    """Including the one route that writes: requesting a solve appends no revision either.
+
+    The reads are the app's own route table rather than a list of suffixes, so a week read added
+    later is driven here. A 404 is an answer: the proposal read answers one on a week whose slot is
+    empty, and what is under test is the revision rows rather than the status.
+    """
     headers, week = a_planned_week
     before = stored_revisions(live_database_url, owner.tenant_id)
+    paths = every_week_read(settings)
+    assert paths, "no week read was found, so this asserted nothing"
 
-    for suffix in ("", "/revisions", "/verdict"):
-        assert http.get(week_path(week, suffix), headers=headers).status_code == HTTPStatus.OK
+    for path in paths:
+        answered = http.get(path.replace("{iso_week}", str(week)), headers=headers)
+        assert answered.status_code in {HTTPStatus.OK, HTTPStatus.NOT_FOUND}, (
+            path,
+            answered.text,
+        )
     assert http.post(week_path(week, "/solve"), headers=headers).status_code == HTTPStatus.ACCEPTED
 
     assert stored_revisions(live_database_url, owner.tenant_id) == before
@@ -1111,14 +1138,10 @@ def test_no_parameterized_week_read_brings_a_row_into_existence(
 
     Every scoped table the application declares is counted before and after, ``verdict_events``
     among them, so a read that appended a transition would redden this without the table being
-    named.
+    named. Three of the four reads compute a verdict now, so the counting has something to catch.
     """
     headers, week = a_planned_week
-    paths = [
-        path
-        for path in read_paths(create_app(settings), parameterized=True)
-        if path.startswith(WEEKS_PREFIX)
-    ]
+    paths = every_week_read(settings)
     assert paths, "no parameterized week read was found, so this asserted nothing"
     before = row_counts(live_database_url, owner.tenant_id, source_root)
     assert before[VERDICT_EVENTS_TABLE] == 0
@@ -1129,6 +1152,9 @@ def test_no_parameterized_week_read_brings_a_row_into_existence(
         assert answered.status_code != HTTPStatus.INTERNAL_SERVER_ERROR, (path, answered.text)
 
     assert row_counts(live_database_url, owner.tenant_id, source_root) == before
+    assert week_view(http, headers, week)["verdict"] is not None, (
+        "no read computed a verdict, so the verdict_events count above asserted nothing"
+    )
 
 
 def test_counting_rows_would_have_caught_a_write(
@@ -1149,33 +1175,76 @@ def test_counting_rows_would_have_caught_a_write(
     assert row_counts(live_database_url, owner.tenant_id, source_root) != before
 
 
-def test_two_identical_reads_answer_with_identical_bytes(
-    http: TestClient, a_planned_week: tuple[dict[str, str], IsoWeek]
+def test_two_identical_reads_at_one_instant_answer_with_identical_bytes(
+    owner: UserRecord, live_database_url: str, settings: ServiceSettings
 ) -> None:
-    headers, week = a_planned_week
+    """Reproducible at a stated instant, which is what a reproducible read means here.
 
-    first = http.get(week_path(week), headers=headers)
-    second = http.get(week_path(week), headers=headers)
+    The clock is substituted rather than trusted. The verdict is a fact about an assembly stamped at
+    ``now``, so a read carries the instant it was computed at and capacity is clipped to it: two
+    reads a moment apart differ in that instant, and a deadline that passed between them can differ
+    in more than that. The invariant is that the answer is a function of the stored state and the
+    instant, which is the same discipline the assembler states about its own argument.
+    """
+    at_a_stated_instant = datetime.now(UTC).replace(microsecond=0)
+    database = create_database(live_database_url)
+    app = create_app(settings, lifespan=create_db_lifespan(database.engine))
+    app.state.db = database
+    app.dependency_overrides[get_week_service] = _week_service_at(at_a_stated_instant)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        headers = sign_in(client, owner.email)
+        set_home_zone(client, headers, LONDON)
+        declare_an_area(client, headers)
+        declare_a_day_shape(client, headers)
+        seed_a_weight_set(live_database_url, owner.tenant_id)
+        produce_a_plan(live_database_url, owner.tenant_id, this_week())
 
-    assert first.status_code == second.status_code == HTTPStatus.OK
+        first = client.get(week_path(this_week()), headers=headers)
+        second = client.get(week_path(this_week()), headers=headers)
+
+    assert first.status_code == second.status_code == HTTPStatus.OK, first.text
+    assert first.json()["verdict"] is not None, "no verdict was computed, so this asserted less"
     assert first.content == second.content
 
 
-def test_reading_the_verdict_answers_null_and_appends_nothing(
+def test_reading_the_verdict_answers_the_weeks_verdict_and_appends_nothing(
     http: TestClient,
     owner: UserRecord,
     a_planned_week: tuple[dict[str, str], IsoWeek],
     live_database_url: str,
     source_root: Path,
 ) -> None:
+    """The cheap refresh answers the same verdict the composed read does, and writes no row.
+
+    Asserted against the composed read rather than against a literal, because what the two must not
+    do is disagree: one rule serves both, so a week reporting a packing failure on one and a
+    capacity check on the other would be two rules.
+    """
     headers, week = a_planned_week
     before = row_counts(live_database_url, owner.tenant_id, source_root)
 
     answered = http.get(week_path(week, "/verdict"), headers=headers)
 
     assert answered.status_code == HTTPStatus.OK, answered.text
-    assert answered.json() == {"verdict": None}
+    assert answered.json()["verdict"] is not None
+    assert (
+        answered.json()["verdict"]["provenance"]
+        == week_view(http, headers, week)["verdict"]["provenance"]
+    )
     assert row_counts(live_database_url, owner.tenant_id, source_root) == before
+
+
+def test_reading_the_verdict_of_a_week_with_no_plan_answers_null(
+    http: TestClient, configured: dict[str, str]
+) -> None:
+    """Null exactly when ``live`` is null, which is the biconditional the composed read states."""
+    beyond = a_week_past_the_horizon()
+
+    answered = http.get(week_path(beyond, "/verdict"), headers=configured)
+
+    assert answered.status_code == HTTPStatus.OK, answered.text
+    assert answered.json() == {"verdict": None}
+    assert week_view(http, configured, beyond)["live"] is None
 
 
 def test_the_verdict_route_refuses_an_identifier_that_is_not_a_week(
