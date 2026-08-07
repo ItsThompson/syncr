@@ -86,8 +86,10 @@ def require_empty(*, run: Run) -> None:
     stated = postgres.scalar(PUBLIC_TABLE_COUNT, run=run)
     if stated != "0":
         raise RestoreRefused(
-            f"the restore target already holds {stated} tables in `public`. Drop and recreate it: "
-            "`just restore-drill` does that with `docker compose down -v` on the scratch instance."
+            f"the restore target already holds {stated} tables in `public`. Drop it BY SERVICE "
+            "NAME: `docker compose rm -fsv postgres-restore`, which is what `just restore-drill` "
+            "does. Never `docker compose down -v`: that is scoped to the whole project and takes "
+            "the live database's volume with it."
         )
 
 

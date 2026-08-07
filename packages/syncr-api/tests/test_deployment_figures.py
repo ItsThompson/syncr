@@ -14,7 +14,7 @@ in any one of them silently moves the recovery point.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 import pytest
 from ops.config import (
@@ -31,12 +31,16 @@ from ops.config import (
     WAL_STALE_AFTER_SECONDS,
     WEEKLY_COPIES,
 )
+from ops.process import Result
+from ops.restore import RestoreRefused, require_empty
 
 from tests.test_alert_rules import named as alert_named
 from tests.test_alert_rules import repo_root
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
+
+    from ops.process import Run
 
 RUNBOOKS: Final = Path("docs/runbooks")
 
@@ -66,6 +70,15 @@ SECTION_21_RUNBOOKS: Final = (
 )
 
 SYSTEMD: Final = Path("deployments/systemd")
+
+
+def _every_runbook() -> tuple[str, ...]:
+    """Every runbook in the directory, which is the set a rule about runbooks has to be stated over.
+
+    Section 21 names eleven and this deployment has sixteen: the alert-named ones ticket 54 wrote
+    are runbooks too, and one of them is the file this ticket rewrote.
+    """
+    return tuple(sorted(path.name for path in (repo_root() / RUNBOOKS).glob("*.md")))
 
 
 def read(relative: Path) -> str:
@@ -349,9 +362,24 @@ class TestTheTimersAgreeWithTheConfiguration:
     @pytest.mark.parametrize(
         "unit", ["syncr-backup.service", "syncr-walship.service", "syncr-learning.service"]
     )
-    def test_each_unit_composes_the_digest_pins(self, unit: str) -> None:
-        """Or the nightly job runs whatever is tagged on the host rather than the reviewed image."""
-        assert "docker-compose.deploy.yml" in read(SYSTEMD / unit)
+    def test_no_unit_needs_a_compose_seam(self, unit: str) -> None:
+        """The DEFAULT carries the digest pins, so the timer and a human run the same images.
+
+        The first version set `SYNCR_OPS_COMPOSE` in each unit and left the default base-file-only,
+        so the three timers were correct and every documented human path resolved `syncr-api:latest`
+        which a digest pull never creates. Putting the pins in the default made the units' seam
+        redundant; asserting its absence is what stops it coming back and taking the human paths
+        with it.
+        """
+        assert "SYNCR_OPS_COMPOSE" not in directives(SYSTEMD / unit)
+
+    def test_the_recipes_the_units_call_compose_the_digest_pins_by_default(self) -> None:
+        """Read from the justfile's own defaults, which is what every caller resolves."""
+        justfile = read(Path("justfile"))
+
+        for variable in ("ops_compose", "restore_compose"):
+            declared = justfile.partition(f"{variable} := env_var_or_default(")[2].partition(")")[0]
+            assert "docker-compose.deploy.yml" in declared, variable
 
     @pytest.mark.parametrize(
         "unit", ["syncr-backup.service", "syncr-walship.service", "syncr-learning.service"]
@@ -393,6 +421,228 @@ class TestTheRecipesTheRunbooksName:
             assert f"\n{recipe}:" in justfile or f"\n{recipe} " in justfile, recipe
 
 
+class TestTheShellVariablesTheRunbooksUse:
+    """A `$NAME` an operator pastes has to be defined in the file they pasted it from.
+
+    `$DEPLOY` and `$OPS` were used in thirteen commands across four runbooks and defined nowhere in
+    the tree, so the first check in the file for the case where nothing is wrong with the data ran
+    against the base compose file alone. Same root cause as the recipes resolving `:latest`, and the
+    same fix: say it where it is read.
+    """
+
+    # Variables a runbook may use without defining, because the shell or the reader supplies them.
+    # Named rather than pattern-matched, so a fourteenth undefined variable fails.
+    SUPPLIED_BY_THE_READER = frozenset({"?", "PWD", "HOME", "VERSION_CODENAME"})
+
+    @pytest.mark.parametrize("name", _every_runbook())
+    def test_every_variable_it_uses_is_defined_in_it(self, name: str) -> None:
+        content = read(RUNBOOKS / name)
+
+        undefined = sorted(
+            _variables_used_in(content)
+            - _variables_defined_in(content)
+            - self.SUPPLIED_BY_THE_READER
+        )
+
+        assert undefined == [], (
+            f"{name} uses {undefined} and defines none of them, so an operator pasting a command "
+            "from it runs it with an empty value"
+        )
+
+    def test_it_reads_every_runbook_rather_than_the_eleven_section_21_names(self) -> None:
+        """THE SET THIS BOUNDS IS EVERY FILE IN THE DIRECTORY, and the first version was not.
+
+        Parametrized over section 21's eleven, it never read `backup-stale.md`: the file whose FIRST
+        CHECK uses `$OPS`, and the one this ticket rewrote. Measured by removing that file's own
+        definition and watching nothing redden.
+        """
+        reading = set(_every_runbook())
+
+        assert "backup-stale.md" in reading
+        assert set(SECTION_21_RUNBOOKS) < reading
+
+    def test_the_reading_sees_a_variable_that_is_used(self) -> None:
+        """The positive control: the two that shipped undefined."""
+        used = _variables_used_in(
+            "docker compose $OPS run --rm ops ls\ndocker compose $DEPLOY ps\n"
+        )
+
+        assert used == {"OPS", "DEPLOY"}
+
+    def test_the_reading_sees_a_definition(self) -> None:
+        assert _variables_defined_in('OPS="-f docker-compose.yml"\n') == {"OPS"}
+        assert _variables_defined_in("export SYNCR_BACKUP_PRIVATE_KEY=/run/secrets/key\n") == {
+            "SYNCR_BACKUP_PRIVATE_KEY"
+        }
+
+    def test_sourcing_the_host_secret_file_defines_what_it_documents(self) -> None:
+        """`set -a; . ./.env` is how a runbook gets `DATABASE_URL`, and it is a definition."""
+        found = _variables_defined_in("cd /opt/syncr && set -a && . ./.env && set +a\n")
+
+        assert "DATABASE_URL" in found
+        assert "POSTGRES_PASSWORD" in found, "read from .env.example rather than listed here"
+
+    def test_the_compose_set_a_runbook_defines_is_the_one_the_recipes_carry(self) -> None:
+        """A runbook defining its own different set would be a second topology."""
+        justfile = read(Path("justfile"))
+
+        for name in _every_runbook():
+            content = read(RUNBOOKS / name)
+            if 'OPS="' not in content:
+                continue
+            stated = content.partition('OPS="')[2].partition('"')[0]
+            assert stated in justfile, f"{name} defines an OPS set the justfile does not carry"
+
+
+class TheDestructiveTeardown:
+    """Nothing in this tree may TELL anyone to run `docker compose down -v`.
+
+    `down -v` is scoped to the PROJECT, and the dev stack, the deployed stack and the drill share
+    one project name. A local run of this ticket's own drill proved what that means: its teardown
+    deleted `pgdata`, the WAL volume, the staging volume and the bucket. The code path was fixed to
+    remove containers BY SERVICE NAME, and the instruction survived in a refusal message the
+    operator reads while trying to recover years of data, falsely attributed to the recipe that
+    avoids it.
+
+    So the rule is stated over the whole tree rather than over the recipe: every occurrence must be
+    either inside the one recipe whose name says what it destroys, or on a line that forbids it.
+    """
+
+    # The one recipe allowed to run it. Its name says what it does, and it names the dev stack's own
+    # compose files, which is a different project from the deployed one.
+    ALLOWED_RECIPE = "dev-reset"
+
+    # A line that mentions it while forbidding it. Both words are ordinary English and neither can
+    # be written by accident on a line that instructs the command.
+    FORBIDDING = ("never", "not")
+
+    # The one file allowed to quote the forbidden instruction without forbidding it: this one, which
+    # cannot state the rule without naming the string. Declared rather than pattern-matched, so a
+    # second file claiming the same exemption fails.
+    DECLARING_FILE = "packages/syncr-api/tests/test_deployment_figures.py"
+
+
+class TestTheDestructiveTeardown:
+    def test_nothing_instructs_it_outside_the_recipe_that_owns_it(self) -> None:
+        offenders = [
+            f"{path}:{number}: {line.strip()}"
+            for path, number, line in _lines_mentioning("down -v")
+            if path != TheDestructiveTeardown.DECLARING_FILE
+            and not _inside_dev_reset(path, number)
+            and not any(word in line.lower() for word in TheDestructiveTeardown.FORBIDDING)
+        ]
+
+        assert offenders == [], (
+            "these lines mention `docker compose down -v` without forbidding it, and it is scoped "
+            f"to the PROJECT rather than to a service: {offenders}"
+        )
+
+    def test_the_reading_sees_the_line_that_shipped(self, tmp_path: Path) -> None:
+        """The positive control, over the WALK, with the exact line a reviewer found on a terminal.
+
+        Driven against a tree of its own rather than against the repository, because the rule's
+        whole point is that a NEW file cannot reintroduce the instruction, and a control that could
+        not see one in a file this suite does not already know about would prove nothing.
+        """
+        shipped = (
+            "`just restore-drill` does that with `docker compose down -v` on the scratch instance."
+        )
+        (tmp_path / "invented.py").write_text(f'raise Refused("{shipped}")\n', encoding="utf-8")
+        (tmp_path / "innocent.md").write_text(
+            "Never run `docker compose down -v` here.\n", encoding="utf-8"
+        )
+
+        found = _lines_mentioning("down -v", root=tmp_path)
+        offenders = [
+            path
+            for path, _, line in found
+            if not any(word in line.lower() for word in TheDestructiveTeardown.FORBIDDING)
+        ]
+
+        assert len(found) == 2, "the walk reads both file types"
+        assert offenders == ["invented.py"], "and only the one that instructs it is an offender"
+
+    def test_the_reading_covers_more_than_one_file_type(self) -> None:
+        """A guard over one extension would have missed this one, which lived in a `.py`."""
+        suffixes = {
+            Path(path).suffix or Path(path).name for path, _, _ in _lines_mentioning("down -v")
+        }
+
+        assert len(suffixes) >= 2, suffixes
+
+    def test_the_refusal_names_the_command_the_recipe_actually_runs(self) -> None:
+        """The remedy an operator is given has to be the one the drill uses."""
+        with pytest.raises(RestoreRefused) as refused:
+            require_empty(run=_answering("37"))
+
+        stated = str(refused.value)
+        assert "rm -fsv postgres-restore" in stated
+        assert "Never `docker compose down -v`" in stated
+        assert "rm -fsv postgres-restore" in read(Path("justfile")), (
+            "the message names a command `just restore-drill` does not run"
+        )
+
+
+def _answering(stdout: str) -> Run:
+    """A :class:`ops.process.Run` answering one value, for the one psql reading a refusal takes."""
+
+    def run(argv: Sequence[str], **_: object) -> Result:
+        return Result(argv=tuple(argv), returncode=0, stdout=stdout, stderr="")
+
+    return cast("Run", run)
+
+
+def _lines_mentioning(fragment: str, *, root: Path | None = None) -> list[tuple[str, int, str]]:
+    """Every line of every source, document, recipe and Compose file that names ``fragment``.
+
+    The tree is walked rather than a list of files read, because the point of the rule is that a NEW
+    file cannot reintroduce the instruction.
+    """
+    walking = root if root is not None else repo_root()
+    found: list[tuple[str, int, str]] = []
+    for path in sorted(walking.rglob("*")):
+        if not path.is_file() or _ignored(path.relative_to(walking)):
+            continue
+        if path.suffix not in {".py", ".md", ".yml", ".yaml", ".sh"} and path.name != "justfile":
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if fragment in line:
+                found.append((str(path.relative_to(walking)), number, line))
+    return found
+
+
+# Directories a walk of a working tree must not enter: two are build output, one is another
+# project's dependency tree, and one is this repository's own history.
+_NOT_SOURCE = (".git", ".venv", "node_modules", ".mypy_cache", ".ruff_cache", "__pycache__", "dist")
+
+
+def _ignored(relative: Path) -> bool:
+    return any(part in _NOT_SOURCE for part in relative.parts)
+
+
+def _inside_dev_reset(path: str, number: int) -> bool:
+    """Whether this line is inside the one recipe allowed to destroy volumes."""
+    if path != "justfile":
+        return False
+    lines = read(Path("justfile")).splitlines()
+    opener = next(
+        (
+            index
+            for index, line in enumerate(lines, start=1)
+            if line.startswith(f"{TheDestructiveTeardown.ALLOWED_RECIPE}:")
+        ),
+        None,
+    )
+    if opener is None:  # pragma: no cover - the recipe exists, and its absence fails elsewhere
+        return False
+    for index in range(opener + 1, len(lines) + 1):
+        if index == number:
+            return True
+        if lines[index - 1] and not lines[index - 1].startswith((" ", "\t")):
+            return False
+    return False
+
+
 def _recipes_named_in(documents: Iterable[str]) -> set[str]:
     """Every `just <recipe>` a runbook tells the operator to RUN.
 
@@ -408,3 +658,35 @@ def _recipes_named_in(documents: Iterable[str]) -> set[str]:
     for document in documents:
         found |= set(inline.findall(document)) | set(fenced.findall(document))
     return found
+
+
+def _variables_used_in(document: str) -> set[str]:
+    """Every `$NAME` or `${NAME}` a document's commands expand."""
+    import re
+
+    return set(re.findall(r"\$\{?([A-Za-z_?][A-Za-z0-9_]*)\}?", document))
+
+
+def _variables_defined_in(document: str) -> set[str]:
+    """Every variable a document sets before it uses one.
+
+    Two mechanisms, because the tree uses both. A literal `NAME=` or `export NAME=` at the start of
+    a line, and SOURCING THE HOST SECRET FILE, which is how a runbook gets `DATABASE_URL` and every
+    other key `.env.example` documents: `set -a; . ./.env` defines them as surely as an assignment
+    does, and a reading that only saw assignments would have made that runbook impossible to satisfy
+    honestly.
+    """
+    import re
+
+    found = set(re.findall(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=", document, re.MULTILINE))
+    if re.search(r"\.\s+\.?/?\.env\b", document):
+        found |= _keys_the_environment_file_documents()
+    return found
+
+
+def _keys_the_environment_file_documents() -> set[str]:
+    """Every key `.env.example` declares, which is what sourcing the host secret file provides."""
+    import re
+
+    text = read(Path(".env.example"))
+    return set(re.findall(r"^([A-Z][A-Z0-9_]*)=", text, re.MULTILINE))

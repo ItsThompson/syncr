@@ -16,14 +16,31 @@
 # than a hope. A drill that does not know what production is cannot decline to
 # overwrite it.
 #
-# The scratch instance runs the SAME pinned Postgres as production. A restore proven
-# against another version is a restore proven against another server.
+# EVERY IMAGE HERE IS PINNED THE WAY PRODUCTION'S ARE, and that is not decoration: a
+# drill that restored into an image built on the host would prove the backup against
+# something the deployment does not run.
+#
+# HOW THE PINNING IS ENFORCED, because Compose decides it in an order worth knowing.
+# Interpolation happens per file BEFORE merging, so a `${VAR:?}` here would abort even
+# when a later overlay replaces the same key: measured, and it is why the two api-image
+# services below take the digest with a local-tag FALLBACK rather than a requirement.
+# The requirement lives where it already did. `just restore-drill` composes
+# `docker-compose.deploy.yml`, whose `api` pin has no default, so a drill on a host with
+# no recorded digests stops at that message; and because the variable is the same one,
+# the services below then resolve the same digest. `just drill-local` omits that overlay,
+# which is what makes the drill runnable on a machine that has never deployed.
+#
+# The scratch Postgres carries the same literal digest the deploy overlay pins for the
+# live database, crossed by a test so the two cannot drift.
 # =============================================================================
 name: syncr
 
 services:
   postgres-restore:
-    image: postgres:16.10-bookworm
+    # postgres:16.10-bookworm, the same digest `docker-compose.deploy.yml` pins for the
+    # live database. `tests/test_deploy_topology.py` asserts the two are identical: a
+    # restore proven against another version is a restore proven against another server.
+    image: postgres@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74
     # No tuning and no archiving: this instance exists for one restore and is dropped.
     # Archiving here would ship a drill's WAL into the bucket beside production's.
     command:
@@ -42,10 +59,11 @@ services:
     # layer, so `docker compose rm -fsv postgres-restore` removes it and every drill starts on a
     # database that has never held anything.
     #
-    # A NAMED VOLUME WAS THE FIRST VERSION AND IT WAS DANGEROUS: dropping one needs `down -v`, which
-    # is scoped to the PROJECT rather than to a service. Measured, in a local run: the drill's own
-    # teardown deleted `pgdata`, the staging volume and the bucket, which on the deployed host would
-    # have destroyed the live database while proving the backup could be restored.
+    # A NAMED VOLUME WAS THE FIRST VERSION AND IT WAS DANGEROUS: dropping one needs a `down -v`, never
+    # safe against this project, because it is scoped to the PROJECT rather than to a service.
+    # Measured, in a local run: the drill's own teardown deleted `pgdata`, the staging volume and the
+    # bucket, which on the deployed host would have destroyed the live database while proving the
+    # backup could be restored.
     networks:
       - data-net
     healthcheck:
@@ -77,7 +95,7 @@ services:
   # migration head, so this service reaching `healthy` is the criterion "boot the stack
   # against it" states, and it cannot pass against a copy that was not migrated.
   api-restore:
-    image: syncr-api:${SYNCR_IMAGE_TAG:-latest}
+    image: ${SYNCR_API_DIGEST:-syncr-api:${SYNCR_IMAGE_TAG:-latest}}
     build:
       context: .
       dockerfile: packages/syncr-api/Dockerfile
@@ -121,7 +139,7 @@ services:
   # The same console script the manifest was written by, against the restored copy. One
   # reader, two databases: two readers could disagree and a drill would not notice.
   fingerprint-restore:
-    image: syncr-api:${SYNCR_IMAGE_TAG:-latest}
+    image: ${SYNCR_API_DIGEST:-syncr-api:${SYNCR_IMAGE_TAG:-latest}}
     build:
       context: .
       dockerfile: packages/syncr-api/Dockerfile
