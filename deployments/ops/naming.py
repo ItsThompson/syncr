@@ -20,10 +20,16 @@ from ops.config import DUMP_SUFFIX, ENCRYPTED_SUFFIX, MANIFEST_SUFFIX
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-# `syncr-20260807T030000Z`, and nothing else this path writes looks like it.
+# `syncr-20260807T030000Z`, ANCHORED AT THE START, and nothing else this path writes looks like it.
+#
+# Anchored because `backups_in` and `unclassified` have to PARTITION a listing, which is what their
+# docstrings claim: with a search, an object named `copy-of-syncr-20260807T030000Z-elsewhere.tar`
+# was classified as a backup. Nothing foreign was ever deleted, since the delete set is intersected
+# with the listing's own names, but a phantom could occupy a daily slot and age a real copy out one
+# night early.
 _STAMP_FORMAT: Final = "%Y%m%dT%H%M%SZ"
 _PREFIX: Final = "syncr-"
-_STAMP = re.compile(rf"{_PREFIX}(\d{{8}}T\d{{6}}Z)")
+_STAMP = re.compile(rf"^{_PREFIX}(\d{{8}}T\d{{6}}Z)")
 
 
 def stamp(when: datetime) -> str:
