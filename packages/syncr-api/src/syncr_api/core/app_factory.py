@@ -31,6 +31,7 @@ from syncr_api.conflicts.wiring import build_conflicts_router
 from syncr_api.core.correlation import CorrelationMiddleware
 from syncr_api.core.error_handlers import PROBLEM_RESPONSES, build_exception_handlers
 from syncr_api.core.observability import create_metrics_router
+from syncr_api.core.request_metrics import RequestMetricsMiddleware
 from syncr_api.events.hub import EventHub
 from syncr_api.events.wiring import build_events_router
 from syncr_api.google_account.wiring import build_google_account_router
@@ -137,6 +138,11 @@ def create_app(
     for build_router in feature_routers:
         app.include_router(build_router())
 
+    # Added before the correlation middleware so correlation stays the OUTERMOST one:
+    # `add_middleware` prepends, so the last call wins the outer position. `app.routes` is the live
+    # route table, read on the first request, so the route label is the template of whatever routes
+    # were included above.
+    app.add_middleware(RequestMetricsMiddleware, routes=app.routes)
     # Mounted last so it is the outermost middleware: the correlation id is bound
     # before any router runs and survives out to the catch-all fault handler.
     app.add_middleware(CorrelationMiddleware)

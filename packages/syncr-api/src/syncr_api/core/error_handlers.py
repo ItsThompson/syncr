@@ -30,6 +30,7 @@ from syncr_api.core.errors import (
     SyncrError,
     ValidationFailed,
 )
+from syncr_api.core.request_metrics import PROBLEM_TYPE_STATE_KEY
 from syncr_common.logging import current_correlation_id, get_logger
 
 if TYPE_CHECKING:
@@ -59,7 +60,13 @@ def _status_phrase(status: int) -> str:
         return GENERIC_HTTP_ERROR_TITLE
 
 
-def _render(problem: Problem, *, headers: Mapping[str, str] | None = None) -> Response:
+def _render(
+    problem: Problem, *, request: Request, headers: Mapping[str, str] | None = None
+) -> Response:
+    # The type is handed to the request metrics through the request's own scope rather than parsed
+    # back out of this body, so `syncr_http_errors_total` is labelled by what was actually sent and
+    # the middleware holds no knowledge of the error contract.
+    request.scope.setdefault("state", {})[PROBLEM_TYPE_STATE_KEY] = problem.type
     return Response(
         content=problem.model_dump_json(exclude_none=True),
         status_code=problem.status,
@@ -73,14 +80,14 @@ def _field_path(location: tuple[int | str, ...]) -> str:
     return ".".join(str(part) for part in location)
 
 
-async def handle_syncr_error(_request: Request, exc: Exception) -> Response:
+async def handle_syncr_error(request: Request, exc: Exception) -> Response:
     """Map any :class:`SyncrError` subclass to problem details."""
     if not isinstance(exc, SyncrError):  # pragma: no cover - registered for SyncrError only
         raise exc
-    return _render(exc.as_problem(), headers=exc.response_headers())
+    return _render(exc.as_problem(), request=request, headers=exc.response_headers())
 
 
-async def handle_request_validation_error(_request: Request, exc: Exception) -> Response:
+async def handle_request_validation_error(request: Request, exc: Exception) -> Response:
     """Map FastAPI's request-validation failure into the same problem shape."""
     if not isinstance(exc, RequestValidationError):  # pragma: no cover - registered for this type
         raise exc
@@ -92,7 +99,8 @@ async def handle_request_validation_error(_request: Request, exc: Exception) -> 
         ValidationFailed(
             f"{len(errors)} request field(s) failed validation. Nothing was changed.",
             errors=errors,
-        ).as_problem()
+        ).as_problem(),
+        request=request,
     )
 
 
@@ -117,6 +125,7 @@ async def handle_http_exception(request: Request, exc: Exception) -> Response:
             detail=str(exc.detail),
             instance=current_correlation_id(),
         ),
+        request=request,
         headers=exc.headers,
     )
 
@@ -130,7 +139,8 @@ async def handle_unexpected(request: Request, exc: Exception) -> Response:
     """
     _log.error("api.request.failed", exc_info=exc, route=request.url.path)
     return _render(
-        InternalError("An unexpected error occurred. The request was not applied.").as_problem()
+        InternalError("An unexpected error occurred. The request was not applied.").as_problem(),
+        request=request,
     )
 
 
