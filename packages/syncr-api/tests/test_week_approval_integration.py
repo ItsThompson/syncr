@@ -509,6 +509,32 @@ class TestWhatApprovalRefuses:
 
         assert approved.revision.status == "approved"
 
+    async def test_a_proposal_that_showed_a_move_may_not_drop_the_block_instead(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """What was shown has to name the block AND leave it where the document does.
+
+        A diff saying "this moves to Thursday evening" is not assent to the block going away, so the
+        exemption pairs on the block and the placement the change leaves it at rather than on the
+        block alone. Unreachable through the shipped writer, because the adoption refuses a diff
+        whose changes do not pair with the document it is stored under; asserted anyway, because
+        this guard's whole job is to trust no earlier comparison.
+        """
+        live = a_week(a_block_holding(GYM, between(9, 10)))
+        elsewhere = a_block_holding(GYM, between(17, 18))
+        await seed_live_plan(sessions, owner.tenant_id, live)
+        await seed_slot(
+            sessions,
+            owner.tenant_id,
+            a_week(),
+            diff=a_moved(live.blocks[0], elsewhere),
+        )
+
+        with pytest.raises(Conflict, match="without asking"):
+            await approve(sessions, owner)
+
+        assert [one.status for one in await revisions_of(sessions, owner.tenant_id)] == ["applied"]
+
     async def test_a_proposal_that_restates_a_block_the_week_has_since_reached_is_refused(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:

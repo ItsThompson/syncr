@@ -67,14 +67,22 @@ def unassented_changes(
     ``live`` is ``None`` for a week whose plan of record does not exist yet, and such a week has
     nothing to move and nothing to drop, so nothing can be changed without assent.
 
+    A change is exempt when the proposal named the same block AND left it in the same place, which
+    is what the pair below is: the block, and where the change puts it. Pairing on the block alone
+    would let a proposal that said "this moves to Thursday" exempt a document that drops it, and
+    this module's whole job is to be the guard that trusts no earlier comparison. A removal states
+    no placement, so it pairs only with a removal.
+
     Raises :class:`~syncr_api.plans.errors.ClassificationRejected` when the document restates a
     part of the week that has elapsed since it was produced. That is a different refusal with a
     different remedy, so it stays an exception rather than becoming a member of this list.
     """
     if live is None:
         return ()
-    asked_about = {change.block_id for change in shown.changes()}
+    asked_about = {(change.block_id, change.after) for change in shown.changes()}
     diff = classify(live, document, now=now).proposal_diff
     return tuple(
-        change for change in (*diff.removed, *diff.moved) if change.block_id not in asked_about
+        change
+        for change in (*diff.removed, *diff.moved)
+        if (change.block_id, change.after) not in asked_about
     )
