@@ -1,10 +1,13 @@
 # The nightly learning run has failed, or has never reported
 
-> **This alert fires on every deployment today, and that is the correct reading rather than a defect.**
-> The learning container has no timer yet: that is **ticket 1532**. Until it lands, no run has ever
-> reported, the `absent()` term is true, and this alert fires an hour after the monitoring stack starts.
-> Either sequence the stack after ticket 1532, or post an Alertmanager silence for `LearningJobFailed`
-> **with an expiry**. Do not remove the `absent()` term: that restores the silence it exists to break.
+> **This alert stops firing once the timer is installed, and that install is a deployment step rather
+> than another ticket.** The container is a Compose one-shot (`just learn-once`) driven by
+> `deployments/systemd/syncr-learning.timer` at 03:00, and it writes its exposition into the textfile
+> collector before exiting, because a container that has exited cannot be scraped. On a host where the
+> timers are not installed yet, no run has ever reported, the `absent()` term is true, and this fires an
+> hour after the monitoring stack starts. Install the timers (`deploy-and-rollback.md`, step 10) or post
+> an Alertmanager silence **with an expiry**. Do not remove the `absent()` term: that restores the
+> silence it exists to break.
 
 ## Trigger
 
@@ -41,7 +44,8 @@ collector** reads, at `syncr_learning.prom` in `textfile_collector_dir`, before 
 
 That is three things that can break and they look identical from Prometheus:
 
-1. **The run did not happen.** No timer. That is the state today.
+1. **The run did not happen.** The timer is not installed, or it is disabled:
+   `systemctl list-timers 'syncr-*'`.
 2. **The run happened and failed.** It exits non-zero when a tenant's pass failed, and it writes its
    figures **before** exiting, so a failed run is readable as a `failed` outcome on its duration family
    rather than as an absent series.
@@ -75,7 +79,9 @@ broken one, and the investigation is a normal-hours one.
 
 ## Still to be written
 
-- **The timer itself.** Ticket 1532. Until then this alert's first disjunct is the true reading.
+- **The timer has never run on a deployed host.** The unit and the timer exist
+  (`deployments/systemd/syncr-learning.*`) and `just learn-once` is what they call; no deployment
+  exists to have executed either.
 - The diagnosis of a failing pass: which stage of the learning run failed and what a candidate weight
   set that was not promoted means. The run logs its promotion decision; nothing explains a rejection.
 - Whether a run that fails for every tenant should be a warning rather than info. It is info today

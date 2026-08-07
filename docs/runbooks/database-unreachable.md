@@ -84,6 +84,6 @@ read 1 within one scrape interval.
 
 ## Still to be written
 
-- What to do when Postgres will not start because its volume is full. That is `disk-filling-up.md`'s
+- What to do when Postgres will not start because its volume is full. That is `disk-pressure.md`'s
   subject up to the point the database refuses writes, and the recovery from there is unwritten.
-- Restoring from a backup, which needs the backup to exist: ticket 58.
+- Restoring from a backup, which is now `restore-from-backup.md`.

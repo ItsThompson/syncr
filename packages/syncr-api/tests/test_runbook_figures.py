@@ -49,7 +49,7 @@ STUCK_OPERATION = RUNBOOKS / "stuck-operation.md"
 SOLVE_FAILING = RUNBOOKS / "solve-failing.md"
 DEBOUNCE_TUNING = RUNBOOKS / "debounce-tuning.md"
 GOOGLE_TOKEN_EXPIRED = RUNBOOKS / "google-token-expired.md"
-SOURCE_STALE = RUNBOOKS / "source-stale.md"
+SOURCE_STALE = RUNBOOKS / "ics-feed-broken.md"
 HORIZON_NOT_MAINTAINED = RUNBOOKS / "horizon-not-maintained.md"
 
 
