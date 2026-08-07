@@ -141,6 +141,22 @@
        pinned             glyph slot                   a filled pin mark
        origin             glyph slot, sub-label tier   one mark per origin kind
 
+     TWO OF THE VOCABULARY'S STATES BELONG TO A ROW RATHER THAN A BLOCK, and they are here
+     because the channel table is one table:
+
+       overdue            3px left rule                --signal-oxide
+       at risk            glyph slot                   the attention mark
+
+     THEY TAKE TWO CHANNELS BECAUSE THEY CO-OCCUR, and not merely in principle: capacity is
+     clipped to now, so a task whose deadline has passed and still owes work has no capacity
+     before it and is therefore named by a deadline shortfall as well. One channel would mean
+     the stronger fact erased the other on every row that carries both. Overdue takes the left
+     rule because a passed deadline is the harder statement of the two; at risk takes the mark,
+     which is the same pairing the notice kinds use, where amber is always drawn with a mark
+     because colour is never the only encoding of anything. The left rule is assigned in
+     `ui/primitives/states.css` with the other row states and the mark in
+     `ui/primitives/glyphs.css`, where the mark table is.
+
      A calendar block differs from a transcript row in one way that drives all of this:
      it must be a bounded object distinct from the grid's own lines, so IT SPENDS A FILL
      JUST TO EXIST. The fill channel therefore has three values rather than two, and they
@@ -173,6 +189,13 @@
   --state-selected-color: var(--ink-deep);
   --state-conflict-border: 3px;
   --state-conflict-color: var(--signal-oxide);
+  --state-overdue-color: var(--signal-oxide); /* a row whose deadline has passed. It reuses the
+                                        conflict pigment on purpose: both say the product cannot
+                                        keep a commitment as things stand, and a fourth signal hue
+                                        would be a pigment the seal does not hold. It is a separate
+                                        name because the two states are separate: a row is never a
+                                        block, so nothing can take both at once and read one as the
+                                        other. */
   --state-proposal-border: var(--hairline);
   --state-margin: 3px; /* live margin a focus ring needs to bleed into */
 

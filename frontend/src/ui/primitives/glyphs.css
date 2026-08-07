@@ -199,7 +199,7 @@
   --glyph: var(--glyph-meter-cell);
 }
 
-/* DISCLOSURE IS THE ONE GLYPH DRIVEN BY A STATE, so this is the kit's assignment of the glyph-slot
+/* DISCLOSURE IS ONE OF TWO GLYPHS DRIVEN BY A STATE, so this is the kit's assignment of the glyph-slot
  * channel to Radix's `data-state`. The closed mark is the default and the open one replaces it, keyed on
  * the trigger's own attribute rather than on a class the JavaScript toggles. */
 .glyph--disclosure {
@@ -208,4 +208,27 @@
 
 [data-state="open"] .glyph--disclosure {
   --glyph: var(--glyph-minus);
+}
+
+/* A ROW'S STANDING MARK: the second state-driven glyph, and the kit's assignment of the glyph slot to
+ * `data-at-risk`.
+ *
+ * IT IS HERE RATHER THAN BESIDE THE OTHER ROW STATES because a mark is written where the mark table is: a rule
+ * in `states.css` would reference `--glyph-notice-attention` from a sheet a ledger row loads WITHOUT this one,
+ * and `scripts/validate-tokens` judges a sheet against every cascade it is loaded in. Its partner state, the
+ * overdue row's left rule, is in `states.css` with hover and the current row, because a border colour needs no
+ * table.
+ *
+ * THE SLOT IS EMPTY AT REST. It is reserved on every row of a surface that states a standing, so becoming at
+ * risk changes a glyph rather than a width; with no mark set, `content: var(--glyph)` generates no box at all.
+ *
+ * AMBER IS UNCONDITIONAL, so no state spends the ink: what the state switches is WHICH mark the slot holds. It
+ * is the pigment for something needing attention with nothing broken, which is what a task the week cannot fit
+ * before its deadline is. */
+.state-mark {
+  color: var(--signal-amber);
+}
+
+.state-row[data-at-risk] .state-mark {
+  --glyph: var(--glyph-notice-attention);
 }

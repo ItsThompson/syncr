@@ -4,5 +4,6 @@ export {
   type TableColumn,
   type TableMeasure,
   type TableProps,
+  type TableRowStanding,
   type TableSort,
 } from "./Table";

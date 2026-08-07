@@ -7,7 +7,7 @@
  * and a command-palette row are three surfaces with one behaviour, and two definitions of hover's fill
  * drift apart with nothing on a rendered screen revealing it until the two states co-occur.
  *
- * Three pairs live here.
+ * Four pairs live here.
  *
  * HOVER TAKES THE FILL, at --state-hover. It is the one state that does not survive forced colors,
  * which is acceptable: it is mouse-only and nothing depends on it to operate the product.
@@ -22,7 +22,23 @@
  * combobox, so it maps to focus: giving it the wash as well would make a hovered row and the cursor row
  * indistinguishable, and a command palette's CURRENT row is data-current like any other current row.
  * The ring sits at a negative offset because rows pitch at --h-row and an outset ring would be clipped
- * by the row above. */
+ * by the row above.
+ *
+ * AN OVERDUE ROW TAKES THE LEFT RULE AT --state-overdue-color. It is here rather than in the sheet of
+ * whichever surface draws it first, for the reason hover is: a backlog row, a ledger row and a raised-item
+ * row are three surfaces with one meaning for "the deadline has passed", and two definitions of its pixel
+ * drift apart with nothing on a rendered screen revealing it. It reuses the border the current row reserves,
+ * so becoming overdue changes a colour and not a width.
+ *
+ * ITS PARTNER STATE, AT RISK, TAKES THE GLYPH SLOT AND IS ASSIGNED IN glyphs.css, beside the disclosure's
+ * mark, because that is where a mark is written and it is the sheet that declares the one this state holds. A
+ * rule here would reference a property the ledger row's own cascade does not load, which is what
+ * `scripts/validate-tokens` refuses: a sheet is judged against every context it is loaded in.
+ *
+ * THE TWO TAKE TWO CHANNELS BECAUSE THEY CO-OCCUR, and by construction rather than by coincidence: the probe
+ * clips capacity to now, so a task whose deadline has passed and still owes work has no capacity before it
+ * and the verdict names it too. One channel would let the stronger fact erase the other on every row that
+ * carries both. */
 
 .state-row {
   border-left: var(--state-selected-border) solid transparent;
@@ -35,6 +51,10 @@
 .state-row[data-current] {
   background-color: var(--state-hover);
   border-left-color: var(--state-selected-color);
+}
+
+.state-row[data-overdue] {
+  border-left-color: var(--state-overdue-color);
 }
 
 .state-row[data-highlighted] {

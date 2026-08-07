@@ -10,7 +10,13 @@
  *
  * THE SORTABLE HEADER IS A BUTTON INSIDE THE HEADER CELL, not a click handler on the cell. A sort is an action, so
  * it is reachable by keyboard and announced as a control; `aria-sort` on the cell is what says which way the
- * column currently runs, so the announced state and the drawn mark cannot diverge. */
+ * column currently runs, so the announced state and the drawn mark cannot diverge.
+ *
+ * THE STANDING COLUMN IS A RESERVED CELL AND NOTHING ELSE. What the two row states spend is assigned once for the
+ * whole kit: the overdue left rule in `ui/primitives/states.css`, beside hover and the current row, and the
+ * at-risk mark in `ui/primitives/glyphs.css`, where a mark is written. What is here is the cell: reserved on every
+ * row of a table that states a standing, so a row becoming at risk changes a glyph rather than a width, which
+ * would shift every cell in the row. */
 
 .table {
   width: 100%;
@@ -81,4 +87,11 @@
   color: var(--text-muted);
   font-size: var(--fs-eyebrow);
   text-align: left;
+}
+
+/* The standing column: reserved on every row, and narrow enough to read as a gutter rather than a column. */
+.table__mark {
+  width: 18px;
+  padding-right: 0;
+  text-align: center;
 }
