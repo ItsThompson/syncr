@@ -8,7 +8,8 @@ on.
 **The at-risk figure is read, never computed.** A task is at risk when the feasibility probe reports
 a deadline shortfall naming it, so it is the verdict's determination. A client that compared a
 deadline against a capacity of its own would be a second arithmetic, and a task would then be at
-risk on one surface and fine on another.
+risk on one surface and fine on another. ``--at-risk`` narrows the list for the same reason it does
+not filter the rows here: the parameter reaches the route that makes the determination.
 """
 
 from __future__ import annotations
@@ -44,11 +45,12 @@ def register(nouns: Verbs, shared: Parser) -> None:
         shared=shared,
         examples=(
             "syncr backlog list",
+            "syncr backlog list --at-risk",
             "syncr backlog list --area <area-id>",
             "syncr backlog list --json | jq '.data.header.atRiskCount'",
         ),
     )
-    # The same two filters ``task list`` takes, from the same declaration: two spellings of one
+    # The same three filters ``task list`` takes, from the same declaration: two spellings of one
     # argument is how this one came to accept a whitespace-only Area that the other refuses.
     filter_arguments(listing, status_help=f"read another status instead of the '{OPEN}' work")
 

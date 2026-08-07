@@ -107,9 +107,20 @@ class ApiClient:
         """One tracked long-running job, as a wait polls it."""
         return self._get(OPERATION.format(operation_id=operation_id))
 
-    def list_tasks(self, *, area_id: str | None = None, status: str | None = None) -> Any:
-        """The backlog, with the header counts the server computed."""
-        stated = {"areaId": area_id, "status": status}
+    def list_tasks(
+        self, *, area_id: str | None = None, status: str | None = None, at_risk: bool | None = None
+    ) -> Any:
+        """The backlog, with the header counts the server computed.
+
+        The at-risk filter is sent as the route's own parameter rather than applied to the answer.
+        Whether a task is at risk is the week verdict's determination, so a client that narrowed the
+        list itself would print a header count and a row set that disagree.
+        """
+        stated = {
+            "areaId": area_id,
+            "status": status,
+            "atRisk": None if at_risk is None else str(at_risk).lower(),
+        }
         return self._get(
             TASKS, params={name: value for name, value in stated.items() if value is not None}
         )

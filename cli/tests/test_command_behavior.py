@@ -494,6 +494,46 @@ def test_the_backlog_asks_for_the_open_work_and_task_list_asks_for_every_status(
     assert asked == [{"status": ["open"]}, {}]
 
 
+def test_the_at_risk_filter_reaches_the_api_rather_than_narrowing_the_answer(
+    tmp_path: Path,
+) -> None:
+    """Ticket 1521: the narrowing is the server's, because the determination is.
+
+    The stubbed answer holds one marked task and one unmarked one whatever is asked for, so a client
+    that filtered the rows itself would print exactly one row here and pass a test that only counted
+    them. What is asserted instead is the REQUEST: the parameter the route serves, spelled the way
+    the route spells it.
+    """
+    with FakeApi() as api:
+        _serving(api, tmp_path)
+        api.answer("GET", AREAS_PATH, Answer.json(payloads.areas()))
+        api.answer("GET", TASKS_PATH, Answer.json(payloads.backlog()))
+
+        marked = drive(
+            ("backlog", "list", "--at-risk"),
+            base_url=api.base_url,
+            home=tmp_path,
+            env=NO_KEYCHAIN,
+        )
+        drive(("task", "list", "--at-risk"), base_url=api.base_url, home=tmp_path, env=NO_KEYCHAIN)
+
+    asked = [one.query for one in api.requests_to("GET", TASKS_PATH)]
+    assert asked == [{"status": ["open"], "atRisk": ["true"]}, {"atRisk": ["true"]}]
+    assert marked.code is ExitCode.SUCCESS, marked.stdout
+
+
+def test_the_backlog_sends_no_at_risk_parameter_when_the_flag_is_absent(tmp_path: Path) -> None:
+    """An unstated filter is an omitted parameter, not `atRisk=false`, which asks a question."""
+    with FakeApi() as api:
+        _serving(api, tmp_path)
+        api.answer("GET", AREAS_PATH, Answer.json(payloads.areas()))
+        api.answer("GET", TASKS_PATH, Answer.json(payloads.backlog()))
+
+        drive(("backlog", "list"), base_url=api.base_url, home=tmp_path, env=NO_KEYCHAIN)
+
+    assert api.requests_to("GET", TASKS_PATH)[0].query == {"status": ["open"]}
+
+
 def test_an_empty_backlog_says_so_rather_than_printing_nothing(tmp_path: Path) -> None:
     with FakeApi() as api:
         _serving(api, tmp_path)
