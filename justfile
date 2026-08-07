@@ -11,6 +11,11 @@
 # carries overrides only and is never valid standalone.
 dev_compose := "-f docker-compose.yml -f docker-compose.dev.yml"
 
+# The monitoring stack is additive over the base file and never valid standalone: every service in
+# it joins `app-net`, which the base file declares. Composed with the dev overlay for a local look
+# and with the deploy overlay in production, which is one topology described two ways.
+monitoring_compose := "-f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.monitoring.yml"
+
 # Every Python member, in dependency order, so lint and test output reads bottom-up.
 members := "packages/syncr-common packages/syncr-domain packages/syncr-solver packages/syncr-api packages/syncr-learning cli"
 
@@ -100,6 +105,33 @@ dev-reset:
 # Postgres only, published to localhost for the host-run inner loop
 dev-infra:
     docker compose {{dev_compose}} up -d postgres
+
+# The dev stack plus the monitoring stack: Prometheus, Alertmanager, Grafana, and the three
+# exporters. Not part of `just dev`, because an inner loop should not pay 1.5 GB of monitoring
+# stack to run a test.
+#
+# Nothing here publishes a host port, so reach a UI through the network rather than localhost:
+#   docker compose {{monitoring_compose}} exec prometheus wget -qO- localhost:9090/-/healthy
+monitoring:
+    docker compose {{monitoring_compose}} up -d --build
+    @echo "prometheus, alertmanager, grafana and three exporters are up on app-net"
+
+# Tear the monitoring stack down, keeping its volumes
+monitoring-down:
+    docker compose {{monitoring_compose}} down
+
+# Validate the Prometheus configuration and the twelve alert rules, in the images that read them.
+#
+# A rule file the deployed Prometheus refuses is a deployment with no alerting at all, and the
+# failure is silent: Prometheus logs it and carries on serving. `tests/test_alert_rules.py` parses
+# the same files and crosses them against the metric registry, which is the half a linter cannot do.
+monitoring-check:
+    docker run --rm -v "$PWD/deployments/prometheus:/etc/prometheus:ro" \
+      --entrypoint promtool prom/prometheus:v3.1.0 \
+      check config /etc/prometheus/prometheus.yml
+    docker run --rm -v "$PWD/deployments/alertmanager:/etc/alertmanager:ro" \
+      --entrypoint amtool prom/alertmanager:v0.28.0 \
+      check-config /etc/alertmanager/alertmanager.yml
 
 # The api only, on the host, with autoreload. Needs `just dev-infra` and `just migrate`
 dev-api:

@@ -1,0 +1,283 @@
+{
+  "uid": "syncr-plan-pipeline",
+  "title": "syncr / Plan pipeline",
+  "description": "Solve outcomes and durations, the supersession ratio, queue delay, empty slots by reason, and projection outcomes. Every family here is recorded in the WORKER process, which is why the scrape configuration has a job of its own for it: scraping only the api would leave this entire dashboard empty.",
+  "tags": ["syncr", "pipeline"],
+  "timezone": "browser",
+  "editable": false,
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Solve outcomes",
+      "description": "Solves per hour by how they ended. A SUPERSEDED SOLVE IS NORMAL: it is the expected outcome of editing quickly, which is why no alert fires on the event and only a sustained ratio is a signal.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(syncr_solve_total[30m])) * 3600",
+          "legendFormat": "{{outcome}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Solve duration, p50 and p99",
+      "description": "Section 19 budgets a full one-week solve at under 2 seconds. It runs in the worker, so the budget is generous.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(syncr_solve_duration_seconds_bucket[30m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(syncr_solve_duration_seconds_bucket[30m])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 2 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Supersession ratio, over one hour",
+      "description": "The health signal for the debounce value. The design guarantees at most one discarded solve per burst, so a SUSTAINED ratio above roughly 0.3 means the debounce window is too short for how this user actually edits, and the value should be revisited rather than tolerated. This is the same query SupersededRatioHigh and docs/runbooks/debounce-tuning.md are stated over.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(syncr_solve_total{outcome=\"superseded\"}[1h])) / sum(rate(syncr_solve_total[1h]))",
+          "legendFormat": "superseded, windowed"
+        },
+        {
+          "refId": "B",
+          "expr": "syncr_solve_superseded_ratio",
+          "legendFormat": "superseded, since this process started"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.3 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Operation queue delay, p99 by kind",
+      "description": "How long a claim waited past the instant it was due. Observed at the CLAIM rather than at the finish, so it measures the worker falling behind rather than the work's own duration. A debounced solve is due 1500 ms after the mutation; a delay far above the tick interval means the tick is spending its time elsewhere.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le, kind) (rate(syncr_operation_queue_delay_seconds_bucket[30m])))",
+          "legendFormat": "{{kind}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Empty slots by reason",
+      "description": "Discretionary time no block was placed in, and why. A slot the solver could not fill for a stated reason is the plan explaining itself; a rising count under one reason is where to look next.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (reason) (rate(syncr_solve_empty_slots_sum[1h])) / sum by (reason) (rate(syncr_solve_empty_slots_count[1h]))",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Projection outcomes, and whether writes are permitted",
+      "description": "A refused projection is recorded as FAILED deliberately, because the consequence is identical: the plan is not reaching the phone. The arming gauge is what separates 'syncr cannot write' from 'syncr is not permitted to write', and it is why ProjectionFailing can be stated without either always firing or never firing. Writes are off in every deployment until a person has run the live Google suite.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(syncr_projection_duration_seconds_count[30m])) * 3600",
+          "legendFormat": "{{outcome}} per hour"
+        },
+        {
+          "refId": "B",
+          "expr": "syncr_projection_writes_enabled",
+          "legendFormat": "writes enabled"
+        },
+        {
+          "refId": "C",
+          "expr": "rate(syncr_projection_tenant_failures_total[30m]) * 3600",
+          "legendFormat": "passes that raised, per hour"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Weeks inside the horizon with no plan",
+      "description": "Should sit at zero. A sustained non-zero value means the plan-horizon maintainer is not keeping up or is failing, which is the failure mode that would otherwise present to the user as a calendar that goes blank at a week boundary. The second series is the maintainer's contained faults, which never reach the gauge: a runner that raises every pass leaves the gauge at whatever it last set.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(syncr_horizon_weeks_without_plan)",
+          "legendFormat": "weeks without a plan"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(syncr_horizon_tenant_failures_total[2h]) * 7200",
+          "legendFormat": "maintainer passes that raised"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Materializations by cause, and verdict transitions",
+      "description": "A materialization caused by solve_failed is a week that fell back to a derived-only plan: expected to be zero in normal operation, and a non-zero value is a solver problem surfacing as a degraded plan rather than as an outage. The transition counter carries provenance, direction and surface, so a capacity warning is distinguishable from an authoritative finding.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (cause) (rate(syncr_materialize_total[1h])) * 3600",
+          "legendFormat": "materialize {{cause}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (feasible, surface) (rate(syncr_verdict_transitions_total[1h])) * 3600",
+          "legendFormat": "verdict {{surface}} feasible={{feasible}}"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (direction) (rate(syncr_maintainer_verdict_transitions_total[1h])) * 3600",
+          "legendFormat": "maintainer {{direction}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Operations stuck, races lost, and contained solve faults",
+      "description": "Three families with no alert of their own, drawn together because each is a contained fault: a non-terminal operation count that will not fall, a claim or reaper race the loser recorded, and a solve pass that raised outside the outcomes the coordinator records. SolveFailing reads the last of these directly, because a pass that raises never reaches the line that records a failed outcome.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (kind) (syncr_operations_non_terminal)",
+          "legendFormat": "non-terminal {{kind}}"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(syncr_solve_claim_races_lost_total[1h]) * 3600",
+          "legendFormat": "claim races lost"
+        },
+        {
+          "refId": "C",
+          "expr": "rate(syncr_operation_reaper_races_lost_total[1h]) * 3600",
+          "legendFormat": "reaper races lost"
+        },
+        {
+          "refId": "D",
+          "expr": "rate(syncr_solve_tenant_failures_total[1h]) * 3600",
+          "legendFormat": "solve passes that raised"
+        },
+        {
+          "refId": "E",
+          "expr": "rate(syncr_operation_sweep_tenant_failures_total[1h]) * 3600",
+          "legendFormat": "sweep passes that raised"
+        },
+        {
+          "refId": "F",
+          "expr": "rate(syncr_worker_runner_failures_total[1h]) * 3600",
+          "legendFormat": "runner {{runner}} raised"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Solve shape: iterations and blocks placed",
+      "description": "What a solve actually did. Roughly 210 blocks at 30 per day is the reference week; a placement count that falls while iterations rise is the search working harder for less.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 40 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(syncr_solve_iterations_sum[1h]) / rate(syncr_solve_iterations_count[1h])",
+          "legendFormat": "iterations, mean"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(syncr_solve_blocks_placed_sum[1h]) / rate(syncr_solve_blocks_placed_count[1h])",
+          "legendFormat": "blocks placed, mean"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le, duty) (rate(syncr_maintainer_tick_duration_seconds_bucket[30m])))",
+          "legendFormat": "maintainer tick p99, {{duty}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    }
+  ]
+}

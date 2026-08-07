@@ -1,0 +1,19 @@
+# The one datasource. Provisioned rather than clicked, so a rebuilt container has it.
+#
+# `isDefault` matters: every dashboard in `deployments/grafana/dashboards` references its datasource
+# by this uid, so a dashboard imported before the datasource existed would draw nothing.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: syncr-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Matches `evaluation_interval` in the scrape config, so a panel's default step lines up with
+      # the resolution the data actually has.
+      timeInterval: 30s

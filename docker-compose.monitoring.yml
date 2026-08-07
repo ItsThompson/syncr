@@ -1,0 +1,203 @@
+# =============================================================================
+# syncr monitoring stack. Six services, layered ON TOP of docker-compose.yml.
+#
+# ADDITIVE, and never valid standalone: every service here joins `app-net`, which the base file
+# declares, so `docker compose -f docker-compose.monitoring.yml up` has no network to join. Drive it
+# through `just monitoring`, which passes both files.
+#
+# A SEPARATE FILE RATHER THAN THE BASE, for one reason: the base file is what `just dev` starts, and
+# a developer's inner loop should not pay 1.5 GB of monitoring stack to run a test. The deployed
+# stack always composes both, which `21-deployment-and-operations.md` describes as one topology.
+#
+# NO HOST PORTS ANYWHERE. Prometheus, Grafana and Alertmanager are reachable only from inside
+# `app-net`, which is the rule `18-observability.md` states for `/metrics` and which applies with
+# more force to a Grafana holding the user's own plan metrics. Reach them by adding the dev overlay
+# or by `docker compose exec`.
+#
+# EVERY SERVICE DECLARES A MEMORY LIMIT. The three from section 19's resource budget carry the
+# figures that table states; the three exporters are not in it and carry limits sized to what they
+# are, which is small resident processes reading /proc and the Docker API.
+# =============================================================================
+
+name: syncr
+
+services:
+  prometheus:
+    # Pinned by tag here and repinned by digest in the deploy overlay, like every third-party image
+    # in the base file: a floating tag makes a redeploy an unreviewed change.
+    image: prom/prometheus:v3.1.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      # Ninety days on an 80 GB disk for a handful of series, which is long enough to see the
+      # week-8 and week-12 targets the product metrics are stated against.
+      - "--storage.tsdb.retention.time=90d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deployments/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    expose:
+      - "9090"
+    networks:
+      - app-net
+    depends_on:
+      - alertmanager
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      # The whole directory, so `alertmanager.yml` and the webhook URL land where the config expects
+      # them. The URL is read from a FILE rather than an environment variable because Alertmanager
+      # performs no expansion in its own configuration, and a credential in a file in the repository
+      # would be a credential in the repository: `webhook_url` is absent in the committed tree and
+      # written by the deploy path from the host's secret store. With it absent the receiver posts
+      # nowhere and every alert is still visible in the Alertmanager UI.
+      - ./deployments/alertmanager:/etc/alertmanager:ro
+      - alertmanager_data:/alertmanager
+    expose:
+      - "9093"
+    networks:
+      - app-net
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    environment:
+      # No anonymous access and no sign-up: this holds the user's own plan metrics, and the whole
+      # deployment's security model is that nothing is exposed without the tunnel deciding so.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Nothing here should call out to grafana.com, and a dashboard that phoned home would be the
+      # one third party receiving anything at all.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - ./deployments/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deployments/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    expose:
+      - "3000"
+    networks:
+      - app-net
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: unless-stopped
+
+  node_exporter:
+    # Host CPU, memory and disk, plus the TEXTFILE COLLECTOR, which is how a process that has exited
+    # publishes: the nightly learning one-shot's figures and the backup's completion timestamp both
+    # arrive that way, and `BackupStale` reads the second of those.
+    image: prom/node-exporter:v1.8.2
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host/root"
+      - "--collector.textfile.directory=/var/lib/node_exporter/textfile"
+      - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+      - textfile_metrics:/var/lib/node_exporter/textfile
+    expose:
+      - "9100"
+    networks:
+      - app-net
+    pid: host
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    restart: unless-stopped
+
+  cadvisor:
+    # Per-container CPU and memory, and `container_spec_memory_limit_bytes`, which is the DECLARED
+    # limit the System dashboard draws usage against. Without it the memory panel would compare a
+    # container to the host and a container approaching its own bound would look idle.
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    command:
+      # A personal deployment needs container memory and CPU and nothing else; the rest of cadvisor's
+      # collectors are what makes it expensive.
+      - "--docker_only=true"
+      - "--housekeeping_interval=30s"
+      - "--disable_metrics=advtcp,cpu_topology,cpuset,hugetlb,memory_numa,percpu,process,referenced_memory,resctrl,sched,tcp,udp"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    expose:
+      - "8080"
+    networks:
+      - app-net
+    privileged: true
+    devices:
+      - /dev/kmsg
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    restart: unless-stopped
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-syncr}:${POSTGRES_PASSWORD:-syncr}@postgres:5432/${POSTGRES_DB:-syncr}?sslmode=disable
+    expose:
+      - "9187"
+    networks:
+      # Both, and this is the only monitoring service that joins `data-net`: it is the only one that
+      # talks to Postgres, and Postgres is reachable from nowhere else.
+      - app-net
+      - data-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    restart: unless-stopped
+
+  # `worker` gains an exposed metrics port here rather than in the base file, because the port exists
+  # for Prometheus and Prometheus is declared here. The process serves it unconditionally: a worker
+  # whose metrics nobody can read is a worker whose failures nobody can see, so it fails to boot
+  # rather than starting without the surface.
+  worker:
+    expose:
+      - "9100"
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
+  # Shared by the node exporter and by whatever writes into it: the learning one-shot and the
+  # nightly backup. Named so both halves mount the same volume rather than a host path that only
+  # exists on the deployed machine.
+  textfile_metrics:

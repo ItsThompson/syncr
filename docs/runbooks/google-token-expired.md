@@ -7,7 +7,7 @@ Either of these means the write target's OAuth token can no longer be refreshed:
 - The in-product banner appears, in oxide, on every screen, with a panel on Settings.
 - `GET /api/v1/google/connection` carries a notice whose `id` starts `google.write-target-expired`.
 
-The `WriteTargetTokenExpiring` alert is defined against `syncr_write_target_token_age_seconds`, and **that metric is not exported by any process today**, so the alert cannot fire. Nothing about this failure is silent in the product itself: the banner is raised from the credential's own record and is the notice this runbook is written around. The gap is in the alerting, and the metric set belongs to ticket 54.
+The `WriteTargetTokenExpiring` alert is defined against `syncr_write_target_token_age_seconds`, and **that metric is now exported**: the worker's state-gauge duty sets it once a minute from `google_credentials.refresh_failing_since`, which is the age of the CONDITION rather than of a credential. It reads zero while refreshes work and grows from the instant one starts failing, so the rule is `max(...) > 0 for 15m` and needs no invented threshold. Nothing about this failure is silent in the product either: the banner is raised from the credential's own record and is the notice this runbook is written around.
 
 ## Why this is the loudest failure in the product
 

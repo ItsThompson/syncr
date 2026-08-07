@@ -1,0 +1,238 @@
+{
+  "uid": "syncr-system",
+  "title": "syncr / System",
+  "description": "Is syncr healthy? HTTP latency and errors by route, database pool and query duration, container memory against its DECLARED LIMIT, and host CPU and disk. The memory panel draws usage against the limit rather than against the host's total, so a container approaching its own bound is visible before the kernel intervenes.",
+  "tags": ["syncr", "system"],
+  "timezone": "browser",
+  "editable": false,
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "HTTP latency, p95 by route",
+      "description": "The route label is the PATH TEMPLATE, not the path: /api/v1/weeks/2026-W07 and 2026-W08 are one route, and labelling by the raw path would grow a series per week the user ever opens. Section 19 budgets GET /weeks at p95 under 300 ms, POST /pins at 150 ms, PUT /blocks/{id}/outcome at 100 ms, and POST /days/{date}/confirm at 400 ms.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (le, route) (rate(syncr_http_request_duration_seconds_bucket[15m]))))",
+          "legendFormat": "{{route}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.3 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "HTTP errors by route and problem type",
+      "description": "Counted from the problem type the api actually SENT, handed to the middleware through the request's own scope rather than parsed back out of the body. A 4xx here is usually the client's; a 5xx is always syncr's. An error response that carries no problem details, such as a readiness 503, is counted under a fixed label rather than dropped: an uncounted 503 is a 503 nothing can alert on.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (problem_type) (rate(syncr_http_errors_total[15m])) * 3600",
+          "legendFormat": "{{problem_type}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (status_class) (rate(syncr_http_requests_total[15m])) * 3600",
+          "legendFormat": "all requests, {{status_class}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Probe and assembly on the request path, p99",
+      "description": "TWO SERIES BECAUSE THE ASSEMBLY IS THE DOMINANT COST OF A PIN. The probe's arithmetic sits on the request path and its whole justification is being sub-millisecond, so a drift into tens of milliseconds means the interactive design has quietly stopped being interactive. But the assembly that feeds it is the larger cost by an order of magnitude, so watching only the probe would leave that cost unmonitored: ProbeSlow measures only the arithmetic. FILTERED TO caller=request, because the plan-horizon maintainer performs roughly 288 ASSEMBLIES AND PROBES a day in the background and the assembly is the cost; folding those in would let them mask a regression or trigger the alert on their own.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(syncr_probe_duration_seconds_bucket{caller=\"request\"}[15m])))",
+          "legendFormat": "probe p99, request"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(syncr_assembly_duration_seconds_bucket{caller=\"request\"}[15m])))",
+          "legendFormat": "assembly p99, request"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le, caller) (rate(syncr_assembly_duration_seconds_bucket{caller!=\"request\"}[15m])))",
+          "legendFormat": "assembly p99, {{caller}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.15 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Database pool in use, and SSE connections",
+      "description": "The pool is bounded at five plus five overflow per process and there is no connection pooler in front of Postgres, so a reading at the ceiling is requests queueing on connections. Read by the client library at SCRAPE time from the pool itself, so it cannot go absent or stale exactly when the pool is saturating.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "syncr_db_pool_in_use",
+          "legendFormat": "pool in use, {{process}}"
+        },
+        {
+          "refId": "B",
+          "expr": "syncr_sse_connections",
+          "legendFormat": "SSE connections"
+        },
+        {
+          "refId": "C",
+          "expr": "rate(syncr_sse_events_dropped_total[15m]) * 3600",
+          "legendFormat": "SSE events dropped per hour"
+        },
+        {
+          "refId": "D",
+          "expr": "rate(syncr_sse_listener_reconnects_total[1h]) * 3600",
+          "legendFormat": "SSE listener reconnects per hour"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Repository read duration, p99 by repository and method",
+      "description": "Timed on the repository METHOD, which is the unit a call site names. A method that issues four statements is one observation, so this is a call's cost rather than a statement's. Hooked onto the scoped repository base, so a repository added by a later ticket is measured without anyone asking for it. Buckets are section 19's latency budgets: a read that has crossed 100 ms has spent the whole week-assembly budget in one call.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, histogram_quantile(0.99, sum by (le, repository, method) (rate(syncr_db_query_duration_seconds_bucket[15m]))))",
+          "legendFormat": "{{repository}}.{{method}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Container memory against its DECLARED limit",
+      "description": "The limit comes from the container spec, which is why every service declares one in Compose: a leak then shows as a restart against a known bound rather than as host-wide pressure. Section 19 budgets postgres 2 GB, api 768 MB, worker 768 MB, prometheus 768 MB, grafana 512 MB, alertmanager 128 MB, and the learning one-shot 1.5 GB while it runs.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "container_memory_working_set_bytes{name!=\"\"} / container_spec_memory_limit_bytes{name!=\"\"}",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.8 },
+              { "color": "red", "value": 0.95 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Host CPU and disk",
+      "description": "Four vCPU and 80 GB on the reference host, with the whole stack at roughly 3.3 GB resident of 8 GB. DiskFillingUp fires under 20% free, which on 80 GB would indicate something unexpected rather than growth: the database is roughly 16 MB per user-year.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))",
+          "legendFormat": "CPU busy"
+        },
+        {
+          "refId": "B",
+          "expr": "1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}",
+          "legendFormat": "root filesystem used"
+        },
+        {
+          "refId": "C",
+          "expr": "1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes",
+          "legendFormat": "host memory used"
+        },
+        {
+          "refId": "D",
+          "expr": "pg_up",
+          "legendFormat": "postgres reachable"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.8 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

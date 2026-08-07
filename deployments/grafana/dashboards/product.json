@@ -1,0 +1,134 @@
+{
+  "uid": "syncr-product",
+  "title": "syncr / Product",
+  "description": "Is syncr working, meaning is it helping the user? The four product metrics, trended by week. These are the reason the product exists and are measured with as much care as the system metrics. Adherence rate is deliberately absent: optimizing it rewards under-planning, and a user who plans four hours a day and completes all of it would score perfectly while the product failed at its actual job.",
+  "tags": ["syncr", "product"],
+  "timezone": "browser",
+  "editable": false,
+  "schemaVersion": 39,
+  "refresh": "5m",
+  "time": { "from": "now-90d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Estimate accuracy: median absolute percentage error, by Area",
+      "description": "Median absolute percentage error between an estimated and an actual block duration, over the trailing four complete ISO weeks. Target: baseline in weeks 1 to 2, a 30% or greater reduction by week 8, at or below 20% by week 12. The label is the Area's IDENTIFIER rather than its name: an Area name is the user's own words, and an exposition is no safer a place for it than a log line is. Excludes unconfirmed days and off-plan spans, because neither is evidence about estimating.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "syncr_estimate_ape_median",
+          "legendFormat": "{{area}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 20 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Overcommitment caught early",
+      "description": "Episodes whose FIRST verdict row was recorded during a weekly session, over every episode that began in the period. Target: 80% or more caught at planning time. COUNTED BY EPISODE AND NOT BY ROW: one infeasibility deliberately emits two to three rows, so a row-counting formula tops out near 0.5 under perfect behaviour. An episode runs from a transition to feasible = false until the next transition to feasible = true; provenance-only rows are excluded. NOTE: the numerator is structurally zero until a client sends the weekly-session header, which ticket 1431 carries.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "syncr_infeasibility_caught_early_ratio",
+          "legendFormat": "caught early"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 0.8 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Proposal acceptance",
+      "description": "Share of the proposal-class block changes the user RESOLVED that they accepted. Target: at or above 60% by week 12. Accepted changes are the blocks an approved revision moved, dropped or added against the plan it superseded; rejected changes are edit-event rows, each one block the user put somewhere else. A proposal replaced in the pending slot before anyone acted on it leaves no permanent row, so it is in neither half.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "syncr_proposal_acceptance_ratio",
+          "legendFormat": "accepted"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 0.6 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Re-pins per week",
+      "description": "Blocks pinned again after a solve had already moved them once, per week. Target: trending down. A re-pin immediately after a solve is the strongest available signal that the objective weights are wrong, because the user is correcting the same placement twice. Every pin bumps the week's input version and enqueues a solve, so a second edit naming the same binding in the same week is by construction an edit after a solve.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 9, "w": 6, "x": 12, "y": 9 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "syncr_repins_per_week",
+          "legendFormat": "re-pins"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Health canary: engagement streak",
+      "description": "Consecutive weeks with a weekly session run AND five or more days confirmed. NOT a success target: a scheduler the user stopped opening has failed regardless of the other three. A week that is MAJORITY OFF-PLAN IS SKIPPED, not counted as a failure, because the off-plan feature exists so the user can stop for a week and this metric must not punish it. NOTE: this reads zero until a client sends the weekly-session header, which ticket 1431 carries.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 9, "w": 6, "x": 18, "y": 9 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "syncr_engagement_streak_weeks",
+          "legendFormat": "weeks"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    }
+  ]
+}

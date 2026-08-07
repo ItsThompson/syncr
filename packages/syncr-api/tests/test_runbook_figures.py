@@ -12,6 +12,7 @@ operator searching the file for "lease" has to find what the lease is.
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -239,16 +240,23 @@ class TestTheGoogleTokenExpiredRunbook:
             assert f"`{named}`" in text
             assert named in fields
 
-    def test_it_does_not_claim_an_alert_that_cannot_fire(self) -> None:
-        """The stub said the critical alert fires. Its metric is exported by nothing at all.
+    def test_it_claims_an_alert_that_can_now_fire(self) -> None:
+        """Ticket 30 asserted the metric was ABSENT, because the alert could not fire without it.
 
+        That assertion was written to fail the moment the gap closed, and that is what it did: the
+        family exists, the worker's state duty sets it once a minute, and the runbook now says so.
         A runbook whose trigger names an alert that cannot fire tells an operator they will be told,
         which is exactly the silence that makes this failure dangerous.
         """
         text = read(GOOGLE_TOKEN_EXPIRED)
+        # Imported for its registration: the family exists once the module that declares it is
+        # loaded, and the worker loads it through the duty that sets the gauge.
+        importlib.import_module("syncr_api.google_account.token_metrics")
+        exported = {metric.name for metric in REGISTRY.collect()}
 
-        assert "the alert cannot fire" in text
-        assert REGISTRY.get_sample_value("syncr_write_target_token_age_seconds") is None
+        assert "that metric is now exported" in text
+        assert "the alert cannot fire" not in text
+        assert "syncr_write_target_token_age_seconds" in exported
 
     def test_it_names_the_one_failure_that_raises_no_banner(self) -> None:
         """Every stated failure records itself on the target; a pass that raised did not.

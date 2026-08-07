@@ -24,5 +24,9 @@ coverage/
 .env.*
 !.env.example
 
+# The Alertmanager webhook URL. Read from a file because Alertmanager performs no environment
+# expansion in its own configuration, and written by the deploy path from the host's secret store.
+deployments/alertmanager/webhook_url
+
 # OS noise
 .DS_Store

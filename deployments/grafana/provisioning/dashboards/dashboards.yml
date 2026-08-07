@@ -1,0 +1,22 @@
+# Dashboard provisioning. FOUR dashboards and no more.
+#
+# `18-observability.md`: "Four, no more. A dashboard nobody reads is a maintenance cost." The budget
+# is enforced by `tests/test_alert_rules.py`, which counts the files in the directory below, so a
+# fifth dashboard fails a gate rather than arriving unnoticed.
+#
+# `allowUiUpdates: false` is what keeps the files the source of truth: a panel edited in the browser
+# would be reverted on the next restart, which is the honest outcome for a provisioned dashboard.
+# Edit the JSON.
+
+apiVersion: 1
+
+providers:
+  - name: syncr
+    orgId: 1
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

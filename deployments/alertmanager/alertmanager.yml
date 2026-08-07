@@ -1,0 +1,70 @@
+# Alertmanager routing for the syncr stack. ONE channel, deliberately.
+#
+# `18-observability.md`: "Alertmanager routes to a single channel. On a personal deployment, alert
+# fatigue is the failure mode to design against." A severity-per-channel fan-out would give the same
+# person three inboxes to check and no more information.
+#
+# The receiver is a webhook rather than an email or a chat integration, and the URL is read from a
+# FILE rather than named here: a credential in a file in the repository is a credential in the
+# repository. Alertmanager performs no environment expansion in its own configuration, so `url_file`
+# is the mechanism rather than a variable, and the deploy path writes
+# `deployments/alertmanager/webhook_url` from the host's secret store.
+#
+# With the file absent the receiver posts nowhere and every alert is still visible in the
+# Alertmanager UI on `app-net`, which is a deployment with reduced reach rather than a broken one.
+#
+# GROUPING IS BY ALERTNAME AND SEVERITY, not by instance. This is one host: two firing alerts are two
+# different problems, and a burst of the SAME alert is one problem the operator should be told about
+# once.
+
+global:
+  # How long a firing alert is held before it is treated as resolved once its series stops. Longer
+  # than the longest `for` window in the rules, so a rule that has been firing for a day does not
+  # resolve and refire across a scrape gap.
+  resolve_timeout: 10m
+
+route:
+  receiver: syncr-single-channel
+  group_by: ["alertname", "severity"]
+  # Wait this long before sending a new group, so two alerts from one cause arrive together.
+  group_wait: 30s
+  # Then this long before adding newly-firing members to a group that has already been sent.
+  group_interval: 5m
+  # And this long before repeating an alert that is still firing. Four hours rather than one: a
+  # critical that has been firing all night is not more actionable for having been sent twelve times.
+  repeat_interval: 4h
+
+  routes:
+    # Critical is the only class that shortens the repeat, because it is the only class where the
+    # cost of not being told again is data or a plan that never reaches the phone.
+    - matchers:
+        - severity = "critical"
+      receiver: syncr-single-channel
+      repeat_interval: 1h
+
+inhibit_rules:
+  # A critical suppresses a warning about the same subsystem. The database being unreachable makes
+  # every solve fail, and paging about both says nothing the first does not.
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ["deployment"]
+
+  # An unreachable database is the cause of a failing solve and of a failing projection, so it
+  # suppresses both by name rather than only by severity: without this the operator receives three
+  # alerts for one outage.
+  - source_matchers:
+      - alertname = "DatabaseUnreachable"
+    target_matchers:
+      - alertname =~ "SolveFailing|ProjectionFailing|HorizonNotMaintained"
+    equal: ["deployment"]
+
+receivers:
+  - name: syncr-single-channel
+    webhook_configs:
+      - url_file: /etc/alertmanager/webhook_url
+        # Every alert in the group is sent, not just the first: the group exists to batch delivery,
+        # not to drop members.
+        send_resolved: true
+        max_alerts: 0

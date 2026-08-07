@@ -1,0 +1,258 @@
+# The twelve alert rules, and no thirteenth.
+#
+# `18-observability.md` names exactly twelve. On a personal deployment alert fatigue is the failure
+# mode to design against, so two rules govern every entry and both are enforced by
+# `tests/test_alert_rules.py`:
+#
+#   - NO ALERT FIRES FOR A CONDITION THE USER CANNOT ACT ON. An unactionable alert trains the user to
+#     ignore the channel, and the channel is one channel.
+#   - NO ALERT FIRES FOR AN EXPECTED OUTCOME. A superseded solve is normal; only a SUSTAINED ratio is
+#     a signal. A projection refused because writes are switched off is normal; only a failure while
+#     writes are enabled is a signal.
+#
+# EVERY ANNOTATION NAMES THE SURVIVING CAPABILITY, which is the same rule the in-product degradation
+# notices follow: an operator woken at 03:00 needs to know what still works before they know what
+# broke.
+#
+# `BackupStale` is CRITICAL while `SolveFailing` is a WARNING, and the reason is the whole severity
+# scheme in one line: A FAILED SOLVE LOSES NOTHING, because the previous plan is intact and still
+# projected, and A MISSING BACKUP LOSES EVERYTHING.
+#
+# WHERE A RULE READS A FAMILY THAT MAY NOT EXIST YET, IT SAYS SO WITH `absent()`. A rule stated only
+# as a threshold is silent while its series is missing, and a missing series is usually the more
+# serious condition: no backup has ever run, or the exporter is down. That is the alert inversion
+# this deployment has shipped four times, and it is closed here by construction.
+
+groups:
+  - name: syncr-critical
+    rules:
+      # The most dangerous failure in the product. The gauge holds the age of the CONDITION rather
+      # than of a credential: it is zero while refreshes work and grows from the instant one starts
+      # failing, so a bare `> 0` is the condition and needs no invented threshold. Fifteen minutes of
+      # `for` rides out a transient network refusal without waiting out a real expiry.
+      - alert: WriteTargetTokenExpiring
+        expr: max(syncr_write_target_token_age_seconds) > 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: The write target's token has stopped refreshing, so the plan is not reaching the phone.
+          surviving: >-
+            Anchor sources still sync, so external commitments are still read. The plan is still
+            solved and still correct in syncr, and the Week screen still shows it. Only the write to
+            the calendar is failing, so the phone is stale from the instant in the banner.
+          runbook: docs/runbooks/google-token-expired.md
+
+      # Same consequence, different cause. The inhibiting term is load-bearing: a refused projection
+      # is recorded as `failed` deliberately, because a third outcome value would make this alert
+      # silent for a deployment whose writes are switched off, which is every deployment today. With
+      # two values alone it would fire on every plan change instead, so the arming gauge is what
+      # separates "syncr cannot write" from "syncr is not permitted to write".
+      #
+      # The second disjunct is the one projection failure with no banner: a pass that raised OUTSIDE
+      # the reconciliation's stated failures records nothing on the write target at all, so the
+      # product looks healthy while the operations sit running until the reaper returns them.
+      - alert: ProjectionFailing
+        expr: >-
+          (increase(syncr_projection_duration_seconds_count{outcome="failed"}[15m]) > 0
+            and on() syncr_projection_writes_enabled == 1)
+          or increase(syncr_projection_tenant_failures_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: The projection to the write target is failing, so the plan is not reaching the phone.
+          surviving: >-
+            The plan in syncr is correct and complete, and every screen still shows it. Anchor
+            sources still sync. What is stale is the calendar on the phone.
+          runbook: docs/runbooks/projection-failing.md
+
+      # The only alert about data that cannot be recovered. The timestamp is written by the nightly
+      # backup into the node exporter's textfile collector, so `absent()` is not defensive dressing:
+      # it is the reading on a deployment where the backup has never run, which is exactly when this
+      # alert must fire rather than stay quiet.
+      - alert: BackupStale
+        expr: >-
+          absent(syncr_backup_last_success_timestamp_seconds)
+          or time() - max(syncr_backup_last_success_timestamp_seconds) > 129600
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: No successful backup in 36 hours, so recent data is not recoverable.
+          surviving: >-
+            Everything in the product works. What is missing is the copy: WAL archiving may still be
+            running, so the exposure is bounded by the last archived segment rather than by the last
+            dump.
+          runbook: docs/runbooks/backup-stale.md
+
+      # Everything is down. Readiness is not a metric a stopped process can publish, so the condition
+      # is read from the two signals that survive the process: the database exporter's own `pg_up`,
+      # and whether Prometheus can reach the api at all.
+      - alert: DatabaseUnreachable
+        expr: >-
+          pg_up == 0 or absent(pg_up)
+          or up{job="syncr-api"} == 0 or absent(up{job="syncr-api"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The database or the api is unreachable, so nothing in the product is answering.
+          surviving: >-
+            The calendar on the phone still holds the last projected plan, so today and tomorrow are
+            still visible to the user. Nothing is lost: every write is in Postgres or was refused.
+          runbook: docs/runbooks/database-unreachable.md
+
+  - name: syncr-warning
+    rules:
+      # A warning rather than a critical, and the reason is the severity scheme: a failed solve loses
+      # nothing. The second disjunct closes the gap a pass that raises leaves: it never reaches the
+      # line that records a `failed` outcome, so a solve failing every tick would otherwise leave
+      # this alert quiet and the counter it does increment unwatched.
+      - alert: SolveFailing
+        expr: >-
+          increase(syncr_solve_total{outcome="failed"}[30m]) > 0
+          or increase(syncr_solve_tenant_failures_total[30m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Solves have been failing for half an hour, so the plan is not being revised.
+          surviving: >-
+            The previous plan is intact, still the plan of record, and still projected to the
+            calendar. Pinning, confirming and the live verdict all still work. What is stale is the
+            proposal, not the plan.
+          runbook: docs/runbooks/solve-failing.md
+
+      # Planning around anchors that may no longer exist. Read as a maximum over sources, so one
+      # stale feed fires it: an average would let a healthy feed hide a dead one.
+      - alert: SourceStale
+        expr: max(syncr_source_staleness_seconds) > 86400
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: A calendar source has not been read successfully for 24 hours.
+          surviving: >-
+            The plan is still solved, projected and correct against the commitments syncr last read.
+            The risk is that those commitments have moved: a lecture that was cancelled is still
+            being planned around.
+          runbook: docs/runbooks/source-stale.md
+
+      # A superseded solve is the EXPECTED outcome of editing quickly, so the alert is on a sustained
+      # ratio and never on an event. The window is the one `docs/runbooks/debounce-tuning.md` states,
+      # so the alert and the runbook read the same figure.
+      - alert: SupersededRatioHigh
+        expr: >-
+          sum(rate(syncr_solve_total{outcome="superseded"}[1h]))
+            / sum(rate(syncr_solve_total[1h])) > 0.3
+        for: 24h
+        labels:
+          severity: warning
+        annotations:
+          summary: More than three solves in ten are being discarded, sustained over a day.
+          surviving: >-
+            Nothing is broken and nothing is lost: a superseded solve is a solve whose answer was
+            replaced by a newer one. The debounce window no longer matches how this user edits, so
+            the plan takes longer to settle than it should.
+          runbook: docs/runbooks/debounce-tuning.md
+
+      # The probe's whole justification is being sub-millisecond on the request path. LABELLED BY
+      # CALLER, and that label is the alert: the plan-horizon maintainer performs roughly 288
+      # assemblies and probes a day in the background, and folding those into one series would let
+      # them either mask a request-path regression or trigger this on their own.
+      - alert: ProbeSlow
+        expr: >-
+          histogram_quantile(0.99,
+            sum by (le) (rate(syncr_probe_duration_seconds_bucket{caller="request"}[30m]))) > 0.01
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: p99 probe duration on the request path is over 10 ms.
+          surviving: >-
+            Every verdict is still correct; it is arriving more slowly. Solving, projecting and
+            confirming are unaffected. What has degraded is the interactive feel of a pin.
+          runbook: docs/runbooks/probe-slow.md
+
+      # SEPARATE FROM ProbeSlow ON PURPOSE, and the reason is which of the two costs more. THE
+      # ASSEMBLY, NOT THE PROBE, IS THE DOMINANT COST OF A PIN: the probe measures only the
+      # arithmetic that sits on top of it, and the assembly underneath is a series of repository
+      # reads. Without this alert a regression in the reads every live verdict depends on would be
+      # invisible to monitoring, because the probe's own figure would not move at all.
+      #
+      # The threshold is the `POST /pins` end-to-end budget in `19-nonfunctional.md`. It is stated
+      # against the whole pin rather than against the assembly's own p95 budget, because a p99 that
+      # has reached the end-to-end budget means the budget is already being missed.
+      - alert: AssemblySlow
+        expr: >-
+          histogram_quantile(0.99,
+            sum by (le) (rate(syncr_assembly_duration_seconds_bucket{caller="request"}[30m]))) > 0.15
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: p99 week-assembly duration on the request path is over 150 ms.
+          surviving: >-
+            Every verdict and every week view is still correct. Solving and projecting are
+            unaffected, because the worker's assemblies are a different series. What has degraded is
+            every screen that reads a week and every pin that computes a verdict.
+          runbook: docs/runbooks/assembly-slow.md
+
+      # A week inside the projection horizon with no plan, which presents to the user as a calendar
+      # that goes blank at a week boundary. The gauge should sit at zero, so the alert is on any
+      # non-zero value sustained past one maintainer cadence. The second disjunct is the runner
+      # raising: a maintainer failing every tick never advances the horizon, and its contained fault
+      # is counted rather than recorded on the gauge.
+      - alert: HorizonNotMaintained
+        expr: >-
+          max(syncr_horizon_weeks_without_plan) > 0
+          or increase(syncr_horizon_tenant_failures_total[2h]) > 0
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: A week inside the projection horizon has no plan.
+          surviving: >-
+            Every week that HAS a plan is still solved, projected and correct. The failure is at the
+            edge: the calendar will go blank at a week boundary the user has not reached yet.
+          runbook: docs/runbooks/horizon-not-maintained.md
+
+      # 80 GB is generous for a database that grows at roughly 16 MB per user-year, so this would
+      # indicate something unexpected rather than growth. `absent()` covers the exporter being down,
+      # which is the reading that would otherwise look like plenty of space.
+      - alert: DiskFillingUp
+        expr: >-
+          absent(node_filesystem_avail_bytes{mountpoint="/"})
+          or node_filesystem_avail_bytes{mountpoint="/"}
+            / node_filesystem_size_bytes{mountpoint="/"} < 0.2
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Under 20% of the root filesystem is free.
+          surviving: >-
+            Everything works until it does not. Postgres, the api and the worker are all still
+            healthy; a full disk stops writes, so act before that rather than after.
+          runbook: docs/runbooks/disk-filling-up.md
+
+  - name: syncr-info
+    rules:
+      # Benign, but it should not be invisible. The nightly job exits non-zero when a tenant's pass
+      # failed, and it writes its own figures to the textfile collector before exiting, so a failed
+      # run is readable as a `failed` outcome on its duration family. `absent()` is what makes a job
+      # that never ran at all visible rather than silent, which is the state of this deployment until
+      # the container has a timer.
+      - alert: LearningJobFailed
+        expr: >-
+          absent(syncr_learning_run_duration_seconds_count)
+          or increase(syncr_learning_run_duration_seconds_count{outcome="failed"}[24h]) > 0
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: The nightly learning run has failed, or has never reported at all.
+          surviving: >-
+            The solver keeps working with the weight set already in force, so every plan is still
+            produced and still correct. The parameters are slightly stale, which is the whole cost.
+          runbook: docs/runbooks/learning-job-failed.md

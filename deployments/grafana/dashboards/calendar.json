@@ -1,0 +1,166 @@
+{
+  "uid": "syncr-calendar",
+  "title": "syncr / Calendar",
+  "description": "Sync outcomes by provider, source staleness, events read and rejected, token age, and FOREIGN DELETIONS. Everything here is the boundary between syncr and the user's real calendars, which is where the product's two most dangerous failures live: a token that has stopped refreshing, and a reconciliation removing events the user created by hand.",
+  "tags": ["syncr", "calendar"],
+  "timezone": "browser",
+  "editable": false,
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Sync outcomes by provider",
+      "description": "Attempts per hour, by provider and by whether the read came back. An unchanged feed answering 304 is a SUCCESS: the outcome records whether syncr could read the source, not whether anything had changed. An excluded source produces no attempt at all, so it is not a third value.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (provider, outcome) (rate(syncr_calendar_sync_total[1h])) * 3600",
+          "legendFormat": "{{provider}} {{outcome}}"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(syncr_calendar_tenant_poll_failures_total[1h]) * 3600",
+          "legendFormat": "poll passes that raised"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Sync duration, p99 by provider",
+      "description": "A feed is fetched over the network and a Google read may back off and retry, so this is bounded by a publisher rather than by syncr. What matters is a change in it: a read that has doubled is a publisher that has slowed or a source that has grown.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le, provider) (rate(syncr_calendar_sync_duration_seconds_bucket[30m])))",
+          "legendFormat": "{{provider}} p99"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Source staleness, by source",
+      "description": "Seconds since each source was last read SUCCESSFULLY. SourceStale fires on the maximum over 24 hours, because planning around anchors that may no longer exist is the risk and one dead feed is enough. The label is the source IDENTIFIER, not its display name: a display name is the user's own words and would disclose what a block title does. Set from stored rows on a duty that runs every minute whether or not any source was polled, so an excluded or abandoned source still reports.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "syncr_source_staleness_seconds",
+          "legendFormat": "{{source_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 86400 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Events read and rejected",
+      "description": "Components each attempt read, and the ones that produced no event. A rejection is the PUBLISHER's fault in four of its five classes; read-budget-spent is the fifth and is syncr running out of the time it will spend on one feed, which is a different repair. Zero is observed as well as the counts, so a rate over the read histogram is readable.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(syncr_calendar_events_read_sum[1h]) / rate(syncr_calendar_events_read_count[1h])",
+          "legendFormat": "{{provider}} read, mean per attempt"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (provider, reason) (rate(syncr_calendar_events_rejected_total[1h])) * 3600",
+          "legendFormat": "{{provider}} rejected: {{reason}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Write target token: how long refreshing has been failing",
+      "description": "THE MOST DANGEROUS FAILURE IN THE PRODUCT. The gauge holds the age of the CONDITION rather than of a credential: zero while refreshes work, growing from the instant one starts failing. Reading anchors keeps working, solving keeps working, the plan keeps updating; only the projection stops, so the calendar on the phone silently freezes while syncr itself looks healthy. Set from stored rows on a duty that runs every minute, so it does not go absent once refreshes stop being attempted.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(syncr_write_target_token_age_seconds)",
+          "legendFormat": "failing for"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Foreign deletions: events the user created that syncr removed",
+      "description": "A PRODUCT SIGNAL, NOT A BUG. Destructive reconciliation is the documented behaviour, so a non-zero count is not a fault. A SUSTAINED non-zero count means the user is still editing in their calendar client rather than in syncr, which is a fact about the product's fit and not about its correctness. No alert fires on it, because there is nothing for an operator to repair.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (action) (rate(syncr_projection_events_sum{action=\"foreign_deleted\"}[6h])) * 21600",
+          "legendFormat": "foreign deletions per 6h"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (action) (rate(syncr_projection_events_sum{action!=\"foreign_deleted\"}[6h])) * 21600",
+          "legendFormat": "{{action}} per 6h"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Anchors currently held, by source",
+      "description": "How many commitments each source is contributing to the plan right now. A count that drops to zero while the source reports no error is the shape of a feed that has been emptied upstream, which is a planning input the user should know changed.",
+      "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "syncr_anchors_current",
+          "legendFormat": "{{source_id}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    }
+  ]
+}
