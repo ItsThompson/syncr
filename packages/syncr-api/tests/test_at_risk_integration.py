@@ -4,6 +4,13 @@ The claim is about two SCREENS agreeing, so it cannot be asserted inside either 
 suite drives is the equality between the set the backlog marks and the set derived from the week
 read's own shortfalls, over a real week whose deadline really cannot be met.
 
+**The equality is stated over BOTH screens on a week with a plan and on a week without one.** The
+second case is the one that got through review: the backlog's reader had no plan check, so a week
+the week read reported `verdict: null` for still marked a task, and there was no panel on which the
+user could have seen the shortfall behind the mark. The unplanned-week tests below are that case,
+and they are integration tests because the defect is only visible when both screens are read
+together.
+
 **The right-hand side is derived here rather than read off the backlog.** A comparison of the
 backlog's marking against the backlog's own count would agree whatever either computed.
 
@@ -25,6 +32,7 @@ own half is ``test_week_view_integration.py``.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, get_args
 from zoneinfo import ZoneInfo
 
@@ -48,6 +56,7 @@ from tests.live_weeks import (
     set_home_zone,
     sign_in,
     this_week,
+    week_path,
     week_view,
 )
 
@@ -180,6 +189,73 @@ def test_a_task_the_week_has_room_for_is_not_marked(
 
     assert marked[seeded["impossible"]] is True
     assert marked[seeded["comfortable"]] is False
+
+
+def test_a_week_with_no_plan_marks_nothing_beside_a_week_read_that_has_no_verdict(
+    http: TestClient,
+    owner: UserRecord,
+    configured: tuple[dict[str, str], str],
+    live_database_url: str,
+) -> None:
+    """The pair, on the state the maintainer leaves behind for fifteen minutes after every setup.
+
+    Deliberately NO ``produce_a_plan``: this is the week a tenant lives in between finishing setup
+    and the maintainer's next tick, which ``plans/emptiness.py`` treats as a first-class product
+    state with a stated wait, and which lasts indefinitely whenever the maintainer is behind.
+
+    The task is the same impossible one the planned case uses, so the ONLY difference between the
+    two tests is whether the week holds a plan. Both sides are asserted in one observation, because
+    the failure this closes was invisible on either screen alone: the backlog marked a task while
+    the week read answered `verdict: null`, and no surface could show the shortfall behind the mark.
+    """
+    headers, area_id = configured
+    week = this_week()
+    due = datetime.combine(week.dates()[-1], datetime.min.time(), tzinfo=UTC) + timedelta(hours=9)
+    capture_a_task(
+        http,
+        headers,
+        area_id,
+        title="Kontron take-home",
+        estimateMinutes=40 * AN_HOUR,
+        deadline=due.isoformat(),
+    )
+
+    view = week_view(http, headers, week)
+    listed = backlog(http, headers)
+
+    assert view["live"] is None, "the fixture planned the week, so this asserts the wrong state"
+    assert view["verdict"] is None
+    assert listed["header"]["atRiskCount"] == 0
+    assert [task["atRisk"] for task in listed["tasks"]] == [False]
+    assert at_risk_by_the_weeks_verdict(view, listed["tasks"]) == {
+        task["id"] for task in listed["tasks"] if task["atRisk"]
+    }
+
+
+def test_the_verdict_route_agrees_with_the_backlog_on_an_unplanned_week(
+    http: TestClient,
+    owner: UserRecord,
+    configured: tuple[dict[str, str], str],
+    live_database_url: str,
+) -> None:
+    """The third surface that answers a verdict, on the same state, so all three say one thing."""
+    headers, area_id = configured
+    week = this_week()
+    due = datetime.combine(week.dates()[-1], datetime.min.time(), tzinfo=UTC) + timedelta(hours=9)
+    capture_a_task(
+        http,
+        headers,
+        area_id,
+        title="Kontron take-home",
+        estimateMinutes=40 * AN_HOUR,
+        deadline=due.isoformat(),
+    )
+
+    refreshed = http.get(f"{week_path(week)}/verdict", headers=headers)
+
+    assert refreshed.status_code == HTTPStatus.OK, refreshed.text
+    assert refreshed.json() == {"verdict": None}
+    assert backlog(http, headers)["header"]["atRiskCount"] == 0
 
 
 def test_the_at_risk_column_does_not_inflate_on_a_healthy_solved_week(

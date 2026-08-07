@@ -41,12 +41,14 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 
 from syncr_api.approvals.config import APPROVE_PATH
 from syncr_api.concessions.config import WEEKS_PREFIX
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
+from syncr_api.plans.config import PENDING_PROPOSALS_TABLE
 from syncr_api.solving.config import SOLVE
 from syncr_domain.feasibility import Provenance, ShortfallKind
 from syncr_domain.plan import AdjustmentKind
@@ -648,6 +650,60 @@ def test_a_conflict_raised_between_two_reads_appears_on_the_second(
     assert [one["id"] for one in conflicts] == [raised]
     assert conflicts[0]["resolvedAt"] is None
     assert conflicts[0]["blockId"] == live.blocks[1].id
+
+
+def test_the_composed_read_selects_the_pending_slot_exactly_once(
+    owner: UserRecord, live_database_url: str, settings: ServiceSettings
+) -> None:
+    """One statement, so one snapshot, so the proposal and the verdict describe one slot state.
+
+    The request runs in one transaction under ``READ COMMITTED``, so two statements reading the slot
+    take two snapshots: an approval landing between them would answer with a proposal to assent to
+    beside a verdict computed as though the slot were empty, and the same concession could appear
+    twice under one identifier, once awaiting assent and once granted.
+
+    Counted at the driver rather than by reading the source, because the second read was inside a
+    collaborator and a source-level check would have to know which collaborators read what. The
+    statement text is matched on the table, so the count survives any rewording of the query.
+    """
+    database = create_database(live_database_url)
+    app = create_app(settings, lifespan=create_db_lifespan(database.engine))
+    app.state.db = database
+    selects: list[str] = []
+
+    @event.listens_for(database.engine.sync_engine, "after_cursor_execute")
+    def _count(_conn: object, _cursor: object, statement: str, *_rest: object) -> None:
+        if PENDING_PROPOSALS_TABLE in statement and statement.lstrip().upper().startswith("SELECT"):
+            selects.append(statement)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        headers = sign_in(client, owner.email)
+        set_home_zone(client, headers, LONDON)
+        declare_the_minimum(client, headers, live_database_url, owner.tenant_id)
+        week = this_week()
+        produce_a_plan(live_database_url, owner.tenant_id, week)
+        live = the_live_plan(live_database_url, owner.tenant_id, week)
+        version = the_weeks_version(live_database_url, owner.tenant_id, week)
+        document, diff = a_candidate_moving_one_block(live)
+        fill_the_slot(
+            live_database_url,
+            owner.tenant_id,
+            week,
+            verdict=a_packing_failure(
+                input_version=version, deadline=datetime.now(UTC) + timedelta(days=2)
+            ),
+            document=document,
+            diff=diff,
+            input_version=version,
+            operation_id=enqueue_a_solve(live_database_url, owner.tenant_id, week),
+        )
+        selects.clear()
+
+        view = week_view(client, headers, week)
+
+    assert view["proposal"] is not None, "the slot was empty, so the read took the cheap branch"
+    assert view["verdict"]["provenance"] == Provenance.SOLVER.value
+    assert len(selects) == 1, selects
 
 
 def test_the_two_denominators_on_one_payload_differ_by_the_occupancy_the_budget_cannot_see(

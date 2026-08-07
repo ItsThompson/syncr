@@ -1132,7 +1132,14 @@ async def test_a_week_whose_verdict_found_no_gap_puts_nothing_at_risk(
 async def test_a_week_with_no_plan_puts_nothing_at_risk(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    """``None`` is what the reader answers for a week the maintainer has not reached."""
+    """``None`` is what the reader answers for a week the maintainer has not reached.
+
+    Not a shape invented for this test: ``CurrentWeekVerdict.read`` returns ``None`` when the
+    current week holds no plan of record, which is driven over its own fakes in
+    ``test_served_verdict.py`` and over a real request beside the week read in
+    ``test_at_risk_integration.py``. This asserts what the service does WITH that answer, which is
+    the only part it owns.
+    """
     area = an_area(principal.tenant_id)
     service, _ = build(
         principal,

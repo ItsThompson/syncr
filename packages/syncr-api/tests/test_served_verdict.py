@@ -23,14 +23,16 @@ runs rather than a stub of it.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from syncr_api.plans.proposals import PendingProposalRepository
-from syncr_api.plans.records import PendingProposalRecord
-from syncr_api.plans.served_verdicts import ServedVerdict
+from syncr_api.plans.records import PendingProposalRecord, PlanRevisionRecord
+from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.served_verdicts import CurrentWeekVerdict, ServedVerdict
 from syncr_api.plans.stored_verdicts import stored_verdict
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
 from syncr_domain.feasibility import (
@@ -41,10 +43,12 @@ from syncr_domain.feasibility import (
     minimum_chunk_shortfall,
 )
 from syncr_domain.plan import AdjustmentKind
+from syncr_domain.weeks import IsoWeek
 from tests.assembly_fakes import (
     NOW,
     WEEK,
     FakeAreas,
+    FakeSettings,
     FakeTasks,
     FakeVersions,
     a_task,
@@ -54,10 +58,10 @@ from tests.assembly_fakes import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from decimal import Decimal
 
     from syncr_api.plans.assembler import WeekAssembler
-    from syncr_domain.weeks import IsoWeek
 
 # The version the week holds in these tests. A literal rather than the assembler fake's own default,
 # because what is under test is a comparison between two figures and a shared constant would make an
@@ -73,9 +77,36 @@ class FakePendingProposals(PendingProposalRepository):
 
     def __init__(self, held: PendingProposalRecord | None = None) -> None:
         self._held = held
+        self.reads = 0
 
     async def find(self, iso_week: IsoWeek) -> PendingProposalRecord | None:
+        self.reads += 1
         return None if self._held is None or self._held.iso_week != iso_week else self._held
+
+
+class FakeLivePlan(PlanRepository):
+    """Whether the week holds a plan of record, which is what makes it have a verdict at all."""
+
+    def __init__(self, weeks_with_a_plan: Sequence[IsoWeek] = ()) -> None:
+        self._weeks = tuple(weeks_with_a_plan)
+
+    async def latest(self, iso_week: IsoWeek) -> PlanRevisionRecord | None:
+        if iso_week not in self._weeks:
+            return None
+        # Only its presence is read: the reader gates on the absence and never opens the document.
+        return cast("PlanRevisionRecord", object())
+
+
+class CountingAssembler:
+    """An assembler that refuses to be called, so a path claiming to be cheap is measured."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def assemble(self, iso_week: IsoWeek, now: datetime) -> object:
+        self.calls += 1
+        message = f"the reader assembled {iso_week} at {now}, which this path must not do"
+        raise AssertionError(message)
 
 
 def a_solver_verdict(**changes: object) -> Verdict:
@@ -159,11 +190,13 @@ def _percent(whole: int) -> Decimal:
     return Decimal(whole)
 
 
-def a_reader(
-    *, held: PendingProposalRecord | None = None, assembler: WeekAssembler | None = None
-) -> ServedVerdict:
+def a_reader(assembler: WeekAssembler | None = None) -> ServedVerdict:
+    """The rule alone, over the real probe and the real assembler on fakes.
+
+    It reads no slot and no version: both are its caller's, read once each and handed in, so this
+    class cannot carry two snapshots of one week into one answer.
+    """
     return ServedVerdict(
-        proposals=FakePendingProposals(held),
         assembler=assembler or an_impossible_week(),
         probe=WeekProbe(caller=ProbeCaller.REQUEST),
     )
@@ -175,7 +208,7 @@ def a_reader(
 
 
 async def test_a_week_with_an_empty_slot_is_served_a_live_probe_verdict() -> None:
-    served = await a_reader().for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION)
+    served = await a_reader().for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION, held=None)
 
     assert served.provenance is Provenance.PROBE
     assert served.input_version == THE_WEEKS_VERSION
@@ -184,7 +217,7 @@ async def test_a_week_with_an_empty_slot_is_served_a_live_probe_verdict() -> Non
 
 async def test_the_live_branch_carries_a_tradeoff_for_each_gap_it_found() -> None:
     """A gap the user can do nothing about is a refusal with no remedy."""
-    served = await a_reader().for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION)
+    served = await a_reader().for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION, held=None)
 
     assert served.shortfalls, "the fixture week proved feasible, so this asserted nothing"
     assert served.tradeoffs
@@ -200,7 +233,7 @@ async def test_a_slot_at_the_weeks_own_version_serves_the_solves_verdict() -> No
     """The stronger finding survives the read, which is what US-FEAS-02 requires."""
     held = a_slot()
 
-    served = await a_reader(held=held).for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION)
+    served = await a_reader().for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION, held=held)
 
     assert served.provenance is Provenance.SOLVER
     assert {gap.kind for gap in served.shortfalls} == {ShortfallKind.MINIMUM_CHUNK_UNPLACEABLE}
@@ -211,7 +244,7 @@ async def test_the_stored_verdict_is_served_with_its_own_tradeoffs_and_instant()
     held = a_slot()
     expected = a_solver_verdict()
 
-    served = await a_reader(held=held).for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION)
+    served = await a_reader().for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION, held=held)
 
     assert served.computed_at == expected.computed_at
     assert [one.label for one in served.tradeoffs] == [one.label for one in expected.tradeoffs]
@@ -228,7 +261,7 @@ async def test_a_feasible_solver_verdict_survives_the_read_as_feasible() -> None
         a_solver_verdict(feasible=True, shortfalls=(), tradeoffs=()),
     )
 
-    served = await a_reader(held=held).for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION)
+    served = await a_reader().for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION, held=held)
 
     assert served.feasible is True
     assert served.provenance is Provenance.SOLVER
@@ -249,17 +282,110 @@ async def test_a_slot_at_any_other_version_falls_back_to_a_live_probe(stale_vers
     """
     held = a_slot(input_version=stale_version)
 
-    served = await a_reader(held=held).for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION)
+    served = await a_reader().for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION, held=held)
 
     assert served.provenance is Provenance.PROBE
     assert served.input_version == THE_WEEKS_VERSION
 
 
-async def test_a_slot_holding_another_week_is_not_served_for_this_one() -> None:
-    """The slot is read by week, so a reader handed the wrong row answers from the probe."""
-    held = a_slot()
-    reader = a_reader(held=held)
+# --------------------------------------------------------------------------------
+# CurrentWeekVerdict: the week the tenant is living in, and the plan check before the rule
+# --------------------------------------------------------------------------------
 
-    served = await reader.for_week(WEEK.following(), now=NOW, input_version=THE_WEEKS_VERSION)
+# A week thirteen hours east resolves to a different ISO week from the UTC date for part of every
+# day, which is what makes the home-zone reading observable rather than incidental.
+AUCKLAND = "Pacific/Auckland"
+LATE_UTC = datetime(2026, 2, 15, 23, 30, tzinfo=UTC)
 
+
+def a_current_week_reader(
+    *,
+    weeks_with_a_plan: tuple[IsoWeek, ...] = (WEEK,),
+    held: PendingProposalRecord | None = None,
+    home_zone: str = "Europe/London",
+    now: datetime = NOW,
+    assembler: WeekAssembler | None = None,
+) -> tuple[CurrentWeekVerdict, FakePendingProposals]:
+    """The backlog's reader over fakes, handing the slot reader back so its reads can be counted."""
+    proposals = FakePendingProposals(held)
+    return (
+        CurrentWeekVerdict(
+            served=a_reader(assembler),
+            revisions=FakeLivePlan(weeks_with_a_plan),
+            proposals=proposals,
+            versions=FakeVersions(THE_WEEKS_VERSION),
+            settings=FakeSettings(home_zone),
+            clock=lambda: now,
+        ),
+        proposals,
+    )
+
+
+async def test_a_current_week_with_no_plan_has_no_verdict_at_all() -> None:
+    """The must-fix, at its source. ``US-TASK-03``'s equality is over the pair of screens.
+
+    The week's own read answers ``None`` for a week holding no plan, so the reader the backlog is
+    wired to has to answer the same or the two screens answer different questions: a marked task
+    with no verdict panel to explain it is the failure the criterion names.
+    """
+    reader, _proposals = a_current_week_reader(weeks_with_a_plan=())
+
+    assert await reader.read() is None
+
+
+async def test_a_current_week_with_no_plan_costs_no_assembly() -> None:
+    """The plan check is FIRST, so the cheap path is cheap.
+
+    Driven with an assembler that raises rather than by counting a query, because a path that must
+    not assemble is stated better by a collaborator that refuses than by a number.
+    """
+    reader, proposals = a_current_week_reader(
+        weeks_with_a_plan=(), assembler=cast("WeekAssembler", CountingAssembler())
+    )
+
+    assert await reader.read() is None
+    assert proposals.reads == 0, "the slot was read on a path that already knew the answer"
+
+
+async def test_a_current_week_with_a_plan_and_an_empty_slot_probes() -> None:
+    reader, proposals = a_current_week_reader()
+
+    served = await reader.read()
+
+    assert served is not None
     assert served.provenance is Provenance.PROBE
+    assert proposals.reads == 1, "the slot is read once per backlog read"
+
+
+async def test_a_current_week_with_a_plan_and_a_current_slot_serves_the_solves_verdict() -> None:
+    """The same rule the Week screen serves, reached through the same collaborator."""
+    reader, _proposals = a_current_week_reader(held=a_slot())
+
+    served = await reader.read()
+
+    assert served is not None
+    assert served.provenance is Provenance.SOLVER
+    assert {gap.kind for gap in served.shortfalls} == {ShortfallKind.MINIMUM_CHUNK_UNPLACEABLE}
+
+
+async def test_which_week_is_asked_about_is_resolved_in_the_home_zone() -> None:
+    """23:30 UTC is already the next day in Auckland, and that day is in the following ISO week.
+
+    A reader resolving the week in UTC would ask about the week this tenant has finished living in.
+    The instant is fixed rather than waited for, because the two answers differ for thirteen hours a
+    day and a test that only had bite during them would pass for the wrong reason the rest of the
+    time.
+    """
+    utc_week = IsoWeek.containing(LATE_UTC.date())
+    local_week = IsoWeek.containing(LATE_UTC.astimezone(ZoneInfo(AUCKLAND)).date())
+    assert local_week != utc_week, "the fixture instant agrees in both zones, so this asserts none"
+
+    east, _proposals = a_current_week_reader(
+        weeks_with_a_plan=(local_week,), home_zone=AUCKLAND, now=LATE_UTC
+    )
+    reading_utc, _also = a_current_week_reader(
+        weeks_with_a_plan=(utc_week,), home_zone=AUCKLAND, now=LATE_UTC
+    )
+
+    assert await east.read() is not None, "the week the tenant lives in has a plan and a verdict"
+    assert await reading_utc.read() is None, "the UTC week is not the one this tenant is living in"
