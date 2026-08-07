@@ -17,6 +17,7 @@ exiting with a real number.
 
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
 import sys
@@ -145,11 +146,36 @@ def test_every_documented_exit_code_has_a_case() -> None:
 
 
 def test_every_case_runs_the_console_script_rather_than_this_interpreter() -> None:
-    # What ticket 50 could not say. Two codes were reached in its own interpreter because no command
-    # dispatched work; `plan solve --wait` does, so the exemption set is gone and this is what stops
-    # one coming back: a case is a subprocess or it is not a case.
-    assert set(CASES) == set(ExitCode)
-    assert all(case.argv for case in CASES.values())
+    """What ticket 50 could not say, asserted over this module's own source.
+
+    Two codes were reached in ticket 50's own interpreter because no command dispatched work.
+    ``plan solve --wait`` does, so the exemption set is gone, and this is what stops one coming
+    back: an in-interpreter case would have to reach the wait loop or build a result directly, the
+    way the two tests it replaced did. So the guard is that no name in this file does.
+
+    Read from the AST rather than by searching the text, because the text includes this sentence: a
+    substring guard matches the names it is written to forbid and fails on its own prose. Names
+    only, so a comment and a docstring are invisible to it.
+    """
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    referenced = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} | {
+        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+    }
+
+    # The precondition: the one runner really is a subprocess of the entry point, and it is the only
+    # one. Asserted on the call rather than on a string, so a second runner is visible.
+    runners = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "run"
+    ]
+    assert len(runners) == 2, "expected exactly `subprocess.run` in `_run` and in the source probe"
+
+    # And nothing here reaches the shapes an in-interpreter case needs: `wait_for_operation` is the
+    # loop, and `CliResult` is what a test would build to read an exit code without exiting.
+    in_the_interpreter = sorted(referenced & {"wait_for_operation", "CliResult", "Operation"})
+
+    assert in_the_interpreter == []
 
 
 @pytest.mark.parametrize("expected", list(CASES), ids=lambda code: f"{int(code)}-{code.name}")

@@ -26,6 +26,7 @@ import pytest
 from syncr_cli.api_client import API_PREFIX, ROUTES
 from syncr_cli.auth.discovery import DISCOVERY_PATH, REQUESTED_SCOPES
 from syncr_cli.exit_codes import ExitCode
+from syncr_cli.idempotency import IDEMPOTENCY_KEY_HEADER
 from tests import payloads
 from tests.catalog import catalog
 from tests.credentials import NO_KEYCHAIN, seed_refresh_token
@@ -36,6 +37,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 WRAPPER_MEMBERS: Final = ["ok", "data", "verdict", "operation", "problem"]
+
+# The methods that can change state, and therefore the ones a key belongs on. Named so the read half
+# of the idempotency rule is asserted against the same list the rule is stated over.
+UNSAFE_METHODS: Final = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 WEEK_PATH: Final = f"{API_PREFIX}/weeks/{payloads.ISO_WEEK}"
 AREAS_PATH: Final = f"{API_PREFIX}/areas"
@@ -309,7 +314,6 @@ def test_every_mutation_carries_an_idempotency_key_and_every_read_carries_none(
     than dispatching a solve of a week that has moved on.
     """
     case = COMMANDS[(noun, verb)]
-    unsafe = {"POST", "PUT", "PATCH", "DELETE"}
 
     with FakeApi() as api:
         _authorize(api, tmp_path)
@@ -319,14 +323,18 @@ def test_every_mutation_carries_an_idempotency_key_and_every_read_carries_none(
         drive(case.argv, base_url=api.base_url, home=tmp_path, env={**NO_KEYCHAIN, **case.extra})
 
         product = [one for one in api.received if one.path.startswith(API_PREFIX)]
-        keyed = {
-            (one.method, one.path): "idempotency-key" in one.headers
-            for one in product
-            if one.method in unsafe
+        carried = {
+            (one.method, one.path): IDEMPOTENCY_KEY_HEADER.lower() in one.headers for one in product
         }
 
-    expected = {key: key != ("POST", SOLVE_PATH) for key in keyed}
-    assert keyed == expected
+    # Stated over every product request rather than over the unsafe ones, so the second half of this
+    # test's name is asserted too: a command that sent a key on a read would otherwise pass.
+    assert carried, f"{case.argv} reached no product route"
+    expected = {
+        (method, path): method in UNSAFE_METHODS and (method, path) != ("POST", SOLVE_PATH)
+        for method, path in carried
+    }
+    assert carried == expected
 
 
 def _authorize(api: FakeApi, home: Path) -> None:

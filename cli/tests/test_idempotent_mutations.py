@@ -65,8 +65,10 @@ MUTATIONS: Final = (
         method="POST",
         path=COMPLETE_PATH,
         answer=Answer.json(payloads.task(status="completed")),
-        # A different task is a different act, and the route is per-task, so the changed argument is
-        # the idempotency key itself: an agent that means two of one act says so.
+        # Three of the seven vary `--idempotency-key` rather than an argument, and the reason is
+        # the same for all three: every argument these commands take is in the PATH, so changing
+        # one changes the route and the second act would land somewhere this case is not watching.
+        # What is left to vary is the key, which is how an agent says "I mean two of these".
         different=("task", "done", payloads.TASK_ID, "--idempotency-key", "deliberately-second"),
     ),
     Mutation(
@@ -95,6 +97,7 @@ MUTATIONS: Final = (
         method="POST",
         path=CONFIRM_PATH,
         answer=Answer.json(payloads.day()),
+        # The date is in the path, so the key is what is left to vary. See `task done` above.
         different=(
             "day",
             "confirm",
@@ -104,13 +107,11 @@ MUTATIONS: Final = (
         ),
     ),
     Mutation(
-        argv=(
-            "plan",
-            "approve",
-        ),
+        argv=("plan", "approve"),
         method="POST",
         path=APPROVE_PATH,
         answer=Answer.json(payloads.approved(), status=201),
+        # The week is in the path, so the key is what is left to vary. See `task done` above.
         different=("plan", "approve", "--idempotency-key", "deliberately-second"),
     ),
 )

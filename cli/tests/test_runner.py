@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import builtins
 import json
+import sys
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -33,6 +34,29 @@ if TYPE_CHECKING:
     from syncr_cli.wire.reading import JsonMapping
 
 COMMANDS = commands()
+
+
+class _RefusingStdin:
+    """A stdin that refuses every way of reading it.
+
+    ``input`` is the usual way a command would block on a person and it is not the only one, so the
+    claim "nothing in this package reads stdin" is asserted against the stream rather than against
+    the builtin that normally reaches it.
+    """
+
+    def _refuse(self, *_args: object, **_kwargs: object) -> str:
+        raise AssertionError("a command read stdin")
+
+    read = readline = readlines = _refuse
+
+    def __iter__(self) -> object:
+        raise AssertionError("a command read stdin")
+
+    def isatty(self) -> bool:
+        return False
+
+    def fileno(self) -> int:
+        return 0
 
 
 def test_output_is_json_when_stdout_is_not_a_terminal(tmp_path: Path) -> None:
@@ -240,10 +264,15 @@ def test_no_command_ever_waits_for_input(
 ) -> None:
     # Stronger than "does not prompt when stdout is not a terminal": nothing in this package reads
     # stdin, so there is no condition under which a command can block on a person.
+    #
+    # `input` alone is not that claim. A `sys.stdin.read()` would not call it, so stdin itself is
+    # replaced by a stream that refuses every way of reading it: the docstring's property is what is
+    # asserted rather than the one builtin that would usually express it.
     def refuse(*_args: object, **_kwargs: object) -> str:
         raise AssertionError("a command asked for input")
 
     monkeypatch.setattr(builtins, "input", refuse)
+    monkeypatch.setattr(sys, "stdin", _RefusingStdin())
 
     with FakeApi() as api:
         drive(command, base_url=api.base_url, home=tmp_path, stdout_is_tty=True)
@@ -262,7 +291,8 @@ def test_every_commands_help_states_its_examples_and_the_exit_code_table(
     assert exited.value.code == 0
     assert "examples:" in printed
     assert exit_code_table() in printed
-    assert f"{PROGRAM} {command[0]}" in printed
+    # The verb, not only the noun: `block skip` carrying `block done`'s examples would pass.
+    assert f"{PROGRAM} {command[0]} {command[1]}" in printed
     assert "SYNCR_" in printed
 
 

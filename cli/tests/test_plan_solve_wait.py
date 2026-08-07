@@ -38,6 +38,11 @@ AREAS_PATH: Final = f"{API_PREFIX}/areas"
 RUNNING: Final = Answer.json(payloads.operation(status="running"))
 ACCEPTED: Final = Answer.json(payloads.operation(), status=202)
 
+# How many times a sixty-second wait at the default 500ms interval polls, under the doubling and the
+# 5-second ceiling: 0.5, 1, 2, 4, then 5 until the deadline. Pinned rather than bounded, so a change
+# to either constant is a visible diff.
+EXPECTED_POLLS_IN_A_MINUTE: Final = 16
+
 
 def test_a_solve_prints_the_operation_and_exits_zero_immediately(tmp_path: Path) -> None:
     # Without --wait the plan does not exist yet, so the answer is the operation to follow. An agent
@@ -194,7 +199,7 @@ def test_the_poll_backs_off_to_its_ceiling_rather_than_hammering_the_api(
     tmp_path: Path,
 ) -> None:
     # A tight poll on a long solve should not hammer the API. Sixty seconds at the configured 500ms
-    # would be 120 requests; capped and doubling it is a dozen.
+    # would be 120 requests; doubling to a 5-second ceiling makes it sixteen.
     clock = Clock()
     with FakeApi() as api:
         _serving(api, tmp_path)
@@ -210,10 +215,11 @@ def test_the_poll_backs_off_to_its_ceiling_rather_than_hammering_the_api(
         )
 
     polls = api.requests_to("GET", OPERATION_PATH)
-    assert clock.slept[0] == 0.5
-    assert clock.slept[1] == 1.0
-    assert max(clock.slept) <= MAX_POLL_INTERVAL_MS / 1000
-    assert len(polls) < 20
+    # Pinned to the schedule the constants really produce, so a change to either the factor or the
+    # ceiling is a visible diff rather than a number that still happens to be under a loose bound.
+    assert clock.slept[:5] == [0.5, 1.0, 2.0, 4.0, 5.0]
+    assert max(clock.slept) == MAX_POLL_INTERVAL_MS / 1000
+    assert len(polls) == EXPECTED_POLLS_IN_A_MINUTE
 
 
 def test_a_timed_out_wait_is_resumable_from_the_identifier_it_printed(tmp_path: Path) -> None:
