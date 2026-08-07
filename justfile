@@ -587,13 +587,26 @@ ports-check:
     resolved="$(SYNCR_API_DIGEST=unset SYNCR_FRONTEND_DIGEST=unset SYNCR_LEARNING_DIGEST=unset \
       SYNCR_OPS_DIGEST=unset CLOUDFLARE_TUNNEL_TOKEN=unset \
       docker compose {{deploy_compose}} --profile ops --profile scheduled config)" || exit 1
-    services="$(printf '%s' "$resolved" | grep -cE '^  [a-z_-]+:$')"
+    # A resolution that returned nothing would otherwise pass this recipe: the absence of a published
+    # port in an empty document is not the property being checked. `--services` prints exactly the
+    # service names, so this counts services rather than every two-space-indented key. Fourteen is a
+    # FLOOR, not the authoritative list: `tests/test_deploy_topology.py` crosses the resolved set
+    # against a named table as an exact equality, and this is here so the recipe cannot pass on an
+    # empty read.
+    services="$(SYNCR_API_DIGEST=unset SYNCR_FRONTEND_DIGEST=unset SYNCR_LEARNING_DIGEST=unset \
+      SYNCR_OPS_DIGEST=unset CLOUDFLARE_TUNNEL_TOKEN=unset \
+      docker compose {{deploy_compose}} --profile ops --profile scheduled config --services | wc -l)"
+    if [ "$services" -lt 14 ]; then
+      echo "the resolved stack has $services services, fewer than the 14 it declares: this read" >&2
+      echo "something other than the deployed configuration" >&2
+      exit 1
+    fi
     if printf '%s' "$resolved" | grep -q 'published:'; then
       echo "a service in the deployed stack publishes a host port:" >&2
       printf '%s' "$resolved" | grep -B8 'published:' >&2
       exit 1
     fi
-    echo "no host port is published by any of the resolved services in the deployed stack"
+    echo "no host port is published by any of the ${services// /} resolved services in the deployed stack"
 
 # Wait for the api to answer /readyz, which is what a deploy is gated on.
 #
@@ -678,25 +691,23 @@ deploy:
 # --- Backup and recovery ----------------------------------------------------
 # An untested backup is a belief. `just restore-drill` is the only thing here that proves otherwise.
 
-# Run one `docker compose` invocation with the release's recorded digests in the environment.
+# Put the release's recorded digests in the environment of a recipe that runs `docker compose`.
 #
-# THE ONE PLACE THE DIGEST FILE IS READ, and every recipe below goes through it. `cd.yml` writes
-# `deployments/digests.env` on the host and `just deploy` records the last set that reached readiness;
-# compose interpolates those variables and the deploy overlay requires them, so without this every
-# human invocation on the host would resolve a `:latest` tag that a digest pull never created and
-# compose would build one from the checkout.
+# THE ONE PLACE THE DIGEST FILE IS READ, and every recipe below interpolates this line rather than
+# repeating it. `cd.yml` writes `deployments/digests.env` on the host and `just deploy` records the last
+# set that reached readiness; compose interpolates those variables and the deploy overlay requires
+# them, so without this every human invocation on the host would resolve a `:latest` tag that a digest
+# pull never created and compose would build one from the checkout.
+#
+# A SOURCED LINE RATHER THAN A WRAPPER RECIPE, and that is a correction: the first version was a
+# `_compose +ARGS` recipe, and `{{ARGS}}` interpolates a space-joined string into a shell, which
+# re-word-splits it. A caller that took care to write `run --rm ops sh -c 'psql -c "..."'` lost the
+# quoting one layer down. Sourcing keeps every caller's own quoting intact and still reads the file in
+# one place.
 #
 # Absent locally, which is correct: `just drill-local` composes files that need no digest, and any
 # other recipe run without them stops at compose's own message naming the variable.
-[private]
-_compose +ARGS:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    set -a
-    # shellcheck disable=SC1091
-    [ -f deployments/digests.env ] && . deployments/digests.env
-    set +a
-    exec docker compose {{ARGS}}
+read_digests := "set -a; [ -f deployments/digests.env ] && . deployments/digests.env; set +a"
 
 # Take one backup now: the fingerprint, then the dump. Both steps, in that order.
 #
@@ -712,9 +723,12 @@ _compose +ARGS:
 # The nightly timer runs this recipe rather than the two commands, so the schedule and a manual run
 # cannot drift. See `deployments/systemd/syncr-backup.service`.
 backup-now:
-    just _compose {{ops_compose}} run --rm ops python3 -m ops.prepare
-    just _compose {{ops_compose}} run --rm fingerprint
-    just _compose {{ops_compose}} run --rm ops python3 -m ops.dump
+    #!/usr/bin/env bash
+    set -uo pipefail
+    {{read_digests}}
+    docker compose {{ops_compose}} run --rm ops python3 -m ops.prepare || exit 1
+    docker compose {{ops_compose}} run --rm fingerprint || exit 1
+    docker compose {{ops_compose}} run --rm ops python3 -m ops.dump
 
 # Ship every archived WAL segment off-host. Runs once a minute from a timer.
 #
@@ -723,7 +737,10 @@ backup-now:
 # publishing a fresh timestamp for an empty directory would claim a five-minute recovery point while
 # none existed.
 wal-ship:
-    just _compose {{ops_compose}} run --rm ops python3 -m ops.ship
+    #!/usr/bin/env bash
+    set -uo pipefail
+    {{read_digests}}
+    docker compose {{ops_compose}} run --rm ops python3 -m ops.ship
 
 # Cross the user ids the ops container chowns volumes to against what the images actually run as.
 #
@@ -768,7 +785,10 @@ uid-check:
 # the timer runs: the container exits non-zero when a tenant's fit failed, and writes its exposition to
 # the textfile collector before exiting, which is how `LearningJobFailed` can see a run at all.
 learn-once:
-    just _compose {{ops_compose}} --profile scheduled run --rm learning
+    #!/usr/bin/env bash
+    set -uo pipefail
+    {{read_digests}}
+    docker compose {{ops_compose}} --profile scheduled run --rm learning
 
 # THE RESTORE DRILL. Restore the newest off-host backup into a clean database, boot the stack against
 # it, and confirm the data came back.
@@ -793,9 +813,10 @@ learn-once:
 restore-drill:
     #!/usr/bin/env bash
     set -uo pipefail
+    {{read_digests}}
     SYNCR_DRILL_STARTED_AT="$(date +%s)"
     export SYNCR_DRILL_STARTED_AT
-    drill() { just _compose {{restore_compose}} "$@"; }
+    drill() { docker compose {{restore_compose}} "$@"; }
     # SURGICAL, BY SERVICE NAME. Never `down -v`: that is scoped to the PROJECT, and a local run
     # proved what that means here, deleting `pgdata`, the staging volume and the bucket. On the
     # deployed host the drill's own teardown would have destroyed the live database. The scratch
@@ -863,12 +884,36 @@ drill-seed:
       psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-syncr}" -d "${POSTGRES_DB:-syncr}" \
       -f /dev/stdin < deployments/drill/seed-local.sql
 
+# REFUSE ON A DEPLOYED HOST. `deployments/digests.env` is the fact that distinguishes one from a
+# workstation: `cd.yml` writes it and nothing else does.
+#
+# Without this, running the local drill on a host would generate a THROWAWAY keypair, dump the LIVE
+# database to that host's own disk encrypted to that key, restore into a locally-built image, and print
+# "Every claim held. This backup restores, and the data came back." Every guard in the path would be
+# satisfied and the drill would prove nothing about the real bucket or the real key. This ticket's
+# standard is that an instrument refuses rather than relying on its name, which is why `ops.restore`
+# requires the live target instead of trusting its caller.
+#
+# A DEPENDENCY RATHER THAN THE FIRST LINE OF THE BODY, and listed before `drill-keys`, because `just`
+# runs dependencies left to right: the first version refused only after `drill-keys` had already
+# written a throwaway keypair into `deployments/secrets` on the host it was refusing to run on.
+[private]
+_refuse-a-local-drill-on-a-deployed-host:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    if [ -f deployments/digests.env ]; then
+      echo "this host has a recorded release: run \`just restore-drill\`, which uses the real bucket" >&2
+      echo "and the real key. \`just drill-local\` proves the mechanics on a development machine and" >&2
+      echo "nothing about this host: it would dump the live database under a throwaway key." >&2
+      exit 1
+    fi
+
 # The whole path, locally and from nothing: a database, migrations, seed, a real backup into the local
 # bucket, then the real drill against it.
 #
 # Self-contained on purpose. The first version of a probe recipe in this repository was unrunnable
 # three times over, and each time running it was what revealed that.
-drill-local: drill-keys
+drill-local: _refuse-a-local-drill-on-a-deployed-host drill-keys
     #!/usr/bin/env bash
     set -uo pipefail
     # THE DEVELOPMENT ENCRYPTION KEY, exported here rather than worked around in the compose files.
