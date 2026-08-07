@@ -82,12 +82,26 @@ export interface BacklogFilters {
   readonly atRisk?: boolean | undefined;
 }
 
+/**
+ * Every filter that is SET, under the route's own parameter names.
+ *
+ * THE ONE ENUMERATION OF THE THREE. The key and the request both derive from it, because they have to agree: a
+ * key that carried a filter the request did not send would cache one answer under another question. A fourth
+ * filter is added here and nowhere else.
+ *
+ * Absent members are omitted rather than sent empty, so the unfiltered read's key is the bare path and a filter
+ * the reader has not set is not a filter the route has to interpret.
+ */
+export const backlogQuery = (filters: BacklogFilters = {}): Record<string, string> => {
+  const stated: Record<string, string> = {};
+  if (filters.areaId !== undefined) stated.areaId = filters.areaId;
+  if (filters.status !== undefined) stated.status = filters.status;
+  if (filters.atRisk !== undefined) stated.atRisk = String(filters.atRisk);
+  return stated;
+};
+
 export const backlogKey = (filters: BacklogFilters = {}): string => {
-  const query = new URLSearchParams();
-  if (filters.areaId !== undefined) query.set("areaId", filters.areaId);
-  if (filters.status !== undefined) query.set("status", filters.status);
-  if (filters.atRisk !== undefined) query.set("atRisk", String(filters.atRisk));
-  const stated = query.toString();
+  const stated = new URLSearchParams(backlogQuery(filters)).toString();
   return stated === "" ? BACKLOG_PATH : `${BACKLOG_PATH}?${stated}`;
 };
 

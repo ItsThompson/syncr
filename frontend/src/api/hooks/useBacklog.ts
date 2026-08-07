@@ -22,7 +22,7 @@
 import useSWR, { useSWRConfig } from "swr";
 
 import { client } from "../client";
-import { backlogKey, isBacklogKey, type BacklogFilters } from "../keys";
+import { backlogKey, backlogQuery, isBacklogKey, type BacklogFilters } from "../keys";
 import { apply, read } from "./request";
 import { useWrite, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
@@ -41,23 +41,15 @@ export interface Backlog {
 }
 
 /**
- * The query the client sends, built from the filters the screen holds.
+ * The query the client sends, which is the same enumeration the cache key is built from.
  *
- * `openapi-fetch` is given only the members that are set, because under `exactOptionalPropertyTypes` an
- * explicit undefined is not the same as an absent parameter, and a filter sent empty is a filter the route
- * would have to interpret.
+ * `backlogQuery` lives beside the key deliberately: the two have to agree, because a key carrying a filter the
+ * request did not send would cache one answer under another question. Two spellings of one filter set is how a
+ * fourth filter comes to be added in one of them.
  */
-function queryOf(filters: BacklogFilters): Record<string, string | boolean> {
-  return {
-    ...(filters.areaId === undefined ? {} : { areaId: filters.areaId }),
-    ...(filters.status === undefined ? {} : { status: filters.status }),
-    ...(filters.atRisk === undefined ? {} : { atRisk: filters.atRisk }),
-  };
-}
-
 async function readBacklog(filters: BacklogFilters): Promise<Backlog> {
   const { header, tasks } = await read(() =>
-    client.GET("/api/v1/tasks", { params: { query: queryOf(filters) } }),
+    client.GET("/api/v1/tasks", { params: { query: backlogQuery(filters) } }),
   );
   return { header, tasks };
 }

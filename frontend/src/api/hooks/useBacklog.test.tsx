@@ -15,15 +15,19 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
+import useSWR from "swr";
 
 import { apiServer } from "../../testing/apiServer";
 import { countedHandler, recordingHandler } from "../../testing/apiStub";
 import { FreshCache } from "../../testing/renderRoute";
+import { client } from "../client";
 import { backlogKey, isBacklogKey, weekKey } from "../keys";
+import { read as readBody } from "./request";
 import { useBacklog, useTaskCapture, useTaskCompletion } from "./useBacklog";
 
 const origin = window.location.origin;
 const TASK_ID = "7c2d1a10-0001-4a3b-8b21-000000000001";
+const ISO_WEEK = "2026-W07";
 
 const BACKLOG = {
   header: { openCount: 1, atRiskCount: 0 },
@@ -192,21 +196,39 @@ describe("the writes", () => {
 
   /* A COMPLETION DOES NOT REFETCH THE WEEK. It changes no block of the plan of record: the blocks bound to the
      task become empty space in the NEXT solve, which the version bump is what causes. Refetching the week here
-     would redraw the same plan and imply something in it had changed. */
+     would redraw the same plan and imply something in it had changed.
+
+     THE WEEK KEY HAS ITS OWN SUBSCRIBER IN THIS TEST, and that is the whole reason the assertion means anything:
+     SWR revalidates a key nothing is subscribed to by not reading it at all, so a count taken without a
+     subscriber is pinned to zero whatever the write invalidates. With the subscriber mounted, adding
+     `mutate(weekKey(...))` to the hook turns this red. */
   it("completes a task, reads the list again, and does not read the week", async () => {
     const list = countedHandler("/api/v1/tasks", { status: 200, body: BACKLOG });
-    const week = countedHandler("/api/v1/weeks/2026-W07", { status: 200, body: {} });
+    const week = countedHandler(`/api/v1/weeks/${ISO_WEEK}`, { status: 200, body: {} });
     const complete = recordingHandler("post", `/api/v1/tasks/${TASK_ID}/complete`, {
       status: 200,
       body: {},
     });
     apiServer.use(list.handler, week.handler, complete.handler);
     const { result } = renderHook(
-      () => ({ read: useBacklog({ status: "open" }), write: useTaskCompletion() }),
+      () => ({
+        read: useBacklog({ status: "open" }),
+        /* A bare subscriber on the week's own key, which is what makes the count able to move. Bare rather than
+           `useWeek`, because what is under test is the KEY the write does or does not name. */
+        weekRead: useSWR(weekKey(ISO_WEEK), () =>
+          readBody(() =>
+            client.GET("/api/v1/weeks/{iso_week}", { params: { path: { iso_week: ISO_WEEK } } }),
+          ),
+        ),
+        write: useTaskCompletion(),
+      }),
       { wrapper: FreshCache },
     );
     await waitFor(() => {
       expect(result.current.read.status).toBe("ready");
+    });
+    await waitFor(() => {
+      expect(week.count()).toBe(1);
     });
 
     const applied = await result.current.write.submit(TASK_ID);
@@ -216,6 +238,6 @@ describe("the writes", () => {
     await waitFor(() => {
       expect(list.count()).toBe(2);
     });
-    expect(week.count()).toBe(0);
+    expect(week.count()).toBe(1);
   });
 });
