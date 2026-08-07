@@ -19,7 +19,7 @@ over the same rows extract the same observations and compose the same row.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from syncr_learning import statements
@@ -103,26 +103,34 @@ def fit_everything(
         value=rank.ranked_correctly,
         samples=rank.samples,
         confidence=None if rank.ranked_correctly is None else (0.0, 1.0),
-        shrinkage_weight=0.0 if rank.weights is not None else 1.0,
+        shrinkage_weight=1.0,
     )
     # The gate is applied to the VECTOR as well as to the row. Section 11 says fitting runs only
     # when the objective-weights gate is met, and a fit does not refuse a small corpus by itself:
     # over forty pairs it produces seven perfectly ordinary-looking numbers, and without this they
     # would ship.
+    fitted_weights = (
+        rank.weights if gated(OBJECTIVE_WEIGHTS, weights_evidence) is not None else None
+    )
     rows.append(
         maturity(
             OBJECTIVE_WEIGHTS,
-            weights_evidence,
+            weights_evidence
+            if fitted_weights is None
+            else replace(weights_evidence, shrinkage_weight=0.0),
             statement=statements.weights_statement(
                 samples=rank.samples,
                 threshold=threshold_for(OBJECTIVE_WEIGHTS),
                 rejection=rank.rejection,
-                ranked=rank.ranked_correctly,
+                # The SENTENCE is gated with the same predicate as the vector.
+                # `rank.ranked_correctly` is non-None whenever the FIT succeeded, and a successful
+                # fit is not a shipped vector: below the threshold the vector is correctly withheld,
+                # and a sentence keyed on the fit would tell the user it was applied anyway. The
+                # Learned screen is the trust surface, so a false claim there costs more than a
+                # missing one.
+                ranked=rank.ranked_correctly if fitted_weights is not None else None,
             ),
         )
-    )
-    fitted_weights = (
-        rank.weights if gated(OBJECTIVE_WEIGHTS, weights_evidence) is not None else None
     )
     return FittedParameters(
         artifact=FittedWeightSet(
