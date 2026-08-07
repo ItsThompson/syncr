@@ -54,7 +54,6 @@ from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.plans.candidates import as_document
-from syncr_api.plans.service import UNTRACKED_VERSION
 from syncr_api.solving.errors import SolveIsRunning
 from syncr_api.user_settings.solve_inputs import WeekRange
 from syncr_common.logging import get_logger
@@ -186,7 +185,7 @@ class ConcessionService:
         stamps when it loads the inputs. What it is for is the client: the operation the caller
         follows names the input state its own request was acknowledged at.
         """
-        return await self._current.current(week) or UNTRACKED_VERSION
+        return await self._current.tracked_version(week)
 
     async def _offered(self, week: IsoWeek, requested: RequestedConcession) -> Offer:
         """The offer the enumerator made for what was requested, or a 422 naming what it can be.

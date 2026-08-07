@@ -44,6 +44,10 @@ from syncr_domain.weeks import IsoWeek
 if TYPE_CHECKING:
     from datetime import datetime
 
+# What a caller reports for a week nothing has referenced yet. Versions start at one, so zero is a
+# value no row can hold and reads as "untracked" rather than as a version.
+UNTRACKED_VERSION = 0
+
 
 class WeekInputVersionRepository(TenantScopedRepository):
     """The per-week input counter for one tenant."""
@@ -139,6 +143,15 @@ class WeekInputVersionRepository(TenantScopedRepository):
         if last is not None:
             statement = statement.where(WeekInputVersion.iso_week <= str(last))
         return tuple(IsoWeek.parse(key) for key in await self._session.scalars(statement))
+
+    async def tracked_version(self, iso_week: IsoWeek) -> int:
+        """The week's version, or the value no row can hold when nothing has referenced it.
+
+        Beside :meth:`current` rather than in each caller, because three of them want the counter as
+        a figure they can report and one absence read as ``None`` and another as zero is two answers
+        to "which input state is this about".
+        """
+        return await self.current(iso_week) or UNTRACKED_VERSION
 
     async def holds_version(self, iso_week: IsoWeek, version: int, *, at: datetime) -> bool:
         """Whether the week is still at ``version``, with the row locked until this commits.
