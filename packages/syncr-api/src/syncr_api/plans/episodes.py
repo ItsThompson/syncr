@@ -18,10 +18,10 @@ never closes.
 The first row is the discovery and everything after it is confirmation, which is why
 :attr:`Episode.caught_early` reads that row and no other.
 
-**This module defines an episode and computes no ratio.** The metric job that reads a period across
-every week, applies the numerator and the denominator, and exports
-``syncr_infeasibility_caught_early_ratio`` is ticket 54's. What lives here is the grouping both it
-and a retro read, so there is one definition rather than one per consumer.
+**This module defines an episode and computes no ratio over a period.** The job that reads a period
+across every week, groups by week, and exports ``syncr_infeasibility_caught_early_ratio`` is the
+observability layer's. What lives here is the grouping every consumer of it reads, so there is one
+definition rather than one per consumer.
 """
 
 from __future__ import annotations

@@ -87,6 +87,11 @@ class VerdictEventRepository(TenantScopedReader):
 # The order both reads are stated in, and the id is a tie-break rather than an order anyone reads:
 # two transitions recorded against one instant would otherwise come back in whichever order the scan
 # produced, and "the last thing said about this week" has to be one row.
+#
+# `occurred_at` is the verdict's own instant rather than an insertion stamp, so `latest` answers
+# with the NEWEST verdict rather than the last row written: a writer holding an older verdict does
+# not displace a newer one. The episode definition reads the same order, so a week's episodes are
+# grouped by when its verdicts were computed rather than by when they reached the table.
 _NEWEST_FIRST = (VerdictEvent.occurred_at.desc(), VerdictEvent.id.desc())
 _OLDEST_FIRST = (VerdictEvent.occurred_at.asc(), VerdictEvent.id.asc())
 

@@ -84,6 +84,9 @@ class VerdictRecorder:
             return None
 
         written = await self._events.append(recorded)
+        # Incremented inside the caller's transaction, so a failure after this leaves the counter
+        # one above the row count until the process restarts. The ROW is the fact: the product
+        # metric is computed from the table by its own job, and this family is the operational read.
         VERDICT_TRANSITIONS.labels(
             provenance=written.provenance.value,
             feasible=as_label(written.feasible),

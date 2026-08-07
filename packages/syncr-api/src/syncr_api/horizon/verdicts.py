@@ -58,9 +58,6 @@ if TYPE_CHECKING:
     from syncr_domain.identifiers import TenantId
     from syncr_domain.weeks import IsoWeek
 
-# A background probe is not a user planning their week, and the worker could not know if it were.
-# The value itself is the recorder's, because the solve runner reports the same thing.
-
 _log = get_logger("syncr.horizon")
 
 
@@ -130,6 +127,9 @@ class TimeDrivenVerdicts:
             return VerdictPass(weeks=1, unchanged=1)
 
         direction = TransitionDirection.of(feasible=written.feasible)
+        # Incremented before the commit, as the transition counter beside it is: the ROWS are the
+        # fact this metric describes, so a failure after the append leaves this counter one above
+        # the row count until the process restarts. An operator comparing the two reads the rows.
         MAINTAINER_VERDICT_TRANSITIONS.labels(direction=direction.value).inc()
         _log.info(
             "horizon.verdict.transitioned",

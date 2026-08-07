@@ -340,8 +340,13 @@ def test_every_surface_reaches_a_verdict_exactly_one_way() -> None:
     }
 
 
-def test_the_six_members_are_exactly_the_ones_the_column_allows() -> None:
-    """Two were dropped: ``weekly_session`` was a read and ``horizon`` folds into the maintainer."""
+def test_the_six_members_are_the_only_ones_this_package_writes() -> None:
+    """Two were dropped: ``weekly_session`` was a read and ``horizon`` folds into the maintainer.
+
+    The enum half only. That the COLUMN refuses a seventh word is driven in
+    ``test_plan_schema_integration.py::test_a_feasible_verdict_cannot_carry_a_shortfall``, which
+    inserts ``surface="week_screen"`` and reads the constraint's refusal back.
+    """
     assert [surface.value for surface in VerdictSurface] == [
         "pin",
         "mutation",

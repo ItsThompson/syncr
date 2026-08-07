@@ -19,8 +19,11 @@ place the domain's epistemics and the metric's substrate meet.
 The LARGEST single gap, not the sum. Shortfalls can measure the same minutes twice: a deadline gap
 and the floor gap of the Area the deadline belongs to are the same capacity seen two ways, so their
 sum is not a duration the week is short by and can exceed the week itself. The largest gap is a real
-quantity, and the figure the episode ratio reads is neither: it counts episodes. Ticket 1430 records
-the decision and names that metric's owner as the reader who can overturn it.
+quantity, and the figure the episode ratio reads is neither: it counts episodes.
+
+``feasible`` and ``shortfall_minutes`` are derived here independently, and what requires them to
+agree is the ``feasible_has_no_shortfall`` check constraint: a verdict reporting no gap has no
+minutes to name, and one reporting a gap is not a week that holds its commitments.
 """
 
 from __future__ import annotations

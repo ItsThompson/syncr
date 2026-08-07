@@ -549,7 +549,7 @@ def _tick_count(duty: MaintainerDuty) -> float:
 async def test_the_assemblies_duty_2_performs_are_visible_on_the_assembly_histogram(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, context: WorkerContext
 ) -> None:
-    """Note 7 from ``reviews/spec-review-5.md``, as a measurement rather than a sentence.
+    """The cost of this duty, as a measurement rather than a sentence.
 
     Duty 2 performs roughly 288 full ASSEMBLIES a day, not 288 bare probes: the probe arithmetic is
     sub-millisecond and the assembly is the cost. ``syncr_assembly_duration_seconds{caller=

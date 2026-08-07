@@ -204,8 +204,7 @@ class PlanHorizonRunner:
 
         Answers with a failure tally rather than re-raising, so the weeks after this one are still
         planned. The failure is counted and named HERE rather than left to the worker loop's
-        handler,
-        which isolates one DUTY and would therefore drop every remaining week of every tenant.
+        handler, which isolates one DUTY and would drop every remaining week of every tenant.
         """
         try:
             async with context.database.sessionmaker() as session, session.begin():
