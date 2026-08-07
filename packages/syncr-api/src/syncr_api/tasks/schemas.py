@@ -127,6 +127,24 @@ class TaskResponse(WireModel):
     )
 
 
+class BacklogTaskResponse(TaskResponse):
+    """One task as the BACKLOG lists it: everything above, plus whether it is at risk.
+
+    A shape of its own rather than a field on ``TaskResponse``, because at-risk is a fact about the
+    week's verdict rather than about the row. The five routes that answer about one task would have
+    to assemble a week to state it truthfully, and a mutation that computed a verdict would owe a
+    recorded transition; answering false there instead would be a claim none of them checked. So the
+    marking is on the read that has the figure beside it, and nowhere else.
+    """
+
+    at_risk: bool = Field(
+        description="Whether the current week's verdict reports a deadlineCapacity shortfall "
+        "naming this task. The server's determination, not a comparison a client makes: the same "
+        "shortfall the verdict panel renders, so a task cannot be at risk on one screen and fine "
+        "on another. False for a task with no deadline and for a week with no plan."
+    )
+
+
 class BacklogHeader(WireModel):
     """The two counts the backlog's header band states."""
 
@@ -135,16 +153,11 @@ class BacklogHeader(WireModel):
         "of open tasks that reported zero while the table showed completed ones would not be "
         "one. Narrowed by the area filter, which narrows the whole screen."
     )
-    # ALWAYS ZERO HERE, and that is not a placeholder for a computation this module should be
-    # making. A task is at risk when the feasibility probe reports a `deadline_capacity`
-    # shortfall naming it, so the backlog reads the verdict's shortfalls rather than comparing a
-    # deadline against a capacity of its own: computing it twice is how a task ends up at risk on
-    # one screen and fine on another. Ticket 46 owns this field, and it wires it to the probe's
-    # shortfalls once the probe exists.
     at_risk_count: int = Field(
-        description="How many open tasks the current verdict reports a deadline shortfall for. "
-        "Always zero until the feasibility probe exists, because the count comes from the "
-        "verdict's shortfalls rather than from a comparison made here."
+        description="How many open tasks the current week's verdict reports a deadline shortfall "
+        "for. Over the same population as openCount, so the figure and the marked rows are one "
+        "answer. Recomputed on every read rather than on a timer, and nothing pushes it: the "
+        "event stream carries no verdict member, because only a conflict notifies."
     )
 
 
@@ -158,7 +171,7 @@ class TasksResponse(WireModel):
     """
 
     header: BacklogHeader
-    tasks: list[TaskResponse]
+    tasks: list[BacklogTaskResponse]
 
 
 class TaskCreateRequest(WireModel):

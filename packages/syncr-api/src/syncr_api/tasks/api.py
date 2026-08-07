@@ -6,7 +6,9 @@ persistence: ``tests/test_authorization_boundary.py`` asserts this file cannot r
 
 Each response is built field by field rather than validated from the record, so a column added to
 the table cannot reach the wire by sharing a name with a schema field. The two derived figures,
-remaining work and eligibility, are asked of the record rather than computed here.
+remaining work and eligibility, are asked of the record rather than computed here. **The third,
+whether the task is at risk, is asked of neither**: it is the week verdict's determination, so it
+arrives as a set of identifiers the list read resolved once and appears on the list's shape alone.
 
 **``DELETE`` answers with the task rather than with a 204.** Dropping a task is a state
 transition rather than a removal: the row survives, so the response says what it now is, and a
@@ -33,6 +35,7 @@ from syncr_api.tasks.declarations import TaskChange, TaskDeclaration
 from syncr_api.tasks.injection import TaskServiceDep
 from syncr_api.tasks.schemas import (
     BacklogHeader,
+    BacklogTaskResponse,
     TaskCreateRequest,
     TaskPatchRequest,
     TaskResponse,
@@ -42,6 +45,7 @@ from syncr_domain.tasks import TaskStatus
 
 if TYPE_CHECKING:
     from syncr_api.tasks.records import TaskRecord
+    from syncr_domain.identifiers import TaskId
 
 router = APIRouter()
 
@@ -49,12 +53,6 @@ CAPTURE_ROUTE = "tasks.capture"
 UPDATE_ROUTE = "tasks.update"
 COMPLETE_ROUTE = "tasks.complete"
 DROP_ROUTE = "tasks.drop"
-
-# The at-risk count is the verdict's figure, not one computed here, and the probe that produces it
-# does not exist yet. Ticket 46 owns replacing this with the count of `deadline_capacity`
-# shortfalls naming a task; until then the field is present and honest at zero, because a backlog
-# that computed its own comparison would put a task at risk on one screen and fine on another.
-_NO_VERDICT_YET = 0
 
 
 def _as_task(record: TaskRecord) -> TaskResponse:
@@ -76,6 +74,16 @@ def _as_task(record: TaskRecord) -> TaskResponse:
     )
 
 
+def _as_backlog_row(record: TaskRecord, at_risk: frozenset[TaskId]) -> BacklogTaskResponse:
+    """One task as the backlog lists it: the row above, plus the week verdict's own determination.
+
+    Composed from the response rather than from the record a second time, which is what keeps the
+    field-by-field rule above intact: the mapping is stated once and a column added to the table
+    still cannot reach the wire, because what is re-read here is a validated response and not a row.
+    """
+    return BacklogTaskResponse(**_as_task(record).model_dump(), at_risk=record.id in at_risk)
+
+
 @router.get("", summary="The backlog, with the counts its header states")
 async def list_tasks(
     principal: ClientPrincipalDep,
@@ -83,11 +91,11 @@ async def list_tasks(
     area_id: UUID | None = Query(default=None, alias="areaId"),
     status: TaskStatus | None = Query(default=None),
 ) -> TasksResponse:
-    """The tasks either filter selects, oldest first, and how many are open."""
+    """The tasks either filter selects, oldest first, and the two figures the header states."""
     backlog = await service.list_all(principal, area_id=area_id, status=status)
     return TasksResponse(
-        header=BacklogHeader(open_count=backlog.open_count, at_risk_count=_NO_VERDICT_YET),
-        tasks=[_as_task(task) for task in backlog.tasks],
+        header=BacklogHeader(open_count=backlog.open_count, at_risk_count=len(backlog.at_risk)),
+        tasks=[_as_backlog_row(task, backlog.at_risk) for task in backlog.tasks],
     )
 
 

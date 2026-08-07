@@ -13,6 +13,11 @@ because a task's Area has to exist and a named Project's Area has to be the task
 are comparisons between stored rows. ``BacklogWideBump`` carries plan storage's version counter
 and the settings row the home zone is read from, because a task is a solve input and there is one
 serialization point for anything that invalidates a running solve.
+
+A fourth is plan storage's too: the at-risk column is the week verdict's ``deadline_capacity``
+shortfalls, so the backlog reads the SAME verdict the Week screen serves, through the same builder.
+Composing that rule here instead would be a second answer to whether a week can hold its
+commitments.
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ from fastapi import Depends
 from syncr_api.accounts.injection import ClientPrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository, ProjectRepository
 from syncr_api.core.clock import utc_now
+from syncr_api.plans.injection import build_current_week_verdict
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.tasks.repository import TaskRepository
 from syncr_api.tasks.service import TaskService
@@ -46,6 +52,7 @@ def get_task_service(principal: ClientPrincipalDep, transaction: TransactionDep)
             ),
             settings=SettingsRepository(transaction, principal.tenant_id),
         ),
+        verdict=build_current_week_verdict(transaction, principal.tenant_id, clock=utc_now),
         clock=utc_now,
     )
 

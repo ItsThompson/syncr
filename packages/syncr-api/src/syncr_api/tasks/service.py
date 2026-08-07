@@ -1,6 +1,6 @@
 """The Task service: authorization, the physics, the two Area checks, and the version bump.
 
-Five rules live here rather than anywhere else.
+Six rules live here rather than anywhere else.
 
 **A capture needs a title and an Area.** Every other value has a default, and the one default
 that is derived rather than constant, the minimum chunk, is resolved here from the domain's own
@@ -28,6 +28,14 @@ when a solve would read the change. For an Area the exempt thing is a FIELD, the
 it is the ROW, because an ineligible task is not collected at all.
 :func:`~syncr_api.tasks.records.changes_a_solve_input` is the one statement of it.
 
+**The at-risk marking is the verdict's, not this service's.** A task is at risk when the week's
+verdict reports a ``deadline_capacity`` shortfall naming it, and nothing here compares a deadline
+against a capacity: :func:`~syncr_api.plans.at_risk.tasks_at_risk` decides which tasks each gap was
+raised against, and the verdict it reads is the one the Week screen serves. It is recomputed on
+every read rather than on a timer, which is what makes it current whenever the plan changes and
+current again on the next read after time alone moved the verdict. Nothing pushes it: the event
+union carries no verdict member, because only a conflict notifies.
+
 **Ending a task twice the same way writes nothing and bumps nothing.** A retried completion is
 answered with the stored task, its instant unmoved, because nothing about the inputs changed and a
 bump would supersede a running solve for no reason. Crossing between the two endings is a 409:
@@ -49,13 +57,14 @@ edit is.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from syncr_api.areas.config import AREA_RESOURCE
 from syncr_api.areas.rules import unknown_area
 from syncr_api.core.errors import NotFound, ValidationFailed
 from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
+from syncr_api.plans.at_risk import tasks_at_risk
 from syncr_api.tasks.config import TASK_RESOURCE
 from syncr_api.tasks.records import changes_a_solve_input
 from syncr_api.tasks.rules import PROJECT_FIELD, stated_rejection, unknown_project
@@ -77,18 +86,41 @@ if TYPE_CHECKING:
     from syncr_api.tasks.records import TaskRecord
     from syncr_api.tasks.repository import TaskRepository
     from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_domain.feasibility import Verdict
     from syncr_domain.identifiers import AreaId, ProjectId, TaskId
     from syncr_domain.tasks import TaskEnding
 
 _log = get_logger("syncr.tasks")
 
 
+class WeekVerdict(Protocol):
+    """The current week's verdict, as the backlog needs it.
+
+    Declared here rather than imported so this service depends on the question it asks rather than
+    on plan storage's own reader, and so a service test can state a verdict instead of assembling a
+    week. The production implementation is
+    :class:`syncr_api.plans.served_verdicts.CurrentWeekVerdict`, which is the same rule the Week
+    screen's read serves: one computation, so a task cannot be at risk on one screen and fine on
+    another.
+    """
+
+    async def read(self) -> Verdict | None:
+        """The verdict of the week the tenant is living in. Writes nothing."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class Backlog:
-    """The tasks one read selected, and the counts the header states over them."""
+    """The tasks one read selected, and the two things the header states over them.
+
+    ``at_risk`` is a set of identifiers rather than a count, because the screen marks the ROWS as
+    well as stating the figure and the two must be one answer: a count computed beside a per-row
+    comparison is how a header comes to disagree with the table under it.
+    """
 
     tasks: tuple[TaskRecord, ...]
     open_count: int
+    at_risk: frozenset[TaskId]
 
 
 class TaskService:
@@ -100,12 +132,14 @@ class TaskService:
         areas: AreaRepository,
         projects: ProjectRepository,
         bump: BacklogWideBump,
+        verdict: WeekVerdict,
         clock: Clock,
     ) -> None:
         self._tasks = tasks
         self._areas = areas
         self._projects = projects
         self._bump = bump
+        self._verdict = verdict
         self._clock = clock
 
     @measured("tasks")
@@ -116,16 +150,30 @@ class TaskService:
         area_id: AreaId | None = None,
         status: TaskStatus | None = None,
     ) -> Backlog:
-        """The backlog, narrowed by either filter, with the open count over the same Area.
+        """The backlog, narrowed by either filter, with the two header figures over the same Area.
 
-        The open count deliberately ignores the status filter. Filtering the table to completed
-        tasks does not change how many are open, and a header that said it did would be reporting
-        the page rather than the backlog.
+        Both header figures deliberately ignore the status filter. Filtering the table to completed
+        tasks does not change how many are open or how many are at risk, and a header that said it
+        did would be reporting the page rather than the backlog. So the at-risk set is derived over
+        the Area's OPEN tasks, read for that purpose, rather than over whatever the page holds.
+
+        **This service computes no comparison of its own.** A task is at risk when the week's
+        verdict reports a ``deadline_capacity`` shortfall naming it, which is the same shortfall the
+        verdict panel renders. Comparing a deadline against a capacity here would be a second
+        arithmetic, and a second arithmetic is how a task ends up at risk on one screen and fine on
+        another.
+
+        Reading the verdict costs a whole assembly on a week whose pending slot is empty or stale.
+        That is the price of the figure being the panel's rather than a cheap one computed twice.
         """
         require_scope(principal, Scope.PLAN_READ)
         return Backlog(
             tasks=await self._tasks.list_all(area_id=area_id, status=status),
             open_count=await self._tasks.count_open(area_id=area_id),
+            at_risk=tasks_at_risk(
+                await self._verdict.read(),
+                await self._tasks.list_all(area_id=area_id, status=TaskStatus.OPEN),
+            ),
         )
 
     @measured("tasks")
