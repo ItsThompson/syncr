@@ -185,6 +185,18 @@ describe("the drag is discrete", () => {
     await waitFor(() => expect(blockOf(LEETCODE)).toHaveAttribute("data-pinned"));
     expect(pins.bodies).toHaveLength(1);
   });
+
+  it("consumes the operation the response carries, so the currency says solving at once", async () => {
+    await renderWeek();
+    recordPins(buildPinned({ operation: buildOperation({ status: "pending" }) }));
+    expect(screen.getByText("91 blocks")).toBeInTheDocument();
+
+    dragTo(blockOf(LEETCODE), 780);
+
+    /* The third member of the response. A read cannot know about a solve the mutation that answered created, so a
+     * screen that waited for the first event would say `current` while a solve was already due. */
+    await waitFor(() => expect(screen.getByText("91 · solving")).toBeInTheDocument());
+  });
 });
 
 describe("the drag that issues no request", () => {

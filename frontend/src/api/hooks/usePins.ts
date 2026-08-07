@@ -71,8 +71,16 @@ export interface Pinning {
  * `seedVersion` is the week's own `inputVersion` from the last read. Without it the first response of a session
  * would be accepted whatever version it named, which is only wrong in the case that matters: a tab left open while
  * another one edited.
+ *
+ * `onOperation` is how the THIRD member of the response is consumed. A pin answers with the solve it asked for or the
+ * one it joined, and that answer is a whole event earlier than any read: handing it to the operation hook is what
+ * makes the plan currency say `solving` on the same redraw as the pin rather than when the first event arrives.
  */
-export function usePinning(isoWeek: string, seedVersion: number): Pinning {
+export function usePinning(
+  isoWeek: string,
+  seedVersion: number,
+  onOperation?: (operation: Operation) => void,
+): Pinning {
   const { mutate } = useSWRConfig();
   const [live, setLive] = useState<LiveVerdict | null>(null);
   const latestVersion = useRef(seedVersion);
@@ -112,6 +120,7 @@ export function usePinning(isoWeek: string, seedVersion: number): Pinning {
       operation: body.operation,
       inputVersion: body.verdict.inputVersion,
     });
+    onOperation?.(body.operation);
     return null;
   });
 

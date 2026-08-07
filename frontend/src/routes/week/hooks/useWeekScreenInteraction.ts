@@ -84,7 +84,7 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
   const [zoomHours, setZoomHours] = useState<number | null>(null);
 
   const operation = useOperation(isoWeek);
-  const pinning = usePinning(isoWeek, view?.inputVersion ?? 0);
+  const pinning = usePinning(isoWeek, view?.inputVersion ?? 0, operation.track);
   const writes = useWeekWrites(isoWeek, operation.track);
   const solve = useWeekSolve();
 
