@@ -49,12 +49,18 @@ from tests.live_weeks import (
     AN_HOUR,
     AUCKLAND,
     LONDON,
+    a_candidate_moving_one_block,
+    a_solved_deadline_gap,
     backlog,
     capture_a_task,
     declare_the_minimum,
+    enqueue_a_solve,
+    fill_the_slot,
     produce_a_plan,
     set_home_zone,
     sign_in,
+    the_live_plan,
+    the_weeks_version,
     this_week,
     week_path,
     week_view,
@@ -163,6 +169,71 @@ def test_the_at_risk_set_from_the_backlog_is_the_set_the_weeks_verdict_names(
 
     assert derived == {seeded["impossible"]}, "the fixture week was not tight enough to show a gap"
     assert marked == derived
+
+
+def test_the_equality_holds_on_the_solver_branch_the_serve_rule_exists_for(
+    http: TestClient,
+    owner: UserRecord,
+    configured: tuple[dict[str, str], str],
+    live_database_url: str,
+) -> None:
+    """The branch the whole serve rule is for, driven end to end over both screens.
+
+    Every other test in this suite runs on a week whose slot is empty, so both screens take the
+    probe branch and the equality would hold even if one of them re-probed independently of the
+    other. The case the ticket exists for is a week holding a CURRENT slot whose stored SOLVER
+    verdict names a real task, and until this test it was guarded by unit tests over fakes alone.
+
+    ``provenance`` is asserted first as the anti-vacuity guard: if the slot were stale or empty the
+    read would probe, and the equality below would be about a verdict this test did not write.
+
+    The gap is ``deadline_capacity`` rather than the packing failure the other suites store, because
+    that is the kind the at-risk column reads: a verdict carrying only a packing failure marks no
+    task, which is deliberate and is driven over values.
+    """
+    headers, area_id = configured
+    week = this_week()
+    due = datetime.combine(week.dates()[-1], datetime.min.time(), tzinfo=UTC) + timedelta(hours=9)
+    named = capture_a_task(
+        http,
+        headers,
+        area_id,
+        title="Kontron take-home",
+        estimateMinutes=8 * AN_HOUR,
+        deadline=due.isoformat(),
+    )
+    other = capture_a_task(http, headers, area_id, title="Read one paper", estimateMinutes=30)
+    produce_a_plan(live_database_url, owner.tenant_id, week)
+    live = the_live_plan(live_database_url, owner.tenant_id, week)
+    version = the_weeks_version(live_database_url, owner.tenant_id, week)
+    document, diff = a_candidate_moving_one_block(live)
+    fill_the_slot(
+        live_database_url,
+        owner.tenant_id,
+        week,
+        verdict=a_solved_deadline_gap(
+            input_version=version,
+            deadline=due,
+            area_id=area_id,
+            against="Kontron take-home",
+        ),
+        document=document,
+        diff=diff,
+        input_version=version,
+        operation_id=enqueue_a_solve(live_database_url, owner.tenant_id, week),
+    )
+
+    view = week_view(http, headers, week)
+    listed = backlog(http, headers)
+
+    served = view["verdict"]["provenance"]
+    assert served == "solver", f"the slot was not served ({served}), so this asserts less"
+    derived = at_risk_by_the_weeks_verdict(view, listed["tasks"])
+    marked = {task["id"] for task in listed["tasks"] if task["atRisk"]}
+    assert derived == {named["id"]}
+    assert marked == derived
+    assert listed["header"]["atRiskCount"] == 1
+    assert other["id"] not in marked, "a task the stored verdict does not name was marked"
 
 
 def test_the_header_count_is_the_size_of_the_marked_set(

@@ -680,11 +680,29 @@ class FakeVersions(WeekInputVersionRepository):
 
 
 class FakeRevisions(PlanRepository):
-    def __init__(self, latest_approved: PlanRevisionRecord | None = None) -> None:
+    """The two questions the plan of record is asked, over values rather than a table.
+
+    One fake for both, because they are two questions about one table and a second fake answering
+    the other is how a third arrives the first time a test needs them together.
+
+    ``weeks_with_a_plan`` answers :meth:`holds_a_plan`, which is a boolean and needs no record: the
+    readers that gate on the absence never open the document, which is why that method exists.
+    """
+
+    def __init__(
+        self,
+        latest_approved: PlanRevisionRecord | None = None,
+        *,
+        weeks_with_a_plan: Sequence[IsoWeek] = (),
+    ) -> None:
         self._latest_approved = latest_approved
+        self._weeks_with_a_plan = tuple(weeks_with_a_plan)
 
     async def latest_approved(self, iso_week: IsoWeek) -> PlanRevisionRecord | None:
         return self._latest_approved
+
+    async def holds_a_plan(self, iso_week: IsoWeek) -> bool:
+        return iso_week in self._weeks_with_a_plan
 
 
 def an_assembler(

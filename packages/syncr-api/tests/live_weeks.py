@@ -52,7 +52,13 @@ from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.tasks.config import TASKS_PREFIX
 from syncr_api.templates.config import DAY_TYPES_PREFIX, WEEK_PATTERN_PREFIX
-from syncr_domain.feasibility import Provenance, Verdict, minimum_chunk_shortfall
+from syncr_domain.feasibility import (
+    Provenance,
+    Shortfall,
+    ShortfallKind,
+    Verdict,
+    minimum_chunk_shortfall,
+)
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.proposals import BlockChange, ProposalDiff
@@ -273,6 +279,38 @@ def a_packing_failure(*, input_version: int, deadline: datetime) -> Verdict:
                 against=(UNPLACEABLE,),
                 blocked_by=("the lectures between 09:00 and 17:00",),
                 deadline=deadline,
+            ),
+        ),
+    )
+
+
+def a_solved_deadline_gap(
+    *, input_version: int, deadline: datetime, area_id: str, against: str, minutes: int = 360
+) -> Verdict:
+    """A SOLVER verdict carrying a ``deadline_capacity`` gap that names one task.
+
+    The pair to :func:`a_packing_failure`, and the two exist for opposite reasons. A packing failure
+    proves the slot was read, because arithmetic cannot produce one; this one is the kind the
+    backlog's at-risk column reads, so it is what drives the pair-of-screens equality on the branch
+    the serve rule exists for. A verdict carrying only a packing failure marks no task, by design.
+
+    ``provenance`` is solver and ``feasible`` is false, which is a pair only an attempted placement
+    may report: it found a gap and it knows.
+    """
+    return Verdict(
+        feasible=False,
+        provenance=Provenance.SOLVER,
+        computed_at=datetime.now(UTC) - timedelta(minutes=5),
+        input_version=input_version,
+        discretionary_minutes=6720,
+        shortfalls=(
+            Shortfall(
+                kind=ShortfallKind.DEADLINE_CAPACITY,
+                minutes=minutes,
+                against=(against,),
+                honoring=("the circadian frame", "the 0m still uncommitted before it"),
+                deadline=deadline,
+                area_id=UUID(area_id),
             ),
         ),
     )

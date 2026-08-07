@@ -30,8 +30,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from syncr_api.plans.proposals import PendingProposalRepository
-from syncr_api.plans.records import PendingProposalRecord, PlanRevisionRecord
-from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.records import PendingProposalRecord
 from syncr_api.plans.served_verdicts import CurrentWeekVerdict, ServedVerdict
 from syncr_api.plans.stored_verdicts import stored_verdict
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
@@ -48,6 +47,7 @@ from tests.assembly_fakes import (
     NOW,
     WEEK,
     FakeAreas,
+    FakeRevisions,
     FakeSettings,
     FakeTasks,
     FakeVersions,
@@ -58,7 +58,6 @@ from tests.assembly_fakes import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from decimal import Decimal
 
     from syncr_api.plans.assembler import WeekAssembler
@@ -84,27 +83,15 @@ class FakePendingProposals(PendingProposalRepository):
         return None if self._held is None or self._held.iso_week != iso_week else self._held
 
 
-class FakeLivePlan(PlanRepository):
-    """Whether the week holds a plan of record, which is what makes it have a verdict at all."""
+class RefusingAssembler:
+    """An assembler that refuses to be called, so a path claiming to be cheap is stated rather
+    than counted.
 
-    def __init__(self, weeks_with_a_plan: Sequence[IsoWeek] = ()) -> None:
-        self._weeks = tuple(weeks_with_a_plan)
-
-    async def latest(self, iso_week: IsoWeek) -> PlanRevisionRecord | None:
-        if iso_week not in self._weeks:
-            return None
-        # Only its presence is read: the reader gates on the absence and never opens the document.
-        return cast("PlanRevisionRecord", object())
-
-
-class CountingAssembler:
-    """An assembler that refuses to be called, so a path claiming to be cheap is measured."""
-
-    def __init__(self) -> None:
-        self.calls = 0
+    The refusal IS the assertion: a path that must not assemble is better said by a collaborator
+    that cannot be used than by a number a test has to remember to read.
+    """
 
     async def assemble(self, iso_week: IsoWeek, now: datetime) -> object:
-        self.calls += 1
         message = f"the reader assembled {iso_week} at {now}, which this path must not do"
         raise AssertionError(message)
 
@@ -311,7 +298,7 @@ def a_current_week_reader(
     return (
         CurrentWeekVerdict(
             served=a_reader(assembler),
-            revisions=FakeLivePlan(weeks_with_a_plan),
+            revisions=FakeRevisions(weeks_with_a_plan=weeks_with_a_plan),
             proposals=proposals,
             versions=FakeVersions(THE_WEEKS_VERSION),
             settings=FakeSettings(home_zone),
@@ -340,7 +327,7 @@ async def test_a_current_week_with_no_plan_costs_no_assembly() -> None:
     not assemble is stated better by a collaborator that refuses than by a number.
     """
     reader, proposals = a_current_week_reader(
-        weeks_with_a_plan=(), assembler=cast("WeekAssembler", CountingAssembler())
+        weeks_with_a_plan=(), assembler=cast("WeekAssembler", RefusingAssembler())
     )
 
     assert await reader.read() is None
