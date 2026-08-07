@@ -143,9 +143,11 @@ def build_served_verdict(transaction: AsyncSession, tenant_id: TenantId) -> Serv
     this are request-path reads and the assembly histogram's alert is scoped to the interactive
     caller: a read's assembly labelled ``maintainer`` would be a request's cost hidden behind a
     background figure the alert deliberately ignores.
+
+    It reads no slot and no version of its own. Each caller reads each once and hands both in, so a
+    payload cannot carry a proposal from one snapshot beside a verdict from another.
     """
     return ServedVerdict(
-        proposals=PendingProposalRepository(transaction, tenant_id),
         assembler=build_week_assembler(transaction, tenant_id, caller=AssemblyCaller.REQUEST),
         probe=WeekProbe(caller=ProbeCaller.REQUEST),
     )
@@ -159,9 +161,14 @@ def build_current_week_verdict(
     Composed here rather than in the backlog's own wiring, because it is the SAME rule the Week
     screen's read serves and the same assembler behind it: two compositions of it would be two
     answers to whether a task is at risk.
+
+    The plan repository is what makes the two screens agree about a week with no plan, and it is why
+    the backlog pays no assembly on that path.
     """
     return CurrentWeekVerdict(
         served=build_served_verdict(transaction, tenant_id),
+        revisions=PlanRepository(transaction, tenant_id),
+        proposals=PendingProposalRepository(transaction, tenant_id),
         versions=WeekInputVersionRepository(transaction, tenant_id),
         settings=SettingsRepository(transaction, tenant_id),
         clock=clock,

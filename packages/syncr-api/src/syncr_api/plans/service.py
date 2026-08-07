@@ -168,9 +168,13 @@ class WeekService:
         comparing the verdict's instant with the week beside it reads one instant rather than two.
 
         The version is read once and used twice, as the figure the view reports and as the currency
-        test the served verdict applies to the pending slot. Two reads of that counter could
-        straddle a bump, and the pair would then disagree about which input state this answer is
-        about.
+        test the served verdict applies to the pending slot. **The slot is read once for the same
+        reason**, and its read is ordered LAST of the three that an approval touches. Two statements
+        reading the slot would take two snapshots under ``READ COMMITTED``, and an approval landing
+        between them would answer with a proposal beside a verdict computed as though there were
+        none. Reading the concessions BEFORE it is the other half: an approval landing between those
+        two leaves its concession absent from this answer rather than present twice, once awaiting
+        assent and once granted under the one identifier both name.
         """
         require_scope(principal, Scope.PLAN_READ)
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
@@ -180,6 +184,7 @@ class WeekService:
         document = None if live is None else plan_document(live.document)
         in_flight = await self._operations.in_flight_of(week, kinds=PLAN_KINDS)
         version = await self._versions.tracked_version(week)
+        adjustments = await self._adjustments.for_week(week)
         held = await self._proposals.find(week)
         return WeekView(
             iso_week=week,
@@ -189,14 +194,14 @@ class WeekService:
             empty=None if document is not None else await self._why_empty(week, budget, now=now),
             proposal=None if held is None else read_proposal_diff(held.proposal_diff, week),
             candidate_adjustment=None if held is None else awaiting_approval(held),
-            adjustments=await self._adjustments.for_week(week),
+            adjustments=adjustments,
             pins=await self._pins.for_week(week),
             conflicts=await self._conflicts.for_week(week),
             off_plan=await self._off_plan.for_span(budget.span),
             verdict=(
                 None
                 if document is None
-                else await self._verdicts.for_week(week, now=now, input_version=version)
+                else await self._verdicts.for_week(week, now=now, input_version=version, held=held)
             ),
             operation=in_flight,
             input_version=version,
@@ -248,7 +253,10 @@ class WeekService:
         if await self._revisions.latest(week) is None:
             return None
         return await self._verdicts.for_week(
-            week, now=self._clock(), input_version=await self._versions.tracked_version(week)
+            week,
+            now=self._clock(),
+            input_version=await self._versions.tracked_version(week),
+            held=await self._proposals.find(week),
         )
 
     @measured("weeks")
