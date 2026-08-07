@@ -4287,6 +4287,92 @@
         "title": "PeriodSpan",
         "type": "object"
       },
+      "PinCreateRequest": {
+        "description": "One drag, one keyboard move, or the ``p`` toggle.",
+        "properties": {
+          "blockId": {
+            "description": "The block being pinned, as the week view spells its id.",
+            "minLength": 1,
+            "title": "Blockid",
+            "type": "string"
+          },
+          "start": {
+            "description": "Where the block now begins. Its length is unchanged, because a drag moves and does not resize, so the pinned span is this instant plus the block's own duration.",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blockId",
+          "start"
+        ],
+        "title": "PinCreateRequest",
+        "type": "object"
+      },
+      "PinResponse": {
+        "description": "One pin: where the user put a block, what the solver had chosen, and what that cost.",
+        "properties": {
+          "blockId": {
+            "description": "The block this pin holds, as the week view spells its id.",
+            "title": "Blockid",
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "When the user made this edit.",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "interval": {
+            "$ref": "#/components/schemas/WireSpan",
+            "description": "Where the user put it."
+          },
+          "isoWeek": {
+            "description": "The one week this pin constrains. Pins do not carry forward.",
+            "title": "Isoweek",
+            "type": "string"
+          },
+          "objectiveDelta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the user's choice cost in objective units, under weightSetVersion. Positive when the user's placement is worse under those weights, and zero for a pin that keeps a block where it already is.",
+            "title": "Objectivedelta"
+          },
+          "supersededPlacement": {
+            "$ref": "#/components/schemas/WireSpan",
+            "description": "Where the solver had put it."
+          },
+          "weightSetVersion": {
+            "description": "The weight set the cost was measured under. Stored rather than recomputed, because the weights it was priced against will have moved on.",
+            "title": "Weightsetversion",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "isoWeek",
+          "blockId",
+          "interval",
+          "supersededPlacement",
+          "objectiveDelta",
+          "weightSetVersion",
+          "createdAt"
+        ],
+        "title": "PinResponse",
+        "type": "object"
+      },
       "PinnedClause": {
         "description": "The user's own edit, and the date they made it.",
         "properties": {
@@ -4310,6 +4396,29 @@
           "pinnedOn"
         ],
         "title": "PinnedClause",
+        "type": "object"
+      },
+      "PinnedResponse": {
+        "description": "What one edit answers with: the pin, the live verdict, and the solve to follow.\n\nThree fields because a client redraws all three on the same frame. The verdict is computed\nsynchronously from capacity arithmetic and requires no solve to complete, which is what makes\nthat one redraw possible; the operation is what says when the unpinned remainder has reflowed.",
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/OperationResponse",
+            "description": "The solve this edit asked for, due one debounce window later, or the one already in flight that this edit joined."
+          },
+          "pin": {
+            "$ref": "#/components/schemas/PinResponse"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/VerdictResponse",
+            "description": "The week's verdict as of this edit, from the capacity probe. Its provenance says so: arithmetic proves infeasibility and never feasibility."
+          }
+        },
+        "required": [
+          "pin",
+          "verdict",
+          "operation"
+        ],
+        "title": "PinnedResponse",
         "type": "object"
       },
       "PlanCurrency": {
@@ -4740,6 +4849,15 @@
         "title": "ProposedShareResponse",
         "type": "object"
       },
+      "Provenance": {
+        "description": "Which kind of check produced a verdict, and therefore which claim it may make.\n\n``probe`` may say \"this week is infeasible, by this much, against this commitment\", and at\nmost that capacity is sufficient. ``solver`` may say either, because it attempted a\nplacement and knows the answer.",
+        "enum": [
+          "probe",
+          "solver"
+        ],
+        "title": "Provenance",
+        "type": "string"
+      },
       "RampReading": {
         "description": "How much of the sealed ramp this tenant's Areas are using.\n\nReported on the list and on every mutation, because both change it. ``statement`` is\nnon-null exactly when two Areas hold one step, which is what a thirteenth Area produces:\nthe ramp repeats rather than inventing a thirteenth ink, and the interface has to say so.",
         "properties": {
@@ -4820,6 +4938,22 @@
           "clauses"
         ],
         "title": "ReasonResponse",
+        "type": "object"
+      },
+      "RejectBlockRequest": {
+        "description": "One proposed move the user refuses.",
+        "properties": {
+          "blockId": {
+            "description": "The block the pending proposal would move. Rejecting the move pins the block at the placement the plan of record already holds it at.",
+            "minLength": 1,
+            "title": "Blockid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blockId"
+        ],
+        "title": "RejectBlockRequest",
         "type": "object"
       },
       "RejectedEventResponse": {
@@ -5506,6 +5640,83 @@
           "recovery"
         ],
         "title": "ShadowDeclarationResponse",
+        "type": "object"
+      },
+      "ShortfallKind": {
+        "description": "Why a week cannot hold its commitments. Four kinds, and no fifth spelling anywhere.\n\nThe first three are capacity arithmetic and the probe produces all three. The fourth is a\npacking failure: the capacity exists but not in a usable shape, which no arithmetic over\ninterval totals can discover and only an attempted placement can.",
+        "enum": [
+          "floors_exceed_capacity",
+          "deadline_capacity",
+          "area_floor_unreachable",
+          "minimum_chunk_unplaceable"
+        ],
+        "title": "ShortfallKind",
+        "type": "string"
+      },
+      "ShortfallResponse": {
+        "description": "One quantified gap: how much, against what, by when, and what was honored to find it.",
+        "properties": {
+          "against": {
+            "description": "What cannot be satisfied, in the user's own words for it: task titles, an Area's name.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Against",
+            "type": "array"
+          },
+          "areaId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only for a gap that belongs to one Area.",
+            "title": "Areaid"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only for a gap measured against a deadline.",
+            "title": "Deadline"
+          },
+          "honoring": {
+            "description": "The constraints respected while computing the gap, so a reader can see what the week was measured against rather than only the number.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Honoring",
+            "type": "array"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ShortfallKind",
+            "description": "Which check produced this gap."
+          },
+          "minutes": {
+            "description": "The gap itself rather than the demand, so it is what a tradeoff must recover.",
+            "title": "Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "minutes",
+          "against",
+          "honoring",
+          "deadline",
+          "areaId"
+        ],
+        "title": "ShortfallResponse",
         "type": "object"
       },
       "SlotEntryRequest": {
@@ -6300,6 +6511,46 @@
         "title": "TradeoffRequest",
         "type": "object"
       },
+      "TradeoffResponse": {
+        "description": "One concession the user could approve to close a shortfall, and what it recovers.",
+        "properties": {
+          "deltaMinutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What approving it would recover, as an UPPER bound rather than an exact figure. Null where the enumerator could not size the gap it closes.",
+            "title": "Deltaminutes"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AdjustmentKind",
+            "description": "The concession this tradeoff becomes if it is approved."
+          },
+          "label": {
+            "description": "The rendered wording, because it is per kind and per target and names the nights a reduction would touch.",
+            "title": "Label",
+            "type": "string"
+          },
+          "targetId": {
+            "description": "The task, routine, or Area the concession would act on.",
+            "format": "uuid",
+            "title": "Targetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "targetId",
+          "deltaMinutes"
+        ],
+        "title": "TradeoffResponse",
+        "type": "object"
+      },
       "TravelOverrideRequest": {
         "additionalProperties": false,
         "description": "A range to declare. Both dates inclusive, and the range may not overlap another.\n\n``startDate`` after ``endDate`` is a 422 naming ``endDate``, and an overlap with an\nexisting override is a 409 naming both ranges. Two ranges that abut exactly are\naccepted: adjacency is not overlap.",
@@ -6407,9 +6658,134 @@
         "title": "TrendWeekResponse",
         "type": "object"
       },
+      "VerdictResponse": {
+        "description": "Whether a week can hold its commitments, how that was decided, and by how much it cannot.",
+        "properties": {
+          "capacityIsSufficient": {
+            "description": "Whether this check found no gap. Weaker than feasible: it says the week could not be proven impossible.",
+            "title": "Capacityissufficient",
+            "type": "boolean"
+          },
+          "computedAt": {
+            "description": "The instant the assembly this verdict was computed from was stamped with, so two verdicts over one assembly report one instant.",
+            "format": "date-time",
+            "title": "Computedat",
+            "type": "string"
+          },
+          "discretionaryMinutes": {
+            "description": "The week's denominator over its whole span, carried so a surface renders the figure the verdict was computed against rather than re-deriving it.",
+            "title": "Discretionaryminutes",
+            "type": "integer"
+          },
+          "feasible": {
+            "description": "Whether the week is possible. Always false from a capacity probe, which cannot prove a week works: read capacityIsSufficient instead when provenance is probe.",
+            "title": "Feasible",
+            "type": "boolean"
+          },
+          "inputVersion": {
+            "description": "The week's input version this verdict was computed against.",
+            "title": "Inputversion",
+            "type": "integer"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance",
+            "description": "probe for capacity arithmetic, which proves infeasibility only, and solver for a verdict an attempted placement produced."
+          },
+          "shortfalls": {
+            "description": "Every quantified gap. Empty when the check found none.",
+            "items": {
+              "$ref": "#/components/schemas/ShortfallResponse"
+            },
+            "title": "Shortfalls",
+            "type": "array"
+          },
+          "tradeoffs": {
+            "description": "One concession per gap, where the caller enumerated them. Empty from a bare probe, which reads no identifier and so cannot name what a concession would act on.",
+            "items": {
+              "$ref": "#/components/schemas/TradeoffResponse"
+            },
+            "title": "Tradeoffs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "feasible",
+          "capacityIsSufficient",
+          "provenance",
+          "computedAt",
+          "inputVersion",
+          "discretionaryMinutes",
+          "shortfalls",
+          "tradeoffs"
+        ],
+        "title": "VerdictResponse",
+        "type": "object"
+      },
       "WallTime": {
         "format": "time",
         "type": "string"
+      },
+      "WeekApprovedResponse": {
+        "description": "What one approval wrote, as the client redraws it.",
+        "properties": {
+          "adjustment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustmentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The concession this approval persisted, or null for an ordinary approval. The next solve of the week honors it without being asked again."
+          },
+          "approvedAt": {
+            "description": "When the user assented.",
+            "format": "date-time",
+            "title": "Approvedat",
+            "type": "string"
+          },
+          "inputVersion": {
+            "description": "The week's input version after this approval bumped it. A solve already running against the previous value fails its conditional write and is superseded.",
+            "title": "Inputversion",
+            "type": "integer"
+          },
+          "isoWeek": {
+            "title": "Isoweek",
+            "type": "string"
+          },
+          "projection": {
+            "$ref": "#/components/schemas/OperationResponse",
+            "description": "The projection this approval enqueued, which is what writes the approved week to the user's calendar."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/RevisionReason",
+            "description": "Which approval this was: user_approved, or tradeoff_approved when the proposal carried a concession. Decided by what the slot held, never by the caller."
+          },
+          "revisionId": {
+            "description": "The approved revision this appended, permanently.",
+            "format": "uuid",
+            "title": "Revisionid",
+            "type": "string"
+          },
+          "solvedAgainstVersion": {
+            "description": "The input version the approved plan was produced from. Lower than inputVersion by more than this approval's own bump when the week moved on while the proposal waited, which is permitted: the solve that mutation enqueued proposes any correction.",
+            "title": "Solvedagainstversion",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revisionId",
+          "isoWeek",
+          "reason",
+          "approvedAt",
+          "inputVersion",
+          "solvedAgainstVersion",
+          "adjustment",
+          "projection"
+        ],
+        "title": "WeekApprovedResponse",
+        "type": "object"
       },
       "WeekPatternRequest": {
         "additionalProperties": false,
@@ -6587,6 +6963,14 @@
       "WeekRevisionResponse": {
         "description": "One appended revision of a week's plan, as the history lists it.",
         "properties": {
+          "adjustments": {
+            "description": "The approved concessions this plan was solved under, so a week never reads as feasible for a reason the user cannot see.",
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentResponse"
+            },
+            "title": "Adjustments",
+            "type": "array"
+          },
           "approvedAt": {
             "anyOf": [
               {
@@ -6599,6 +6983,14 @@
             ],
             "description": "When the user assented. Null for an applied revision.",
             "title": "Approvedat"
+          },
+          "autoApplied": {
+            "description": "What this revision added without asking, by block title. Empty for an approved revision, whose changes the user assented to, and empty for the first plan a week ever had, which added everything.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Autoapplied",
+            "type": "array"
           },
           "createdAt": {
             "description": "When the revision was appended.",
@@ -6623,6 +7015,11 @@
           "status": {
             "$ref": "#/components/schemas/RevisionStatus",
             "description": "Whether the authority rule applied it or the user assented to it."
+          },
+          "unnamedAdjustments": {
+            "description": "How many concessions this plan was solved under the week no longer holds under that identifier, and so cannot be named: revoked, or replaced by a later concession of the same kind and target. Zero when the week still holds all of them.",
+            "title": "Unnamedadjustments",
+            "type": "integer"
           }
         },
         "required": [
@@ -6631,7 +7028,10 @@
           "status",
           "reason",
           "approvedAt",
-          "inputVersion"
+          "inputVersion",
+          "autoApplied",
+          "adjustments",
+          "unnamedAdjustments"
         ],
         "title": "WeekRevisionResponse",
         "type": "object"
@@ -15257,6 +15657,391 @@
         "summary": "Revoke one concession. Bumps the week's input version and re-solves",
         "tags": [
           "concessions"
+        ]
+      }
+    },
+    "/api/v1/weeks/{iso_week}/approve": {
+      "post": {
+        "description": "Make what the week is proposing its plan of record, and answer with what that wrote.",
+        "operationId": "approve_week_api_v1_weeks__iso_week__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeekApprovedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Approve the pending proposal. Needs an Idempotency-Key",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/v1/weeks/{iso_week}/pins": {
+      "post": {
+        "description": "Record one manual edit, and answer with a verdict computed without waiting for a solve.",
+        "operationId": "create_pin_api_v1_weeks__iso_week__pins_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinnedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Pin a block where the user put it. Returns the pin, the verdict, and the operation",
+        "tags": [
+          "pins"
+        ]
+      }
+    },
+    "/api/v1/weeks/{iso_week}/pins/{pin_id}": {
+      "delete": {
+        "description": "Free the block to move again. The pin's record is retained as training data.",
+        "operationId": "remove_pin_api_v1_weeks__iso_week__pins__pin_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pin_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Release one pin. Bumps the week's input version and re-solves",
+        "tags": [
+          "pins"
+        ]
+      }
+    },
+    "/api/v1/weeks/{iso_week}/reject-block": {
+      "post": {
+        "description": "Refuse one change without refusing the rest, which is what makes a rejection teach.",
+        "operationId": "reject_block_api_v1_weeks__iso_week__reject_block_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinnedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Reject one proposed move by pinning the block at its existing placement",
+        "tags": [
+          "pins"
         ]
       }
     },

@@ -1299,6 +1299,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/weeks/{iso_week}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve the pending proposal. Needs an Idempotency-Key
+         * @description Make what the week is proposing its plan of record, and answer with what that wrote.
+         */
+        post: operations["approve_week_api_v1_weeks__iso_week__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/weeks/{iso_week}/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pin a block where the user put it. Returns the pin, the verdict, and the operation
+         * @description Record one manual edit, and answer with a verdict computed without waiting for a solve.
+         */
+        post: operations["create_pin_api_v1_weeks__iso_week__pins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/weeks/{iso_week}/pins/{pin_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Release one pin. Bumps the week's input version and re-solves
+         * @description Free the block to move again. The pin's record is retained as training data.
+         */
+        delete: operations["remove_pin_api_v1_weeks__iso_week__pins__pin_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/weeks/{iso_week}/reject-block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject one proposed move by pinning the block at its existing placement
+         * @description Refuse one change without refusing the rest, which is what makes a rejection teach.
+         */
+        post: operations["reject_block_api_v1_weeks__iso_week__reject_block_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/weeks/{iso_week}/revisions": {
         parameters: {
             query?: never;
@@ -3799,6 +3879,64 @@ export interface components {
             start: string;
         };
         /**
+         * PinCreateRequest
+         * @description One drag, one keyboard move, or the ``p`` toggle.
+         */
+        PinCreateRequest: {
+            /**
+             * Blockid
+             * @description The block being pinned, as the week view spells its id.
+             */
+            blockId: string;
+            /**
+             * Start
+             * Format: date-time
+             * @description Where the block now begins. Its length is unchanged, because a drag moves and does not resize, so the pinned span is this instant plus the block's own duration.
+             */
+            start: string;
+        };
+        /**
+         * PinResponse
+         * @description One pin: where the user put a block, what the solver had chosen, and what that cost.
+         */
+        PinResponse: {
+            /**
+             * Blockid
+             * @description The block this pin holds, as the week view spells its id.
+             */
+            blockId: string;
+            /**
+             * Createdat
+             * Format: date-time
+             * @description When the user made this edit.
+             */
+            createdAt: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** @description Where the user put it. */
+            interval: components["schemas"]["WireSpan"];
+            /**
+             * Isoweek
+             * @description The one week this pin constrains. Pins do not carry forward.
+             */
+            isoWeek: string;
+            /**
+             * Objectivedelta
+             * @description What the user's choice cost in objective units, under weightSetVersion. Positive when the user's placement is worse under those weights, and zero for a pin that keeps a block where it already is.
+             */
+            objectiveDelta: number | null;
+            /** @description Where the solver had put it. */
+            supersededPlacement: components["schemas"]["WireSpan"];
+            /**
+             * Weightsetversion
+             * @description The weight set the cost was measured under. Stored rather than recomputed, because the weights it was priced against will have moved on.
+             */
+            weightSetVersion: number;
+        };
+        /**
          * PinnedClause
          * @description The user's own edit, and the date they made it.
          */
@@ -3814,6 +3952,21 @@ export interface components {
              * Format: date
              */
             pinnedOn: string;
+        };
+        /**
+         * PinnedResponse
+         * @description What one edit answers with: the pin, the live verdict, and the solve to follow.
+         *
+         *     Three fields because a client redraws all three on the same frame. The verdict is computed
+         *     synchronously from capacity arithmetic and requires no solve to complete, which is what makes
+         *     that one redraw possible; the operation is what says when the unpinned remainder has reflowed.
+         */
+        PinnedResponse: {
+            /** @description The solve this edit asked for, due one debounce window later, or the one already in flight that this edit joined. */
+            operation: components["schemas"]["OperationResponse"];
+            pin: components["schemas"]["PinResponse"];
+            /** @description The week's verdict as of this edit, from the capacity probe. Its provenance says so: arithmetic proves infeasibility and never feasibility. */
+            verdict: components["schemas"]["VerdictResponse"];
         };
         /** @enum {string} */
         PlanCurrency: "current" | "solving" | "stale";
@@ -4020,6 +4173,16 @@ export interface components {
             statement: string;
         };
         /**
+         * Provenance
+         * @description Which kind of check produced a verdict, and therefore which claim it may make.
+         *
+         *     ``probe`` may say "this week is infeasible, by this much, against this commitment", and at
+         *     most that capacity is sufficient. ``solver`` may say either, because it attempted a
+         *     placement and knows the answer.
+         * @enum {string}
+         */
+        Provenance: "probe" | "solver";
+        /**
          * RampReading
          * @description How much of the sealed ramp this tenant's Areas are using.
          *
@@ -4075,6 +4238,17 @@ export interface components {
         ReasonResponse: {
             /** Clauses */
             clauses: components["schemas"]["ClauseResponse"][];
+        };
+        /**
+         * RejectBlockRequest
+         * @description One proposed move the user refuses.
+         */
+        RejectBlockRequest: {
+            /**
+             * Blockid
+             * @description The block the pending proposal would move. Rejecting the move pins the block at the placement the plan of record already holds it at.
+             */
+            blockId: string;
         };
         /**
          * RejectedEventResponse
@@ -4497,6 +4671,49 @@ export interface components {
              * @description Whether a return journey is declared.
              */
             returnTransit: boolean;
+        };
+        /**
+         * ShortfallKind
+         * @description Why a week cannot hold its commitments. Four kinds, and no fifth spelling anywhere.
+         *
+         *     The first three are capacity arithmetic and the probe produces all three. The fourth is a
+         *     packing failure: the capacity exists but not in a usable shape, which no arithmetic over
+         *     interval totals can discover and only an attempted placement can.
+         * @enum {string}
+         */
+        ShortfallKind: "floors_exceed_capacity" | "deadline_capacity" | "area_floor_unreachable" | "minimum_chunk_unplaceable";
+        /**
+         * ShortfallResponse
+         * @description One quantified gap: how much, against what, by when, and what was honored to find it.
+         */
+        ShortfallResponse: {
+            /**
+             * Against
+             * @description What cannot be satisfied, in the user's own words for it: task titles, an Area's name.
+             */
+            against: string[];
+            /**
+             * Areaid
+             * @description Present only for a gap that belongs to one Area.
+             */
+            areaId: string | null;
+            /**
+             * Deadline
+             * @description Present only for a gap measured against a deadline.
+             */
+            deadline: string | null;
+            /**
+             * Honoring
+             * @description The constraints respected while computing the gap, so a reader can see what the week was measured against rather than only the number.
+             */
+            honoring: string[];
+            /** @description Which check produced this gap. */
+            kind: components["schemas"]["ShortfallKind"];
+            /**
+             * Minutes
+             * @description The gap itself rather than the demand, so it is what a tradeoff must recover.
+             */
+            minutes: number;
         };
         /**
          * SlotEntryRequest
@@ -4969,6 +5186,30 @@ export interface components {
             targetId: string;
         };
         /**
+         * TradeoffResponse
+         * @description One concession the user could approve to close a shortfall, and what it recovers.
+         */
+        TradeoffResponse: {
+            /**
+             * Deltaminutes
+             * @description What approving it would recover, as an UPPER bound rather than an exact figure. Null where the enumerator could not size the gap it closes.
+             */
+            deltaMinutes: number | null;
+            /** @description The concession this tradeoff becomes if it is approved. */
+            kind: components["schemas"]["AdjustmentKind"];
+            /**
+             * Label
+             * @description The rendered wording, because it is per kind and per target and names the nights a reduction would touch.
+             */
+            label: string;
+            /**
+             * Targetid
+             * Format: uuid
+             * @description The task, routine, or Area the concession would act on.
+             */
+            targetId: string;
+        };
+        /**
          * TravelOverrideRequest
          * @description A range to declare. Both dates inclusive, and the range may not overlap another.
          *
@@ -5048,8 +5289,88 @@ export interface components {
             /** Slices */
             slices: components["schemas"]["CategoryReadingResponse"][];
         };
+        /**
+         * VerdictResponse
+         * @description Whether a week can hold its commitments, how that was decided, and by how much it cannot.
+         */
+        VerdictResponse: {
+            /**
+             * Capacityissufficient
+             * @description Whether this check found no gap. Weaker than feasible: it says the week could not be proven impossible.
+             */
+            capacityIsSufficient: boolean;
+            /**
+             * Computedat
+             * Format: date-time
+             * @description The instant the assembly this verdict was computed from was stamped with, so two verdicts over one assembly report one instant.
+             */
+            computedAt: string;
+            /**
+             * Discretionaryminutes
+             * @description The week's denominator over its whole span, carried so a surface renders the figure the verdict was computed against rather than re-deriving it.
+             */
+            discretionaryMinutes: number;
+            /**
+             * Feasible
+             * @description Whether the week is possible. Always false from a capacity probe, which cannot prove a week works: read capacityIsSufficient instead when provenance is probe.
+             */
+            feasible: boolean;
+            /**
+             * Inputversion
+             * @description The week's input version this verdict was computed against.
+             */
+            inputVersion: number;
+            /** @description probe for capacity arithmetic, which proves infeasibility only, and solver for a verdict an attempted placement produced. */
+            provenance: components["schemas"]["Provenance"];
+            /**
+             * Shortfalls
+             * @description Every quantified gap. Empty when the check found none.
+             */
+            shortfalls: components["schemas"]["ShortfallResponse"][];
+            /**
+             * Tradeoffs
+             * @description One concession per gap, where the caller enumerated them. Empty from a bare probe, which reads no identifier and so cannot name what a concession would act on.
+             */
+            tradeoffs: components["schemas"]["TradeoffResponse"][];
+        };
         /** Format: time */
         WallTime: string;
+        /**
+         * WeekApprovedResponse
+         * @description What one approval wrote, as the client redraws it.
+         */
+        WeekApprovedResponse: {
+            /** @description The concession this approval persisted, or null for an ordinary approval. The next solve of the week honors it without being asked again. */
+            adjustment: components["schemas"]["AdjustmentResponse"] | null;
+            /**
+             * Approvedat
+             * Format: date-time
+             * @description When the user assented.
+             */
+            approvedAt: string;
+            /**
+             * Inputversion
+             * @description The week's input version after this approval bumped it. A solve already running against the previous value fails its conditional write and is superseded.
+             */
+            inputVersion: number;
+            /** Isoweek */
+            isoWeek: string;
+            /** @description The projection this approval enqueued, which is what writes the approved week to the user's calendar. */
+            projection: components["schemas"]["OperationResponse"];
+            /** @description Which approval this was: user_approved, or tradeoff_approved when the proposal carried a concession. Decided by what the slot held, never by the caller. */
+            reason: components["schemas"]["RevisionReason"];
+            /**
+             * Revisionid
+             * Format: uuid
+             * @description The approved revision this appended, permanently.
+             */
+            revisionId: string;
+            /**
+             * Solvedagainstversion
+             * @description The input version the approved plan was produced from. Lower than inputVersion by more than this approval's own bump when the week moved on while the proposal waited, which is permitted: the solve that mutation enqueued proposes any correction.
+             */
+            solvedAgainstVersion: number;
+        };
         /**
          * WeekPatternRequest
          * @description The whole mapping to declare. Every weekday is required, which rejects a partial one.
@@ -5199,10 +5520,20 @@ export interface components {
          */
         WeekRevisionResponse: {
             /**
+             * Adjustments
+             * @description The approved concessions this plan was solved under, so a week never reads as feasible for a reason the user cannot see.
+             */
+            adjustments: components["schemas"]["AdjustmentResponse"][];
+            /**
              * Approvedat
              * @description When the user assented. Null for an applied revision.
              */
             approvedAt: string | null;
+            /**
+             * Autoapplied
+             * @description What this revision added without asking, by block title. Empty for an approved revision, whose changes the user assented to, and empty for the first plan a week ever had, which added everything.
+             */
+            autoApplied: string[];
             /**
              * Createdat
              * Format: date-time
@@ -5223,6 +5554,11 @@ export interface components {
             reason: components["schemas"]["RevisionReason"];
             /** @description Whether the authority rule applied it or the user assented to it. */
             status: components["schemas"]["RevisionStatus"];
+            /**
+             * Unnamedadjustments
+             * @description How many concessions this plan was solved under the week no longer holds under that identifier, and so cannot be named: revoked, or replaced by a later concession of the same kind and target. Zero when the week still holds all of them.
+             */
+            unnamedAdjustments: number;
         };
         /**
          * WeekRevisionsResponse
@@ -12071,6 +12407,308 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    approve_week_api_v1_weeks__iso_week__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekApprovedResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_pin_api_v1_weeks__iso_week__pins_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinnedResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_pin_api_v1_weeks__iso_week__pins__pin_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+                pin_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reject_block_api_v1_weeks__iso_week__reject_block_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectBlockRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinnedResponse"];
+                };
             };
             /** @description Authentication required */
             401: {
