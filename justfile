@@ -16,6 +16,24 @@ dev_compose := "-f docker-compose.yml -f docker-compose.dev.yml"
 # and with the deploy overlay in production, which is one topology described two ways.
 monitoring_compose := "-f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.monitoring.yml"
 
+# The deployed stack: the base file, the monitoring stack, the digest pins, and the tunnel. Every
+# production recipe passes exactly this set, so "what is deployed" has one spelling.
+deploy_compose := "-f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.deploy.yml -f docker-compose.tunnel.yml"
+
+# What the one-shot recipes below compose with. Base-only by default, which is what a developer and
+# the restore drill want; the deployed host sets SYNCR_OPS_COMPOSE to add the digest pins, so the
+# nightly timer runs the reviewed image rather than whatever is tagged locally. The systemd units in
+# `deployments/systemd/` set it, and `docs/runbooks/deploy-and-rollback.md` says why.
+ops_compose := env_var_or_default("SYNCR_OPS_COMPOSE", "-f docker-compose.yml")
+
+# The restore drill's own topology: a scratch Postgres, an api booted against it, and the same
+# fingerprint reader the manifest was written with. Never composed with the tunnel: a drill has no
+# business being reachable.
+#
+# Overridable so `just drill-local` can add the local-bucket overlay without a second copy of the six
+# steps. A recipe that exists twice is a recipe that gets fixed once.
+restore_compose := env_var_or_default("SYNCR_RESTORE_COMPOSE", "-f docker-compose.yml -f docker-compose.restore.yml")
+
 # Every Python member, in dependency order, so lint and test output reads bottom-up.
 members := "packages/syncr-common packages/syncr-domain packages/syncr-solver packages/syncr-api packages/syncr-learning cli"
 
@@ -120,7 +138,7 @@ monitoring:
 monitoring-down:
     docker compose {{monitoring_compose}} down
 
-# Validate the Prometheus configuration and the twelve alert rules, in the images that read them.
+# Validate the Prometheus configuration and the thirteen alert rules, in the images that read them.
 #
 # A rule file the deployed Prometheus refuses is a deployment with no alerting at all, and the
 # failure is silent: Prometheus logs it and carries on serving. `tests/test_alert_rules.py` parses
@@ -157,7 +175,7 @@ monitoring-probe:
 # cause is syntactically perfect and silences whole severities: this deployment shipped exactly that,
 # and only posting alerts showed it.
 #
-# The check is an EQUALITY, not an emptiness: with all twelve firing, the set Alertmanager suppressed
+# The check is an EQUALITY, not an emptiness: with every rule firing, the set Alertmanager suppressed
 # must be exactly the set the declared rules name as targets. That is what lets the probe catch a rule
 # its own reader cannot see, which is how the legacy `source_match:` map form escaped every guard.
 #
@@ -489,3 +507,315 @@ image-boundary-learning:
       exit 1
     fi
     echo "learning image boundary holds, and the image runs"
+
+# --- Deployment -------------------------------------------------------------
+# One host, one Compose stack, one ingress. Every recipe here runs against the LIVE stack, so each
+# one says what it is doing as it goes and none of them is silent about a failure.
+
+# Print the current digest of every third-party image the deploy overlay pins.
+#
+# A base-image refresh is a DELIBERATE, REVIEWED change rather than a rebuild side effect, so this
+# prints and never edits: paste a digest into `docker-compose.deploy.yml` beside the tag it belongs
+# to, in a commit that says why the image is moving.
+digests:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    for reference in \
+      postgres:16.10-bookworm \
+      prom/prometheus:v3.1.0 \
+      prom/alertmanager:v0.28.0 \
+      grafana/grafana:11.5.1 \
+      prom/node-exporter:v1.8.2 \
+      gcr.io/cadvisor/cadvisor:v0.52.1 \
+      prometheuscommunity/postgres-exporter:v0.16.0 \
+      cloudflare/cloudflared:2026.7.3 \
+      caddy:2.11.4-alpine \
+      node:22.22-bookworm-slim; do
+      printf '%-50s %s\n' "$reference" \
+        "$(docker buildx imagetools inspect "$reference" 2>/dev/null | awk '/^Digest:/{print $2; exit}')"
+    done
+
+# Assert that no service in the deployed stack publishes a host port.
+#
+# THE TUNNEL IS THE ONLY INGRESS, and this is the half of that claim a machine can check: it reads the
+# resolved configuration of the whole deployed stack and fails on any published port. The other half
+# is a scan FROM OUTSIDE the host, which only a person on another network can run;
+# `docs/runbooks/deploy-and-rollback.md` carries it as a step of the first deployment.
+ports-check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # EVERY profile, or the set this reads is not the set it claims to bound: `docker compose config`
+    # omits a profile-gated service entirely, and three of the deployed services are gated.
+    resolved="$(SYNCR_API_DIGEST=unset SYNCR_FRONTEND_DIGEST=unset SYNCR_LEARNING_DIGEST=unset \
+      SYNCR_OPS_DIGEST=unset CLOUDFLARE_TUNNEL_TOKEN=unset \
+      docker compose {{deploy_compose}} --profile ops --profile scheduled config)" || exit 1
+    services="$(printf '%s' "$resolved" | grep -cE '^  [a-z_-]+:$')"
+    if printf '%s' "$resolved" | grep -q 'published:'; then
+      echo "a service in the deployed stack publishes a host port:" >&2
+      printf '%s' "$resolved" | grep -B8 'published:' >&2
+      exit 1
+    fi
+    echo "no host port is published by any of the resolved services in the deployed stack"
+
+# Wait for the api to answer /readyz, which is what a deploy is gated on.
+#
+# Runs the SAME probe the container healthcheck runs, from inside the container, because that is the
+# only place the api is reachable: no host port is published and the tunnel fronts the frontend.
+# `urlopen` raises on the 503 /readyz answers while the database is unreachable or the migration head
+# is not applied.
+await-ready seconds="120":
+    #!/usr/bin/env bash
+    set -uo pipefail
+    probe="import urllib.request as u; u.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"
+    deadline=$(( $(date +%s) + {{seconds}} ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+      if docker compose {{deploy_compose}} exec -T api python -c "$probe" >/dev/null 2>&1; then
+        echo "/readyz answers 200: the applied revision is the head this checkout ships"
+        exit 0
+      fi
+      sleep 3
+    done
+    echo "/readyz did not answer 200 within {{seconds}}s" >&2
+    docker compose {{deploy_compose}} logs --tail 40 api >&2
+    exit 1
+
+# Deploy the digests in deployments/digests.env, and roll back to the previous ones on failure.
+#
+# The order is section 21's. Pull, migrate as a ONE-SHOT before anything starts, restart the three
+# services that carry code, then WAIT FOR /readyz. Migrations never run at application startup, so two
+# replicas cannot race, and `/readyz` compares the applied revision against the head this checkout
+# ships, so a deploy that did not migrate cannot serve traffic.
+#
+# ROLLBACK IS RE-DEPLOYING THE PREVIOUS DIGESTS, which is why they are recorded. `digests.env` is what
+# cd.yml writes; `digests.previous.env` is the last set that reached readiness, so it is written AFTER
+# a deploy proves ready rather than before. A schema rollback is a restore rather than a deploy, which
+# is why migrations are forward-only and reviewed.
+deploy:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    current=deployments/digests.env
+    previous=deployments/digests.previous.env
+    if [ ! -f "$current" ]; then
+      echo "$current does not exist. cd.yml writes it, and a deploy never floats a tag." >&2
+      exit 1
+    fi
+    deploy_from() {
+      set -a
+      # shellcheck disable=SC1090
+      . "$1"
+      set +a
+      docker compose {{deploy_compose}} pull --quiet || return 1
+      docker compose {{deploy_compose}} up -d postgres || return 1
+      docker compose {{deploy_compose}} run --rm --no-deps api alembic upgrade head || return 1
+      docker compose {{deploy_compose}} up -d --no-deps api worker frontend || return 1
+      docker compose {{deploy_compose}} up -d cloudflared prometheus alertmanager grafana \
+        node_exporter cadvisor postgres_exporter || return 1
+      just await-ready
+    }
+    if deploy_from "$current"; then
+      cp "$current" "$previous"
+      echo "deployed, ready, and recorded $previous as the release to roll back to"
+      exit 0
+    fi
+    echo "the deploy did not reach readiness" >&2
+    if [ ! -f "$previous" ]; then
+      echo "and no previous release is recorded, so the stack is as the failed deploy left it." >&2
+      echo "docs/runbooks/deploy-and-rollback.md is the procedure." >&2
+      exit 1
+    fi
+    echo "re-deploying the previous digests from $previous" >&2
+    if deploy_from "$previous"; then
+      echo "rolled back to the previous release, which is ready" >&2
+      exit 1
+    fi
+    echo "THE ROLLBACK ALSO FAILED, which is the case the runbook's last section covers." >&2
+    exit 1
+
+# --- Backup and recovery ----------------------------------------------------
+# An untested backup is a belief. `just restore-drill` is the only thing here that proves otherwise.
+
+# Take one backup now: the fingerprint, then the dump. Both steps, in that order.
+#
+# TWO CONTAINERS, and the order is the point. The fingerprint is the reading a restore is checked
+# against and it needs the application, because the rotation cursor is a domain projection; the dump
+# needs `pg_dump` from the pinned Postgres image. The dump step REFUSES a fingerprint older than half
+# an hour, so a fingerprint step that failed cannot leave an earlier file to be uploaded beside a new
+# dump.
+#
+# The first step is the one that makes the other two possible on a new deployment: a fresh named
+# volume belongs to root and neither writer is root.
+#
+# The nightly timer runs this recipe rather than the two commands, so the schedule and a manual run
+# cannot drift. See `deployments/systemd/syncr-backup.service`.
+backup-now:
+    docker compose {{ops_compose}} run --rm ops python3 -m ops.prepare
+    docker compose {{ops_compose}} run --rm fingerprint
+    docker compose {{ops_compose}} run --rm ops python3 -m ops.dump
+
+# Ship every archived WAL segment off-host. Runs once a minute from a timer.
+#
+# Reads `pg_stat_archiver` FIRST and refuses when Postgres reports its own archive_command failing: a
+# failing archiver leaves the staging volume empty, which is exactly what a healthy one leaves, so
+# publishing a fresh timestamp for an empty directory would claim a five-minute recovery point while
+# none existed.
+wal-ship:
+    docker compose {{ops_compose}} run --rm ops python3 -m ops.ship
+
+# Cross the user ids the ops container chowns volumes to against what the images actually run as.
+#
+# The numbers are declared in `docker-compose.yml` and the images decide them, so this is the one
+# check that keeps a base image renumbering its user from turning into a nightly backup that cannot
+# write. Both are 999 today, which is the first system user a Debian base creates: a coincidence, and
+# a coincidence is exactly what needs a check rather than a comment.
+uid-check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    failed=0
+    # `--profile ops`, because `docker compose config` omits a profile-gated service and the ops
+    # service is where these are declared: without it this read returns nothing and compares nothing.
+    declared() {
+      docker compose {{ops_compose}} --profile ops config \
+        | awk -v key="$1:" '$1 == key {gsub(/"/, "", $2); print $2; exit}'
+    }
+    check() {
+      if [ "$2" != "$3" ]; then
+        echo "$1 is declared as $2 and the image runs as $3" >&2
+        failed=1
+      else
+        echo "$1 is $2, and the image agrees"
+      fi
+    }
+    # The api image declares `USER syncr`, so its own `id -u` is what it runs as.
+    check SYNCR_APP_UID "$(declared SYNCR_APP_UID)" \
+      "$(docker run --rm --entrypoint id syncr-api:${SYNCR_IMAGE_TAG:-latest} -u)"
+    # The Postgres image starts as root and drops to `postgres` through its entrypoint, so `id -u`
+    # would report 0. `archive_command` runs as that user, which is what this asks for by name.
+    check SYNCR_POSTGRES_UID "$(declared SYNCR_POSTGRES_UID)" \
+      "$(docker run --rm --entrypoint id postgres:16.10-bookworm -u postgres)"
+    exit "$failed"
+
+# Run the nightly learning job as the scheduled one-shot, in the stack.
+#
+# `just learn` is the inner-loop equivalent and runs on the host against the dev database. This is what
+# the timer runs: the container exits non-zero when a tenant's fit failed, and writes its exposition to
+# the textfile collector before exiting, which is how `LearningJobFailed` can see a run at all.
+learn-once:
+    docker compose {{ops_compose}} --profile scheduled run --rm learning
+
+# THE RESTORE DRILL. Restore the newest off-host backup into a clean database, boot the stack against
+# it, and confirm the data came back.
+#
+# This recipe automates the mechanics; A HUMAN CONFIRMS THE OUTCOME. What it prints is a list of
+# claims, each PASS or FAIL, because the pass condition is DATA READ BACK rather than an exit status:
+# `pg_restore` exits 0 having restored an empty archive.
+#
+# It needs the PRIVATE half of the backup key, which lives off the host. That is deliberate, and
+# proving the key can be used is half of what this drill is for: set SYNCR_BACKUP_PRIVATE_KEY to a
+# path inside the secrets mount before running.
+#
+# Six steps. The scratch database is dropped at both ends, so nothing an earlier run left behind can
+# satisfy this one:
+#
+#   1  fetch      download the newest dump and its fingerprint, decrypt both, verify the archive
+#   2  scratch    a clean Postgres, its own volume, a different database name from production's
+#   3  restore    refuse if the target IS production, refuse if it holds tables, then pg_restore
+#   4  migrate    the one-shot a deploy runs, so the copy reaches the head this checkout ships
+#   5  boot       the api against the copy, waiting for its own /readyz healthcheck
+#   6  compare    the same fingerprint reader, against the manifest, inside the recovery objective
+restore-drill:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    SYNCR_DRILL_STARTED_AT="$(date +%s)"
+    export SYNCR_DRILL_STARTED_AT
+    drill() { docker compose {{restore_compose}} "$@"; }
+    # SURGICAL, BY SERVICE NAME. Never `down -v`: that is scoped to the PROJECT, and a local run
+    # proved what that means here, deleting `pgdata`, the staging volume and the bucket. On the
+    # deployed host the drill's own teardown would have destroyed the live database. The scratch
+    # instance declares no volume, so removing its container removes its data with it.
+    scratch() { drill rm -fsv postgres-restore api-restore >/dev/null 2>&1; }
+    trap scratch EXIT
+    echo "--- 1/6 fetching the newest backup and verifying the archive"
+    drill run --rm ops python3 -m ops.fetch || exit 1
+    echo "--- 2/6 starting a clean scratch database"
+    scratch
+    drill up -d --wait postgres-restore || exit 1
+    echo "--- 3/6 restoring into it"
+    drill run --rm ops python3 -m ops.restore || exit 1
+    echo "--- 4/6 applying migrations as the one-shot a deploy runs"
+    drill run --rm --no-deps api-restore alembic upgrade head || exit 1
+    echo "--- 5/6 booting the api against the restored copy and waiting for /readyz"
+    drill --profile ops up -d --wait api-restore || exit 1
+    echo "--- 6/6 reading the restored copy back"
+    drill run --rm fingerprint-restore || exit 1
+    drill run --rm ops python3 -m ops.compare
+
+# --- The drill, without a bucket --------------------------------------------
+# DEVELOPMENT ONLY. An instrument nobody can run is an instrument nobody has run, and every guard in
+# the backup path is written against a failure. These three recipes are how the whole path is
+# exercised on a machine with no cloud account: the bucket becomes a local rclone remote and the keys
+# become a throwaway pair. Nothing else changes.
+
+# Generate the throwaway keypair the local drill encrypts to and decrypts with.
+#
+# In production the PRIVATE half is off the host entirely and a person brings it to a drill, which is
+# what "a key held outside the VPS" means and what makes the copies useless to whoever reaches the
+# host. Locally both halves sit in `deployments/secrets/`, which is gitignored, and neither has ever
+# encrypted anything real.
+drill-keys:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p deployments/secrets
+    if [ -f deployments/secrets/drill-recipient.pub.asc ]; then
+      echo "deployments/secrets already holds a drill keypair"
+      exit 0
+    fi
+    home="$(mktemp -d)"
+    trap 'rm -rf "$home"' EXIT
+    gpg --homedir "$home" --batch --quick-generate-key \
+      --passphrase '' 'syncr restore drill <drill@localhost>' default default never
+    gpg --homedir "$home" --armor --export 'drill@localhost' \
+      > deployments/secrets/drill-recipient.pub.asc
+    gpg --homedir "$home" --armor --export-secret-keys 'drill@localhost' \
+      > deployments/secrets/drill-recipient.key.asc
+    chmod 600 deployments/secrets/drill-recipient.key.asc
+    echo "wrote a throwaway keypair to deployments/secrets (gitignored)"
+
+# Seed the local database with something a drill can lose.
+#
+# The seed is hand-written rows, and the drill's own evidence checks are what validate them: a binding
+# spelled differently from the one the product writes would derive no cursor, and the verdict refuses
+# a drill with no advanced cursor rather than reporting a pass. `deployments/drill/seed-local.sql` says
+# so at the top.
+#
+# BASE FILE ONLY, deliberately. The dev overlay publishes 5432, and a host-local Postgres owning that
+# port makes a compose route silently reach the wrong database: the most expensive hazard in this
+# repository. Nothing here needs a host port, so nothing here publishes one.
+drill-seed:
+    docker compose -f docker-compose.yml exec -T postgres \
+      psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-syncr}" -d "${POSTGRES_DB:-syncr}" \
+      -f /dev/stdin < deployments/drill/seed-local.sql
+
+# The whole path, locally and from nothing: a database, migrations, seed, a real backup into the local
+# bucket, then the real drill against it.
+#
+# Self-contained on purpose. The first version of a probe recipe in this repository was unrunnable
+# three times over, and each time running it was what revealed that.
+drill-local: drill-keys
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # TWO overlay sets, and the difference matters: the backup runs against the LIVE database and the
+    # drill runs against the scratch one. `docker-compose.restore.yml` is what repoints the ops
+    # container at the scratch instance, so composing it into the backup would take a dump of a
+    # database that is not running.
+    backup_overlays="-f docker-compose.yml -f docker-compose.drill-local.yml"
+    drill_overlays="-f docker-compose.yml -f docker-compose.restore.yml -f docker-compose.drill-local.yml"
+    echo "=== 1 a database, with no host port published"
+    docker compose -f docker-compose.yml up -d --wait postgres || exit 1
+    echo "=== 2 migrations, as the one-shot a deploy runs"
+    docker compose -f docker-compose.yml run --rm --no-deps api alembic upgrade head || exit 1
+    echo "=== 3 seeding something the drill can lose"
+    just drill-seed || exit 1
+    echo "=== 4 a real backup into the local bucket"
+    SYNCR_OPS_COMPOSE="$backup_overlays" just backup-now || exit 1
+    echo "=== 5 the drill, against what is in that bucket"
+    SYNCR_RESTORE_COMPOSE="$drill_overlays" just restore-drill
