@@ -39,8 +39,12 @@ healthy feed that answered 304. ``FetchOutcome.reparsed`` distinguishes those tw
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
+
+# Imported as a bare name rather than reached through the module: in a package that parses ICS
+# times, `time.perf_counter()` reads as a datetime construction, and the construction-site sweep
+# over this package reads it that way too.
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 from syncr_api.calendars.config import SYNC_INTERVAL
@@ -147,7 +151,7 @@ class SourceSyncer:
         # Keyed rather than searched: the service refuses a provider this pass cannot read before
         # calling, and the runner iterates the map's own keys, so a miss here is a wiring fault
         # rather than a runtime condition.
-        started = time.perf_counter()
+        started = perf_counter()
         outcome, state = await self._adapters[source.provider].fetch(source)
         # Reported here rather than at either caller, because this is the one place an attempt
         # happens: a forced sync and a scheduled poll both arrive here, so neither can be the pass
@@ -157,7 +161,7 @@ class SourceSyncer:
             source,
             outcome,
             failed=state.last_error is not None,
-            elapsed=time.perf_counter() - started,
+            elapsed=perf_counter() - started,
         )
         delta = await self._reconciled(source, outcome, state)
         await self._sources.save_sync_state(source.id, delta.recorded_on(state))
