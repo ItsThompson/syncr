@@ -150,8 +150,12 @@ class WeekInputVersionRepository(TenantScopedRepository):
         Beside :meth:`current` rather than in each caller, because three of them want the counter as
         a figure they can report and one absence read as ``None`` and another as zero is two answers
         to "which input state is this about".
+
+        The absence is tested rather than falsiness, so this stays correct if a counter ever
+        legitimately holds zero.
         """
-        return await self.current(iso_week) or UNTRACKED_VERSION
+        current = await self.current(iso_week)
+        return UNTRACKED_VERSION if current is None else current
 
     async def holds_version(self, iso_week: IsoWeek, version: int, *, at: datetime) -> bool:
         """Whether the week is still at ``version``, with the row locked until this commits.

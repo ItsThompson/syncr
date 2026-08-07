@@ -61,9 +61,12 @@ class WeekReadingsResponse(WireModel):
         "routine running into Monday is not charged here twice."
     )
     discretionary_minutes: int = Field(
-        description="The denominator every percentage is measured against: the week's span less "
-        "the interval union of the circadian frame, external anchors, absolutely forbidden "
-        "windows, and off-plan periods. Never scheduled time."
+        description="The denominator the STRIP renders. Today it is the week's span less the "
+        "interval union of off-plan periods alone: the occupancy reader behind it does not yet "
+        "subtract the circadian frame, external anchors or absolutely forbidden windows, so on a "
+        "week with a frame it reads high by the whole of it. verdict.discretionaryMinutes is the "
+        "same quantity with all four subtracted and is the authoritative one until this reader "
+        "catches up. Never scheduled time."
     )
     unallocated_minutes: int = Field(
         description="Discretionary minutes covered by NO block carrying an Area. Never negative, "
@@ -167,7 +170,10 @@ class WeekViewResponse(WireModel):
     )
     proposal: ProposalDiffResponse | None = Field(
         description="The changes this week is proposing and waiting for assent to, or null when "
-        "its slot is empty. What the grid renders proposal targets from."
+        "its slot is empty. What the grid renders proposal targets from. Rendered whether or not "
+        "the slot is current, because approval is never blocked; the version it was solved "
+        "against is not on this response, so a client that needs to know whether these targets "
+        "were computed against the state it is looking at reads the proposal route."
     )
     candidate_adjustment: AdjustmentResponse | None = Field(
         description="The concession the pending proposal was solved under, awaiting approval, or "

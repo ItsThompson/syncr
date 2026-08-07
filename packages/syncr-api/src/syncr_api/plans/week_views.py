@@ -38,7 +38,16 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class WeekView:
-    """One week, composed: the plan or the reason there is none, and the figures beside it."""
+    """One week, composed: the plan or the reason there is none, and the figures beside it.
+
+    **``verdict`` is gated on the plan and ``proposal`` is not**, which is deliberate and not an
+    oversight. A verdict is a claim ABOUT a plan, so a week holding none has none. A proposal is a
+    difference the solver wants applied, and approval is never blocked, so a slot is rendered
+    whenever it holds something. The pair a week holding a slot and no revision would produce is
+    unreachable through the shipped routes -- a first solve of a planless week proposes nothing,
+    because an addition into free time auto-applies -- so nothing gates the two together and no
+    state exercises the asymmetry.
+    """
 
     iso_week: IsoWeek
     span: Interval
