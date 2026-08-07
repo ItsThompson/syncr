@@ -43,10 +43,14 @@ class WeekView:
     **``verdict`` is gated on the plan and ``proposal`` is not**, which is deliberate and not an
     oversight. A verdict is a claim ABOUT a plan, so a week holding none has none. A proposal is a
     difference the solver wants applied, and approval is never blocked, so a slot is rendered
-    whenever it holds something. The pair a week holding a slot and no revision would produce is
-    unreachable through the shipped routes -- a first solve of a planless week proposes nothing,
-    because an addition into free time auto-applies -- so nothing gates the two together and no
-    state exercises the asymmetry.
+    whenever it holds something.
+
+    The pair a week holding a slot and no revision would produce is unreachable **structurally**
+    rather than by observation: ``PlanAdoption._replaced`` fills the slot only when the
+    classification's diff is non-empty, and a diff against a week with no live plan holds nothing
+    but additions, every one of which is a fill the authority rule applies without asking. So a
+    first solve of a planless week appends a revision and leaves the slot alone, and nothing gates
+    the two fields together because no state exercises the asymmetry.
     """
 
     iso_week: IsoWeek
