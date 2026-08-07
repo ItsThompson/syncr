@@ -1,0 +1,147 @@
+# =============================================================================
+# The restore drill's own topology. Layered ON TOP of docker-compose.yml and never
+# valid standalone.
+#
+# THREE SERVICES THAT EXIST ONLY FOR A DRILL, and the point of all three is that the
+# restore happens somewhere the live database is not:
+#
+#   postgres-restore     a scratch instance, its own volume, dropped after every run
+#   api-restore          the api image against that instance, with its OWN healthcheck,
+#                        so `/readyz` answering 200 is what "the stack boots against it"
+#                        means rather than a claim
+#   fingerprint-restore  the same reading the manifest was taken with, against the copy
+#
+# `ops.restore` REFUSES to write to the live database, and the `SYNCR_LIVE_*` variables
+# below are how it can: they name production, so the refusal is a comparison rather
+# than a hope. A drill that does not know what production is cannot decline to
+# overwrite it.
+#
+# The scratch instance runs the SAME pinned Postgres as production. A restore proven
+# against another version is a restore proven against another server.
+# =============================================================================
+name: syncr
+
+services:
+  postgres-restore:
+    image: postgres:16.10-bookworm
+    # No tuning and no archiving: this instance exists for one restore and is dropped.
+    # Archiving here would ship a drill's WAL into the bucket beside production's.
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=20"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-syncr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-syncr}
+      # A DIFFERENT DATABASE NAME from production's, so the refusal in `ops.restore` has
+      # two independent reasons to fire rather than one.
+      POSTGRES_DB: syncr_restore
+    expose:
+      - "5432"
+    # NO VOLUME, AND THAT IS THE DESIGN. The scratch database lives in the container's own writable
+    # layer, so `docker compose rm -fsv postgres-restore` removes it and every drill starts on a
+    # database that has never held anything.
+    #
+    # A NAMED VOLUME WAS THE FIRST VERSION AND IT WAS DANGEROUS: dropping one needs `down -v`, which
+    # is scoped to the PROJECT rather than to a service. Measured, in a local run: the drill's own
+    # teardown deleted `pgdata`, the staging volume and the bucket, which on the deployed host would
+    # have destroyed the live database while proving the backup could be restored.
+    networks:
+      - data-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-syncr} -d syncr_restore"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    restart: "no"
+
+  # The ops image, pointed at the scratch instance instead of production, and told what
+  # production is so it can refuse to be pointed back.
+  ops:
+    environment:
+      PGHOST: postgres-restore
+      PGDATABASE: syncr_restore
+      SYNCR_LIVE_PGHOST: postgres
+      SYNCR_LIVE_PGPORT: "5432"
+      SYNCR_LIVE_PGDATABASE: ${POSTGRES_DB:-syncr}
+      # The private half of the backup key, brought to the drill by a person and
+      # imported into a throwaway gpg home. It is off-host for the rest of the year.
+      SYNCR_BACKUP_PRIVATE_KEY: ${SYNCR_BACKUP_PRIVATE_KEY:-/run/secrets/backup-recipient-private.asc}
+      SYNCR_DRILL_STARTED_AT: ${SYNCR_DRILL_STARTED_AT:-}
+
+  # A REAL BOOT, with the api's own healthcheck. `/readyz` checks the database and the
+  # migration head, so this service reaching `healthy` is the criterion "boot the stack
+  # against it" states, and it cannot pass against a copy that was not migrated.
+  api-restore:
+    image: syncr-api:${SYNCR_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: packages/syncr-api/Dockerfile
+    profiles: ["ops"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-syncr}:${POSTGRES_PASSWORD:-syncr}@postgres-restore:5432/syncr_restore
+      HOST: 0.0.0.0
+      # The drill boots the api to answer one question, so it runs with development's
+      # relaxed startup rules rather than requiring the deployment's real secrets to be
+      # present in a throwaway container.
+      ENVIRONMENT: development
+    expose:
+      - "8000"
+    networks:
+      - app-net
+      - data-net
+    depends_on:
+      postgres-restore:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/readyz', timeout=3)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    restart: "no"
+
+  # The same console script the manifest was written by, against the restored copy. One
+  # reader, two databases: two readers could disagree and a drill would not notice.
+  fingerprint-restore:
+    image: syncr-api:${SYNCR_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: packages/syncr-api/Dockerfile
+    profiles: ["ops"]
+    command: ["syncr-plan-fingerprint"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-syncr}:${POSTGRES_PASSWORD:-syncr}@postgres-restore:5432/syncr_restore
+      SYNCR_FINGERPRINT_PATH: /var/backups/restore/restored.fingerprint.json
+    volumes:
+      - restore_scratch:/var/backups/restore
+    networks:
+      - data-net
+    depends_on:
+      postgres-restore:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    restart: "no"

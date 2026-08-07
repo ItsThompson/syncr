@@ -1,0 +1,60 @@
+# =============================================================================
+# The tunnel. THE ONLY INGRESS THIS DEPLOYMENT HAS.
+#
+# Layered ON TOP of docker-compose.yml and never valid standalone.
+#
+# `cloudflared` makes an OUTBOUND connection to Cloudflare and receives requests over
+# it, so nothing on this host listens on a public port and no firewall rule allows
+# one. Section 19's first threat is "the tunnel hostname is discovered and probed",
+# and the answer is that discovering it reaches an authenticated application and
+# nothing else: there is no second door to find.
+#
+# THE COST IS ACCEPTED AND NAMED: a Cloudflare outage is a syncr outage. The
+# alternative is publishing ports on a host holding a complete map of the user's life,
+# which is not a trade this deployment makes. `healthcheck.yml` probes through the
+# tunnel from outside, so an outage of either is visible.
+#
+# ROUTING LIVES IN CLOUDFLARE, not here. The tunnel is configured with a single
+# ingress rule pointing at `http://frontend:8080`, and Caddy reverse-proxies the api
+# paths from there, so the browser talks to ONE origin. See
+# `docs/runbooks/deploy-and-rollback.md` for creating the tunnel and
+# `frontend/Caddyfile` for the path list.
+#
+# THE TOKEN IS A CREDENTIAL. It is in the host secret file, never in the repository,
+# and `:?` means a missing one aborts the deploy rather than starting a container that
+# retries forever with an empty argument.
+# =============================================================================
+name: syncr
+
+services:
+  cloudflared:
+    # cloudflare/cloudflared:2026.7.3
+    image: cloudflare/cloudflared@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
+    command:
+      - "tunnel"
+      # The image is pinned by digest, so an in-place self-update would replace a
+      # reviewed binary with an unreviewed one and leave the digest describing
+      # something that is no longer running.
+      - "--no-autoupdate"
+      - "--metrics"
+      # Its own metrics, on `app-net` and published nowhere, like every other
+      # exposition in this stack.
+      - "0.0.0.0:2000"
+      - "run"
+      - "--token"
+      - "${CLOUDFLARE_TUNNEL_TOKEN:?the tunnel token is the only ingress credential; put it in the host secret file}"
+    expose:
+      - "2000"
+    networks:
+      - app-net
+    depends_on:
+      # The tunnel connecting before Caddy can serve would answer 502 to the first
+      # requests after a deploy. `api` is not named here: the frontend proxies to it
+      # and its own readiness gate is `/readyz`, which the deploy waits for.
+      frontend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    restart: unless-stopped

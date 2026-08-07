@@ -1,0 +1,44 @@
+# =============================================================================
+# THE RESTORE DRILL, RUNNABLE WITHOUT A BUCKET OR A CLOUD ACCOUNT. DEVELOPMENT ONLY.
+#
+# Layered ON TOP of docker-compose.yml and docker-compose.restore.yml, and it exists
+# for one reason: an instrument nobody can run is an instrument nobody has run. Every
+# guard in the backup path is written against a failure, and the only way to know a
+# guard fires is to fire it, which needs the whole path end to end: a real dump, real
+# gpg, real rclone, a real restore, and the api booting against the result.
+#
+# WHAT IT REPLACES, AND WHAT IT DOES NOT.
+#
+#   The bucket   becomes a `local` rclone remote on a Docker volume. Everything else is
+#                the same code path: the same `rclone copyto`, `lsjson` and `deletefile`.
+#   The keys     become a throwaway keypair `just drill-keys` generates into
+#                `deployments/secrets/`, which is gitignored.
+#
+#   NOTHING ELSE CHANGES. The dump, the verification, the retention arithmetic, the
+#   encryption, the refusals, the restore and the comparison are the deployed ones.
+#
+# `SYNCR_BACKUP_ALLOW_LOCAL_REMOTE=1` IS THE POINT OF THE VARIABLE. The backup path
+# refuses a remote that is this host's own filesystem, because a backup on the same disk
+# as the database is not a backup. That refusal has exactly one escape hatch, it is
+# named, and this file is the only thing in the tree that sets it. A production stack
+# composing this file would be visible in one `docker compose config`.
+# =============================================================================
+name: syncr
+
+services:
+  ops:
+    environment:
+      # A `local` remote, which is what the off-host guard exists to refuse.
+      SYNCR_BACKUP_REMOTE: localbucket:/var/backups/bucket
+      RCLONE_CONFIG_LOCALBUCKET_TYPE: local
+      SYNCR_BACKUP_ALLOW_LOCAL_REMOTE: "1"
+      SYNCR_BACKUP_PUBLIC_KEY: /run/secrets/drill-recipient.pub.asc
+      SYNCR_BACKUP_PRIVATE_KEY: /run/secrets/drill-recipient.key.asc
+    volumes:
+      - drill_bucket:/var/backups/bucket
+
+volumes:
+  # Stands in for the bucket. A separate volume from the database's and from the staging
+  # one, so the drill still proves that a dump can be written, read back from somewhere
+  # else, and restored.
+  drill_bucket:
