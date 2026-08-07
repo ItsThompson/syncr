@@ -1,0 +1,28 @@
+/* Layer 2: THE VERDICT'S TWO RESERVED HEIGHTS, promoted out of the token layer with the components that own them.
+ *
+ * Section 14's token table places --verdict-h and --strip-h beside `VerdictPanel` and `SummaryStrip`, and calls
+ * the move a rename of location rather than of value: both declarations below are the ones that stood in
+ * `tokens/layout.css` while there was no component to own them. Layer 1 is still where the meaning of an ink or a
+ * rule weight lives, and nothing here restates one.
+ *
+ * A FIXED HEIGHT IS A CORRECTNESS RULE, NOT A PREFERENCE, and it is why these two are one decision. The strip sits
+ * directly above the grid and the panel sits at the head of the same screen: either one growing as pins accumulate
+ * would shift the grid under the cursor mid-drag, which is a layout-stability rule rather than a motion one.
+ *
+ * WHY THE LAYOUT LAYER NO LONGER DECLARES THE STRIP'S HEIGHT. `ui/layout/Strip` reserved --strip-h through a
+ * `fixed` variant, which put a week-screen correctness rule in a container that cannot know about one, and left
+ * the token unable to move: a layout sheet may not import a domain sheet, so the promotion would have either
+ * inverted the layering or duplicated the value. The band is still `Strip`; the reserved height is the summary
+ * strip's own, declared here and spent in `week-grid/strip.css`. */
+
+:root {
+  /* The pinned summary and verdict strip above the grid. Three readings plus the verdict cell, at one line of
+     figure over one line of sub-text, which is what 64px holds. */
+  --strip-h: 64px;
+
+  /* THE VERDICT PANEL'S HEIGHT IS FIXED, AND IT MUST NOT TRACK ROW COUNT. 226px is the height that shows the lead
+     sentence plus three tradeoff rows, so the fourth row's clipped edge is what makes the scroll discoverable with
+     no scrollbar affordance. Shared between the strip's verdict cell and the standalone panel so the two cannot
+     drift. */
+  --verdict-h: 226px;
+}

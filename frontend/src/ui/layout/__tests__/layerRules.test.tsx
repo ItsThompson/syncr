@@ -41,7 +41,7 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   Panel: () => <layout.Panel title="Verdict">rows</layout.Panel>,
   Rule: () => <layout.Rule />,
   StatCell: () => <layout.StatCell label="Scheduled" figure="91" />,
-  Strip: () => <layout.Strip height="fixed">three readings</layout.Strip>,
+  Strip: () => <layout.Strip>three readings</layout.Strip>,
 };
 
 describe("every component the layer exports", () => {

@@ -35,6 +35,8 @@ import {
 import { SNAP_MINUTES } from "../../../primitives";
 
 const GRID_TOKENS = path.join(srcDir, "ui", "domain", "week-grid", "tokens.css");
+const VERDICT_TOKENS = path.join(srcDir, "ui", "domain", "verdict-panel", "tokens.css");
+const CLAUSE_TOKENS = path.join(srcDir, "ui", "domain", "reason-rows", "tokens.css");
 const LAYOUT_TOKENS = path.join(srcDir, "tokens", "layout.css");
 const TYPE_TOKENS = path.join(srcDir, "tokens", "type.css");
 
@@ -115,13 +117,25 @@ describe("the promotion left no second copy", () => {
     expect(await declared(LAYOUT_TOKENS, property)).toBeNull();
   });
 
-  it.each(["--snap", "--strip-h", "--verdict-h", "--clause-label-w", "--col-min", "--bp-compact"])(
+  it.each(["--snap", "--col-min", "--bp-compact"])(
     "%s stayed in layer 1, because something other than the grid reads it",
     async (property) => {
       expect(await declared(LAYOUT_TOKENS, property)).not.toBeNull();
       expect(await declared(GRID_TOKENS, property)).toBeNull();
     },
   );
+
+  /* The three that left layer 1 with a component OTHER than the grid, asserted in both directions for the reason
+   * the grid's own are: a copy left behind and a copy moved back are the same defect. */
+  it.each([
+    ["--strip-h", VERDICT_TOKENS],
+    ["--verdict-h", VERDICT_TOKENS],
+    ["--clause-label-w", CLAUSE_TOKENS],
+  ])("%s is declared beside its own component and not in layer 1", async (property, file) => {
+    expect(await declared(file, property)).not.toBeNull();
+    expect(await declared(LAYOUT_TOKENS, property)).toBeNull();
+    expect(await declared(GRID_TOKENS, property)).toBeNull();
+  });
 });
 
 /* The quarter line is drawn at rest BECAUSE the snap is fifteen minutes, so the two figures are one decision. They

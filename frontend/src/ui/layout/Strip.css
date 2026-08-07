@@ -1,23 +1,18 @@
-/* Layer 2: the horizontal band, at two heights.
- *
- * A FIXED HEIGHT IS A CORRECTNESS RULE ON THE WEEK SCREEN, not a preference. The summary strip sits directly
- * above the grid, and a strip that grew by a line when a verdict arrived would shift the grid under the
- * cursor mid-drag. --strip-h is the height that holds three readings and the verdict cell, so it is reserved
- * whether or not there is anything to say yet.
- *
- * A readout row is the other consumer and it takes the auto height, because a row of labelled values in a
- * settings pane has nothing beneath it that a reflow would move.
+/* Layer 2: the horizontal band, at the rhythm every band shares.
  *
  * A band draws no rule of its own: a hairline between two surfaces is a `Rule`, so the system has one
- * separator rather than a component that is sometimes one. */
+ * separator rather than a component that is sometimes one.
+ *
+ * IT RESERVES NO HEIGHT, and that is a boundary rather than an omission. The summary strip's height is fixed
+ * because the grid sits directly beneath it and a strip that grew when a verdict arrived would shift the grid
+ * under the cursor mid-drag. That is a week-screen correctness rule, so it is declared and spent where the rule
+ * is known, in `ui/domain/verdict-panel/tokens.css` and `ui/domain/week-grid/strip.css`. A container cannot know
+ * about it, and a `fixed` variant here also pinned --strip-h to layer 1: a layout sheet may not import a domain
+ * sheet, so the token could only have moved by inverting the layering or by being declared twice. */
 
 .strip {
   display: flex;
   align-items: center;
   gap: 15px;
   min-width: 0;
-}
-
-.strip--fixed {
-  height: var(--strip-h);
 }

@@ -14,6 +14,7 @@ import { SummaryStrip } from "../SummaryStrip";
 import { TimeAxis } from "../TimeAxis";
 import { WeekGrid } from "../WeekGrid";
 import { DAY_HEADER_H_PX, GRID_H_PX } from "../metrics";
+import { domainDir, kitStylesheet } from "../../../../testing/kitStylesheets";
 import type { ReactElement } from "react";
 
 import type { Extent, GridBlock, StripReadings, WeekDay } from "..";
@@ -256,7 +257,7 @@ describe("the axis", () => {
 });
 
 describe("the summary strip", () => {
-  it("reserves its height whether or not there is a verdict, so the grid cannot shift", () => {
+  it("reserves its height whether or not there is a verdict, so the grid cannot shift", async () => {
     const withVerdict = render(
       <SummaryStrip
         readings={READINGS}
@@ -268,8 +269,14 @@ describe("the summary strip", () => {
     );
     const without = render(<SummaryStrip readings={READINGS} verdict={null} />);
 
-    expect(withVerdict.container.querySelector(".strip--fixed")).not.toBeNull();
-    expect(without.container.querySelector(".strip--fixed")).not.toBeNull();
+    /* The reservation is one declaration on the strip's own element, so both renderings carry the same class and
+     * the sheet is what says the class holds a height. jsdom applies no stylesheet, so the height itself is read
+     * out of the sheet rather than off the element. */
+    expect(withVerdict.container.querySelector(".week-strip")).not.toBeNull();
+    expect(without.container.querySelector(".week-strip")).not.toBeNull();
+    expect(await kitStylesheet("week-grid/strip.css", domainDir)).toMatch(
+      /\.week-strip \{[^}]*height: var\(--strip-h\)/,
+    );
   });
 
   it("shows three readings plus the verdict, and nothing else", () => {

@@ -65,20 +65,14 @@
                          `ui/primitives/quarterHour.ts` reads this one: a primitive may not
                          reach a layer 2 sheet, so the snap stays here while the grid's own
                          --grid-minor, which must equal it, sits beside the grid */
-  --strip-h: 64px;    /* the pinned summary and verdict strip above the grid */
 
-  /* THE VERDICT PANEL'S HEIGHT IS FIXED, AND IT MUST NOT TRACK ROW COUNT. A panel that grew
-     and shrank as pins accumulate would shift the grid under the cursor mid-drag. 226px is
-     the height that shows the lead sentence plus three tradeoff rows, so the fourth row's
-     clipped edge is what makes the scroll discoverable. Shared between the strip's verdict
-     cell and the standalone panel so the two cannot drift. */
-  --verdict-h: 226px;
+  /* WHAT LEFT THIS FILE WITH THE COMPONENTS THAT OWN IT, so "did this component leave a layer 1 token behind"
+     has a recorded answer here as well as beside the component:
 
-  /* The reason record's clause-label column. 76px, not a round number: the widest clause
-     kind is `instead of`, which measures 64.6px at --fs-eyebrow with .08em tracking, and
-     three sheets had independently chosen 60px, 64px and 76px before this was a token. That
-     is the drift the inherited language warned about, so the value lives here now. */
-  --clause-label-w: 76px;
+       --strip-h, --verdict-h   `ui/domain/verdict-panel/tokens.css`, with VerdictPanel and SummaryStrip
+       --clause-label-w         `ui/domain/reason-rows/tokens.css`, with ReasonRows
+
+     Both moves are section 14's table, and both are a rename of location rather than of value. */
 
   /* The now rule. A horizontal 2px --ink-bright line across the day column at the current
      minute, with the time in the axis gutter. This is the only marker of what is past:

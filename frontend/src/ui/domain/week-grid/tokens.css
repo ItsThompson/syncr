@@ -9,8 +9,6 @@
  * answer rather than a silence:
  *
  *   --snap                     `ui/primitives/quarterHour.ts` reads it, and a primitive may not reach layer 2
- *   --strip-h, --verdict-h     move to `domain/verdict-panel/` with VerdictPanel
- *   --clause-label-w           moves to `domain/reason-rows/` with ReasonRows
  *   --bp-wide, --bp-compact    `theme.css` mirrors both as breakpoint literals, and a test reads layout.css
  *   --col-min, --w-detail*     the width policy is the SHELL's column arithmetic, not the grid's own
  *   --zoom-min, --zoom-max     named by no row of the promotion table

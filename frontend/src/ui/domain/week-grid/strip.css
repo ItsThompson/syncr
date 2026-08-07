@@ -2,7 +2,8 @@
  *
  * THE STRIP'S HEIGHT IS FIXED, and that is a layout-stability rule rather than a preference: the strip sits
  * directly above the grid, and a strip that grew by a line when a verdict arrived would shift the grid under the
- * cursor mid-drag. The height itself is `Strip`'s, at --strip-h, so this sheet reserves nothing of its own.
+ * cursor mid-drag. The height is reserved HERE, from the token the verdict panel shares, so the one sheet that
+ * knows the rule is the one that spends it.
  *
  * THREE READINGS PLUS THE VERDICT, and the content budget is settled at four cells. Plan currency is therefore
  * not a fifth: it rides in the SCHEDULED cell's sub-line, where it qualifies the block count, which is exactly
@@ -13,11 +14,13 @@
  * that takes what is left, with a rule between each. */
 
 @import "./tokens.css";
+@import "../verdict-panel/tokens.css";
 
 .week-strip {
   display: flex;
   min-width: 0;
   width: 100%;
+  height: var(--strip-h);
   border: var(--hairline) solid var(--rule-strong);
   background-color: var(--paper-raised);
 }

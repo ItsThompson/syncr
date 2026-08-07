@@ -1,0 +1,14 @@
+/* Layer 2: THE REASON RECORD'S CLAUSE-LABEL COLUMN, promoted out of the token layer with the component that owns it.
+ *
+ * Section 14's token table places --clause-label-w beside `ReasonRows`, and calls the move a rename of location
+ * rather than of value: the declaration below is the one that stood in `tokens/layout.css` while there was no
+ * component to own it.
+ *
+ * 76px, NOT A ROUND NUMBER. The widest clause kind is `instead of`, which measures 64.6px at --fs-eyebrow with
+ * .08em tracking, and three sheets had independently chosen 60px, 64px and 76px before this was a token. That is
+ * the drift a shared token exists to prevent, which is also why the reason rows and the detail panel's definition
+ * rows read the same width from one declaration rather than each choosing one. */
+
+:root {
+  --clause-label-w: 76px;
+}
