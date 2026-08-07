@@ -18,6 +18,14 @@ interpolation and injects each value as an environment variable; the api and the
 from `env_file`. Nothing is baked into an image, and `just secret-scan` runs over the whole tree in CI
 so a pasted one fails a gate rather than reaching a branch.
 
+## Conventions used below
+
+```
+cd /opt/syncr
+DEPLOY="-f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.deploy.yml -f docker-compose.tunnel.yml"
+set -a; . deployments/digests.env; set +a     # the release's pinned images
+```
+
 ## The eight, and what rotating each one costs
 
 | Secret | Cost of rotating | Who must act |

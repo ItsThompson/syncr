@@ -1,5 +1,22 @@
 # Restoring from a backup
 
+## Conventions used below
+
+Two shorthands, and one export the drill needs. Paste this block first; every command in this file
+assumes it.
+
+```
+cd /opt/syncr
+DEPLOY="-f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.deploy.yml -f docker-compose.tunnel.yml"
+OPS="-f docker-compose.yml -f docker-compose.deploy.yml"
+export SYNCR_BACKUP_PRIVATE_KEY=/run/secrets/backup-recipient-private.asc
+set -a; . deployments/digests.env; set +a     # the release's pinned images
+```
+
+`$DEPLOY` and `$OPS` are the two compose sets this deployment has. **`just` recipes need neither**:
+they carry the same sets by default and read `deployments/digests.env` themselves, so prefer the recipe
+wherever one exists. The raw commands are here for the steps no recipe covers.
+
 ## Trigger
 
 One of three, and the third is the one that runs on a healthy deployment:
@@ -29,9 +46,13 @@ is the only thing that proves the arrangement works.
 ## The drill: one command, and a person reads the result
 
 ```
-export SYNCR_BACKUP_PRIVATE_KEY=/run/secrets/backup-recipient-private.asc
 just restore-drill
 ```
+
+It needs the private key, which the conventions block above exports, and it composes the release's
+pinned digests itself. On a host with no `deployments/digests.env` it stops at compose's own message
+naming the missing variable, which is the correct refusal: a drill against a host-built image proves
+the backup against something the deployment does not run.
 
 Six steps, none of which touches the live database:
 
@@ -42,7 +63,7 @@ Six steps, none of which touches the live database:
 | 3 restore | `pg_restore --exit-on-error` into it | A target that IS the live database; a target that already holds tables |
 | 4 migrate | `alembic upgrade head`, the one-shot a deploy runs | |
 | 5 boot | The api against the copy, waiting for its own `/readyz` | A copy `/readyz` will not serve |
-| 6 compare | The same fingerprint reader, against the manifest | Rows lost; a cursor that re-derives differently; a drill with nothing to lose |
+| 6 compare | The same fingerprint reader, against the manifest | Rows lost; **content that changed with the counts intact**; a cursor that re-derives differently; a drill with nothing to lose |
 
 **Read the seven claims it prints.** The exit status is not the result: `pg_restore` exits 0 having
 restored an empty archive, which is why the pass condition is data read back.
@@ -51,6 +72,7 @@ restored an empty archive, which is why the pass condition is data read back.
 RESTORE DRILL
   PASS  every one of the 36 tables the dump was taken over is present
   PASS  no table came back short: 11 rows before the dump, 11 after the restore
+  PASS  every one of the 5 tables hashes identically, so the rows came back byte for byte
   PASS  the plan history, outcomes, pins, adjustments and edit events all held rows before the dump
   PASS  1 of 1 rotation cursors had advanced before the dump
   PASS  all 1 rotation cursors re-derive to the variant they were on
@@ -58,7 +80,7 @@ RESTORE DRILL
   PASS  the restore completed in 17s, inside the 3600s recovery time objective
 ```
 
-Two of the seven are about the DRILL rather than the backup, and a FAIL on either means the run proved
+Two of the eight are about the DRILL rather than the backup, and a FAIL on either means the run proved
 nothing rather than that the backup is broken:
 
 - *the five evidence tables held rows before the dump*. An empty table restores perfectly. On a
@@ -66,7 +88,7 @@ nothing rather than that the backup is broken:
 - *a rotation cursor had advanced*. A cursor at index 0 with no confirmations re-derives correctly from
   no data at all. Confirm one rotation habit's occurrence and re-run.
 
-**Record the result.** Date, the seven claims, the elapsed time, and the backup's name. A drill whose
+**Record the result.** Date, the eight claims, the elapsed time, and the backup's name. A drill whose
 outcome nobody wrote down is a drill that will be argued about.
 
 ## A real restore, into the live stack
@@ -117,7 +139,6 @@ docker compose $OPS run --rm -e PGDATABASE=syncr_restored ops \
   pg_restore --dbname syncr_restored --no-owner --no-privileges --exit-on-error \
   /var/backups/restore/restore.dump
 ```
-
 For point-in-time recovery, WAL replay needs a `recovery.signal` and a `restore_command` in the
 restored data directory rather than a `pg_restore` into a running server. That path is **not verified
 on this deployment**: see "Not verified" below.
@@ -140,10 +161,10 @@ just await-ready
 ### 6. Verify with data, not with a green container
 
 ```
-docker compose $OPS run --rm fingerprint          # writes a fingerprint of the live database
+just backup-now                                   # its first step writes a fingerprint of the live database
 ```
 
-Compare it against the manifest that came with the dump: the same seven claims, by hand. Then look at
+Compare it against the manifest that came with the dump: the same eight claims, by hand. Then look at
 the product: the Week screen for a past week, the Today ledger, one Area's budget. **A stack that boots
 is not a stack that recovered.**
 
@@ -164,6 +185,7 @@ lineage changed when the restore did.
 |---|---|
 | tables absent after the restore | The archive is incomplete. Try the previous backup; retention keeps 7 daily, 4 weekly, 6 monthly |
 | rows came back short | The archive is not what the fingerprint described. Suspect the dump rather than the restore, and check whether the disk was full at 03:00 |
+| content differs with the counts intact | The rows are there and their BYTES are not what was dumped. Either the restore altered them, or something wrote between the fingerprint and the dump: if the second, re-run the drill rather than accepting this one. Do not accept a restore that fails this |
 | a cursor re-derives differently | Some outcome rows did not arrive. The product would train the wrong muscle group and nothing else would notice. Do not accept this restore |
 | not at the shipped migration head | Step 4 did not run, or the chain has more than one head. `just migration-heads` |
 | past the recovery time objective | The copy is good and the promise is not. Record the figure; an hour is the number this deployment claims |

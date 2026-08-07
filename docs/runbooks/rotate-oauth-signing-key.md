@@ -128,6 +128,9 @@ To end access, revoke the grants as well:
    for the tenant:
 
    ```
+   # `DATABASE_URL` lives in the host secret file, which compose also reads. Without this line,
+   # `psql ""` connects to a local socket as the current user rather than failing.
+   cd /opt/syncr && set -a && . ./.env && set +a
    psql "$DATABASE_URL" -c "UPDATE oauth_grants SET revoked_at = now() WHERE revoked_at IS NULL;"
    psql "$DATABASE_URL" -c "UPDATE oauth_refresh_tokens SET revoked_at = now() WHERE revoked_at IS NULL;"
    ```

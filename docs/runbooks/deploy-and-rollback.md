@@ -1,5 +1,29 @@
 # Deploying, and rolling back
 
+## Conventions used below
+
+```
+cd /opt/syncr
+DEPLOY="-f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.deploy.yml -f docker-compose.tunnel.yml"
+OPS="-f docker-compose.yml -f docker-compose.deploy.yml"
+set -a; . deployments/digests.env; set +a     # the release's pinned images
+```
+
+### What pins what
+
+Every image this deployment runs is a digest, and there are two places digests come from:
+
+| Image | Pinned by |
+|---|---|
+| postgres, prometheus, grafana, alertmanager, the two exporters, cadvisor, cloudflared | a LITERAL digest in `docker-compose.deploy.yml`, reviewed beside its tag |
+| `syncr-api`, `syncr-frontend`, `syncr-learning`, `syncr-ops` | `deployments/digests.env`, which `cd.yml` writes and `just deploy` records |
+
+**Every `just` recipe reads that file itself**, so no operator has to remember an export: `just deploy`,
+`just backup-now`, `just wal-ship`, `just learn-once` and `just restore-drill` all compose the pins by
+default. A raw `docker compose` command does not, which is what the `set -a` line above is for. On a
+host with no `deployments/digests.env`, compose stops with the missing variable's name rather than
+building an image from the checkout.
+
 ## Trigger
 
 Every release. Also the first deployment, which has eleven steps nothing else has.
@@ -69,8 +93,27 @@ Hetzner CX33: 4 vCPU, 8 GB RAM, 80 GB SSD. Debian or Ubuntu LTS.
 
 ### 2. Docker, just, and the checkout
 
+Docker from Docker's own apt repository rather than Debian's `docker.io`, because the Compose plugin
+and the engine have to come from the same place:
+
 ```
-apt-get install -y docker.io docker-compose-plugin just git
+apt-get update && apt-get install -y ca-certificates curl git
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+echo "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+```
+
+`just` is NOT in Debian bookworm's repositories. Take the release binary, at a version you record:
+
+```
+curl -fsSL https://github.com/casey/just/releases/download/1.42.4/just-1.42.4-x86_64-unknown-linux-musl.tar.gz \
+  | tar -xz -C /usr/local/bin just
+just --version
+```
+
+```
 git clone <repo> /opt/syncr && cd /opt/syncr
 ```
 
@@ -106,10 +149,17 @@ these are the ones without which the stack refuses to start or refuses to work:
 | `PUBLIC_BASE_URL` | The tunnel hostname. Every URL the Authorization Server publishes is built from it |
 | `ALLOWED_ORIGINS` | The tunnel hostname. This plus `SameSite=Lax` is the whole CSRF defence |
 
-**Confirm the secret scan catches a pasted one** before trusting the arrangement:
+**Confirm the secret scan catches a pasted one** before trusting the arrangement. Two commands,
+because a clean tree only proves the tree is clean:
 
 ```
-just secret-scan            # over the whole tree, which is what CI runs
+# 1. Prove the scan FIRES. A scratch file outside the repository, deleted immediately.
+printf 'SECRET_KEY = "%s"\n' "$(openssl rand -base64 32)" > /tmp/scan-probe.py
+uv run --no-sync detect-secrets-hook --baseline .secrets.baseline /tmp/scan-probe.py; echo "expect 1, got $?"
+rm -f /tmp/scan-probe.py
+
+# 2. And now the real tree, which must be clean.
+just secret-scan
 ```
 
 ### 5. The backup recipient key
@@ -134,6 +184,11 @@ In the Cloudflare dashboard: create a tunnel, note the token, and add **one** in
 
 One rule, because Caddy reverse-proxies the api paths and the browser talks to one origin. See
 `frontend/Caddyfile`.
+
+`/healthz` and `/readyz` are reachable through the tunnel by design: the external probe needs them, and
+`probe-deployment.sh` prints status codes only. A `/readyz` body names the migration revision and
+nothing else, which is within spec, and a Cloudflare Access policy on that one path is available if the
+disclosure is ever unwanted.
 
 ### 7. The stack
 
@@ -179,7 +234,7 @@ systemctl list-timers 'syncr-*'
 ```
 
 Then move both backup timestamps by hand, so `BackupStale` is quiet for a reason rather than by
-accident:
+accident. Each recipe reads `deployments/digests.env` itself, so these run the release's images:
 
 ```
 just backup-now
@@ -224,7 +279,8 @@ You are in the case with no automated answer, and the order matters:
 
 - **No deployment exists yet.** Every command here is written from the Compose files, the workflows and
   the recipes rather than from a release: `just deploy` has never run against a Hetzner host, no
-  Cloudflare tunnel has been created, and steps 1 through 11 have not been executed in order.
+  Cloudflare tunnel has been created, and steps 1 through 11 have not been executed in order. Step 2's
+  install commands in particular have never been run on a Debian host.
 - **The external port scan in step 9 has not been run.** `just ports-check` has, and it reads the
   resolved configuration rather than the host.
 - **`cd.yml` has never run.** It has no repository secrets to run with and no host to reach.

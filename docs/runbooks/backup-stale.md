@@ -15,6 +15,17 @@ or time() - max(syncr_wal_archive_last_success_timestamp_seconds) > 900
 129600 seconds is **36 hours**, one nightly run plus most of a day of grace. 900 is **15 minutes**. It
 waits **10 minutes**.
 
+## Conventions used below
+
+```
+cd /opt/syncr
+OPS="-f docker-compose.yml -f docker-compose.deploy.yml"
+set -a; . deployments/digests.env; set +a     # the release's pinned images
+```
+
+The `just` recipes below need neither line: they carry that compose set by default and read the digest
+file themselves. `$OPS` is only for the two raw commands no recipe covers.
+
 ## Which half fired
 
 **Read this before anything else**, because the two halves mean very different amounts of exposure:
@@ -105,6 +116,8 @@ And the shipper's own:
 | Message | What it means |
 |---|---|
 | `Postgres last FAILED to archive at ...` | `archive_command` is failing, so segments are piling up in `pg_wal` and **the staging volume is empty for the wrong reason**. Check the `wal-archive` volume's permissions; `python3 -m ops.prepare` establishes them |
+| `this server has archive_mode = 'off'` | Nothing is being archived at all, so the staging volume is empty for a third reason. The base compose file sets it on: check which stack this is pointed at |
+| `this server has wal_level = ...` | The WAL being produced cannot be replayed. The base compose file sets `replica` |
 
 ## The repair
 
