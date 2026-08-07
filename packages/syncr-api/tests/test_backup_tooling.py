@@ -24,20 +24,26 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 import pytest
-from ops import naming, retention, verify
+from ops import crypto, naming, retention, verify
 from ops.config import (
     ARCHIVE_TIMEOUT_SECONDS,
     BACKUP_METRIC,
     DAILY_COPIES,
+    MANIFEST_MAX_AGE_SECONDS,
     MONTHLY_COPIES,
     RECOVERY_POINT_OBJECTIVE_SECONDS,
     SHIP_INTERVAL_SECONDS,
     WEEKLY_COPIES,
 )
+from ops.crypto import EncryptionRefused
+from ops.dump import BackupRefused, recent_fingerprint
 from ops.exposition import write_gauge
+from ops.fetch import NothingToRestore, newest_backup
+from ops.prepare import DIRECTORY_MODE, prepare, writable_by_app
 from ops.process import Result
 from ops.remote import ALLOW_LOCAL, NotOffHost, Remote, off_host_or_refused
 from ops.retention import RetentionRefused
+from ops.ship import ARCHIVER_STATE, ArchivingFailing, require_archiving_works, staged_segments
 from ops.verify import DumpUnusable
 
 if TYPE_CHECKING:
@@ -134,6 +140,19 @@ class TestNaming:
     def test_a_name_this_path_did_not_write_says_so(self) -> None:
         assert naming.taken_at("someone-elses-copy.tar.gz") is None
         assert naming.taken_at("syncr-notatimestamp.dump.gpg") is None
+
+    def test_a_foreign_object_with_an_embedded_stamp_is_not_a_backup(self) -> None:
+        """The pattern is ANCHORED, so `backups_in` and `unclassified` partition a listing.
+
+        With a search rather than a match, `copy-of-syncr-...-elsewhere.tar` was classified as a
+        backup: nothing foreign would be deleted, because the delete set is intersected with the
+        listing's own names, but a phantom could occupy a daily slot and age a real copy out a night
+        early.
+        """
+        foreign = "copy-of-syncr-20260807T030000Z-elsewhere.tar"
+
+        assert naming.taken_at(foreign) is None
+        assert naming.backups_in([foreign]) == ()
 
     def test_a_listing_collapses_onto_one_backup_per_pair_newest_first(self) -> None:
         found = naming.backups_in(
@@ -437,6 +456,283 @@ class TestTheRecoveryPointArithmetic:
         worst_case = ARCHIVE_TIMEOUT_SECONDS + SHIP_INTERVAL_SECONDS
 
         assert worst_case < RECOVERY_POINT_OBJECTIVE_SECONDS
+
+
+class TestTheArchiverGuard:
+    """The reading that makes the WAL freshness gauge mean anything.
+
+    Both holes it closes are the same shape: an EMPTY staging volume, which a healthy deployment and
+    a broken one leave identically. One is reached by a failing `archive_command`, the other by
+    archiving switched off, and the second was found by a reviewer driving the shipper against a
+    real service in this tree that has no archive settings.
+
+    The rows below are the shape `psql -At` returns for `ARCHIVER_STATE`: seven fields, pipe
+    separated, with the pending-failure comparison already made by SQL.
+    """
+
+    def test_a_healthy_archiver_is_accepted(self) -> None:
+        require_archiving_works(run=_archiver(mode="on", level="replica", pending="f"))
+
+    def test_a_standby_archiving_always_is_accepted(self) -> None:
+        require_archiving_works(run=_archiver(mode="always", level="logical", pending="f"))
+
+    def test_archiving_switched_off_is_refused(self) -> None:
+        """Zero archived, zero failed, no timestamps: the guard that read failures alone passed."""
+        with pytest.raises(ArchivingFailing, match="NOTHING is being archived"):
+            require_archiving_works(
+                run=_archiver(mode="off", level="replica", pending="f", archived="0", failed="0")
+            )
+
+    def test_a_wal_level_that_cannot_be_replayed_is_refused(self) -> None:
+        with pytest.raises(ArchivingFailing, match="does not produce WAL a recovery can replay"):
+            require_archiving_works(run=_archiver(mode="on", level="minimal", pending="f"))
+
+    def test_a_pending_failure_is_refused(self) -> None:
+        with pytest.raises(ArchivingFailing, match="last FAILED to archive"):
+            require_archiving_works(
+                run=_archiver(
+                    mode="on",
+                    level="replica",
+                    pending="t",
+                    archived="3",
+                    failed="7",
+                    last_archived="2026-08-07 15:59:42+00",
+                    last_failed="2026-08-07 16:28:18+00",
+                )
+            )
+
+    def test_a_failure_it_has_since_recovered_from_is_accepted(self) -> None:
+        """The state `ops.prepare` leaves a new deployment in, once the first archive lands."""
+        require_archiving_works(
+            run=_archiver(
+                mode="on",
+                level="replica",
+                pending="f",
+                archived="4",
+                failed="7",
+                last_archived="2026-08-07 16:30:00+00",
+                last_failed="2026-08-07 16:28:18+00",
+            )
+        )
+
+    def test_the_comparison_is_made_by_sql_rather_than_by_this_module(self) -> None:
+        """Two `timestamptz::text` values compare lexically only while the offset is constant."""
+        assert "last_failed_time > last_archived_time" in ARCHIVER_STATE
+        assert "current_setting('archive_mode')" in ARCHIVER_STATE
+        assert "current_setting('wal_level')" in ARCHIVER_STATE
+
+    def test_a_row_that_is_not_the_expected_shape_is_refused(self) -> None:
+        """A short row would be read off by one, and every field after it would be another's."""
+        with pytest.raises(ArchivingFailing, match="not one row"):
+            require_archiving_works(run=FakeRun(answers={"psql": "on|replica"}))
+
+
+class TestWhatIsShipped:
+    """Which files in the staging volume are objects a recovery can read."""
+
+    def test_a_completed_segment_is_shipped_oldest_first(self, tmp_path: Path) -> None:
+        """Name order is LSN order is replay order, and a gap is worse than a delay."""
+        for name in ("000000010000000000000003", "000000010000000000000001"):
+            (tmp_path / name).write_bytes(b"\x00")
+
+        assert [path.name for path in staged_segments(tmp_path)] == [
+            "000000010000000000000001",
+            "000000010000000000000003",
+        ]
+
+    def test_this_modules_own_intermediates_are_not_shipped(self, tmp_path: Path) -> None:
+        """Shipping a half-compressed file would put an object in the bucket recovery cannot read"""
+        for name in (
+            "000000010000000000000001.gz",
+            "000000010000000000000001.gz.gpg",
+            "000000010000000000000002.tmp",
+            "000000010000000000000002.partial",
+        ):
+            (tmp_path / name).write_bytes(b"\x00")
+
+        assert staged_segments(tmp_path) == ()
+
+    def test_a_timeline_history_file_is_shipped(self, tmp_path: Path) -> None:
+        """It is what a point-in-time recovery reads to follow a timeline switch.
+
+        Excluded in the first version, which both left it out of the bucket and left it on the
+        volume forever. It is a few hundred bytes and it ships like a segment.
+        """
+        (tmp_path / "00000002.history").write_bytes(b"1\t0/3000000\tno recovery target\n")
+
+        assert [path.name for path in staged_segments(tmp_path)] == ["00000002.history"]
+
+    def test_a_staging_directory_that_does_not_exist_yet_ships_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        assert staged_segments(tmp_path / "absent") == ()
+
+
+class TestTheFingerprintTheDumpRequires:
+    """The ordering between the two containers `just backup-now` runs, enforced not assumed."""
+
+    def test_a_recent_reading_is_accepted(self, tmp_path: Path) -> None:
+        reading = _written_fingerprint(tmp_path)
+
+        found = recent_fingerprint(reading, now=datetime.now(tz=UTC))
+
+        assert found.rows == 1
+
+    def test_a_missing_reading_is_refused(self, tmp_path: Path) -> None:
+        """The fingerprint step failed, and a dump nothing describes is not a dump."""
+        with pytest.raises(BackupRefused, match="no reading of the live database was taken"):
+            recent_fingerprint(tmp_path / "absent.json", now=datetime.now(tz=UTC))
+
+    def test_a_reading_from_an_earlier_run_is_refused(self, tmp_path: Path) -> None:
+        """An old manifest uploaded beside a new dump makes a drill compare two different days."""
+        reading = _written_fingerprint(tmp_path)
+        stale = datetime.now(tz=UTC) + timedelta(seconds=MANIFEST_MAX_AGE_SECONDS + 60)
+
+        with pytest.raises(BackupRefused, match="past the"):
+            recent_fingerprint(reading, now=stale)
+
+
+class TestEncryptionIsNotOptional:
+    """Every block title and every anchor location is in that dump."""
+
+    def test_a_missing_recipient_key_refuses_rather_than_uploading_plaintext(
+        self, tmp_path: Path
+    ) -> None:
+        with pytest.raises(EncryptionRefused, match="not uploaded in the clear"):
+            crypto.encrypt(
+                tmp_path / "syncr.dump",
+                into=tmp_path / "syncr.dump.gpg",
+                public_key=tmp_path / "absent.asc",
+                run=FakeRun(),
+            )
+
+    def test_it_encrypts_to_the_recipient_file_rather_than_to_a_keyring(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing imports into a keyring inside an image the next deploy discards."""
+        key = tmp_path / "recipient.asc"
+        key.write_text("-----BEGIN PGP PUBLIC KEY BLOCK-----\n", encoding="utf-8")
+        run = FakeRun()
+
+        crypto.encrypt(tmp_path / "syncr.dump", into=tmp_path / "out.gpg", public_key=key, run=run)
+
+        (call,) = run.argv_for("gpg")
+        assert "--recipient-file" in call
+        assert str(key) in call
+        assert "--encrypt" in call
+
+
+class TestAnEmptyBucket:
+    """The most important thing a drill can discover."""
+
+    def test_a_bucket_with_no_backup_refuses(self) -> None:
+        run = FakeRun(answers={"rclone": listing_json([])})
+
+        with pytest.raises(NothingToRestore, match="BackupStale is telling the truth"):
+            newest_backup(Remote("offhost:bucket", prefix="dumps", run=run))
+
+    def test_a_bucket_holding_only_foreign_objects_refuses(self) -> None:
+        """Nothing this deployment recognises is the same answer as nothing at all."""
+        run = FakeRun(
+            answers={"rclone": listing_json([("someone-elses.tar.gz", 10, "2026-08-07T03:00:00Z")])}
+        )
+
+        with pytest.raises(NothingToRestore):
+            newest_backup(Remote("offhost:bucket", prefix="dumps", run=run))
+
+    def test_the_newest_of_several_is_chosen(self) -> None:
+        run = FakeRun(
+            answers={
+                "rclone": listing_json(
+                    [
+                        ("syncr-20260806T030000Z.dump.gpg", 1, "2026-08-06T03:00:00Z"),
+                        ("syncr-20260807T030000Z.dump.gpg", 1, "2026-08-07T03:00:00Z"),
+                    ]
+                )
+            }
+        )
+
+        assert (
+            newest_backup(Remote("offhost:bucket", prefix="dumps", run=run))
+            == "syncr-20260807T030000Z"
+        )
+
+
+class TestPreparingTheVolumes:
+    """A fresh named volume belongs to root and neither writer is root."""
+
+    def test_it_creates_each_directory_it_is_asked_for(self, tmp_path: Path) -> None:
+        environ = {
+            "SYNCR_STAGING_DIR": str(tmp_path / "staging"),
+            "SYNCR_SCRATCH_DIR": str(tmp_path / "scratch"),
+            "SYNCR_TEXTFILE_DIR": str(tmp_path / "textfile"),
+            "SYNCR_WAL_STAGING_DIR": str(tmp_path / "wal"),
+        }
+
+        prepared = prepare(environ=environ)
+
+        assert [path.name for path in prepared] == ["staging", "scratch", "wal"]
+        for path in prepared:
+            assert path.is_dir()
+
+    def test_it_is_idempotent(self, tmp_path: Path) -> None:
+        """It runs first in every backup rather than once at provisioning time."""
+        environ = {
+            "SYNCR_STAGING_DIR": str(tmp_path / "staging"),
+            "SYNCR_SCRATCH_DIR": str(tmp_path / "scratch"),
+            "SYNCR_TEXTFILE_DIR": str(tmp_path / "textfile"),
+            "SYNCR_WAL_STAGING_DIR": str(tmp_path / "wal"),
+        }
+
+        prepare(environ=environ)
+        prepare(environ=environ)
+
+        assert (tmp_path / "staging").is_dir()
+
+    def test_the_directories_are_not_world_readable(self, tmp_path: Path) -> None:
+        """The staging one holds a plaintext dump for as long as it takes to encrypt it."""
+        writable_by_app(tmp_path / "staging", environ={})
+
+        assert oct((tmp_path / "staging").stat().st_mode)[-3:] == oct(DIRECTORY_MODE)[-3:]
+
+
+def _archiver(
+    *,
+    mode: str,
+    level: str,
+    pending: str,
+    archived: str = "1",
+    failed: str = "0",
+    last_archived: str = "",
+    last_failed: str = "",
+) -> FakeRun:
+    """A `psql` answering `ARCHIVER_STATE`'s seven fields, in the order the query selects them."""
+    row = "|".join((mode, level, archived, failed, pending, last_archived, last_failed))
+    return FakeRun(answers={"psql": row})
+
+
+def _written_fingerprint(directory: Path) -> Path:
+    """A fingerprint document on disk, in the shape the api image writes."""
+    path = directory / "fingerprint.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "taken_at": "2026-08-07T03:00:00+00:00",
+                "expected_head": "0042_pending_weights",
+                "applied_revision": "0042_pending_weights",
+                "row_counts": {"public.pins": 1},
+                "content_digests": {
+                    # md5 of the empty string: what an empty table hashes to, so the fixture is a
+                    # value production produces rather than an invented one.
+                    "public.pins": "d41d8cd98f00b204e9800998ecf8427e"  # pragma: allowlist secret
+                },
+                "cursors": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def _written(payload: bytes) -> Path:

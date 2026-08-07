@@ -24,6 +24,7 @@ from __future__ import annotations
 import ast
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import pytest
 from ops.config import EVIDENCE_TABLES
@@ -76,6 +77,7 @@ class TestTheDocumentContract:
             writer.KEY_EXPECTED_HEAD,
             writer.KEY_APPLIED_REVISION,
             writer.KEY_ROW_COUNTS,
+            writer.KEY_DIGESTS,
             writer.KEY_CURSORS,
         }
 
@@ -102,6 +104,12 @@ class TestTheDocumentContract:
             expected_head=HEAD,
             applied_revision=HEAD,
             row_counts={"public.pins": 15},
+            # md5 of the empty string, which is what an empty table hashes to, so the fixture is a
+            # value production produces. The scanner reads it as a high-entropy hex string, which is
+            # the scan working: it is a digest and not a credential.
+            content_digests={
+                "public.pins": "d41d8cd98f00b204e9800998ecf8427e"  # pragma: allowlist secret
+            },
             cursors=(
                 writer.CursorFact(
                     key="tenant/habit", index=1, variant="Back", confirmed_completions=1
@@ -112,6 +120,9 @@ class TestTheDocumentContract:
         found = read_document(write_document(tmp_path / "one.json", produced.as_document()))
 
         assert found.row_counts == {"public.pins": 15}
+        assert found.content_digests == {
+            "public.pins": "d41d8cd98f00b204e9800998ecf8427e"  # pragma: allowlist secret
+        }
         assert found.cursor_by_key()["tenant/habit"].variant == "Back"
         assert found.expected_head == HEAD
         assert found.taken_at == NOW
@@ -192,6 +203,46 @@ class TestTheReadingItself:
             f"{table.schema or 'public'}.{table.name}" for table in registered_tables()
         }
 
+    async def test_it_hashes_every_registered_table(self, session: AsyncSession) -> None:
+        """The only claim in the verdict that can see a row's bytes, so it covers every table."""
+        found = await writer.read_fingerprint(
+            session, now=NOW, expected_head=expected_head(), applied_revision=None
+        )
+
+        assert set(found.content_digests) == set(found.row_counts)
+        for table, digest in found.content_digests.items():
+            assert len(digest) == 32, table
+
+    async def test_a_digest_moves_when_a_row_changes_and_the_count_does_not(
+        self, session: AsyncSession
+    ) -> None:
+        """The reading that would have caught a restore whose every plan document was replaced."""
+        await session.execute(
+            text("INSERT INTO tenants (id, created_at) VALUES (gen_random_uuid(), now())")
+        )
+        before = await writer.read_fingerprint(
+            session, now=NOW, expected_head=expected_head(), applied_revision=None
+        )
+        await session.execute(text("UPDATE tenants SET created_at = now() - interval '400 days'"))
+        after = await writer.read_fingerprint(
+            session, now=NOW, expected_head=expected_head(), applied_revision=None
+        )
+        await session.rollback()
+
+        assert after.row_counts["public.tenants"] == before.row_counts["public.tenants"]
+        assert after.content_digests["public.tenants"] != before.content_digests["public.tenants"]
+
+    async def test_two_readings_of_one_database_agree(self, session: AsyncSession) -> None:
+        """It is compared across two databases, so it must not depend on the physical row order."""
+        first = await writer.read_fingerprint(
+            session, now=NOW, expected_head=expected_head(), applied_revision=None
+        )
+        second = await writer.read_fingerprint(
+            session, now=NOW, expected_head=expected_head(), applied_revision=None
+        )
+
+        assert first.content_digests == second.content_digests
+
     async def test_every_evidence_table_is_counted(self, session: AsyncSession) -> None:
         found = await writer.read_fingerprint(
             session, now=NOW, expected_head=expected_head(), applied_revision=None
@@ -232,3 +283,105 @@ class TestTheReadingItself:
         assert found.applied_revision == found.expected_head, (
             "the integration database is expected to be at head; `just migrate` puts it there"
         )
+
+    async def test_a_rotation_habit_with_a_confirmed_completion_derives_its_cursor(
+        self, session: AsyncSession
+    ) -> None:
+        """The cursor is a DOMAIN PROJECTION, and this is the reading that exercises it.
+
+        It is why this whole document is taken by the api image rather than beside `pg_dump`, and
+        until the content digests landed it was the only content reading. The derivation is
+        `syncr_domain.cursor.cursor_reading` over `HabitOutcomeLog`, which is production's.
+        """
+        await _seed_a_confirmed_rotation(session)
+
+        found = await writer.read_fingerprint(
+            session, now=NOW, expected_head=expected_head(), applied_revision=None
+        )
+        await session.rollback()
+
+        (fact,) = [one for one in found.cursors if one.key.endswith(str(_HABIT))]
+        assert fact.confirmed_completions == 1
+        assert fact.index == 1, "one confirmed completion advances the cursor one variant"
+        assert fact.variant == "Back"
+
+    async def test_a_habit_that_does_not_rotate_holds_no_cursor(
+        self, session: AsyncSession
+    ) -> None:
+        """A fixed habit repeats one content, so a cursor for it would read as meaningful."""
+        await _seed_a_confirmed_rotation(session, binding_source="fixed")
+
+        found = await writer.read_fingerprint(
+            session, now=NOW, expected_head=expected_head(), applied_revision=None
+        )
+        await session.rollback()
+
+        assert [one for one in found.cursors if one.key.endswith(str(_HABIT))] == []
+
+
+# Identifiers this module's own rows use, so a rolled-back transaction cannot collide with the
+# drill's seed or with another module's.
+_TENANT = UUID("beef0000-0000-4000-8000-00000000d0d0")
+_AREA = UUID("beef0000-0000-4000-8000-00000000a4ea")
+_HABIT = UUID("beef0000-0000-4000-8000-00000000bab1")
+_REVISION = UUID("beef0000-0000-4000-8000-00000000fee1")
+
+
+async def _seed_a_confirmed_rotation(
+    session: AsyncSession, *, binding_source: str = "rotation"
+) -> None:
+    """One rotation habit and one confirmed completion of its first occurrence.
+
+    The binding object carries the four keys `stored_binding` writes and the occurrence key the one
+    derivation of it produces, so the cursor derives through the reader production uses. If any of
+    that were wrong, the assertions above would report zero cursors rather than a wrong one.
+
+    A habit that does not rotate carries NO variants, which the schema enforces: the check
+    constraint is what says the two belong together, and honouring it keeps this seed a shape the
+    write path could also produce.
+    """
+    variants = '["Chest", "Back", "Legs", "Shoulders"]' if binding_source == "rotation" else "[]"
+    await session.execute(
+        text("INSERT INTO tenants (id, created_at) VALUES (:id, now())"), {"id": _TENANT}
+    )
+    await session.execute(
+        text(
+            "INSERT INTO areas (id, parent_id, name, pigment_index, created_at, tenant_id) "
+            "VALUES (:id, NULL, 'Training', 3, now(), :tenant)"
+        ),
+        {"id": _AREA, "tenant": _TENANT},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO habits (id, area_id, title, cadence_kind, cadence_times_per_week, "
+            "duration_min_minutes, duration_max_minutes, miss_policy, binding_source, variants, "
+            "debt_cap_periods, created_at, tenant_id) "
+            "VALUES (:id, :area, 'Gym', 'times_per_week', 4, 60, 90, 'debt', "
+            "cast(:source as varchar), cast(:variants as jsonb), 2, now(), :tenant)"
+        ),
+        {
+            "id": _HABIT,
+            "area": _AREA,
+            "tenant": _TENANT,
+            "source": binding_source,
+            "variants": variants,
+        },
+    )
+    await session.execute(
+        text(
+            "INSERT INTO plan_revisions (id, tenant_id, iso_week, status, reason, document, "
+            "objective_breakdown, weight_set_version, input_version, created_at) "
+            "VALUES (:id, :tenant, '2026-W32', 'applied', 'materialized', '{}'::jsonb, "
+            "'{}'::jsonb, 1, 1, now())"
+        ),
+        {"id": _REVISION, "tenant": _TENANT},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO block_outcomes (id, tenant_id, block_id, binding, revision_id, state, "
+            "occurred_at, confirmed_at) VALUES (gen_random_uuid(), :tenant, 'cursor-probe-00', "
+            "jsonb_build_object('kind', 'habit', 'entity_id', cast(:habit as text), "
+            "'occurrence_key', '00', 'split_index', NULL), :revision, 'completed', now(), now())"
+        ),
+        {"tenant": _TENANT, "habit": str(_HABIT), "revision": _REVISION},
+    )

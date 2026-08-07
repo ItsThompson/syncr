@@ -12,6 +12,11 @@ was confirmed complete, and it is re-derived from the outcome log on every read.
 dropped one confirmation restores a plausible database whose next session trains the wrong muscle
 group, and nothing but this reading would notice.
 
+**And the content digests are here because counts and cursors cannot see a row's bytes.** Measured:
+a reviewer replaced every ``plan_revisions`` document, moved every pin four hundred days and left
+the counts identical, and the verdict reported "the data came back". A per-table digest is what
+makes "intact" mean intact rather than "present in the same number".
+
 **Why the counts are a floor rather than an equality.** This reading is taken before ``pg_dump``
 opens its snapshot, so the dump is at or after it and the restored copy is a SUPERSET: every count
 must be at least the count recorded here. A count that came back LOWER is data the restore lost.
@@ -25,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from syncr_api.accounts.repository import TenantRepository
 from syncr_api.habits.repository import HabitRepository
@@ -50,6 +55,7 @@ KEY_TAKEN_AT: Final = "taken_at"
 KEY_EXPECTED_HEAD: Final = "expected_head"
 KEY_APPLIED_REVISION: Final = "applied_revision"
 KEY_ROW_COUNTS: Final = "row_counts"
+KEY_DIGESTS: Final = "content_digests"
 KEY_CURSORS: Final = "cursors"
 KEY_CURSOR_KEY: Final = "key"
 KEY_CURSOR_INDEX: Final = "index"
@@ -75,6 +81,7 @@ class Fingerprint:
     expected_head: str
     applied_revision: str | None
     row_counts: Mapping[str, int]
+    content_digests: Mapping[str, str]
     cursors: tuple[CursorFact, ...]
 
     def as_document(self) -> dict[str, Any]:
@@ -85,6 +92,7 @@ class Fingerprint:
             KEY_EXPECTED_HEAD: self.expected_head,
             KEY_APPLIED_REVISION: self.applied_revision,
             KEY_ROW_COUNTS: dict(sorted(self.row_counts.items())),
+            KEY_DIGESTS: dict(sorted(self.content_digests.items())),
             KEY_CURSORS: [
                 {
                     KEY_CURSOR_KEY: fact.key,
@@ -104,19 +112,36 @@ async def read_fingerprint(
     expected_head: str,
     applied_revision: str | None,
 ) -> Fingerprint:
-    """Read every count and every cursor this database holds.
+    """Read every count, every content digest and every cursor this database holds.
 
     Cross-tenant by construction, which is why the tenant list is enumerated and the cursor read is
     built per tenant through the scoped repositories: the same shape the observability duties use,
     for the same reason. The counts are not scoped, because a count of every row is the question.
     """
+    await _render_deterministically(session)
     return Fingerprint(
         taken_at=now,
         expected_head=expected_head,
         applied_revision=applied_revision,
         row_counts=await _row_counts(session),
+        content_digests=await _content_digests(session),
         cursors=await _cursors(session),
     )
+
+
+async def _render_deterministically(session: AsyncSession) -> None:
+    """Make the two readings render a row's text identically, whatever each server is configured as.
+
+    ``row::text`` renders each column through its type's output function, and for a ``timestamptz``
+    that depends on the session's ``TimeZone``. Both readings are taken by this image against two
+    different servers, so a digest is only comparable if the rendering is pinned rather than
+    inherited. The Postgres image defaults to UTC, which makes this explicit rather than new.
+
+    ``extra_float_digits`` is set for the same reason one step further out: it decides how a float
+    is printed, and a comparison of text must not depend on it.
+    """
+    await session.execute(text("SET TimeZone TO 'UTC'"))
+    await session.execute(text("SET extra_float_digits TO 1"))
 
 
 async def _row_counts(session: AsyncSession) -> dict[str, int]:
@@ -130,6 +155,50 @@ async def _row_counts(session: AsyncSession) -> dict[str, int]:
         total = await session.scalar(select(func.count()).select_from(table))
         counts[f"{table.schema or 'public'}.{table.name}"] = int(total or 0)
     return counts
+
+
+async def _content_digests(session: AsyncSession) -> dict[str, str]:
+    """One digest per table, over every row's text, in an order that does not depend on the storage.
+
+    ``ORDER BY t::text`` rather than by a key, so the digest is a property of the SET of rows: a
+    restore that produced the same rows in another physical order is the same database, and one that
+    changed a byte in any row is not.
+
+    A full scan per table, which is what makes this affordable exactly where it runs: a nightly job
+    at 03:00 and a drill, over a database that grows at roughly 16 MB per user-year. The dump beside
+    it reads the same rows.
+    """
+    digests: dict[str, str] = {}
+    for table in registered_tables():
+        qualified = f"{table.schema or 'public'}.{table.name}"
+        # The table name comes from the declarative metadata, never from a caller, and it is quoted
+        # through the identifier preparer rather than interpolated raw.
+        quoted = _quoted(table.schema, table.name)
+        found = await session.scalar(
+            text(
+                # A table name cannot be a bind parameter: see `_quoted`.
+                f"SELECT md5(coalesce(string_agg(t::text, chr(10) ORDER BY t::text), '')) "  # noqa: S608
+                f"FROM {quoted} t"
+            )
+        )
+        digests[qualified] = str(found)
+    return digests
+
+
+def _quoted(schema: str | None, name: str) -> str:
+    """A schema-qualified identifier, quoted for the one statement that cannot bind it.
+
+    A table name cannot be a bind parameter, so it is interpolated, and this is the only place in
+    the application where that is true. Two things make it safe rather than a hazard: the names come
+    from the DECLARATIVE METADATA and never from a caller, and a name carrying a double quote is
+    refused here rather than escaped, because this application has none and a silent escape would be
+    the beginning of one.
+    """
+    parts = (schema or "public", name)
+    for part in parts:
+        if '"' in part:
+            raise ValueError(f"{part!r} is not an identifier this reading will interpolate")
+    return ".".join(f'"{part}"' for part in parts)
 
 
 async def _cursors(session: AsyncSession) -> tuple[CursorFact, ...]:

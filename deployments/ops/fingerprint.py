@@ -26,6 +26,7 @@ KEY_TAKEN_AT: Final = "taken_at"
 KEY_EXPECTED_HEAD: Final = "expected_head"
 KEY_APPLIED_REVISION: Final = "applied_revision"
 KEY_ROW_COUNTS: Final = "row_counts"
+KEY_DIGESTS: Final = "content_digests"
 KEY_CURSORS: Final = "cursors"
 KEY_CURSOR_KEY: Final = "key"
 KEY_CURSOR_INDEX: Final = "index"
@@ -39,6 +40,7 @@ DOCUMENT_KEYS: Final = frozenset(
         KEY_EXPECTED_HEAD,
         KEY_APPLIED_REVISION,
         KEY_ROW_COUNTS,
+        KEY_DIGESTS,
         KEY_CURSORS,
     }
 )
@@ -69,6 +71,7 @@ class Fingerprint:
     expected_head: str
     applied_revision: str | None
     row_counts: dict[str, int]
+    content_digests: dict[str, str]
     cursors: tuple[Cursor, ...]
 
     @property
@@ -101,6 +104,7 @@ def read(path: Path) -> Fingerprint:
         expected_head=str(document[KEY_EXPECTED_HEAD]),
         applied_revision=_optional_text(document[KEY_APPLIED_REVISION]),
         row_counts=_counts(document[KEY_ROW_COUNTS], path),
+        content_digests=_digests(document[KEY_DIGESTS], path),
         cursors=_cursors(document[KEY_CURSORS], path),
     )
 
@@ -124,6 +128,25 @@ def _counts(stated: Any, path: Path) -> dict[str, int]:
         if not isinstance(count, int) or isinstance(count, bool):
             raise FingerprintUnreadable(f"{path} carries {count!r} as the count for {table}")
         found[str(table)] = count
+    return found
+
+
+def _digests(stated: Any, path: Path) -> dict[str, str]:
+    """Every table's content digest, refusing a document that carries none.
+
+    Strict for the same reason the counts are: an empty digest map would compare equal to another
+    empty one, and the comparison it feeds is the only one in the verdict that can see a row's
+    bytes.
+    """
+    if not isinstance(stated, dict) or not stated:
+        raise FingerprintUnreadable(
+            f"{path} carries no content digests, so nothing about the rows themselves is comparable"
+        )
+    found: dict[str, str] = {}
+    for table, digest in stated.items():
+        if not isinstance(digest, str) or not digest:
+            raise FingerprintUnreadable(f"{path} carries {digest!r} as the digest for {table}")
+        found[str(table)] = digest
     return found
 
 

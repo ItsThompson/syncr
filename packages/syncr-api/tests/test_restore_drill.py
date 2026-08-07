@@ -63,6 +63,7 @@ class FakeRun:
 def document(
     *,
     counts: dict[str, int] | None = None,
+    digests: dict[str, str] | None = None,
     cursors: list[dict[str, Any]] | None = None,
     applied: str | None = HEAD,
     expected: str = HEAD,
@@ -70,16 +71,19 @@ def document(
     """A fingerprint document, in the shape `syncr-plan-fingerprint` writes.
 
     The default counts give every evidence table a row, because that is the state a real deployment
-    is in and the state the verdict's own evidence check requires.
+    is in and the state the verdict's own evidence check requires. The default digests give each of
+    them the same hash on both sides, so a case that is not about content does not fail on it.
     """
+    tables = counts if counts is not None else dict.fromkeys(EVIDENCE_TABLES, 1)
     return {
         fingerprint.KEY_VERSION: 1,
         fingerprint.KEY_TAKEN_AT: "2026-08-07T03:00:00+00:00",
         fingerprint.KEY_EXPECTED_HEAD: expected,
         fingerprint.KEY_APPLIED_REVISION: applied,
-        fingerprint.KEY_ROW_COUNTS: counts
-        if counts is not None
-        else dict.fromkeys(EVIDENCE_TABLES, 1),
+        fingerprint.KEY_ROW_COUNTS: tables,
+        fingerprint.KEY_DIGESTS: (
+            digests if digests is not None else {table: f"digest-of-{table}" for table in tables}
+        ),
         fingerprint.KEY_CURSORS: cursors
         if cursors is not None
         else [
@@ -90,6 +94,18 @@ def document(
                 fingerprint.KEY_CURSOR_COMPLETIONS: 1,
             }
         ],
+    }
+
+
+def cursor(
+    *, index: int = 1, variant: str = "Back", completions: int = 1, key: str = "tenant/habit"
+) -> dict[str, Any]:
+    """One cursor entry, so a case can change exactly one field of it."""
+    return {
+        fingerprint.KEY_CURSOR_KEY: key,
+        fingerprint.KEY_CURSOR_INDEX: index,
+        fingerprint.KEY_CURSOR_VARIANT: variant,
+        fingerprint.KEY_CURSOR_COMPLETIONS: completions,
     }
 
 
@@ -212,7 +228,54 @@ class TestTheVerdict:
         verdict = compare(before, after, elapsed_seconds=17)
 
         assert verdict.held, [str(one) for one in verdict.failures]
-        assert len(verdict.findings) == 7
+        assert len(verdict.findings) == 8
+
+    def test_content_that_changed_with_the_counts_intact_fails(self, tmp_path: Path) -> None:
+        """THE HOLE THIS CLAIM CLOSES, and it was demonstrated on a running deployment.
+
+        A reviewer replaced every `plan_revisions` document, set `iso_week` to 1999-W01 and moved
+        every pin four hundred days. Every count was identical, the cursor was unchanged, and the
+        verdict printed seven PASS and "the data came back".
+        """
+        before = read(document(), tmp_path, "b.json")
+        after = read(
+            document(
+                digests={
+                    **{table: f"digest-of-{table}" for table in EVIDENCE_TABLES},
+                    "public.plan_revisions": "the-plan-the-restore-lost",
+                }
+            ),
+            tmp_path,
+            "a.json",
+        )
+
+        verdict = compare(before, after, elapsed_seconds=17)
+
+        assert not verdict.held
+        assert "content differs" in str(verdict.failures[0])
+        assert "plan_revisions" in str(verdict.failures[0])
+
+    def test_a_table_that_was_not_hashed_after_the_restore_fails(self, tmp_path: Path) -> None:
+        """A missing digest is not a matching one."""
+        before = read(document(), tmp_path, "b.json")
+        after = read(document(digests={"public.pins": "digest-of-public.pins"}), tmp_path, "a.json")
+
+        verdict = compare(before, after, elapsed_seconds=17)
+
+        assert not verdict.held
+        assert "were not hashed after the restore" in str(verdict.failures[0])
+
+    def test_the_content_claim_names_how_many_tables_it_read(self, tmp_path: Path) -> None:
+        """A claim that read nothing would otherwise be indistinguishable from one that held."""
+        before = read(document(), tmp_path, "b.json")
+
+        (finding,) = [
+            one
+            for one in compare(before, before, elapsed_seconds=17).findings
+            if "hashes" in one.claim
+        ]
+
+        assert f"{len(EVIDENCE_TABLES)} tables hashes identically" in finding.claim
 
     def test_a_lost_row_fails(self, tmp_path: Path) -> None:
         """The whole reconciliation: count in, count out."""
@@ -232,22 +295,40 @@ class TestTheVerdict:
         assert not verdict.held
         assert "rows were lost" in str(verdict.failures[0])
 
-    def test_a_row_written_between_the_reading_and_the_dump_does_not_fail(
+    def test_a_row_written_between_the_reading_and_the_dump_fails_on_content_not_on_the_count(
         self, tmp_path: Path
     ) -> None:
-        """The manifest is read BEFORE the dump's snapshot, so the copy is a superset."""
+        """The two claims are deliberately asymmetric, and this is the case that shows why.
+
+        The manifest is read BEFORE the dump's snapshot, so the copy is a SUPERSET and the count
+        claim is a floor: a row appended in that window does not fail it. The digest is over the set
+        of rows, so the same row DOES change it, and that is reported as a failure rather than
+        tolerated, because a comparison that cannot distinguish a write from a loss is not a
+        comparison. The message says which of the two it is and what to do about it.
+        """
         before = read(
             document(counts={**dict.fromkeys(EVIDENCE_TABLES, 1), "public.pins": 14}),
             tmp_path,
             "b.json",
         )
         after = read(
-            document(counts={**dict.fromkeys(EVIDENCE_TABLES, 1), "public.pins": 15}),
+            document(
+                counts={**dict.fromkeys(EVIDENCE_TABLES, 1), "public.pins": 15},
+                digests={
+                    **{table: f"digest-of-{table}" for table in EVIDENCE_TABLES},
+                    "public.pins": "one-more-pin-than-the-reading-saw",
+                },
+            ),
             tmp_path,
             "a.json",
         )
 
-        assert compare(before, after, elapsed_seconds=17).held
+        verdict = compare(before, after, elapsed_seconds=17)
+
+        counts, contents = verdict.findings[1], verdict.findings[2]
+        assert counts.held, "the count claim is a floor, and a superset satisfies it"
+        assert not contents.held
+        assert "re-run the drill" in contents.claim
 
     def test_a_table_that_vanished_fails(self, tmp_path: Path) -> None:
         """A count cannot report a table whose count went missing with it."""
@@ -270,38 +351,43 @@ class TestTheVerdict:
 
     def test_a_drill_over_a_cursor_that_never_advanced_fails(self, tmp_path: Path) -> None:
         """A cursor at index 0 with no confirmations re-derives correctly from no data at all."""
-        virgin = [
-            {
-                fingerprint.KEY_CURSOR_KEY: "tenant/habit",
-                fingerprint.KEY_CURSOR_INDEX: 0,
-                fingerprint.KEY_CURSOR_VARIANT: "Chest",
-                fingerprint.KEY_CURSOR_COMPLETIONS: 0,
-            }
-        ]
-        before = read(document(cursors=virgin), tmp_path, "b.json")
+        before = read(document(cursors=[cursor(index=0, variant="Chest", completions=0)]), tmp_path)
 
         verdict = compare(before, before, elapsed_seconds=17)
 
         assert not verdict.held
         assert "no rotation cursor had advanced" in str(verdict.failures[0])
 
-    def test_a_cursor_that_re_derives_to_another_variant_fails(self, tmp_path: Path) -> None:
-        """A restore that lost one confirmation trains the wrong muscle group, unnoticed."""
+    def test_a_cursor_that_re_derives_to_another_index_fails(self, tmp_path: Path) -> None:
         before = read(document(), tmp_path, "b.json")
-        after = read(
-            document(
-                cursors=[
-                    {
-                        fingerprint.KEY_CURSOR_KEY: "tenant/habit",
-                        fingerprint.KEY_CURSOR_INDEX: 0,
-                        fingerprint.KEY_CURSOR_VARIANT: "Chest",
-                        fingerprint.KEY_CURSOR_COMPLETIONS: 0,
-                    }
-                ]
-            ),
-            tmp_path,
-            "a.json",
-        )
+        after = read(document(cursors=[cursor(index=0)]), tmp_path, "a.json")
+
+        verdict = compare(before, after, elapsed_seconds=17)
+
+        assert not verdict.held
+        assert "re-derive differently" in str(verdict.failures[0])
+
+    def test_a_cursor_that_re_derives_to_another_variant_fails(self, tmp_path: Path) -> None:
+        """A restore that lost one confirmation trains the wrong muscle group, unnoticed.
+
+        ONE FIELD, and that is the point: the first version of this changed the index, the variant
+        and the completion count together, so it passed through the index while `_cursors_rederive`
+        never compared the variant its own claim is stated in terms of.
+        """
+        before = read(document(), tmp_path, "b.json")
+        after = read(document(cursors=[cursor(variant="Chest")]), tmp_path, "a.json")
+
+        verdict = compare(before, after, elapsed_seconds=17)
+
+        assert not verdict.held
+        assert "re-derive differently" in str(verdict.failures[0])
+        assert "'Back', 'Chest'" in str(verdict.failures[0])
+
+    def test_a_cursor_whose_completion_count_changed_fails(self, tmp_path: Path) -> None:
+        """The count is what the index is derived FROM, so a matching index over another count is a
+        database that will diverge on its next confirmation."""
+        before = read(document(), tmp_path, "b.json")
+        after = read(document(cursors=[cursor(completions=5)]), tmp_path, "a.json")
 
         verdict = compare(before, after, elapsed_seconds=17)
 
