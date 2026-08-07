@@ -528,12 +528,16 @@ async def test_the_tick_is_timed_under_its_own_duty(
 
 
 def _ticks_timed_under(duty: MaintainerDuty) -> float:
-    """The tick histogram's count for one duty, read as a scraper reads it."""
+    """The tick histogram's count for one duty, read as a scraper reads it.
+
+    Absent reads as zero rather than failing, because a histogram child exists only once something
+    has observed it: the assertion that matters is the delta, and a family that never appeared
+    cannot produce one.
+    """
     counted = REGISTRY.get_sample_value(
         "syncr_maintainer_tick_duration_seconds_count", {"duty": duty.value}
     )
-    assert counted is not None, f"{duty.value} was not exported, so nothing could read it"
-    return counted
+    return 0.0 if counted is None else counted
 
 
 async def test_a_tenant_whose_week_raises_does_not_stop_another_tenants(

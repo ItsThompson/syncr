@@ -588,20 +588,27 @@ async def test_a_tenant_far_east_probes_the_week_its_own_date_names(
     await declare_the_minimum(sessions, owner.tenant_id, home_zone=AUCKLAND)
     # Sunday 22:00 UTC is Monday 11:00 in Auckland, so the local date is already in W08 while the
     # UTC date is still in W07.
-    tally = await a_tick(context, Ticking(LATE_IN_THE_WEEK))
+    clock = Ticking(LATE_IN_THE_WEEK)
+    runner = PlanHorizonRunner(clock=clock)
+    planned = await runner.plan(context, now=LATE_IN_THE_WEEK)
+    tally = await runner.record_transitions(context, planned.weeks, now=LATE_IN_THE_WEEK)
 
     async with sessions() as session:
-        planned = await session.scalars(
+        planned_weeks = await session.scalars(
             select(PlanRevision.iso_week)
             .where(PlanRevision.tenant_id == owner.tenant_id)
             .order_by(PlanRevision.iso_week)
         )
-    assert set(planned) == {str(NEXT_WEEK), str(THIRD_WEEK)}, (
+    assert set(planned_weeks) == {str(NEXT_WEEK), str(THIRD_WEEK)}, (
         "the local date is in W08, so W07 is behind this tenant's horizon"
     )
-    assert tally.weeks == 2, "duty 2 probed a different set of weeks than duty 1 resolved"
+    # Scoped to this tenant, because a pass covers every tenant the database holds and this claim is
+    # about which weeks THIS tenant's local date names.
+    assert planned.weeks[owner.tenant_id] == (NEXT_WEEK, THIRD_WEEK)
     assert tally.without_a_plan == 0
-    assert tally.recorded == 0, "both weeks are wholly ahead, so neither is short of capacity"
+    assert await every_transition(sessions, owner.tenant_id) == [], (
+        "both weeks are wholly ahead, so neither is short of capacity"
+    )
 
 
 # --------------------------------------------------------------------------------
