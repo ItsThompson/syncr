@@ -7,9 +7,14 @@ wire.
 
 **A header rather than a field on each body.** It is a property of the client's state at the moment
 of the request rather than of the resource being changed, so a field would be repeated on every
-mutation body that ever computes a verdict and omitted from the next one. Read from the raw request
-in a dependency, the way the idempotency key is, so no handler signature carries it into the
-OpenAPI document as a parameter of the resource.
+mutation body that ever computes a verdict and omitted from the next one. Read from the raw request,
+the way the idempotency key is, so it names no parameter of the resource in the OpenAPI document.
+
+**Resolved through :data:`SessionModeDep`, and only where a verdict is computed.** The refusal below
+is a 422 saying nothing was changed, which is true of a mutation and meaningless on a read: a
+dependency that served a whole router would refuse a ``GET`` for a header that read has no use for.
+So the alias is declared on the wiring of the paths that record a transition, and every other path
+never reads it.
 
 **A value this deployment cannot read is refused rather than treated as absent.** A client sending
 ``X-Syncr-Session-Mode: yes please`` would otherwise have every transition it caused recorded as a
@@ -65,3 +70,4 @@ def read_session_mode(request: Request) -> bool:
 
 
 type SessionModeDep = Annotated[bool, Depends(read_session_mode)]
+"""The one way a route acquires this answer, declared by the wiring of a path that records."""

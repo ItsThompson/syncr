@@ -11,6 +11,10 @@ the identifier, so no pattern is declared here that could drift from it.
 the request-and-approve split on the wire: the answer to "what did clicking this tradeoff do" is "a
 solve is running against it", and the concession appears only if the proposal it produces is
 approved.
+
+The ``POST`` resolves a service of its own, and the difference is the weekly-session header: it is
+the only route here that computes a verdict, so it is the only one that may be refused for stating
+that header wrongly.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from starlette.responses import Response
 from syncr_api.accounts.injection import PrincipalDep
 from syncr_api.concessions.config import ADJUSTMENT_PATH, ADJUSTMENTS_PATH, TRADEOFFS_PATH
 from syncr_api.concessions.declarations import RequestedConcession
-from syncr_api.concessions.injection import ConcessionServiceDep
+from syncr_api.concessions.injection import ConcessionServiceDep, TradeoffServiceDep
 from syncr_api.concessions.schemas import (
     AdjustmentResponse,
     AdjustmentsResponse,
@@ -44,7 +48,7 @@ async def request_tradeoff(
     iso_week: str,
     body: TradeoffRequest,
     principal: PrincipalDep,
-    service: ConcessionServiceDep,
+    service: TradeoffServiceDep,
 ) -> OperationResponse:
     """Ask for a proposal that honors one concession. Nothing is conceded until it is approved."""
     requested = RequestedConcession(kind=body.kind, target_id=body.target_id)

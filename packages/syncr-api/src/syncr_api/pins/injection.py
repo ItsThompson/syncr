@@ -36,7 +36,7 @@ from fastapi import Depends, Request
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.clock import utc_now
-from syncr_api.core.session_mode import read_session_mode
+from syncr_api.core.session_mode import SessionModeDep  # noqa: TC001
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.pins.service import PinService
 from syncr_api.plans.assembler import AssemblyCaller
@@ -65,15 +65,23 @@ if TYPE_CHECKING:
 
 
 def get_pin_service(
-    request: Request, principal: PrincipalDep, transaction: TransactionDep
+    request: Request,
+    principal: PrincipalDep,
+    transaction: TransactionDep,
+    session_mode: SessionModeDep,
 ) -> PinService:
-    """The pin service, wired for this request and scoped to this tenant."""
+    """The pin service, wired for this request and scoped to this tenant.
+
+    Every route this serves is a mutation, so every one of them may legitimately state whether the
+    weekly session is open: the release computes no verdict and ignores the answer, which costs
+    nothing and keeps one reading of the header across the three.
+    """
     return build_pin_service(
         transaction,
         principal.tenant_id,
         clock=utc_now,
         debounce=configured_debounce(request),
-        session_mode_active=read_session_mode(request),
+        session_mode_active=session_mode,
     )
 
 

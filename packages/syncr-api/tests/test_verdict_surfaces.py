@@ -33,6 +33,7 @@ from __future__ import annotations
 import ast
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, get_type_hints
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -385,11 +386,17 @@ async def test_no_verdict_bearing_read_appends_a_row_however_often_it_is_driven(
     http: TestClient,
     settings: ServiceSettings,
 ) -> None:
-    """``VE6``, driven twice: a mid-week ``GET`` that finds a new infeasibility appends nothing.
+    """``VE6``, driven twice, and **armed rather than proven** in this deployment.
 
-    The week is impossible at this instant, so each read computes a verdict a transition recorder
-    WOULD have written a row for. Twice, because the second identical read is the case ``20``'s row
-    names: a read that wrote on the first call and not the second would pass a one-call guard.
+    Neither read computes a verdict yet: both response shapes declare ``verdict: None`` and say so,
+    and the service parses the week and answers ``None``. So this cannot fail today, and what it is
+    for is the commit that makes it able to: the driven set is bounded by the response shapes that
+    carry a verdict, so the read that starts computing one and the weekly-session payload arrive
+    already covered.
+
+    The week is impossible at this instant, so once a verdict IS computed here each read finds one a
+    transition recorder would write a row for. Twice, because a read that wrote on the first call
+    and not the second would pass a one-call guard.
     """
     await a_planned_week(sessions, owner, context)
     headers = sign_in(http, owner.email)
@@ -412,10 +419,9 @@ async def test_the_same_week_records_a_row_when_a_mutation_asks_the_same_questio
 ) -> None:
     """The control on ``VE6``, and the ``tradeoff`` surface and ``VE3`` end to end in one request.
 
-    The reads above found the same verdict this request does, so a guard counting no rows because
-    nothing could ever write one would pass for the wrong reason. What separates them is only that
-    this is a mutation: it states that the weekly session is open, and the row carries that answer
-    from the header rather than from anything this application knows.
+    What separates this from the reads above is that it is a mutation: the reads compute no verdict
+    in this deployment, and this path does. It states that the weekly session is open, and the row
+    carries that answer from the header rather than from anything this application knows.
     """
     await a_planned_week(sessions, owner, context)
     headers = sign_in(http, owner.email)
@@ -482,6 +488,61 @@ async def test_a_session_mode_header_this_deployment_cannot_read_is_refused(
     assert answered.status_code == ValidationFailed.status, answered.text
     assert SESSION_MODE_HEADER in answered.text
     assert await transitions(sessions, owner) == []
+
+
+@pytest.mark.integration
+async def test_a_read_is_not_refused_for_a_header_it_has_no_use_for(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    http: TestClient,
+) -> None:
+    """The refusal above belongs to the path that computes a verdict, and to no other.
+
+    Its message says nothing was changed, which is true of a mutation and meaningless on a ``GET``.
+    The concession routes share a service, so a header read in one composition would refuse the read
+    that lists a week's concessions for a value that read cannot use.
+    """
+    await a_planned_week(sessions, owner, context)
+    headers = sign_in(http, owner.email)
+    listing = f"{WEEKS_PREFIX}/{THIS_WEEK}/adjustments"
+
+    clean = http.get(listing, headers=headers)
+    with_a_bad_header = http.get(listing, headers={**headers, SESSION_MODE_HEADER: "yes please"})
+
+    assert clean.status_code == HTTPStatus.OK, clean.text
+    assert with_a_bad_header.status_code == HTTPStatus.OK, with_a_bad_header.text
+    assert with_a_bad_header.json() == clean.json()
+
+
+@pytest.mark.integration
+async def test_a_tradeoff_refused_after_the_record_leaves_no_row(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    http: TestClient,
+) -> None:
+    """``VE5`` on the one path that records before it refuses.
+
+    The request records the verdict beside the probe that found it and then refuses a concession the
+    week does not offer, so the 422 has to take the row with it. The control is the same week
+    answering 202 for the concession it does offer and keeping exactly one row: without it, a guard
+    counting zero rows could be measuring a path that never records at all.
+    """
+    await a_planned_week(sessions, owner, context)
+    headers = sign_in(http, owner.email)
+    offered = await _a_breach_the_week_offers(sessions, owner)
+    not_offered = {**offered, "targetId": str(uuid4())}
+
+    refused = http.post(f"{WEEKS_PREFIX}/{THIS_WEEK}/tradeoffs", json=not_offered, headers=headers)
+
+    assert refused.status_code == ValidationFailed.status, refused.text
+    assert await transitions(sessions, owner) == []
+
+    accepted = http.post(f"{WEEKS_PREFIX}/{THIS_WEEK}/tradeoffs", json=offered, headers=headers)
+
+    assert accepted.status_code == HTTPStatus.ACCEPTED, accepted.text
+    assert len(await transitions(sessions, owner)) == 1
 
 
 @pytest.mark.parametrize(
