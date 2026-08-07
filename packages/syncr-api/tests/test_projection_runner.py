@@ -680,19 +680,24 @@ async def test_a_burst_of_version_bumps_writes_to_the_provider_zero_times(
 
 
 def test_a_projection_is_enqueued_only_beside_an_appended_revision(source_root: Any) -> None:
-    """The structural half: two enqueue sites in the tree, each after what makes it conditional.
+    """The structural half: three enqueue sites in the tree, each after what makes it conditional.
 
     A burst of pins writing zero times is a property of WHERE a projection is enqueued, so a site
     added later would break the rule without breaking the test above.
 
-    The two sites spell the same condition differently, so each names its own. The producer appends
-    a revision unconditionally and enqueues after it; the solve dispatch appends through the
+    The three sites spell the same condition differently, so each names its own. The producer
+    appends a revision unconditionally and enqueues after it; the solve dispatch appends through the
     adoption, which decides whether the live plan advanced at all, so what has to precede its
-    enqueue is that reading rather than the append itself.
+    enqueue is that reading rather than the append itself; and an approval always advances the plan
+    of record, so what precedes it is the append it is a projection OF.
+
+    Keyed by the path rather than by the file name, because two packages may hold a ``service.py``
+    and a rule stated over basenames would pair a site with another package's guard.
     """
     guard_by_site = {
-        "production.py": "revisions.append",
-        "dispatch.py": "changed_the_live_plan()",
+        "plans/production.py": "revisions.append",
+        "solving/dispatch.py": "changed_the_live_plan()",
+        "approvals/service.py": "revisions.append",
     }
     sites = [
         path
@@ -700,12 +705,13 @@ def test_a_projection_is_enqueued_only_beside_an_appended_revision(source_root: 
         if f"enqueue(kind={PROJECTION.upper()}" in path.read_text()
     ]
 
-    assert sorted(path.name for path in sites) == sorted(guard_by_site)
+    assert sorted(str(path.relative_to(source_root)) for path in sites) == sorted(guard_by_site)
     for path in sites:
         body = path.read_text()
-        assert body.index(guard_by_site[path.name]) < body.index(
-            f"enqueue(kind={PROJECTION.upper()}"
-        ), path.name
+        site = str(path.relative_to(source_root))
+        assert body.index(guard_by_site[site]) < body.index(f"enqueue(kind={PROJECTION.upper()}"), (
+            site
+        )
 
 
 # --------------------------------------------------------------------------------
