@@ -30,7 +30,7 @@ export interface SummaryStripProps {
 
 export function SummaryStrip({ readings, verdict }: SummaryStripProps) {
   return (
-    <Strip height="fixed">
+    <Strip>
       <div className="week-strip">
         <div className="week-strip__cell">
           <StatCell

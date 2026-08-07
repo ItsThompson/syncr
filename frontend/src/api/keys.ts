@@ -61,3 +61,8 @@ export const areaPreferencesKey = (areaIds: readonly string[]): string =>
  * refetch a whole week's plan because a setting changed, which is slow and is a source of flicker on a
  * surface with no animation to hide it. */
 export const weekKey = (isoWeek: string): string => `/api/v1/weeks/${isoWeek}`;
+
+/* One operation, by identifier. The POLLING FALLBACK's key and nothing else: an operation is normally learned
+ * from the mutation that created it and from the push stream, so this key exists for the window in which the
+ * stream is not connected. It is the request path, so the key names the read it will perform. */
+export const operationKey = (operationId: string): string => `/api/v1/operations/${operationId}`;

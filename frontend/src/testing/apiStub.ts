@@ -162,3 +162,73 @@ export const googleConnectionResponse: StubbedResponse = {
 export const googleConnection = (
   stubbed: StubbedResponse = googleConnectionResponse,
 ): RequestHandler => jsonHandler("/api/v1/calendar-sources/google/connection", stubbed);
+
+/* THE PUSH STREAM, WHICH EVERY RENDER THROUGH THE GATE OPENS. The shell owns one connection for the whole
+ * application, so it is a default for the reason the session is: the uninteresting case is a connection that is
+ * open and has nothing to say. A test that drives the lifecycle installs `eventStream()` and pushes frames. */
+export const EVENTS_PATH = "/api/v1/events";
+
+export interface EventStreamStub {
+  readonly handler: RequestHandler;
+  /** One frame, in the api's own format, to every reader currently connected. */
+  readonly push: (type: string, data: unknown) => void;
+  /** Close every connection, which is what engages a polling fallback. */
+  readonly drop: () => void;
+  /** How many readers have connected, which is how a reconnect is observed. */
+  readonly connections: () => number;
+}
+
+/**
+ * A stream a test writes to.
+ *
+ * THE FRAME IS THE API'S, byte for byte: `event: <type>`, one `data:` line of compact JSON, and a blank line.
+ * `syncr_api.events.envelopes.as_frame` is what produces it in production, so a test driving this exercises the
+ * real parser over the real wire format rather than a stub of the parser's own output.
+ */
+export function eventStream(): EventStreamStub {
+  const open = new Set<ReadableStreamDefaultController<Uint8Array>>();
+  const encoder = new TextEncoder();
+  let connections = 0;
+
+  const handler = http.get(url(EVENTS_PATH), () => {
+    connections += 1;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        open.add(controller);
+        /* The heartbeat the api opens with: a comment, so a client's own reader sees a live connection before any
+         * event exists to send. */
+        controller.enqueue(encoder.encode(": heartbeat\n\n"));
+      },
+    });
+    return new HttpResponse(body, {
+      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store" },
+    });
+  });
+
+  return {
+    handler,
+    connections: () => connections,
+    push: (type, data) => {
+      const frame = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+      for (const controller of open) controller.enqueue(encoder.encode(frame));
+    },
+    drop: () => {
+      for (const controller of open) controller.close();
+      open.clear();
+    },
+  };
+}
+
+/** The default: a connection that opens, stays open, and never has anything to say. */
+export const events = (): RequestHandler => eventStream().handler;
+
+/**
+ * A stream the api will not open.
+ *
+ * The shape a degraded api or a proxy in the way produces, and the only condition the polling fallback keys on: a
+ * reader that cannot open the connection reports it as closed rather than treating a status body as frames.
+ */
+export const refusedEventStream = (status = 503): RequestHandler =>
+  http.get(url(EVENTS_PATH), () =>
+    HttpResponse.json({ title: "Service unavailable", status }, { status }),
+  );

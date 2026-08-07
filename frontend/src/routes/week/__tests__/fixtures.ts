@@ -1,0 +1,368 @@
+/* THE WEEK SCREEN'S WIRE VALUES, AS FACTORIES TYPED AGAINST THE GENERATED CLIENT.
+ *
+ * EVERY FACTORY'S RETURN TYPE IS WHAT THE HOOK HANDS BACK, not a shape written beside the test. That is the whole
+ * point of this file: a hand-built object satisfies a test and proves nothing, because the api may answer with
+ * different members entirely. Typing the fixture against `WeekView` makes a renamed or dropped field a compile
+ * error, and it caught two shapes this screen's first test file had invented -- an Area with `targetShare` and
+ * `floorMinutesPerWeek`, which the api spells `budgetPercent` and `floorHours`, and a `reviewCadence` of `weekly`,
+ * which is not one of the two the enum holds.
+ *
+ * BLOCK IDS ARE FULL SHA-256 HEX, because the api's are: a block id is a digest of the week and the binding it
+ * holds. A fixture keyed `b1` would pass every test here and hide that the id is opaque, which is what makes a pin
+ * name its block in the body rather than in the path.
+ *
+ * ONE HOME PER SCREEN RATHER THAN ONE PER PRODUCT, which is the split ticket 1132 records. Today has its own
+ * factories for a day and for Areas, and this file has its own, because two agents editing one shared fixture
+ * module in the same wave is a worse outcome than two files that each state what their own screen reads. */
+
+import { http, HttpResponse } from "msw";
+
+import { apiServer } from "../../../testing/apiServer";
+import { jsonHandler, readyz } from "../../../testing/apiStub";
+import type { Areas } from "../../../api/hooks/useAreas";
+import type { Settings } from "../../../api/hooks/useSettings";
+import type { Operation } from "../../../api/events";
+import type { PlanDocument, WeekReadings, WeekView } from "../../../api/hooks/useWeek";
+import type { components } from "../../../api/schema";
+
+type Block = components["schemas"]["BlockResponse"];
+type Verdict = components["schemas"]["VerdictResponse"];
+type Shortfall = components["schemas"]["ShortfallResponse"];
+type Tradeoff = components["schemas"]["TradeoffResponse"];
+type Adjustment = components["schemas"]["AdjustmentResponse"];
+type Conflict = components["schemas"]["ConflictResponse"];
+type Pin = components["schemas"]["PinResponse"];
+type Proposal = components["schemas"]["ProposalDiffResponse"];
+type BlockChange = components["schemas"]["BlockChangeResponse"];
+type Pinned = components["schemas"]["PinnedResponse"];
+type Span = components["schemas"]["WireSpan"];
+type Reason = components["schemas"]["ReasonResponse"];
+
+export const ISO_WEEK = "2026-W07";
+export const ZONE = "Europe/London";
+export const DATES = [
+  "2026-02-09",
+  "2026-02-10",
+  "2026-02-11",
+  "2026-02-12",
+  "2026-02-13",
+  "2026-02-14",
+  "2026-02-15",
+] as const;
+
+export const AREA_CAREER = "3f6b2c9d-1a77-4a1b-9a5f-8a2e4a1b9a5f";
+export const AREA_FITNESS = "3f6b2c9d-1a77-4a1b-9a5f-8a2e4a1b0002";
+export const TASK_ID = "5c9e0d4f-6a12-4f3a-8b21-7d2b1a904c6e";
+export const ROUTINE_ID = "5c9e0d4f-6a12-4f3a-8b21-7d2b1a904c70";
+export const ANCHOR_ID = "5c9e0d4f-6a12-4f3a-8b21-7d2b1a904c71";
+export const OPERATION_ID = "0f9b2c1e-0000-4000-8000-000000000001";
+export const SUCCESSOR_ID = "0f9b2c1e-0000-4000-8000-000000000002";
+
+export const BLOCK_LEETCODE = "a1".repeat(32);
+export const BLOCK_APPLICATION = "b2".repeat(32);
+export const BLOCK_GYM = "c3".repeat(32);
+export const BLOCK_SLIVER = "d4".repeat(32);
+
+export const LEETCODE = "Leetcode \u00b7 Graphs";
+export const APPLICATION = "36 South Application";
+export const GYM = "Gym";
+export const SLIVER = "Wake Up";
+
+export function span(start: string, end: string): Span {
+  return { start, end };
+}
+
+/** An instant on the week's own Monday, in the fixture's zone, which runs at UTC+0 in February. */
+export function monday(time: string): string {
+  return `2026-02-09T${time}:00+00:00`;
+}
+
+export function tuesday(time: string): string {
+  return `2026-02-10T${time}:00+00:00`;
+}
+
+export const SETTINGS: Settings = {
+  homeZone: ZONE,
+  activeZone: ZONE,
+  activeZoneDate: DATES[0],
+  dayStart: "06:00",
+  dayEnd: "22:00",
+  visibleHours: 12,
+  reviewCadence: "quarterly",
+};
+
+export function buildAreas(): Areas {
+  return {
+    areas: [
+      {
+        id: AREA_CAREER,
+        name: "Career",
+        pigmentIndex: 0,
+        parentId: null,
+        budgetPercent: 25,
+        floorHours: null,
+        defaultPreferenceId: null,
+      },
+      {
+        id: AREA_FITNESS,
+        name: "Fitness",
+        pigmentIndex: 1,
+        parentId: null,
+        budgetPercent: 10,
+        floorHours: 5,
+        defaultPreferenceId: null,
+      },
+    ],
+    ramp: { pigmentCount: 12, pigmentsInUse: 2, areasSharingAPigment: 0, statement: null },
+  };
+}
+
+export function buildReason(clauses: Reason["clauses"] = []): Reason {
+  return { clauses };
+}
+
+export function buildBlock(overrides: Partial<Block> = {}): Block {
+  return {
+    id: BLOCK_LEETCODE,
+    title: LEETCODE,
+    areaId: AREA_CAREER,
+    origin: "task",
+    binding: { kind: "task", entityId: TASK_ID, occurrenceKey: "2026-02-09", splitIndex: null },
+    interval: span(monday("09:00"), monday("10:30")),
+    pinned: false,
+    splitCount: null,
+    supersededPlacement: null,
+    objectiveDelta: null,
+    reason: buildReason(),
+    ...overrides,
+  };
+}
+
+export function buildShortfall(overrides: Partial<Shortfall> = {}): Shortfall {
+  return {
+    kind: "deadline_capacity",
+    minutes: 80,
+    against: ["F&F Past Papers"],
+    honoring: ["Fitness floor 5h"],
+    deadline: "2026-02-13T09:00:00+00:00",
+    areaId: AREA_CAREER,
+    ...overrides,
+  };
+}
+
+export function buildTradeoff(overrides: Partial<Tradeoff> = {}): Tradeoff {
+  return {
+    kind: "accept_partial",
+    label: "Accept partial delivery on F&F Past Papers",
+    targetId: TASK_ID,
+    deltaMinutes: 80,
+    ...overrides,
+  };
+}
+
+export function buildVerdict(overrides: Partial<Verdict> = {}): Verdict {
+  return {
+    feasible: false,
+    capacityIsSufficient: false,
+    provenance: "probe",
+    computedAt: monday("09:00"),
+    inputVersion: 4,
+    discretionaryMinutes: 3126,
+    shortfalls: [buildShortfall()],
+    tradeoffs: [buildTradeoff()],
+    ...overrides,
+  };
+}
+
+export function buildAdjustment(overrides: Partial<Adjustment> = {}): Adjustment {
+  return {
+    id: "7a1c4e02-0000-4000-8000-000000000001",
+    isoWeek: ISO_WEEK,
+    kind: "breach_floor",
+    targetId: AREA_FITNESS,
+    reductions: {},
+    deltaMinutes: 80,
+    createdAt: monday("08:00"),
+    createdByOperationId: OPERATION_ID,
+    ...overrides,
+  };
+}
+
+export function buildOperation(overrides: Partial<Operation> = {}): Operation {
+  return {
+    id: OPERATION_ID,
+    kind: "solve",
+    status: "pending",
+    target: { isoWeek: ISO_WEEK, sourceId: null },
+    scheduledFor: monday("09:00"),
+    attempt: 1,
+    statement: "A solve is due, and the plan on screen is the last one that landed.",
+    ...overrides,
+  };
+}
+
+export function buildPin(overrides: Partial<Pin> = {}): Pin {
+  return {
+    id: "9b3d5f01-0000-4000-8000-000000000001",
+    isoWeek: ISO_WEEK,
+    blockId: BLOCK_LEETCODE,
+    interval: span(monday("13:00"), monday("14:30")),
+    supersededPlacement: span(monday("09:00"), monday("10:30")),
+    objectiveDelta: 0.18,
+    weightSetVersion: 3,
+    createdAt: monday("08:30"),
+    ...overrides,
+  };
+}
+
+export function buildConflict(overrides: Partial<Conflict> = {}): Conflict {
+  return {
+    id: "c0ffee01-0000-4000-8000-000000000001",
+    isoWeek: ISO_WEEK,
+    anchorId: ANCHOR_ID,
+    blockId: BLOCK_LEETCODE,
+    binding: { kind: "task", entityId: TASK_ID, occurrenceKey: "2026-02-09", splitIndex: null },
+    overlap: span(monday("09:30"), monday("10:00")),
+    detectedAt: monday("08:00"),
+    resolvedAt: null,
+    resolution: null,
+    ...overrides,
+  };
+}
+
+export function buildBlockChange(overrides: Partial<BlockChange> = {}): BlockChange {
+  return {
+    blockId: BLOCK_LEETCODE,
+    binding: { kind: "task", entityId: TASK_ID, occurrenceKey: "2026-02-09", splitIndex: null },
+    title: LEETCODE,
+    areaId: AREA_CAREER,
+    reason: buildReason(),
+    before: span(monday("09:00"), monday("10:30")),
+    after: span(monday("13:00"), monday("14:30")),
+    ...overrides,
+  };
+}
+
+export function buildProposal(overrides: Partial<Proposal> = {}): Proposal {
+  return { added: [], removed: [], moved: [buildBlockChange()], ...overrides };
+}
+
+export function buildReadings(overrides: Partial<WeekReadings> = {}): WeekReadings {
+  return {
+    scheduledMinutes: 4848,
+    discretionaryMinutes: 3126,
+    unallocatedMinutes: 1104,
+    oversubscriptionMinutes: 0,
+    unconfirmedDays: 0,
+    offPlanMinutes: 0,
+    blockCount: 91,
+    planCurrency: "current",
+    ...overrides,
+  };
+}
+
+export function buildPlan(overrides: Partial<PlanDocument> = {}): PlanDocument {
+  return {
+    isoWeek: ISO_WEEK,
+    zoneByDate: Object.fromEntries(DATES.map((date) => [date, ZONE])),
+    blocks: [
+      buildBlock(),
+      buildBlock({
+        id: BLOCK_APPLICATION,
+        title: APPLICATION,
+        interval: span(tuesday("19:00"), tuesday("19:30")),
+      }),
+    ],
+    forbiddenWindows: [
+      {
+        interval: span(monday("16:45"), monday("18:00")),
+        kind: "recovery",
+        scope: "all",
+        forbiddenAreaIds: [],
+        label: "recovery \u00b7 Kontron Interview",
+        anchorId: ANCHOR_ID,
+      },
+    ],
+    emptySlots: [
+      {
+        interval: span("2026-02-11T14:00:00+00:00", "2026-02-11T15:00:00+00:00"),
+        areaId: AREA_CAREER,
+        reason: "no_eligible_content",
+      },
+    ],
+    adjustments: [],
+    ...overrides,
+  };
+}
+
+export const EMPTY_WEEK_FACTS: NonNullable<WeekView["emptyWeek"]> = {
+  coversThisWeek: false,
+  horizonDays: 14,
+  horizonThrough: "2026-02-01",
+  missingInputs: [],
+  statement: "This week is beyond your 14-day planning horizon, which reaches 1 February.",
+};
+
+export function buildWeekView(overrides: Partial<WeekView> = {}): WeekView {
+  return {
+    isoWeek: ISO_WEEK,
+    span: span("2026-02-09T00:00:00+00:00", "2026-02-16T00:00:00+00:00"),
+    zoneByDate: Object.fromEntries(DATES.map((date) => [date, ZONE])),
+    live: buildPlan(),
+    emptyReason: null,
+    emptyWeek: null,
+    readings: buildReadings(),
+    offPlan: [],
+    operation: null,
+    inputVersion: 4,
+    adjustments: [],
+    candidateAdjustment: null,
+    conflicts: [],
+    pins: [],
+    proposal: null,
+    verdict: null,
+    ...overrides,
+  };
+}
+
+/** What `POST /weeks/{isoWeek}/pins` answers with: the pin, the recomputed verdict, and the solve it asked for. */
+export function buildPinned(overrides: Partial<Pinned> = {}): Pinned {
+  return {
+    pin: buildPin(),
+    verdict: buildVerdict({ inputVersion: 5 }),
+    operation: buildOperation(),
+    ...overrides,
+  };
+}
+
+export interface WeekReads {
+  /** How many times the week itself was read, which is how one refetch is told from two. */
+  readonly weekReads: () => number;
+  /** The view the next read answers with, so a test can land a solve's result. */
+  readonly serve: (view: WeekView) => void;
+}
+
+/** The three reads the Week screen makes, answered with what the test gave them. */
+export function installWeekReads(view: WeekView): WeekReads {
+  let served = view;
+  let weekReads = 0;
+
+  apiServer.use(
+    readyz(),
+    jsonHandler("/api/v1/settings", { status: 200, body: SETTINGS }),
+    jsonHandler("/api/v1/areas", { status: 200, body: buildAreas() }),
+    http.get(`${window.location.origin}/api/v1/weeks/${ISO_WEEK}`, () => {
+      weekReads += 1;
+      return HttpResponse.json(served);
+    }),
+  );
+
+  return {
+    weekReads: () => weekReads,
+    serve: (next) => {
+      served = next;
+    },
+  };
+}
+
+export const WEEK_PATH = `/week?week=${ISO_WEEK}`;
