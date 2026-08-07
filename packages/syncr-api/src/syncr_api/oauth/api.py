@@ -38,7 +38,8 @@ from syncr_api.oauth.consent import (
     HTML_MEDIA_TYPE,
     render_consent_screen,
 )
-from syncr_api.oauth.injection import AuthorizationServiceDep, OAuthStateDep, TokenServiceDep
+from syncr_api.oauth.consent_injection import AuthorizationServiceDep
+from syncr_api.oauth.injection import OAuthStateDep, TokenServiceDep
 from syncr_api.oauth.metadata import build_metadata
 from syncr_api.oauth.schemas import JsonWebKeySet, TokenResponse
 from syncr_api.oauth.tokens import TokenRequest

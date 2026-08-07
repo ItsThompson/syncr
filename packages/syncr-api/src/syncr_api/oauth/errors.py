@@ -24,8 +24,8 @@ what a client parses.
 
 from __future__ import annotations
 
+from syncr_api.core.credentials import BEARER_SCHEME
 from syncr_api.core.errors import MalformedRequest, Unauthorized
-from syncr_api.oauth.config import BEARER_SCHEME
 
 # What a 401 tells the caller to present. The realm is the issuer's own name rather than a
 # URL, because a URL here is a second place the issuer is stated.

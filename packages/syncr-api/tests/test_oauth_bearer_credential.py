@@ -14,8 +14,9 @@ from __future__ import annotations
 import pytest
 from starlette.requests import Request
 
+from syncr_api.core.credentials import AUTHORIZATION_HEADER, read_bearer_token
 from syncr_api.oauth.errors import bearer_challenge
-from syncr_api.oauth.injection import AUTHORIZATION_HEADER, MISSING_BEARER_DETAIL, read_bearer_token
+from syncr_api.oauth.injection import MISSING_BEARER_DETAIL
 
 TOKEN = "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJhIn0.signature"  # pragma: allowlist secret
 

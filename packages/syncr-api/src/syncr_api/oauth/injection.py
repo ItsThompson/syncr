@@ -1,17 +1,11 @@
-"""The dependencies the Authorization Server's routes declare.
+"""The dependencies the Authorization Server's routes declare, and the bearer resolution.
 
 Four things are worth reading closely.
 
-**The consent routes resolve a BROWSER session**, through the accounts dependency that reads
-the cookie, and they inherit that dependency's origin check with it. A bearer credential
-deliberately cannot reach them: a client holding an access token must not be able to mint
-itself a fresh grant, because it could then widen its own scopes or outlive its own
-revocation.
-
-**The consent service's repository is scoped by the session's tenant**, resolved before the
-service exists. So the tenant it can reach is fixed by the credential rather than by anything
-in the request, and the principal the service method takes is checked against that same
-answer.
+**Nothing here imports ``accounts.injection``, and that is load-bearing.** The perimeter every
+product route declares lives there and reaches :func:`require_bearer_principal` below, so this
+module has to be the lower of the two. The consent service was the one thing in it that needed a
+browser session, and it now lives in ``consent_injection.py`` beside the routes that declare it.
 
 **The token and revocation endpoints resolve nothing.** They are what produces a credential,
 so requiring one would make obtaining a token possible only while already holding one. The
@@ -21,6 +15,10 @@ allowlist in ``tests/test_authorization_boundary.py`` names them and says why.
 entrypoint exactly as the database is. It is read once, at startup, so a malformed or
 undecryptable key file fails the boot rather than the first request, and a rotation takes
 effect on a restart rather than mid-process.
+
+**Verifying a presented access token costs no database read.** It is a signed claim set naming its
+tenant, its subject and its scopes, so the tenant binding is arithmetic; the cost of that is that
+revoking a grant does not reach a token already issued, which is why the access lifetime is minutes.
 """
 
 from __future__ import annotations
@@ -37,28 +35,23 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.requests import Request  # noqa: TC002
 
-# `PrincipalDep` stays a runtime import for the same reason: FastAPI evaluates the annotations
-# of the dependency below to build its graph.
-from syncr_api.accounts.injection import PrincipalDep  # noqa: TC001
 from syncr_api.accounts.repository import UserRepository
 from syncr_api.core.clock import utc_now
+from syncr_api.core.credentials import read_bearer_token
 from syncr_api.core.db import Database, get_transaction
 from syncr_api.core.principal import Principal
 from syncr_api.oauth.access_tokens import AccessTokenCodec
-from syncr_api.oauth.config import BEARER_SCHEME, OAuthConfig
 from syncr_api.oauth.errors import InvalidToken, bearer_challenge
 from syncr_api.oauth.repository import OAuthRepository, PresentedCredentialRepository
-from syncr_api.oauth.service import AuthorizationService
 from syncr_api.oauth.tokens import CompromisedFamilyRevoker, ScopedRepositoryFactory, TokenService
 
 if TYPE_CHECKING:
     from datetime import datetime
     from uuid import UUID
 
+    from syncr_api.oauth.config import OAuthConfig
     from syncr_api.oauth.keys import SigningKeySet
     from syncr_domain.identifiers import TenantId
-
-AUTHORIZATION_HEADER = "authorization"
 
 MISSING_BEARER_DETAIL = (
     "This route needs an access token. Present one as `Authorization: Bearer <token>`. "
@@ -103,21 +96,6 @@ def get_oauth_state(request: Request) -> OAuthState:
 
 
 type OAuthStateDep = Annotated[OAuthState, Depends(get_oauth_state)]
-
-
-def get_authorization_service(
-    transaction: TransactionDep, principal: PrincipalDep
-) -> AuthorizationService:
-    """The consent service, wired for this request and scoped to the signed-in tenant."""
-    return AuthorizationService(
-        clients=PresentedCredentialRepository(transaction),
-        grants=OAuthRepository(transaction, principal.tenant_id),
-        users=UserRepository(transaction),
-        clock=utc_now,
-    )
-
-
-type AuthorizationServiceDep = Annotated[AuthorizationService, Depends(get_authorization_service)]
 
 
 def get_token_service(
@@ -173,9 +151,14 @@ def scoped_repository_factory(transaction: AsyncSession) -> ScopedRepositoryFact
 def require_bearer_principal(request: Request, service: TokenServiceDep) -> Principal:
     """The principal a presented access token authenticates, or 401.
 
-    What a route serving the CLI declares. It resolves the subject, the tenant, and the scopes
-    the grant was issued for; the service method the route delegates to is where those scopes
-    are then checked, which is why nothing is checked here.
+    The whole of what a bearer-only route declares, and the resolution the perimeter in
+    ``accounts/injection.py`` reaches through :func:`resolve_bearer_principal`. It resolves the
+    subject, the tenant, and the scopes the grant was issued for; the service method the route
+    delegates to is where those scopes are then checked, which is why nothing is checked here.
+
+    The tenant is bound onto the logging context by the perimeter that calls this, in the one place
+    both credential kinds pass through, so a bearer request's log lines carry the tenant that a
+    browser request's already did.
     """
     presented = read_bearer_token(request)
     if presented is None:
@@ -186,16 +169,17 @@ def require_bearer_principal(request: Request, service: TokenServiceDep) -> Prin
 type BearerPrincipalDep = Annotated[Principal, Depends(require_bearer_principal)]
 
 
-def read_bearer_token(request: Request) -> str | None:
-    """The token this request presented in its ``Authorization`` header, or ``None``.
+def resolve_bearer_principal(request: Request, transaction: AsyncSession) -> Principal:
+    """The same resolution, with the Authorization Server's state read rather than declared.
 
-    The scheme is compared case-insensitively, because RFC 7235 says it is and a client that
-    sends ``bearer`` is not wrong.
+    **Built for this request only when this request presents a token.** The perimeter every product
+    route declares would otherwise make ``app.state.oauth`` a dependency of every cookie request
+    too, so an application with no signing keys could no longer serve a browser, and a deployment
+    would fail on its first read rather than on the boot that could not load its keys.
+
+    One implementation either way: this composes what the dependency above would have been handed
+    and delegates to it, so there is one place a presented token becomes a principal.
     """
-    header = request.headers.get(AUTHORIZATION_HEADER)
-    if header is None:
-        return None
-    scheme, _, credential = header.partition(" ")
-    if scheme.lower() != BEARER_SCHEME or not credential.strip():
-        return None
-    return credential.strip()
+    return require_bearer_principal(
+        request, get_token_service(request, transaction, get_oauth_state(request))
+    )

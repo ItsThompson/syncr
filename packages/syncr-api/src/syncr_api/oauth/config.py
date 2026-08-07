@@ -51,7 +51,8 @@ CODE_CHALLENGE_METHOD_S256 = "S256"
 # the verifier, which proves nothing against an attacker who intercepted the redirect.
 CODE_CHALLENGE_METHOD_PLAIN = "plain"
 TOKEN_TYPE_BEARER = "Bearer"  # noqa: S105 - the token TYPE, not a token
-BEARER_SCHEME = "bearer"
+# The scheme itself is `syncr_api.core.credentials.BEARER_SCHEME`, because the perimeter reads the
+# header before anything in this package is reached and one spelling has to serve both.
 
 # --- Lifetimes --------------------------------------------------------------
 # Minutes, because an access token cannot be revoked: it is a signed claim set the
