@@ -16,6 +16,10 @@
 # GROUPING IS BY ALERTNAME AND SEVERITY, not by instance. This is one host: two firing alerts are two
 # different problems, and a burst of the SAME alert is one problem the operator should be told about
 # once.
+#
+# NOTHING HERE IS SCOPED BY `deployment` ALONE. That label is an `external_labels` entry, so it is
+# identical on every alert Prometheus sends: using it to mean "the same thing" makes a rule match
+# everything. See the note above the inhibit rules, which is where that cost anyone anything.
 
 global:
   # How long a firing alert is held before it is treated as resolved once its series stops. Longer
@@ -43,21 +47,32 @@ route:
       repeat_interval: 1h
 
 inhibit_rules:
-  # A critical suppresses a warning about the same subsystem. The database being unreachable makes
-  # every solve fail, and paging about both says nothing the first does not.
-  - source_matchers:
-      - severity = "critical"
-    target_matchers:
-      - severity = "warning"
-    equal: ["deployment"]
+  # EVERY INHIBIT RULE NAMES ITS SOURCE BY `alertname`, and that is a rule rather than a style.
+  #
+  # The obvious shape, "a critical suppresses a warning", was here and was WRONG in a way syntax
+  # cannot show. It was scoped with `equal: ["deployment"]`, and `deployment` is an `external_labels`
+  # entry in `prometheus.yml`, so Prometheus stamps the same value on all twelve rules. The rule
+  # therefore read: ANY firing critical suppresses EVERY firing warning. `BackupStale` fires
+  # unconditionally until ticket 58 writes its metric, so ten minutes after the stack first started,
+  # all seven warnings stopped being deliverable. Posting four alerts to a real Alertmanager returned
+  # `ProbeSlow` and `DiskFillingUp` as `suppressed, inhibitedBy: [BackupStale]`.
+  #
+  # It is DELETED rather than rescoped, because scoped correctly it would never fire: no critical here
+  # shares a subsystem with any warning. A cause-named inhibition is the only kind that says
+  # something, and `test_alert_rules.py` now asserts that every rule below names an `alertname` source
+  # and that every name it uses is one of the twelve.
+  #
+  # `deployments/bin/alertmanager-probe.sh` drives this file through a real Alertmanager, because
+  # that is the one artefact `amtool check-config` cannot judge.
 
-  # An unreachable database is the cause of a failing solve and of a failing projection, so it
-  # suppresses both by name rather than only by severity: without this the operator receives three
-  # alerts for one outage.
+  # One outage, one page. A process that is gone is the cause of every duty that stopped, so the four
+  # alerts below say nothing this one does not, and each would otherwise arrive as its own page for
+  # the same repair. Nothing about a dead token or a slow request path is caused by this, so neither
+  # is a target.
   - source_matchers:
       - alertname = "DatabaseUnreachable"
     target_matchers:
-      - alertname =~ "SolveFailing|ProjectionFailing|HorizonNotMaintained"
+      - alertname =~ "SolveFailing|ProjectionFailing|HorizonNotMaintained|SourceStale"
     equal: ["deployment"]
 
 receivers:

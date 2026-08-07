@@ -1,25 +1,36 @@
-"""The alert-to-metric crossing, DERIVED in both directions, and the rules that govern the twelve.
+"""The alert-to-metric crossing, DERIVED in every direction, and the file that decides delivery.
 
-A family with no rule and a rule with no family are the two halves of the same defect, and this
-deployment has shipped it four times: a counter that incremented before its document existed, a
+A family with no rule and a rule with no family are two halves of the same defect, and this
+deployment has shipped it five times: a counter that incremented before its document existed, a
 gauge that could not fire for a duty failing every pass, a critical alert on a metric no process
-exported, and an SSE reconnect counter that stayed at zero through a killed backend.
+exported, an SSE reconnect counter that stayed at zero through a killed backend, and an Alertmanager
+inhibit rule that silenced every warning in the deployment.
 
-So neither direction is a list anyone maintains:
+So no direction is a list anyone maintains:
 
-- The EXPORTED set is read from the Prometheus registry, after importing every module whose source
-  constructs a collector. Filesystem-driven, so a family added by a later ticket is in the crossing
-  without this file being touched.
-- The WATCHED set is read from the alert rules and the four dashboards as they are deployed.
+- **EXPORTED** is read from the Prometheus registry after importing every module of all six
+  workspace members. Not after importing the modules whose SOURCE constructs a collector: a family
+  declared through a helper defined elsewhere never registers under that rule, and one such family
+  passed the whole crossing when a reviewer tried it.
+- **WATCHED** is read from the alert rules and the four dashboards as they are deployed.
+- **WHICH RULES MUST SAY `absent()`** is derived from the deployment topology: each family maps to
+  the member that declares it, each member to the scrape jobs that serve it, and a family whose
+  member has no job is produced by something that may never have run.
+- **WHICH PROCESSES NEED A LIVENESS ALERT** is derived from `prometheus.yml`'s own job list, crossed
+  against the `up{job=...}` matchers in the rules, in both directions.
+- **DELIVERY** is read from `alertmanager.yml`. Every inhibit rule must name its source by
+  `alertname`, because the shape that does not is the one that shipped: a blanket
+  `severity=critical` suppressing `severity=warning`, scoped by a label every alert shares.
 
-What IS a list is :data:`UNWATCHED`, and every entry states why. A family that is watched by nothing
-is legitimate only when someone has said so in writing, which is the difference between a decision
-and an oversight.
+What IS declared, in `tests/metric_declarations.py`, is the set of DECISIONS, each with a written
+reason and each crossed as an exact equality.
 
-Nothing here needs a running Prometheus, and nothing here needs a YAML library. The rule file's
-shape is fixed and this repository owns it, so the reader below is a narrow parser over that shape.
-What the files MEAN to Prometheus is checked by ``just monitoring-check``, which runs ``promtool``
-and ``amtool`` over the same two files: a library here would add a dependency, not a guarantee.
+Nothing here needs a running Prometheus, and nothing here needs a YAML library. The two config
+files' shape is fixed and this repository owns them, so the readers below are narrow parsers over
+that shape.
+What the files MEAN to Prometheus and Alertmanager is checked by `just monitoring-check`; what
+Alertmanager DOES with a firing alert is checked by `deployments/bin/alertmanager-probe.sh`, because
+that is the one thing `amtool` cannot judge.
 """
 
 from __future__ import annotations
@@ -35,242 +46,27 @@ import pytest
 
 import syncr_api
 from syncr_common.metrics import REGISTRY
+from tests.metric_declarations import (
+    DASHBOARDS,
+    EXTERNALLY_PRODUCED,
+    JOBS_BY_MEMBER,
+    NOT_ALERTED,
+    SEVERITY_BY_ALERT,
+    SPEC_FAMILIES,
+    UNWATCHED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
-# ---------------------------------------------------------------------------
-# THE TWELVE, exactly as `18-observability.md` names them, with the severity each carries.
-#
-# `BackupStale` is critical while `SolveFailing` is a warning, and that pair is the whole severity
-# scheme: A FAILED SOLVE LOSES NOTHING, because the previous plan is intact and still projected, and
-# A MISSING BACKUP LOSES EVERYTHING.
-# ---------------------------------------------------------------------------
-SEVERITY_BY_ALERT: Final[Mapping[str, str]] = {
-    "WriteTargetTokenExpiring": "critical",
-    "ProjectionFailing": "critical",
-    "BackupStale": "critical",
-    "DatabaseUnreachable": "critical",
-    "SolveFailing": "warning",
-    "SourceStale": "warning",
-    "SupersededRatioHigh": "warning",
-    "ProbeSlow": "warning",
-    "AssemblySlow": "warning",
-    "HorizonNotMaintained": "warning",
-    "DiskFillingUp": "warning",
-    "LearningJobFailed": "info",
-}
-
-DASHBOARDS: Final = ("product.json", "plan-pipeline.json", "calendar.json", "system.json")
-
-# Families a rule reads that THIS application does not export, and what does. A rule over a family
-# nothing produces cannot fire, so the allowance is a declaration rather than a silence: each entry
-# names the producer, and a rule reading a name that is neither exported nor listed here fails.
-EXTERNALLY_PRODUCED: Final[Mapping[str, str]] = {
-    "syncr_backup_last_success_timestamp_seconds": (
-        "Written by the nightly backup into the node exporter's textfile collector, because a "
-        "script that has exited cannot be scraped. Ticket 58 owns the script; `BackupStale` reads "
-        "this name with an `absent()` disjunct, so the alert fires on a deployment where no backup "
-        "has ever run rather than staying silent until one does."
-    ),
-}
-
-# Families that ARE drawn on a dashboard and deliberately carry no alert. Each states why, because a
-# family an operator can see and cannot be paged about is a decision.
-NOT_ALERTED: Final[Mapping[str, str]] = {
-    "syncr_estimate_ape_median": (
-        "A rising estimate error is the product working as designed on a user whose estimates "
-        "got worse. Paging about it would be paging about the user."
-    ),
-    "syncr_infeasibility_caught_early_ratio": (
-        "A product target measured over weeks, not an incident. A ratio that fell is a planning "
-        "habit to discuss at the weekly session, and there is no operational repair."
-    ),
-    "syncr_proposal_acceptance_ratio": (
-        "Falls when the solver's proposals stop fitting the user, which is a weights question the "
-        "learning layer answers over weeks. Nothing an operator does tonight changes it."
-    ),
-    "syncr_repins_per_week": (
-        "The strongest available signal that the objective weights are wrong, and a signal to read "
-        "on a trend: one busy week of pinning is not a fault."
-    ),
-    "syncr_engagement_streak_weeks": (
-        "The health canary, and explicitly NOT a success target. An alert would page an operator "
-        "about the user's own week off."
-    ),
-    "syncr_projection_events": (
-        "Carries the foreign-deletion count, which is a PRODUCT signal rather than a fault: a "
-        "sustained count means the user is still editing in their calendar client."
-    ),
-    "syncr_anchors_current": (
-        "How many commitments each source contributes. A count that changes is the user's calendar "
-        "changing, which is the input the product exists to read."
-    ),
-    "syncr_solve_iterations": (
-        "The shape of a solve rather than its health. An iteration count has no threshold that "
-        "means anything on its own."
-    ),
-    "syncr_solve_blocks_placed": (
-        "A week with fewer blocks is usually a lighter week. A count that fell for a bad reason "
-        "shows up as empty slots with a stated reason, which is the panel beside it."
-    ),
-    "syncr_solve_empty_slots": (
-        "A slot the solver could not fill for a stated reason is the plan explaining itself, and "
-        "the reasons are ordinary: the week is full, or nothing eligible fits."
-    ),
-    "syncr_solve_duration_seconds": (
-        "Budgeted at under two seconds and run in the worker, so a slow solve delays a proposal "
-        "and breaks nothing. A solve that never finishes is `SolveFailing`."
-    ),
-    "syncr_solve_superseded_ratio": (
-        "The cumulative reading over this process's whole lifetime. `SupersededRatioHigh` reads "
-        "the WINDOWED ratio, because a month-old process averages away the burst."
-    ),
-    "syncr_operation_queue_delay_seconds": (
-        "Measures the worker falling behind, which every other alert on this loop surfaces as its "
-        "own symptom. An alert here would be a second page for the real condition."
-    ),
-    "syncr_operations_non_terminal": (
-        "An operation stuck non-terminal is returned by the reaper within one maintenance cadence. "
-        "What it costs is a delayed proposal, and the alert for that is `SolveFailing`."
-    ),
-    "syncr_operation_reaper_races_lost_total": (
-        "A race the loser recorded, which means the winner did the work. Losing a race is the "
-        "mechanism working rather than failing."
-    ),
-    "syncr_solve_claim_races_lost_total": (
-        "Two workers reached one due solve and one claimed it. The single-flight invariant holding "
-        "is not an incident."
-    ),
-    "syncr_operation_sweep_tenant_failures_total": (
-        "A maintenance pass that raised. Its consequence is operations sitting non-terminal for "
-        "one more cadence, and the sweep retries with no operator involvement."
-    ),
-    "syncr_calendar_tenant_poll_failures_total": (
-        "A poll pass that raised, whose consequence is a source going unread. That consequence IS "
-        "alerted, by `SourceStale`, which reads staleness rather than the attempt."
-    ),
-    "syncr_worker_runner_failures_total": (
-        "The loop's per-duty failure counter. Every duty it counts has an alert on its CONSEQUENCE "
-        "instead, which is the reading that matters."
-    ),
-    "syncr_materialize_total": (
-        "A materialization caused by `solve_failed` is a week that fell back to a derived-only "
-        "plan, which is already alerted as `SolveFailing`."
-    ),
-    "syncr_verdict_transitions_total": (
-        "A transition is the product working: the week became impossible, or stopped being. "
-        "Neither reading is an operational fault."
-    ),
-    "syncr_maintainer_verdict_transitions_total": (
-        "Transitions nothing but the clock caused, which is the maintainer doing its job. "
-        "`HorizonNotMaintained` covers the maintainer NOT doing it."
-    ),
-    "syncr_maintainer_tick_duration_seconds": (
-        "How long one maintainer tick took, by duty. A slow tick delays the horizon, which is what "
-        "`HorizonNotMaintained` is stated over: this is where to look after it fires."
-    ),
-    "syncr_sse_connections": (
-        "How many browsers are watching. Zero is the normal state of a personal deployment nobody "
-        "has open, so no threshold is meaningful in either direction."
-    ),
-    "syncr_sse_events_dropped_total": (
-        "An event dropped for a slow consumer. The client reconnects and re-reads the resource, so "
-        "the surface converges without an operator."
-    ),
-    "syncr_sse_listener_reconnects_total": (
-        "The listener re-establishing its connection, which is the recovery working. A count that "
-        "will not settle shows up as dropped events beside it."
-    ),
-    "syncr_http_requests_total": (
-        "Traffic. There is one user, so neither a rise nor a fall is a condition: the latency and "
-        "error families beside it carry every alertable reading."
-    ),
-    "syncr_http_request_duration_seconds": (
-        "Route latency, drawn against section 19's budgets. The two routes whose latency is a "
-        "stated promise, the probe and the assembly, have alerts of their own."
-    ),
-    "syncr_http_errors_total": (
-        "A 4xx is usually the client's own request and a 5xx is visible through whichever "
-        "subsystem raised it. An aggregate alert would fire on a browser probing a stale URL."
-    ),
-    "syncr_db_pool_in_use": (
-        "A pool at its ceiling shows up as latency on every route above it, which is what an "
-        "operator acts on. The gauge says WHY, so it is drawn rather than paged."
-    ),
-    "syncr_db_query_duration_seconds": (
-        "Per-repository read latency, a diagnostic for the alerts above it: `AssemblySlow` fires "
-        "and this panel says which read got slower."
-    ),
-    "syncr_calendar_sync_duration_seconds": (
-        "Bounded by a publisher rather than by syncr, so no threshold here is syncr's to meet. A "
-        "read that stopped coming back at all is `SourceStale`."
-    ),
-    "syncr_calendar_events_read": (
-        "How much each source offered. A drop is the user's calendar emptying, which is a planning "
-        "input rather than a fault."
-    ),
-    "syncr_calendar_events_rejected_total": (
-        "A rejection is the PUBLISHER's malformed component in four of its five classes, so the "
-        "repair belongs to whoever publishes the feed. The panel states the reason per class."
-    ),
-    "syncr_calendar_sync_total": (
-        "Attempts by outcome. A failing attempt's consequence is staleness, which `SourceStale` "
-        "reads directly: alerting on the attempt would fire on one network refusal."
-    ),
-}
-
-# Families no rule and no panel reads, and why each is legitimate. A family absent from BOTH sides
-# of the crossing and absent from here fails the test, which is what makes this list the record of a
-# decision rather than the record of an omission.
-UNWATCHED: Final[Mapping[str, str]] = {
-    "syncr_method_duration_seconds": (
-        "The shared per-method decorator covers every decorated method in the application, so a "
-        "panel over it would be a panel over everything and an alert would have no threshold that "
-        "means anything. It is a diagnostic to query once a dashboard says where to look."
-    ),
-    "syncr_method_errors_total": (
-        "The same decorator's error counter. Every failure it counts also surfaces as an HTTP "
-        "error, a failed solve outcome, or a contained tenant fault, each of which IS watched: an "
-        "alert here would be a second page for a condition already paged."
-    ),
-    "syncr_observability_tenant_failures_total": (
-        "The state reading's own contained fault. Its consequence is that a gauge stops moving, "
-        "and the alerts over those gauges use `absent()` and staleness, so the outage is visible "
-        "through them. An alert on the observability layer failing to observe would be recursive."
-    ),
-    "syncr_observability_product_failures_total": (
-        "The product job's own contained fault. Product metrics answer a question about weeks, so "
-        "a failed run is caught by the next hourly one: there is nothing an operator does in the "
-        "meantime, and section 18 forbids an alert for a condition the user cannot act on."
-    ),
-    "syncr_learning_parameters_ready": (
-        "A count of parameters past their maturity gate. It rises as the corpus grows and a low "
-        "value means the user has not used the product for long enough, which is not a fault. The "
-        "Learned screen renders it, which is where it belongs."
-    ),
-    "syncr_learning_parameters_collecting": (
-        "The complement of the family above. A parameter below its threshold is one waiting for "
-        "evidence, which is the gate working, and the Learned screen is where the user sees it."
-    ),
-    "syncr_learning_samples": (
-        "Observations behind each parameter. A progress figure, rendered on the Learned screen "
-        "where the audience is the user. An operator cannot make the user log more outcomes."
-    ),
-    "syncr_learning_fit_rejected_total": (
-        "A refused fit is the ordinary outcome of a young corpus, which is why the family carries "
-        "a reason label. `LearningJobFailed` covers the case that IS a fault, which is the job "
-        "exiting non-zero; alerting on a refusal would alert on the gate working."
-    ),
-    "syncr_learning_edits_without_measurement": (
-        "The corpus that predates the measurement difference. It only ever falls, nothing can be "
-        "done to it, and it is exported so a weight gate held back by history is distinguishable "
-        "from one held back by a quiet user."
-    ),
-    "syncr_weight_set_version": (
-        "Which artefact is in force. A gauge that answers 'which', not 'how healthy': the Learned "
-        "screen renders it and an activation is a deliberate user act, not an incident."
-    ),
+# The workspace members that can declare a metric family, and where each one's source lives.
+MEMBER_ROOTS: Final[Mapping[str, str]] = {
+    "syncr_common": "packages/syncr-common/src",
+    "syncr_domain": "packages/syncr-domain/src",
+    "syncr_solver": "packages/syncr-solver/src",
+    "syncr_api": "packages/syncr-api/src",
+    "syncr_learning": "packages/syncr-learning/src",
+    "syncr_cli": "cli/src",
 }
 
 
@@ -285,23 +81,38 @@ class Rule:
     annotations: Mapping[str, str]
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Inhibition:
+    """One Alertmanager inhibit rule, as the matchers it was written with."""
+
+    sources: tuple[str, ...]
+    targets: tuple[str, ...]
+    equal: tuple[str, ...]
+
+
+def repo_root() -> Path:
+    return Path(syncr_api.__file__).resolve().parents[4]
+
+
 def deployments() -> Path:
     """The deployment configuration directory, resolved from this file rather than the cwd."""
-    return Path(syncr_api.__file__).resolve().parents[4] / "deployments"
+    return repo_root() / "deployments"
 
+
+# ---------------------------------------------------------------------------
+# Reading the two configuration files
+# ---------------------------------------------------------------------------
 
 # The rule file is a sequence of blocks, each opened by `- alert: <Name>`. Every field this test
 # reads is a `key: value` line inside one, and an `expr` may be a folded scalar spanning several.
 _BLOCK = re.compile(r"^\s*- alert:\s*(?P<name>\w+)\s*$", re.MULTILINE)
 _FIELD = re.compile(r"^\s*(?P<key>[a-z_]+):\s*(?P<value>.*)$", re.MULTILINE)
+# `- alertname = "X"` and `- alertname =~ "X|Y"`, as an inhibit rule's matchers are written.
+_MATCHER = re.compile(r'^\s*-\s*(?P<label>[a-z_]+)\s*(?:=~|=)\s*"?(?P<value>[^"\n]*)"?\s*$')
 
 
 def alert_rules() -> list[Rule]:
-    """Every rule the deployed file declares, in file order.
-
-    Split on the block opener rather than parsed as YAML: the shape is fixed, this repository owns
-    the file, and ``promtool`` is what confirms Prometheus can read it.
-    """
+    """Every rule the deployed file declares, in file order."""
     text = (deployments() / "prometheus" / "alerts.yml").read_text()
     openers = list(_BLOCK.finditer(text))
     bounds = [*(one.start() for one in openers), len(text)]
@@ -309,6 +120,12 @@ def alert_rules() -> list[Rule]:
         _rule(opener.group("name"), text[opener.end() : bounds[position + 1]])
         for position, opener in enumerate(openers)
     ]
+
+
+def named(name: str) -> Rule:
+    """The one rule with this name. Raises if the file holds none or two."""
+    (found,) = [one for one in alert_rules() if one.alert == name]
+    return found
 
 
 def _rule(name: str, body: str) -> Rule:
@@ -336,11 +153,7 @@ def _stated(region: str, *, key: str) -> str:
 
 
 def _folded(region: str, *, key: str) -> str:
-    """One field's value including the continuation lines a folded scalar spans.
-
-    A rule's expression and its annotations are written as ``>-`` blocks, so the value on the key's
-    own line is a marker and the content is the more-indented lines under it.
-    """
+    """One field's value including the continuation lines a folded scalar spans."""
     lines = region.splitlines()
     for position, line in enumerate(lines):
         found = _FIELD.match(line)
@@ -361,6 +174,63 @@ def _folded(region: str, *, key: str) -> str:
     return ""
 
 
+def inhibitions() -> list[Inhibition]:
+    """Every inhibit rule the Alertmanager configuration declares.
+
+    Read at all, which is the point: the previous version of this file never opened
+    `alertmanager.yml`, and the defect that shipped lived there and nowhere else.
+    """
+    text = (deployments() / "alertmanager" / "alertmanager.yml").read_text()
+    _, _, region = text.partition("inhibit_rules:")
+    region, _, _ = region.partition("\nreceivers:")
+    return [_inhibition(block) for block in _inhibit_blocks(region)]
+
+
+def _inhibit_blocks(region: str) -> Iterator[str]:
+    """Each `- source_matchers:` block of the inhibit-rules region."""
+    opener = re.compile(r"^\s*-\s*source_matchers:\s*$", re.MULTILINE)
+    openers = list(opener.finditer(region))
+    bounds = [*(one.start() for one in openers), len(region)]
+    for position, found in enumerate(openers):
+        yield region[found.start() : bounds[position + 1]]
+
+
+def _inhibition(block: str) -> Inhibition:
+    sources: list[str] = []
+    targets: list[str] = []
+    section = "source"
+    for line in block.splitlines():
+        if "target_matchers:" in line:
+            section = "target"
+            continue
+        if "equal:" in line:
+            section = "equal"
+            continue
+        found = _MATCHER.match(line)
+        if found is None or section == "equal":
+            continue
+        (sources if section == "source" else targets).append(
+            f"{found.group('label')}={found.group('value')}"
+        )
+    stated = _stated(block, key="equal")
+    return Inhibition(
+        sources=tuple(sources),
+        targets=tuple(targets),
+        equal=tuple(re.findall(r'"([^"]+)"', stated)),
+    )
+
+
+def scrape_jobs() -> set[str]:
+    """Every job name `prometheus.yml` declares."""
+    text = (deployments() / "prometheus" / "prometheus.yml").read_text()
+    return set(re.findall(r"^\s*-\s*job_name:\s*(\S+)\s*$", text, re.MULTILINE))
+
+
+# ---------------------------------------------------------------------------
+# Reading the dashboards
+# ---------------------------------------------------------------------------
+
+
 def panels(name: str) -> list[dict[str, Any]]:
     """One dashboard's panels. The JSON boundary is the one place an untyped shape is accepted."""
     parsed: dict[str, Any] = json.loads(
@@ -373,6 +243,16 @@ def dashboard_text(name: str) -> str:
     """One dashboard's file as text, for the assertions about what a panel SAYS."""
     return (deployments() / "grafana" / "dashboards" / name).read_text()
 
+
+def panel_queries(name: str) -> Iterator[str]:
+    for panel in panels(name):
+        for target in panel.get("targets", ()):
+            yield str(target.get("expr", ""))
+
+
+# ---------------------------------------------------------------------------
+# The two derived sets, and the topology they are crossed against
+# ---------------------------------------------------------------------------
 
 # A metric name as it appears in a query, with the suffixes a histogram or a counter adds.
 _FAMILY = re.compile(r"\bsyncr_[a-z0-9_]+")
@@ -392,35 +272,50 @@ def families_in(text: str) -> set[str]:
     return {base_family(found) for found in _FAMILY.findall(text)}
 
 
-def panel_queries(name: str) -> Iterator[str]:
-    for panel in panels(name):
-        for target in panel.get("targets", ()):
-            yield str(target.get("expr", ""))
-
-
 def exported_families() -> set[str]:
-    """Every family this application declares, read from the registry.
+    """Every family this workspace declares, read from the registry.
 
-    Filesystem-driven rather than read from whatever the test run happened to import: a module is
-    imported here exactly when its SOURCE constructs a collector, so a family declared by a module
-    nothing else in the suite touches is still in the crossing.
+    EVERY module of all six members is imported, not only the modules whose own source constructs a
+    collector. A family declared through a helper defined elsewhere, or created lazily inside a
+    function body, never registers under the narrower rule, so both set differences below would step
+    over it: a reviewer shipped one such family past the entire crossing.
     """
-    root = Path(syncr_api.__file__).resolve().parent
-    constructs = re.compile(r"\b(?:Counter|Gauge|Histogram|Summary)\(")
-    for path in sorted(root.rglob("*.py")):
-        if constructs.search(path.read_text()):
-            importlib.import_module(
-                "syncr_api." + str(path.relative_to(root).with_suffix("")).replace("/", ".")
-            )
-    # The learning job's six families live in another distribution and are scraped through the node
-    # exporter's textfile collector, so they are part of the same crossing.
-    importlib.import_module("syncr_learning.metrics")
+    root = repo_root()
+    for package, source in MEMBER_ROOTS.items():
+        tree = root / source / package
+        for path in sorted(tree.rglob("*.py")):
+            module = package + "".join(f".{part}" for part in path.relative_to(tree).parts)
+            importlib.import_module(module.removesuffix(".py").removesuffix(".__init__"))
     return {metric.name for metric in REGISTRY.collect() if metric.name.startswith("syncr_")}
 
 
-def watched_families() -> set[str]:
-    """Every family an alert rule or a dashboard panel reads."""
-    return alerted_families() | drawn_families()
+def declaring_member(family: str) -> str | None:
+    """Which member's source names this family, or ``None`` when no member does.
+
+    Read from the source rather than from the collector, because a collector knows nothing about
+    which distribution built it and the `absent()` requirement is stated per member.
+    """
+    root = repo_root()
+    for package, source in MEMBER_ROOTS.items():
+        tree = root / source / package
+        for path in tree.rglob("*.py"):
+            if f'"{family}' in path.read_text():
+                return package
+    return None
+
+
+def families_with_no_job() -> set[str]:
+    """Families whose declaring member is served by no scrape job.
+
+    Produced by something that may never have run, so a rule reading one is silent unless it says
+    `absent()`. Derived from the topology rather than listed, so a member that loses its service is
+    covered without this file being touched.
+    """
+    return {
+        family
+        for family in exported_families()
+        if (member := declaring_member(family)) is not None and not JOBS_BY_MEMBER[member]
+    }
 
 
 def alerted_families() -> set[str]:
@@ -438,29 +333,27 @@ def drawn_families() -> set[str]:
     }
 
 
-def named(name: str) -> Rule:
-    """The one rule with this name. Raises if the file holds none or two."""
-    (found,) = [one for one in alert_rules() if one.alert == name]
-    return found
+def watched_families() -> set[str]:
+    """Every family an alert rule or a dashboard panel reads."""
+    return alerted_families() | drawn_families()
 
 
 def declared(names: Mapping[str, str]) -> set[str]:
     """A declared list's keys, in the registry's own spelling.
 
-    The lists above are written in the spec's spelling, which keeps a counter's ``_total``, and the
-    client library reports a counter under its base name. Normalising here is what lets a reader of
-    those lists recognise the family a query names.
+    The tables are written in the spec's spelling, which keeps a counter's ``_total``, and the
+    client library reports a counter under its base name.
     """
     return {base_family(one) for one in names}
 
 
-class TestTheExtractionItself:
-    """Positive controls. A crossing whose extraction returns nothing passes forever.
+def liveness_jobs() -> set[str]:
+    """Every job an alert rule reads the liveness of."""
+    return set(re.findall(r'up\{job="([^"]+)"\}', " ".join(rule.expr for rule in alert_rules())))
 
-    Both sides of the crossing are set differences, so an extraction that silently found no families
-    would make every assertion above trivially true. These four assert the extraction works, which
-    is the only part of this file that can fail quietly.
-    """
+
+class TestTheExtractionItself:
+    """Positive controls. A crossing whose extraction returns nothing passes forever."""
 
     def test_it_reads_a_family_through_every_suffix_the_client_library_adds(self) -> None:
         query = (
@@ -480,21 +373,37 @@ class TestTheExtractionItself:
         assert families_in("increase(syncr_not_a_family_total[5m]) > 0") == {"syncr_not_a_family"}
         assert "syncr_not_a_family" not in exported_families()
 
-    def test_the_filesystem_walk_finds_a_family_nothing_else_imports(self) -> None:
-        """Read from the registry after walking the tree, not from whatever the suite imported.
+    def test_the_walk_reaches_every_member_rather_than_the_api_tree(self) -> None:
+        """A family in a member the api does not import must still be in the crossing.
 
         The learning families live in another distribution and the token gauge in a module only the
-        worker's state duty touches, so both are absent from a registry built by imports alone.
+        worker's state duty touches. The solver's five reach the registry only because the api
+        imports them transitively, which is the coupling this walk removes.
         """
         exported = exported_families()
 
         assert "syncr_learning_run_duration_seconds" in exported
         assert "syncr_write_target_token_age_seconds" in exported
+        assert "syncr_method_duration_seconds" in exported
+        assert "syncr_solve_iterations" in exported
         assert len(exported) > 40
+
+    def test_it_attributes_each_family_to_the_member_that_declares_it(self) -> None:
+        """The `absent()` requirement is derived from this, so a wrong attribution weakens it."""
+        assert declaring_member("syncr_learning_run_duration_seconds") == "syncr_learning"
+        assert declaring_member("syncr_method_duration_seconds") == "syncr_common"
+        assert declaring_member("syncr_solve_iterations") == "syncr_solver"
+        assert declaring_member("syncr_write_target_token_age_seconds") == "syncr_api"
+        assert declaring_member("syncr_not_a_family") is None
 
     def test_both_sides_of_the_crossing_are_non_empty(self) -> None:
         assert len(alerted_families()) > 5
         assert len(drawn_families()) > 20
+
+    def test_it_reads_the_inhibit_rules_and_the_scrape_jobs(self) -> None:
+        """Both were unread until a defect shipped in one of them."""
+        assert len(inhibitions()) >= 1
+        assert scrape_jobs() >= {"syncr-api", "syncr-worker", "node", "cadvisor", "postgres"}
 
 
 class TestTheTwelve:
@@ -533,12 +442,139 @@ class TestTheTwelve:
         assert named(name).holds_for
 
 
-class TestTheCrossing:
-    """Both directions, derived, and each as an EXACT equality rather than a containment.
+class TestDelivery:
+    """`alertmanager.yml`, which decides whether a firing rule reaches anyone.
 
-    A containment leaves one side free to grow unnoticed. Stated as equality, a family that gained a
-    rule and kept its exemption fails, and so does a family that lost its rule and has none.
+    Unread by this suite until a blanket inhibit rule silenced every warning in the deployment. The
+    rule was syntactically perfect, so `amtool check-config` accepted it, and the effect was only
+    visible by posting alerts to a real Alertmanager.
     """
+
+    def test_no_inhibit_rule_matches_on_severity_alone(self) -> None:
+        """The shape that shipped, forbidden by construction.
+
+        `severity = critical` suppressing `severity = warning`, scoped with `equal: ["deployment"]`.
+        `deployment` is an `external_labels` entry, so it is identical on all twelve rules: the rule
+        read 'any firing critical suppresses every firing warning'. `BackupStale` fires
+        unconditionally until ticket 58 writes its metric, so ten minutes after the stack first
+        started, none of the seven warnings was deliverable.
+        """
+        for rule in inhibitions():
+            assert any(matcher.startswith("alertname=") for matcher in rule.sources), (
+                f"an inhibit rule sourced on {rule.sources} suppresses by class rather than by "
+                "cause. Name the alert whose firing makes the targets redundant."
+            )
+
+    def test_every_alert_an_inhibit_rule_names_is_one_of_the_twelve(self) -> None:
+        """A rule naming an alert that does not exist is dead, and a typo reads as one."""
+        for rule in inhibitions():
+            for matcher in (*rule.sources, *rule.targets):
+                label, _, value = matcher.partition("=")
+                if label != "alertname":
+                    continue
+                assert set(value.split("|")) <= set(SEVERITY_BY_ALERT), matcher
+
+    def test_no_inhibit_rule_is_scoped_only_by_a_label_every_alert_shares(self) -> None:
+        """`equal:` narrows nothing when the label it names comes from `external_labels`.
+
+        It is legitimate BESIDE an alertname matcher, which is what actually narrows the rule, and
+        it is what makes the rule a no-op if a second deployment ever shares a channel.
+        """
+        external = set(
+            re.findall(
+                r"^\s{4}(\w+):",
+                (deployments() / "prometheus" / "prometheus.yml")
+                .read_text()
+                .partition("external_labels:")[2]
+                .partition("\n\n")[0],
+                re.MULTILINE,
+            )
+        )
+
+        assert external, "prometheus.yml declares no external labels, so this guard reads nothing"
+        for rule in inhibitions():
+            assert not set(rule.equal) - external or any(
+                matcher.startswith("alertname=") for matcher in rule.sources
+            )
+
+
+class TestLiveness:
+    """Every process that exports a family must have an alert that fires when it stops.
+
+    The ticket's own headline finding was a whole process whose registry nothing scraped. The
+    equivalent silence is a process nothing watches: every plan-pipeline, calendar and token family
+    is recorded in the worker, so a dead worker leaves a frozen gauge reading healthy and an absent
+    counter with no increase. Derived from the scrape configuration, so a fifth process is visible.
+    """
+
+    def test_every_scrape_job_that_serves_a_family_has_a_liveness_alert(self) -> None:
+        served = {job for jobs in JOBS_BY_MEMBER.values() for job in jobs}
+
+        assert served <= liveness_jobs(), (
+            f"{sorted(served - liveness_jobs())} export a metric family and no rule reads "
+            "up{job=...} for them, so a stopped process leaves every rule over its families silent"
+        )
+
+    def test_every_liveness_matcher_names_a_job_the_scrape_configuration_declares(self) -> None:
+        """The other direction: a matcher naming no job is a term that is always absent."""
+        assert liveness_jobs() <= scrape_jobs()
+
+    def test_every_member_names_jobs_the_scrape_configuration_declares(self) -> None:
+        declared_jobs = {job for jobs in JOBS_BY_MEMBER.values() for job in jobs}
+
+        assert declared_jobs <= scrape_jobs()
+
+    def test_every_member_that_declares_a_family_is_in_the_topology(self) -> None:
+        """A member added to the workspace without a row here would escape the whole guard."""
+        declaring = {
+            member
+            for family in exported_families()
+            if (member := declaring_member(family)) is not None
+        }
+
+        assert declaring <= set(JOBS_BY_MEMBER)
+
+    def test_the_liveness_alert_is_critical(self) -> None:
+        """Every rule over every worker-sourced family depends on it, so it is not a warning."""
+        assert named("DatabaseUnreachable").severity == "critical"
+
+
+class TestTheAbsentDiscipline:
+    """Which rules must say `absent()`, derived rather than listed.
+
+    A rule stated only as a threshold is silent while its series is missing, and a missing series is
+    usually the more serious condition. The previous version of this guard was a four-name
+    `parametrize`, which by construction could not see a fifth rule that needed the disjunct.
+    """
+
+    def test_every_rule_over_a_family_that_may_never_have_been_produced_says_absent(self) -> None:
+        unproduced = families_with_no_job() | declared(EXTERNALLY_PRODUCED)
+
+        for rule in alert_rules():
+            if families_in(rule.expr) & unproduced:
+                assert "absent(" in rule.expr, (
+                    f"{rule.alert} reads {sorted(families_in(rule.expr) & unproduced)}, which "
+                    "nothing in this deployment runs yet, so a threshold alone is silent"
+                )
+
+    def test_the_derivation_finds_the_families_it_is_stated_over(self) -> None:
+        """The positive control: an empty `unproduced` set would make the rule above vacuous."""
+        unproduced = families_with_no_job() | declared(EXTERNALLY_PRODUCED)
+
+        assert "syncr_learning_run_duration_seconds" in unproduced
+        assert "syncr_backup_last_success_timestamp_seconds" in unproduced
+        # And a family the worker exports is NOT in it: the worker has a job, so its liveness alert
+        # covers it and every rule over it need not carry the disjunct.
+        assert "syncr_horizon_weeks_without_plan" not in unproduced
+
+    def test_every_rule_over_an_exporter_family_says_absent(self) -> None:
+        """An exporter that is down reads as plenty of disk and a healthy database."""
+        for name in ("DiskFillingUp", "DatabaseUnreachable"):
+            assert "absent(" in named(name).expr
+
+
+class TestTheCrossing:
+    """Both directions, derived, and each as an EXACT equality rather than a containment."""
 
     def test_every_family_a_rule_or_a_panel_reads_is_exported_or_declared_external(self) -> None:
         """A rule with no family cannot fire, which is the same silence as having no rule."""
@@ -571,105 +607,35 @@ class TestTheCrossing:
 
         assert len(stated) > 80
 
-    def test_every_section_eighteen_family_exists(self) -> None:
-        """The spec's own tables, crossed against what the application actually declares.
 
-        The four that ticket 30 and ticket 53 found missing are here by name, because each was a
-        family a dashboard or an alert read and no process produced.
-        """
-        named_by_the_spec = {
-            "syncr_http_request_duration_seconds",
-            "syncr_http_requests_total",
-            "syncr_http_errors_total",
-            "syncr_probe_duration_seconds",
-            "syncr_assembly_duration_seconds",
-            "syncr_sse_connections",
-            "syncr_db_pool_in_use",
-            "syncr_db_query_duration_seconds",
-            "syncr_solve_duration_seconds",
-            "syncr_solve_total",
-            "syncr_solve_iterations",
-            "syncr_solve_blocks_placed",
-            "syncr_solve_empty_slots",
-            "syncr_materialize_total",
-            "syncr_horizon_weeks_without_plan",
-            "syncr_maintainer_tick_duration_seconds",
-            "syncr_maintainer_verdict_transitions_total",
-            "syncr_operations_non_terminal",
-            "syncr_operation_queue_delay_seconds",
-            "syncr_solve_superseded_ratio",
-            "syncr_verdict_transitions_total",
-            "syncr_calendar_sync_duration_seconds",
-            "syncr_calendar_sync_total",
-            "syncr_calendar_events_read",
-            "syncr_calendar_events_rejected_total",
-            "syncr_anchors_current",
-            "syncr_source_staleness_seconds",
-            "syncr_projection_duration_seconds",
-            "syncr_projection_events",
-            "syncr_write_target_token_age_seconds",
-            "syncr_learning_run_duration_seconds",
-            "syncr_learning_parameters_ready",
-            "syncr_learning_parameters_collecting",
-            "syncr_learning_samples",
-            "syncr_learning_fit_rejected_total",
-            "syncr_weight_set_version",
-            "syncr_estimate_ape_median",
-            "syncr_infeasibility_caught_early_ratio",
-            "syncr_proposal_acceptance_ratio",
-            "syncr_repins_per_week",
-            "syncr_engagement_streak_weeks",
-        }
+class TestTheSpecInventoryIsAFloor:
+    """Section 18's own tables, which no exemption can absorb.
 
-        assert {base_family(one) for one in named_by_the_spec} <= exported_families()
+    One constant rather than two overlapping lists. An empty reason puts the family on the floor; a
+    reason lets it off, and the same family must then appear in `UNWATCHED` with its own. Escaping
+    the floor therefore takes two deliberate statements in two places.
+    """
 
-    def test_every_family_the_spec_names_is_watched(self) -> None:
-        """Exporting a family nothing reads is the other half of the same defect.
+    def test_every_family_the_spec_names_exists(self) -> None:
+        assert {base_family(one) for one in SPEC_FAMILIES} <= exported_families()
 
-        Ticket 28 recorded five families in the plan pipeline with no alert and called it a standing
-        rule rather than a per-ticket catch. Stated here, the spec's own inventory is the floor: a
-        family section 18 names and nothing watches fails, whatever the exemption list says.
-        """
-        named_by_the_spec = {
-            "syncr_http_request_duration_seconds",
-            "syncr_http_requests_total",
-            "syncr_http_errors_total",
-            "syncr_probe_duration_seconds",
-            "syncr_assembly_duration_seconds",
-            "syncr_sse_connections",
-            "syncr_db_pool_in_use",
-            "syncr_db_query_duration_seconds",
-            "syncr_solve_duration_seconds",
-            "syncr_solve_total",
-            "syncr_solve_iterations",
-            "syncr_solve_blocks_placed",
-            "syncr_solve_empty_slots",
-            "syncr_materialize_total",
-            "syncr_horizon_weeks_without_plan",
-            "syncr_maintainer_tick_duration_seconds",
-            "syncr_maintainer_verdict_transitions_total",
-            "syncr_operations_non_terminal",
-            "syncr_operation_queue_delay_seconds",
-            "syncr_solve_superseded_ratio",
-            "syncr_verdict_transitions_total",
-            "syncr_calendar_sync_duration_seconds",
-            "syncr_calendar_sync_total",
-            "syncr_calendar_events_read",
-            "syncr_calendar_events_rejected_total",
-            "syncr_anchors_current",
-            "syncr_source_staleness_seconds",
-            "syncr_projection_duration_seconds",
-            "syncr_projection_events",
-            "syncr_write_target_token_age_seconds",
-            "syncr_learning_run_duration_seconds",
-            "syncr_estimate_ape_median",
-            "syncr_infeasibility_caught_early_ratio",
-            "syncr_proposal_acceptance_ratio",
-            "syncr_repins_per_week",
-            "syncr_engagement_streak_weeks",
-        }
+    def test_every_family_the_spec_names_is_watched_unless_it_says_why_not(self) -> None:
+        """Ticket 28's five orphans closed as a FLOOR rather than as a set of exemptions."""
+        on_the_floor = {base_family(one) for one, reason in SPEC_FAMILIES.items() if not reason}
 
-        assert {base_family(one) for one in named_by_the_spec} <= watched_families()
+        assert on_the_floor <= watched_families()
+
+    def test_a_spec_family_let_off_the_floor_is_also_declared_unwatched(self) -> None:
+        """Two statements, in two places, or the family stays on the floor."""
+        let_off = {base_family(one) for one, reason in SPEC_FAMILIES.items() if reason}
+
+        assert let_off <= declared(UNWATCHED)
+
+    @pytest.mark.parametrize(
+        "family", sorted(one for one, reason in SPEC_FAMILIES.items() if reason)
+    )
+    def test_each_family_let_off_the_floor_states_a_reason(self, family: str) -> None:
+        assert len(SPEC_FAMILIES[family]) > 80
 
 
 class TestTheRulesThatGovernTheRules:
@@ -700,9 +666,7 @@ class TestTheRulesThatGovernTheRules:
         plan change produces a refusal recorded as a failure. The arming gauge is what separates
         'syncr cannot write' from 'syncr is not permitted to write'.
         """
-        (rule,) = [one for one in alert_rules() if one.alert == "ProjectionFailing"]
-
-        assert "syncr_projection_writes_enabled == 1" in rule.expr
+        assert "syncr_projection_writes_enabled == 1" in named("ProjectionFailing").expr
 
     def test_the_probe_alert_is_labelled_by_the_request_caller(self) -> None:
         """The maintainer's roughly 288 background probes a day must neither mask nor trigger it."""
@@ -725,20 +689,6 @@ class TestTheRulesThatGovernTheRules:
         assert 'caller="request"' in rule.expr
         assert "0.15" in rule.expr
         assert rule.severity == "warning"
-
-    @pytest.mark.parametrize(
-        "name", ["BackupStale", "DatabaseUnreachable", "DiskFillingUp", "LearningJobFailed"]
-    )
-    def test_a_rule_over_a_family_that_may_not_exist_says_absent(self, name: str) -> None:
-        """A threshold alone is SILENT while its series is missing, and missing is often worse.
-
-        No backup has ever run. The exporter is down. The learning container has no timer yet. Each
-        of those reads as healthy to a bare comparison, which is the alert inversion this ticket
-        exists to end.
-        """
-        (rule,) = [one for one in alert_rules() if one.alert == name]
-
-        assert "absent(" in rule.expr
 
 
 class TestTheDashboards:
