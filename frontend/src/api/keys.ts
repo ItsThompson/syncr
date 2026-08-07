@@ -8,6 +8,8 @@
  * Keys are the request path, so a key read in a devtools cache entry names the resource it
  * came from without a lookup table. */
 
+import type { components } from "./schema";
+
 export const readinessKey = (): string => "/readyz";
 export const sessionKey = (): string => "/auth/session";
 
@@ -66,3 +68,37 @@ export const weekKey = (isoWeek: string): string => `/api/v1/weeks/${isoWeek}`;
  * from the mutation that created it and from the push stream, so this key exists for the window in which the
  * stream is not connected. It is the request path, so the key names the read it will perform. */
 export const operationKey = (operationId: string): string => `/api/v1/operations/${operationId}`;
+
+/* THE BACKLOG, AND ITS FILTERS, BECAUSE TWO FILTERS ARE TWO RESOURCES. A read narrowed to the rows the
+ * week's verdict marks must not be handed back for the whole list, and the at-risk narrowing is the
+ * server's determination rather than something a client can reproduce, so the filter belongs in the key
+ * the same way a week does. Absent members are omitted rather than sent empty, so the unfiltered read's
+ * key is the bare path and matches the request the client will send. */
+const BACKLOG_PATH = "/api/v1/tasks";
+
+export interface BacklogFilters {
+  readonly areaId?: string | undefined;
+  readonly status?: components["schemas"]["TaskStatus"] | undefined;
+  readonly atRisk?: boolean | undefined;
+}
+
+export const backlogKey = (filters: BacklogFilters = {}): string => {
+  const query = new URLSearchParams();
+  if (filters.areaId !== undefined) query.set("areaId", filters.areaId);
+  if (filters.status !== undefined) query.set("status", filters.status);
+  if (filters.atRisk !== undefined) query.set("atRisk", String(filters.atRisk));
+  const stated = query.toString();
+  return stated === "" ? BACKLOG_PATH : `${BACKLOG_PATH}?${stated}`;
+};
+
+/**
+ * True for a backlog key whatever filters it carries, which is what a capture has to invalidate.
+ *
+ * ONE RESOURCE WITH SEVERAL KEYS IS THE REASON THIS EXISTS, and it is not a blanket revalidation: a
+ * capture changes the list under every filter, and a reader who narrowed the table and narrowed it back
+ * would otherwise meet a cached list the new task is missing from. The `?` is load-bearing, so
+ * `/api/v1/tasks/{id}` is not matched: a task read by identifier is a different resource and a capture
+ * changes none of them.
+ */
+export const isBacklogKey = (key: unknown): boolean =>
+  typeof key === "string" && (key === BACKLOG_PATH || key.startsWith(`${BACKLOG_PATH}?`));
