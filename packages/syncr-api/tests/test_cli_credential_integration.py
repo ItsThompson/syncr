@@ -22,7 +22,8 @@ would pass on a route that refused everything.
 
 **A bearer request needs no ``Origin`` and a cookie request still does.** The exemption is the
 credential's property, so a CLI mutation works with no origin at all while the same mutation with a
-cookie and a hostile origin is refused.
+cookie and a hostile origin is refused. A request presenting BOTH is refused too, which is the only
+case that holds the exemption's second conjunct: without it the cookie-only case still passes.
 
 **A route outside the catalog refuses a token and serves the cookie.** The default is closed, and
 this is what says the twelve are the whole of the exception rather than the first twelve of many.
@@ -191,6 +192,56 @@ def test_the_same_write_with_a_cookie_and_a_hostile_origin_is_still_refused(
 
     assert forged.status_code == 403, forged.text
     assert forged.json()["type"] == "syncr:origin-rejected"
+
+
+def test_a_write_presenting_both_credentials_and_a_hostile_origin_is_refused(
+    http: TestClient, owner: UserRecord
+) -> None:
+    """The case that holds the exemption's second clause, and the only one that can.
+
+    ``require_trusted_origin`` exempts a request only when it presents a bearer token **and no
+    cookie**. The cookie-only test above passes with that second conjunct deleted, because such a
+    request is not a bearer request at all; so does the whole api suite. What discriminates is a
+    request carrying BOTH, which is the shape the conjunct exists for: the bearer half is what
+    resolves it, and the cookie is still ambient, so the check has something left to protect.
+
+    Not currently exploitable: a hostile page cannot attach ``Authorization`` cross-origin without a
+    preflight this deployment refuses, there being no CORS middleware anywhere in the api. The rule
+    was written deliberately, so it is asserted rather than reasoned about.
+    """
+    cookie = _signed_in(http, owner.email)
+    token = cli_bearer_header(http, owner.email)
+
+    forged = http.post(
+        TASKS_ROUTE,
+        json=_a_task(http, token),
+        headers={**cookie, **token, "Origin": HOSTILE_ORIGIN},
+    )
+
+    assert forged.status_code == 403, forged.text
+    assert forged.json()["type"] == "syncr:origin-rejected"
+
+
+def test_a_write_presenting_both_credentials_and_a_trusted_origin_is_applied(
+    http: TestClient, owner: UserRecord
+) -> None:
+    # The other direction, so the case above cannot pass by refusing every request that carries two
+    # credentials: with an origin this deployment serves, the same request is applied.
+    cookie = _signed_in(http, owner.email)
+    token = cli_bearer_header(http, owner.email)
+
+    applied = http.post(
+        TASKS_ROUTE,
+        json=_a_task(http, token),
+        headers={
+            **cookie,
+            **token,
+            "Origin": BROWSER_ORIGIN,
+            IDEMPOTENCY_KEY_HEADER: "cli-both-credentials",
+        },
+    )
+
+    assert applied.status_code == 201, applied.text
 
 
 def test_a_route_outside_the_catalog_refuses_a_token_and_serves_the_cookie(
