@@ -19,6 +19,7 @@ from syncr_learning.config import (
     MAX_SWITCH_COST_MINUTES,
     PRIOR_CONTEXT_SWITCH_COST,
     PRIOR_WEIGHT,
+    SHORTEST_NIGHT_MINUTES,
     THRESHOLD_CONTEXT_SWITCH_COST,
     TimeBucket,
 )
@@ -360,6 +361,13 @@ class TestASwitchPriceIsMeasuredOnlyFromGapsThatCouldBeOne:
     information about the price, which is why the bound is the parameter's own ceiling rather than a
     day.
     """
+
+    def test_the_price_ceiling_sits_below_the_shortest_night(self) -> None:
+        # The invariant that makes the bound CORRECT for the case it was written for, and it was
+        # prose only: widening the ceiling to 480 reddened nothing and made an eight-hour night
+        # switch evidence again, at the ceiling. Crossed here so the constant cannot move into the
+        # band silently.
+        assert MAX_SWITCH_COST_MINUTES < SHORTEST_NIGHT_MINUTES
 
     def test_a_pair_separated_by_a_night_is_not_evidence_about_a_switch_price(self) -> None:
         # The case the guard exists for, driven AT the size it really is. A night is eight to
