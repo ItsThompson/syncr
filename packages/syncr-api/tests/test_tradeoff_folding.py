@@ -23,17 +23,16 @@ from __future__ import annotations
 from dataclasses import fields, replace
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
 from syncr_api.plans.folding import FOLDED_FIELDS, Concessions, fold
-from syncr_api.plans.tradeoffs import Offer, offered_tradeoffs
+from syncr_api.plans.tradeoffs import offered_tradeoffs
 from syncr_domain.feasibility import DeadlineDemand, ShortfallKind, probe
 from syncr_domain.fixtures import elastic_sleep
 from syncr_domain.identity import BindingRef
 from syncr_domain.plan import AdjustmentKind, Block
-from syncr_domain.preferences import PreferenceOwner, PreferenceOwnerKind
 from syncr_solver.inputs import AreaBudget, EligibleTask, FrameEntry, SolveInputs, WeekAdjustment
 from tests.assembly_fakes import (
     A_REASON,
@@ -44,12 +43,9 @@ from tests.assembly_fakes import (
     FakeAreas,
     FakeOffPlan,
     FakePlacements,
-    FakePreferences,
     FakeRoutines,
     FakeTasks,
     a_plan,
-    a_preference,
-    a_routine,
     a_task,
     an_adjustment,
     an_area,
@@ -58,16 +54,21 @@ from tests.assembly_fakes import (
     at,
     between,
 )
+from tests.tradeoff_weeks import (
+    CAREER_TASK,
+    FITNESS_TASK,
+    a_week_every_kind_can_be_offered_in,
+    an_elastic_sleep,
+    an_offered,
+    gap_of,
+    minutes_of,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from syncr_api.plans.assembler import WeekAssembler
-    from syncr_domain.feasibility import Shortfall, Verdict
-    from syncr_domain.identifiers import AreaId, TaskId
-
-CAREER_TASK: TaskId = UUID("f2f2f2f2-0000-4000-8000-000000000001")
-FITNESS_TASK: TaskId = UUID("f2f2f2f2-0000-4000-8000-000000000002")
+    from syncr_domain.feasibility import Verdict
+    from syncr_domain.identifiers import AreaId
 
 # The member type each collection on `SolveInputs` holds, for the dotted half of a declared path.
 # Bounded by what the fold can reach: a path naming a collection absent here is a declaration this
@@ -117,63 +118,6 @@ def _member_fields(collection: str, before: Sequence[Any], after: Sequence[Any])
         }
         moved |= {f"{collection}.{name}" for name in differing} or {collection}
     return moved
-
-
-def a_week_every_kind_can_be_offered_in() -> WeekAssembler:
-    """One assembly a concession of any of the four kinds applies to.
-
-    Forty hours of Career work due Thursday morning, a Fitness floor with nowhere after it to fit,
-    an elastic sleep routine with two reducible nights before the deadline, and a preference on the
-    task so the field the prose tables do not name is observable.
-    """
-    career = an_area(name="Career")
-    fitness = an_area(name="Fitness", floor_hours=Decimal(5))
-    task = a_task(
-        task_id=CAREER_TASK,
-        area_id=career.id,
-        estimate_minutes=40 * MINUTES_PER_HOUR,
-        deadline=at(10, day=3),
-    )
-    return an_assembler(
-        areas=FakeAreas([fitness, career]),
-        tasks=FakeTasks([task]),
-        routines=FakeRoutines([_elastic_sleep()]),
-        preferences=FakePreferences([a_preference(owner=_a_task_owner(task.id))]),
-        off_plan=FakeOffPlan([an_off_plan_period(interval=between(10, 24 * 4 + 24, day=3))]),
-    )
-
-
-def _a_task_owner(task_id: TaskId) -> PreferenceOwner:
-    """A preference attached to one task. The shared builders name an Area and a Habit only."""
-    return PreferenceOwner(kind=PreferenceOwnerKind.TASK, id=task_id)
-
-
-def _elastic_sleep() -> Any:
-    return a_routine(
-        title=elastic_sleep.TITLE,
-        target_time=elastic_sleep.TARGET_TIME,
-        duration_minutes=elastic_sleep.DURATION_MINUTES,
-        min_duration_minutes=elastic_sleep.MIN_DURATION_MINUTES,
-    )
-
-
-async def an_offered(kind: AdjustmentKind) -> tuple[WeekAssembler, SolveInputs, Offer]:
-    """The assembler, its unfolded inputs, and the offer of ``kind`` the enumerator made for it."""
-    assembler = a_week_every_kind_can_be_offered_in()
-    inputs = await assembler.assemble(WEEK, elastic_sleep.NOW)
-    offers = offered_tradeoffs(inputs, probe(inputs.for_probe()))
-    offer = next(one for one in offers if one.tradeoff.kind is kind)
-    return assembler, inputs, offer
-
-
-def gap_of(verdict: Verdict, kind: ShortfallKind) -> Shortfall | None:
-    return next((one for one in verdict.shortfalls if one.kind is kind), None)
-
-
-def minutes_of(verdict: Verdict, kind: ShortfallKind) -> int:
-    """How short the week is by one measure, or zero when that measure found nothing."""
-    gap = gap_of(verdict, kind)
-    return 0 if gap is None else gap.minutes
 
 
 # --------------------------------------------------------------------------------
@@ -390,7 +334,9 @@ async def test_reducing_a_routine_closes_the_gap_the_nights_were_chosen_for() ->
     # The elastic_sleep fixture end to end: sixty minutes short, twenty minutes of give a night,
     # three nights named, and the gap gone afterwards.
     fitness = an_area(name="Fitness", floor_hours=Decimal(95))
-    assembler = an_assembler(areas=FakeAreas([fitness]), routines=FakeRoutines([_elastic_sleep()]))
+    assembler = an_assembler(
+        areas=FakeAreas([fitness]), routines=FakeRoutines([an_elastic_sleep()])
+    )
     before = await assembler.assemble(WEEK, elastic_sleep.NOW)
     offer = next(
         one
@@ -445,7 +391,7 @@ async def test_several_concessions_in_one_week_compose_because_each_names_a_dist
     task = a_task(
         task_id=CAREER_TASK, area_id=career.id, estimate_minutes=120, deadline=at(10, day=4)
     )
-    sleep = _elastic_sleep()
+    sleep = an_elastic_sleep()
 
     inputs = await an_assembler(
         areas=FakeAreas([fitness, career]),
@@ -602,7 +548,7 @@ async def test_a_reduction_frees_nothing_the_live_plan_still_commits_that_night_
     # frame is what it reserves, and the pair is what the next solve reconciles. A frame block
     # carries no Area, by the document's own rule, so no Area figure is involved either way.
     fitness = an_area(name="Fitness", floor_hours=Decimal(95))
-    sleep = _elastic_sleep()
+    sleep = an_elastic_sleep()
     tuesday = elastic_sleep.TUESDAY
     committed = FakePlacements(
         live_plan=a_plan(
