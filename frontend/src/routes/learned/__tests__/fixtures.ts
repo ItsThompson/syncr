@@ -4,8 +4,11 @@
  * because the api refuses a row whose state disagrees with its own figure: that is the gate as the reader sees it,
  * and a fixture that broke it would prove the screen against something production cannot send.
  *
- * THE STATEMENTS ARE THE API'S, quoted here rather than paraphrased, because what the screen owes is that they
- * REACH it. Asserting their wording in a test would be asserting this file's copy of the api's words. */
+ * THE THREE STATEMENTS BELOW ARE STAND-INS FOR THE API'S SHAPE, NOT ITS WORDS. Each is a sentence of the right
+ * kind in the right field, and none is the served string: measured against a running api, all three differ. That
+ * is deliberate and it is what the cases rest on -- they assert that the SERVED value reaches the screen, so a
+ * fixture holding the real wording would let a screen that hard-coded the sentence pass. Quoting the api here
+ * would also be a copy that goes stale the first time the api's copy is edited. */
 
 import type {
   Learned,

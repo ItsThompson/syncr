@@ -76,6 +76,20 @@ function meterFor(name: string): HTMLElement {
   return screen.getByRole("meter", { name });
 }
 
+/**
+ * A response a case holds open, and the release that answers it.
+ *
+ * Holding one open is what makes the window between two clicks observable at all: with the request
+ * answered immediately there is nothing for a second press to land inside.
+ */
+function aHeldAnswer(): { readonly held: Promise<void>; readonly release: () => void } {
+  const answered: { release: () => void } = { release: () => undefined };
+  const held = new Promise<void>((resolve) => {
+    answered.release = resolve;
+  });
+  return { held, release: () => answered.release() };
+}
+
 describe("the per-parameter table", () => {
   it("renders the value, the samples, what it needs, and the state of every parameter", async () => {
     installReads();
@@ -172,27 +186,34 @@ describe("collecting reads as normal, and never as a warning", () => {
     const signals = [...(await declaredTokens()).keys()].filter((name) => SIGNAL_TOKEN.test(name));
     /* The DECLARATIONS each utility produces, not the whole build: the build always carries the token layer's own
      * `:root`, so a check over its text would be true of every stylesheet this product could compile. */
-    const spending = classes.filter((name) => {
-      const declarations = declarationsOf(emitted, name);
-      return (
-        declarations !== null && signals.some((token) => declarations.includes(`var(${token})`))
-      );
+    const declared = classes.filter((name) => declarationsOf(emitted, name) !== null);
+    const spending = declared.filter((name) => {
+      const declarations = declarationsOf(emitted, name) ?? "";
+      return signals.some((token) => declarations.includes(`var(${token})`));
     });
 
     expect(signals.length).toBeGreaterThan(0);
+    /* THE COMPILER ITSELF, because the two reads above are the only things this case rests on. If `compileUtilities`
+     * ever emits nothing for the rendered classes -- the theme moves, the compile signature changes -- every class
+     * is skipped and the sweep passes having asserted nothing. That is the vacuous shape this guard was rewritten
+     * out of once already, reached from the other side. */
+    expect(declared.length).toBeGreaterThan(0);
     expect(spending).toEqual([]);
   });
 
   it("spends no notice surface on a collecting parameter", async () => {
     /* The other channel a pigment can arrive through: the notice family's own classes, which are CSS rather than
-     * utilities and so are invisible to the compiled check above. */
+     * utilities and so are invisible to the compiled check above.
+     *
+     * NO NOTICE CLASS AT ALL, rather than the three signal pigments by name. The collecting state renders no
+     * notice surface of any kind, so the stronger claim is also the true one, and it needs no list: a fifth
+     * pigment added to `surface.ts` would be invisible to a check that named the four it has today, and
+     * `NoticePigment` is type-only so there is nothing to derive one from at runtime. */
     installReads();
     const { container } = renderAt(SCREEN);
     await screen.findByRole("table", { name: /Every parameter syncr fits/ });
 
-    for (const name of renderedClasses(container)) {
-      expect(name).not.toMatch(/notice--(?:amber|oxide|verdigris)/);
-    }
+    for (const name of renderedClasses(container)) expect(name).not.toMatch(/^notice(--|$)/);
   });
 
   it("states in prose that nothing is broken while a parameter collects", async () => {
@@ -238,6 +259,30 @@ describe("the header", () => {
     renderAt(SCREEN);
 
     expect(await screen.findByText("Weight set 1, hand-tuned.")).toBeVisible();
+  });
+
+  it("agrees with the table's own footer about how many are collecting", async () => {
+    /* One fact, two places it is rendered. The band states the api's `collecting` and the kit's table sums its
+     * footer from the rows it drew, so both now read `state`: the field the row itself renders and the one the
+     * gate is expressed in.
+     *
+     * This case does NOT distinguish the two derivations the footer could use, and cannot: the api refuses a row
+     * whose state disagrees with its own value, so a fixture where `value === null` and `state === "ready"` is a
+     * shape production never sends. What it holds is that the two figures on one screen agree. */
+    installReads(
+      buildLearned({
+        parameters: [
+          buildReadyParameter(),
+          buildCollectingParameter({ parameter: "churn_tolerance" }),
+          buildCollectingParameter({ parameter: "skip_probability" }),
+        ],
+      }),
+    );
+    renderAt(SCREEN);
+    const table = await screen.findByRole("table", { name: /Every parameter syncr fits/ });
+
+    expect(screen.getByText("2 of 3 parameters still collecting")).toBeVisible();
+    expect(within(table).getByText("3 parameters \u00b7 2 still collecting")).toBeVisible();
   });
 });
 
@@ -369,6 +414,67 @@ describe("the weight sets", () => {
     await userEvent.click(screen.getByRole("button", { name: "Put in force" }));
 
     expect(await screen.findByText(/has that version/)).toBeVisible();
+  });
+
+  it("comes back after a refusal, so a lock taken is a lock released", async () => {
+    /* A lock taken before the request and released only on success is a lock a refusal keeps forever: the reader
+     * would be left looking at a control that never returns. */
+    installReads();
+    apiServer.use(
+      http.post(`${window.location.origin}${WEIGHT_SETS_PATH}/:version/activate`, () =>
+        HttpResponse.json(
+          {
+            type: "syncr:not-found",
+            title: "Not found",
+            status: 404,
+            detail: "No weight set of this account has that version.",
+          },
+          { status: 404, headers: { "content-type": "application/problem+json" } },
+        ),
+      ),
+    );
+    renderAt(SCREEN);
+    await screen.findByRole("table", { name: /Every weight set version/ });
+
+    await userEvent.click(screen.getByRole("button", { name: "Put in force" }));
+    await screen.findByText(/has that version/);
+
+    expect(screen.getByRole("button", { name: "Put in force" })).toBeEnabled();
+  });
+
+  it("sends one activation for a double-tap, which is what the lock is a ref for", async () => {
+    /* AN ACTIVATION RE-SOLVES EVERY FUTURE WEEK, so two clicks of an ordinary double-tap would ask for two waves
+     * of the most expensive act on this screen. The api is safe either way: one version is active by a partial
+     * unique index, so the outcome is last-writer-wins rather than no active set. What the lock saves is the work.
+     *
+     * THE THREE CLICKS ARE FIRED WITH NO RENDER BETWEEN THEM, which is what a real double-tap produces and what
+     * the `disabled` attribute alone cannot answer: it reaches the DOM on the next render. The response is held
+     * open, which is what makes the window observable at all. The capture host's own case is this shape. */
+    installReads();
+    const versions: string[] = [];
+    const { held, release } = aHeldAnswer();
+    apiServer.use(
+      http.post(
+        `${window.location.origin}${WEIGHT_SETS_PATH}/:version/activate`,
+        async ({ params }) => {
+          versions.push(String(params.version));
+          await held;
+          return HttpResponse.json({ version: 2, resolvedWeeks: [] }, { status: 200 });
+        },
+      ),
+    );
+    renderAt(SCREEN);
+    await screen.findByRole("table", { name: /Every weight set version/ });
+    const control = screen.getByRole("button", { name: "Put in force" });
+
+    control.click();
+    control.click();
+    control.click();
+
+    await waitFor(() => expect(versions).toEqual(["2"]));
+    release();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Put in force" })).toBeEnabled());
+    expect(versions).toEqual(["2"]);
   });
 });
 
