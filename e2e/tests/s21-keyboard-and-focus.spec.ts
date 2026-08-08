@@ -420,10 +420,16 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
      * was pressed, measured.
      *
      * What is asserted instead is that the keystroke REACHED THE API, by awaiting the request it must send, and
-     * that whatever the api answered is then stated in words. Whether this week holds a pending proposal depends
-     * on what the solve the pin triggered produced, so the outcome is read from the response rather than
-     * assumed: a refusal has to appear as a notice, and an approval has to clear the proposal slot. A keystroke
-     * that did nothing at all fails at the request, which is the failure this catches and previously did not.
+     * that the answer is then stated in words on the screen. A keystroke that did nothing at all fails at the
+     * request, which is the failure this catches and previously did not.
+     *
+     * THE SUCCESS PATH IS UNREACHED ON THIS FIXTURE AND THIS CASE DOES NOT BOUND IT. The week holds no pending
+     * proposal here, so the api answers 409 and what runs is the refusal arm, which is a real transition: the
+     * notice count goes from 0 to 1. The first version carried a success arm as well, asserting the proposal slot
+     * was null -- and the slot is null BEFORE the press, so that arm was an assertion whose subject cannot vary on
+     * the fixture that runs it. It is gone rather than left dormant. A 2xx here now REDDENS with what to write,
+     * because the day a seed makes the approval land is the day this case has to assert what a landed approval
+     * changes; ticket 1561 owns that fixture and records the coupling.
      */
     await render(page, week());
     /* The same determinism as the confirm step: the screen's own approve control exists once the week has arrived,
@@ -445,15 +451,13 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
     const answered = await approve.response();
     const status = answered === null ? 0 : answered.status();
 
-    expect(status, "the approval request got no response at all").toBeGreaterThan(0);
-    if (status >= 400) {
-      await expect.poll(async () => page.locator(".notice").count()).toBeGreaterThan(noticesBefore);
-    } else {
-      await expect
-        .poll(
-          async () => (await api.get<{ proposal: unknown }>(`/api/v1/weeks/${isoWeek}`)).proposal,
-        )
-        .toBeNull();
-    }
+    expect(
+      status,
+      "the approval was answered 2xx, so the success path is now reachable on this fixture and this " +
+        "case does not bound it: assert what a landed approval changes -- the proposal slot clearing and " +
+        "a new revision -- rather than leaving the branch unwritten. Ticket 1561 owns the fixture.",
+    ).toBeGreaterThanOrEqual(400);
+    /* The refusal is stated in words, which is the transition: the week screen carried no notice before the press. */
+    await expect.poll(async () => page.locator(".notice").count()).toBeGreaterThan(noticesBefore);
   });
 });
