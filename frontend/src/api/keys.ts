@@ -122,3 +122,10 @@ export const isBacklogKey = (key: unknown): boolean =>
  * next one's. Every write the mode makes names the WEEK key as well, because the session's figures are derived from the
  * week it plans and a pin changes both. */
 export const weeklySessionKey = (isoWeek: string): string => `/api/v1/reviews/week/${isoWeek}`;
+
+/* WHAT HAS BEEN LEARNED, AND THE VERSIONS IT COULD BE READ UNDER. Two keys because they answer two questions: the
+ * parameters and their maturity, which is what the Learned screen renders, and the versions, which is what a
+ * comparison and a revert address. An activation changes both, because the row it flips is in the list and the
+ * parameters it puts in force are in the read. */
+export const learnedKey = (): string => "/api/v1/learned";
+export const weightSetsKey = (): string => "/api/v1/weight-sets";
