@@ -50,6 +50,7 @@ from syncr_api.plans.pins import PinRepository
 from syncr_api.plans.reality import BlockOutcomeRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.promotions.repository import PromotionDeclineRepository
 from syncr_api.reviews.history import ReviewHistoryReader
 from syncr_api.reviews.service import BudgetReviewService, WeeklySessionService
 from syncr_api.reviews.session_sources import SessionSources
@@ -128,6 +129,7 @@ def get_weekly_session_service(
             anchors=AnchorRepository(transaction, tenant_id),
             conflicts=PlanConflictRepository(transaction, tenant_id),
             pins=PinRepository(transaction, tenant_id),
+            declines=PromotionDeclineRepository(transaction, tenant_id),
         ),
         clock=utc_now,
     )

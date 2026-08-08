@@ -67,9 +67,16 @@ class PromotionCandidateResponse(WireModel):
 
     ``US-TPL-05``: pinning the same binding to the same time for three consecutive weeks raises a
     proposal naming the binding, the time, and the number of weeks. Accepting or declining is a
-    route of its own, so this shape carries no action and no state: it is the question.
+    route of its own, addressed by the ``id`` below, and this shape carries no state: it is the
+    question, plus what can be done about it.
     """
 
+    id: str = Field(
+        description="What the accept and the decline routes address. It is the GROUP the pattern "
+        "was found by -- the kind, the content, the weekday and the minute of the day -- because "
+        "nothing stores a candidate: detection runs on every read of this payload. It carries no "
+        "week count, so a run that reaches a fourth week is still the pattern a decline silenced."
+    )
     entity_id: UUID = Field(
         description="The content that keeps being pinned. Which occurrence of it was pinned is "
         "dropped: the occurrence key is scoped to one week, so a pattern across weeks cannot hold "
@@ -93,6 +100,12 @@ class PromotionCandidateResponse(WireModel):
     )
     weeks: list[str] = Field(
         description="Every ISO week of the run, oldest first, so the count can be checked."
+    )
+    accept_refusal: str | None = Field(
+        description="Why the template cannot absorb this pattern, or null when it can. A promotion "
+        "MOVES the day-shape entry a pattern is about, so content no entry holds has nothing to "
+        "move: the pattern is still worth stating, and this is the sentence saying what the reader "
+        "can do instead. A surface renders no accept control when it is set."
     )
 
 

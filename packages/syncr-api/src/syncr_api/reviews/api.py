@@ -140,13 +140,15 @@ def _as_raised(item: RaisedItem) -> RaisedItemResponse:
 def _as_promotion(named: NamedPromotion) -> PromotionCandidateResponse:
     candidate = named.candidate
     return PromotionCandidateResponse(
-        entity_id=candidate.entity_id,
-        kind=candidate.kind.value,
+        id=candidate.ref.id,
+        entity_id=candidate.ref.entity_id,
+        kind=candidate.ref.kind.value,
         title=named.title,
-        weekday=candidate.weekday,
-        local_time=candidate.local_time,
+        weekday=candidate.ref.weekday,
+        local_time=candidate.ref.local_time,
         consecutive_weeks=candidate.consecutive_weeks,
         weeks=[str(one) for one in candidate.weeks],
+        accept_refusal=named.accept_refusal,
     )
 
 

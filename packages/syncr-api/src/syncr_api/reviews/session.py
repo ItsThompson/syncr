@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 
 from syncr_api.offplan.reading import off_plan_reading
 from syncr_api.plans.at_risk import tasks_at_risk
+from syncr_api.promotions.absorption import accept_refusal
 from syncr_api.reviews.collisions import repeated_collision_items, repeated_collisions
 from syncr_api.reviews.config import CHRONIC_SKIP_WEEKS, REPEATED_COLLISION_WEEKS
 from syncr_api.reviews.naming import (
@@ -47,7 +48,7 @@ from syncr_api.reviews.readings import categories_of
 from syncr_api.reviews.skips import chronic_skip_items, chronic_skips
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Container, Iterable, Iterator, Mapping, Sequence
     from datetime import datetime
     from uuid import UUID
 
@@ -92,16 +93,22 @@ class SessionRetro:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class NamedPromotion:
-    """One promotion candidate with the name the reader knows its content by.
+    """One promotion candidate with the name the reader knows its content by, and what can be done.
 
     The candidate itself carries no name: the rule that finds it reads pin rows, which store a
     binding and no title. Resolving the name HERE rather than on a client is what stops two surfaces
     of one payload spelling the same absence two ways, which is what happened while the client held
     its own fallback.
+
+    ``accept_refusal`` is why the template cannot absorb this pattern, or ``None`` when it can. It
+    is on the raise rather than left to the accept to discover, so no surface draws a control that
+    will be refused: the product states a limit where the reader meets it rather than letting them
+    find it by pressing.
     """
 
     candidate: PromotionCandidate
     title: str
+    accept_refusal: str | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -128,22 +135,37 @@ class WeeklySessionReading:
 
 
 def promotions_of(
-    candidates: Iterable[PromotionCandidate], *, titles: Mapping[ContentKey, str]
+    candidates: Iterable[PromotionCandidate],
+    *,
+    titles: Mapping[ContentKey, str],
+    declined: Container[str],
 ) -> tuple[NamedPromotion, ...]:
-    """Each candidate with the window's own name for its content, or its kind's word.
+    """Each candidate the reader has not already answered, named, with what can be done about it.
 
     The lookup drops the split index, because a repeated pin groups across chunks deliberately: a
     candidate for a divided task names the task. That is why it is :func:`content_title` rather
     than a direct read of the map, which is what a caller holding a whole content key uses.
+
+    **A declined pattern is dropped here rather than in the detection.** The rule answers what the
+    pins say, which is a fact about the plan; whether to ASK about it is a fact about the reader,
+    and the two are separate so a suppression cannot quietly change what the nightly run reports
+    finding.
     """
-    return tuple(
-        NamedPromotion(
-            candidate=candidate,
-            title=content_title(titles, kind=candidate.kind, entity_id=candidate.entity_id)
-            or a_kind(candidate.kind),
+    raised = []
+    for candidate in candidates:
+        if candidate.ref.id in declined:
+            continue
+        title = content_title(
+            titles, kind=candidate.ref.kind, entity_id=candidate.ref.entity_id
+        ) or a_kind(candidate.ref.kind)
+        raised.append(
+            NamedPromotion(
+                candidate=candidate,
+                title=title,
+                accept_refusal=accept_refusal(candidate.ref, title=title),
+            )
         )
-        for candidate in candidates
-    )
+    return tuple(raised)
 
 
 def retro_of(week: ReviewedWeek, *, shares: Sequence[AreaShare]) -> SessionRetro:

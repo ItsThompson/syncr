@@ -202,7 +202,11 @@ class WeeklySessionService:
             raised=raised_of(view, reviewed, facts, titles=titles, now=now),
             verdict=view.verdict,
             concessions=view.adjustments,
-            promotions=promotions_of(detect_repeated_pins(facts.pins), titles=titles),
+            promotions=promotions_of(
+                detect_repeated_pins(facts.pins),
+                titles=titles,
+                declined=facts.declined_promotions,
+            ),
             input_version=view.input_version,
         )
 

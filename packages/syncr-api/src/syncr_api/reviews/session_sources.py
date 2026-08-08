@@ -1,13 +1,14 @@
 """What the weekly session reads beyond the week view and the reviewed quarter.
 
-Six questions, one read each, behind one method. The service that composes the payload asks for the
-facts rather than for six repositories, so its constructor names the concerns it has rather than the
-tables they live in, and this module is where the cost of the session's request is visible at once.
+Seven questions, one read each, behind one method. The service that composes the payload asks for
+the facts rather than for seven repositories, so its constructor names the concerns it has rather
+than the tables they live in, and this module is where the cost of the session's request is visible
+at once.
 
 **Every reader belongs to the feature that owns its table.** The tasks are ``tasks``', the habits
-are ``habits``' and their outcome log is plan storage's, the commitments are ``anchors``', and the
-conflicts and the pins are plan storage's. A second reader of any of them would be a second answer
-to a question a screen already asks.
+are ``habits``' and their outcome log is plan storage's, the commitments are ``anchors``', the
+conflicts and the pins are plan storage's, and the declined promotions are ``promotions``'. A second
+reader of any of them would be a second answer to a question a screen already asks.
 
 **A commitment is NEW when the week before did not hold its series.** Two reads of one index rather
 than a stored flag: an anchor carries no notion of being new, and a created-at instant would report
@@ -19,6 +20,12 @@ before.
 candidate proposes a template entry, a template entry is declared as a wall time in the home zone,
 and grouping in any other zone would offer the user a time their template cannot hold. That is why
 ``PinPlacement`` carries a zone at all, and it is the same reading the nightly run takes.
+
+**The declines are read as a set of identifiers rather than as rows.** A declined pattern is
+silenced for a stated interval, and what this module needs of that is membership: whether the
+candidate one detection pass found is one the reader has already answered. Handing back rows would
+make the composer decide again which suppressions are still in force, which is the read's own
+question.
 
 **The debt reading is taken over the log the raise is about, which is not one log.** A habit at its
 cap is an ACCUMULATED figure and needs the whole log; an ``escalate`` habit is raised for a miss in
@@ -49,6 +56,7 @@ if TYPE_CHECKING:
     from syncr_api.plans.conflicts import PlanConflictRepository
     from syncr_api.plans.pins import PinRepository
     from syncr_api.plans.records import ConflictRecord
+    from syncr_api.promotions.repository import PromotionDeclineRepository
     from syncr_api.tasks.records import TaskRecord
     from syncr_api.tasks.repository import TaskRepository
     from syncr_domain.debt import DebtReading
@@ -73,10 +81,11 @@ class SessionFacts:
     arriving: tuple[AnchorRecord, ...]
     conflicts: tuple[ConflictRecord, ...]
     pins: tuple[PinPlacement, ...]
+    declined_promotions: frozenset[str]
 
 
 class SessionSources:
-    """The six reads the weekly session takes beyond the week view and the reviewed quarter."""
+    """The seven reads the weekly session takes beyond the week view and the reviewed quarter."""
 
     def __init__(
         self,
@@ -87,6 +96,7 @@ class SessionSources:
         anchors: AnchorRepository,
         conflicts: PlanConflictRepository,
         pins: PinRepository,
+        declines: PromotionDeclineRepository,
     ) -> None:
         self._tasks = tasks
         self._habits = habits
@@ -94,6 +104,7 @@ class SessionSources:
         self._anchors = anchors
         self._conflicts = conflicts
         self._pins = pins
+        self._declines = declines
 
     async def read(
         self,
@@ -129,6 +140,7 @@ class SessionSources:
             arriving=await self._arriving(planned, reviewed[-1], profile=profile),
             conflicts=await self._conflicts.for_weeks((*reviewed, planned)),
             pins=await self._placements(reviewed, home_zone=home_zone),
+            declined_promotions=await self._declines.silenced_at(now),
         )
 
     def _debt(
