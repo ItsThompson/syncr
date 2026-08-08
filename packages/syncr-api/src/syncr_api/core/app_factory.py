@@ -43,6 +43,7 @@ from syncr_api.outcomes.wiring import build_outcomes_router
 from syncr_api.pins.wiring import build_pins_router
 from syncr_api.plans.wiring import build_weeks_router
 from syncr_api.preferences.wiring import build_preferences_router
+from syncr_api.promotions.wiring import build_promotions_router
 from syncr_api.reviews.wiring import build_reviews_router
 from syncr_api.routines.wiring import build_routines_router
 from syncr_api.solving.wiring import build_operations_router
@@ -99,6 +100,7 @@ FEATURE_ROUTERS: tuple[RouterFactory, ...] = (
     build_pins_router,
     build_approvals_router,
     build_learned_router,
+    build_promotions_router,
 )
 
 # The one place the api's version is stated: the package metadata uv installs from

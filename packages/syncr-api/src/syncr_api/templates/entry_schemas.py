@@ -22,7 +22,7 @@ why every request here builds one.
 from __future__ import annotations
 
 from datetime import time  # noqa: TC003 - pydantic resolves annotations at runtime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal, Self
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
@@ -38,6 +38,9 @@ from syncr_domain.templates import (
     EntrySpan,
     TemplateEntryKind,
 )
+
+if TYPE_CHECKING:
+    from syncr_api.templates.records import TemplateEntryRecord
 
 TARGET_TIME_DESCRIPTION = (
     "Wall time, no zone: 07:00 means 07:00 wherever the user is, resolved against the zone "
@@ -89,6 +92,21 @@ class TemplateEntryResponse(WireModel):
         description="The routine or habit a concrete entry names. Null on a slot, which binds "
         "its content at solve time."
     )
+
+    @classmethod
+    def of(cls, record: TemplateEntryRecord) -> Self:
+        """A stored entry as this shape. On the schema so the two routes that answer with an
+        entry -- this package's, and the promotion accept that moves one -- map it one way."""
+        return cls(
+            id=record.id,
+            kind=record.kind,
+            target_time=record.span.target_time,
+            duration_minutes=record.span.duration_minutes,
+            flex_band_minutes=record.span.flex_band_minutes,
+            area_id=record.area_id,
+            binding_target=record.binding_target,
+            binding_ref=record.binding_ref,
+        )
 
 
 class _EntrySpanFields(WireModel):

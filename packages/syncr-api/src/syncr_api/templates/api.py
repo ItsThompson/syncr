@@ -67,7 +67,7 @@ from syncr_api.templates.schemas import (
 from syncr_domain.templates import WeekPattern
 
 if TYPE_CHECKING:
-    from syncr_api.templates.records import DayTypeRecord, TemplateEntryRecord, TemplateRecord
+    from syncr_api.templates.records import DayTypeRecord, TemplateRecord
 
 day_types_router = APIRouter()
 templates_router = APIRouter()
@@ -83,25 +83,12 @@ def _as_day_type(record: DayTypeRecord) -> DayTypeResponse:
     return DayTypeResponse(id=record.id, name=record.name)
 
 
-def _as_entry(record: TemplateEntryRecord) -> TemplateEntryResponse:
-    return TemplateEntryResponse(
-        id=record.id,
-        kind=record.kind,
-        target_time=record.span.target_time,
-        duration_minutes=record.span.duration_minutes,
-        flex_band_minutes=record.span.flex_band_minutes,
-        area_id=record.area_id,
-        binding_target=record.binding_target,
-        binding_ref=record.binding_ref,
-    )
-
-
 def _as_template(record: TemplateRecord) -> TemplateResponse:
     return TemplateResponse(
         id=record.id,
         day_type_id=record.day_type_id,
         name=record.name,
-        entries=[_as_entry(entry) for entry in record.entries],
+        entries=[TemplateEntryResponse.of(entry) for entry in record.entries],
     )
 
 
@@ -195,7 +182,7 @@ async def add_template_entry(
     """Add one entry. A concrete entry names its content; a slot names an Area."""
     with stated_rejection():
         declaration = body.declaration()
-    return _as_entry(await service.add_entry(principal, template_id, declaration))
+    return TemplateEntryResponse.of(await service.add_entry(principal, template_id, declaration))
 
 
 @templates_router.patch(TEMPLATE_ENTRY_PATH, summary="Move or resize one entry")
@@ -212,7 +199,9 @@ async def change_template_entry(
         duration_minutes=stated_unless_null(body.duration_minutes),
         flex_band_minutes=stated_unless_null(body.flex_band_minutes),
     )
-    return _as_entry(await service.change_entry(principal, template_id, entry_id, change))
+    return TemplateEntryResponse.of(
+        await service.change_entry(principal, template_id, entry_id, change)
+    )
 
 
 @templates_router.delete(
