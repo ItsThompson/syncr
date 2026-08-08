@@ -103,7 +103,7 @@ wedges. What the ledger refuses is a pair with no ratio at all.
 |---|---|
 | Every block is reachable by keyboard, at every tier the grid renders | `e2e/tests/s21-keyboard-and-focus.spec.ts`, with the tiers read off the grid rather than named, and focus following selection |
 | A block 8 to 13 pixels tall is reachable | `frontend/src/ui/domain/week-grid/__tests__/block.test.tsx`, by role, at that exact height, against the real component. **No seeded fixture renders one**, so the browser pass does not reach it: ticket 1561 |
-| A whole planning session completes without the pointer | `s21-keyboard-and-focus.spec.ts`: `g w`, `j`, `Shift+Down` with the pin read back over the api, `n` with the caret in the field, `c`, `Shift+A` |
+| A whole planning session completes without the pointer | `s21-keyboard-and-focus.spec.ts`, with **every step asserted as a transition rather than as a presence**: `g w` by URL, `j` by the tier focus lands on, `Shift+Down` by the pin read back over the api, `n` by the value the caret typed, `c` by the confirm request the key sends and `confirmedAt` moving off null, `Shift+A` by the approval request it sends and by the answer that request got |
 | Focus order follows visual order on every screen | the same file, per screen, against the boxes the browser reports |
 | Every interactive element shows a focus ring at a 2px offset, chosen by the surface | the same file, as a computed value: 2px at 2px, in the standard ink on paper and the inverse ink inside an ink-filled container |
 | The inverse ring is scoped to containers rather than controls | `frontend/src/builtStylesheet.test.ts` reads `.on-ink-surface :focus-visible` out of the artifact, so a control added to such a surface later inherits it |
@@ -113,6 +113,16 @@ something.** A column break is not a backward step: the sidebar's rows precede t
 the DOM, so tabbing off the last one goes to the top of the main column, which is higher and further
 right. And two elements are on one row when their vertical extents OVERLAP, not when their tops are
 within a row height, which had called a tab panel beginning 27px under its own strip a defect.
+
+**Two of these steps asserted a presence and were replaced.** `getByText(/confirmed/i)` matched the
+unconfirmed day's own notice, "This day is not confirmed", because "confirmed" is a substring of
+"unconfirmed"; and `.notice, .week-strip__verdict` counted one before anything was pressed, because
+`SummaryStrip` renders `.week-strip__verdict` unconditionally in a quiet variant. Both passed with the
+keystroke never sent, and the source comment claimed the opposite. Each now awaits the request the key
+must send, so a keystroke that does nothing times out with a message naming what the page did send, and
+each was shown to fail with its own press removed. Waiting for the control that shares the key's own
+guard is what makes the press deterministic: the first attempt lost `c` intermittently to a ledger whose
+day read had not landed, which is the same defect wearing a race's clothes.
 
 ## Forced-colors mode
 

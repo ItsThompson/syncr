@@ -28,6 +28,8 @@
 
 import { test, expect, usingFixture } from "./harness.ts";
 import type { Page } from "@playwright/test";
+import { civilDateIn } from "../src/api/weeks.ts";
+import { HOME_ZONE } from "../src/config.ts";
 import { planWeek } from "../src/harness/subject-weeks.ts";
 
 usingFixture("reference_week");
@@ -323,23 +325,104 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
-    /* CONFIRM THE DAY WITH `c`, on the screen that owns it. The reading changes, which is how a count that
-     * changes reports progress in a product with no motion. */
+    /* CONFIRM THE DAY WITH `c`, on the screen that owns it.
+     *
+     * WHAT THIS ASSERTED FIRST, AND WHY IT PROVED NOTHING. `getByText(/confirmed/i)` matched the unconfirmed
+     * day's OWN notice, "This day is not confirmed", because "confirmed" is a substring of "unconfirmed": the
+     * assertion passed with the key never pressed, measured. A presence that holds before the act is not
+     * evidence of the act.
+     *
+     * So both halves are TRANSITIONS. The request is awaited, so a keystroke that sends nothing times out here
+     * rather than passing; and the day is read back over the api, where `confirmedAt` moving off null is what the
+     * reader was actually promised. The pin step two blocks up is the model, and it is in the same test.
+     */
     await render(page, "/today");
-    await page.keyboard.press("c");
-    await expect(page.getByText(/confirmed/i).first()).toBeVisible();
+    const date = civilDateIn(HOME_ZONE);
+    const unsafe: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() !== "GET") unsafe.push(`${request.method()} ${request.url()}`);
+    });
+    /* THE KEY AND THE CONTROL APPLY ONE RULE, so waiting for the control is waiting for the rule: `c` is guarded
+     * on a day that has arrived and holds a block, which is the same condition that enables this button. Pressing
+     * as soon as the document had five elements lost the keystroke intermittently to a ledger whose day read had
+     * not landed, measured across three runs, and a keystroke lost to a race is the same defect as one never
+     * sent: the assertion this replaced could see neither. */
+    await expect(page.getByRole("button", { name: "Confirm the day" })).toBeEnabled();
+    const dayBefore = await api.get<{ confirmedAt: string | null; blockCount: number }>(
+      `/api/v1/days/${date}`,
+    );
+    expect(
+      dayBefore.confirmedAt,
+      "the day is already confirmed, so `c` would assert nothing",
+    ).toBeNull();
+    expect(dayBefore.blockCount, "`c` is guarded on a day holding a block").toBeGreaterThan(0);
 
-    /* APPROVE WITH Shift+A. Whether this week HAS a pending proposal depends on what the solve the pin triggered
-     * produced, so the assertion is that the keystroke reached the api and the outcome is stated in words: either
-     * the week is approved, or the api's own refusal is rendered. A keystroke that did nothing at all, with no
-     * sentence anywhere, is the failure this catches. */
-    await render(page, week());
-    await page.keyboard.press("Shift+A");
+    const confirmSent = page.waitForRequest(
+      (request) => request.method() === "POST" && request.url().includes(`/days/${date}/confirm`),
+      { timeout: 15_000 },
+    );
+    await page.keyboard.press("c");
+    /* The diagnostic names what the page DID send, because "no confirm request" and "a confirm request for another
+     * date" are different failures and a bare timeout tells them apart for nobody. */
+    await confirmSent.catch((cause: unknown) => {
+      throw new Error(
+        `\`c\` sent no confirm for ${date}. Unsafe requests seen: ` +
+          `${JSON.stringify(unsafe)} (${String(cause)})`,
+      );
+    });
+
     await expect
-      .poll(async () => {
-        const approved = await page.locator(".notice, .week-strip__verdict").count();
-        return approved;
-      })
-      .toBeGreaterThan(0);
+      .poll(
+        async () =>
+          (await api.get<{ confirmedAt: string | null }>(`/api/v1/days/${date}`)).confirmedAt,
+      )
+      .not.toBeNull();
+    /* And the screen states the change: the notice that says the day is not confirmed is the one thing that
+     * cannot survive the day being confirmed. */
+    await expect(page.getByText("This day is not confirmed")).toHaveCount(0);
+
+    /* APPROVE WITH Shift+A.
+     *
+     * WHAT THIS ASSERTED FIRST, AND WHY IT PROVED NOTHING. It counted `.notice, .week-strip__verdict` and
+     * required one: `SummaryStrip` renders `.week-strip__verdict` UNCONDITIONALLY, in a quiet variant when the
+     * week has no verdict, so the locator can never be zero on a week screen and the count was 1 before the key
+     * was pressed, measured.
+     *
+     * What is asserted instead is that the keystroke REACHED THE API, by awaiting the request it must send, and
+     * that whatever the api answered is then stated in words. Whether this week holds a pending proposal depends
+     * on what the solve the pin triggered produced, so the outcome is read from the response rather than
+     * assumed: a refusal has to appear as a notice, and an approval has to clear the proposal slot. A keystroke
+     * that did nothing at all fails at the request, which is the failure this catches and previously did not.
+     */
+    await render(page, week());
+    /* The same determinism as the confirm step: the screen's own approve control exists once the week has arrived,
+     * and the binding it shares is wired by the same reading. */
+    await expect(page.getByRole("button", { name: /Approve/ })).toBeVisible();
+    const noticesBefore = await page.locator(".notice").count();
+    const approveSent = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" && request.url().includes(`/weeks/${isoWeek}/approve`),
+      { timeout: 15_000 },
+    );
+    await page.keyboard.press("Shift+A");
+    const approve = await approveSent.catch((cause: unknown) => {
+      throw new Error(
+        `\`Shift+A\` sent no approval for ${isoWeek}. Unsafe requests seen: ` +
+          `${JSON.stringify(unsafe)} (${String(cause)})`,
+      );
+    });
+    const answered = await approve.response();
+    const status = answered === null ? 0 : answered.status();
+
+    expect(status, "the approval request got no response at all").toBeGreaterThan(0);
+    if (status >= 400) {
+      await expect.poll(async () => page.locator(".notice").count()).toBeGreaterThan(noticesBefore);
+    } else {
+      await expect
+        .poll(
+          async () => (await api.get<{ proposal: unknown }>(`/api/v1/weeks/${isoWeek}`)).proposal,
+        )
+        .toBeNull();
+    }
   });
 });
