@@ -72,7 +72,7 @@ export function useWeekWords({ screen, interaction, homeZone }: WeekWordsInput):
 
   const notices: Notice[] = [];
   const failure = interaction.operation.failure;
-  if (failure !== null) notices.push(solveFailedNotice(failure.operationId, failure.statement));
+  if (failure !== null) notices.push(solveFailedNotice(failure));
   for (const refused of refusals(interaction)) {
     notices.push(refusedNotice(refused.write, refused.problem));
   }

@@ -13,6 +13,7 @@
  * a notification for it would spend the one channel a conflict needs. */
 
 import type { Notice } from "../../ui/domain";
+import type { OperationFailure } from "../../api/hooks/useOperation";
 import type { Problem } from "../../contract";
 
 const PLAN_STILL_READS: readonly [string, ...string[]] = [
@@ -35,20 +36,34 @@ export function conflictNotice(conflictId: string, statement: string, blockId: s
   };
 }
 
-/** A solve failed. Panel volume, oxide, with the previous plan still rendered. */
-export function solveFailedNotice(operationId: string, statement: string): Notice {
+/**
+ * A solve that produced no plan. Panel volume, oxide, with the previous plan still rendered.
+ *
+ * THE ATTEMPT COUNT IS PART OF THE SENTENCE, because retries here are bounded and silent otherwise. A retryable
+ * failure goes back to the queue as `pending`, so a `failed` status reaching this screen has spent every attempt it
+ * was given: saying how many is what tells a reader the difference between bad luck and a week that cannot be
+ * solved. It is a count rather than a bar, which is how progress is reported in a product with no motion.
+ */
+export function solveFailedNotice(failure: OperationFailure): Notice {
   return {
-    id: `solve-failed:${operationId}`,
+    id: `solve-failed:${failure.operationId}`,
     volume: "panel",
     pigment: "oxide",
-    title: "This week's solve did not finish",
-    detail: statement,
+    title: "This week's solve produced no plan",
+    detail: `${failure.statement} ${attemptsSpent(failure.attempt)}`,
     unavailable: ["a plan that reflects your most recent edits"],
     stillWorks: PLAN_STILL_READS,
     since: null,
     action: null,
     scope: { screen: "/week" },
   };
+}
+
+/** The count, in the words a reader would use for it. */
+function attemptsSpent(attempt: number): string {
+  return attempt === 1
+    ? "It was attempted once."
+    : `It was attempted ${String(attempt)} times, which is every retry syncr allows it.`;
 }
 
 /**

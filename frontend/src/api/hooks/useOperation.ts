@@ -47,6 +47,15 @@ export interface OperationFailure {
   readonly operationId: string;
   /** The api's own sentence: what this status means and what still works. */
   readonly statement: string;
+  /**
+   * How many attempts this operation was given, one-based.
+   *
+   * Retries are bounded and a retrying job must not be silent: the api returns a retryable failure to the queue
+   * as `pending` with the count incremented, so a `failed` status reaching a client is the last attempt and this
+   * is how many were spent. Progress in this product is a count that changes, and there is no spinner anywhere to
+   * imply one.
+   */
+  readonly attempt: number;
   readonly code: string | null;
   readonly message: string | null;
 }
@@ -164,6 +173,7 @@ function failureOf(operation: Operation): OperationFailure {
   return {
     operationId: operation.id,
     statement: operation.statement,
+    attempt: operation.attempt,
     code: operation.error?.code ?? null,
     message: operation.error?.message ?? null,
   };
