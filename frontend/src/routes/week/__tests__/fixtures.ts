@@ -23,6 +23,12 @@ import type { Areas } from "../../../api/hooks/useAreas";
 import type { Settings } from "../../../api/hooks/useSettings";
 import type { Operation } from "../../../api/events";
 import type { PlanDocument, WeekReadings, WeekView } from "../../../api/hooks/useWeek";
+import type {
+  PromotionCandidate,
+  RaisedItem,
+  SessionRetro,
+  WeeklySession,
+} from "../../../api/hooks/useWeeklySession";
 import type { components } from "../../../api/schema";
 
 type Block = components["schemas"]["BlockResponse"];
@@ -35,6 +41,7 @@ type Pin = components["schemas"]["PinResponse"];
 type Proposal = components["schemas"]["ProposalDiffResponse"];
 type BlockChange = components["schemas"]["BlockChangeResponse"];
 type Pinned = components["schemas"]["PinnedResponse"];
+type Approved = components["schemas"]["WeekApprovedResponse"];
 type Span = components["schemas"]["WireSpan"];
 type Reason = components["schemas"]["ReasonResponse"];
 
@@ -335,6 +342,27 @@ export function buildPinned(overrides: Partial<Pinned> = {}): Pinned {
   };
 }
 
+/**
+ * What `POST /weeks/{isoWeek}/approve` answers with.
+ *
+ * `projection` is an OPERATION and not nullable, which matters: the approval hands it to the operation hook, and a
+ * fixture answering null crashes that hook on a shape the api cannot produce. Typing this against the generated schema
+ * is what makes such a fixture a compile error instead of an unhandled rejection.
+ */
+export function buildApproved(overrides: Partial<Approved> = {}): Approved {
+  return {
+    revisionId: "8c2d0e01-0000-4000-8000-000000000001",
+    isoWeek: ISO_WEEK,
+    reason: "user_approved",
+    approvedAt: monday("09:00"),
+    inputVersion: 6,
+    solvedAgainstVersion: 4,
+    adjustment: null,
+    projection: buildOperation({ kind: "projection" }),
+    ...overrides,
+  };
+}
+
 export interface WeekReads {
   /** How many times the week itself was read, which is how one refetch is told from two. */
   readonly weekReads: () => number;
@@ -377,3 +405,89 @@ export function installWeekReads(view: WeekView): WeekReads {
 }
 
 export const WEEK_PATH = `/week?week=${ISO_WEEK}`;
+
+/* THE WEEKLY SESSION IS A MODE OF THAT SAME ROUTE, at that same week: `?mode=session`. Both parameters, because the
+ * session is about a specific week and a link carrying only the mode would open on whichever week today falls in. */
+export const SESSION_PATH = `/week?week=${ISO_WEEK}&mode=session`;
+
+export const REVIEWED_WEEK = "2026-W06";
+
+export function buildRaisedItem(overrides: Partial<RaisedItem> = {}): RaisedItem {
+  return {
+    key: "chronic_skip:habit:gym",
+    kind: "chronic_skip",
+    title: GYM,
+    statement:
+      "Proposed and skipped in 6 weeks running. syncr has not changed its priority and will not: " +
+      "reschedule it, cut its scope, or drop it.",
+    weeks: 6,
+    ...overrides,
+  };
+}
+
+export function buildPromotionCandidate(
+  overrides: Partial<PromotionCandidate> = {},
+): PromotionCandidate {
+  return {
+    entityId: TASK_ID,
+    kind: "task",
+    weekday: 2,
+    localTime: "13:00",
+    consecutiveWeeks: 4,
+    weeks: ["2026-W03", "2026-W04", "2026-W05", REVIEWED_WEEK],
+    ...overrides,
+  };
+}
+
+export function buildRetro(overrides: Partial<SessionRetro> = {}): SessionRetro {
+  return {
+    period: REVIEWED_WEEK,
+    span: span("2026-02-02T00:00:00+00:00", "2026-02-09T00:00:00+00:00"),
+    discretionaryMinutes: 6720,
+    days: { confirmed: 5, unconfirmed: 1, offPlan: 1, statement: null },
+    offPlanMinutes: 1440,
+    offPlanStatement: null,
+    statement:
+      "5 confirmed days and 1 unconfirmed, and 1 declared off-plan. Only the confirmed days " +
+      "contribute to the figures below.",
+    categories: [
+      { areaId: AREA_CAREER, targetMinutes: 3360, actualMinutes: 2400 },
+      { areaId: AREA_FITNESS, targetMinutes: 1680, actualMinutes: 1800 },
+      { areaId: null, targetMinutes: 1680, actualMinutes: 2520 },
+    ],
+    ...overrides,
+  };
+}
+
+export function buildSession(overrides: Partial<WeeklySession> = {}): WeeklySession {
+  return {
+    isoWeek: ISO_WEEK,
+    span: span(monday("00:00"), "2026-02-16T00:00:00+00:00"),
+    inputVersion: 4,
+    retro: buildRetro(),
+    raised: [buildRaisedItem()],
+    verdict: buildVerdict(),
+    concessions: [],
+    promotions: [buildPromotionCandidate()],
+    promotionStatement:
+      "syncr noticed these patterns and has changed nothing. A promotion edits your template only " +
+      "when you accept it, and declining one does not raise it again for a while.",
+    statement: null,
+    ...overrides,
+  };
+}
+
+/**
+ * The session's own read, added to whatever the week reads already answer.
+ *
+ * Every week is answered for the reason the week read is: the mode navigates with `[` and `]` like the screen does, and
+ * a handler bound to one identifier would turn a navigation into an unhandled request.
+ */
+export function installSessionRead(session: WeeklySession): void {
+  apiServer.use(
+    http.get(`${window.location.origin}/api/v1/reviews/week/:isoWeek`, ({ params }) => {
+      const isoWeek = String(params.isoWeek);
+      return HttpResponse.json(isoWeek === session.isoWeek ? session : { ...session, isoWeek });
+    }),
+  );
+}

@@ -116,3 +116,9 @@ export const backlogKey = (filters: BacklogFilters = {}): string => {
  */
 export const isBacklogKey = (key: unknown): boolean =>
   typeof key === "string" && (key === BACKLOG_PATH || key.startsWith(`${BACKLOG_PATH}?`));
+
+/* THE WEEKLY SESSION, KEYED BY THE WEEK IT PLANS. Two weeks are two sessions, for the reason two weeks are two plans:
+ * the retrospective half is the preceding week's, so a payload read for one week answers a different question from the
+ * next one's. Every write the mode makes names the WEEK key as well, because the session's figures are derived from the
+ * week it plans and a pin changes both. */
+export const weeklySessionKey = (isoWeek: string): string => `/api/v1/reviews/week/${isoWeek}`;

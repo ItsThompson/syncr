@@ -12,13 +12,26 @@
  * THE DETAIL PANEL IS FIXED AND THE GRID ABSORBS WHAT IS LEFT. Below --bp-wide the panel closes to a rail rather than
  * narrowing, because a narrower panel cannot hold a reason and a narrower grid cannot hold a title.
  *
+ * THE WEEKLY SESSION IS A MODE OF THIS SCREEN, at `?mode=session`, and it is a BRANCH here rather than a route of its
+ * own: a second route would be a second destination, and the point of a mode is that it is a way of using the screen.
+ * The mode reads one payload of its own for the retrospective and the raises, and draws the grid, the strip, the verdict
+ * panel and the approve action from the readings this route already holds -- so the session and the screen cannot
+ * disagree about the week. It is triggered only by that URL: nothing here schedules it and nothing nags.
+ *
+ * OPENING THE MODE DECLARES ITSELF TO THE API CLIENT, which is what puts `session_mode_active` on every mutation the
+ * mode makes. One place decides it, so a write added later cannot forget; `api/sessionMode.ts` carries the reasoning.
+ *
  * COMPOSITION ONLY. What is selected, what a key does, what a drop sends and what the last response said are
  * `useWeekScreenInteraction`'s; the reads are `useWeekScreen`'s; the words are `verdict.ts`'s and `reasons.ts`'s. What
  * is here is which surface each reading draws on, and in what order a reader meets them. */
 
+import { useEffect } from "react";
 import { useSearchParams } from "react-router";
 
+import { setSessionModeOpen } from "../api/sessionMode";
+import { useAreas } from "../api/hooks/useAreas";
 import { useSettings } from "../api/hooks/useSettings";
+import { useWeeklySession } from "../api/hooks/useWeeklySession";
 import { todayIn } from "../lib/zonedInstant";
 import { EmptyWeek, ErrorState, PendingState, SummaryStrip, WeekGrid } from "../ui/domain";
 import { RouteBand } from "./RouteBand";
@@ -27,6 +40,7 @@ import { DetailPanel } from "./week/components/DetailPanel";
 import { WeekActions } from "./week/components/WeekActions";
 import { WeekHead } from "./week/components/WeekHead";
 import { columnLabel, weekRange } from "./week/labels";
+import { isSessionMode, SessionMode } from "./week/session";
 import { useWeekScreen } from "./week/useWeekScreen";
 import { useWeekScreenInteraction } from "./week/hooks/useWeekScreenInteraction";
 import { useWeekWords } from "./week/hooks/useWeekWords";
@@ -35,13 +49,19 @@ const SETUP_HREF = "/setup";
 const SETTINGS_HREF = "/settings";
 const FALLBACK_VISIBLE_HOURS = 12;
 
+/* A stable empty list, so a render before the Areas arrive does not hand the mode a fresh array every time. */
+const NO_AREAS: readonly never[] = [];
+
 export function WeekRoute() {
   const [params] = useSearchParams();
   const settings = useSettings();
   const homeZone = settings.status === "ready" ? settings.data.homeZone : "UTC";
   const today = todayIn(homeZone, Date.now());
   const isoWeek = params.get("week") ?? isoWeekOf(today) ?? "";
+  const isSession = isSessionMode(params);
   const screen = useWeekScreen(isoWeek);
+  const areas = useAreas();
+  const session = useWeeklySession(isoWeek, isSession);
   const days = screen.status === "ready" ? screen.days : [];
   const interaction = useWeekScreenInteraction({
     isoWeek,
@@ -51,6 +71,16 @@ export function WeekRoute() {
     visibleHours: screen.status === "ready" ? screen.visibleHours : FALLBACK_VISIBLE_HOURS,
   });
   const words = useWeekWords({ screen, interaction, homeZone });
+
+  /* THE MODE DECLARES ITSELF TO THE CLIENT, and clears on the way out. An effect rather than a call in the render, so a
+   * reader who leaves the session stops marking their mutations even when they leave by pressing the browser's back
+   * button: the cleanup runs on unmount and on every change of the mode. */
+  useEffect(() => {
+    setSessionModeOpen(isSession);
+    return () => {
+      setSessionModeOpen(false);
+    };
+  }, [isSession]);
 
   if (screen.status === "loading") {
     return (
@@ -83,6 +113,39 @@ export function WeekRoute() {
   }
 
   const dates = days.map((day) => day.date);
+
+  /* THE MODE IS A BRANCH OF THE READY SCREEN, so everything it draws from is the reading that reached here: a session
+   * cannot open on a week with no plan and then render a grid, because the empty state above already answered. */
+  if (isSession && session !== null) {
+    if (session.status === "loading") {
+      return (
+        <RouteBand title="Week" sub={isoWeek}>
+          <PendingState
+            title="Reading this week's session"
+            detail="Last week's figures, everything raised since, and what this week can hold."
+          />
+        </RouteBand>
+      );
+    }
+    if (session.status === "error") {
+      return (
+        <RouteBand title="Week" sub={isoWeek}>
+          <ErrorState title="The session was not read" detail={session.problem.detail} />
+        </RouteBand>
+      );
+    }
+    return (
+      <SessionMode
+        areas={areas.status === "ready" ? areas.data.areas : NO_AREAS}
+        interaction={interaction}
+        isoWeek={isoWeek}
+        nowMs={Date.now()}
+        screen={screen}
+        session={session.data}
+        words={words}
+      />
+    );
+  }
 
   return (
     <RouteBand title="Week" sub={`${isoWeek} · ${weekRange(dates)}`}>

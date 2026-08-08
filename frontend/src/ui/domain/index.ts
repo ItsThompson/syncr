@@ -17,6 +17,7 @@
  *   plate     the dithered illustration plates, which are never behind data
  *   week-grid the seven-column proportional grid: geometry, the tier ladder, overlap, the bands and the strip
  *   verdict-panel  the week's feasibility at panel volume: the lead sentence, the concessions, the gaps, the offers
+ *   session   the weekly session's raised items, at panel volume in amber and in that mode only
  *   reason-rows    the labelled-row set a reason record and a definition list are both drawn as
  *
  * The week grid renders `WeekDay`s and knows nothing about a response: turning one into the other is the route's
@@ -28,6 +29,7 @@ export * from "./marks";
 export * from "./notices";
 export * from "./plate";
 export * from "./reason-rows";
+export * from "./session";
 export * from "./shell";
 export * from "./status";
 export * from "./table";

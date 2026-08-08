@@ -181,6 +181,19 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
     />
   ),
   Plate: () => <domain.Plate name="astrolabe" />,
+  RaisedPanel: () => (
+    <domain.RaisedPanel
+      raises={[
+        {
+          key: "chronic_skip:habit:gym",
+          kind: "chronic_skip",
+          heading: "Chronically skipped",
+          title: "Gym",
+          statement: "Proposed and skipped in 6 weeks running.",
+        },
+      ]}
+    />
+  ),
   ReasonRows: () => <domain.ReasonRows rows={[{ label: "pinned", value: "Tue 05:30" }]} />,
   ShellLayout: () => <domain.ShellLayout />,
   ShortfallRow: () => <domain.ShortfallRow shortfall={SHORTFALL} />,
