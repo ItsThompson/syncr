@@ -30,6 +30,13 @@ document reads and a walk.
 syncr observes and proposes; the user decides. The candidate names the binding, the time and the
 week count, and it goes to the weekly session as a question.
 
+## A pin that moved nothing is not evidence of anything
+
+A pin carries the placement it superseded, so a pin whose two placements are the same interval is a
+reader confirming where the plan already put something. That states no preference, and a template
+that produced the placement is already right: three such pins would raise a question whose answer
+moves an entry to the time it already holds.
+
 ## It is addressed by the group it was found by
 
 Nothing stores a candidate, so nothing mints an identifier for one. ``PromotionRef`` is the group
@@ -171,12 +178,29 @@ class PinPlacement:
     promotion candidate proposes a template entry, a template entry is declared as a wall time in
     the home zone, and grouping in any other zone would offer the user a time their template cannot
     hold.
+
+    ``superseded_at`` is where the plan of record held the block before the pin, which every pin
+    stores permanently. It is here for one reason, stated at :attr:`moved`.
     """
 
     binding: BindingRef
     iso_week: IsoWeek
     starts_at: Instant
+    superseded_at: Instant
     zone: ZoneId
+
+    @property
+    def moved(self) -> bool:
+        """Whether this pin put the content anywhere other than where the plan already had it.
+
+        A pin that moved nothing states no preference against the plan: the reader confirmed a
+        placement rather than choosing one, and the template that produced it is already right. So
+        it is evidence of nothing structural, and :func:`detect_repeated_pins` drops it.
+
+        Without that, a reader who pins a block in place three weeks running is asked to move a
+        template entry to the time it already sits at, and the accept that follows is a no-op.
+        """
+        return self.starts_at != self.superseded_at
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -214,6 +238,10 @@ def detect_repeated_pins(
     The longest run is what a group reports. A group spanning five consecutive weeks is one
     candidate of five weeks rather than three of three, because the question is about the pattern
     and asking it three times is the nag the product's severity discipline forbids.
+
+    A pin that MOVED NOTHING is not counted at all. It states no preference against the plan, so
+    three of them are three confirmations of a template that is already right, and the promotion
+    they would raise proposes moving an entry to the time it already holds.
     """
     if consecutive_weeks < 2:
         raise DomainError(
@@ -222,6 +250,8 @@ def detect_repeated_pins(
         )
     grouped: dict[PromotionRef, set[IsoWeek]] = {}
     for pin in pins:
+        if not pin.moved:
+            continue
         grouped.setdefault(_group_of(pin), set()).add(pin.iso_week)
     candidates = [
         PromotionCandidate(ref=ref, weeks=run)

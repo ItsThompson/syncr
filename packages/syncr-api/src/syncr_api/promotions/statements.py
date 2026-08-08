@@ -22,11 +22,21 @@ if TYPE_CHECKING:
 
 
 def accepted_statement(accepted: AcceptedPromotion) -> str:
-    """What the accept changed, naming the shape, the old time and the new one."""
-    entry = accepted.entry
+    """What the accept changed, naming the shape, the old time and the new one.
+
+    **A no-op says so.** An entry already at the pattern's time is reachable two ways: accepting the
+    same pattern twice, and a reader who moved the entry by hand between the raise and the press.
+    "Now places this at 13:00, where it was at 13:00" is a sentence that reads as a change and
+    states none, on the one screen whose job is being checkable.
+    """
+    now_at = accepted.entry.span.target_time.isoformat("minutes")
+    if accepted.entry.span.target_time == accepted.moved_from:
+        return (
+            f"Your {accepted.shape_name} shape already places this at {now_at}, so nothing "
+            "changed. Every week from this one on was already being solved against that time."
+        )
     return (
-        f"Your {accepted.shape_name} shape now places this at "
-        f"{entry.span.target_time.isoformat('minutes')}, where it was at "
+        f"Your {accepted.shape_name} shape now places this at {now_at}, where it was at "
         f"{accepted.moved_from.isoformat('minutes')}. Its duration and its flex band are "
         "unchanged, and every week from this one on will be solved against the new time. Past "
         "weeks keep the plan they were approved with."

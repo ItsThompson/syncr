@@ -100,6 +100,7 @@ _PINS = table(
     column(spelling.ISO_WEEK),
     column(spelling.BINDING),
     column(spelling.STARTS_AT),
+    column(spelling.SUPERSEDED_STARTS_AT),
 )
 # `end` is a reserved word in SQL. `column()` quotes an identifier it knows the dialect reserves,
 # the same way the mapper does, so the name is written plainly here and the quoting is the driver's.
@@ -282,6 +283,7 @@ class PostgresCorpusReader:
                     binding=identity,
                     iso_week=IsoWeek.parse(row.iso_week),
                     starts_at=row.starts_at,
+                    superseded_at=row.superseded_starts_at,
                     zone=zone,
                 )
             )

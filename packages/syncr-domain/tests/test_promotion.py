@@ -43,11 +43,15 @@ def pinned(
     hour: int = 13,
     day: int = 1,
     entity_id: UUID = GYM_ID,
+    superseded_hour: int = 7,
 ) -> PinPlacement:
     """One pin of one habit, in ``week``, at a local time, under a given occurrence key.
 
     The instant is built from the week's own Monday in UTC, which is the zone the fixture states, so
     the local weekday and hour the grouping reads are the ones the arguments name.
+
+    ``superseded_hour`` is where the plan held the block before the pin, and it defaults to a
+    DIFFERENT hour, because a pin that moved nothing is evidence of nothing and the rule drops one.
     """
     monday = datetime(week.monday().year, week.monday().month, week.monday().day, tzinfo=UTC)
     return PinPlacement(
@@ -59,6 +63,7 @@ def pinned(
         ),
         iso_week=week,
         starts_at=monday + timedelta(days=day, hours=hour),
+        superseded_at=monday + timedelta(days=day, hours=superseded_hour),
         zone=ZONE,
     )
 
@@ -174,6 +179,7 @@ class TestTheLocalTimeIsPartOfTheGroup:
                 binding=one.binding,
                 iso_week=one.iso_week,
                 starts_at=one.starts_at + timedelta(minutes=45),
+                superseded_at=one.superseded_at,
                 zone=ZONE,
             )
             for one in (pinned(week=week) for week in WEEKS[:3])
@@ -183,6 +189,33 @@ class TestTheLocalTimeIsPartOfTheGroup:
 
     def test_an_empty_pin_list_finds_nothing(self) -> None:
         assert detect_repeated_pins([]) == []
+
+
+class TestAPinThatMovedNothingIsEvidenceOfNothing:
+    def test_three_weeks_of_pinning_in_place_raise_no_candidate(self) -> None:
+        """The reader confirmed where the plan already put it, three weeks running.
+
+        Counting those would ask them to move a template entry to the time it already holds, and the
+        accept that followed would be a no-op whose own sentence said so.
+        """
+        in_place = [pinned(week=week, superseded_hour=13) for week in WEEKS[:3]]
+
+        assert detect_repeated_pins(in_place) == []
+
+    def test_a_week_pinned_in_place_does_not_lengthen_a_run(self) -> None:
+        # Weeks 7 and 8 moved it and week 9 confirmed it, which is two weeks of evidence.
+        pins = [
+            pinned(week=WEEKS[0]),
+            pinned(week=WEEKS[1]),
+            pinned(week=WEEKS[2], superseded_hour=13),
+        ]
+
+        assert detect_repeated_pins(pins) == []
+
+    def test_a_pin_that_moved_is_read_as_moved(self) -> None:
+        # The property both readers pass their two instants for, stated on its own.
+        assert pinned(week=WEEKS[0]).moved
+        assert not pinned(week=WEEKS[0], superseded_hour=13).moved
 
 
 class TestTheIdentityACandidateIsAddressedBy:

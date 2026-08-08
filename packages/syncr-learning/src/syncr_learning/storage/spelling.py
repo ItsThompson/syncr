@@ -71,6 +71,9 @@ CONTEXT: Final = "context"
 WEIGHT_SET_VERSION: Final = "weight_set_version"
 BINDING: Final = "binding"
 STARTS_AT: Final = "starts_at"
+# Where the plan of record held a pinned block before the pin. Read because promotion detection
+# drops a pin that moved nothing, and this is what says whether one did.
+SUPERSEDED_STARTS_AT: Final = "superseded_starts_at"
 SPAN_START: Final = "start"
 SPAN_END: Final = "end"
 HOME_ZONE: Final = "home_zone"

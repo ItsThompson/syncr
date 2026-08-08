@@ -38,6 +38,9 @@ from syncr_api.areas.config import AREAS_PREFIX
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_database, create_db_lifespan
+from syncr_api.core.errors import Forbidden
+from syncr_api.core.principal import Principal
+from syncr_api.core.scopes import ALL_SCOPES, Scope
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.plans.declarations import PinToHold
 from syncr_api.plans.pins import PinRepository
@@ -48,13 +51,15 @@ from syncr_api.promotions.config import (
     PROMOTION_ID_MAX_LENGTH,
     PROMOTIONS_PREFIX,
 )
+from syncr_api.promotions.injection import get_promotion_service
 from syncr_api.promotions.models import PromotionDecline
 from syncr_api.promotions.repository import PromotionDeclineRepository
 from syncr_api.reviews.config import REVIEWS_PREFIX
 from syncr_api.templates.config import DAY_TYPES_PREFIX, TEMPLATES_PREFIX, WEEK_PATTERN_PREFIX
 from syncr_api.templates.models import TemplateEntryRow
-from syncr_domain.identity import BindingRef, block_id
+from syncr_domain.identity import BindingKind, BindingRef, block_id
 from syncr_domain.intervals import Interval
+from syncr_domain.promotion import PromotionRef
 from syncr_domain.weeks import IsoWeek, Weekday
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 
@@ -85,6 +90,12 @@ A_PAST_WEEK = IsoWeek.containing(datetime.now(UTC).date() - timedelta(days=28))
 # The entry every pattern below is about: declared at 07:00, pinned to 13:00 three weeks running.
 DECLARED_AT = "07:00"
 PINNED_HOUR = 13
+
+# One reference, for the cases about AUTHORITY rather than about a pattern: what a scope check
+# refuses it refuses before anything is read, so the content it names need not exist.
+A_REF = PromotionRef(
+    kind=BindingKind.TEMPLATE_ENTRY, entity_id=uuid4(), weekday=2, minute_of_day=PINNED_HOUR * 60
+)
 
 
 def accept_path(promotion_id: str) -> str:
@@ -214,12 +225,17 @@ def seed_pins(
     *,
     binding_of: Callable[[Date, int], BindingRef],
     hour: int = PINNED_HOUR,
+    superseded_hour: int = 7,
 ) -> None:
     """One pin of the same content at the same local time in each of ``weeks``.
 
     ``binding_of`` takes the week's Monday and the week's position in the run, because the two kinds
     of binding a pattern can be about are keyed differently: an entry by the date it materialized
     for, and a habit occurrence by its index in that week's expansion.
+
+    ``superseded_hour`` is where the plan of record held the block, and it defaults to a DIFFERENT
+    hour because a pin that moved nothing is evidence of nothing: passing ``hour`` here is how a
+    case seeds a reader confirming a placement rather than choosing one.
     """
 
     async def hold() -> None:
@@ -239,7 +255,8 @@ def seed_pins(
                                 an_instant(monday, hour), an_instant(monday, hour + 1)
                             ),
                             superseded_placement=Interval(
-                                an_instant(monday, 7), an_instant(monday, 8)
+                                an_instant(monday, superseded_hour),
+                                an_instant(monday, superseded_hour + 1),
                             ),
                             weight_set_version=1,
                             created_at=utc_now(),
@@ -366,6 +383,29 @@ def seed_a_lapsed_decline(database_url: str, tenant_id: TenantId, promotion_id: 
     run(seed())
 
 
+def answer(database_url: str, principal: Principal, ref: PromotionRef, *, accepting: bool) -> None:
+    """One answer, through the service the route calls, on a credential this test constructs.
+
+    The service is composed by its own injection function rather than by hand: that function is the
+    production wiring, and a test that assembled four collaborators itself could prove a scope check
+    on a service the app never builds.
+    """
+
+    async def act() -> None:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                service = get_promotion_service(principal, session)
+                if accepting:
+                    await service.accept(principal, ref)
+                else:
+                    await service.decline(principal, ref)
+        finally:
+            await database.engine.dispose()
+
+    run(act())
+
+
 def promotions_in(http: TestClient, headers: dict[str, str]) -> list[dict[str, Any]]:
     answered = http.get(session_path(PLANNED), headers=headers)
     assert answered.status_code == HTTPStatus.OK, answered.text
@@ -417,6 +457,38 @@ class TestTheTwoPathsAreTheOnesTheCriterionNames:
         assert http.post(accept_path(candidate["id"]), headers=signed_in).status_code == (
             HTTPStatus.OK
         )
+
+
+class TestAPinThatMovedNothingRaisesNothing:
+    def test_three_weeks_of_pinning_in_place_reach_the_payload_as_no_candidate(
+        self,
+        http: TestClient,
+        owner: UserRecord,
+        signed_in: dict[str, str],
+        live_database_url: str,
+    ) -> None:
+        """The rule's own refusal, through the read that supplies it.
+
+        A pin whose placement is where the plan already held the block states no preference: the
+        reader confirmed a time rather than choosing one. Counting three of them would ask them to
+        move a day-shape entry to the time it already holds, and the accept would answer with a
+        sentence saying it moved nothing. This drives the api's own read, because the second instant
+        the rule needs is one `_placements` has to pass and could silently stop passing.
+        """
+        area_id = declare_an_area(http, signed_in)
+        template_id = declare_a_day_shape(http, signed_in)
+        entry_id = declare_an_entry(http, signed_in, template_id, area_id=area_id)
+        seed_pins(
+            live_database_url,
+            owner.tenant_id,
+            PINNED_WEEKS,
+            binding_of=lambda monday, _offset: BindingRef.for_template_entry(
+                UUID(entry_id), on=monday
+            ),
+            superseded_hour=PINNED_HOUR,
+        )
+
+        assert promotions_in(http, signed_in) == []
 
 
 # --------------------------------------------------------------------------------
@@ -495,7 +567,11 @@ class TestTheAcceptMovesTheEntryThePatternNames:
         live_database_url: str,
     ) -> None:
         """Which is why neither route takes the idempotency guard: the value is stated, not
-        applied."""
+        applied.
+
+        The second answer's SENTENCE differs, and it has to: the entry is already at the time, so a
+        statement about moving it would read as a change and state none.
+        """
         seed_an_entry_pattern(http, signed_in, live_database_url, owner.tenant_id)
         candidate = the_one_promotion(http, signed_in)
 
@@ -505,6 +581,9 @@ class TestTheAcceptMovesTheEntryThePatternNames:
         assert first.status_code == HTTPStatus.OK, first.text
         assert second.status_code == HTTPStatus.OK, second.text
         assert first.json()["entry"] == second.json()["entry"]
+        assert "where it was at" in first.json()["statement"]
+        assert "already places this at" in second.json()["statement"]
+        assert "nothing changed" in second.json()["statement"]
 
 
 class TestWhatTheAcceptRefuses:
@@ -630,6 +709,58 @@ class TestWhatTheAcceptRefuses:
         assert answered.status_code == HTTPStatus.CONFLICT, answered.text
         (row,) = entry_rows(live_database_url, owner.tenant_id)
         assert row.target_time == time(7, 0)
+
+
+class TestTheAuthorityEachAnswerTakes:
+    """Each answer's scope, driven at the service where the check is.
+
+    Neither is reachable through the browser client with narrowed authority: a session carries every
+    scope, because the user is acting directly. So the credential is constructed, which is the shape
+    ``test_conflict_resolution.py`` uses for the same question.
+
+    The accept's ADMIN check is enforced twice, here and again inside the day-shape service it
+    delegates to. The decline's is the only one on its path: deleting its line reddened nothing
+    before this case existed.
+    """
+
+    def test_the_decline_refuses_a_credential_without_the_write_scope(
+        self, owner: UserRecord, live_database_url: str
+    ) -> None:
+        reader = Principal(
+            tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset({Scope.PLAN_READ})
+        )
+
+        with pytest.raises(Forbidden, match=Scope.PLAN_WRITE.value):
+            answer(live_database_url, reader, A_REF, accepting=False)
+
+        assert decline_rows(live_database_url, owner.tenant_id) == []
+
+    def test_the_accept_refuses_a_credential_that_may_write_but_not_administer(
+        self, owner: UserRecord, live_database_url: str
+    ) -> None:
+        """A template edit takes ADMIN, and this IS a template edit asked for another way."""
+        writer = Principal(
+            tenant_id=owner.tenant_id,
+            user_id=owner.id,
+            scopes=frozenset({Scope.PLAN_READ, Scope.PLAN_WRITE}),
+        )
+
+        with pytest.raises(Forbidden, match=Scope.ADMIN.value):
+            answer(live_database_url, writer, A_REF, accepting=True)
+
+    def test_an_owner_s_own_credential_carries_both(
+        self, owner: UserRecord, live_database_url: str
+    ) -> None:
+        """So the two refusals above are about the scope rather than about the construction."""
+        principal = Principal(
+            tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset(ALL_SCOPES)
+        )
+
+        answer(live_database_url, principal, A_REF, accepting=False)
+
+        assert [row.promotion_id for row in decline_rows(live_database_url, owner.tenant_id)] == [
+            A_REF.id
+        ]
 
 
 # --------------------------------------------------------------------------------

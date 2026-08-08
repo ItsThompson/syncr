@@ -182,12 +182,17 @@ class SessionSources:
     async def _placements(
         self, weeks: Sequence[IsoWeek], *, home_zone: ZoneId
     ) -> tuple[PinPlacement, ...]:
-        """The window's pins as the promotion rule reads them, in the tenant's home zone."""
+        """The window's pins as the promotion rule reads them, in the tenant's home zone.
+
+        Both instants are passed rather than only the placement: the rule drops a pin that moved
+        nothing, and where the plan already held the block is what says whether one did.
+        """
         return tuple(
             PinPlacement(
                 binding=pin.binding,
                 iso_week=pin.iso_week,
                 starts_at=pin.interval.start,
+                superseded_at=pin.superseded_placement.start,
                 zone=home_zone,
             )
             for pin in await self._pins.for_weeks(weeks)

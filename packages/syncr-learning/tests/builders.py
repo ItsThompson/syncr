@@ -150,15 +150,26 @@ def edit(
 
 
 def pin(
-    *, index: int = 0, iso_week: IsoWeek | None = None, day: int = 1, hour: int = 13
+    *,
+    index: int = 0,
+    iso_week: IsoWeek | None = None,
+    day: int = 1,
+    hour: int = 13,
+    superseded_hour: int = 7,
 ) -> PinPlacement:
-    """One live pin of one week, at one local time."""
+    """One live pin of one week, at one local time.
+
+    ``superseded_hour`` is where the plan of record held the block, which defaults to a DIFFERENT
+    hour: promotion detection drops a pin that moved nothing, so a fixture whose two placements
+    matched would be evidence of nothing and would build no candidate at all.
+    """
     week = iso_week if iso_week is not None else WEEK
     monday = datetime(week.monday().year, week.monday().month, week.monday().day, tzinfo=UTC)
     return PinPlacement(
         binding=binding(index=index),
         iso_week=week,
         starts_at=monday + timedelta(days=day, hours=hour),
+        superseded_at=monday + timedelta(days=day, hours=superseded_hour),
         zone=ZONE,
     )
 
