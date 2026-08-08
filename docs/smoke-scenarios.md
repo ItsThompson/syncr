@@ -30,6 +30,10 @@ Every seed recipe is self-contained: it empties the database, provisions the ten
 script a first deployment runs, declares the fixture over the HTTP API, and ticks the plan-horizon
 maintainer. The suite loads its own fixture per file, so `just e2e` needs no seed run first.
 
+Eight of the nine recipes exit 0 every time they have been run. `just seed-maturity-corpus` was measured at
+one exit 1 in nineteen runs, on a phantom operation identifier, which is ticket 1575: it is not tolerated,
+and a run that draws it says so by name.
+
 ## What is mocked, and what is not
 
 One thing: the external calendar provider, **at the network boundary**. `e2e/docker-compose.e2e.yml`
@@ -116,7 +120,7 @@ nothing in a browser can observe a parse.
 | S7 | Live infeasibility with a stable panel height | **not automated** | the verdict half is covered by S9 and S25; the panel height is not |
 | S8 | Provenance strengthens from a capacity check to an authoritative reading | manual with a seed | `just seed-elastic-sleep` |
 | S9 | A tradeoff is a proposal; an approved one survives; **and the shortfall it quoted `delta_minutes` against has closed by at least that much** | automated | `s09-s11-s31-tradeoffs.spec.ts` |
-| S10 | Twelve pins cost one solve, zero live revisions, zero calendar writes, at most one supersession | automated | `s10-s28-s37-resolve.spec.ts` |
+| S10 | Twelve pins cost one solve, zero live revisions, zero calendar writes, at most one supersession | automated | `s10-burst.spec.ts`, asserting the single-flight invariant DURING the burst rather than after it |
 | S11 | Supersession names its successor and surfaces as no failure | automated | `s09-s11-s31-tradeoffs.spec.ts` |
 | S12 | Only conflicts notify | partly automated | the raise over the network and the recorded answer are in `paths.spec.ts`; the inline oxide rule, the persistent banner and the SSE push are not |
 | S13 | Confirm and backfill: unconfirmed days are excluded, and backfilling brings them in | automated | `paths.spec.ts` |
@@ -128,13 +132,13 @@ nothing in a browser can observe a parse.
 | S19 | Write-target expiry: a banner, a Settings panel, and one reconnect action | manual | needs a real Google token to revoke |
 | S20 | The CLI is an API: stable schemas, no prompt when piped, idempotent mutations, exit 9 and 8 | manual, partly automated | `cli/tests/test_every_command.py`; driving every command against a running API is ticket 1520, which this harness is the home for |
 | S21 | Keyboard only, including a sliver-tier block | **not automated** | see below |
-| S22 | Nothing spins: no spinner, no skeleton, no progress bar, no transition | automated | `s22-no-motion.spec.ts`, over the computed style of every element on six routes |
+| S22 | Nothing spins: no spinner, no skeleton, no progress bar, no transition | automated | `s22-no-motion.spec.ts`, over the computed style of every element on eleven routes: every one of the shell's seven, both weekly-session modes, a week beyond the horizon, and a route that does not exist |
 | S23 | The restore drill | manual | `just drill-local` and `just restore-drill`, ticket 58 |
 | S24 | A week materializes with no solver: every slot drawn as `not_solved`, every block carrying a reason | partly automated | `s01-materialization.spec.ts` asserts the `not_solved` rendering, which is the deliberate opposite of S17's, and the materialized revision. Disabling the solver's binding and search phases is not driven from here |
 | S25 | Progress does not manufacture a shortfall | **not automated** | the pin-never-improves half is asserted by the B1 case; the three-step sequence is not |
 | S26 | Sleep is negotiable, never silently | manual with a seed | `just seed-elastic-sleep`: the `reduce_routine` offer for Sleep and for no other routine is visible on the verdict |
 | S27 | Preferences are authorable and honoured | manual with a seed | `just seed-reference` |
-| S28 | Identity survives a re-solve | automated | `s10-s28-s37-resolve.spec.ts` |
+| S28 | Identity survives a re-solve | automated, and shown to fail | `s28-s37-identity.spec.ts`, over the candidate the re-solve produced rather than the live plan it did not change. Keying a habit's occurrence on the clock turns it red |
 | S29 | The calendar does not go blank at the week boundary | **not automated** | needs the clock to cross a Sunday, which this harness does not move |
 | S30 | Approving during a solve supersedes rather than adopting | automated, with a stated narrowing | `s30-s35-approval-and-verdict-events.spec.ts`: the invariant is asserted over the stamped input version. The interleaving where the solve is already RUNNING is not reachable from outside the worker and is covered in `packages/syncr-api/tests/test_approval_during_a_solve.py` |
 | S31 | A tradeoff gets its own operation | automated | `s09-s11-s31-tradeoffs.spec.ts` |
@@ -143,7 +147,7 @@ nothing in a browser can observe a parse.
 | S34 | `Unallocated` is honest | automated **and currently red by declaration** | `b1-s34-floors-and-unallocated.spec.ts`. The strip's discretionary denominator is the whole week's span, so the figure is wrong; tracking ticket 1310. The case is marked as expected to fail, so the day the figure is supplied the suite goes red for passing unexpectedly and the marker has to be removed |
 | S35 | Verdict transitions recorded exactly once, reads write nothing, the ratio is a number | automated, with a stated narrowing | `s30-s35-approval-and-verdict-events.spec.ts`. Two reads and a no-op maintainer tick append nothing; no two consecutive rows agree on both the reading and its provenance; the ratio is read through the product's own `caught_early_over`. The **exactly 0.5** value needs an episode whose OPENING row is session-flagged. Two routes read `X-Syncr-Session-Mode`, the pin and the tradeoff request, and neither of them is a mutation that flips a roomy week's reading, so the episode this suite can open is unflagged: ticket 1571 |
 | S36 | The verdict cannot be gamed and it notices the clock | **not automated** | needs the clock moved past a deadline, which this harness does not move |
-| S37 | A re-solve does not shrink the work | automated | `s10-s28-s37-resolve.spec.ts` |
+| S37 | A re-solve does not shrink the work | automated | `s28-s37-identity.spec.ts`, measured over the plan the candidate becomes once approved |
 
 Plus two cases that are not among the 37. B1 is the observation `reviews/spec-review-5.md` B1 requires;
 the `no_eligible_content` case above is S17's reason half.
@@ -182,4 +186,6 @@ same fixture rather than on the same code, so ticket 1572 owns them together.
 | S25, and the exactly-0.5 early-catch ratio | One cause, stated above: a week whose verdict one mutation moves, plus a mutation that carries the session header | ticket 1572 |
 | S29, S36 | Both need the clock moved: across a Sunday-to-Monday boundary, and past a deadline. Nothing in the stack takes an injected clock from outside the process | ticket 1573 |
 | A first solve of a week already partly lived | Reproducibly refused, permanently: the maintainer's materialized plan closes the escape hatch the guard leaves for a week with no live plan. `just seed-maturity-corpus` prints this refusal rather than exiting on it | ticket 1570 |
+| The promotion panel's composed layout | `s22-no-motion.spec.ts` renders the weekly session and asserts the RAISED panel is drawn, which is one of the two amber notice surfaces item 51 named. The other one, the promotion panel, returns null on an empty candidate list and no fixture here raises a promotion: that needs repeated pins across three weeks. The same case asserts the panel is absent, so it goes red the day a fixture raises one | ticket 1572 |
+| One intermittent seed failure | `just seed-maturity-corpus` was measured at one exit 1 in nineteen runs, on a `GET` of an operation identifier `POST /solve` had just returned answering 404. Not tolerated and not retried: `operation()` reports it by name | ticket 1575 |
 | Google, and the deployed host | A real account, a real token to revoke, and a real systemd unit. Neither is a mock this suite could add honestly | S2, S3, S19, S23 |
