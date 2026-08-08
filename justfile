@@ -321,10 +321,31 @@ test-frontend:
 # Both files, in this order, so the project directory is the repository root
 e2e_compose := "-f docker-compose.yml -f e2e/docker-compose.e2e.yml"
 
-# Install the suite's locked dependency tree and the browser it drives
+# Install the suite's locked dependency tree and the browser it drives.
+#
+# `--with-deps` because Playwright's bundled Chromium needs system libraries a Linux CI image does not
+# guarantee, and this recipe is what the `e2e` job runs. On macOS the flag is a no-op.
 e2e-setup:
     cd e2e && npm ci
-    cd e2e && npx playwright install chromium
+    cd e2e && npx playwright install --with-deps chromium
+
+# The harness's own static gates. `just lint` iterates the six Python members plus `deployments`, and the
+# frontend hook globs `frontend/**`, so without this recipe nothing but tsc reads 4000 lines of
+# TypeScript.
+#
+# The second check is the one worth having: `docs/smoke-scenarios.md` is the map from section 22's
+# done-criteria table to something that can fail, and a row claiming an assertion no file makes is a list
+# disagreeing with the fact it copies. It cross-references both directions, and its first run found four.
+lint-e2e:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd e2e
+    failed=0
+    for check in lint:format lint:scenarios; do
+      echo "--- $check"
+      npm run --silent "$check" || failed=1
+    done
+    exit "$failed"
 
 # Bring the stack up and migrate it. Run this before any seed or any suite
 e2e-up:
@@ -396,10 +417,15 @@ seed-recovery-scopes:
 seed-shadow-geometry:
     node e2e/src/seed/cli.ts shadow_geometry
 
-# Outcomes sized either side of each learning gate. Prints what it reached: the corpus it can build
-# is bounded by how far into the current week today is, and it does not manufacture a past
+# Outcomes recorded on every block the horizon's weeks have ended. Prints what it reached, and names the
+# one refusal it tolerates: a solve of the current week is refused permanently, which is ticket 1570
 seed-maturity-corpus:
     node e2e/src/seed/cli.ts maturity_corpus
+
+# A week whose declared floors sit just inside its remaining capacity, which is what makes a floor
+# reservation observable at all: 1470 discretionary minutes against 960 minutes of floor
+seed-tight-capacity:
+    node e2e/src/seed/cli.ts tight_capacity
 
 # Tick the plan-horizon maintainer once, now. S1's "or trigger it": the wait is fifteen minutes,
 # because the runner's first tick only sets its own due time

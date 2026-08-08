@@ -17,8 +17,14 @@ just e2e-up               # the stack, migrated, on http://localhost:57080
 just seed-reference       # or any other seed-* recipe: each loads one fixture from nothing
 just e2e                  # the whole suite
 just e2e-only S10         # one scenario or one file, by title or path
+just lint-e2e             # prettier, and the check that this table matches the suite
 just e2e-down             # the stack and its volumes
 ```
+
+**This table is checked against the suite rather than trusted.** `just lint-e2e` runs
+`e2e/scripts/check-scenarios.ts`, which cross-references every row marked automated against the test
+titles that name a scenario number, in both directions. Its first run found four disagreements including
+one row claiming an assertion no file in the suite made.
 
 Every seed recipe is self-contained: it empties the database, provisions the tenant through the console
 script a first deployment runs, declares the fixture over the HTTP API, and ticks the plan-horizon
@@ -79,7 +85,8 @@ gap breaks in one place instead of drifting in two.
 | `partial_progress` | `just seed-partial-progress` | A task with a deadline and half its placements pinned, plus the week's already-ended blocks left unconfirmed |
 | `recovery_scopes` | `just seed-recovery-scopes` | Two anchor types at the same wall time, one `post_scope: areas` forbidding Study and one `post_scope: all` |
 | `shadow_geometry` | `just seed-shadow-geometry` | The `Interview`, `Exam` and `Lecture` types with their real leads, durations and buffers |
-| `maturity_corpus` | `just seed-maturity-corpus` | Outcomes recorded on every block the week has ended, and a print of which learning parameters that put either side of their gate |
+| `maturity_corpus` | `just seed-maturity-corpus` | Outcomes recorded on every block the weeks in the horizon have ended, and a print of what it reached. It tolerates one named refusal: a solve of the current week is refused with `past_disagreement`, permanently, which is ticket 1570, and its materialized blocks are recorded against anyway |
+| `tight_capacity` | `just seed-tight-capacity` | A week whose declared floors sit just inside its remaining capacity: twenty and a half hours of frame a day, so 1470 discretionary minutes a week against 960 minutes of floor. The one fixture that makes a floor reservation observable |
 
 `hand_tuned_weights` is not a recipe: the bootstrap provisions weight set version 1 with
 `origin = "hand-tuned"`, so it is a fact of every tenant this harness creates rather than a fixture it
@@ -111,19 +118,19 @@ nothing in a browser can observe a parse.
 | S9 | A tradeoff is a proposal; an approved one survives; **and the shortfall it quoted `delta_minutes` against has closed by at least that much** | automated | `s09-s11-s31-tradeoffs.spec.ts` |
 | S10 | Twelve pins cost one solve, zero live revisions, zero calendar writes, at most one supersession | automated | `s10-s28-s37-resolve.spec.ts` |
 | S11 | Supersession names its successor and surfaces as no failure | automated | `s09-s11-s31-tradeoffs.spec.ts` |
-| S12 | Only conflicts notify | partly automated | the raise and the answer are in `paths.spec.ts`; the inline rule, the banner and the SSE push are not |
+| S12 | Only conflicts notify | partly automated | the raise over the network and the recorded answer are in `paths.spec.ts`; the inline oxide rule, the persistent banner and the SSE push are not |
 | S13 | Confirm and backfill: unconfirmed days are excluded, and backfilling brings them in | automated | `paths.spec.ts` |
 | S14 | The cursor is derived: a confirmation advances it, a skip does not, a correction re-derives | manual with a seed | `just seed-reference` |
 | S15 | Debt caps, and the miss at the cap is forgiven | manual with a seed | `just seed-reference` |
 | S16 | Off-plan: nothing inside, a hatched band, the denominator, the streak, and a pin honoured | manual with a seed | `just seed-off-plan-week` |
-| S17 | An unfillable slot's label opens prefilled capture, producing a soft preference and no pin | **not automated** | the slot's `no_eligible_content` reason is asserted in `s01`; the capture flow is not |
+| S17 | An unfillable slot's label opens prefilled capture, producing a soft preference and no pin | partly automated | `s01-materialization.spec.ts` asserts the `no_eligible_content` rendering: a solved week's Transit slot has no eligible content, so it stays at its declared time and names its Area. The capture flow the label opens is not driven. Ticket 1572 |
 | S18 | Travel and DST: the frame moves, anchors stay, the axis is proportional | manual with a seed | `just seed-dst-weeks` |
 | S19 | Write-target expiry: a banner, a Settings panel, and one reconnect action | manual | needs a real Google token to revoke |
 | S20 | The CLI is an API: stable schemas, no prompt when piped, idempotent mutations, exit 9 and 8 | manual, partly automated | `cli/tests/test_every_command.py`; driving every command against a running API is ticket 1520, which this harness is the home for |
 | S21 | Keyboard only, including a sliver-tier block | **not automated** | see below |
 | S22 | Nothing spins: no spinner, no skeleton, no progress bar, no transition | automated | `s22-no-motion.spec.ts`, over the computed style of every element on six routes |
 | S23 | The restore drill | manual | `just drill-local` and `just restore-drill`, ticket 58 |
-| S24 | A week materializes with no solver: every slot drawn as `not_solved`, every block carrying a reason | partly automated | the `not_solved` rendering and the materialized revision are in `s01`; disabling the solver's phases is not driven from here |
+| S24 | A week materializes with no solver: every slot drawn as `not_solved`, every block carrying a reason | partly automated | `s01-materialization.spec.ts` asserts the `not_solved` rendering, which is the deliberate opposite of S17's, and the materialized revision. Disabling the solver's binding and search phases is not driven from here |
 | S25 | Progress does not manufacture a shortfall | **not automated** | the pin-never-improves half is asserted by the B1 case; the three-step sequence is not |
 | S26 | Sleep is negotiable, never silently | manual with a seed | `just seed-elastic-sleep`: the `reduce_routine` offer for Sleep and for no other routine is visible on the verdict |
 | S27 | Preferences are authorable and honoured | manual with a seed | `just seed-reference` |
@@ -134,16 +141,16 @@ nothing in a browser can observe a parse.
 | S32 | Recovery scope behaves as declared | manual with a seed | `just seed-recovery-scopes` |
 | S33 | Prep and transit land where the settled records say | manual with a seed | `just seed-shadow-geometry`, observed at the API level and by eye |
 | S34 | `Unallocated` is honest | automated **and currently red by declaration** | `b1-s34-floors-and-unallocated.spec.ts`. The strip's discretionary denominator is the whole week's span, so the figure is wrong; tracking ticket 1310. The case is marked as expected to fail, so the day the figure is supplied the suite goes red for passing unexpectedly and the marker has to be removed |
-| S35 | Verdict transitions recorded exactly once, reads write nothing, the ratio is a number | automated, with a stated narrowing | `s30-s35-approval-and-verdict-events.spec.ts`. Two reads and a no-op maintainer tick append nothing; no two consecutive rows agree on both the reading and its provenance; the ratio is read through the product's own `caught_early_over`. The **exactly 0.5** value needs an episode whose OPENING row is session-flagged, and the pin route is the only route that reads `X-Syncr-Session-Mode`: ticket 1571 |
+| S35 | Verdict transitions recorded exactly once, reads write nothing, the ratio is a number | automated, with a stated narrowing | `s30-s35-approval-and-verdict-events.spec.ts`. Two reads and a no-op maintainer tick append nothing; no two consecutive rows agree on both the reading and its provenance; the ratio is read through the product's own `caught_early_over`. The **exactly 0.5** value needs an episode whose OPENING row is session-flagged. Two routes read `X-Syncr-Session-Mode`, the pin and the tradeoff request, and neither of them is a mutation that flips a roomy week's reading, so the episode this suite can open is unflagged: ticket 1571 |
 | S36 | The verdict cannot be gamed and it notices the clock | **not automated** | needs the clock moved past a deadline, which this harness does not move |
 | S37 | A re-solve does not shrink the work | automated | `s10-s28-s37-resolve.spec.ts` |
 
-Plus one case that is not one of the 37, because it is the observation
-`reviews/spec-review-5.md` B1 requires:
+Plus two cases that are not among the 37. B1 is the observation `reviews/spec-review-5.md` B1 requires;
+the `no_eligible_content` case above is S17's reason half.
 
 | Case | What it observes | Status | Where |
 |---|---|---|---|
-| B1 | A healthy solved week whose floors are met by unpinned solver-placed blocks reports no `floors_exceed_capacity` and no inflated at-risk column; and pinning an already-placed block leaves the verdict unchanged | automated | `b1-s34-floors-and-unallocated.spec.ts` |
+| B1 | A solved week whose floors are met by unpinned solver-placed blocks reports no `floors_exceed_capacity` and no inflated at-risk column; and pinning an already-placed block leaves the verdict unchanged | automated, and shown to fail | `b1-s34-floors-and-unallocated.spec.ts`, on the `tight_capacity` fixture. Reverting the probe's floor reservation to the pre-B1 immovable-only rule turns two of its three cases red |
 
 ## Two corrections to section 22's done-criteria table
 
@@ -162,10 +169,17 @@ Recorded here because a traceability matrix built from that table mis-files thre
 
 Stated plainly, because an overstated bound is worse than a stated gap.
 
+**Two of these rows have one cause and it is not two pieces of work.** S25 and the exactly-0.5 ratio both
+need a week whose verdict one mutation can move, which is what `tight_capacity` now provides for B1. What
+S25 additionally needs is a shortfall on that week for a pin to move, and what the ratio needs is a
+verdict-flipping mutation through a route that carries the session header. Both are follow-ups on the
+same fixture rather than on the same code, so ticket 1572 owns them together.
+
 | Gap | Why | Where it should land |
 |---|---|---|
-| S5, S7, S17, S21 | Each needs a driven interaction on the week grid or the capture dialog: a discrete drag with a real `setPointerCapture`, a panel height measured across a sequence of pins, a label that opens a prefilled form, a whole session on the keyboard. The harness has the browser and the credential; what is missing is the per-screen driving | ticket 1572, which also records that B1's two cases are not yet bitten |
+| S5, S7, S21 | Each needs a driven interaction on the week grid: a discrete drag with a real `setPointerCapture`, a panel height measured across a sequence of pins, a whole planning session on the keyboard. The harness has the browser and the credential; what is missing is the per-screen driving | ticket 1572 |
+| S17's capture flow | The `no_eligible_content` rendering is asserted; activating the label and observing a prefilled capture producing a soft preference is not | ticket 1572 |
+| S25, and the exactly-0.5 early-catch ratio | One cause, stated above: a week whose verdict one mutation moves, plus a mutation that carries the session header | ticket 1572 |
 | S29, S36 | Both need the clock moved: across a Sunday-to-Monday boundary, and past a deadline. Nothing in the stack takes an injected clock from outside the process | ticket 1573 |
-| The exactly-0.5 early-catch ratio | Needs a verdict-flipping mutation that carries the session header, and only the pin route reads it | ticket 1571 |
-| A first solve of a week already partly lived | Reproducibly refused, permanently: the maintainer's materialized plan closes the escape hatch the guard leaves for a week with no live plan | ticket 1570 |
+| A first solve of a week already partly lived | Reproducibly refused, permanently: the maintainer's materialized plan closes the escape hatch the guard leaves for a week with no live plan. `just seed-maturity-corpus` prints this refusal rather than exiting on it | ticket 1570 |
 | Google, and the deployed host | A real account, a real token to revoke, and a real systemd unit. Neither is a mock this suite could add honestly | S2, S3, S19, S23 |

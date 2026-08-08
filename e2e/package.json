@@ -10,11 +10,15 @@
   "scripts": {
     "test": "playwright test",
     "seed": "node src/seed/cli.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint:format": "prettier --check .",
+    "fmt": "prettier --write .",
+    "lint:scenarios": "node scripts/check-scenarios.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.1",
     "@types/node": "^26.1.2",
+    "prettier": "^3.9.6",
     "typescript": "^5.9.3"
   }
 }

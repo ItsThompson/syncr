@@ -287,6 +287,12 @@ jobs:
       - name: Install the suite's locked dependency tree and the browser it drives
         run: just e2e-setup
 
+      - name: The harness's own static gates, which nothing else in the tree reads
+        run: just lint-e2e
+
+      - name: tsc over the harness, which Playwright's esbuild does not check
+        run: just typecheck-e2e
+
       - name: Bring the stack up and migrate it as a pre-traffic one-shot
         run: just e2e-up
 
