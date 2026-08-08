@@ -44,7 +44,6 @@ export const until = async <T>(
 
 export const weekView = (client: ApiClient, isoWeek: string): Promise<WeekView> =>
   client.get<WeekView>(`/api/v1/weeks/${isoWeek}`);
-
 /** Ask for a solve now rather than after the debounce, and answer with the operation it created. */
 export const solveNow = (client: ApiClient, isoWeek: string): Promise<Operation> =>
   client.post<Operation>(`/api/v1/weeks/${isoWeek}/solve?immediate=true`);
@@ -53,8 +52,31 @@ export const solveNow = (client: ApiClient, isoWeek: string): Promise<Operation>
 export const solveDebounced = (client: ApiClient, isoWeek: string): Promise<Operation> =>
   client.post<Operation>(`/api/v1/weeks/${isoWeek}/solve`);
 
-export const operation = (client: ApiClient, id: string): Promise<Operation> =>
-  client.get<Operation>(`/api/v1/operations/${id}`);
+/** One operation by identifier.
+ *
+ * A 404 HERE IS REPORTED AS THE KNOWN DEFECT IT PROBABLY IS, AND IT IS STILL A FAILURE. Measured once in
+ * seven runs of `just seed-maturity-corpus`: a `GET` of an identifier `POST /solve` had just returned
+ * answered 404, so the row the api reported creating was not there. That is ticket 1575, and the reason
+ * this wrapper exists is legibility rather than tolerance: `awaitTerminal` is on the hot path of almost
+ * every scenario, so without a message naming the defect the same phantom identifier reads like a product
+ * bug in whichever case happens to draw it.
+ *
+ * It deliberately does NOT retry. A read that answers 404 for an identifier the api has just handed out is
+ * a product defect, and a silent retry would convert it into a slow test instead of a red one. */
+export const operation = async (client: ApiClient, id: string): Promise<Operation> => {
+  const reply = await client.attempt<Operation>("GET", `/api/v1/operations/${id}`);
+  if (reply.status === 404) {
+    throw new Error(
+      `operation ${id} answered 404, and it is the identifier the api had just returned. That is the ` +
+        "phantom-operation defect in ticket 1575, seen once in seven runs; it is not a fault in this " +
+        "scenario. Re-run it, and add the run to that ticket's evidence.",
+    );
+  }
+  if (reply.status !== 200) {
+    throw new Error(`reading operation ${id} answered ${reply.status}`);
+  }
+  return reply.body;
+};
 
 /** Wait until the worker has finished with `id`, whichever way it finished. */
 export const awaitTerminal = (
