@@ -107,8 +107,10 @@ describe("Accordion", () => {
  *
  * jsdom HAS NO LAYOUT, so the two measurements are supplied: `getBoundingClientRect` is stubbed to answer the
  * position the trigger would be at before and after the panel opened, which is the shape a browser produces. What
- * is under test is the arithmetic and the wiring, that the element measured is the one the reader activated and
- * that the correction is instant; `e2e/tests/s24-accessibility.spec.ts` measures the real thing in Chrome. */
+ * is under test is the arithmetic and the wiring: that the element measured is the one the reader activated, and
+ * that the correction is instant. NO SCREEN MOUNTS THIS COMPONENT YET, so there is no browser pass to hold it
+ * against a real layout; the day a screen does, the measurement belongs in the E2E suite beside the other claims
+ * only a browser can judge. */
 /* The trigger's position, as the test moves it. A SEQUENCE OF READS WOULD NOT DO: Radix measures during a click
  * too, so a stub answering "the first read, then the second" hands the panel's own measurement the position that
  * belonged to the anchor. The position is therefore a value the test sets between the phases. */
