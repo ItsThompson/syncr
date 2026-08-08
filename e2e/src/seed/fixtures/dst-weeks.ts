@@ -41,11 +41,7 @@ const offsetMinutesAt = (date: string, zone: string): number => {
 };
 
 /** Every date within `days` of `from` whose offset differs from the day before it. */
-export const transitionsAfter = (
-  from: string,
-  zone: string,
-  days: number,
-): readonly string[] => {
+export const transitionsAfter = (from: string, zone: string, days: number): readonly string[] => {
   const found: string[] = [];
   let previous = offsetMinutesAt(from, zone);
   for (let day = 1; day <= days; day += 1) {
