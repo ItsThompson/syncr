@@ -12,6 +12,8 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import { compileUtilities, declarationsOf, srcDir } from "../../../testing/compileTheme";
+import { apiServer } from "../../../testing/apiServer";
+import { calendarSources } from "../../../testing/apiStub";
 import { renderSignedInAt } from "../../../testing/renderRoute";
 import { SidebarNav } from "./SidebarNav";
 import { SCREENS } from "./navigation";
@@ -28,6 +30,9 @@ describe("ShellLayout", () => {
   });
 
   it("renders the route inside the shell", async () => {
+    /* Today reads the source list, to say whether a feed its commitments came from can still be read. Stubbed
+     * here because the shell's own defaults answer the gate's reads and not a screen's. */
+    apiServer.use(calendarSources());
     await renderSignedInAt("/today");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Today");
   });

@@ -269,6 +269,15 @@ export const settingsResponse: StubbedResponse = {
 export const settings = (stubbed: StubbedResponse = settingsResponse): RequestHandler =>
   jsonHandler("/api/v1/settings", stubbed);
 
+/* THE SOURCE LIST, WHICH THREE SCREENS READ. Settings manages them, Templates scopes an anchor rule to one, and
+ * Today asks whether a feed the day's commitments came from can still be read. The uninteresting case is a reader
+ * with no feed at all, which is also a first-run state rather than a broken one. */
+export const calendarSourcesResponse: StubbedResponse = { status: 200, body: { sources: [] } };
+
+export const calendarSources = (
+  stubbed: StubbedResponse = calendarSourcesResponse,
+): RequestHandler => jsonHandler("/api/v1/calendar-sources", stubbed);
+
 /* EVERY READ A SCREEN MAKES, ANSWERED THE SAME WAY, WITHOUT NAMING ONE OF THEM.
  *
  * A screen's loading state and its failure state are properties of the screen rather than of any one resource: a

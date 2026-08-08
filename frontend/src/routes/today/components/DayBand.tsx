@@ -22,11 +22,13 @@ export interface DayBandProps {
   readonly day: Day;
   /** Every notice the DAY carries: that it is unconfirmed, a refused confirmation, a backfill's result. */
   readonly notices: readonly Notice[];
+  /** Renders a notice's instant in the day's own zone. The route supplies it, because the kit knows no zone. */
+  readonly formatSince?: ((iso: string) => string) | undefined;
   readonly onConfirm: () => void;
   readonly onBackfill: () => void;
 }
 
-export function DayBand({ day, notices, onConfirm, onBackfill }: DayBandProps) {
+export function DayBand({ day, notices, formatSince, onConfirm, onBackfill }: DayBandProps) {
   return (
     <div className="flex flex-col gap-2.75">
       <Strip>
@@ -54,7 +56,7 @@ export function DayBand({ day, notices, onConfirm, onBackfill }: DayBandProps) {
         </span>
       </Strip>
       {notices.map((notice) => (
-        <NoticeCard key={notice.id} notice={notice} />
+        <NoticeCard key={notice.id} notice={notice} formatSince={formatSince} />
       ))}
     </div>
   );

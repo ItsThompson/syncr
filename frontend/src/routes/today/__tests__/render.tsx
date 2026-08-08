@@ -54,6 +54,10 @@ export function stubDay(day: Day, areas: Areas = buildAreas()): DayStub {
   apiServer.use(
     readyz(),
     http.get(`${origin}/api/v1/areas`, () => HttpResponse.json(areas)),
+    /* The sources, which the screen reads to say whether a feed the day's commitments came from can still be
+     * read. Answered here with none, because the uninteresting case is a reader with no feed at all: a test
+     * about a stale feed passes its own handler ahead of this one. */
+    http.get(`${origin}/api/v1/calendar-sources`, () => HttpResponse.json({ sources: [] })),
     http.get(`${origin}/api/v1/days/:date`, ({ params }) => {
       dates.push(String(params.date));
       reads += 1;
