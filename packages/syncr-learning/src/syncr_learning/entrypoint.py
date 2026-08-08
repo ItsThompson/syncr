@@ -57,10 +57,11 @@ def main() -> int:
     for candidate in promotion_candidates(report):
         _log.info(
             "learning.promotion.candidate",
-            kind=candidate.kind.value,
-            entity_id=str(candidate.entity_id),
-            weekday=candidate.weekday,
-            local_time=candidate.local_time,
+            promotion_id=candidate.ref.id,
+            kind=candidate.ref.kind.value,
+            entity_id=str(candidate.ref.entity_id),
+            weekday=candidate.ref.weekday,
+            local_time=candidate.ref.local_time,
             consecutive_weeks=candidate.consecutive_weeks,
         )
     _write_exposition(settings)

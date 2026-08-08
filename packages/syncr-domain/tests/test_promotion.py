@@ -1,14 +1,19 @@
-"""Repeated-pin promotion: what the grouping drops, and why three consecutive weeks is a run.
+"""Repeated-pin promotion: what the grouping drops, why three consecutive weeks is a run, and the
+identity a candidate is addressed by.
 
 The two properties that decide whether this function works at all are that grouping drops
 ``occurrence_key`` and that consecutive means consecutive. Without the first every group is a group
 of one, whatever the user did; without the second three unrelated weeks would raise a template
 change.
+
+The third property is newer and is about the answer rather than the finding: a candidate is
+addressed by the group it was found by, so an accept names one pattern and a decline silences the
+same one, and a run that grows by a week is not a new question.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from uuid import UUID
 
 import pytest
@@ -18,6 +23,8 @@ from syncr_domain.identity import BindingKind, BindingRef, index_occurrence_key
 from syncr_domain.promotion import (
     CONSECUTIVE_WEEKS_FOR_PROMOTION,
     PinPlacement,
+    PromotionRef,
+    PromotionRefError,
     detect_repeated_pins,
 )
 from syncr_domain.weeks import IsoWeek
@@ -63,7 +70,7 @@ class TestTheGroupingDropsTheOccurrenceKey:
 
         assert len(candidates) == 1
         assert candidates[0].consecutive_weeks == 3
-        assert candidates[0].local_time == "13:00"
+        assert candidates[0].ref.local_time == "13:00"
 
     def test_the_group_survives_the_occurrence_key_differing_per_week(self) -> None:
         # An occurrence key is an index within its own week, so two pins of one habit in two weeks
@@ -146,7 +153,7 @@ class TestTheLocalTimeIsPartOfTheGroup:
 
         candidates = detect_repeated_pins([*early, *late])
 
-        assert {one.local_time for one in candidates} == {"06:00", "19:00"}
+        assert {one.ref.local_time for one in candidates} == {"06:00", "19:00"}
 
     def test_the_same_hour_on_two_different_weekdays_is_two_groups(self) -> None:
         # A template entry is declared for a weekday, so Tuesday at 13:00 and Thursday at 13:00 are
@@ -157,7 +164,7 @@ class TestTheLocalTimeIsPartOfTheGroup:
         candidates = detect_repeated_pins([*tuesday, *thursday])
 
         assert len(candidates) == 2
-        assert {one.weekday for one in candidates} == {2, 4}
+        assert {one.ref.weekday for one in candidates} == {2, 4}
 
     def test_a_local_time_carrying_minutes_renders_them(self) -> None:
         # A pin lands on the fifteen-minute grid, so a group's own time is not always on the hour.
@@ -171,7 +178,65 @@ class TestTheLocalTimeIsPartOfTheGroup:
             for one in (pinned(week=week) for week in WEEKS[:3])
         ]
 
-        assert detect_repeated_pins(quarter_past)[0].local_time == "13:45"
+        assert detect_repeated_pins(quarter_past)[0].ref.local_time == "13:45"
 
     def test_an_empty_pin_list_finds_nothing(self) -> None:
         assert detect_repeated_pins([]) == []
+
+
+class TestTheIdentityACandidateIsAddressedBy:
+    def test_a_candidate_is_addressed_by_the_group_it_was_found_by(self) -> None:
+        # Nothing stores a candidate, so the identifier has to be derivable from the pattern. These
+        # are the four values `_group_of` groups on, in the order the reference renders them.
+        (candidate,) = detect_repeated_pins([pinned(week=week) for week in WEEKS[:3]])
+
+        assert candidate.ref.id == f"habit:{GYM_ID}:2:780"
+
+    def test_the_identifier_round_trips_through_parse(self) -> None:
+        (candidate,) = detect_repeated_pins([pinned(week=week) for week in WEEKS[:3]])
+
+        assert PromotionRef.parse(candidate.ref.id) == candidate.ref
+
+    def test_a_run_that_grows_keeps_the_identifier_a_decline_silenced(self) -> None:
+        # The whole reason the week count is not part of the identity: a fourth week must not ask a
+        # question the reader has already answered.
+        (three,) = detect_repeated_pins([pinned(week=week) for week in WEEKS[:3]])
+        (four,) = detect_repeated_pins([pinned(week=week) for week in WEEKS])
+
+        assert four.consecutive_weeks == 4
+        assert four.ref.id == three.ref.id
+
+    @pytest.mark.parametrize(
+        "malformed",
+        [
+            "",
+            "habit",
+            f"habit:{GYM_ID}:2",
+            f"habit:{GYM_ID}:2:780:extra",
+            f"pastime:{GYM_ID}:2:780",
+            "habit:not-a-uuid:2:780",
+            f"habit:{GYM_ID}:x:780",
+            f"habit:{GYM_ID}:0:780",
+            f"habit:{GYM_ID}:8:780",
+            f"habit:{GYM_ID}:2:-1",
+            f"habit:{GYM_ID}:2:1440",
+        ],
+    )
+    def test_a_value_this_class_did_not_produce_is_refused(self, malformed: str) -> None:
+        # An accept edits a template and a decline silences a question, so a reference neither
+        # produced nor parseable must reach neither.
+        with pytest.raises(PromotionRefError):
+            PromotionRef.parse(malformed)
+
+    def test_the_wall_time_and_the_rendered_time_are_one_derivation(self) -> None:
+        ref = PromotionRef(kind=BindingKind.HABIT, entity_id=GYM_ID, weekday=2, minute_of_day=825)
+
+        assert ref.wall_time == time(13, 45)
+        assert ref.local_time == "13:45"
+
+    def test_midnight_is_a_legal_minute_of_the_day(self) -> None:
+        # The lower bound of the range, which a pin on a block starting at 00:00 reaches.
+        ref = PromotionRef(kind=BindingKind.ROUTINE, entity_id=GYM_ID, weekday=7, minute_of_day=0)
+
+        assert ref.local_time == "00:00"
+        assert PromotionRef.parse(ref.id) == ref

@@ -534,7 +534,7 @@ class TestTheReaderResolvesWhatTheApiWrote:
         # Three DIFFERENT occurrence keys, which is what makes the dropped key the thing under test.
         assert len({one.binding.occurrence_key for one in corpus.pins}) == 3
         assert len(candidates) == 1
-        assert candidates[0].local_time == "13:00"
+        assert candidates[0].ref.local_time == "13:00"
         assert candidates[0].consecutive_weeks == 3
 
     async def test_an_edit_event_the_api_wrote_projects_its_measurement_difference(

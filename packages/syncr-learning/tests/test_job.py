@@ -282,4 +282,4 @@ class TestWhatTheRunReports:
         report = await run(reader, RecordingWriter(), at=AT)
 
         assert len(promotion_candidates(report)) == 1
-        assert promotion_candidates(report)[0].local_time == "13:00"
+        assert promotion_candidates(report)[0].ref.local_time == "13:00"
