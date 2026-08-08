@@ -588,14 +588,22 @@ ports-check:
       SYNCR_OPS_DIGEST=unset CLOUDFLARE_TUNNEL_TOKEN=unset \
       docker compose {{deploy_compose}} --profile ops --profile scheduled config)" || exit 1
     # A resolution that returned nothing would otherwise pass this recipe: the absence of a published
-    # port in an empty document is not the property being checked. `--services` prints exactly the
-    # service names, so this counts services rather than every two-space-indented key. Fourteen is a
-    # FLOOR, not the authoritative list: `tests/test_deploy_topology.py` crosses the resolved set
-    # against a named table as an exact equality, and this is here so the recipe cannot pass on an
-    # empty read.
-    services="$(SYNCR_API_DIGEST=unset SYNCR_FRONTEND_DIGEST=unset SYNCR_LEARNING_DIGEST=unset \
-      SYNCR_OPS_DIGEST=unset CLOUDFLARE_TUNNEL_TOKEN=unset \
-      docker compose {{deploy_compose}} --profile ops --profile scheduled config --services | wc -l)"
+    # port in an empty document is not the property being checked.
+    #
+    # COUNTED OUT OF THE SAME DOCUMENT the port assertion reads, so the recipe states one fact about
+    # one reading. The first version ran `config --services` a second time, which cannot disagree in
+    # practice but made two readings of the same thing; and the one before that counted EVERY
+    # two-space-indented key, which is not the service count. This walks only the `services:` mapping.
+    #
+    # Fourteen is a FLOOR, not the authoritative list: `tests/test_deploy_topology.py` crosses the
+    # resolved set against a named table as an exact equality. This is here so the recipe cannot pass
+    # on an empty read.
+    services="$(printf '%s\n' "$resolved" | awk '
+      /^services:/ { inside = 1; next }
+      /^[a-zA-Z]/  { inside = 0 }
+      inside && /^  [a-zA-Z0-9_-]+:$/ { count++ }
+      END { print count + 0 }
+    ')"
     if [ "$services" -lt 14 ]; then
       echo "the resolved stack has $services services, fewer than the 14 it declares: this read" >&2
       echo "something other than the deployed configuration" >&2
@@ -606,7 +614,7 @@ ports-check:
       printf '%s' "$resolved" | grep -B8 'published:' >&2
       exit 1
     fi
-    echo "no host port is published by any of the ${services// /} resolved services in the deployed stack"
+    echo "no host port is published by any of the $services resolved services in the deployed stack"
 
 # Wait for the api to answer /readyz, which is what a deploy is gated on.
 #
@@ -884,8 +892,7 @@ drill-seed:
       psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-syncr}" -d "${POSTGRES_DB:-syncr}" \
       -f /dev/stdin < deployments/drill/seed-local.sql
 
-# REFUSE ON A DEPLOYED HOST. `deployments/digests.env` is the fact that distinguishes one from a
-# workstation: `cd.yml` writes it and nothing else does.
+# REFUSE ON A DEPLOYED HOST, on EITHER of two facts a workstation does not have.
 #
 # Without this, running the local drill on a host would generate a THROWAWAY keypair, dump the LIVE
 # database to that host's own disk encrypted to that key, restore into a locally-built image, and print
@@ -894,6 +901,17 @@ drill-seed:
 # standard is that an instrument refuses rather than relying on its name, which is why `ops.restore`
 # requires the live target instead of trusting its caller.
 #
+# TWO FACTS, BECAUSE ONE FILE GOING MISSING MUST NOT RE-ENABLE THE PATH:
+#
+#   deployments/digests.env                    the release `cd.yml` and `just deploy` recorded
+#   deployments/secrets/backup-recipient.asc   the production public key, scp'd in step 5
+#
+# The first version keyed on the digest file alone, and that file was untracked and NOT gitignored, so
+# any `git clean -fd` during troubleshooting removed it: after that `just restore-drill` aborted for
+# want of digests AND this recipe stopped refusing, leaving the throwaway-key path as the only drill
+# that still ran. The digest file is gitignored now, which puts it behind `git clean -x`, and the
+# public key sits under `deployments/secrets/.gitignore`'s `*`, so the two do not go missing together.
+#
 # A DEPENDENCY RATHER THAN THE FIRST LINE OF THE BODY, and listed before `drill-keys`, because `just`
 # runs dependencies left to right: the first version refused only after `drill-keys` had already
 # written a throwaway keypair into `deployments/secrets` on the host it was refusing to run on.
@@ -901,12 +919,14 @@ drill-seed:
 _refuse-a-local-drill-on-a-deployed-host:
     #!/usr/bin/env bash
     set -uo pipefail
-    if [ -f deployments/digests.env ]; then
-      echo "this host has a recorded release: run \`just restore-drill\`, which uses the real bucket" >&2
-      echo "and the real key. \`just drill-local\` proves the mechanics on a development machine and" >&2
-      echo "nothing about this host: it would dump the live database under a throwaway key." >&2
+    for evidence in deployments/digests.env deployments/secrets/backup-recipient.asc; do
+      [ -e "$evidence" ] || continue
+      echo "this host is a deployment ($evidence exists): run \`just restore-drill\`, which uses the" >&2
+      echo "real bucket and the real key. \`just drill-local\` proves the mechanics on a development" >&2
+      echo "machine and nothing about this host: it would dump the live database under a throwaway" >&2
+      echo "key." >&2
       exit 1
-    fi
+    done
 
 # The whole path, locally and from nothing: a database, migrations, seed, a real backup into the local
 # bucket, then the real drill against it.

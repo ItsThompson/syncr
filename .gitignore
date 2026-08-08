@@ -28,5 +28,13 @@ coverage/
 # expansion in its own configuration, and written by the deploy path from the host's secret store.
 deployments/alertmanager/webhook_url
 
+# THE RELEASE'S RECORDED IMAGE DIGESTS, written on the host by `cd.yml` and by `just deploy`, and
+# read by every ops recipe. Ignored for two reasons: the host's `git status` stays readable after a
+# deploy so a real change is visible, and `git clean -fd` no longer removes it. `just drill-local`
+# refuses when it is present, so deleting it re-enables the one path that would dump the live
+# database under a throwaway key. See `docs/runbooks/deploy-and-rollback.md`, "what pins what".
+deployments/digests.env
+deployments/digests.previous.env
+
 # OS noise
 .DS_Store
