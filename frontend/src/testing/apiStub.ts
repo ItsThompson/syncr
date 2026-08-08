@@ -9,6 +9,8 @@
 
 import { delay, http, HttpResponse, type RequestHandler } from "msw";
 
+import type { Problem } from "../contract";
+
 export interface StubbedResponse {
   readonly status: number;
   readonly body?: unknown;
@@ -266,3 +268,39 @@ export const settingsResponse: StubbedResponse = {
 
 export const settings = (stubbed: StubbedResponse = settingsResponse): RequestHandler =>
   jsonHandler("/api/v1/settings", stubbed);
+
+/* EVERY READ A SCREEN MAKES, ANSWERED THE SAME WAY, WITHOUT NAMING ONE OF THEM.
+ *
+ * A screen's loading state and its failure state are properties of the screen rather than of any one resource: a
+ * reading is outstanding while ANY of its reads is, and a refusal outranks an outstanding read. So the way to put
+ * a screen into either state is to answer everything it asks for that way, and the way to keep that true when a
+ * screen gains a ninth read is not to enumerate the eight.
+ *
+ * A LIST OF READS IS A SECOND COPY OF WHAT THE SCREEN FETCHES, and Settings alone makes six. These two handlers
+ * therefore match the api prefix rather than a path, which is why they are here beside the specific stubs rather
+ * than in one test file: the shell's own reads are passed AHEAD of them by the caller, because msw's first
+ * matching handler wins.
+ */
+const API_READS = "/api/v1/*";
+
+/** Every api read outstanding, so a screen renders whatever it renders while nothing has arrived. */
+export const pendingReads = (): RequestHandler =>
+  http.get(url(API_READS), async () => {
+    await delay("infinite");
+    return HttpResponse.json(null);
+  });
+
+/** Every api read refused with one problem document, so a screen renders its own failure surface. */
+export const refusedReads = (problem: Problem = readUnavailable): RequestHandler =>
+  http.get(url(API_READS), () => HttpResponse.json(problem, { status: problem.status }));
+
+/* The api's own shape for a read it cannot serve, which is what `/readyz` failing produces: a 503 naming what is
+ * unavailable and what still works. Written as a problem document because that is what the client narrows, and a
+ * failure surface renders `problem.detail` verbatim. */
+export const readUnavailable: Problem = {
+  type: "syncr:service-unavailable",
+  title: "The api is not ready",
+  status: 503,
+  detail:
+    "The api could not serve this read. Nothing was changed, and the plan already on screen is unaffected.",
+};
