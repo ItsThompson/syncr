@@ -33,14 +33,14 @@ import { useAreas } from "../api/hooks/useAreas";
 import { useSettings } from "../api/hooks/useSettings";
 import { useWeeklySession } from "../api/hooks/useWeeklySession";
 import { todayIn } from "../lib/zonedInstant";
-import { EmptyWeek, ErrorState, PendingState, SummaryStrip, WeekGrid } from "../ui/domain";
+import { EmptyWeek, ErrorState, PendingState, SummaryStrip } from "../ui/domain";
 import { RouteBand } from "./RouteBand";
 import { isoWeekOf } from "./today/isoWeek";
-import { DetailPanel } from "./week/components/DetailPanel";
 import { WeekActions } from "./week/components/WeekActions";
 import { WeekHead } from "./week/components/WeekHead";
-import { columnLabel, weekRange } from "./week/labels";
-import { isSessionMode, SessionMode } from "./week/session";
+import { WeekSurface } from "./week/components/WeekSurface";
+import { weekRange } from "./week/labels";
+import { isSessionMode, SessionMode, sessionPath } from "./week/session";
 import { useWeekScreen } from "./week/useWeekScreen";
 import { useWeekScreenInteraction } from "./week/hooks/useWeekScreenInteraction";
 import { useWeekWords } from "./week/hooks/useWeekWords";
@@ -155,6 +155,7 @@ export function WeekRoute() {
           hasProposal={screen.view.proposal !== null}
           onApprove={interaction.onApprove}
           onResolveNow={interaction.onResolveNow}
+          sessionHref={sessionPath(isoWeek)}
           visibleHours={interaction.visibleHours}
         />
         <SummaryStrip
@@ -168,39 +169,7 @@ export function WeekRoute() {
           onPropose={interaction.onPropose}
           verdict={words.verdict}
         />
-        <div className="flex gap-3.25">
-          <div className="min-w-0 grow">
-            <WeekGrid
-              days={days}
-              extent={screen.extent}
-              interaction={{
-                statesOf: interaction.statesOf,
-                onSelect: interaction.onSelect,
-                onDrop: interaction.onDrop,
-                onBandActivate: interaction.onBandActivate,
-              }}
-              labels={dates.map(columnLabel)}
-              nowMs={Date.now()}
-              visibleHours={interaction.visibleHours}
-            />
-          </div>
-          {/* BELOW --bp-wide THE PANEL CLOSES TO A RAIL rather than narrowing: a narrower panel cannot hold a reason
-              and a narrower grid cannot hold a title. The rail is a reserved column, so the grid's width does not
-              change when the panel opens. */}
-          <div className="w-detail-closed shrink-0 border-l border-rule wide:hidden" />
-          {words.detail === null ? null : (
-            <div className="hidden w-detail shrink-0 wide:block">
-              <DetailPanel
-                actions={words.detail.actions}
-                cost={words.detail.cost}
-                definitionRows={words.detail.definitionRows}
-                onClose={interaction.onCloseDetail}
-                reasonRows={words.detail.reasonRows}
-                title={words.detail.title}
-              />
-            </div>
-          )}
-        </div>
+        <WeekSurface interaction={interaction} nowMs={Date.now()} screen={screen} words={words} />
       </div>
     </RouteBand>
   );

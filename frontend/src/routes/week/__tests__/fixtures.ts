@@ -420,7 +420,6 @@ export function buildRaisedItem(overrides: Partial<RaisedItem> = {}): RaisedItem
     statement:
       "Proposed and skipped in 6 weeks running. syncr has not changed its priority and will not: " +
       "reschedule it, cut its scope, or drop it.",
-    weeks: 6,
     ...overrides,
   };
 }
@@ -472,7 +471,6 @@ export function buildSession(overrides: Partial<WeeklySession> = {}): WeeklySess
     promotionStatement:
       "syncr noticed these patterns and has changed nothing. A promotion edits your template only " +
       "when you accept it, and declining one does not raise it again for a while.",
-    statement: null,
     ...overrides,
   };
 }

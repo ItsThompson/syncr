@@ -1,8 +1,10 @@
 /* THE SESSION'S RAISED ITEMS, NARROWED FROM THE WIRE TO WHAT THE KIT RENDERS.
  *
  * THE SENTENCE IS THE API'S AND THE HEADING IS THIS SCREEN'S. Each item arrives with the words to say about it, composed
- * server-side so the CLI and the screen cannot describe one week two ways. What the api does not carry is the eyebrow a
- * group of them sits under: that is a label on this surface, and the CLI's own listing has no groups at all.
+ * server-side so the CLI and the screen cannot describe one week two ways, and every figure the item states is inside
+ * that sentence: the payload carries no count field, because a number on the wire as well as in the words is a number a
+ * surface could render twice. What the api does not carry is the eyebrow a group of them sits under: that is a label on
+ * this surface, and the CLI's own listing has no groups at all.
  *
  * THE ORDER IS THE PAYLOAD'S. The api hands the categories in the order section 16's `raised` list gives them, and the
  * panel groups by first appearance, so which category a reader meets first is decided once, on the server, rather than

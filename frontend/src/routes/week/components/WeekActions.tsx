@@ -1,4 +1,13 @@
-/* THE WEEK SCREEN'S BAND: the counts, the zoom reading, `Re-solve` and `Approve`.
+/* THE WEEK SCREEN'S BAND: the counts, the zoom reading, the session's entry, `Re-solve` and `Approve`.
+ *
+ * `Run the weekly session` IS A REAL LINK, not a button that assigns a location, which is what keeps middle-click and
+ * cmd-click working and what makes the mode something a reader can send to themselves. It mirrors the closest existing
+ * sibling exactly: the pie review is the same shape, a mode of a screen reachable by URL, and `AreaBand` carries its
+ * `Run the pie review` link. A mode with no control in the product is a mode only a URL can open, which is not what
+ * "triggered manually" means.
+ *
+ * IT IS ABSENT INSIDE THE SESSION, and `sessionHref` is `null` rather than optional so both call sites state which they
+ * are. An optional prop would let a third caller be neither on purpose nor by accident.
  *
  * `Re-solve` DISPATCHES IMMEDIATELY, bypassing the debounce, and it is available whether or not a solve is already
  * pending: a reader who wants the plan now should never have to wait out a window they cannot see. The staleness rules
@@ -11,6 +20,8 @@
  * block count, and a band that repeated the word would be the second surface the rule exists to prevent. The count
  * here is the same figure the strip's cell reads, which is why the two cannot disagree about it. */
 
+import { Link } from "react-router";
+
 import { KeyHint } from "../../../ui/domain";
 import { Button } from "../../../ui/primitives";
 
@@ -18,6 +29,8 @@ export interface WeekActionsProps {
   readonly blockCount: number;
   readonly visibleHours: number;
   readonly hasProposal: boolean;
+  /** Where the weekly session opens for this week, or null when this band IS the session. */
+  readonly sessionHref: string | null;
   readonly onResolveNow: () => void;
   readonly onApprove: () => void;
 }
@@ -26,6 +39,7 @@ export function WeekActions({
   blockCount,
   visibleHours,
   hasProposal,
+  sessionHref,
   onResolveNow,
   onApprove,
 }: WeekActionsProps) {
@@ -34,6 +48,11 @@ export function WeekActions({
       <p className="text-eyebrow text-text-muted">
         {blockCount} blocks · {visibleHours}h visible <KeyHint keys="z" />
       </p>
+      {sessionHref === null ? null : (
+        <Link className="text-sm underline" to={sessionHref}>
+          Run the weekly session
+        </Link>
+      )}
       <Button onClick={onResolveNow} rank="secondary" size="sm">
         Re-solve
       </Button>

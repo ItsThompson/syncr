@@ -1,9 +1,11 @@
 /* THE RAISED-ITEMS PANEL: everything the weekly session opens with, at panel volume in amber.
  *
- * PANEL VOLUME, IN AMBER, AND IN SESSION MODE ONLY. Section 16's notice-volume table gives the whole set one volume and
- * one pigment: a chronic skip and an available promotion both read "needs attention, nothing is broken", and neither
- * appears outside the session. The surface is `noticeSurface`'s own amber panel rather than a second declaration of
- * it, so this panel and every other volume-2 amber notice in the product cannot come to look different.
+ * PANEL VOLUME, IN AMBER, AND IN SESSION MODE ONLY. Section 16's notice-volume table gives every session raise one
+ * volume and one pigment: a chronic skip reads "needs attention, nothing is broken". The surface is `noticeSurface`'s
+ * own amber panel rather than a second declaration of it, so this panel and every other volume-2 amber notice in the
+ * product cannot come to look different. The table's OTHER session row, an available promotion, takes the same surface
+ * in its own panel rather than a row here, because the reader needs the binding, the time and the count per candidate
+ * and those are a table rather than a sentence.
  *
  * NOTHING HERE IS AN ACTION, and the absence is the design. There is deliberately no "carry forward": an overdue task
  * is already in the backlog, so the affordance would be a control that changes nothing. A chronic skip offers nothing

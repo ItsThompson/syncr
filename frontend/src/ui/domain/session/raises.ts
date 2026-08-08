@@ -1,8 +1,8 @@
 /* WHAT THE WEEKLY SESSION RAISES, as the kit renders it.
  *
  * The kit does not know what a response is, so a raise arrives here already resolved: the api's own sentence has
- * become `statement`, and its `weeks` count has become the text beside it or nothing. The route does that narrowing,
- * which is the same boundary `PanelVerdict` sits on.
+ * become `statement`, and every figure the raise states is inside it. The route does that narrowing, which is the same
+ * boundary `PanelVerdict` sits on.
  *
  * `kind` IS OPEN TEXT HERE, DELIBERATELY. The panel groups by it and renders it as an eyebrow; which kinds exist is the
  * api's vocabulary, and a closed union in the kit would have to be extended in two packages every time a category is

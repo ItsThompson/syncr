@@ -29,6 +29,7 @@ import { client } from "../../../../api/client";
 import { SESSION_MODE_HEADER } from "../../../../api/sessionMode";
 import {
   BLOCK_LEETCODE,
+  EMPTY_WEEK_FACTS,
   GYM,
   ISO_WEEK,
   LEETCODE,
@@ -133,6 +134,25 @@ describe("the mode is reachable by URL and is not a destination", () => {
     expect(screen.queryByLabelText("Weekly session")).not.toBeInTheDocument();
   });
 
+  it("is opened from the week screen's own band, by a real link carrying the week", async () => {
+    /* THE CRITERION IS "triggered manually", and a mode with no control in the product is a mode only a pasted URL can
+     * open. The closest sibling sets the shape: the pie review is the same kind of mode and `AreaBand` carries its own
+     * `Run the pie review` link. A real link rather than a handler, so middle-click and cmd-click work. */
+    openTheSession();
+    renderAt(WEEK_PATH);
+
+    const opening = await screen.findByRole("link", { name: "Run the weekly session" });
+    expect(opening).toHaveAttribute("href", SESSION_PATH);
+  });
+
+  it("offers no such link inside the session, because the reader is already in it", async () => {
+    openTheSession();
+    renderAt(SESSION_PATH);
+    await screen.findByLabelText("Weekly session");
+
+    expect(screen.queryByRole("link", { name: "Run the weekly session" })).not.toBeInTheDocument();
+  });
+
   it("lands on the screen for a mode this build does not have", async () => {
     openTheSession();
     renderAt(`/week?week=${ISO_WEEK}&mode=weekly`);
@@ -151,49 +171,42 @@ describe("what the session raises", () => {
         kind: "habit_at_debt_cap",
         title: GYM,
         statement: "Two sessions behind, capped at six.",
-        weeks: null,
       }),
       buildRaisedItem({
         key: "repeated_collision:task",
         kind: "repeated_collision",
         title: "Standup",
         statement: "Standup has landed on this block in 4 weeks. Stated rather than acted on.",
-        weeks: 4,
       }),
       buildRaisedItem({
         key: "overdue_task:leetcode",
         kind: "overdue_task",
         title: LEETCODE,
         statement: "Overdue: it was due 3 Feb and 1h of it is left.",
-        weeks: null,
       }),
       buildRaisedItem({
         key: "at_risk_task:leetcode",
         kind: "at_risk_task",
         title: LEETCODE,
         statement: "At risk: the week cannot fit the work this task needs before its deadline.",
-        weeks: null,
       }),
       buildRaisedItem({
         key: "floor_at_risk:career",
         kind: "floor_at_risk",
         title: "Career",
         statement: "1h30m short of the floor this week reserves.",
-        weeks: null,
       }),
       buildRaisedItem({
         key: "new_anchor:standup",
         kind: "new_anchor",
         title: "Standup",
         statement: "New commitment, Tue 10 Feb 09:00 for 30m. It is immovable.",
-        weeks: null,
       }),
       buildRaisedItem({
         key: "cadence_due:gym",
         kind: "cadence_due",
         title: GYM,
         statement: "3 occurrences due in this week's plan.",
-        weeks: null,
       }),
     ];
     openTheSession(buildSession({ raised }));
@@ -262,7 +275,7 @@ describe("the raises that appear in this mode only", () => {
     await screen.findByLabelText(`${LEETCODE} · Career`);
 
     expect(screen.queryByLabelText("Raised in this session")).not.toBeInTheDocument();
-    expect(screen.queryByText("Repeated pins")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Repeated pins")).not.toBeInTheDocument();
   });
 });
 
@@ -330,11 +343,31 @@ describe("the promotion candidates", () => {
   it("names the binding, the time, and the week count", async () => {
     openTheSession();
     renderAt(SESSION_PATH);
-    await screen.findByText("Repeated pins");
+    await screen.findByLabelText("Repeated pins");
 
     expect(screen.getByText(`${LEETCODE}`)).toBeInTheDocument();
     expect(screen.getByText("Tue 13:00")).toBeInTheDocument();
     expect(screen.getByText("4 weeks")).toBeInTheDocument();
+  });
+
+  it("renders at amber panel volume, which is the row the notice table gives it", async () => {
+    openTheSession();
+    const { container } = renderAt(SESSION_PATH);
+    await screen.findByLabelText("Repeated pins");
+
+    const panel = container.querySelector('[aria-label="Repeated pins"]');
+    expect(panel?.className).toContain("notice--panel");
+    expect(panel?.className).toContain("notice--amber");
+  });
+
+  it("renders nothing at all when no promotion is available", async () => {
+    /* The notice table's row is "promotion AVAILABLE", so an amber surface saying nothing has been pinned three weeks
+     * running would spend a notice pigment on the absence of a notice. */
+    openTheSession(buildSession({ promotions: [] }));
+    renderAt(SESSION_PATH);
+    await screen.findByLabelText("Raised in this session");
+
+    expect(screen.queryByLabelText("Repeated pins")).not.toBeInTheDocument();
   });
 
   it("states that nothing is applied without acceptance", async () => {
@@ -347,7 +380,7 @@ describe("the promotion candidates", () => {
   it("offers no accept and no decline, because neither route exists in this build", async () => {
     openTheSession();
     renderAt(SESSION_PATH);
-    await screen.findByText("Repeated pins");
+    await screen.findByLabelText("Repeated pins");
 
     expect(screen.queryByRole("button", { name: /accept/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /decline/i })).not.toBeInTheDocument();
@@ -360,9 +393,43 @@ describe("the promotion candidates", () => {
       }),
     );
     renderAt(SESSION_PATH);
-    await screen.findByText("Repeated pins");
+    await screen.findByLabelText("Repeated pins");
 
     expect(screen.getByText("task")).toBeInTheDocument();
+  });
+});
+
+describe("a week that moved on while the session was open", () => {
+  it("says the raises are older than the plan beside them", async () => {
+    /* WHAT `inputVersion` IS FOR. A pin made inside the session bumps the week, and the plan and the verdict re-read on
+     * the spot while the raises do not: the reader is told which half is older rather than left to assume both are
+     * current. The pair below is what a pin produces, one version apart. */
+    openTheSession(buildSession({ inputVersion: 3 }));
+    renderAt(SESSION_PATH);
+
+    expect(await screen.findByText(/newer than the list below/)).toBeVisible();
+  });
+
+  it("says nothing while the two readings name one version", async () => {
+    openTheSession();
+    renderAt(SESSION_PATH);
+    await screen.findByLabelText("Raised in this session");
+
+    expect(screen.queryByText(/newer than the list below/)).not.toBeInTheDocument();
+  });
+});
+
+describe("the detail panel the keyboard map opens", () => {
+  it("opens inside the mode, so Enter is not a key that does nothing", async () => {
+    /* The mode inherits the whole keyboard map, and `Enter` opens the detail panel. A surface that took the binding and
+     * drew no panel would leave a key that silently sets state nothing renders. */
+    openTheSession();
+    renderAt(SESSION_PATH);
+
+    await userEvent.click(await screen.findByLabelText(`${LEETCODE} · Career`));
+    await userEvent.keyboard("{Enter}");
+
+    expect(await screen.findByRole("button", { name: "Close the detail panel" })).toBeVisible();
   });
 });
 
@@ -401,18 +468,25 @@ describe("the verdict and the one approve action", () => {
     expect(await screen.findByText("The reading the pin produced")).toBeInTheDocument();
   });
 
-  it("says why a week with no plan has no verdict", async () => {
-    openTheSession(
-      buildSession({
-        verdict: null,
-        statement:
-          "The week you are planning holds no plan yet, so it has no verdict and nothing is due " +
-          "in it. Solve the week, and the raises about it appear beside the retrospective below.",
+  it("never opens on a plan-less week, because the screen's own empty state answers first", async () => {
+    /* THE PAIR THE PREVIOUS VERSION OF THIS CASE COMPOSED CANNOT EXIST. `WeeklySessionResponse.verdict` is null exactly
+     * when the planned week holds no plan, and `useWeekScreen` answers `empty` on exactly that condition, so a week view
+     * with a live plan beside a session with a null verdict is not a state the server can produce. What the reader gets
+     * is the empty state, which names the reason and carries the two actions that fix it: the mode is a branch of the
+     * READY screen, and there is no second sentence on the payload claiming otherwise. */
+    installWeekReads(
+      buildWeekView({
+        live: null,
+        readings: null,
+        emptyReason: "outside_horizon",
+        emptyWeek: EMPTY_WEEK_FACTS,
       }),
     );
+    installSessionRead(buildSession({ verdict: null }));
     renderAt(SESSION_PATH);
 
-    expect(await screen.findByText(/holds no plan yet/)).toBeVisible();
+    expect(await screen.findByText("This week is beyond your planning horizon")).toBeVisible();
+    expect(screen.queryByLabelText("Weekly session")).not.toBeInTheDocument();
   });
 
   it("commits the week through the approve endpoint the screen already uses", async () => {
