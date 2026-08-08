@@ -164,8 +164,8 @@ Stated plainly, because an overstated bound is worse than a stated gap.
 
 | Gap | Why | Where it should land |
 |---|---|---|
-| S5, S7, S17, S21 | Each needs a driven interaction on the week grid or the capture dialog: a discrete drag with a real `setPointerCapture`, a panel height measured across a sequence of pins, a label that opens a prefilled form, a whole session on the keyboard. The harness has the browser and the credential; what is missing is the per-screen driving | a follow-up on this suite; ticket 1493 names the drag's two measured defects and the axis its unit stub flattens |
-| S29, S36 | Both need the clock moved: across a Sunday-to-Monday boundary, and past a deadline. Nothing in the stack takes an injected clock from outside the process | ticket 1570 |
+| S5, S7, S17, S21 | Each needs a driven interaction on the week grid or the capture dialog: a discrete drag with a real `setPointerCapture`, a panel height measured across a sequence of pins, a label that opens a prefilled form, a whole session on the keyboard. The harness has the browser and the credential; what is missing is the per-screen driving | ticket 1572, which also records that B1's two cases are not yet bitten |
+| S29, S36 | Both need the clock moved: across a Sunday-to-Monday boundary, and past a deadline. Nothing in the stack takes an injected clock from outside the process | ticket 1573 |
 | The exactly-0.5 early-catch ratio | Needs a verdict-flipping mutation that carries the session header, and only the pin route reads it | ticket 1571 |
-| A first solve of a week already partly lived | Reproducibly refused, permanently. See ticket 1572 | ticket 1572 |
+| A first solve of a week already partly lived | Reproducibly refused, permanently: the maintainer's materialized plan closes the escape hatch the guard leaves for a week with no live plan | ticket 1570 |
 | Google, and the deployed host | A real account, a real token to revoke, and a real systemd unit. Neither is a mock this suite could add honestly | S2, S3, S19, S23 |
