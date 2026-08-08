@@ -61,7 +61,19 @@ if TYPE_CHECKING:
 CONSECUTIVE_WEEKS_FOR_PROMOTION: Final = 3
 """How many consecutive ISO weeks of one pin make a template promotion candidate."""
 
-_REF_SEPARATOR: Final = ":"
+_REF_SEPARATOR: Final = "."
+"""What separates the four parts of an identifier, chosen so nothing on the way rewrites it.
+
+A full stop is one of the characters ``encodeURIComponent`` leaves alone, so the identifier a
+client puts in a path is the identifier the route reads, byte for byte, and a log line or an
+error message quoting one is readable. A colon is legal in a path segment and was the first
+choice; it is percent-encoded by the generated client and is a parameter sigil in the router
+libraries either side of the wire, which makes one value take three spellings on its way to a
+route that accepts all three.
+
+No part can contain one: a ``BindingKind`` is lower-case words joined by underscores, a UUID is
+hex and hyphens, and the last two are integers.
+"""
 _REF_PARTS: Final = 4
 _MINUTES_PER_DAY: Final = 24 * MINUTES_PER_HOUR
 _MONDAY: Final = 1

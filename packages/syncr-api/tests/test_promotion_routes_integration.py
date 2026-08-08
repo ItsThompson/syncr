@@ -411,7 +411,7 @@ class TestTheTwoPathsAreTheOnesTheCriterionNames:
 
         candidate = the_one_promotion(http, signed_in)
 
-        assert candidate["id"] == f"template_entry:{entry_id}:1:{PINNED_HOUR * 60}"
+        assert candidate["id"] == f"template_entry.{entry_id}.1.{PINNED_HOUR * 60}"
         assert candidate["localTime"] == f"{PINNED_HOUR}:00"
         assert candidate["consecutiveWeeks"] == len(PINNED_WEEKS)
         assert candidate["acceptRefusal"] is None
@@ -563,7 +563,7 @@ class TestWhatTheAcceptRefuses:
         assert "no longer declared" in answered.json()["detail"]
 
     @pytest.mark.parametrize(
-        "malformed", ["nonsense", "habit:not-a-uuid:2:780", f"habit:{uuid4()}:9:780"]
+        "malformed", ["nonsense", "habit.not-a-uuid.2.780", f"habit.{uuid4()}.9.780"]
     )
     def test_an_identifier_this_product_did_not_produce_is_a_422_naming_the_field(
         self, http: TestClient, signed_in: dict[str, str], malformed: str
@@ -608,7 +608,7 @@ class TestWhatTheAcceptRefuses:
             http, signed_in, template_id, area_id=declare_an_area(http, signed_in)
         )
 
-        answered = http.post(accept_path(f"template_entry:{entry_id}:1:787"), headers=signed_in)
+        answered = http.post(accept_path(f"template_entry.{entry_id}.1.787"), headers=signed_in)
 
         assert answered.status_code == HTTPStatus.CONFLICT, answered.text
         assert "quarter hour" in answered.json()["detail"]
@@ -626,7 +626,7 @@ class TestWhatTheAcceptRefuses:
         mine = seed_an_entry_pattern(http, signed_in, live_database_url, owner.tenant_id)
         theirs = _sign_in(http, other_owner.email)
 
-        answered = http.post(accept_path(f"template_entry:{mine}:1:780"), headers=theirs)
+        answered = http.post(accept_path(f"template_entry.{mine}.1.780"), headers=theirs)
 
         assert answered.status_code == HTTPStatus.CONFLICT, answered.text
         (row,) = entry_rows(live_database_url, owner.tenant_id)

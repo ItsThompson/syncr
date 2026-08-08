@@ -40,7 +40,7 @@ _PROMOTION_ID = Annotated[
         description="The candidate's identifier, as the weekly session's payload carries it: the "
         "kind, the content, the ISO weekday and the minute of the day.",
         max_length=PROMOTION_ID_MAX_LENGTH,
-        examples=["template_entry:0b7d1f2e-2f4a-4c8e-9c1a-2f9f8f6b5a41:2:780"],
+        examples=["template_entry.0b7d1f2e-2f4a-4c8e-9c1a-2f9f8f6b5a41.2.780"],
     ),
 ]
 

@@ -14,6 +14,7 @@ same one, and a run that grows by a week is not a new question.
 from __future__ import annotations
 
 from datetime import UTC, datetime, time, timedelta
+from urllib.parse import quote
 from uuid import UUID
 
 import pytest
@@ -190,7 +191,19 @@ class TestTheIdentityACandidateIsAddressedBy:
         # are the four values `_group_of` groups on, in the order the reference renders them.
         (candidate,) = detect_repeated_pins([pinned(week=week) for week in WEEKS[:3]])
 
-        assert candidate.ref.id == f"habit:{GYM_ID}:2:780"
+        assert candidate.ref.id == f"habit.{GYM_ID}.2.780"
+
+    def test_the_identifier_is_unchanged_by_url_encoding(self) -> None:
+        """Which is why the separator is a full stop and not a colon.
+
+        The identifier's only job is to travel in a path and come back. A colon is legal there and
+        is percent-encoded by the generated client anyway, so one value reached the route under two
+        spellings and a router library either side read the tail as a parameter of its own. A value
+        ``quote`` leaves alone has one spelling everywhere.
+        """
+        (candidate,) = detect_repeated_pins([pinned(week=week) for week in WEEKS[:3]])
+
+        assert quote(candidate.ref.id, safe="") == candidate.ref.id
 
     def test_the_identifier_round_trips_through_parse(self) -> None:
         (candidate,) = detect_repeated_pins([pinned(week=week) for week in WEEKS[:3]])
@@ -211,15 +224,16 @@ class TestTheIdentityACandidateIsAddressedBy:
         [
             "",
             "habit",
-            f"habit:{GYM_ID}:2",
-            f"habit:{GYM_ID}:2:780:extra",
-            f"pastime:{GYM_ID}:2:780",
-            "habit:not-a-uuid:2:780",
-            f"habit:{GYM_ID}:x:780",
-            f"habit:{GYM_ID}:0:780",
-            f"habit:{GYM_ID}:8:780",
-            f"habit:{GYM_ID}:2:-1",
-            f"habit:{GYM_ID}:2:1440",
+            f"habit.{GYM_ID}.2",
+            f"habit.{GYM_ID}.2.780.extra",
+            f"pastime.{GYM_ID}.2.780",
+            "habit.not-a-uuid.2.780",
+            f"habit.{GYM_ID}.x.780",
+            f"habit.{GYM_ID}.0.780",
+            f"habit.{GYM_ID}.8.780",
+            f"habit.{GYM_ID}.2.-1",
+            f"habit.{GYM_ID}.2.1440",
+            f"habit:{GYM_ID}:2:780",
         ],
     )
     def test_a_value_this_class_did_not_produce_is_refused(self, malformed: str) -> None:
