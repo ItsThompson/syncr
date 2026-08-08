@@ -258,6 +258,20 @@ OUTSIDE_THE_RULE: Final = (
 # input and changes no live plan, so there is nothing for a running solve to be invalidated by.
 KEPT_BOTH_ROUTE: Final = f"{API_PREFIX}/conflicts"
 
+# The second prefix outside the per-package reading, and it is outside for a different reason: its
+# accept DOES bump, through the day-shape service it delegates the write to, so the bump is in
+# `templates` where the day-shape trigger row already names it. Its decline bumps nothing and owes
+# nothing: a declined promotion records an answer about what to ASK, and no solve reads it.
+#
+# Stated as a prefix with two checked claims rather than as a hole:
+# `test_the_promotion_prefix_holds_the_two_routes_the_reason_names` bounds what it covers, and
+# `test_the_promotion_accept_bumps_through_the_day_shape_service` follows the delegation to the
+# bump.
+PROMOTIONS_ROUTE: Final = f"{API_PREFIX}/promotions"
+
+# Every prefix the per-package bump reading does not answer for, each with a test naming why.
+OUTSIDE_THE_PACKAGE_READING: Final = (KEPT_BOTH_ROUTE, PROMOTIONS_ROUTE)
+
 
 def module_source(module: str | None) -> str:
     """The source of a module a row names.
@@ -605,7 +619,7 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
         unaccounted = [
             (one.method, one.path, one.package)
             for one in mutating_routes(settings)
-            if one.package not in bumping and not one.path.startswith(KEPT_BOTH_ROUTE)
+            if one.package not in bumping and not one.path.startswith(OUTSIDE_THE_PACKAGE_READING)
         ]
 
         assert unaccounted == [], (
@@ -619,12 +633,12 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
         matching.
 
         A package invented here stands for one added later that forgot its bump: it is not in the
-        bumping set and it is not the allowlist member, so the rule has to report it.
+        bumping set and it is neither prefix outside the reading, so the rule has to report it.
         """
         invented = MutatingRoute("POST", f"{API_PREFIX}/widgets", "widgets")
 
         assert invented.package not in packages_that_bump()
-        assert not invented.path.startswith(KEPT_BOTH_ROUTE)
+        assert not invented.path.startswith(OUTSIDE_THE_PACKAGE_READING)
 
     def test_every_package_that_bumps_is_named_by_a_row_of_the_table(self) -> None:
         """The other direction, so the table and the tree are crossed rather than read separately.
@@ -645,7 +659,9 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
 
         assert packages_that_bump() - named - {"solving", "reviews"} == set()
 
-    def test_the_allowlist_holds_exactly_one_route(self, settings: ServiceSettings) -> None:
+    def test_the_kept_both_allowlist_holds_exactly_one_route(
+        self, settings: ServiceSettings
+    ) -> None:
         # Section 10 puts one row in it: `kept-both`, which records a decision and changes neither a
         # solve input nor the live plan. The route it lives on answers both resolutions, so what is
         # allowlisted is the route and the branch inside it is what its own suite drives.
@@ -664,6 +680,53 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
         )
 
         assert branch < bumping
+
+    def test_the_promotion_prefix_holds_the_two_routes_the_reason_names(
+        self, settings: ServiceSettings
+    ) -> None:
+        """The prefix is outside the per-package reading for two stated reasons, one per route.
+
+        Bounding it here is what stops a third promotion route inheriting an exemption written about
+        these two: a route added under this prefix arrives with no reason and fails.
+        """
+        under = sorted(
+            one.path for one in mutating_routes(settings) if one.path.startswith(PROMOTIONS_ROUTE)
+        )
+
+        assert under == [
+            f"{PROMOTIONS_ROUTE}/{{promotion_id}}/accept",
+            f"{PROMOTIONS_ROUTE}/{{promotion_id}}/decline",
+        ]
+
+    def test_the_promotion_accept_bumps_through_the_day_shape_service(self) -> None:
+        """The delegation the accept's exemption rests on, followed to the bump.
+
+        A promotion moves an entry of a day shape, which is section 10's "day shape or one of its
+        entries edited" row reached from a second route. The write is the day-shape service's, so
+        the bump is in ``templates`` and the per-package reading cannot see it from ``promotions``.
+        What makes that safe is this: the accept really does call that service, that method really
+        does invalidate, and the module it invalidates through really does bump.
+        """
+        accept = module_source("promotions/service.py")
+        day_shapes = module_source("templates/service.py")
+        invalidation = module_source("templates/invalidation.py")
+
+        assert "self._templates.change_entry(" in accept
+        assert "async def change_entry(" in day_shapes
+        assert "await self._weeks.invalidate_if_mapped(shape.day_type_id)" in day_shapes
+        assert any(spelling in invalidation for spelling in BUMPS_A_VERSION)
+
+    def test_the_promotion_decline_writes_nothing_a_solve_reads(self) -> None:
+        """The other half of the reason: a decline changes what is ASKED, not what is solved.
+
+        Its only write is its own table, and no module outside this package reads it except the
+        weekly session's raise, which is a read. So there is nothing for a running solve to be
+        invalidated by, which is the same ground ``kept-both`` stands on.
+        """
+        service = module_source("promotions/service.py")
+
+        assert "self._declines.decline(" in service
+        assert not any(spelling in service for spelling in BUMPS_A_VERSION)
 
     @pytest.mark.parametrize("prefix", list(OUTSIDE_THE_RULE), ids=lambda one: one)
     def test_every_exclusion_still_names_routes_that_exist(
