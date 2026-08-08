@@ -11,6 +11,7 @@ export {
   type EventStreamProviderProps,
 } from "./EventStreamProvider";
 export {
+  EVENT_TYPES,
   eventOfFrame,
   isTerminal,
   parseFrames,

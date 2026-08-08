@@ -42,7 +42,14 @@ export type ServerEvent =
 
 export type EventType = ServerEvent["type"];
 
-const EVENT_TYPES: readonly EventType[] = ["operation", "conflict", "projection", "notice"];
+/**
+ * Every type the stream declares, which is the api's own set.
+ *
+ * Exported because it is what a sweep over the union has to iterate: a test that named the four itself would
+ * keep passing the day a fifth is added, and the question worth asking of this union -- which of these
+ * interrupts the reader -- has to be asked of every member.
+ */
+export const EVENT_TYPES: readonly EventType[] = ["operation", "conflict", "projection", "notice"];
 
 /** True for a status no further event can follow, which is what ends a subscription's interest. */
 export function isTerminal(status: OperationStatus): boolean {
