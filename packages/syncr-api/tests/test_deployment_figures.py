@@ -829,16 +829,29 @@ class TheDestructiveTeardown:
     name, which is what the rule needed while one stack existed. A second scratch stack arrived, its
     overlay declares ``name: syncr-e2e``, and its teardown destroys nothing anyone holds -- and the
     guard refused it, because a recipe list cannot tell a scratch project from the deployed one.
-    What can is the compose files the recipe itself names: each declares its own ``name:``, the last
-    one wins as compose merges them, and the two projects that hold something are the ones the
-    justfile's own ``dev_compose`` and ``deploy_compose`` resolve to. A third scratch stack is
-    allowed the day it declares a project name of its own, and a recipe pointed at the deployed
-    project is refused whatever it is called. ``restore_compose`` resolves to the DEPLOYED project,
-    which is exactly the reading that cost a ``pgdata``, and a test below states that figure so it
-    cannot drift quietly.
+    What can is the project the line acts on, and TWO INPUTS DECIDE IT: the ``-f`` list, whose last
+    declared ``name:`` wins as compose merges them, and an explicit override by ``-p``,
+    ``--project-name`` or ``COMPOSE_PROJECT_NAME``, which beats the files entirely. Reading only the
+    first admitted ``-p syncr`` carrying the e2e stack's files, which resolves to ``syncr-e2e`` by
+    its files and destroys the DEPLOYED project when it runs; it also refused ``-p syncr-scratch3``
+    over the base file, which destroys nothing. Too narrow and too wide on one axis at once, which
+    is what a derivation that reads one of two deciding inputs looks like. The override is now read
+    first, and a project name this reading cannot resolve is REFUSED rather than admitted.
+
+    The two projects that hold something are the ones the justfile's own ``dev_compose`` and
+    ``deploy_compose`` resolve to. A third scratch stack is allowed the day it declares a project
+    name of its own, and a recipe pointed at the deployed project is refused whatever it is called.
+    ``restore_compose`` resolves to the DEPLOYED project, which is exactly the reading that cost a
+    ``pgdata``, and a test below states that figure so it cannot drift quietly.
 
     ``dev-reset`` is the one recipe allowed to destroy a project someone holds, because its name
     says what it does and the thing it destroys is the developer's own stack.
+
+    BOTH EXEMPTION ARMS HAVE THEIR OWN CONTROLS, at the predicate rather than two layers under it.
+    Opening either one fully -- `_scoped_to_a_scratch_project` or `_inside_dev_reset` returning True
+    for everything -- left all 153 tests green when this class was first widened, because the scope
+    cases called `_project_named_by` directly and could not see either arm. A guard widened with six
+    controls that do not cover the widening is the shape this class exists to refuse.
 
     THREE TIMES THE READING WAS NARROWER THAN THE RULE, and someone else caught each one. Five
     suffixes and one filename, so a `.service` running the command was invisible. Then every text
@@ -973,6 +986,125 @@ class TestTheDestructiveTeardown:
     def test_a_line_naming_no_compose_file_is_not_admitted(self) -> None:
         """A bare instruction resolves to no project, so it cannot be a scratch one."""
         assert _project_named_by(_compose_files_in("docker compose down -v", {})) is None
+
+    # --- The controls over the two exemption arms themselves --------------------------------------
+    #
+    # THE SIX SCOPE CASES ABOVE CALL `_project_named_by` TWO LAYERS BELOW THE PREDICATE, so neither
+    # exemption arm is covered by them: opening `_scoped_to_a_scratch_project` or
+    # `_inside_dev_reset` fully left every test green. These are the arms' own controls.
+
+    @pytest.mark.parametrize(
+        ("scope", "admitted"),
+        [
+            ("e2e_compose", True),
+            ("dev_compose", False),
+            ("deploy_compose", False),
+            ("restore_compose", False),
+            ("ops_compose", False),
+            ("monitoring_compose", False),
+        ],
+    )
+    def test_the_scratch_exemption_judges_the_scope_at_the_predicate(
+        self, scope: str, admitted: bool
+    ) -> None:
+        """Asked of the predicate the sweep calls, in a recipe that really carries the command."""
+        line = f"    docker compose {{{{{scope}}}}} down -v"
+
+        assert _scoped_to_a_scratch_project("justfile", _e2e_down_line(), line) is admitted, scope
+
+    @pytest.mark.parametrize(
+        "override",
+        [
+            "docker compose -p syncr {{e2e_compose}} down -v",
+            "docker compose --project-name syncr {{e2e_compose}} down -v",
+            "docker compose --project-name=syncr {{e2e_compose}} down -v",
+            "COMPOSE_PROJECT_NAME=syncr docker compose {{e2e_compose}} down -v",
+            "docker compose -p syncr-dev {{e2e_compose}} down -v",
+        ],
+    )
+    def test_a_project_override_pointing_at_a_protected_stack_is_refused(
+        self, override: str
+    ) -> None:
+        """THE HOLE THE FILE-ONLY READING LEFT, in the four spellings compose accepts.
+
+        Each of these carries the e2e stack's own files, so the ``-f`` reading resolves
+        ``syncr-e2e`` and calls it scratch; each actually tears down a project someone holds.
+        `down -v` there is the reading that once deleted a `pgdata`.
+        """
+        assert not _scoped_to_a_scratch_project("justfile", _e2e_down_line(), f"    {override}")
+
+    def test_a_project_override_naming_a_scratch_stack_is_admitted(self) -> None:
+        """The other direction, which the file-only reading got wrong too.
+
+        `-p syncr-scratch3` over the base file destroys nothing anyone holds, and refusing it was a
+        false failure: the override decides the project, so it is what has to be judged.
+        """
+        line = "    docker compose -p syncr-scratch3 -f docker-compose.yml down -v"
+
+        assert _scoped_to_a_scratch_project("justfile", _e2e_down_line(), line)
+
+    @pytest.mark.parametrize(
+        "unreadable",
+        [
+            "docker compose -p $PROJECT {{e2e_compose}} down -v",
+            "docker compose -p {{some_project}} {{e2e_compose}} down -v",
+            'docker compose -p "$(cat name)" {{e2e_compose}} down -v',
+        ],
+    )
+    def test_an_override_this_reading_cannot_resolve_is_refused(self, unreadable: str) -> None:
+        """A guard refuses what it cannot judge, because the alternative is admitting it.
+
+        The project is decided somewhere this reading cannot see, so the answer is no rather than a
+        guess about what the variable holds.
+        """
+        assert not _scoped_to_a_scratch_project("justfile", _e2e_down_line(), f"    {unreadable}")
+
+    def test_the_scratch_exemption_refuses_a_line_outside_any_recipe(self) -> None:
+        """A runbook sentence is not a recipe, whatever compose files it happens to name."""
+        line = "Run `docker compose {{e2e_compose}} down -v` to reset the stack."
+
+        assert not _scoped_to_a_scratch_project("docs/runbooks/invented.md", 1, line)
+
+    def test_the_dev_reset_exemption_stops_at_the_end_of_the_recipe(self) -> None:
+        """`dev-reset`'s exemption is UNCONDITIONAL over its lines, so its extent is the whole rule.
+
+        The recipe's own body is exempt and the lines after it are not. This was red: the reader
+        skipped `#` lines when resetting, so the comment two lines below the body inherited
+        `dev-reset` and its blanket exemption, and a `down -v` written into a comment there would
+        have been exempt.
+        """
+        body = _dev_reset_line()
+        lines = read(Path("justfile")).splitlines()
+
+        assert _inside_dev_reset("justfile", body)
+        after = next(
+            index
+            for index in range(body + 1, len(lines) + 1)
+            if lines[index - 1] and not lines[index - 1].startswith((" ", "\t"))
+        )
+        assert not _inside_dev_reset("justfile", after), (
+            f"justfile:{after} is outside the recipe and inherits its blanket exemption: "
+            f"{lines[after - 1]!r}"
+        )
+
+    def test_both_exemption_arms_are_reached_by_the_sweep_they_guard(self) -> None:
+        """The arms above are the ones the offender sweep calls, asserted rather than assumed.
+
+        A control at a predicate is only a control if the sweep goes through it. Both lines the tree
+        ships are exempt for one reason each, and this states which.
+        """
+        e2e = _e2e_down_line()
+        dev = _dev_reset_line()
+
+        assert _recipe_holding("justfile", e2e) == "e2e-down"
+        assert not _inside_dev_reset("justfile", e2e)
+        assert _scoped_to_a_scratch_project(
+            "justfile", e2e, read(Path("justfile")).splitlines()[e2e - 1]
+        )
+        assert _inside_dev_reset("justfile", dev)
+        assert not _scoped_to_a_scratch_project(
+            "justfile", dev, read(Path("justfile")).splitlines()[dev - 1]
+        )
 
     def test_the_reading_sees_the_line_that_shipped(self, tmp_path: Path) -> None:
         """The positive control, over the WALK, in every file type a reviewer planted it in.
@@ -1214,7 +1346,14 @@ def _inside_dev_reset(path: str, number: int) -> bool:
 def _recipe_holding(path: str, number: int) -> str | None:
     """The justfile recipe this line is the body of, or None when it is not in one.
 
-    A recipe opens at column zero and ends at the next line that does, which is just's own layout.
+    A recipe opens at column zero and ends at the NEXT LINE AT COLUMN ZERO, comments included. An
+    earlier version of this reader skipped `#` lines when resetting, which gave the recipe two extra
+    lines of reach: justfile line 131 is a comment between `dev-reset`'s body and the next
+    declaration, it resolved to `dev-reset`, and `_inside_dev_reset` exempts that recipe's lines
+    UNCONDITIONALLY. A
+    `down -v` written into a comment there would have been blanket-exempt, and the window grew with
+    every comment added. A recipe's body is indented, so nothing legitimate is lost by ending at the
+    first unindented line whatever it says.
     """
     import re
 
@@ -1223,7 +1362,7 @@ def _recipe_holding(path: str, number: int) -> str | None:
     lines = read(Path("justfile")).splitlines()
     opener: str | None = None
     for index, line in enumerate(lines, start=1):
-        if line and not line.startswith((" ", "\t", "#")):
+        if line and not line.startswith((" ", "\t")):
             named = re.match(r"^([a-z][\w-]*)(?:\s+[^:]*)?:", line)
             opener = None if named is None else named.group(1)
         if index == number:
@@ -1248,8 +1387,8 @@ def _justfile_variables() -> dict[str, str]:
     return declared
 
 
-def _compose_files_in(command: str, variables: Mapping[str, str]) -> tuple[str, ...]:
-    """The ``-f`` list a command line names, with any justfile variable in it expanded."""
+def _expanded(command: str, variables: Mapping[str, str]) -> str:
+    """The line with every justfile variable in it replaced by its declared value."""
     import re
 
     expanded = command
@@ -1258,7 +1397,14 @@ def _compose_files_in(command: str, variables: Mapping[str, str]) -> tuple[str, 
         if found is None:
             break
         expanded = expanded.replace(found.group(0), variables.get(found.group(1), ""))
-    return tuple(re.findall(r"-f\s+(\S+\.ya?ml)", expanded))
+    return expanded
+
+
+def _compose_files_in(command: str, variables: Mapping[str, str]) -> tuple[str, ...]:
+    """The ``-f`` list a command line names, with any justfile variable in it expanded."""
+    import re
+
+    return tuple(re.findall(r"-f\s+(\S+\.ya?ml)", _expanded(command, variables)))
 
 
 def _project_named_by(files: Iterable[str]) -> str | None:
@@ -1291,17 +1437,90 @@ def _protected_projects() -> set[str]:
     return protected
 
 
+def _project_override_in(command: str) -> str | None:
+    """The project a line names EXPLICITLY, which overrides what its ``-f`` list would resolve to.
+
+    ``-p``, ``--project-name`` and ``COMPOSE_PROJECT_NAME`` all decide the project compose acts on,
+    and the ``-f`` list decides it only when none of them is present. A reading that saw the files
+    and not
+    the override admitted ``-p syncr -f docker-compose.yml -f e2e/docker-compose.e2e.yml down -v``,
+    which resolves to ``syncr-e2e`` by its files and destroys the DEPLOYED project when it runs.
+    """
+    import re
+
+    found = re.search(
+        r"(?:^|\s)(?:-p|--project-name)[= ]\s*(\S+)|(?:^|\s)COMPOSE_PROJECT_NAME=(\S+)", command
+    )
+    if found is None:
+        return None
+    return found.group(1) or found.group(2)
+
+
+def _is_a_scratch_project(project: str | None) -> bool:
+    """Whether this project holds nothing anyone keeps.
+
+    A name the reading cannot resolve to a plain project -- a shell variable, an unexpanded just
+    interpolation -- is NOT a scratch project: the guard has to refuse what it cannot judge, because
+    the
+    alternative is admitting a line whose project is decided somewhere this reading cannot see.
+    """
+    import re
+
+    if project is None or not re.match(r"^[a-z0-9][a-z0-9_.-]*$", project):
+        return False
+    return project not in _protected_projects()
+
+
 def _scoped_to_a_scratch_project(path: str, number: int, line: str) -> bool:
     """Whether this line runs the command against a project that holds nothing anyone keeps.
 
-    The compose files the line itself names are resolved and their project read, so a recipe is
-    judged by what it acts on rather than by what it is called. A line naming no compose file, or
-    one whose project is the developer's or the deployment's, is not a scratch project.
+    THE OVERRIDE IS READ BEFORE THE FILES, because that is the order compose applies them: a line
+    carrying ``-p``, ``--project-name`` or ``COMPOSE_PROJECT_NAME`` acts on THAT project whatever
+    its ``-f`` list declares. Reading only the files was too narrow in one direction and too wide in
+    the other at once: it admitted a deployed-project teardown wearing the e2e stack's files, and
+    refused a
+    scratch-project teardown of the base file alone.
+
+    Otherwise the compose files the line names are resolved and their project read, so a recipe is
+    judged by what it acts on rather than by what it is called. A line naming no compose file and no
+    override resolves to no project, and is not a scratch one.
     """
     if path != "justfile" or _recipe_holding(path, number) is None:
         return False
-    project = _project_named_by(_compose_files_in(line, _justfile_variables()))
-    return project is not None and project not in _protected_projects()
+    variables = _justfile_variables()
+    expanded = _expanded(line, variables)
+    override = _project_override_in(expanded)
+    if override is not None:
+        return _is_a_scratch_project(override)
+    return _is_a_scratch_project(_project_named_by(_compose_files_in(line, variables)))
+
+
+def _lines_of_the_recipe(recipe: str) -> list[int]:
+    """Every justfile line carrying `down -v` inside one recipe, so a case names no line number.
+
+    A literal line number in a test is a second copy of a fact about a file that moves: the two
+    lines
+    this guard is about are found by asking the reader itself which recipe holds them.
+    """
+    return [
+        number
+        for path, number, _ in _lines_mentioning("down -v")
+        if path == "justfile" and _recipe_holding(path, number) == recipe
+    ]
+
+
+def _e2e_down_line() -> int:
+    """The line `e2e-down` runs the command on, which is the scratch-scope arm's own subject."""
+    found = _lines_of_the_recipe("e2e-down")
+    assert len(found) == 1, f"e2e-down carries {found} `down -v` line(s), not one"
+    return found[0]
+
+
+def _dev_reset_line() -> int:
+    """The line `dev-reset` runs the command on, which is the declared exception's own subject."""
+    found = _lines_of_the_recipe(TheDestructiveTeardown.ALLOWED_RECIPE)
+    assert len(found) == 1, f"dev-reset carries {found} `down -v` line(s), not one"
+    return found[0]
 
 
 def _recipes_named_in(documents: Iterable[str]) -> set[str]:
