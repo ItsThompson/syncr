@@ -20,6 +20,9 @@ import { MaturityMeter, Table, type TableColumn } from "../../../ui/domain";
 import { asShare, asValue, parameterName, progressLabel } from "../figures";
 import type { LearnedParameter } from "../../../api/hooks/useLearned";
 
+/** The state the api sends for a parameter below its gate, which is the one the footer counts. */
+const COLLECTING = "collecting";
+
 export interface ParameterTableProps {
   readonly parameters: readonly LearnedParameter[];
 }
@@ -64,10 +67,15 @@ const COLUMNS: readonly TableColumn<LearnedParameter>[] = [
   { key: "state", header: "State", cell: (row) => <StateCell state={row.state} /> },
 ];
 
-/** The footer's sentence: how many rows, and how many of them are still gathering evidence. */
+/** The footer's sentence: how many rows, and how many of them are still gathering evidence.
+ *
+ * Counted from `state`, which is the field the row beside it renders and the one the gate is expressed in. The
+ * band states the api's own `collecting`, and the kit's table sums its footer from the rows it drew, so both
+ * figures read the same fact rather than two: an earlier version counted a null value instead, which agrees with
+ * the state today only because the api refuses a row where the two disagree. */
 function countLabel(parameters: readonly LearnedParameter[]): (count: number) => string {
   return (count) => {
-    const collecting = parameters.filter((row) => row.value === null).length;
+    const collecting = parameters.filter((row) => row.state === COLLECTING).length;
     return `${count} ${count === 1 ? "parameter" : "parameters"} \u00b7 ${collecting} still collecting`;
   };
 }

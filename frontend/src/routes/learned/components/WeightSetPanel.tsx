@@ -23,7 +23,19 @@
  *
  * THE ACTIVE ROW HAS NO CONTROL. Activating the version already in force is a no-op flip plus a re-solve, which
  * the api accepts on purpose, but a control offering it here would read as "apply", and this screen has nothing
- * to apply. */
+ * to apply.
+ *
+ * ONE ACTIVATION AT A TIME, AND THE LOCK IS A REF. An activation re-solves every future week, which is the most
+ * expensive act on this screen, and two clicks of an ordinary double-tap would ask for two waves of it. The api
+ * is safe either way -- one version is active by a partial unique index, so the outcome is last-writer-wins
+ * rather than no active set -- so what the lock saves is the work, not the data. It is a ref as well as a
+ * disabled attribute because `disabled` reaches the DOM on the next render, and nothing guarantees a render
+ * commits between the two clicks of a double-tap; the capture host states the same pair for the same reason.
+ *
+ * EVERY ROW'S CONTROL IS DISABLED WHILE ONE IS OUTSTANDING, not just the row pressed. A tenant has one set in
+ * force, so a second version pressed while the first is in flight is the same race rather than a second one. */
+
+import { useRef, useState } from "react";
 
 import { Panel } from "../../../ui/layout";
 import { Button } from "../../../ui/primitives";
@@ -44,7 +56,10 @@ function fittedAt(version: WeightSet): string {
   return version.fittedAt === null ? NOTHING : version.fittedAt.slice(0, 10);
 }
 
-function columns(activate: Write<ActivationBody>): readonly TableColumn<WeightSet>[] {
+function columns(
+  putInForce: (version: number) => void,
+  isSending: boolean,
+): readonly TableColumn<WeightSet>[] {
   return [
     { key: "version", header: "Version", measure: "figure", cell: (row) => String(row.version) },
     { key: "origin", header: "Origin", cell: (row) => row.origin },
@@ -66,7 +81,8 @@ function columns(activate: Write<ActivationBody>): readonly TableColumn<WeightSe
           <Button
             rank="secondary"
             size="sm"
-            onClick={() => void activate.submit({ version: row.version })}
+            isDisabled={isSending}
+            onClick={() => putInForce(row.version)}
           >
             Put in force
           </Button>
@@ -76,12 +92,32 @@ function columns(activate: Write<ActivationBody>): readonly TableColumn<WeightSe
 }
 
 export function WeightSetPanel({ versions, activate }: WeightSetPanelProps) {
+  /* The request, which outlives the press that started it. `isSending` is what disables the controls and the ref
+   * is the same fact answerable inside a click handler, where the state is one render too late. Both move in
+   * `putInForce` and nowhere else, so they cannot drift apart. */
+  const [isSending, setSending] = useState(false);
+  const inFlight = useRef(false);
+
+  const putInForce = (version: number) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setSending(true);
+    /* Released in a `finally` rather than after the answer, so the lock cannot outlive the request. `submit`
+     * ANSWERS a refusal rather than throwing one, so a `then` would release it too today: the `finally` is what
+     * keeps that true if the write path ever rejects, and releasing only on success is the version the refusal
+     * case reddens. */
+    void activate.submit({ version }).finally(() => {
+      inFlight.current = false;
+      setSending(false);
+    });
+  };
+
   return (
     <Panel title="Weight sets">
       <div className="flex flex-col gap-2.75">
         <Table
           caption="Every weight set version, its origin, and which one is in force"
-          columns={columns(activate)}
+          columns={columns(putInForce, isSending)}
           rows={versions.versions}
           rowKey={(row) => String(row.version)}
           countLabel={(count) => `${count} ${count === 1 ? "version" : "versions"}`}

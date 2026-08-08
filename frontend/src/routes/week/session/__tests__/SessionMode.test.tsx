@@ -33,10 +33,11 @@ import {
   GYM,
   ISO_WEEK,
   LEETCODE,
+  PROMOTED_ENTRY_ID,
   SESSION_PATH,
   WEEK_PATH,
-  buildApproved,
   buildAbsorbablePromotion,
+  buildApproved,
   buildPinned,
   buildPromotionCandidate,
   buildProposal,
@@ -53,6 +54,24 @@ import {
 
 const APPROVED = buildApproved();
 const SESSION_ROUTE = `${window.location.origin}/api/v1/reviews/week/:isoWeek`;
+
+/* What an accept answers with, in the shape the api sends: four required fields, and the entry as the day-shape
+ * routes render one. */
+const ACCEPTED = {
+  promotionId: `template_entry.${PROMOTED_ENTRY_ID}.2.780`,
+  templateId: "9a1c5f2b-6d3e-4a7c-8b1f-0e2d4c6a8b3f",
+  entry: {
+    id: PROMOTED_ENTRY_ID,
+    kind: "concrete",
+    targetTime: "13:00:00",
+    durationMinutes: 60,
+    flexBandMinutes: 15,
+    areaId: null,
+    bindingTarget: "habit",
+    bindingRef: "7f2b8c1d-4e5a-4b6c-9d8e-1a2b3c4d5e6f",
+  },
+  statement: "Your Weekday shape now places this at 13:00, where it was at 07:00.",
+};
 
 function openTheSession(session = buildSession()): void {
   installWeekReads(buildWeekView({ verdict: buildVerdict(), proposal: buildProposal() }));
@@ -89,8 +108,15 @@ async function pinTheSelectedBlock(): Promise<void> {
  * The PATH is what a promotion's two answers are stated over: neither takes a body, because every value a promotion
  * states is in its identifier. So a recorder that only kept bodies would have nothing to assert, and the case that
  * matters -- that the identifier the api sent is the identifier the client sends back -- is about the URL.
+ *
+ * The answer is a SHAPE THE API CAN SEND, so this fixture is not the thing its own sibling comment warns about.
+ * Neither hook reads the response body -- both go through `apply`, which reads only the refusal -- so an empty
+ * object would work; it would also be the one shape `PromotionAcceptedResponse` cannot be.
  */
-function recordRequests(path: string): {
+function recordRequests(
+  path: string,
+  answer: object = ACCEPTED,
+): {
   readonly paths: string[];
   readonly bodies: unknown[];
 } {
@@ -100,7 +126,7 @@ function recordRequests(path: string): {
     http.post(`${window.location.origin}${path}`, async ({ request }) => {
       paths.push(new URL(request.url).pathname);
       bodies.push(await request.json().catch(() => null));
-      return HttpResponse.json({}, { status: 200 });
+      return HttpResponse.json(answer, { status: 200 });
     }),
   );
   return { paths, bodies };
