@@ -879,6 +879,46 @@ export interface paths {
         patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
+    "/api/v1/promotions/{promotion_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Absorb a repeated pin into the day shape
+         * @description Move the day-shape entry this pattern is about to the time it keeps being pinned to.
+         */
+        post: operations["accept_promotion_api_v1_promotions__promotion_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/promotions/{promotion_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline it, and do not raise it again for a while
+         * @description Record the answer. Nothing reaches the template, and the pattern is silenced for a period.
+         */
+        post: operations["decline_promotion_api_v1_promotions__promotion_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reviews/budget": {
         parameters: {
             query?: never;
@@ -4466,14 +4506,43 @@ export interface components {
             projects: components["schemas"]["ProjectResponse"][];
         };
         /**
+         * PromotionAcceptedResponse
+         * @description What an accept changed: the day-shape entry, at the time the pattern named.
+         */
+        PromotionAcceptedResponse: {
+            /** @description The entry as it now stands. Its duration and its flex band are untouched: a promotion moves an entry and never resizes one. */
+            entry: components["schemas"]["TemplateEntryResponse"];
+            /**
+             * Promotionid
+             * @description The pattern that was absorbed.
+             */
+            promotionId: string;
+            /**
+             * Statement
+             * @description What was changed, in the words a surface renders. Composed here so the screen and the CLI cannot describe one edit two ways.
+             */
+            statement: string;
+            /**
+             * Templateid
+             * @description The day shape whose entry moved.
+             */
+            templateId: string;
+        };
+        /**
          * PromotionCandidateResponse
          * @description One repeated pin the session offers to promote into the template.
          *
          *     ``US-TPL-05``: pinning the same binding to the same time for three consecutive weeks raises a
          *     proposal naming the binding, the time, and the number of weeks. Accepting or declining is a
-         *     route of its own, so this shape carries no action and no state: it is the question.
+         *     route of its own, addressed by the ``id`` below, and this shape carries no state: it is the
+         *     question, plus what can be done about it.
          */
         PromotionCandidateResponse: {
+            /**
+             * Acceptrefusal
+             * @description Why the template cannot absorb this pattern, or null when it can. A promotion MOVES the day-shape entry a pattern is about, so content no entry holds has nothing to move: the pattern is still worth stating, and this is the sentence saying what the reader can do instead. A surface renders no accept control when it is set.
+             */
+            acceptRefusal: string | null;
             /**
              * Consecutiveweeks
              * @description How many consecutive weeks the pattern runs for, from the data rather than from the threshold it passed.
@@ -4485,6 +4554,11 @@ export interface components {
              * @description The content that keeps being pinned. Which occurrence of it was pinned is dropped: the occurrence key is scoped to one week, so a pattern across weeks cannot hold one.
              */
             entityId: string;
+            /**
+             * Id
+             * @description What the accept and the decline routes address. It is the GROUP the pattern was found by -- the kind, the content, the weekday and the minute of the day -- because nothing stores a candidate: detection runs on every read of this payload. It carries no week count, so a run that reaches a fourth week is still the pattern a decline silenced.
+             */
+            id: string;
             /**
              * Kind
              * @description What sort of thing that content is: a habit, a task, a routine.
@@ -4510,6 +4584,38 @@ export interface components {
              * @description Every ISO week of the run, oldest first, so the count can be checked.
              */
             weeks: string[];
+        };
+        /**
+         * PromotionDeclinedResponse
+         * @description What a decline recorded: when it was answered, and until when it stays answered.
+         */
+        PromotionDeclinedResponse: {
+            /**
+             * Declinedat
+             * Format: date-time
+             */
+            declinedAt: string;
+            /**
+             * Promotionid
+             * @description The pattern that will not be raised again.
+             */
+            promotionId: string;
+            /**
+             * Statement
+             * @description What was recorded, in the words a surface renders.
+             */
+            statement: string;
+            /**
+             * Suppresseduntil
+             * Format: date-time
+             * @description The instant the pattern may be raised again. Stored rather than derived, so the promise the reader was given is the fact that is kept.
+             */
+            suppressedUntil: string;
+            /**
+             * Suppressionweeks
+             * @description How many weeks that is, which is the interval the screen states.
+             */
+            suppressionWeeks: number;
         };
         /**
          * ProposalBasis
@@ -10591,6 +10697,142 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accept_promotion_api_v1_promotions__promotion_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The candidate's identifier, as the weekly session's payload carries it: the kind, the content, the ISO weekday and the minute of the day. */
+                promotion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotionAcceptedResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    decline_promotion_api_v1_promotions__promotion_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The candidate's identifier, as the weekly session's payload carries it: the kind, the content, the ISO weekday and the minute of the day. */
+                promotion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotionDeclinedResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

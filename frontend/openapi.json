@@ -5189,9 +5189,53 @@
         "title": "ProjectsResponse",
         "type": "object"
       },
-      "PromotionCandidateResponse": {
-        "description": "One repeated pin the session offers to promote into the template.\n\n``US-TPL-05``: pinning the same binding to the same time for three consecutive weeks raises a\nproposal naming the binding, the time, and the number of weeks. Accepting or declining is a\nroute of its own, so this shape carries no action and no state: it is the question.",
+      "PromotionAcceptedResponse": {
+        "description": "What an accept changed: the day-shape entry, at the time the pattern named.",
         "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/TemplateEntryResponse",
+            "description": "The entry as it now stands. Its duration and its flex band are untouched: a promotion moves an entry and never resizes one."
+          },
+          "promotionId": {
+            "description": "The pattern that was absorbed.",
+            "title": "Promotionid",
+            "type": "string"
+          },
+          "statement": {
+            "description": "What was changed, in the words a surface renders. Composed here so the screen and the CLI cannot describe one edit two ways.",
+            "title": "Statement",
+            "type": "string"
+          },
+          "templateId": {
+            "description": "The day shape whose entry moved.",
+            "title": "Templateid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "promotionId",
+          "templateId",
+          "entry",
+          "statement"
+        ],
+        "title": "PromotionAcceptedResponse",
+        "type": "object"
+      },
+      "PromotionCandidateResponse": {
+        "description": "One repeated pin the session offers to promote into the template.\n\n``US-TPL-05``: pinning the same binding to the same time for three consecutive weeks raises a\nproposal naming the binding, the time, and the number of weeks. Accepting or declining is a\nroute of its own, addressed by the ``id`` below, and this shape carries no state: it is the\nquestion, plus what can be done about it.",
+        "properties": {
+          "acceptRefusal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the template cannot absorb this pattern, or null when it can. A promotion MOVES the day-shape entry a pattern is about, so content no entry holds has nothing to move: the pattern is still worth stating, and this is the sentence saying what the reader can do instead. A surface renders no accept control when it is set.",
+            "title": "Acceptrefusal"
+          },
           "consecutiveWeeks": {
             "description": "How many consecutive weeks the pattern runs for, from the data rather than from the threshold it passed.",
             "title": "Consecutiveweeks",
@@ -5201,6 +5245,11 @@
             "description": "The content that keeps being pinned. Which occurrence of it was pinned is dropped: the occurrence key is scoped to one week, so a pattern across weeks cannot hold one.",
             "format": "uuid",
             "title": "Entityid",
+            "type": "string"
+          },
+          "id": {
+            "description": "What the accept and the decline routes address. It is the GROUP the pattern was found by -- the kind, the content, the weekday and the minute of the day -- because nothing stores a candidate: detection runs on every read of this payload. It carries no week count, so a run that reaches a fourth week is still the pattern a decline silenced.",
+            "title": "Id",
             "type": "string"
           },
           "kind": {
@@ -5233,15 +5282,57 @@
           }
         },
         "required": [
+          "id",
           "entityId",
           "kind",
           "title",
           "weekday",
           "localTime",
           "consecutiveWeeks",
-          "weeks"
+          "weeks",
+          "acceptRefusal"
         ],
         "title": "PromotionCandidateResponse",
+        "type": "object"
+      },
+      "PromotionDeclinedResponse": {
+        "description": "What a decline recorded: when it was answered, and until when it stays answered.",
+        "properties": {
+          "declinedAt": {
+            "format": "date-time",
+            "title": "Declinedat",
+            "type": "string"
+          },
+          "promotionId": {
+            "description": "The pattern that will not be raised again.",
+            "title": "Promotionid",
+            "type": "string"
+          },
+          "statement": {
+            "description": "What was recorded, in the words a surface renders.",
+            "title": "Statement",
+            "type": "string"
+          },
+          "suppressedUntil": {
+            "description": "The instant the pattern may be raised again. Stored rather than derived, so the promise the reader was given is the fact that is kept.",
+            "format": "date-time",
+            "title": "Suppresseduntil",
+            "type": "string"
+          },
+          "suppressionWeeks": {
+            "description": "How many weeks that is, which is the interval the screen states.",
+            "title": "Suppressionweeks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "promotionId",
+          "declinedAt",
+          "suppressedUntil",
+          "suppressionWeeks",
+          "statement"
+        ],
+        "title": "PromotionDeclinedResponse",
         "type": "object"
       },
       "ProposalBasis": {
@@ -13497,6 +13588,184 @@
         "summary": "Change a name, deadline, or status",
         "tags": [
           "areas"
+        ]
+      }
+    },
+    "/api/v1/promotions/{promotion_id}/accept": {
+      "post": {
+        "description": "Move the day-shape entry this pattern is about to the time it keeps being pinned to.",
+        "operationId": "accept_promotion_api_v1_promotions__promotion_id__accept_post",
+        "parameters": [
+          {
+            "description": "The candidate's identifier, as the weekly session's payload carries it: the kind, the content, the ISO weekday and the minute of the day.",
+            "in": "path",
+            "name": "promotion_id",
+            "required": true,
+            "schema": {
+              "description": "The candidate's identifier, as the weekly session's payload carries it: the kind, the content, the ISO weekday and the minute of the day.",
+              "examples": [
+                "template_entry.0b7d1f2e-2f4a-4c8e-9c1a-2f9f8f6b5a41.2.780"
+              ],
+              "maxLength": 96,
+              "title": "Promotion Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromotionAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Absorb a repeated pin into the day shape",
+        "tags": [
+          "promotions"
+        ]
+      }
+    },
+    "/api/v1/promotions/{promotion_id}/decline": {
+      "post": {
+        "description": "Record the answer. Nothing reaches the template, and the pattern is silenced for a period.",
+        "operationId": "decline_promotion_api_v1_promotions__promotion_id__decline_post",
+        "parameters": [
+          {
+            "description": "The candidate's identifier, as the weekly session's payload carries it: the kind, the content, the ISO weekday and the minute of the day.",
+            "in": "path",
+            "name": "promotion_id",
+            "required": true,
+            "schema": {
+              "description": "The candidate's identifier, as the weekly session's payload carries it: the kind, the content, the ISO weekday and the minute of the day.",
+              "examples": [
+                "template_entry.0b7d1f2e-2f4a-4c8e-9c1a-2f9f8f6b5a41.2.780"
+              ],
+              "maxLength": 96,
+              "title": "Promotion Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromotionDeclinedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Decline it, and do not raise it again for a while",
+        "tags": [
+          "promotions"
         ]
       }
     },
