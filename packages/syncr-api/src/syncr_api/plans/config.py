@@ -17,6 +17,7 @@ from typing import Final, Literal
 
 from sqlalchemy import text
 
+from syncr_api.anchors.config import ANCHOR_TITLE_MAX_LENGTH, EXTERNAL_UID_MAX_LENGTH
 from syncr_api.plans.surfaces import VerdictSurface
 from syncr_domain import plan as plan_document
 from syncr_domain.feasibility import Provenance
@@ -105,6 +106,12 @@ ADJUSTMENT_KINDS: Final = tuple(kind.value for kind in plan_document.AdjustmentK
 # never minted. The column reserves exactly what the derivation produces, taken from the
 # derivation itself rather than restated, so a change to the hash cannot outgrow the column.
 BLOCK_ID_MAX_LENGTH = BLOCK_ID_LENGTH
+
+# The commitment a retained conflict names, denormalized because the anchor row does not survive the
+# projection horizon rolling past it. Both widths are the `anchors` columns' own, read from that
+# package rather than restated, so the copy cannot be narrower than what it copies.
+SERIES_UID_MAX_LENGTH = EXTERNAL_UID_MAX_LENGTH
+COMMITMENT_TITLE_MAX_LENGTH = ANCHOR_TITLE_MAX_LENGTH
 
 # The first version of a week's inputs. A missing row means nobody has touched the week
 # yet, so the first reference creates it here.

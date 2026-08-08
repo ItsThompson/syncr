@@ -41,7 +41,7 @@ nothing at all.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from syncr_api.anchors.reach import casting_span
@@ -54,7 +54,7 @@ from syncr_api.events.envelopes import conflict_event
 from syncr_api.events.publishing import published
 from syncr_api.horizon.weeks import horizon_weeks
 from syncr_api.plans.calendar_occupancy import typed_anchors
-from syncr_api.plans.conflicts import PlanConflictRepository
+from syncr_api.plans.conflicts import Commitment, PlanConflictRepository
 from syncr_api.plans.overlaps import detected_conflicts
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import plan_document
@@ -66,10 +66,12 @@ from syncr_domain.weeks import week_span
 from syncr_solver.inputs import Anchor, ShadowBlock
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_api.plans.records import ConflictRecord
-    from syncr_domain.identifiers import TenantId
+    from syncr_domain.identifiers import AnchorId, TenantId
     from syncr_domain.intervals import Instant, Interval
     from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
@@ -84,10 +86,15 @@ class Arriving:
 
     The two shapes an assembly resolves them into, so the detector reads what a solve will read
     rather than a projection made for this call.
+
+    ``commitments`` is the third thing this pass already holds and a detection cannot carry: the
+    series a commitment belongs to, keyed by anchor. A raise records it, because the anchor row does
+    not survive the projection horizon rolling past it.
     """
 
     anchors: tuple[Anchor, ...] = ()
     derived: tuple[ShadowBlock, ...] = ()
+    commitments: Mapping[AnchorId, Commitment] = field(default_factory=dict)
 
 
 class IngestConflicts:
@@ -140,7 +147,7 @@ class IngestConflicts:
             live, anchors=arriving.anchors, derived=arriving.derived, now=now
         )
         conflicts = PlanConflictRepository(self._session, self._tenant_id)
-        return await conflicts.raise_all(found, at=now)
+        return await conflicts.raise_all(found, at=now, commitments=arriving.commitments)
 
     async def _live(self, week: IsoWeek) -> PlanDocument | None:
         latest = await PlanRepository(self._session, self._tenant_id).latest(week)
@@ -179,4 +186,13 @@ class IngestConflicts:
                 for block in cast.blocks
                 if block.interval.overlaps(span)
             ),
+            # Every commitment this read loaded, not only the ones that collide: which pairs
+            # overlap is the detector's answer, and narrowing here would mean reading the anchors
+            # a second time to find out.
+            commitments={
+                pair.anchor.id: Commitment(
+                    series_uid=pair.anchor.series_uid, title=pair.anchor.title
+                )
+                for pair in paired
+            },
         )

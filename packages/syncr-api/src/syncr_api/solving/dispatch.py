@@ -80,6 +80,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_api.anchors.commitments import AnchorCommitments
 from syncr_api.events.envelopes import conflict_event, operation_event
 from syncr_api.events.publishing import published
 from syncr_api.learned.repository import WeightSetRepository
@@ -482,6 +483,7 @@ class SolveDispatch:
             revisions=PlanRepository(session, self._tenant_id),
             pending=PendingProposalRepository(session, self._tenant_id),
             conflicts=PlanConflictRepository(session, self._tenant_id),
+            commitments=AnchorCommitments(session, self._tenant_id),
         )
 
     def _coordinator(self, session: AsyncSession) -> SolveCoordinator:

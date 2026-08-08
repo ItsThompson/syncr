@@ -34,7 +34,7 @@ from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.assembler import AssemblyCaller
-from syncr_api.plans.conflicts import PlanConflictRepository
+from syncr_api.plans.conflicts import Commitment, PlanConflictRepository
 from syncr_api.plans.declarations import PinToHold
 from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.overlaps import DetectedConflict
@@ -458,16 +458,16 @@ def raise_a_conflict(
         database = create_database(database_url)
         try:
             async with database.sessionmaker() as session, session.begin():
+                detected = DetectedConflict(
+                    anchor_id=uuid4(),
+                    iso_week=iso_week,
+                    binding=block.binding,
+                    overlap=block.interval,
+                )
                 (raised,) = await PlanConflictRepository(session, tenant_id).raise_all(
-                    [
-                        DetectedConflict(
-                            anchor_id=uuid4(),
-                            iso_week=iso_week,
-                            binding=block.binding,
-                            overlap=block.interval,
-                        )
-                    ],
+                    [detected],
                     at=datetime.now(UTC),
+                    commitments={detected.anchor_id: Commitment(series_uid=None, title="Standup")},
                 )
                 return str(raised.id)
         finally:

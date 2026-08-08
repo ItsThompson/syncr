@@ -58,7 +58,7 @@ from syncr_api.plans.config import (
     MOVED_RESOLUTION,
     RETYPED_RESOLUTION,
 )
-from syncr_api.plans.conflicts import PlanConflictRepository
+from syncr_api.plans.conflicts import Commitment, PlanConflictRepository
 from syncr_api.plans.injection import DEFAULT_DEBOUNCE
 from syncr_api.plans.overlaps import DetectedConflict
 from syncr_api.plans.repository import PlanRepository
@@ -178,16 +178,18 @@ async def raise_conflict(
     anchor_id: AnchorId | None = None,
 ) -> ConflictRecord:
     async with sessions() as session, session.begin():
+        detected = DetectedConflict(
+            anchor_id=anchor_id or uuid4(),
+            iso_week=WEEK,
+            binding=binding,
+            overlap=between(9.5, 10),
+        )
         (raised,) = await PlanConflictRepository(session, tenant_id).raise_all(
-            (
-                DetectedConflict(
-                    anchor_id=anchor_id or uuid4(),
-                    iso_week=WEEK,
-                    binding=binding,
-                    overlap=between(9.5, 10),
-                ),
-            ),
+            (detected,),
             at=NOW,
+            commitments={
+                detected.anchor_id: Commitment(series_uid="standup-series", title="Standup")
+            },
         )
     return raised
 

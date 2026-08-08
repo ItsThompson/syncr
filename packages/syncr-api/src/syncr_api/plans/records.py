@@ -145,6 +145,12 @@ class ConflictRecord:
 
     ``block_id`` is what the week view pairs a conflict with a rendered block on, and it is stored
     rather than derived here because a row already holds it: this record describes a row.
+
+    ``series_uid`` and ``commitment_title`` are the commitment as it stood when the overlap was
+    raised, denormalized because the anchor row does not survive the projection horizon rolling past
+    it. ``series_uid`` is what a repetition GROUPS on and ``None`` means the commitment has no
+    series, so it cannot repeat; ``commitment_title`` is what the raise names, and ``None`` states a
+    count without a name.
     """
 
     id: ConflictId
@@ -153,6 +159,8 @@ class ConflictRecord:
     anchor_id: AnchorId
     block_id: BlockId
     binding: BindingRef
+    series_uid: str | None
+    commitment_title: str | None
     overlap: Interval
     detected_at: datetime
     resolved_at: datetime | None

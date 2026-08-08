@@ -28,7 +28,7 @@ from syncr_api.core.errors import PROBLEM_JSON_MEDIA_TYPE, Conflict, NotFound, V
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.plans.config import KEPT_BOTH_RESOLUTION, MOVED_RESOLUTION, RETYPED_RESOLUTION
-from syncr_api.plans.conflicts import PlanConflictRepository
+from syncr_api.plans.conflicts import Commitment, PlanConflictRepository
 from syncr_api.plans.overlaps import DetectedConflict
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
@@ -120,16 +120,16 @@ def seed_conflict(
                     input_version=1,
                     created_at=NOW,
                 )
+                detected = DetectedConflict(
+                    anchor_id=uuid4(),
+                    iso_week=WEEK,
+                    binding=binding,
+                    overlap=overlap,
+                )
                 (raised,) = await PlanConflictRepository(session, tenant_id).raise_all(
-                    (
-                        DetectedConflict(
-                            anchor_id=uuid4(),
-                            iso_week=WEEK,
-                            binding=binding,
-                            overlap=overlap,
-                        ),
-                    ),
+                    (detected,),
                     at=NOW,
+                    commitments={detected.anchor_id: Commitment(series_uid=None, title="Standup")},
                 )
             return str(raised.id)
         finally:

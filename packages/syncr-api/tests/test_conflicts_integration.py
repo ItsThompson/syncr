@@ -28,7 +28,7 @@ from syncr_api.plans.config import (
     MOVED_RESOLUTION,
     RETYPED_RESOLUTION,
 )
-from syncr_api.plans.conflicts import PlanConflictRepository
+from syncr_api.plans.conflicts import Commitment, PlanConflictRepository
 from syncr_api.plans.overlaps import DetectedConflict
 from syncr_domain.identity import BindingRef
 from syncr_domain.intervals import Interval
@@ -37,7 +37,7 @@ from tests.control_models import recording
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import AsyncIterator, Iterator, Mapping
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -56,6 +56,9 @@ LATER = NOW + timedelta(minutes=30)
 LEETCODE = BindingRef.for_task(uuid4())
 GYM = BindingRef.for_habit(uuid4(), index=0)
 SLEEP = BindingRef.for_routine(uuid4(), on=WEEK.monday())
+
+# What the ingest pass records about the commitment that raised an overlap: its series and its name.
+A_COMMITMENT = Commitment(series_uid="standup-series", title="Standup")
 
 
 def between(start_hour: float, end_hour: float) -> Interval:
@@ -115,9 +118,21 @@ async def raise_all(
     tenant_id: TenantId,
     *detections: DetectedConflict,
     at: datetime = NOW,
+    commitments: Mapping[AnchorId, Commitment] | None = None,
 ) -> tuple[ConflictRecord, ...]:
+    """Raise these detections, recording a commitment for each anchor unless one is stated.
+
+    The default is what the ingest pass supplies: one commitment per anchor it loaded, carrying that
+    anchor's own series and title. A test that wants a commitment whose row had already gone states
+    an empty mapping.
+    """
+    recorded = (
+        {one.anchor_id: A_COMMITMENT for one in detections} if commitments is None else commitments
+    )
     async with sessions() as session, session.begin():
-        return await PlanConflictRepository(session, tenant_id).raise_all(detections, at=at)
+        return await PlanConflictRepository(session, tenant_id).raise_all(
+            detections, at=at, commitments=recorded
+        )
 
 
 async def resolve(
@@ -148,8 +163,48 @@ async def test_a_raised_conflict_reads_back_naming_the_block_and_the_commitment(
     assert raised.block_id == detected(anchor_id).block_id
     assert raised.iso_week == WEEK
     assert raised.overlap == between(9, 10)
+    assert (raised.series_uid, raised.commitment_title) == ("standup-series", "Standup")
     assert (raised.detected_at, raised.resolved_at, raised.resolution) == (NOW, None, None)
     assert not raised.is_resolved
+
+
+async def test_the_commitment_survives_the_anchor_row_the_horizon_roll_deletes(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    """The whole reason the series and the title are on the row rather than read back.
+
+    A weekly commitment publishes a distinct occurrence per week, so three weeks of collisions name
+    three anchors, and reconciliation deletes each one as the projection horizon rolls past it. No
+    anchor row is planted here at all, which is the state a month-old conflict is read in.
+    """
+    weekly = [
+        detected(uuid4(), iso_week=IsoWeek(2026, number), overlap=between(9, 10))
+        for number in (7, 8, 9)
+    ]
+    for one in weekly:
+        await raise_all(sessions, owner.tenant_id, one)
+
+    async with sessions() as session:
+        held = await PlanConflictRepository(session, owner.tenant_id).list_all()
+
+    assert {one.series_uid for one in held} == {"standup-series"}
+    assert {one.commitment_title for one in held} == {"Standup"}
+    assert {str(one.iso_week) for one in held} == {"2026-W07", "2026-W08", "2026-W09"}
+    assert len({one.anchor_id for one in held}) == 3, "the anchor ids are what cannot be grouped on"
+
+
+async def test_a_commitment_whose_row_had_already_gone_records_no_series_or_title(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    """What the solve commit path writes for an anchor deleted between the assembly and the commit.
+
+    ``AnchorCommitments.commitments`` omits an anchor with no row, so the mapping the raise is given
+    genuinely lacks it. The row then states the overlap without naming the commitment, rather than
+    failing a solve's commit over a label.
+    """
+    (raised,) = await raise_all(sessions, owner.tenant_id, detected(uuid4()), commitments={})
+
+    assert (raised.series_uid, raised.commitment_title) == (None, None)
 
 
 async def test_raising_nothing_writes_nothing(

@@ -29,6 +29,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import func, select
 
+from syncr_api.anchors.commitments import AnchorCommitments
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.plans.adoption import AUTO_APPLIED_REASONS, Candidate, PlanAdoption
 from syncr_api.plans.authority import Classification, classify
@@ -132,6 +133,10 @@ async def adopt(
             revisions=PlanRepository(session, tenant_id),
             pending=PendingProposalRepository(session, tenant_id),
             conflicts=PlanConflictRepository(session, tenant_id),
+            # The production implementation, not a fake: it is what `solving.dispatch` wires, and
+            # this suite plants no anchor rows, so a conflict it raises records no commitment --
+            # which is exactly the state an anchor deleted before the commit leaves.
+            commitments=AnchorCommitments(session, tenant_id),
         )
         return await adoption.adopt(classification, plan, reason=reason, at=at)
 

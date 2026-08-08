@@ -84,7 +84,7 @@ if TYPE_CHECKING:
     from syncr_api.core.columns import JsonDocument
     from syncr_api.plans.authority import Classification
     from syncr_api.plans.config import RevisionReason
-    from syncr_api.plans.conflicts import PlanConflictRepository
+    from syncr_api.plans.conflicts import CommitmentReader, PlanConflictRepository
     from syncr_api.plans.proposals import PendingProposalRepository
     from syncr_api.plans.records import (
         ConflictRecord,
@@ -157,10 +157,12 @@ class PlanAdoption:
         revisions: PlanRepository,
         pending: PendingProposalRepository,
         conflicts: PlanConflictRepository,
+        commitments: CommitmentReader,
     ) -> None:
         self._revisions = revisions
         self._pending = pending
         self._conflicts = conflicts
+        self._commitments = commitments
 
     @measured("plan_adoption")
     async def adopt(
@@ -188,7 +190,7 @@ class PlanAdoption:
         adopted = Adopted(
             revision=await self._appended(classification, candidate, reason=reason, at=at),
             proposal=await self._replaced(classification, candidate, at=at),
-            raised=await self._conflicts.raise_all(classification.conflicts, at=at),
+            raised=await self._raised(classification, at=at),
         )
         _log.info(
             "plans.classification.adopted",
@@ -205,6 +207,26 @@ class PlanAdoption:
             proposal_replaced=adopted.proposal is not None,
         )
         return adopted
+
+    async def _raised(
+        self, classification: Classification, *, at: datetime
+    ) -> tuple[ConflictRecord, ...]:
+        """The conflicts this adoption raises, each carrying the commitment it is about.
+
+        The commitments are read here rather than carried on the classification, because a
+        classification is computed from two plan documents and an anchor block's binding names the
+        OCCURRENCE: the series a recurring commitment belongs to is not in either document. The read
+        is one statement over the anchors the detections name, and it is skipped entirely when there
+        are none, which is every solve that found no collision.
+        """
+        detected = classification.conflicts
+        return await self._conflicts.raise_all(
+            detected,
+            at=at,
+            commitments=await self._commitments.commitments(
+                [conflict.anchor_id for conflict in detected]
+            ),
+        )
 
     async def _appended(
         self,

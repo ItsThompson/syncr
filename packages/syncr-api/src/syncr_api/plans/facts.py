@@ -40,6 +40,7 @@ from syncr_api.plans.config import (
     ADJUSTMENT_KINDS,
     BLOCK_ID_MAX_LENGTH,
     BLOCK_OUTCOMES_TABLE,
+    COMMITMENT_TITLE_MAX_LENGTH,
     CONFLICT_RESOLUTIONS,
     CONFLICTS_TABLE,
     EDIT_EVENTS_TABLE,
@@ -49,6 +50,7 @@ from syncr_api.plans.config import (
     PARTIAL_OUTCOME,
     PINS_TABLE,
     PLAN_REVISIONS_TABLE,
+    SERIES_UID_MAX_LENGTH,
     UNANSWERED_CONFLICT,
     UNANSWERED_CONFLICT_INDEX,
     VERDICT_EVENTS_TABLE,
@@ -236,6 +238,10 @@ class PlanConflict(Base, TenantScoped):
     four collisions with one task in four weeks hold four unrelated ids. The weekly session's
     repeated-collision item is stated over the binding, so without it the retention computes
     nothing.
+
+    ``series_uid`` and ``commitment_title`` are the commitment's half of the same problem, and they
+    are denormalized for a second reason as well: the anchor row does not survive the projection
+    horizon rolling past it.
     """
 
     __tablename__ = CONFLICTS_TABLE
@@ -247,6 +253,20 @@ class PlanConflict(Base, TenantScoped):
     anchor_id: Mapped[UUID] = mapped_column(nullable=False)
     block_id: Mapped[str] = mapped_column(String(BLOCK_ID_MAX_LENGTH), nullable=False)
     binding: Mapped[JsonObject] = mapped_column(JSONB, nullable=False)
+    # The commitment, denormalized for the reason ``binding`` is: a conflict is retained forever
+    # and the anchor row is not. Reconciliation deletes an occurrence its feed stopped publishing,
+    # and the projection horizon rolling forward does that to every past occurrence of a recurring
+    # commitment, so the row a month-old conflict names has usually gone.
+    #
+    # ``series_uid`` is what a repeated collision GROUPS on, because ``anchor_id`` names one
+    # occurrence and a weekly meeting publishes a distinct one per week. NULL means the commitment
+    # has no series, and such a row never contributes to a repetition: a one-off cannot repeat.
+    series_uid: Mapped[str | None] = mapped_column(String(SERIES_UID_MAX_LENGTH), nullable=True)
+    # What the raise NAMES. NULL for a commitment whose row had already gone at the instant of the
+    # raise, which states the count without the name rather than failing a solve's commit.
+    commitment_title: Mapped[str | None] = mapped_column(
+        String(COMMITMENT_TITLE_MAX_LENGTH), nullable=True
+    )
     overlap_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     overlap_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

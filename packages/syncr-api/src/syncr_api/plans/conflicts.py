@@ -23,12 +23,28 @@ rather than the same question asked twice.
 The notification is the only one this product sends, so the caller has to know which conflicts are
 news. The insert returns the rows it actually wrote, which is that set exactly: a caller that
 counted the detections instead would notify about a collision the user has already answered for.
+
+## The commitment is recorded, because the anchor row does not survive
+
+A raise stores the commitment's series key and its name beside the overlap. Both are facts about the
+anchor and neither can be read back later: reconciliation deletes an occurrence its feed stopped
+publishing, and the projection horizon rolling forward does exactly that to every past occurrence of
+a recurring commitment. So the row a month-old conflict names has usually gone, while the weekly
+session's repeated-collision item is stated over the same commitment in three or more weeks.
+
+The caller supplies both, because only the caller holds them. Detection works from two plan
+documents or from an assembly's resolved shapes, and neither carries a series key: an anchor
+block's binding names the OCCURRENCE. So :meth:`PlanConflictRepository.raise_all` takes a mapping
+from anchor to :class:`Commitment`, and an anchor absent from it stores nulls, which is the honest
+record for one that had already gone when the raise happened. The argument is required, so absence
+is a fact rather than something a caller forgot.
 """
 
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol, cast
 from uuid import uuid4
 
 from sqlalchemy.dialects.postgresql import insert
@@ -43,12 +59,38 @@ from syncr_domain.intervals import Interval
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from datetime import datetime
 
     from syncr_api.plans.config import ConflictResolution
     from syncr_api.plans.overlaps import DetectedConflict
-    from syncr_domain.identifiers import ConflictId
+    from syncr_domain.identifiers import AnchorId, ConflictId
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Commitment:
+    """An imported commitment as a retained conflict records it: its series, and its name.
+
+    ``series_uid`` is ``None`` for a one-off, which is a first-class answer rather than a gap: a
+    commitment with no series cannot recur, so it can never be part of a repetition.
+    """
+
+    series_uid: str | None
+    title: str
+
+
+class CommitmentReader(Protocol):
+    """What a raise on the solve commit path asks for the commitments it is about to record.
+
+    Declared here, beside the write that needs it, and implemented by the package that owns the
+    ``anchors`` table. A conflict raised at ingest needs no reader: that pass already holds the rows
+    it reconciled, and reading them a second time would be a second answer to what the feed said.
+    """
+
+    async def commitments(self, anchor_ids: Sequence[AnchorId]) -> Mapping[AnchorId, Commitment]:
+        """The commitment each of these anchors is, omitting any whose row no longer exists."""
+        ...
+
 
 # How many conflicts one list read returns. A week raises a handful and the open set across every
 # week is smaller still, because each one blocks a banner until it is answered. The bound is what
@@ -65,18 +107,30 @@ class PlanConflictRepository(TenantScopedRepository):
     """One tenant's conflicts: raised once, listed, and answered for."""
 
     async def raise_all(
-        self, detected: Sequence[DetectedConflict], *, at: datetime
+        self,
+        detected: Sequence[DetectedConflict],
+        *,
+        at: datetime,
+        commitments: Mapping[AnchorId, Commitment],
     ) -> tuple[ConflictRecord, ...]:
         """Raise each of these overlaps that is not already asked about, newly raised first.
 
         Answers with the rows this call wrote and nothing else, so the caller notifies about what
         is news rather than about every overlap that still exists.
+
+        ``commitments`` is what each row records about the anchor it names. An anchor absent from it
+        stores nulls, which says the commitment's row had already gone: see the module note.
         """
         if not detected:
             return ()
         statement = (
             insert(PlanConflict)
-            .values([self._row(conflict, at=at) for conflict in detected])
+            .values(
+                [
+                    self._row(conflict, at=at, commitment=commitments.get(conflict.anchor_id))
+                    for conflict in detected
+                ]
+            )
             .on_conflict_do_nothing(
                 index_elements=list(UNANSWERED_CONFLICT_COLUMNS),
                 index_where=UNANSWERED_CONFLICT,
@@ -146,7 +200,9 @@ class PlanConflictRepository(TenantScopedRepository):
         )
         return _as_record(resolved) if resolved is not None else None
 
-    def _row(self, conflict: DetectedConflict, *, at: datetime) -> dict[str, object]:
+    def _row(
+        self, conflict: DetectedConflict, *, at: datetime, commitment: Commitment | None
+    ) -> dict[str, object]:
         """One detection as the row it becomes, with every derived column derived here.
 
         The block id and the week both come from the detection's own binding rather than from a
@@ -160,6 +216,8 @@ class PlanConflictRepository(TenantScopedRepository):
             "anchor_id": conflict.anchor_id,
             "block_id": conflict.block_id,
             "binding": stored_binding(conflict.binding),
+            "series_uid": None if commitment is None else commitment.series_uid,
+            "commitment_title": None if commitment is None else commitment.title,
             "overlap_starts_at": conflict.overlap.start,
             "overlap_ends_at": conflict.overlap.end,
             "detected_at": at,
@@ -174,6 +232,8 @@ def _as_record(conflict: PlanConflict) -> ConflictRecord:
         anchor_id=conflict.anchor_id,
         block_id=conflict.block_id,
         binding=read_binding(deepcopy(conflict.binding), field="binding"),
+        series_uid=conflict.series_uid,
+        commitment_title=conflict.commitment_title,
         overlap=Interval(conflict.overlap_starts_at, conflict.overlap_ends_at),
         detected_at=conflict.detected_at,
         resolved_at=conflict.resolved_at,
