@@ -61,9 +61,10 @@ export const solveDebounced = (client: ApiClient, isoWeek: string): Promise<Oper
  * the hot path of almost every scenario, so without a message naming the defect the same phantom identifier
  * reads like a product bug in whichever case happens to draw it.
  *
- * NO RATE IS PRINTED HERE. Three measurements of it disagree and the highest is the reviewer's, at one red
- * run in ten full-suite runs; a figure in a message is the one number a future reader trusts, and it cannot
- * be kept current in source. Ticket 1575 carries the rate, and `docs/smoke-scenarios.md` cites it.
+ * NO RATE IS PRINTED HERE. Every measurement of it has come out different and each new sample has been worse
+ * than the last, from one in twenty-five to one in five; a figure in a message is the one number a future
+ * reader trusts, and it cannot be kept current in source. Ticket 1575 carries the samples, and
+ * `docs/smoke-scenarios.md` cites the planning figure.
  *
  * It deliberately does NOT retry. A read that answers 404 for an identifier the api has just handed out is
  * a product defect, and a silent retry would convert it into a slow test instead of a red one. */

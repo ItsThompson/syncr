@@ -35,9 +35,10 @@ maintainer. The suite loads its own fixture per file, so `just e2e` needs no see
 
 **One intermittent failure runs through the whole harness, and it is a product defect rather than a flake in
 a recipe.** A route that answers an operation identifier can answer one that `GET /operations/{id}` then
-404s for, which is ticket 1575. Measured from two different routes and by two people; the highest rate is **one red run in ten full-suite
-runs**, and one occurrence ended a run after a single case because the identifier was drawn during a
-fixture load. Ticket 1575 carries every sample. It is never retried and never tolerated: the harness
+404s for, which is ticket 1575. Reached from all three routes that answer one, and measured by two people; the
+planning figure is **one red run in five to ten full-suite runs**, and one occurrence ended a run after a
+single case because the identifier was drawn during a fixture load. Ticket 1575 carries every sample. It is
+never retried and never tolerated: the harness
 reports it by name, so a run that draws it reads as the known defect rather than as a fault in whichever
 case was running. Eight of the nine seed recipes have never failed.
 
@@ -194,5 +195,5 @@ same fixture rather than on the same code, so ticket 1572 owns them together.
 | S29, S36 | Both need the clock moved: across a Sunday-to-Monday boundary, and past a deadline. Nothing in the stack takes an injected clock from outside the process | ticket 1573 |
 | A first solve of a week already partly lived | Reproducibly refused, permanently: the maintainer's materialized plan closes the escape hatch the guard leaves for a week with no live plan. `just seed-maturity-corpus` prints this refusal rather than exiting on it | ticket 1570 |
 | The promotion panel's composed layout | `s22-no-motion.spec.ts` renders the weekly session and asserts the RAISED panel is drawn, which is one of the two amber notice surfaces item 51 named. The other one, the promotion panel, returns null on an empty candidate list and no fixture here raises a promotion: that needs repeated pins across three weeks. The same case asserts the panel is absent, so it goes red the day a fixture raises one | ticket 1572 |
-| One intermittent failure, anywhere an operation is awaited | A route that answers an operation identifier can answer one that `GET /operations/{id}` 404s for. Measured twice from two routes, a solve and a calendar sync, at roughly one in twenty-five runs. Not tolerated and not retried: `operation()` reports it by name | ticket 1575 |
+| One intermittent failure, anywhere an operation is awaited | A route that answers an operation identifier can answer one that `GET /operations/{id}` 404s for. Reached from all three such routes, at roughly one red run in five to ten. Not tolerated and not retried: `operation()` reports it by name | ticket 1575 |
 | Google, and the deployed host | A real account, a real token to revoke, and a real systemd unit. Neither is a mock this suite could add honestly | S2, S3, S19, S23 |
