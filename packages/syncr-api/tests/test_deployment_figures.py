@@ -108,6 +108,12 @@ def _every_runbook() -> tuple[str, ...]:
 
 # systemd's own default PATH for a service, which is where `/usr/bin/env just` looks. Not
 # configurable in these units and not the shell's: a unit inherits this and nothing else.
+#
+# A STATED CONSTANT THAT NOTHING IN THE TREE CROSSES, which is what makes it the weakest reading in
+# this module. It is correct for Debian bookworm and it cannot be read from the repository, so what
+# makes it safe is not the constant: step 10 of `docs/runbooks/deploy-and-rollback.md` STARTS
+# `syncr-walship.service` and reads its journal, which is a real execution of the claim on the only
+# machine that can make it. If this tuple is ever wrong, that step is what says so.
 SYSTEMD_DEFAULT_PATH: Final = (
     Path("/usr/local/sbin"),
     Path("/usr/local/bin"),
@@ -455,10 +461,32 @@ class TestTheTimersAgreeWithTheConfiguration:
         "unit", ["syncr-backup.service", "syncr-walship.service", "syncr-learning.service"]
     )
     def test_each_unit_runs_a_recipe_rather_than_a_command(self, unit: str) -> None:
-        """The schedule and a manual run cannot drift into two procedures if there is one."""
-        content = directives(SYSTEMD / unit)
+        """The schedule and a manual run cannot drift into two procedures if there is one.
 
-        assert " just " in _exec_start(content), "the unit runs a recipe, not a command"
+        CROSSED AGAINST THE JUSTFILE, not against a padded substring. The first version asserted
+        `" just " in _exec_start(content)`, which REJECTED `/usr/local/bin/just backup-now`: the
+        absolute-path shape its sibling crossing declares valid, and arguably the more correct
+        thing for a unit. A false failure rather than a false pass, so nothing was at risk, but one
+        guard would have blocked the remedy the other permits, and the "two shapes" docstring next
+        door was not true of the suite.
+
+        This asserts what the test's own name claims: the thing invoked is a recipe that exists.
+        """
+        content = directives(SYSTEMD / unit)
+        started = _exec_start(content).split()
+        assert started, f"{unit} has no ExecStart"
+
+        binary, arguments = started[0], started[1:]
+        if binary == _ENV:
+            assert arguments and arguments[0] == "just", started
+            arguments = arguments[1:]
+        else:
+            assert Path(binary).name == "just", f"{unit} runs {binary}, which is not `just`"
+
+        assert arguments, f"{unit} runs `just` with no recipe"
+        assert arguments[0] in _recipe_names(), (
+            f"{unit} runs `just {arguments[0]}`, which the justfile does not declare"
+        )
         assert "Type=oneshot" in content
 
     @pytest.mark.parametrize(
@@ -677,6 +705,11 @@ class TestTheShellVariablesTheRunbooksUse:
         `deployments/digests.env` is the fact that distinguishes a host from a workstation, and
         `just deploy` is the only thing that writes it.
 
+        TWO FACTS, not one. The first version keyed on the digest file alone, which was untracked
+        and NOT gitignored, so any `git clean -fd` removed it: after that `just restore-drill`
+        aborted for want of digests AND this stopped refusing, leaving the throwaway-key path as
+        the only drill that still ran. The digest file is gitignored now and the production public
+        key is the second fact, and the two do not go missing together.
         THE ORDER IS THE POINT. The refusal was the first statement of `drill-local`'s body, and
         `drill-keys` is a dependency, so `just` ran it first: a run on a host wrote a throwaway
         keypair into `deployments/secrets` and only then refused. Measured, on this checkout.
@@ -684,6 +717,9 @@ class TestTheShellVariablesTheRunbooksUse:
         guard = _recipe_body("_refuse-a-local-drill-on-a-deployed-host")
 
         assert "deployments/digests.env" in guard
+        assert "deployments/secrets/backup-recipient.asc" in guard, (
+            "the second fact, so one file going missing does not re-enable the path"
+        )
         assert "exit 1" in guard
         assert "just restore-drill" in guard, "and it names the recipe to run instead"
 
@@ -692,6 +728,25 @@ class TestTheShellVariablesTheRunbooksUse:
         assert dependencies.index("_refuse-a-local-drill-on-a-deployed-host") < dependencies.index(
             "drill-keys"
         ), "just runs dependencies left to right, so the refusal has to come before the keygen"
+
+    def test_the_digest_file_the_refusal_reads_is_gitignored(self) -> None:
+        """The fact a guard keys on must survive the troubleshooting a runbook might invite.
+
+        `git clean -fd` removes untracked files that nothing ignores, and the digest file was one.
+        It also names the production public key now, but a guard whose evidence a routine command
+        deletes is a guard with a schedule.
+        """
+        for name in ("deployments/digests.env", "deployments/digests.previous.env"):
+            ignored = subprocess.run(  # noqa: S603 - a literal argv, no shell
+                # `git` from the PATH the developer and CI both have, like every other call here.
+                ["git", "check-ignore", "-q", name],  # noqa: S607
+                cwd=repo_root(),
+                check=False,
+            )
+            assert ignored.returncode == 0, (
+                f"{name} is not gitignored, so `git clean -fd` removes it and the local drill "
+                "stops refusing on a deployed host"
+            )
 
     def test_the_recipes_read_the_digest_file_in_one_place(self) -> None:
         """One definition, four callers, and the callers keep their own argument quoting.
@@ -737,6 +792,24 @@ def _dependencies_of(name: str) -> list[str]:
     raise AssertionError(f"the justfile declares no recipe named {name}")
 
 
+def _recipe_names() -> frozenset[str]:
+    """Every recipe the justfile declares, read from its own declarations.
+
+    A recipe opens at column zero and its name is followed by `:` or a parameter. Read rather than
+    listed, because the point of crossing a unit's `ExecStart` against this is that a second copy of
+    the recipe name is what would rot.
+    """
+    import re
+
+    found = {
+        match.group(1)
+        for line in read(Path("justfile")).splitlines()
+        if (match := re.match(r"^([a-z][a-z0-9-]*)(?:\s|:)", line))
+    }
+    assert found, "no recipe was read out of the justfile, so this crossing is vacuous"
+    return frozenset(found)
+
+
 class TheDestructiveTeardown:
     """Nothing in this tree may TELL anyone to run `docker compose down -v`.
 
@@ -748,24 +821,42 @@ class TheDestructiveTeardown:
     avoids it.
 
     So the rule is stated over the whole tree rather than over the recipe: every occurrence must be
-    either inside the one recipe whose name says what it destroys, or on a line that forbids it.
+    inside the one recipe whose name says what it destroys, or must be a DECLARED line.
 
-    TWICE NOW THE READING WAS NARROWER THAN THE RULE. The first version read five suffixes and one
-    filename, so nine planted lines produced four catches: a systemd unit running
-    `ExecStart=/usr/bin/docker compose down -v` was invisible, which is the one file type where a
-    SCHEDULED teardown would live and no human reads it first. And the exemption was a substring
-    test on `"not"`, so `Nothing`, `Note`, `cannot`, `Another` and `Notice` each exempted a line
-    that instructed the command. Both are closed below and both have negative controls.
+    THREE TIMES THE READING WAS NARROWER THAN THE RULE, and someone else caught each one. Five
+    suffixes and one filename, so a `.service` running the command was invisible. Then every text
+    file under `rglob`, which read this module's own negative controls out of `.pytest_cache`. Then
+    a hand-written skip list with two crossings to keep it honest, where the crossing that checked
+    "nothing skipped is tracked" was itself root-anchored while the skip rule matched any path
+    component. `_lines_mentioning` now asks git what the files are and keeps no list.
+
+    AND TWICE THE EXEMPTION WAS A HEURISTIC OVER PROSE. First the substring `not`, so `Nothing`,
+    `Note`, `cannot`, `Another` and `Notice` each exempted a line that instructed the command. Then
+    whole phrases, which a line carrying a negation about something ELSE still satisfied: "Do not
+    stop the api first; run `docker compose down -v` to reset the stack" was exempt. No phrase list
+    can answer whether a negation applies to the command, so the exemption is now ENUMERATED, in
+    the shape this class already used for `DECLARING_FILE`.
     """
 
     # The one recipe allowed to run it. Its name says what it does, and it names the dev stack's own
     # compose files, which is a different project from the deployed one.
     ALLOWED_RECIPE = "dev-reset"
 
-    # A line that mentions it while FORBIDDING it. Whole phrases rather than a word that hides
-    # inside five ordinary ones: a line reading "Note: run `docker compose down -v`" contains `not`
-    # and instructs the command.
-    FORBIDDING = ("never", "do not", "don't", "not safe", "must not")
+    # EVERY LINE ALLOWED TO NAME THE COMMAND WITHOUT INSTRUCTING IT, as (path, substring) pairs.
+    #
+    # Declared, not recognised. A phrase list asks whether a negation appears ANYWHERE on the line,
+    # which is not the question: five contrived lines carrying an unrelated negation each instructed
+    # the command and each was exempt. An enumerated set cannot be fooled by prose, and it inverts
+    # the cost: a NEW forbidding line is a deliberate addition here, and a new instructing line
+    # fails.
+    #
+    # `test_every_declared_exemption_matches_exactly_one_line` keeps this from going stale in either
+    # direction: a pair that matches nothing is dead, and a pair that matches two is too loose.
+    EXEMPTED = (
+        ("deployments/ops/restore.py", "Never `docker compose down -v`"),
+        ("docker-compose.restore.yml", "dropping one needs a `down -v`, never"),
+        ("justfile", "Never `down -v`"),
+    )
 
     # The one file allowed to quote the forbidden instruction without forbidding it: this one, which
     # cannot state the rule without naming the string. Declared rather than pattern-matched, so a
@@ -794,12 +885,13 @@ class TestTheDestructiveTeardown:
             for path, number, line in _lines_mentioning("down -v")
             if path != TheDestructiveTeardown.DECLARING_FILE
             and not _inside_dev_reset(path, number)
-            and not _forbids(line)
+            and not _declared_exempt(path, line)
         ]
 
         assert offenders == [], (
-            "these lines mention `docker compose down -v` without forbidding it, and it is scoped "
-            f"to the PROJECT rather than to a service: {offenders}"
+            "these lines mention `docker compose down -v` without being declared on "
+            "`TheDestructiveTeardown.EXEMPTED`, and the command is scoped to the PROJECT rather "
+            f"than to a service: {offenders}"
         )
 
     def test_the_reading_sees_the_line_that_shipped(self, tmp_path: Path) -> None:
@@ -817,45 +909,62 @@ class TestTheDestructiveTeardown:
         )
         for name in TheDestructiveTeardown.PLANTED:
             (tmp_path / name).write_text(f"{shipped}\n", encoding="utf-8")
-        (tmp_path / "innocent.md").write_text(
-            "Never run `docker compose down -v` here.\n", encoding="utf-8"
-        )
         (tmp_path / "an-image.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff down -v")
 
         found = _lines_mentioning("down -v", root=tmp_path)
-        offenders = {path for path, _, line in found if not _forbids(line)}
+        offenders = {path for path, line_number, line in found if not _declared_exempt(path, line)}
 
         assert offenders == set(TheDestructiveTeardown.PLANTED), (
-            "the walk reads every text file type, and only the ones that instruct it are offenders"
+            "the reading covers every text file type, and none of these is a declared exemption"
         )
         assert "an-image.png" not in {path for path, _, _ in found}, "a binary file is not read"
 
     @pytest.mark.parametrize(
         "line",
         [
+            # The five the substring test on `not` exempted.
             "Nothing else clears it: run `docker compose down -v` on the host.",
             "Note: run `docker compose down -v` to reset the stack.",
             "You cannot skip this. Run `docker compose down -v`.",
             "Another option is `docker compose down -v`.",
             "Notice the volume: `docker compose down -v`.",
-        ],
-    )
-    def test_a_word_that_merely_contains_not_does_not_exempt_a_line(self, line: str) -> None:
-        """All five were exempted by the substring test, and `Note:` begins a runbook line."""
-        assert not _forbids(line), line
-
-    @pytest.mark.parametrize(
-        "line",
-        [
+            # The five the WHOLE-PHRASE list exempted, each carrying a negation about something
+            # else.
+            "Do not stop the api first; run `docker compose down -v` to reset the stack.",
+            "You must not skip this: run `docker compose down -v` on the host.",
+            "Don't wait for the timer. Run `docker compose down -v`.",
+            "This is not safe to interrupt, so run `docker compose down -v` and wait.",
+            "Never mind the warning: run `docker compose down -v`.",
+            # And the shapes the phrase list got right, still not exemptions unless declared.
             "Never `docker compose down -v`: it is scoped to the project.",
             "Do not run `docker compose down -v` here.",
-            "`down -v` is not safe against this project.",
-            "You must not use `docker compose down -v` on the host.",
         ],
     )
-    def test_an_explicit_negation_exempts_a_line(self, line: str) -> None:
-        """The other direction: every occurrence in the tree today is one of these shapes."""
-        assert _forbids(line), line
+    def test_no_prose_exempts_a_line_that_is_not_declared(self, line: str) -> None:
+        """TEN OF THESE ESCAPED A HEURISTIC, five per version, and the last two show the cost.
+
+        The final two are genuine refusals and they are STILL offenders here, because the exemption
+        is a declared set rather than a reading of the sentence. That is the trade: a real new
+        refusal has to be added to `EXEMPTED` by hand, and in exchange no line talks its way past
+        the guard.
+        """
+        assert not _declared_exempt("docs/runbooks/invented.md", line), line
+
+    def test_every_declared_exemption_matches_exactly_one_line(self) -> None:
+        """The declared set cannot go stale in either direction.
+
+        A pair matching nothing is a dead entry that would silently stop exempting anything, and a
+        pair matching two lines is a substring loose enough to exempt a line nobody read.
+        """
+        occurrences = _lines_mentioning("down -v")
+
+        for path, fragment in TheDestructiveTeardown.EXEMPTED:
+            matched = [
+                f"{found}:{number}"
+                for found, number, line in occurrences
+                if found == path and fragment in line
+            ]
+            assert len(matched) == 1, f"({path}, {fragment!r}) matches {matched}, not one line"
 
     def test_the_reading_covers_every_file_type_that_carries_the_string(self) -> None:
         """An EXACT set rather than a count, which is what round 1 asked for on another reading.
@@ -874,15 +983,17 @@ class TestTheDestructiveTeardown:
         )
 
     def test_the_walk_reads_nothing_git_ignores(self) -> None:
-        """The ignore list is a hand-written set, so it is crossed against git's own answer.
+        """THE ONE CROSSING LEFT, and it replaced two that a hand-written list needed.
 
-        Reading every text file pulled in `.pytest_cache/v/cache/nodeids`, which holds this module's
-        parametrized test ids and so the five lines that instruct the command: a guard failing on
-        its own negative controls. Rather than patch the list and hope, this asks git which paths
-        are ignored and requires the walk to have read none of them.
+        The reading is `git ls-files --cached`, so this is a property of git's answer rather than of
+        a list: nothing generated, nothing ignored, and no entry that could quietly exclude a
+        tracked file. The previous version kept a list and crossed it twice, and the crossing that
+        checked "nothing skipped is tracked" passed `dist` as a ROOT-ANCHORED pathspec while the
+        skip rule matched any path component, so a tracked `frontend/dist/x.md` was invisible to
+        both.
         """
         read_paths = sorted({path for path, _, _ in _lines_mentioning("docker")})
-        assert read_paths, "the walk read nothing, so this asserts nothing"
+        assert read_paths, "the reading found nothing, so this asserts nothing"
 
         ignored = subprocess.run(
             # `git` from the PATH the developer and CI both have, like every other call here.
@@ -895,30 +1006,33 @@ class TestTheDestructiveTeardown:
         )
 
         assert ignored.stdout.strip() == "", (
-            f"the walk read paths git ignores, which are generated rather than the tree: "
-            f"{ignored.stdout.strip().splitlines()}"
+            f"the reading covered paths git ignores, which are generated rather than the "
+            f"repository: {ignored.stdout.strip().splitlines()}"
         )
 
-    def test_nothing_the_walk_skips_is_a_tracked_file(self) -> None:
-        """THE OTHER DIRECTION, and it caught two entries.
+    def test_the_reading_sees_a_file_in_a_directory_a_skip_list_would_have_excluded(self) -> None:
+        """THE CONTROL FOR THE CLASS THAT KEPT RECURRING, stated over a real tracked path.
 
-        The test above only checks that what the walk READ is not ignored. That leaves the list free
-        to grow an entry naming a TRACKED file, which narrows the reading below the rule and is the
-        exact defect this class exists to prevent: the first version of `_NOT_SOURCE` grew `uv.lock`
-        and `package-lock.json`, both tracked, on the way to fixing something else.
+        `frontend/dist/x.md` is the shape a reviewer planted to defeat the hand-written list:
+        tracked, inside a directory the list named, and therefore invisible to the walk AND to the
+        crossing that was supposed to catch exactly that. There is no list now, so the property to
+        hold is that the reading covers a tracked file wherever it sits, including under a name a
+        list would have skipped.
         """
-        tracked = subprocess.run(  # noqa: S603 - a literal argv over a module constant, no shell
-            # `git` from the PATH the developer and CI both have, like every other call here.
-            ["git", "ls-files", "--", *_NOT_SOURCE],  # noqa: S607
-            cwd=repo_root(),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        under_a_skipped_name = [
+            name
+            for name in _files_git_has()
+            if any(
+                part in {"dist", "coverage", "htmlcov", "__pycache__", "node_modules"}
+                for part in Path(name).parts
+            )
+        ]
 
-        assert tracked.stdout.strip() == "", (
-            f"the walk skips tracked files, so the rule is stated over less than the tree: "
-            f"{tracked.stdout.strip().splitlines()}"
+        assert _files_git_has(), "git listed nothing, so the reading reads nothing"
+        assert under_a_skipped_name == [], (
+            "a tracked file now sits under one of the names the old skip list held, so the reading "
+            f"has to cover it and this control has to be driven rather than vacuous: "
+            f"{under_a_skipped_name}"
         )
 
     def test_the_refusal_names_the_command_the_recipe_actually_runs(self) -> None:
@@ -943,29 +1057,52 @@ def _answering(stdout: str) -> Run:
     return cast("Run", run)
 
 
-def _forbids(line: str) -> bool:
-    """Whether this line mentions the command while forbidding it.
+def _declared_exempt(path: str, line: str) -> bool:
+    """Whether this exact line is one of the declared exemptions.
 
-    Whole phrases, because the first version tested for the substring `not`, and five ordinary
-    English words contain it.
+    Both halves have to match: a pair exempts a substring IN A NAMED FILE, so the same sentence in a
+    runbook is still an offender. Two heuristics preceded this, and each was defeated by ordinary
+    prose carrying a negation that was not about the command.
     """
-    lowered = line.lower()
-    return any(phrase in lowered for phrase in TheDestructiveTeardown.FORBIDDING)
+    return any(
+        path == declared and fragment in line
+        for declared, fragment in TheDestructiveTeardown.EXEMPTED
+    )
 
 
 def _lines_mentioning(fragment: str, *, root: Path | None = None) -> list[tuple[str, int, str]]:
-    """Every line of every TEXT file in the tree that names ``fragment``.
+    """Every line of every TEXT file THE REPOSITORY CONTAINS that names ``fragment``.
 
-    Every text file, not a list of suffixes. The first version read five suffixes and one filename,
-    which made systemd units invisible: the one operational file type where a scheduled teardown
-    would live. A file is text if it decodes as UTF-8, which is the question this reading has to ask
-    anyway, so a PNG or a compiled artefact is skipped by the read rather than by a list.
+    GIT ANSWERS WHAT THE FILES ARE. There is no exclusion list, because three successive widenings
+    of this reading were each caught by someone else rather than by me:
+
+    1. Five suffixes and one filename, so a `.service` running the command was invisible.
+    2. Every text file under `rglob`, which read `.pytest_cache/v/cache/nodeids` and therefore this
+       module's own negative controls.
+    3. A hand-written skip list with two crossings against git to keep it honest, and the crossing
+       that checked "nothing skipped is tracked" used ROOT-ANCHORED pathspecs while the skip rule
+       matched any path component, so a tracked `frontend/dist/x.md` instructing the command was
+       invisible and the whole class still passed. The fix for the narrowing was narrower than the
+       narrowing.
+
+    `git ls-files --cached` is the index, which is what is about to become the repository: it covers
+    a staged new file, which is the moment the pre-commit hook and CI care about, and it cannot see
+    a developer's scratch notes or any generated tree, so the set the reading covers is by
+    construction the set the rule is about. A file is text if it decodes as UTF-8, which is the
+    question the reading has to ask anyway, so a PNG is skipped by the read rather than by a list.
+
+    ``root`` is for the positive control alone: a scratch tree the test built, which is not a git
+    repository and holds nothing but what the test planted.
     """
-    walking = root if root is not None else repo_root()
+    if root is not None:
+        paths = [path for path in sorted(root.rglob("*")) if path.is_file()]
+        walking = root
+    else:
+        walking = repo_root()
+        paths = [walking / name for name in _files_git_has()]
+
     found: list[tuple[str, int, str]] = []
-    for path in sorted(walking.rglob("*")):
-        if not path.is_file() or _ignored(path.relative_to(walking)):
-            continue
+    for path in paths:
         try:
             content = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
@@ -976,30 +1113,17 @@ def _lines_mentioning(fragment: str, *, root: Path | None = None) -> list[tuple[
     return found
 
 
-# What a walk of a working tree must not enter or read: build output, another project's dependency
-# tree, this repository's own history, and the test caches. EVERY ENTRY IS SOMETHING GIT IGNORES,
-# which `test_the_walk_reads_nothing_git_ignores` asserts rather than trusts, so this list cannot
-# quietly grow to exclude a tracked file the rule covers.
-#
-# Broadening the reading to every text file made it read `.pytest_cache/v/cache/nodeids`, which
-# holds this module's own parametrized test ids, and so the five lines that instruct the command.
-_NOT_SOURCE = (
-    ".git",
-    ".venv",
-    "node_modules",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".pytest_cache",
-    ".hypothesis",
-    "__pycache__",
-    "htmlcov",
-    "dist",
-    "coverage",
-)
-
-
-def _ignored(relative: Path) -> bool:
-    return any(part in _NOT_SOURCE for part in relative.parts)
+def _files_git_has() -> tuple[str, ...]:
+    """Every path in the index, which is the repository as it is about to be committed."""
+    listed = subprocess.run(
+        # `git` from the PATH the developer and CI both have, like every other call here.
+        ["git", "ls-files", "--cached", "-z"],  # noqa: S607
+        cwd=repo_root(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return tuple(name for name in listed.stdout.split("\0") if name)
 
 
 def _inside_dev_reset(path: str, number: int) -> bool:
