@@ -53,9 +53,17 @@ function contextOf(declaration: Declaration): string {
   return path.length === 0 ? "the stylesheet" : path.join(" > ");
 }
 
+/* A keyframe list declares no banned property: `@keyframes spin { to { rotate: 360deg } }` does, but
+ * `@keyframes fade { to { opacity: 1 } }` is `opacity`, which is legal everywhere else. So a walk over
+ * declarations reads a whole animation as legal CSS, which is what it is, one frame at a time. The at-rule
+ * itself is the finding, and it is the shape stylelint refuses in source: `at-rule-disallowed-list` covers the
+ * files this repository writes, and this covers the ones a dependency or a plugin emits into the artifact. */
+const KEYFRAMES = /^(-\w+-)?keyframes$/;
+
 export function checkBundle(input: CheckBundleInput): CheckOutcome {
   const findings: Finding[] = [];
   let declarations = 0;
+  let atRules = 0;
   // Vite reports a kB as 1000 bytes, and this check's figure is read beside vite's constantly. One
   // convention, so two numbers for one artifact cannot disagree.
   let bytes = 0;
@@ -63,6 +71,22 @@ export function checkBundle(input: CheckBundleInput): CheckOutcome {
   for (const stylesheet of input.stylesheets) {
     bytes += Buffer.byteLength(stylesheet.css);
     const root = parse(stylesheet.css, { from: stylesheet.name });
+
+    root.walkAtRules((atRule) => {
+      atRules += 1;
+      if (!KEYFRAMES.test(atRule.name.trim().toLowerCase())) return;
+      findings.push({
+        file: stylesheet.file,
+        ...(atRule.source?.start === undefined
+          ? {}
+          : { line: atRule.source.start.line, column: atRule.source.start.column }),
+        check: "keyframes-in-the-bundle",
+        message:
+          `the stylesheet ships @${atRule.name} ${abbreviate(atRule.params)}, and motion is zero, ` +
+          "without exception. Every frame of it is a legal declaration on its own, so the at-rule is " +
+          "what has to be refused.",
+      });
+    });
 
     root.walkDecls((declaration) => {
       declarations += 1;
@@ -87,6 +111,7 @@ export function checkBundle(input: CheckBundleInput): CheckOutcome {
     notes: [
       `${input.stylesheets.length} built stylesheet(s), ${(bytes / 1000).toFixed(2)} kB`,
       `${declarations} declaration(s) read by postcss, not by a pattern`,
+      `${atRules} at-rule(s) read, and a keyframe list is refused whatever it declares`,
       ...input.stylesheets.map((stylesheet) => `  ${stylesheet.name}`),
     ],
   };

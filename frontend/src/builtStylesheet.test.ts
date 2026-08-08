@@ -67,6 +67,21 @@ describe("the built stylesheet", () => {
     expect(css).toContain("outline:var(--state-focus-ring-inverse)");
   });
 
+  /* MOTION IS ZERO IN THE ARTIFACT, not only in the files this repository writes. `--duration` is read out of
+   * the bundle rather than out of `layout.css`, because what a browser gets is the token layer AFTER the build
+   * has processed it, and a token nothing ships is a value nothing is drawn with. The keyframe check is the
+   * positive side of the gate the check itself now refuses: a list here would be legal declaration by
+   * declaration, and this reads the artifact for the at-rule. */
+  it("ships --duration as 0s, so nothing in the product has a length to move over", async () => {
+    expect(await builtCss()).toContain("--duration:0s");
+  });
+
+  it("ships no keyframe list at all, whatever its frames declare", async () => {
+    const css = await builtCss();
+
+    expect(css.toLowerCase()).not.toContain("keyframes");
+  });
+
   it("does not compile a utility named in a test file's string", async () => {
     expect(NAMED_IN_A_TEST).toBe("will-change-transform");
     expect(await builtCss()).not.toContain("will-change");

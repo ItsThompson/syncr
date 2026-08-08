@@ -88,11 +88,69 @@ describe("a declaration the design language permits", () => {
   });
 });
 
+/* THE SHAPE A DECLARATION WALK CANNOT SEE, WHICH IS WHY THE AT-RULE IS READ.
+ *
+ * `@keyframes fade { to { opacity: 1 } }` declares `opacity`, and `opacity` is legal everywhere else in this
+ * product. So the frames of an animation are each a permitted declaration and the animation is the violation:
+ * a check reading only declarations reports nothing about a stylesheet that shipped a whole keyframe list.
+ * stylelint refuses `@keyframes` in the files this repository writes; a dependency, a plugin or a Tailwind
+ * utility emitting one into the artifact is the case this covers. */
+describe("a keyframe list in the bundle", () => {
+  it.each([
+    ["@keyframes fade{to{opacity:1}}", "a list whose every frame is a legal declaration"],
+    ["@-webkit-keyframes fade{to{opacity:1}}", "the vendor spelling"],
+    ["@KEYFRAMES fade{to{opacity:1}}", "the at-rule name in another case"],
+  ])("%s is refused: %s", (css) => {
+    const found = reasons(css);
+
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("motion is zero");
+  });
+
+  /* A list whose frames ALSO declare a banned property is refused twice, and both findings are wanted: the
+   * at-rule says the animation may not exist, and the declaration says `rotate` may not either. */
+  it("is refused once for the list and once per banned frame", () => {
+    const outcome = verdictFor("@keyframes spin{to{rotate:360deg}}");
+
+    expect(outcome.findings.map((finding) => finding.check)).toEqual([
+      "keyframes-in-the-bundle",
+      "banned-declaration-in-the-bundle",
+    ]);
+  });
+
+  it("is refused on the strength of the at-rule, since its frames declare nothing banned", () => {
+    const outcome = verdictFor("@keyframes fade{from{opacity:0}to{opacity:1}}");
+
+    expect(outcome.findings.map((finding) => finding.check)).toEqual(["keyframes-in-the-bundle"]);
+  });
+
+  it("names the line it shipped on, so a reader can find it in the artifact", () => {
+    const outcome = verdictFor(".a{color:var(--ink)}\n@keyframes fade{to{opacity:1}}");
+
+    expect(outcome.findings[0]?.line).toBe(2);
+  });
+
+  it.each([
+    "@media (width >= 1536px){.a{color:var(--ink)}}",
+    "@supports (color:red){.a{color:red}}",
+  ])("leaves %s alone, because an at-rule is not a keyframe list", (css) => {
+    expect(reasons(css)).toEqual([]);
+  });
+});
+
 describe("what the check reports about itself", () => {
   it("states how many declarations it read, so a check that stopped reading is visible", () => {
     const outcome = verdictFor(".a{color:var(--ink)}.b{background-color:var(--paper)}");
 
     expect(outcome.notes.join("\n")).toContain("2 declaration(s)");
+  });
+
+  it("states how many at-rules it read, so a keyframe list cannot hide in an unread one", () => {
+    const outcome = verdictFor(
+      "@media print{.a{color:var(--ink)}}@supports (color:red){.b{color:red}}",
+    );
+
+    expect(outcome.notes.join("\n")).toContain("2 at-rule(s)");
   });
 
   it("states the size of what it examined", () => {
