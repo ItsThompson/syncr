@@ -4,12 +4,20 @@
  * glyph-slot channel: see `glyphs.css`. `aria-expanded` on the trigger is what a screen reader reads, so
  * the mark is hidden from it.
  *
+ * EXPANDING ANCHORS THE SCROLL POSITION TO THE TOGGLED SECTION. Motion is zero, so a panel opens and closes in
+ * one frame, and everything below it moves by the panel's whole height at once. For a section below the fold that
+ * puts different content under the reader's eyes than the row they touched, which is a scroll problem rather than
+ * a motion problem: `useScrollAnchor` measures the trigger before and after and takes the difference out of the
+ * scroll position. The element it holds is the event's own `currentTarget`, so a keyboard activation is anchored
+ * exactly as a click is.
+ *
  * `canExpandMany` is the one behavioural choice a caller makes. A Templates screen with several sections
  * open at once is the case that needs it; a settings group where one answer at a time is the point does not. */
 
 import type { ReactNode, Ref } from "react";
 import * as RadixAccordion from "@radix-ui/react-accordion";
 
+import { useScrollAnchor } from "./useScrollAnchor";
 import "./Accordion.css";
 import "./glyphs.css";
 
@@ -38,10 +46,17 @@ export function Accordion({
   canExpandMany,
   ref,
 }: AccordionProps) {
+  const anchor = useScrollAnchor([...openValues].toSorted().join(" "));
+
   const shared = sections.map((section) => (
     <RadixAccordion.Item key={section.value} value={section.value} className="accordion__item">
       <RadixAccordion.Header>
-        <RadixAccordion.Trigger className="accordion__trigger">
+        <RadixAccordion.Trigger
+          className="accordion__trigger"
+          onClick={(event) => {
+            anchor.hold(event.currentTarget);
+          }}
+        >
           <span
             className="glyph glyph--bracketed glyph--disclosure accordion__mark"
             aria-hidden="true"
