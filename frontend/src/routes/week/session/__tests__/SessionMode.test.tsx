@@ -41,6 +41,7 @@ import {
   buildRaisedItem,
   buildRetro,
   buildSession,
+  buildShortfall,
   buildVerdict,
   buildWeekView,
   installSessionRead,
@@ -371,6 +372,33 @@ describe("the verdict and the one approve action", () => {
     renderAt(SESSION_PATH);
 
     expect(await screen.findByLabelText("Verdict")).toBeInTheDocument();
+  });
+
+  it("reflows the verdict live from the pin the reader made inside the mode", async () => {
+    /* EDITING INSIDE THE SESSION PINS, and the verdict the pin answers with replaces the one on screen without a second
+     * read: the panel is the screen's own and it reads the pin's live verdict first. That is what "the verdict updates
+     * live" means, and it is the reason the mode reuses the panel rather than drawing one from its own payload. */
+    openTheSession();
+    apiServer.use(
+      http.post(`${window.location.origin}/api/v1/weeks/${ISO_WEEK}/pins`, () =>
+        HttpResponse.json(
+          buildPinned({
+            verdict: buildVerdict({
+              inputVersion: 9,
+              shortfalls: [buildShortfall({ against: ["The reading the pin produced"] })],
+              tradeoffs: [],
+            }),
+          }),
+          { status: 201 },
+        ),
+      ),
+    );
+    renderAt(SESSION_PATH);
+    await screen.findByLabelText("Verdict");
+
+    await pinTheSelectedBlock();
+
+    expect(await screen.findByText("The reading the pin produced")).toBeInTheDocument();
   });
 
   it("says why a week with no plan has no verdict", async () => {
