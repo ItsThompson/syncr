@@ -22,10 +22,12 @@ const PERCENT = 100;
 /** Two places on a fitted multiplier, which is the resolution a shrunk estimate actually differs at. */
 const VALUE_PLACES = 2;
 
-/** `duration_multiplier[<uuid>]` as a reader meets it: `Duration multiplier`. */
+/** `duration_multiplier[<uuid>]` as a reader meets it: `Duration multiplier`.
+ *
+ * The key is dropped rather than split off, because a name with no key is the common case and a
+ * fallback for a split that cannot fail would be a branch nothing can enter. */
 export function parameterName(parameter: string): string {
-  const word = parameter.split("[").at(0) ?? parameter;
-  const spaced = word.replaceAll("_", " ");
+  const spaced = parameter.replace(/\[.*$/, "").replaceAll("_", " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 

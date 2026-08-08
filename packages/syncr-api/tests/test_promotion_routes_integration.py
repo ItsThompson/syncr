@@ -55,8 +55,7 @@ from syncr_api.templates.config import DAY_TYPES_PREFIX, TEMPLATES_PREFIX, WEEK_
 from syncr_api.templates.models import TemplateEntryRow
 from syncr_domain.identity import BindingRef, block_id
 from syncr_domain.intervals import Interval
-from syncr_domain.templates import Weekday
-from syncr_domain.weeks import IsoWeek
+from syncr_domain.weeks import IsoWeek, Weekday
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 
 if TYPE_CHECKING:

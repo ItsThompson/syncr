@@ -29,6 +29,7 @@ import { countedHandler, jsonHandler, pendingHandler, readyz } from "../../../te
 import { renderAt } from "../../../testing/renderRoute";
 import {
   COLLECTING_IS_NORMAL,
+  ONLY_HAND_TUNED,
   THRESHOLDS_ARE_ESTIMATES,
   UNLOCKS_COUNT_VOLUME,
   buildCollectingBaseline,
@@ -272,6 +273,15 @@ describe("the weight sets", () => {
     expect(within(table).getByText("fitted")).toBeVisible();
     expect(within(table).getByText("hand-tuned")).toBeVisible();
     expect(within(table).getByText("in force")).toBeVisible();
+    expect(within(table).getByText("2 versions")).toBeVisible();
+  });
+
+  it("counts one version as one, because a first account holds exactly that", async () => {
+    installReads(buildCollectingBaseline(), buildWeightSets({ versions: [ONLY_HAND_TUNED] }));
+    renderAt(SCREEN);
+    const table = await screen.findByRole("table", { name: /Every weight set version/ });
+
+    expect(within(table).getByText("1 version")).toBeVisible();
   });
 
   it("offers one action, which is the same action a revert is", async () => {

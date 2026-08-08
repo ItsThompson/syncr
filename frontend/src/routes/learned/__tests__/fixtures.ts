@@ -7,7 +7,12 @@
  * THE STATEMENTS ARE THE API'S, quoted here rather than paraphrased, because what the screen owes is that they
  * REACH it. Asserting their wording in a test would be asserting this file's copy of the api's words. */
 
-import type { Learned, LearnedParameter, WeightSets } from "../../../api/hooks/useLearned";
+import type {
+  Learned,
+  LearnedParameter,
+  WeightSet,
+  WeightSets,
+} from "../../../api/hooks/useLearned";
 
 export const FITNESS = "11111111-1111-4111-8111-111111111111";
 
@@ -76,6 +81,17 @@ export function buildCollectingBaseline(): Learned {
   return buildLearned({ parameters: [], ready: 0, collecting: 0 });
 }
 
+/** The one version a first account holds: hand-tuned, in force, and never fitted. */
+export const ONLY_HAND_TUNED: WeightSet = {
+  version: 1,
+  origin: "hand-tuned",
+  active: true,
+  fittedAt: null,
+  createdAt: "2026-01-05T09:00:00+00:00",
+  ready: 0,
+  collecting: 0,
+};
+
 export function buildWeightSets(overrides: Partial<WeightSets> = {}): WeightSets {
   return {
     versions: [
@@ -88,15 +104,7 @@ export function buildWeightSets(overrides: Partial<WeightSets> = {}): WeightSets
         ready: 5,
         collecting: 1,
       },
-      {
-        version: 1,
-        origin: "hand-tuned",
-        active: true,
-        fittedAt: null,
-        createdAt: "2026-01-05T09:00:00+00:00",
-        ready: 0,
-        collecting: 0,
-      },
+      ONLY_HAND_TUNED,
     ],
     ...overrides,
   };
