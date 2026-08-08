@@ -499,7 +499,7 @@ fmt:
 # Every frontend static gate. The pre-commit hook runs this, and so does CI, so the hook and
 # the gate cannot drift.
 #
-# Nine checks, none of which the others can cover:
+# Ten checks, none of which the others can cover:
 #   oxlint          the language and React rules, plus the kit's import zones by SPECIFIER
 #   stylelint       the design rules that live in CSS: no raw color, no motion, no radius
 #   prettier        formatting, so twenty tickets of TypeScript accumulate no drift
@@ -508,6 +508,7 @@ fmt:
 #   check-channels  each state channel assigned in exactly one file under the kit
 #   check-imports   the kit's import zones again, by RESOLVED DIRECTORY rather than by specifier
 #   check-bundle    the built stylesheet, declaration by declaration, read with postcss
+#   audit-contrast  every ink against every surface, computed, against the committed ledger
 #   check-render    a RENDERED PIXEL, in a headless browser, over the built stylesheet
 #
 # Three of them overlap deliberately, because each takes a different INPUT and each input has a blind
@@ -519,8 +520,8 @@ fmt:
 # class on an element, which is how `backdrop-filter` shipped for three review iterations with every
 # other check green.
 #
-# THE NINTH READS A COMPOSED RESULT, which is the one input none of the other eight has. Every one of
-# them reads a declaration, a class list, an attribute or the built text, and all three real defects on
+# THE ONE THAT READS A COMPOSED RESULT is check-render, which is the one input none of the others has. Every
+# one of them reads a declaration, a class list, an attribute or the built text, and all three real defects on
 # the week grid were compositions: a `border` shorthand collapsing three edges into four, the same
 # shorthand taking the Area's 2px top rule, and `-webkit-line-clamp` supplying an end-ellipsis that no
 # reading of `white-space` or `text-overflow` could see. Each was found by a person opening a browser
@@ -538,11 +539,10 @@ fmt:
 # pre-push or to CI alone would leave it unarmed exactly where the three defects it exists to catch were
 # written. Ten seconds a commit is the price of the input none of the other eight has.
 #
-# THE RECIPE COUNTS ITS OWN CHECKS AND SAYS SO AT THE END, and that is not decoration. Six of the nine print
+# THE RECIPE COUNTS ITS OWN CHECKS AND SAYS SO AT THE END, and that is not decoration. Most of them print
 # `ok` themselves and three are third-party tools with their own success lines, so a reader counting `ok`
-# counted six of nine, and a check that had silently stopped running looked exactly like the three that never
-# said it. The tail line names how many ran, which is the figure the eight-of-nine loop this recipe already
-# paid for would have contradicted.
+# counted seven of ten, and a check that had silently stopped running looked exactly like the three that never
+# said it. The tail line names how many ran, which is the figure a hard-coded count would have contradicted.
 #
 # Every check runs even when an earlier one fails: one red linter must not hide the rest.
 lint-frontend:
@@ -551,7 +551,7 @@ lint-frontend:
     cd frontend
     failed=0
     ran=0
-    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels lint:imports lint:bundle lint:render; do
+    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels lint:imports lint:bundle lint:contrast lint:render; do
       echo "--- $check"
       ran=$((ran + 1))
       npm run --silent "$check" || failed=1
@@ -571,6 +571,11 @@ fmt-frontend:
 # failure: it discards every declaration after it and renders a plausible page with no values
 tokens-validate:
     cd frontend && npm run --silent lint:tokens
+
+# Rewrite docs/design/contrast-ledger.md from the tokens. The check that it is current runs in
+# `lint-frontend`; this is how a retuned pigment's new ratios are committed
+contrast-ledger:
+    cd frontend && node scripts/audit-contrast/cli.ts --write
 
 # tsc over the frontend. Separate from `lint-frontend` because it is a whole-tree check and
 # belongs with the other whole-tree checks at pre-push. It is not optional: vitest transpiles
