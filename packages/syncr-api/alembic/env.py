@@ -29,6 +29,7 @@ import syncr_api.oauth.models as _oauth  # noqa: F401 - registers its tables
 import syncr_api.offplan.models as _offplan  # noqa: F401 - registers its tables
 import syncr_api.plans.models as _plans  # noqa: F401 - registers its tables
 import syncr_api.preferences.models as _preferences  # noqa: F401 - registers its tables
+import syncr_api.promotions.models as _promotions  # noqa: F401 - registers its tables
 import syncr_api.routines.models as _routines  # noqa: F401 - registers its tables
 import syncr_api.solving.models as _solving  # noqa: F401 - registers its tables
 import syncr_api.tasks.models as _tasks  # noqa: F401 - registers its tables
