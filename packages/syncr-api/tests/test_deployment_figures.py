@@ -1512,10 +1512,10 @@ def _project_override_in(command: str) -> str | None:
     """
     import re
 
-    flags = re.findall(r"(?:^|\s)(?:-p|--project-name)[= ]\s*(\S+)", command)
+    flags: list[str] = re.findall(r"(?:^|\s)(?:-p|--project-name)[= ]\s*(\S+)", command)
     if flags:
         return flags[-1]
-    environment = re.findall(r"(?:^|\s)COMPOSE_PROJECT_NAME=(\S+)", command)
+    environment: list[str] = re.findall(r"(?:^|\s)COMPOSE_PROJECT_NAME=(\S+)", command)
     return environment[-1] if environment else None
 
 
