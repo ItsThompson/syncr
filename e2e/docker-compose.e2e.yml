@@ -1,0 +1,102 @@
+# =============================================================================
+# The E2E stack: the base stack, published on ports nothing else on a developer's
+# machine owns, with the one external provider the suite exercises replaced at the
+# NETWORK boundary and nothing else replaced.
+#
+# Layered ON TOP of docker-compose.yml and never valid standalone. Drive it through
+# `just e2e-up`, which passes both files, so the project directory is the repository
+# root and every relative path below resolves from there.
+#
+# Its own project name, so its volumes and network live beside the dev stack's rather
+# than in them: a suite that seeds a tenant must never be able to reach the database a
+# developer is working against.
+#
+# TWO THINGS THIS FILE DELIBERATELY DOES NOT DO.
+#
+# IT PUBLISHES NO DATABASE PORT. The dev overlay publishes 5432, and a host-local
+# Postgres owning 127.0.0.1:5432 and [::1]:5432 makes a compose route silently reach
+# the wrong database, which is the most expensive hazard in this repository. Nothing
+# here needs a host port on Postgres: migrations run as a one-shot INSIDE the network,
+# exactly as a deploy runs them, and `data-net` stays `internal: true` from the base
+# file, so the port could not be delivered to even if it were published.
+#
+# IT PUBLISHES ONE ORIGIN, NOT TWO. Caddy serves the built application and
+# reverse-proxies `/api/*`, `/auth/*` and the health endpoints to `api:8000`, so the
+# browser AND the seeder AND the harness all reach the product through the same origin
+# the deployed stack serves. A second published origin for the api would let the suite
+# pass while the session cookie's `SameSite=Lax` and the origin check on every unsafe
+# method were both untested.
+# =============================================================================
+name: syncr-e2e
+
+services:
+  api:
+    environment:
+      ENVIRONMENT: development
+      # The one origin. Both values name the published frontend port rather than the
+      # api's, because that is what the browser sends as `Origin` and what every URL
+      # the Authorization Server publishes has to be reachable at.
+      ALLOWED_ORIGINS: http://localhost:${SYNCR_E2E_PORT:-57080}
+      PUBLIC_BASE_URL: http://localhost:${SYNCR_E2E_PORT:-57080}
+      # NO GOOGLE, STATED RATHER THAN INHERITED. A developer's `.env` may carry a real
+      # client id, and the base file interpolates `${GOOGLE_TOKEN_ENCRYPTION_KEY:-}`,
+      # whose EMPTY value overrides the settings default: a client id with no key makes
+      # the api refuse to start by name. Blanking the credentials is also the truthful
+      # state for this stack, because the suite connects no Google account and every
+      # Google scenario stays manual. The key is still supplied, so the guard is
+      # satisfied whatever a host's `.env` holds.
+      GOOGLE_OAUTH_CLIENT_ID: ""
+      GOOGLE_OAUTH_CLIENT_SECRET: ""
+      GOOGLE_OAUTH_REDIRECT_URI: ""
+      GOOGLE_TOKEN_ENCRYPTION_KEY: ZGV2LW9ubHktZ29vZ2xlLXRva2VuLWVuY3J5cHQta2U=
+
+  worker:
+    environment:
+      ENVIRONMENT: development
+      GOOGLE_OAUTH_CLIENT_ID: ""
+      GOOGLE_OAUTH_CLIENT_SECRET: ""
+      GOOGLE_OAUTH_REDIRECT_URI: ""
+      GOOGLE_TOKEN_ENCRYPTION_KEY: ZGV2LW9ubHktZ29vZ2xlLXRva2VuLWVuY3J5cHQta2U=
+      # Left FALSE, which is what every environment runs. With it off the projection is
+      # computed in full and refused before any request is sent, so the projection pass
+      # is exercised and no unverified destructive write reaches a real calendar. S3 is
+      # the manual scenario that observes a real write.
+      GOOGLE_PROJECTION_WRITES: "false"
+    volumes:
+      # The harness one-shots run in this image, so they are mounted where it can read
+      # them. Read-only: a container must not be able to edit the suite driving it.
+      - ./e2e/harness:/harness:ro
+
+  frontend:
+    ports:
+      # The only published port. High, and outside the 55432-to-55823 range earlier
+      # measurement runs in this repository used.
+      - "${SYNCR_E2E_PORT:-57080}:8080"
+
+  # The external calendar provider, mocked AT THE NETWORK BOUNDARY and in the only place
+  # a mock belongs: a real HTTP server answering a real fetch over a real socket, serving
+  # the fixture feeds from `e2e/fixtures/ics`. The api's ICS path is unmodified and
+  # unaware: a source's feed URL is user-supplied, so pointing one at this host is what a
+  # user pointing one at a university portal does.
+  #
+  # `http` rather than `https` because `normalize_feed_url` keeps an http scheme rather
+  # than upgrading it, so no certificate has to be minted for the api to trust.
+  ics-provider:
+    image: caddy:2.11.4-alpine
+    command: ["caddy", "file-server", "--listen", ":80", "--root", "/srv"]
+    volumes:
+      - ./e2e/fixtures/ics:/srv:ro
+    expose:
+      - "80"
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:80/reference.ics"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    restart: unless-stopped

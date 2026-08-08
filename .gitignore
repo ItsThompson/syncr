@@ -19,6 +19,11 @@ node_modules/
 *.tsbuildinfo
 coverage/
 
+# What a Playwright run leaves behind: traces, screenshots and the HTML report. Evidence about one
+# run rather than anything a reader of the tree needs, and CI uploads it as an artifact instead.
+e2e/test-results/
+e2e/playwright-report/
+
 # Secrets and local config. .env.example is committed; .env is not.
 .env
 .env.*

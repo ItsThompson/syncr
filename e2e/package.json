@@ -1,0 +1,20 @@
+{
+  "name": "syncr-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Playwright suite and the seeded smoke-scenario harness, driven against the Compose stack.",
+  "engines": {
+    "node": ">=22.22"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "seed": "node src/seed/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.1",
+    "@types/node": "^26.1.2",
+    "typescript": "^5.9.3"
+  }
+}
