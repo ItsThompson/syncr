@@ -16,10 +16,21 @@
 import type { ApiClient } from "../../api/client.ts";
 import { ICS_PROVIDER } from "../../config.ts";
 import { declareBaseline } from "../baseline.ts";
-import { declareAnchorType, declareIcsSource, declareRoutine } from "../declarations.ts";
+import {
+  declareAnchorType,
+  declareAreas,
+  declareIcsSource,
+  declareRoutine,
+} from "../declarations.ts";
 
 export const seedShadowGeometry = async (client: ApiClient): Promise<void> => {
   const { areas, templateId } = await declareBaseline(client);
+  // A Transit Area of its own, because the fixture table says the transit leg carries one: the baseline's
+  // three Areas do not include it, and a transit block carrying Fitness would read as a workout.
+  const transit = await declareAreas(client, [
+    { name: "Transit", budgetPercent: 5, floorHours: 0 },
+  ]);
+  const withTransit = { ...areas, ...transit };
 
   await declareRoutine(client, templateId, {
     title: "Sleep",
@@ -37,33 +48,33 @@ export const seedShadowGeometry = async (client: ApiClient): Promise<void> => {
   await declareAnchorType(client, {
     name: "Interview",
     matchTitleContains: "Interview",
-    prepAreaId: areas.Career!,
+    prepAreaId: withTransit.Career!,
     prepLeadMinutes: 360,
     prepDurationMinutes: 30,
-    transitAreaId: areas.Fitness!,
+    transitAreaId: withTransit.Transit!,
     transitLeadMinutes: 60,
     transitDurationMinutes: 30,
     returnTransitMinutes: 0,
     postBufferMinutes: 75,
     postScope: "areas",
-    forbiddenAreaIds: [areas.Study!],
+    forbiddenAreaIds: [withTransit.Study!],
   });
   await declareAnchorType(client, {
     name: "Lecture",
     matchTitleContains: "Lecture",
     prepDurationMinutes: 0,
-    transitAreaId: areas.Fitness!,
+    transitAreaId: withTransit.Transit!,
     transitLeadMinutes: 30,
     transitDurationMinutes: 30,
     returnTransitMinutes: 30,
     postBufferMinutes: 75,
     postScope: "areas",
-    forbiddenAreaIds: [areas.Study!],
+    forbiddenAreaIds: [withTransit.Study!],
   });
   await declareAnchorType(client, {
     name: "Exam",
     matchTitleContains: "Exam",
-    prepAreaId: areas.Career!,
+    prepAreaId: withTransit.Career!,
     prepLeadMinutes: 840,
     prepDurationMinutes: 30,
   });

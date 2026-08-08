@@ -9,7 +9,12 @@
  * the browser context is later seeded with.
  */
 
-import { IDEMPOTENCY_KEY_HEADER, ORIGIN_HEADER, SESSION_COOKIE, SESSION_MODE_HEADER } from "./headers.ts";
+import {
+  IDEMPOTENCY_KEY_HEADER,
+  ORIGIN_HEADER,
+  SESSION_COOKIE,
+  SESSION_MODE_HEADER,
+} from "./headers.ts";
 
 export type FieldError = {
   readonly field?: string;
@@ -143,7 +148,9 @@ export const signIn = async (
         "Has `just e2e-up` run, and did it bootstrap this account?",
     );
   }
-  const cookie = response.headers.getSetCookie().find((set) => set.startsWith(`${SESSION_COOKIE}=`));
+  const cookie = response.headers
+    .getSetCookie()
+    .find((set) => set.startsWith(`${SESSION_COOKIE}=`));
   if (!cookie) throw new Error(`sign-in set no ${SESSION_COOKIE} cookie`);
   const value = cookie.slice(`${SESSION_COOKIE}=`.length).split(";")[0];
   if (!value) throw new Error(`the ${SESSION_COOKIE} cookie carried no value`);

@@ -19,7 +19,8 @@ export type Loaded = {
 /** Empty the database, provision the tenant, declare `name`, and materialize the horizon. */
 export const loadFixture = async (name: string): Promise<Loaded> => {
   const seed = FIXTURES[name];
-  if (!seed) throw new Error(`${name} is not a fixture. The fixtures are: ${fixtureNames().join(", ")}`);
+  if (!seed)
+    throw new Error(`${name} is not a fixture. The fixtures are: ${fixtureNames().join(", ")}`);
 
   const log: string[] = [];
   log.push((await resetDatabase()).trim());

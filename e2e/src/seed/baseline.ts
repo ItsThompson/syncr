@@ -7,12 +7,7 @@
  */
 
 import type { ApiClient } from "../api/client.ts";
-import {
-  declareAreas,
-  declareOneDayShape,
-  declareSettings,
-  type Areas,
-} from "./declarations.ts";
+import { declareAreas, declareOneDayShape, declareSettings, type Areas } from "./declarations.ts";
 
 /* Three Areas summing to 70%, so `Unallocated` is non-zero in every fixture that does not set out
  * to change it. Career carries a floor because a floor is what makes a week refusable. */

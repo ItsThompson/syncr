@@ -12,6 +12,7 @@
 
 import type { ApiClient } from "../api/client.ts";
 import { HOME_ZONE } from "../config.ts";
+import { awaitTerminal } from "../harness/week.ts";
 
 export type Identified = { readonly id: string };
 
@@ -38,7 +39,10 @@ export const declareSettings = async (client: ApiClient): Promise<void> => {
  *
  * `POST /areas` answers an `AreaView`, which is the Area beside its ramp reading rather than the Area
  * alone, because the screen that creates one shows both. */
-export const declareAreas = async (client: ApiClient, specs: readonly AreaSpec[]): Promise<Areas> => {
+export const declareAreas = async (
+  client: ApiClient,
+  specs: readonly AreaSpec[],
+): Promise<Areas> => {
   const created: Record<string, string> = {};
   for (const spec of specs) {
     const view = await client.post<{ readonly area: Identified }>("/api/v1/areas", {
@@ -217,7 +221,13 @@ export const declareAnchorType = async (
   return type.id;
 };
 
-/** An ICS source pointing at the mocked provider, synced once so its anchors exist. */
+/** An ICS source pointing at the mocked provider, synced to completion so its anchors exist.
+ *
+ * THE WAIT IS NOT OPTIONAL. A sync is an operation the worker picks up on its own five-second cadence, so
+ * returning as soon as it is enqueued makes every ordering a fixture states afterwards a race: the
+ * reference week claims its anchors exist BEFORE the maintainer draws the plan around them, and the tick
+ * that materializes runs two to four seconds later. That ordering is the anchor conflict the fixture
+ * table names, and it was asserted in prose and not in code. */
 export const declareIcsSource = async (
   client: ApiClient,
   displayName: string,
@@ -229,6 +239,15 @@ export const declareIcsSource = async (
     displayName,
     externalId: feedUrl,
   });
-  if (sync) await client.post(`/api/v1/calendar-sources/${source.id}/sync`);
+  if (!sync) return source.id;
+
+  const enqueued = await client.post<Identified>(`/api/v1/calendar-sources/${source.id}/sync`);
+  const settled = await awaitTerminal(client, enqueued.id);
+  if (settled.status !== "succeeded") {
+    throw new Error(
+      `syncing ${displayName} from ${feedUrl} ended ${settled.status}: ${settled.statement} ` +
+        JSON.stringify(settled.error),
+    );
+  }
   return source.id;
 };

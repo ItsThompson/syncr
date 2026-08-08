@@ -83,10 +83,10 @@ export const dateShift = (date: CivilDate, days: number): CivilDate =>
 
 /** A wall time on a civil date, as an instant in `zone`. */
 export const instantAt = (date: CivilDate, wallTime: string, zone: string): string => {
-  // Two probes and a correction: the offset a zone is at on a given date is not knowable without
-  // asking, and asking with the wrong offset can land in the previous or next day. Starting from
-  // the UTC reading and correcting by the difference converges in one step everywhere except
-  // inside a DST gap, which no scenario here places a block in.
+  // The offset a zone is at on a given date is not knowable without asking, and asking with the wrong
+  // offset can land in the previous or next day. So the UTC reading is corrected by the difference
+  // between it and the same instant read in `zone`, which converges in one step everywhere except inside
+  // a DST gap, and no scenario here places a block in one.
   const naive = new Date(`${date}T${wallTime}Z`);
   const offsetMs = naive.getTime() - asZoned(naive, zone).getTime();
   return new Date(naive.getTime() + offsetMs).toISOString();
