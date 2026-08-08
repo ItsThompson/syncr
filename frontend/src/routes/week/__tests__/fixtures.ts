@@ -424,10 +424,17 @@ export function buildRaisedItem(overrides: Partial<RaisedItem> = {}): RaisedItem
   };
 }
 
+/* THE DEFAULT CANDIDATE IS ONE THE TEMPLATE CANNOT ABSORB, because that is what a task pattern is: a day shape's
+ * entry holds a routine or a habit, so a repeated pin of a task is a real pattern with nothing to move, and the api
+ * sends the reason. A fixture with a null refusal on a task would be a shape production cannot produce.
+ *
+ * `id` IS THE GROUP THE RULE FOUND, rendered as the api renders it: the kind, the content, the ISO weekday and the
+ * minute of the day. It is what the accept and the decline routes address, and the panel keys its rows on it. */
 export function buildPromotionCandidate(
   overrides: Partial<PromotionCandidate> = {},
 ): PromotionCandidate {
   return {
+    id: `task.${TASK_ID}.2.780`,
     entityId: TASK_ID,
     kind: "task",
     title: LEETCODE,
@@ -435,8 +442,29 @@ export function buildPromotionCandidate(
     localTime: "13:00",
     consecutiveWeeks: 4,
     weeks: ["2026-W03", "2026-W04", "2026-W05", REVIEWED_WEEK],
+    acceptRefusal:
+      `A day shape's entry holds a routine or a habit, and ${LEETCODE} is finite work your backlog ` +
+      "places against its deadline, so your template has nothing to absorb this pattern into. " +
+      "Nothing was changed.",
     ...overrides,
   };
+}
+
+/* A PATTERN THE TEMPLATE CAN ABSORB: the block came from an entry of a day shape, so the entry is what a promotion
+ * moves and the api sends no refusal. The one shape the accept control is drawn for. */
+export const PROMOTED_ENTRY_ID = "6d1f5d8e-0c2a-4f7b-9f1e-2b7a5c3d4e5f";
+
+export function buildAbsorbablePromotion(
+  overrides: Partial<PromotionCandidate> = {},
+): PromotionCandidate {
+  return buildPromotionCandidate({
+    id: `template_entry.${PROMOTED_ENTRY_ID}.2.780`,
+    entityId: PROMOTED_ENTRY_ID,
+    kind: "template_entry",
+    title: GYM,
+    acceptRefusal: null,
+    ...overrides,
+  });
 }
 
 export function buildRetro(overrides: Partial<SessionRetro> = {}): SessionRetro {

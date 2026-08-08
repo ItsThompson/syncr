@@ -29,6 +29,7 @@ import { raisesOf } from "./raises";
 import { PromotionPanel } from "./components/PromotionPanel";
 import { RetroPanel } from "./components/RetroPanel";
 import { SessionHeader } from "./components/SessionHeader";
+import { usePromotionAccept, usePromotionDecline } from "../../../api/hooks/usePromotions";
 import type { Area } from "../../../api/hooks/useAreas";
 import type { WeeklySession } from "../../../api/hooks/useWeeklySession";
 import type { WeekInteraction } from "../hooks/useWeekScreenInteraction";
@@ -60,6 +61,10 @@ export function SessionMode({
   nowMs,
 }: SessionModeProps) {
   const hasMovedOn = session.inputVersion !== screen.view.inputVersion;
+  /* Both answers belong to the week this session plans: accepting bumps its input version through the day shape it
+   * edits, and declining changes what this payload raises. So both are keyed on it rather than on today. */
+  const accept = usePromotionAccept(isoWeek);
+  const decline = usePromotionDecline(isoWeek);
 
   return (
     <section aria-label="Weekly session">
@@ -87,7 +92,12 @@ export function SessionMode({
         <WeekSurface interaction={interaction} nowMs={nowMs} screen={screen} words={words} />
         {hasMovedOn ? <p className="text-sm text-text-muted">{MOVED_ON}</p> : null}
         <RaisedPanel raises={raisesOf(session.raised)} />
-        <PromotionPanel candidates={session.promotions} statement={session.promotionStatement} />
+        <PromotionPanel
+          accept={accept}
+          candidates={session.promotions}
+          decline={decline}
+          statement={session.promotionStatement}
+        />
         <RetroPanel areas={areas} retro={session.retro} />
       </div>
     </section>

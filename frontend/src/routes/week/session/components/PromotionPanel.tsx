@@ -14,16 +14,20 @@
  * two ways is the defect the api owns these words to prevent. This file composes only what the wire cannot: the weekday,
  * which is a label for an ISO number.
  *
- * IT IS RAISED, NEVER APPLIED. `US-TPL-05` says nothing reaches the template without the reader accepting, and the
- * closing line says so in the api's own words.
+ * NOTHING IS APPLIED WITHOUT AN ACCEPT, and the api's own closing line says so. Accepting moves the day-shape entry the
+ * pattern names; declining writes nothing to any template and stops the question being asked for a stated interval.
  *
- * NO ACCEPT AND NO DECLINE HERE. Both are routes of their own and belong to the Learned screen's ticket, which also
- * owns the interval a decline suppresses a candidate for. Rendering a control this build cannot honour would be worse
- * than rendering the question: a reader who pressed it would be told nothing happened. */
+ * THE ACCEPT CONTROL IS DRAWN ONLY FOR A PATTERN THE TEMPLATE CAN ABSORB. A promotion MOVES an entry, so content no
+ * entry holds has nothing to move: the api sends the reason on the candidate, this panel renders it in place of the
+ * control, and a reader is told the limit where they meet it rather than by pressing a button that refuses. The
+ * DECLINE is offered either way, because the answer it records is about the asking rather than about the template. */
 
+import { Button } from "../../../../ui/primitives";
 import { Table, type TableColumn } from "../../../../ui/domain";
 import { noticeRole, noticeSurface } from "../../../../ui/domain/notices/surface";
 import type { PromotionCandidate } from "../../../../api/hooks/useWeeklySession";
+import type { PromotionBody } from "../../../../api/hooks/usePromotions";
+import type { Write } from "../../../../api/hooks/useWrite";
 import "../../../../ui/domain/notices/notices.css";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -32,10 +36,14 @@ export interface PromotionPanelProps {
   readonly candidates: readonly PromotionCandidate[];
   /** The api's own sentence that nothing is applied without acceptance. */
   readonly statement: string;
+  readonly accept: Write<PromotionBody>;
+  readonly decline: Write<PromotionBody>;
 }
 
-export function PromotionPanel({ candidates, statement }: PromotionPanelProps) {
+export function PromotionPanel({ candidates, statement, accept, decline }: PromotionPanelProps) {
   if (candidates.length === 0) return null;
+
+  const refused = accept.problem ?? decline.problem;
 
   return (
     <section
@@ -47,16 +55,18 @@ export function PromotionPanel({ candidates, statement }: PromotionPanelProps) {
         <b className="notice__title">Repeated pins</b>
         <Table
           caption="Content pinned to one time for three or more consecutive weeks"
-          columns={COLUMNS}
+          columns={columns(accept, decline)}
           rowKey={(row) => row.id}
           rows={candidates.map((candidate) => ({
-            id: `${candidate.entityId}:${candidate.localTime}:${String(candidate.weekday)}`,
+            id: candidate.id,
             binding: candidate.title,
             time: `${weekdayOf(candidate.weekday)} ${candidate.localTime}`,
             weeks: `${String(candidate.consecutiveWeeks)} weeks`,
+            acceptRefusal: candidate.acceptRefusal,
           }))}
         />
         <p className="notice__detail">{statement}</p>
+        {refused === null ? null : <p className="notice__detail">{refused.detail}</p>}
       </div>
     </section>
   );
@@ -67,13 +77,58 @@ interface PromotionRow {
   readonly binding: string;
   readonly time: string;
   readonly weeks: string;
+  /** Why the template cannot absorb this one, or null when it can. */
+  readonly acceptRefusal: string | null;
 }
 
-const COLUMNS: readonly TableColumn<PromotionRow>[] = [
-  { key: "binding", header: "Binding", cell: (row) => row.binding },
-  { key: "time", header: "Time", cell: (row) => row.time },
-  { key: "weeks", header: "Weeks", measure: "figure", cell: (row) => row.weeks },
-];
+/** The two answers, or the reason there is only one of them. */
+function AnswerCell({
+  row,
+  accept,
+  decline,
+}: {
+  readonly row: PromotionRow;
+  readonly accept: Write<PromotionBody>;
+  readonly decline: Write<PromotionBody>;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {row.acceptRefusal === null ? (
+          <Button
+            rank="secondary"
+            size="sm"
+            onClick={() => void accept.submit({ promotionId: row.id })}
+          >
+            Accept
+          </Button>
+        ) : null}
+        <Button rank="quiet" size="sm" onClick={() => void decline.submit({ promotionId: row.id })}>
+          Decline
+        </Button>
+      </div>
+      {row.acceptRefusal === null ? null : (
+        <span className="text-sm text-text-muted">{row.acceptRefusal}</span>
+      )}
+    </div>
+  );
+}
+
+function columns(
+  accept: Write<PromotionBody>,
+  decline: Write<PromotionBody>,
+): readonly TableColumn<PromotionRow>[] {
+  return [
+    { key: "binding", header: "Binding", cell: (row) => row.binding },
+    { key: "time", header: "Time", cell: (row) => row.time },
+    { key: "weeks", header: "Weeks", measure: "figure", cell: (row) => row.weeks },
+    {
+      key: "answer",
+      header: "Your answer",
+      cell: (row) => <AnswerCell row={row} accept={accept} decline={decline} />,
+    },
+  ];
+}
 
 /** The ISO weekday as a template entry names it. Monday is 1, which is what `isoweekday` answers. */
 function weekdayOf(weekday: number): string {

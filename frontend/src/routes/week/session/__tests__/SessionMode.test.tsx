@@ -36,6 +36,7 @@ import {
   SESSION_PATH,
   WEEK_PATH,
   buildApproved,
+  buildAbsorbablePromotion,
   buildPinned,
   buildPromotionCandidate,
   buildProposal,
@@ -80,6 +81,29 @@ function recordSessionHeaders(path: string, body: object): (string | null)[] {
 async function pinTheSelectedBlock(): Promise<void> {
   await userEvent.click(await screen.findByLabelText(`${LEETCODE} · Career`));
   await userEvent.keyboard("{Shift>}{ArrowDown}{/Shift}");
+}
+
+/**
+ * A write route, recording the path and the body of every request it answered.
+ *
+ * The PATH is what a promotion's two answers are stated over: neither takes a body, because every value a promotion
+ * states is in its identifier. So a recorder that only kept bodies would have nothing to assert, and the case that
+ * matters -- that the identifier the api sent is the identifier the client sends back -- is about the URL.
+ */
+function recordRequests(path: string): {
+  readonly paths: string[];
+  readonly bodies: unknown[];
+} {
+  const paths: string[] = [];
+  const bodies: unknown[] = [];
+  apiServer.use(
+    http.post(`${window.location.origin}${path}`, async ({ request }) => {
+      paths.push(new URL(request.url).pathname);
+      bodies.push(await request.json().catch(() => null));
+      return HttpResponse.json({}, { status: 200 });
+    }),
+  );
+  return { paths, bodies };
 }
 
 describe("the mode is reachable by URL and is not a destination", () => {
@@ -395,13 +419,100 @@ describe("the promotion candidates", () => {
     expect(await screen.findByText(/only when you accept it/)).toBeVisible();
   });
 
-  it("offers no accept and no decline, because neither route exists in this build", async () => {
-    openTheSession();
+  it("offers both answers on a pattern the template can absorb, and sends the api's own identifier", async () => {
+    /* THE REQUEST IS THE CLAIM, and the identifier is the api's. Nothing stores a candidate, so the id is derived at
+     * both ends: the payload renders the group the rule found and the route parses it back. A panel that composed its
+     * own key out of three fields would send one the route cannot read, which is what this asserts it does not. */
+    const candidate = buildAbsorbablePromotion();
+    openTheSession(buildSession({ promotions: [candidate] }));
+    const accepted = recordRequests(`/api/v1/promotions/${candidate.id}/accept`);
     renderAt(SESSION_PATH);
     await screen.findByLabelText("Repeated pins");
 
-    expect(screen.queryByRole("button", { name: /accept/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /decline/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Accept" }));
+
+    await waitFor(() =>
+      expect(accepted.paths).toEqual([`/api/v1/promotions/${candidate.id}/accept`]),
+    );
+    /* No body at all: every value a promotion states is in its identifier, so a body would be a second place to
+     * send the same four values. */
+    expect(accepted.bodies).toEqual([null]);
+  });
+
+  it("declines through the decline route, and sends no body either", async () => {
+    const candidate = buildAbsorbablePromotion();
+    openTheSession(buildSession({ promotions: [candidate] }));
+    const declined = recordRequests(`/api/v1/promotions/${candidate.id}/decline`);
+    renderAt(SESSION_PATH);
+    await screen.findByLabelText("Repeated pins");
+
+    await userEvent.click(screen.getByRole("button", { name: "Decline" }));
+
+    await waitFor(() =>
+      expect(declined.paths).toEqual([`/api/v1/promotions/${candidate.id}/decline`]),
+    );
+    expect(declined.bodies).toEqual([null]);
+  });
+
+  it("draws no accept control for a pattern the template cannot absorb, and states why", async () => {
+    /* A promotion MOVES a day-shape entry, so content no entry holds has nothing to move. The api sends the reason
+     * with the candidate, and the panel renders it in place of the control: the reader meets the limit where it is
+     * rather than by pressing a button that refuses. The DECLINE is still offered, because the answer it records is
+     * about the asking rather than about the template. */
+    const candidate = buildPromotionCandidate();
+    openTheSession(buildSession({ promotions: [candidate] }));
+    renderAt(SESSION_PATH);
+    await screen.findByLabelText("Repeated pins");
+
+    expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    expect(screen.getByText(candidate.acceptRefusal ?? "")).toBeVisible();
+  });
+
+  it("renders the api's sentence when an answer is refused", async () => {
+    /* The 409 a raced accept meets: the entry was removed between the read and the press. The api's own sentence is
+     * rendered rather than paraphrased, because it states what was not changed. */
+    const candidate = buildAbsorbablePromotion();
+    openTheSession(buildSession({ promotions: [candidate] }));
+    apiServer.use(
+      http.post(`${window.location.origin}/api/v1/promotions/${candidate.id}/accept`, () =>
+        HttpResponse.json(
+          {
+            type: "syncr:conflict",
+            title: "Conflict",
+            status: 409,
+            detail: "The day-shape entry this pattern is about is no longer declared.",
+          },
+          { status: 409, headers: { "content-type": "application/problem+json" } },
+        ),
+      ),
+    );
+    renderAt(SESSION_PATH);
+    await screen.findByLabelText("Repeated pins");
+
+    await userEvent.click(screen.getByRole("button", { name: "Accept" }));
+
+    expect(await screen.findByText(/no longer declared/)).toBeVisible();
+  });
+
+  it("carries the session header on an answer, because it is a mutation made in the mode", async () => {
+    /* `VE3` again, on the two writes this ticket adds: the middleware is on the client, so a hook added later
+     * inherits it, and this is the case that would notice if these two had been given their own call path. */
+    const candidate = buildAbsorbablePromotion();
+    openTheSession(buildSession({ promotions: [candidate] }));
+    const stated = recordSessionHeaders(`/api/v1/promotions/${candidate.id}/decline`, {
+      promotionId: candidate.id,
+      declinedAt: "2026-02-16T09:00:00+00:00",
+      suppressedUntil: "2026-05-18T09:00:00+00:00",
+      suppressionWeeks: 13,
+      statement: "Nothing was changed in your templates.",
+    });
+    renderAt(SESSION_PATH);
+    await screen.findByLabelText("Repeated pins");
+
+    await userEvent.click(screen.getByRole("button", { name: "Decline" }));
+
+    await waitFor(() => expect(stated).toEqual(["true"]));
   });
 
   it("renders the name the api resolved, including its fallback, and holds none of its own", async () => {
