@@ -836,11 +836,15 @@ class TheDestructiveTeardown:
     its files and destroys the DEPLOYED project when it runs; it also refused ``-p syncr-scratch3``
     over the base file, which destroys nothing. Too narrow and too wide on one axis at once, which
     is what a derivation that reads one of two deciding inputs looks like. The override is now read
-    first, and a project name this reading cannot resolve is REFUSED rather than admitted.
+    first, WITH COMPOSE'S OWN PRECEDENCE AMONG THE OVERRIDES: a flag beats the environment variable
+    and the last flag beats an earlier one, because enumerating the four spellings without the
+    precedence between them admitted two lines carrying contradictory overrides. A project name this
+    reading cannot resolve is REFUSED rather than admitted.
 
     The two projects that hold something are the ones the justfile's own ``dev_compose`` and
     ``deploy_compose`` resolve to. A third scratch stack is allowed the day it declares a project
-    name of its own, and a recipe pointed at the deployed project is refused whatever it is called.
+    name of its own, and a recipe pointed at the deployed project is refused whatever it is called,
+    which is now true of a line carrying several overrides as well as of one carrying none.
     ``restore_compose`` resolves to the DEPLOYED project, which is exactly the reading that cost a
     ``pgdata``, and a test below states that figure so it cannot drift quietly.
 
@@ -1058,6 +1062,59 @@ class TestTheDestructiveTeardown:
         guess about what the variable holds.
         """
         assert not _scoped_to_a_scratch_project("justfile", _e2e_down_line(), f"    {unreadable}")
+
+    # --- The precedence AMONG the overrides -----------------------------------------------------
+    #
+    # ENUMERATING THE FOUR SPELLINGS WAS NOT ENOUGH. A first-match reading admitted two lines that
+    # compose acts on as `syncr`, because it never asked which override wins. Compose's rules are
+    # that a FLAG beats `COMPOSE_PROJECT_NAME` and the LAST flag beats an earlier one, so the pairs
+    # below carry the same two names in both orders and must come out opposite: a case that only
+    # refused "a line with two overrides" would pass without implementing either rule.
+    # two overrides" would pass without implementing either rule.
+
+    @pytest.mark.parametrize(
+        ("line", "admitted", "why"),
+        [
+            (
+                "COMPOSE_PROJECT_NAME=syncr-scratch docker compose -p syncr"
+                " {{e2e_compose}} down -v",
+                False,
+                "the flag beats the environment variable, so this acts on syncr",
+            ),
+            (
+                "COMPOSE_PROJECT_NAME=syncr docker compose -p syncr-scratch"
+                " {{e2e_compose}} down -v",
+                True,
+                "the flag beats the environment variable, so this acts on syncr-scratch",
+            ),
+            (
+                "docker compose -p syncr-scratch -p syncr {{e2e_compose}} down -v",
+                False,
+                "the last flag wins, so this acts on syncr",
+            ),
+            (
+                "docker compose -p syncr -p syncr-scratch {{e2e_compose}} down -v",
+                True,
+                "the last flag wins, so this acts on syncr-scratch",
+            ),
+        ],
+    )
+    def test_the_override_precedence_is_composes_own(
+        self, line: str, admitted: bool, why: str
+    ) -> None:
+        assert (
+            _scoped_to_a_scratch_project("justfile", _e2e_down_line(), f"    {line}") is admitted
+        ), why
+
+    def test_the_environment_variable_is_read_only_when_no_flag_names_a_project(self) -> None:
+        """Stated at the reader rather than through the predicate, so the rule is visible alone."""
+        assert (
+            _project_override_in("COMPOSE_PROJECT_NAME=one docker compose -p two down -v") == "two"
+        )
+        assert _project_override_in("COMPOSE_PROJECT_NAME=one docker compose down -v") == "one"
+        assert _project_override_in("docker compose -p one -p two down -v") == "two"
+        assert _project_override_in("docker compose --project-name one -p two down -v") == "two"
+        assert _project_override_in("docker compose down -v") is None
 
     def test_the_scratch_exemption_refuses_a_line_outside_any_recipe(self) -> None:
         """A runbook sentence is not a recipe, whatever compose files it happens to name."""
@@ -1442,18 +1499,24 @@ def _project_override_in(command: str) -> str | None:
 
     ``-p``, ``--project-name`` and ``COMPOSE_PROJECT_NAME`` all decide the project compose acts on,
     and the ``-f`` list decides it only when none of them is present. A reading that saw the files
-    and not
-    the override admitted ``-p syncr -f docker-compose.yml -f e2e/docker-compose.e2e.yml down -v``,
-    which resolves to ``syncr-e2e`` by its files and destroys the DEPLOYED project when it runs.
+    and not the override admitted ``-p syncr -f docker-compose.yml -f e2e/docker-compose.e2e.yml
+    down -v``, which resolves to ``syncr-e2e`` by its files and destroys the DEPLOYED project.
+
+    **AND THE PRECEDENCE AMONG THE OVERRIDES IS PART OF THE READING.** Enumerating the four
+    spellings was not enough: a first-match search admitted ``COMPOSE_PROJECT_NAME=syncr-scratch
+    docker compose -p syncr ... down -v`` and ``-p syncr-scratch -p syncr ... down -v``, both of
+    which compose acts on as ``syncr``. Two rules decide it, and they are compose's rather than this
+    reading's: a FLAG beats the environment variable, and the LAST flag beats an earlier one. So the
+    flags are collected and the last is taken, and the variable is consulted only when there is no
+    flag at all.
     """
     import re
 
-    found = re.search(
-        r"(?:^|\s)(?:-p|--project-name)[= ]\s*(\S+)|(?:^|\s)COMPOSE_PROJECT_NAME=(\S+)", command
-    )
-    if found is None:
-        return None
-    return found.group(1) or found.group(2)
+    flags = re.findall(r"(?:^|\s)(?:-p|--project-name)[= ]\s*(\S+)", command)
+    if flags:
+        return flags[-1]
+    environment = re.findall(r"(?:^|\s)COMPOSE_PROJECT_NAME=(\S+)", command)
+    return environment[-1] if environment else None
 
 
 def _is_a_scratch_project(project: str | None) -> bool:
