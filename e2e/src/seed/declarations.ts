@@ -8,6 +8,11 @@
  * rather than a shape the production wiring could never produce.
  *
  * Every wall time here is in the tenant's home zone, which the settings declaration sets first.
+ *
+ * THIS LAYER IMPORTS ONE THING FROM THE HARNESS LAYER, `awaitTerminal`, and the direction is deliberate
+ * rather than accidental. A sync is an operation, so a declaration that returns before it has completed is
+ * a declaration whose effects are not there yet, and the wait belongs where the declaration is. The two
+ * layers are otherwise separable: nothing in `harness/` imports from here.
  */
 
 import type { ApiClient } from "../api/client.ts";

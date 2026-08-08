@@ -15,6 +15,7 @@
  */
 
 import { test, expect, usingFixture } from "./harness.ts";
+import type { Page } from "@playwright/test";
 import { beyondHorizonWeek, planWeek } from "../src/harness/subject-weeks.ts";
 
 usingFixture("reference_week");
@@ -66,22 +67,27 @@ const routes = (): readonly { readonly what: string; readonly path: string }[] =
   { what: "a route that does not exist", path: "/not-a-route" },
 ];
 
+/** Open `path`, wait for the application to have rendered, and confirm it is the screen named.
+ *
+ * NOT `networkidle`. The application holds the SSE stream open for the life of the page, so the network is
+ * never idle and waiting for it to be is waiting for the test timeout.
+ *
+ * The route check is not decoration: without it a redirect to sign-in would satisfy every motion assertion
+ * below, because a sign-in form has no spinner either, and the case would report a claim about a screen it
+ * never reached. */
+const render = async (page: Page, path: string): Promise<void> => {
+  await page.goto(path);
+  await page.waitForFunction("document.querySelectorAll('body *').length > 5");
+  expect(page.url(), `${path} redirected to sign-in`).not.toContain("/sign-in");
+  if (path !== "/not-a-route") {
+    expect(new URL(page.url()).pathname).toBe(path.split("?")[0]);
+  }
+};
+
 for (const route of routes()) {
   test(`S22 nothing spins on ${route.what}`, async ({ api, page }) => {
     expect(api.sessionCookie.length).toBeGreaterThan(0);
-    await page.goto(route.path);
-    // NOT `networkidle`. The application holds the SSE stream open for the life of the page, so the
-    // network is never idle and waiting for it to be is waiting for the test timeout. What this needs
-    // is that the application has rendered, which is a fact about the DOM.
-    await page.waitForFunction("document.querySelectorAll('body *').length > 5");
-
-    // THE SESSION HELD, AND THIS IS THE SCREEN THE ROUTE NAMES. Without this, a redirect to sign-in
-    // would satisfy every assertion below: a sign-in form has no spinner either, and the case would
-    // report a claim about a screen it never reached.
-    expect(page.url(), `${route.path} redirected to sign-in`).not.toContain("/sign-in");
-    if (route.path !== "/not-a-route") {
-      expect(new URL(page.url()).pathname).toBe(route.path.split("?")[0]);
-    }
+    await render(page, route.path);
 
     for (const selector of INDICATOR_SELECTORS) {
       const found = await page.locator(selector).count();
@@ -92,3 +98,40 @@ for (const route of routes()) {
     expect(moving, `elements on ${route.path} carry a transition or an animation`).toEqual([]);
   });
 }
+
+/* WHICH OF THE TWO AMBER NOTICE SURFACES THESE CASES ACTUALLY REACH, asserted rather than assumed.
+ *
+ * Item 51 predicted the promotion panel as the likeliest place a browser pass finds something, because it
+ * puts a `Table` INSIDE a notice surface and nothing else in the product does. The round that added the
+ * session route to the list above claimed that composition was therefore reached, and it is not:
+ * `PromotionPanel` returns null on an empty candidate list, and no fixture here raises a promotion, which
+ * needs repeated pins across three weeks. Measured on this fixture's session payload: `promotions: 0`,
+ * `raised: 1`.
+ *
+ * So this case states which is which, and it is written to fail if either fact changes: the day a fixture
+ * raises a promotion, its second half goes red and the gap table has to be corrected. */
+test("the weekly session renders the raised panel, and not the promotion panel, which no fixture raises", async ({
+  api,
+  page,
+}) => {
+  const week = planWeek();
+  const session = await api.get<{
+    raised: readonly unknown[];
+    promotions: readonly unknown[];
+  }>(`/api/v1/reviews/week/${week}`);
+
+  await render(page, `/week?week=${week}&mode=session`);
+  await expect(page.getByText("Weekly session")).toBeVisible();
+
+  expect(
+    session.raised.length,
+    "the fixture raises nothing, so the panel has nothing to draw",
+  ).toBeGreaterThan(0);
+  await expect(page.getByLabel("Raised in this session").first()).toBeVisible();
+
+  expect(
+    session.promotions.length,
+    "a promotion is raised now, so the promotion panel renders and this case's second half is stale",
+  ).toBe(0);
+  await expect(page.getByLabel("Repeated pins")).toHaveCount(0);
+});

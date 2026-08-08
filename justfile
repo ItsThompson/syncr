@@ -335,7 +335,12 @@ e2e-setup:
 #
 # The second check is the one worth having: `docs/smoke-scenarios.md` is the map from section 22's
 # done-criteria table to something that can fail, and a row claiming an assertion no file makes is a list
-# disagreeing with the fact it copies. It cross-references both directions, and its first run found four.
+# disagreeing with the fact it copies. It reads every column it is meant to bound, in both directions, and
+# takes its titles from `playwright test --list` rather than from a regex over the source, because a regex
+# counted a commented-out case as coverage.
+#
+# Every check runs even when an earlier one fails: one red linter must not hide the rest. Same shape as
+# `lint-style`, comment included, so the pattern is recognisable as the same one.
 lint-e2e:
     #!/usr/bin/env bash
     set -uo pipefail

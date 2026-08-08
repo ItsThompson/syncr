@@ -172,9 +172,11 @@ test("S13 the confirm-and-backfill path: unconfirmed days are excluded, and back
   expect(after.confirmedAt).not.toBeNull();
   expect(after.unconfirmedDays).toBeLessThan(before.unconfirmedDays);
 
-  // A day nobody has answered for is not counted as confirmed, whatever the range said. The route may
-  // refuse a day the week has not reached, which is itself the observation: what must not happen is a
-  // day being reported as settled when nothing settled it.
+  // A day nobody has answered for is not counted as confirmed, whatever the range said. The route answers
+  // 200 today, with the day's blocks in `ahead` and `confirmedAt` null, which is what is asserted. A 404 or
+  // a 422 is tolerated as an alternative rather than expected: those are the answers a route that refuses
+  // to describe an unreached day would give, and either is defensible. What must never happen is a day
+  // being reported as settled when nothing settled it.
   const tomorrow = dateShift(lived[lived.length - 1]!, 1);
   const unlived = await api.attempt<{ confirmedAt: string | null }>(
     "GET",

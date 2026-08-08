@@ -262,7 +262,7 @@ jobs:
   # and the reason the recipe migrates from inside the network.
   #
   # The logs are captured on failure. A red E2E job whose only evidence is a Playwright
-  # timeout is a job nobody can act on: which of the four containers refused is the
+  # timeout is a job nobody can act on: which of the five containers refused is the
   # first question, and the answer is in their output.
   #
   # Node 22 is a floor, not a preference: the suite and its seeds are TypeScript run

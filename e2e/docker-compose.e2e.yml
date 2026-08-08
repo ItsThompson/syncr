@@ -69,8 +69,12 @@ services:
 
   frontend:
     ports:
-      # The only published port. High, and outside the 55432-to-55823 range earlier
-      # measurement runs in this repository used.
+      # The only published port. High, and chosen so it collides with nothing a developer or an earlier
+      # measurement run in this repository already owns. Overridable, because a reviewer running this
+      # beside a live stack needs a second one: `SYNCR_E2E_PORT=58080 just e2e-up`.
+      #
+      # No range is named here on purpose. A comment naming the ports previous runs used goes stale every
+      # time somebody runs one, and a stale range reads as a constraint rather than as a note.
       - "${SYNCR_E2E_PORT:-57080}:8080"
 
   # The external calendar provider, mocked AT THE NETWORK BOUNDARY and in the only place

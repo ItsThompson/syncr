@@ -91,9 +91,11 @@ export const seedTightCapacity = async (client: ApiClient): Promise<void> => {
     estimateMinutes: 900,
     minChunkMinutes: 90,
   });
-  // A deadline mid-week, so the DEADLINE CHECK has a demand to read. Under the correct reservation it
-  // is met and the backlog's at-risk column is empty; under the reverted one every deadline shortfall
-  // is inflated by the whole of both already-scheduled floors, and this task is marked at risk.
+  // A deadline mid-week, so the DEADLINE CHECK has a demand to read and the backlog's at-risk column has
+  // an entry. It is marked at risk under BOTH netting rules, because the current week's verdict is what
+  // the marking reads and that week cannot meet its floors at all: what the reverted rule changes is the
+  // SIZE of the shortfall, not whether this task is named. So this task exists to give the at-risk set
+  // something to iterate, which is what round 1's version of that assertion did not have.
   await declareTask(client, {
     title: DEADLINE_TASK,
     areaId: areas.Career!,
