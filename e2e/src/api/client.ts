@@ -73,9 +73,12 @@ const readBody = async (response: Response): Promise<unknown> => {
   }
 };
 
-/* A 422 states "1 request field(s) failed validation" in its detail and names the field in `errors`,
- * so the field list is appended rather than left for a reader to go looking for. */
-const stated = (method: string, path: string, reply: Reply<unknown>): string => {
+/** A non-2xx reply as one readable line: the type, the detail, and the field list when there is one.
+ *
+ * Exported because `harness/week.ts` reads one route through `attempt` and needs the same message rather
+ * than a thinner second version of it: a failure that prints only a status drops the problem document,
+ * which is the part that says what to do. */
+export const stated = (method: string, path: string, reply: Reply<unknown>): string => {
   const problem = reply.body as Problem | null;
   const detail = problem?.detail ?? JSON.stringify(reply.body);
   const fields = problem?.errors?.length ? ` ${JSON.stringify(problem.errors)}` : "";

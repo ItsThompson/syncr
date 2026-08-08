@@ -4,13 +4,13 @@
  * failure this product cannot detect any other way: neither throws, and both render plausibly.
  *
  * WHY THIS FILE USES `tight_capacity` AND NOT `reference_week`. The first version of these cases ran on
- * `reference_week`, whose plan week holds 1470 minutes of discretionary time against 960 minutes of
- * declared floor. Both fit under either netting rule, so a bite reverting the probe's floor reservation
- * to the pre-B1 immovable-only rule left both cases GREEN, and the at-risk loop iterated zero times
- * because no task was at risk. The case bounded nothing. `tight_capacity` is the week B1 is actually
- * about: its floors are met by unpinned solver-placed blocks and only 210 minutes are left free, so a
- * reservation that netted nothing would be 960 against 210 and would report a shortfall on a week that
- * is fully scheduled.
+ * `reference_week`, whose plan week holds 5565 minutes of discretionary time against 480 minutes of
+ * declared floor: roomy by a factor of eleven. Both fit under either netting rule, so a bite reverting the
+ * probe's floor reservation to the pre-B1 immovable-only rule left both cases GREEN, and the at-risk loop
+ * iterated zero times because no task was at risk. The case bounded nothing. `tight_capacity` is the week
+ * B1 is actually about: 1470 discretionary minutes against 960 of floor, met by unpinned solver-placed
+ * blocks, with only 210 minutes left free, so a reservation that netted nothing would be 960 against 210
+ * and would report a shortfall on a week that is fully scheduled.
  *
  * WHICH VERDICT THE AT-RISK COLUMN IS CROSSED AGAINST. The backlog is not week-scoped: the marking reads
  * the CURRENT week's verdict, through `served_verdicts.CurrentWeekVerdict`, which is the same rule the

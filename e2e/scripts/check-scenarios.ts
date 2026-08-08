@@ -14,6 +14,16 @@
  *   every scenario a test names is marked automated or partly automated
  *   every `*.spec.ts` the Where column names EXISTS
  *   for an automated row, the file the Where column names is a file that holds a test naming it
+ *   every repository path and every `just` recipe the Where column names RESOLVES
+ *
+ * THAT LAST ONE IS THE COLUMN'S OTHER TWO THIRDS. Two python test paths and thirteen recipe names live in
+ * the Where column, and a measurement showed a nonexistent path and a nonexistent recipe both leaving this
+ * check at exit 0. All fifteen resolve, so nothing was wrong; what was wrong was the bound. Three
+ * widenings of this same guard have now been needed, which is the argument for checking rather than
+ * proofreading.
+ *
+ * WHAT IS STILL NOT BOUNDED, stated so the next reader does not have to measure it: the OBSERVATION cell is
+ * prose and nothing here reads it. Three of the table's four columns are asserted.
  *
  * THE TITLES COME FROM PLAYWRIGHT, NOT FROM A REGEX OVER THE SOURCE. The first version matched
  * `test("S...` textually, which counted a COMMENTED-OUT case as coverage: the exact defect this file
@@ -32,15 +42,23 @@ const run = promisify(execFile);
 const here: string = import.meta.dirname;
 const e2eDir = path.join(here, "..");
 const testsDir = path.join(e2eDir, "tests");
-const tableFile = path.join(e2eDir, "..", "docs", "smoke-scenarios.md");
+const repoRoot = path.join(e2eDir, "..");
+const tableFile = path.join(repoRoot, "docs", "smoke-scenarios.md");
 
-/* A row of the 37-scenario table: `| S12 | what it observes | status | where |`. The observation cell is
- * matched non-greedily across pipes so a code span or a union type in it does not shift the columns; the
- * status is the third cell and the rest of the line is the Where column. */
-const ROW = /^\|\s*(S\d{1,2})\s*\|(.*)\|([^|]*)\|([^|]*)\|\s*$/;
+/* A row of the 37-scenario table. A SHAPE GUARD rather than an extractor: the cells are split out below,
+ * because the observation cell may itself contain a pipe and a fixed capture group would shift the columns
+ * when it does. */
+const ROW = /^\|\s*(S\d{1,2})\s*\|.*\|.*\|.*\|\s*$/;
 
 /* A spec file named in the Where column, inside a backtick span. */
 const NAMED_SPEC = /`([\w.-]+\.spec\.ts)`/g;
+
+/* A repository path named in the Where column: a backtick span holding a slash and no space. Catches
+ * `packages/syncr-api/tests/test_approval_during_a_solve.py` and `reviews/spec-review-5.md`. */
+const NAMED_PATH = /`([\w./-]*\/[\w./-]+)`/g;
+
+/* A `just` recipe named in the Where column. */
+const NAMED_RECIPE = /`just ([\w-]+)`/g;
 
 const NUMBER = /\bS\d{1,2}\b/g;
 
@@ -114,8 +132,24 @@ const exists = async (file: string): Promise<boolean> => {
   }
 };
 
+const existsFromRoot = async (relative: string): Promise<boolean> => {
+  try {
+    await access(path.join(repoRoot, relative));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Every recipe name `just` knows about, so a cited one can be resolved rather than read. */
+const knownRecipes = async (): Promise<ReadonlySet<string>> => {
+  const { stdout } = await run("just", ["--summary"], { cwd: repoRoot });
+  return new Set(stdout.split(/\s+/).filter(Boolean));
+};
+
 const rows = await tableRows();
 const listed = await listedTests();
+const recipes = await knownRecipes();
 
 /* Which files hold a test naming each scenario. */
 const namedBy = new Map<string, Set<string>>();
@@ -165,6 +199,20 @@ for (const [scenario, row] of rows) {
     problems.push(
       `line ${row.line}: ${scenario} is "${row.status}" and its row names no spec file`,
     );
+  }
+
+  // The Where column's other two thirds: a repository path and a `just` recipe are both citations a reader
+  // follows, and neither was checked until a measurement showed a fake one passing.
+  for (const cited of [...row.where.matchAll(NAMED_PATH)].map((match) => match[1]!)) {
+    if (cited.endsWith(".spec.ts")) continue;
+    if (!(await existsFromRoot(cited))) {
+      problems.push(`line ${row.line}: ${scenario} cites ${cited}, which does not exist`);
+    }
+  }
+  for (const cited of [...row.where.matchAll(NAMED_RECIPE)].map((match) => match[1]!)) {
+    if (!recipes.has(cited)) {
+      problems.push(`line ${row.line}: ${scenario} cites \`just ${cited}\`, which is not a recipe`);
+    }
   }
 }
 

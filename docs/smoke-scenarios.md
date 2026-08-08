@@ -22,9 +22,12 @@ just e2e-down             # the stack and its volumes
 ```
 
 **This table is checked against the suite rather than trusted.** `just lint-e2e` runs
-`e2e/scripts/check-scenarios.ts`, which cross-references every row marked automated against the test
-titles that name a scenario number, in both directions. Its first run found four disagreements including
-one row claiming an assertion no file in the suite made.
+`e2e/scripts/check-scenarios.ts`, which crosses this table against the tests Playwright reports it would
+run. It reads three of the table's four columns: every automated row must have a test naming its scenario
+and must name the spec file that test lives in, every scenario a test names must be marked automated here,
+and every repository path and `just` recipe cited in the Where column must resolve. The observation column
+is prose and is not bounded. Its first version read two columns and its first run found four disagreements,
+one of them a row claiming an assertion no file in the suite made.
 
 Every seed recipe is self-contained: it empties the database, provisions the tenant through the console
 script a first deployment runs, declares the fixture over the HTTP API, and ticks the plan-horizon
@@ -32,9 +35,9 @@ maintainer. The suite loads its own fixture per file, so `just e2e` needs no see
 
 **One intermittent failure runs through the whole harness, and it is a product defect rather than a flake in
 a recipe.** A route that answers an operation identifier can answer one that `GET /operations/{id}` then
-404s for, which is ticket 1575. Measured twice from two different routes: once in seven runs of
-`just seed-maturity-corpus` and once in six runs of `just e2e`, where it ended the run after one case
-because the identifier was drawn during a fixture load. It is never retried and never tolerated: the harness
+404s for, which is ticket 1575. Measured from two different routes and by two people; the highest rate is **one red run in ten full-suite
+runs**, and one occurrence ended a run after a single case because the identifier was drawn during a
+fixture load. Ticket 1575 carries every sample. It is never retried and never tolerated: the harness
 reports it by name, so a run that draws it reads as the known defect rather than as a fault in whichever
 case was running. Eight of the nine seed recipes have never failed.
 
@@ -121,7 +124,7 @@ nothing in a browser can observe a parse.
 | S4 | Late binding: a Career slot binds to the most urgent task and the reason names the selection | manual with a seed | `just seed-reference`, then solve the plan week |
 | S5 | Pin and reflow: the block does not follow the cursor, one redraw on drop, the verdict on the same redraw | **not automated** | see "What this harness does not yet reach" |
 | S6 | The counterfactual: `pinned`, `instead of`, and `cost` on the reason panel | manual with a seed | the pin path asserts the stored counterfactual; the panel is read by eye |
-| S7 | Live infeasibility with a stable panel height | **not automated** | the verdict half is covered by S9 and S25; the panel height is not |
+| S7 | Live infeasibility with a stable panel height | **not automated** | the verdict half is covered by S9 and by the B1 case in `b1-s34-floors-and-unallocated.spec.ts`; the panel height is not |
 | S8 | Provenance strengthens from a capacity check to an authoritative reading | manual with a seed | `just seed-elastic-sleep` |
 | S9 | A tradeoff is a proposal; an approved one survives; **and the shortfall it quoted `delta_minutes` against has closed by at least that much** | automated | `s09-s11-s31-tradeoffs.spec.ts` |
 | S10 | Twelve pins cost one solve, zero live revisions, zero calendar writes, at most one supersession | automated | `s10-burst.spec.ts`, asserting the single-flight invariant DURING the burst rather than after it |

@@ -8,10 +8,14 @@
  *
  * The states are exercised rather than assumed: every one of the shell's routes, both weekly-session
  * modes, a week whose plan is beyond the horizon and therefore empty, and a route that does not exist.
- * Item 51 left a specific prediction for this suite, that the promotion panel inside the weekly session
- * is the likeliest place a browser pass finds something because it puts a `Table` inside a notice
- * surface, which nothing else in the product does. Rendering it at all is the cheap half of acting on
- * that; measuring its composed layout is not this case's job.
+ *
+ * WHICH OF ITEM 51'S TWO PREDICTED SURFACES THIS FILE REACHES, because the answer is one of each. It
+ * named both amber notice surfaces in the weekly session and singled out the PROMOTION panel as the
+ * likeliest place a browser pass finds something, since it puts a `Table` inside a notice surface and
+ * nothing else in the product does. That panel is NOT reached: it returns null on an empty candidate list
+ * and no fixture here raises a promotion. The RAISED panel is, and the case at the foot of this file
+ * asserts both facts, so the day a fixture raises a promotion it reddens. The composition itself stays
+ * with ticket 1572 and the fixture it needs.
  */
 
 import { test, expect, usingFixture } from "./harness.ts";
@@ -54,8 +58,8 @@ const MOTION = `(() => {
 const routes = (): readonly { readonly what: string; readonly path: string }[] => [
   { what: "a week that holds a plan", path: `/week?week=${planWeek()}` },
   { what: "a week beyond the horizon", path: `/week?week=${beyondHorizonWeek()}` },
-  // The weekly session, which is the composed layout item 51 predicted a browser pass would find
-  // something in: it is the one place in the product that puts a Table inside a notice surface.
+  // The weekly session, where item 51's two amber notice surfaces live. The raised panel renders here and
+  // is asserted below; the promotion panel does not, because no fixture raises a promotion.
   { what: "the weekly session", path: `/week?week=${planWeek()}&mode=session` },
   { what: "the areas screen in weekly mode", path: "/areas?mode=weekly" },
   { what: "today", path: "/today" },
@@ -127,7 +131,14 @@ test("the weekly session renders the raised panel, and not the promotion panel, 
     session.raised.length,
     "the fixture raises nothing, so the panel has nothing to draw",
   ).toBeGreaterThan(0);
-  await expect(page.getByLabel("Raised in this session").first()).toBeVisible();
+  // THE SURFACE, NOT THE LABEL. `RaisedPanel` puts `aria-label="Raised in this session"` on both of its
+  // branches, the amber section and the "nothing is outstanding" prose that replaces it, so a label locator
+  // is satisfied by either and cannot bound the surface this case is cited for. The API guard above
+  // constrains the input, so the only way to reach the prose branch is a frontend regression, which is
+  // exactly what a browser pass exists to catch.
+  await expect(
+    page.locator('section[aria-label="Raised in this session"].notice--amber'),
+  ).toBeVisible();
 
   expect(
     session.promotions.length,

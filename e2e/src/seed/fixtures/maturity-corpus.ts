@@ -135,12 +135,17 @@ export const seedMaturityCorpus = async (client: ApiClient): Promise<void> => {
   const now = new Date();
   const solved: string[] = [];
   const refused: string[] = [];
+  const unplanned: string[] = [];
   const refusedRecordings: string[] = [];
   let recorded = 0;
   for (const isoWeek of weeks) {
     const view: WeekView = await weekView(client, isoWeek);
     if (view.live === null) {
-      refused.push(`${isoWeek} holds no plan`);
+      // A DIFFERENT STATE FROM A REFUSED SOLVE, and kept in its own list for that reason. This week is
+      // outside the horizon, which is what happens to the third week early in a week: `today + 14 days`
+      // stops short of it. Putting it in `refused` would make the print attribute it to ticket 1570's
+      // `past_disagreement`, which is a different cause and would be a lie on a Monday.
+      unplanned.push(isoWeek);
       continue;
     }
     const outcome = await solveTolerating1570(client, isoWeek);
@@ -176,6 +181,13 @@ export const seedMaturityCorpus = async (client: ApiClient): Promise<void> => {
       `maturity_corpus: NOT solved: ${refused.join(", ")}. A week whose earlier days are already ` +
         `past is refused with ${KNOWN_REFUSAL}, permanently, which is ticket 1570. Its materialized ` +
         "blocks are still recorded against.",
+    );
+  }
+  if (unplanned.length > 0) {
+    console.log(
+      `maturity_corpus: NOT planned: ${unplanned.join(", ")}. Outside the horizon, so the maintainer ` +
+        "has not reached it and there is nothing to record against. Not the same state as a refused " +
+        "solve.",
     );
   }
   if (refusedRecordings.length > 0) {
