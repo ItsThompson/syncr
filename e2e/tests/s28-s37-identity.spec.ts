@@ -52,6 +52,18 @@ const chosenEntities = (blocks: readonly Block[]): ReadonlySet<string> =>
       .map((block) => block.binding.entityId),
   );
 
+/** How many revisions the week holds, which is how an adoption is told from a no-op: an adoption appends
+ * one and a candidate that changed nothing appends none. */
+const revisionCount = async (
+  api: { get: <T>(path: string) => Promise<T> },
+  isoWeek: string,
+): Promise<number> => {
+  const answered = await api.get<{ revisions: readonly unknown[] }>(
+    `/api/v1/weeks/${isoWeek}/revisions`,
+  );
+  return answered.revisions.length;
+};
+
 /** Something that changes the solve's inputs and names no placed block. */
 const anUnrelatedTask = async (
   api: {
@@ -159,19 +171,34 @@ test("S37 the plan a re-solve produces places the same total minutes the previou
   expect(placedBefore, `${title} was never placed, so there is nothing to shrink`).toBeGreaterThan(
     0,
   );
+  const revisionsBefore = await revisionCount(api, week);
 
   // A second unrelated change, so this case's re-solve produces its own candidate rather than reading
   // the one the previous case approved.
   await anUnrelatedTask(api, "A second unrelated errand");
   await solveAndSettle(api, week);
 
+  // THE DOCUMENT THE SECOND SOLVE PRODUCED, and there are two ways it is reachable. A candidate asking for
+  // a move is held whole in the pending slot, so it has to be approved to be read. A candidate asking only
+  // for fills is adopted, and the live plan then IS that candidate. Which of the two a run gets depends on
+  // whether the new task displaces anything, so both are handled: measured, the same sequence produced a
+  // proposal on three runs and an adoption on the fourth.
+  //
+  // NEITHER PATH LETS "NOTHING HAPPENED" PASS. The adopted path asserts a revision was appended by this
+  // solve, which is what tells an adoption from a no-op, and a no-op is the reading a missing proposal
+  // would otherwise be silently accepted as.
   const proposed = await weekView(api, week);
+  if (proposed.proposal === null) {
+    expect(
+      await revisionCount(api, week),
+      "the re-solve neither proposed nor adopted anything, so no second document exists",
+    ).toBeGreaterThan(revisionsBefore);
+    expect(placedMinutes(proposed.live!.blocks, title)).toBe(placedBefore);
+    return;
+  }
+
   expect(
-    proposed.proposal,
-    "the re-solve produced no candidate, so there is no second document to measure",
-  ).not.toBeNull();
-  expect(
-    proposed.proposal!.removed.filter((change) => change.title === title),
+    proposed.proposal.removed.filter((change) => change.title === title),
     "the re-solve offered to drop work that is not done",
   ).toEqual([]);
 
