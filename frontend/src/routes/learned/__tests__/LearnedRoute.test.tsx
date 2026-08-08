@@ -316,6 +316,28 @@ describe("the weight sets", () => {
     expect(screen.getByText(/tuned by hand/)).toBeVisible();
   });
 
+  it("says nothing about the active row when it says the shipped weights are hand-tuned", async () => {
+    /* Measured against a real account with two versions: the first wording read "the weights in force today were
+     * tuned by hand", which a screen with a FITTED set in force states falsely. The claim is about the mechanism,
+     * so it holds whichever row is active. */
+    installReads(
+      buildLearned({ version: 2, origin: "fitted" }),
+      buildWeightSets({
+        versions: [
+          { ...buildWeightSets().versions[0], active: true },
+          { ...buildWeightSets().versions[1], active: false },
+        ],
+      }),
+    );
+    renderAt(SCREEN);
+    await screen.findByRole("table", { name: /Every weight set version/ });
+
+    expect(screen.getByText(/tuned by hand/)).toBeVisible();
+    expect(screen.queryByText(/in force today were tuned by hand/)).not.toBeInTheDocument();
+    /* And the band names the fitted set, so the two do not contradict each other. */
+    expect(screen.getByText("Weight set 2, fitted.")).toBeVisible();
+  });
+
   it("renders the api's own sentence when an activation is refused", async () => {
     installReads();
     apiServer.use(

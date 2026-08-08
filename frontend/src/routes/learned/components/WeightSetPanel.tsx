@@ -12,6 +12,10 @@
  * row at all before anything has been fitted, and it is the claim that makes the fitted path credible: the
  * versioning is not scaffolding waiting for a model, it is what is in force today.
  *
+ * THAT SENTENCE IS ABOUT THE MECHANISM, NOT ABOUT THE ACTIVE ROW. "The weights in force were tuned by hand" read
+ * off a screen with a FITTED set in force is the panel stating something false, which is what the first wording
+ * did: a run against a real account with two versions showed it.
+ *
  * THOSE TWO SENTENCES ARE THE CLIENT'S. Every figure and every claim ABOUT A PARAMETER is served, because two
  * surfaces must not describe one fitted number two ways. These two are fixed statements about the mechanism, with
  * no figure in them and no second renderer: the CLI has no weight-set command, so serving them would make a
@@ -88,9 +92,8 @@ export function WeightSetPanel({ versions, activate }: WeightSetPanelProps) {
           already approved keeps the plan it was approved with.
         </p>
         <p className="text-base text-ink-soft">
-          The weights in force today were tuned by hand, and they arrive through this same mechanism
-          a fitted set will: a row, a version, and a flag. Nothing switches over when fitting
-          starts.
+          The weights syncr ships are tuned by hand, and they arrive through this same mechanism a
+          fitted set does: a row, a version, and a flag. Nothing switches over when fitting starts.
         </p>
         {activate.problem === null ? null : (
           <ReadFailure title="That version was not put in force" problem={activate.problem} />
