@@ -80,7 +80,7 @@ test("the pin-to-projection path: a pin becomes a proposal, an approval becomes 
   expect(projected.status).toBe("succeeded");
 });
 
-test("the conflict-resolution path: a commitment arriving over the network raises a conflict, and resolving it records the answer", async ({
+test("the conflict-resolution path, and S12 the raise: a commitment arriving over the network raises a conflict, and resolving it records the answer", async ({
   api,
 }) => {
   const week = planWeek();
@@ -172,11 +172,17 @@ test("S13 the confirm-and-backfill path: unconfirmed days are excluded, and back
   expect(after.confirmedAt).not.toBeNull();
   expect(after.unconfirmedDays).toBeLessThan(before.unconfirmedDays);
 
-  // A day nobody has answered for is not counted as confirmed, whatever the range said.
+  // A day nobody has answered for is not counted as confirmed, whatever the range said. The route may
+  // refuse a day the week has not reached, which is itself the observation: what must not happen is a
+  // day being reported as settled when nothing settled it.
   const tomorrow = dateShift(lived[lived.length - 1]!, 1);
   const unlived = await api.attempt<{ confirmedAt: string | null }>(
     "GET",
     `/api/v1/days/${tomorrow}`,
   );
+  expect(
+    [200, 404, 422].includes(unlived.status),
+    `reading an unlived day answered ${unlived.status}`,
+  ).toBe(true);
   if (unlived.status === 200) expect(unlived.body.confirmedAt).toBeNull();
 });

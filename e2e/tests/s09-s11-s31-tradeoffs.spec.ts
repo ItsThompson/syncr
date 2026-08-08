@@ -119,7 +119,9 @@ test("S31 a tradeoff gets its own operation, and S11 the one it displaces names 
   const week = isoWeekShift(planWeek(), 1);
   await solveAndSettle(api, week);
   const solved = await weekView(api, week);
-  expect(solved.verdict!.tradeoffs.length, "the following week offers no tradeoff").toBeGreaterThan(0);
+  expect(solved.verdict!.tradeoffs.length, "the following week offers no tradeoff").toBeGreaterThan(
+    0,
+  );
 
   const movable = solved.live!.blocks.filter(
     (block) => (block.origin === "task" || block.origin === "habit") && !block.pinned,

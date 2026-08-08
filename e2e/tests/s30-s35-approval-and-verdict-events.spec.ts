@@ -151,17 +151,37 @@ test("S35 every row is a transition, and the ratio the product reads is the epis
   }
 
   // TWO EPISODES, COUNTED AS EPISODES RATHER THAN AS ROWS, and that distinction is the whole point of
-  // the metric: this week's history holds more infeasible ROWS than episodes, because a probe reading
-  // and the solver's confirmation of it are two rows about one discovery.
-  //
-  // Both of this run's openers are unflagged, so the ratio is 0. Producing a session-flagged opener
-  // needs a mutation that both flips the reading and carries `X-Syncr-Session-Mode`, and the pin route
-  // is the only one that reads that header: see ticket 1571. The exactly-0.5 case therefore sits at
-  // the api tier, where the flag can be set on the call that records the row.
+  // the metric: this week's history holds more infeasible ROWS than episodes, because a probe reading and
+  // the solver's confirmation of it are two rows about one discovery.
   expect(reopened.at(-1)!.feasible, "the second episode is not open").toBe(false);
   expect(reopened.filter((row) => !row.feasible).length).toBeGreaterThan(2);
+
+  // What is invariant TODAY, and what a fix must not break: the ratio is a number in [0, 1], and no
+  // episode this suite can open carries a session flag. The second clause is the defect, so it is stated
+  // as the defect rather than as the correct answer.
   const measured = await verdictEvents();
   const ratios = Object.values(measured.caughtEarlyByTenant);
   expect(ratios.length).toBe(1);
-  expect(ratios[0]).toBe(0);
+  expect(ratios[0]).not.toBeNull();
+  expect(ratios[0]!).toBeGreaterThanOrEqual(0);
+  expect(ratios[0]!).toBeLessThanOrEqual(1);
+  expect(reopened.some((row) => row.sessionModeActive)).toBe(false);
+});
+
+/* S35's stated figure, AS A TRIPWIRE, so its polarity matches S34's rather than opposing it.
+ *
+ * Spec S35 requires a ratio of exactly 0.5 over one session-caught episode and one that was not. This
+ * suite cannot construct the session-caught one: two routes read `X-Syncr-Session-Mode`, the pin and the
+ * tradeoff request, and neither is a mutation that flips a roomy week's reading. So the figure is asserted
+ * and the case is marked as expected to fail, which means the day ticket 1571 makes it constructible the
+ * suite goes red for passing unexpectedly and the marker has to be removed.
+ *
+ * Written this way deliberately. Asserting the 0 the defect produces would lock the defect in with the
+ * opposite polarity from S34, in the same suite, for the same kind of fact: one instrument would
+ * celebrate what the other condemns. */
+test("S35 the early-catch ratio over one session-caught episode and one that was not is exactly 0.5", async () => {
+  test.fail(true, "no route that flips a verdict carries the session header: ticket 1571");
+  const measured = await verdictEvents();
+  const ratios = Object.values(measured.caughtEarlyByTenant);
+  expect(ratios[0]).toBe(0.5);
 });

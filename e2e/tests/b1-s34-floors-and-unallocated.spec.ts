@@ -1,72 +1,131 @@
-/* The Blocker 1 scenario, and S34.
+/* The Blocker 1 observation, and S34.
  *
  * Both are about a figure that is right or wrong rather than present or absent, which is the class of
  * failure this product cannot detect any other way: neither throws, and both render plausibly.
  *
- * The B1 scenario has no scenario number in section 20 because it is not one of the 37. It is the
- * observation `reviews/spec-review-5.md` B1 requires, and it exists because the probe's floor
- * reservation and its `free` capacity once netted different placement sets: a healthy solved week's
- * floors are met by UNPINNED solver-placed blocks, so a reservation that did not net them reported a
- * `floors_exceed_capacity` gap on the normal state of the product, and pinning an already-placed block
- * IMPROVED the verdict. Both halves are asserted here.
+ * WHY THIS FILE USES `tight_capacity` AND NOT `reference_week`. The first version of these cases ran on
+ * `reference_week`, whose plan week holds 1470 minutes of discretionary time against 960 minutes of
+ * declared floor. Both fit under either netting rule, so a bite reverting the probe's floor reservation
+ * to the pre-B1 immovable-only rule left both cases GREEN, and the at-risk loop iterated zero times
+ * because no task was at risk. The case bounded nothing. `tight_capacity` is the week B1 is actually
+ * about: its floors are met by unpinned solver-placed blocks and only 210 minutes are left free, so a
+ * reservation that netted nothing would be 960 against 210 and would report a shortfall on a week that
+ * is fully scheduled.
+ *
+ * WHICH VERDICT THE AT-RISK COLUMN IS CROSSED AGAINST. The backlog is not week-scoped: the marking reads
+ * the CURRENT week's verdict, through `served_verdicts.CurrentWeekVerdict`, which is the same rule the
+ * Week screen serves. So crossing it against the plan week's shortfalls, as the first version did, pairs
+ * two different weeks and can only be vacuously true.
  */
 
 import { test, expect, usingFixture } from "./harness.ts";
 import type { Verdict } from "../src/api/schemas.ts";
-import { planWeek } from "../src/harness/subject-weeks.ts";
+import { currentWeek, planWeek } from "../src/harness/subject-weeks.ts";
 import { solveAndSettle, weekView } from "../src/harness/week.ts";
 
-usingFixture("reference_week");
-test.describe.configure({ mode: "serial" });
+usingFixture("tight_capacity");
 
+/* NOT serial, deliberately, even though the cases share a week. Each is self-sufficient about the state
+ * it needs: the first two solve, the third reads a verdict and a backlog that need no solve. Serial mode
+ * would stop after the first failure, and for a file whose whole purpose is to be shown to fail, one
+ * bite has to be able to report on every case it reaches. */
+
+/* Every figure a floor reservation can move. Compared as one value, so a case asserting "unchanged"
+ * cannot pass by looking at the one field that happened not to move. */
 const comparable = (verdict: Verdict | null): string =>
   JSON.stringify({
     capacityIsSufficient: verdict?.capacityIsSufficient,
-    shortfalls: verdict?.shortfalls,
     discretionaryMinutes: verdict?.discretionaryMinutes,
+    shortfalls: verdict?.shortfalls,
+    tradeoffs: verdict?.tradeoffs,
   });
 
-test("B1 a healthy solved week reports no floor shortfall, and its at-risk column is not inflated", async ({
+const FLOOR_KINDS: readonly string[] = ["floors_exceed_capacity", "area_floor_unreachable"];
+
+test("B1 a solved week whose floors are met by unpinned blocks reports no floor shortfall", async ({
   api,
 }) => {
   const week = planWeek();
   await solveAndSettle(api, week);
   const view = await weekView(api, week);
 
-  // The week is healthy in exactly the sense B1 names: its floors are met by blocks the solver placed
-  // and nobody pinned.
-  const areas = await api.get<{ areas: readonly { id: string; name: string; floorHours: number }[] }>(
-    "/api/v1/areas",
-  );
-  const withFloors = areas.areas.filter((area) => Number(area.floorHours) > 0);
-  expect(withFloors.length, "no Area declares a floor, so there is nothing to reserve").toBeGreaterThan(0);
-  for (const area of withFloors) {
+  // THE PRECONDITION, ASSERTED RATHER THAN ASSUMED: every Area that declares a floor has that floor met
+  // by blocks the solver placed and nobody pinned. That is what a healthy solved week IS, and it is the
+  // state under which the pre-B1 rule reported a gap.
+  const areas = await api.get<{
+    areas: readonly { id: string; name: string; floorHours: number }[];
+  }>("/api/v1/areas");
+  const floored = areas.areas.filter((area) => Number(area.floorHours) > 0);
+  expect(
+    floored.length,
+    "no Area declares a floor, so there is nothing to reserve",
+  ).toBeGreaterThan(0);
+  for (const area of floored) {
     const placed = view.live!.blocks.filter((block) => block.areaId === area.id);
-    expect(placed.length, `${area.name} declares a floor and holds no block`).toBeGreaterThan(0);
+    const minutes = placed.reduce(
+      (total, block) =>
+        total + (Date.parse(block.interval.end) - Date.parse(block.interval.start)) / 60_000,
+      0,
+    );
     expect(
-      placed.some((block) => !block.pinned),
-      `${area.name}'s floor is met only by pinned blocks, so this week is not the healthy case`,
+      minutes,
+      `${area.name} declares a floor of ${area.floorHours}h and holds ${minutes} placed minutes`,
+    ).toBeGreaterThanOrEqual(Number(area.floorHours) * 60);
+    expect(
+      placed.every((block) => !block.pinned),
+      `${area.name}'s floor is met partly by pinned blocks, so this is not the case B1 is about`,
     ).toBe(true);
   }
 
-  const kinds = view.verdict!.shortfalls.map((shortfall) => shortfall.kind);
-  expect(kinds).not.toContain("floors_exceed_capacity");
-  expect(kinds).not.toContain("area_floor_unreachable");
-
-  // The backlog's at-risk marking is pinned to the probe reporting a `deadline_capacity` shortfall
-  // naming the task, so an inflated reservation shows up here too.
-  const backlog = await api.get<{ tasks: readonly { title: string; atRisk: boolean }[] }>(
-    "/api/v1/tasks",
+  // And the week is tight: the reservation and the free capacity are close enough that the difference
+  // between the two netting rules is visible. Without this the case could pass on a roomy week again.
+  const declaredFloorMinutes = floored.reduce(
+    (total, area) => total + Number(area.floorHours) * 60,
+    0,
   );
+  expect(
+    view.verdict!.discretionaryMinutes,
+    "the week is too roomy for a floor reservation to be observable",
+  ).toBeLessThan(declaredFloorMinutes * 3);
+
+  // THE OBSERVATION: no floor shortfall on a week whose floors are already scheduled.
+  const kinds = view.verdict!.shortfalls.map((shortfall) => shortfall.kind);
+  for (const kind of FLOOR_KINDS) expect(kinds).not.toContain(kind);
+  expect(view.verdict!.capacityIsSufficient).toBe(true);
+  expect(view.verdict!.shortfalls).toEqual([]);
+});
+
+test("B1 the at-risk column names only tasks the verdict it reads reports a shortfall for", async ({
+  api,
+}) => {
+  // The marking reads the current week's verdict, so that is the verdict it is crossed against.
+  const verdict = await api.get<{ verdict: Verdict }>(`/api/v1/weeks/${currentWeek()}/verdict`);
+  const named = new Set(
+    verdict.verdict.shortfalls
+      .filter((shortfall) => shortfall.kind === "deadline_capacity")
+      .flatMap((shortfall) => shortfall.against),
+  );
+
+  const backlog = await api.get<{
+    header: { atRiskCount: number };
+    tasks: readonly { title: string; atRisk: boolean }[];
+  }>("/api/v1/tasks");
   const atRisk = backlog.tasks.filter((task) => task.atRisk).map((task) => task.title);
-  const named = view.verdict!.shortfalls.flatMap((shortfall) => shortfall.against);
-  for (const title of atRisk) {
-    expect(named, `${title} is marked at risk and no shortfall names it`).toContain(title);
-  }
+
+  // Set equality both ways. One direction catches a column inflated past what the verdict found; the
+  // other catches a task the verdict named and the column did not mark, which is the same guarantee read
+  // from the other end: a task cannot be at risk on one screen and fine on another.
+  expect([...atRisk].sort()).toEqual([...named].sort());
+  expect(backlog.header.atRiskCount).toBe(atRisk.length);
+  expect(
+    atRisk.length,
+    "no task is at risk, so this comparison has nothing to iterate",
+  ).toBeGreaterThan(0);
 });
 
 test("B1 pinning an already-placed block leaves the verdict unchanged", async ({ api }) => {
   const week = planWeek();
+  await solveAndSettle(api, week);
   const before = await weekView(api, week);
   const floored = before.live!.blocks.find(
     (block) => block.areaId !== null && !block.pinned && block.origin !== "frame",
@@ -76,7 +135,8 @@ test("B1 pinning an already-placed block leaves the verdict unchanged", async ({
   const reading = comparable(before.verdict);
 
   // Pinned WHERE IT ALREADY IS, which is also how rejecting a proposed move is implemented. It frees
-  // nothing and commits nothing, so the arithmetic behind the verdict must not move.
+  // nothing and commits nothing, so nothing the verdict reads may move. Under the pre-B1 rule the pin
+  // makes the block immovable, the reservation falls, and the pin IMPROVES the verdict.
   const pinned = await api.post<{ verdict: Verdict }>(`/api/v1/weeks/${week}/pins`, {
     blockId: floored!.id,
     start: floored!.interval.start,
@@ -106,8 +166,8 @@ test("S34 Unallocated is honest: it equals the discretionary time no block cover
   const wholeWeek = 7 * 24 * 60;
   expect(readings.discretionaryMinutes).toBeLessThan(wholeWeek);
 
-  // Unallocated is what no block covers, so it is the discretionary span less the scheduled minutes
-  // that carry an Area, and it is never the whole of it once anything is placed.
+  // Unallocated is what no block covers, so it is less than the discretionary span once anything with an
+  // Area is placed, and never negative.
   expect(readings.unallocatedMinutes).toBeLessThan(readings.discretionaryMinutes);
   expect(readings.unallocatedMinutes).toBeGreaterThanOrEqual(0);
 

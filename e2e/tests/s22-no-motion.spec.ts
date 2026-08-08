@@ -6,8 +6,12 @@
  * a DOM element rather than a CSS rule. This reads the COMPUTED style of every element the live
  * application actually rendered, which is the one input the eight static checks do not have.
  *
- * The states are exercised rather than assumed: a route that renders, a route whose week is beyond the
- * horizon and therefore empty, and a route that does not exist.
+ * The states are exercised rather than assumed: every one of the shell's routes, both weekly-session
+ * modes, a week whose plan is beyond the horizon and therefore empty, and a route that does not exist.
+ * Item 51 left a specific prediction for this suite, that the promotion panel inside the weekly session
+ * is the likeliest place a browser pass finds something because it puts a `Table` inside a notice
+ * surface, which nothing else in the product does. Rendering it at all is the cheap half of acting on
+ * that; measuring its composed layout is not this case's job.
  */
 
 import { test, expect, usingFixture } from "./harness.ts";
@@ -49,9 +53,16 @@ const MOTION = `(() => {
 const routes = (): readonly { readonly what: string; readonly path: string }[] => [
   { what: "a week that holds a plan", path: `/week?week=${planWeek()}` },
   { what: "a week beyond the horizon", path: `/week?week=${beyondHorizonWeek()}` },
+  // The weekly session, which is the composed layout item 51 predicted a browser pass would find
+  // something in: it is the one place in the product that puts a Table inside a notice surface.
+  { what: "the weekly session", path: `/week?week=${planWeek()}&mode=session` },
+  { what: "the areas screen in weekly mode", path: "/areas?mode=weekly" },
   { what: "today", path: "/today" },
   { what: "the backlog", path: "/backlog" },
   { what: "the areas screen", path: "/areas" },
+  { what: "the templates screen", path: "/templates" },
+  { what: "the settings screen", path: "/settings" },
+  { what: "the learned screen", path: "/learned" },
   { what: "a route that does not exist", path: "/not-a-route" },
 ];
 
