@@ -1,0 +1,251 @@
+/* THE VOLUME AND THE PIGMENT OF EVERY CASE THE PRODUCT CAN RAISE, AND THE FOURTH VOLUME THAT DOES NOT EXIST.
+ *
+ * VOLUME IS POSITION AND PIGMENT IS KIND, which is two questions and therefore two fields: how loudly a reader
+ * should care, and what sort of thing happened. Section 16 assigns both per case, and the cases below are called
+ * through the factories the screens themselves call, so what is asserted is the value a reader would meet rather
+ * than a table restating a table.
+ *
+ * LEVEL 4 IS DELIBERATELY UNUSED. syncr does not block a reader over a degradation: infeasibility is the product's
+ * most valuable output, and a week that cannot hold its commitments is impossible rather than broken. There is no
+ * blocking volume in the vocabulary, no notice declares one, and the kit exports no dialog for one.
+ *
+ * THE SET OF CASES IS BOUNDED BY THE TREE, not by this file. `shippedNotices` finds every notice the application
+ * declares by parsing for the shape -- an object carrying a volume and a surviving-capability list -- so a
+ * fourteenth module raising one is reported here whether anyone remembered to add a case or not. That is what
+ * makes the sweep an audit rather than a second copy of section 16. */
+
+import { describe, expect, it } from "vitest";
+
+import { NARROWING_MODULE, shippedNotices, type NoticeLiteral } from "../../testing/noticeLiterals";
+import { captureRefusedNotice } from "../../app/capture/refusals";
+import { completionRefusedNotice, taskCompletedNotice } from "../backlog/notices";
+import { rejectionNotice, staleFeedNotice } from "../settings/sourceNotices";
+import { staleFeedNotices } from "../today/staleFeeds";
+import {
+  backfillSettledNotice,
+  confirmationRefusedNotice,
+  recordingRefusedNotice,
+  unconfirmedNotice,
+} from "../today/notices";
+import { conflictNotice, refusedNotice, solveFailedNotice } from "../week/notices";
+import { buildSource, buildSyncState } from "../settings/__tests__/fixtures";
+import { buildDay } from "../today/__tests__/fixtures";
+import type { Notice, NoticePigment, NoticeVolume } from "../../ui/domain";
+import type { Problem } from "../../contract";
+
+const VOLUMES: readonly NoticeVolume[] = ["inline", "panel", "banner"];
+const PIGMENTS: readonly NoticePigment[] = ["info", "amber", "oxide", "verdigris"];
+
+const REFUSED: Problem = {
+  type: "syncr:conflict",
+  title: "This proposal has been replaced",
+  status: 409,
+  detail: "A newer proposal replaced the one you approved, so nothing was applied.",
+};
+
+/** A feed that stopped answering long enough ago to be reported, with a day that holds its commitments. */
+const stale = buildSource({
+  syncState: buildSyncState({
+    lastSuccessAt: new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString(),
+    lastError: "The feed did not answer.",
+  }),
+});
+
+const dayWithAnAnchor = buildDay({
+  behind: [],
+  ahead: [
+    {
+      blockId: "a1".repeat(32),
+      interval: { start: "2026-02-09T09:00:00+00:00", end: "2026-02-09T10:00:00+00:00" },
+      durationMinutes: 60,
+      areaId: null,
+      areaName: null,
+      title: "Lecture",
+      origin: "anchor",
+      outcome: null,
+    },
+  ],
+});
+
+/** Section 16's cases, each raised by the factory the screen raising it calls. */
+const CASES: readonly { readonly case: string; readonly notice: Notice }[] = [
+  {
+    case: "an external commitment overlaps a planned block",
+    notice: conflictNotice("c1", "A commitment overlaps this block.", "b1"),
+  },
+  {
+    case: "the solver returned no plan",
+    notice: solveFailedNotice({
+      operationId: "o1",
+      statement: "This work could not complete.",
+      attempt: 3,
+      code: "solver_timeout",
+      message: "no plan within the budget",
+    }),
+  },
+  { case: "a write on the week was refused", notice: refusedNotice("approve", REFUSED) },
+  { case: "a day nobody has answered for", notice: unconfirmedNotice("2026-02-09", 2) },
+  {
+    case: "a recording the api refused",
+    notice: recordingRefusedNotice("b1", REFUSED),
+  },
+  {
+    case: "a confirmation the api refused",
+    notice: confirmationRefusedNotice("2026-02-09", REFUSED),
+  },
+  {
+    case: "a backfill that settled past days",
+    notice: backfillSettledNotice("2026-02-09", "3 days confirmed.", 0),
+  },
+  { case: "a capture the api refused", notice: captureRefusedNotice(REFUSED) },
+  { case: "a task completed elsewhere", notice: taskCompletedNotice("Past papers") },
+  { case: "a completion the api refused", notice: completionRefusedNotice(REFUSED) },
+  {
+    case: "an unreadable feed, on Settings",
+    notice: expected(staleFeedNotice(stale, Date.now()), "the stale-feed panel"),
+  },
+  {
+    case: "an unreadable feed, on an affected day",
+    notice: expectedFirst(
+      staleFeedNotices(dayWithAnAnchor, [stale], Date.now()),
+      "the stale-feed inline notice",
+    ),
+  },
+  {
+    case: "a feed with rejected components",
+    notice: expected(
+      rejectionNotice(
+        buildSource({
+          syncState: buildSyncState({
+            rejectedCount: 2,
+            rejections: [
+              { kind: "unknown-zone", component: "VEVENT", detail: "line 12", line: 12 },
+              { kind: "missing-duration", component: "VEVENT", detail: "line 40", line: 40 },
+            ],
+          }),
+        }),
+      ),
+      "the rejection panel",
+    ),
+  },
+];
+
+/** A factory that answers null when its condition is absent, asserted to have answered here. */
+function expected(notice: Notice | null, what: string): Notice {
+  if (notice === null) throw new Error(`${what} was not raised, so the case below asserts nothing`);
+  return notice;
+}
+
+function expectedFirst(notices: readonly Notice[], what: string): Notice {
+  const first = notices.at(0);
+  if (first === undefined)
+    throw new Error(`${what} was not raised, so the case below asserts nothing`);
+  return first;
+}
+
+describe("every case the product raises", () => {
+  it.each(CASES)(
+    "$case takes a volume and a pigment from the closed vocabularies",
+    ({ notice }) => {
+      expect(VOLUMES).toContain(notice.volume);
+      expect(PIGMENTS).toContain(notice.pigment);
+    },
+  );
+
+  it.each(CASES)("$case names at least one capability that survives it", ({ notice }) => {
+    expect(notice.stillWorks.length).toBeGreaterThan(0);
+    for (const capability of notice.stillWorks) expect(capability.trim()).not.toBe("");
+  });
+
+  /* THE TWO THE SHELL'S TABLE SINGLES OUT. An unconfirmed day must read as the ordinary state of a day rather
+   * than as something wrong, and a stale feed needs attention with nothing broken. Marking either in oxide would
+   * teach a reader to distrust a working system. */
+  it("states an unconfirmed day informationally, spending no signal pigment", () => {
+    expect(unconfirmedNotice("2026-02-09", 0).pigment).toBe("info");
+  });
+
+  it("states an unreadable feed in amber at both of its volumes, because nothing is broken", () => {
+    const panel = expected(staleFeedNotice(stale, Date.now()), "the stale-feed panel");
+    const inline = expectedFirst(
+      staleFeedNotices(dayWithAnAnchor, [stale], Date.now()),
+      "the stale-feed inline notice",
+    );
+
+    expect([panel.pigment, inline.pigment]).toEqual(["amber", "amber"]);
+    expect([panel.volume, inline.volume]).toEqual(["panel", "inline"]);
+  });
+
+  it("offers at most one repair per notice, so a reader is never asked to choose between two", () => {
+    for (const { notice } of CASES)
+      expect(notice.action === null || notice.action.href).toBeTruthy();
+  });
+});
+
+describe("every notice the application declares, found by parsing for the shape", () => {
+  it("declares a volume this product has, which is three and not four", async () => {
+    const declared = await composed();
+
+    expect(declared.length).toBeGreaterThan(CASES.length);
+    expect(unreadable(declared, (one) => one.volume)).toEqual([]);
+    for (const one of declared) expect(VOLUMES).toContain(one.volume);
+  });
+
+  it("declares a pigment from the four kinds", async () => {
+    const declared = await composed();
+
+    expect(unreadable(declared, (one) => one.pigment)).toEqual([]);
+    for (const one of declared) expect(PIGMENTS).toContain(one.pigment);
+  });
+
+  /* THE WHOLE POINT OF THE PARSE. The type refuses an empty list at compile time and the api's schema refuses one
+   * before it is serialized; this answers the question neither does, which is whether any notice exists whose list
+   * nobody has read. An unresolved list is a failure for the same reason an empty one is. */
+  it("names a surviving capability, in every notice, in every module", async () => {
+    const declared = await composed();
+
+    expect(declared.filter((one) => one.stillWorks !== "non-empty").map(where)).toEqual([]);
+  });
+
+  it("is spread across the modules that raise them, so the scan is not reading one file", async () => {
+    const files = new Set((await composed()).map((one) => one.file));
+
+    expect(files.size).toBeGreaterThanOrEqual(8);
+  });
+
+  /* ONE MODULE MAY BUILD A NOTICE FROM VALUES RATHER THAN FROM WORDS, and this is the assertion that keeps it one.
+   * A second file whose notices carry an unreadable volume or an empty list would fail the three rules above, which
+   * is exactly what should happen: the latitude is declared, not inferred. */
+  it("leaves exactly one narrowing module, whose two literals are the two the type documents", async () => {
+    const narrowed = (await shippedNotices()).filter((one) => one.file === NARROWING_MODULE);
+
+    expect(narrowed).toHaveLength(2);
+    /* Neither carries a literal volume, because both take the api's. One provably builds a non-empty list from the
+     * wire's first element, and the other is the total outage, which names nothing on purpose. */
+    expect(narrowed.map((one) => one.volume)).toEqual([null, null]);
+    expect(narrowed.map((one) => one.stillWorks).toSorted()).toEqual(["empty", "non-empty"]);
+  });
+});
+
+function where(one: NoticeLiteral): string {
+  return `${one.file}:${String(one.line)} stillWorks is ${one.stillWorks}`;
+}
+
+/*
+ * The notices this product COMPOSES, in words it wrote.
+ *
+ * The narrowing module is separated rather than skipped, and the separation is asserted: it is where a wire notice
+ * becomes the kit's type, so both of its literals take the api's own volume and one of them is the total-outage
+ * case, which is the single shape allowed to name nothing. Every rule above is about the composed ones.
+ */
+async function composed(): Promise<NoticeLiteral[]> {
+  return (await shippedNotices()).filter((one) => one.file !== NARROWING_MODULE);
+}
+
+function unreadable(
+  declared: readonly NoticeLiteral[],
+  read: (one: NoticeLiteral) => string | null,
+): string[] {
+  return declared
+    .filter((one) => read(one) === null)
+    .map((one) => `${one.file}:${String(one.line)}`);
+}
