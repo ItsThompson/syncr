@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { checkContrast } from "../check.ts";
+import { checkContrast, EXCUSED_TEXT_INKS } from "../check.ts";
 import {
   buildLedger,
   contrastRatio,
@@ -22,6 +22,11 @@ import {
 import { renderLedger } from "../render.ts";
 
 const SURFACES = ["--paper", "--paper-raised"] as const;
+
+/* Every ink the real check excuses from the text floor, so a synthetic ledger can carry them and the both-ways
+ * staleness rule has something to describe. Imported rather than restated: a fourth excuse added to the check
+ * appears in these ledgers by itself. */
+const EXCUSED = [...EXCUSED_TEXT_INKS];
 
 function pair(ink: string, surface: string, ratio: number, floor: number): Pair {
   return {
@@ -42,6 +47,9 @@ function healthy(overrides: readonly Pair[] = []): Ledger {
     "--ink": 10.6,
     "--ink-deep": 13.7,
     "--text-muted": 4.9,
+    /* The excused inks, each at a ratio that WOULD fail, which is why each is excused. A synthetic ledger without
+     * them would leave the excuses describing nothing, and the check refuses that too. */
+    ...Object.fromEntries(EXCUSED.map((ink) => [ink, 1.2])),
   };
   const floors: Record<string, number> = {
     "--rule-control": INDICATOR_FLOOR,
@@ -49,6 +57,7 @@ function healthy(overrides: readonly Pair[] = []): Ledger {
     "--ink": TEXT_FLOOR,
     "--ink-deep": TEXT_FLOOR,
     "--text-muted": TEXT_FLOOR,
+    ...Object.fromEntries(EXCUSED.map((ink) => [ink, TEXT_FLOOR])),
   };
   const pairs = Object.entries(inks).flatMap(([ink, ratio]) =>
     SURFACES.map((surface) => pair(ink, surface, ratio, floors[ink])),
@@ -105,14 +114,66 @@ describe("the contrast audit", () => {
     expect(await checksOf(retuned)).toEqual(["the-banned-rule-now-clears"]);
   });
 
-  it("refuses a pair that has no ratio at all, which is a pair nobody has measured", async () => {
+  /* THE COVERAGE RULE ITSELF. The derived enforcement set is drawn from the pairs, so an ink whose row went
+   * missing would take its own rule with it and pass by absence. The gate refuses the incomplete matrix rather
+   * than the ink, which is the failure that can actually happen. */
+  it("refuses a matrix with a pair missing, which is a pair nobody has measured", async () => {
     const ledger = healthy();
     const missing: Ledger = {
       ...ledger,
       pairs: ledger.pairs.filter((one) => one.ink !== "--ink-deep"),
     };
 
-    expect(await checksOf(missing)).toEqual(["text-below-the-floor", "text-below-the-floor"]);
+    expect(await checksOf(missing)).toContain("incomplete-matrix");
+  });
+
+  it("names the ink whose row is short, so a finding points at something", async () => {
+    const ledger = healthy();
+    const missing: Ledger = {
+      ...ledger,
+      pairs: ledger.pairs.filter(
+        (one) => !(one.ink === "--ink" && one.surface === "--paper-raised"),
+      ),
+    };
+    const file = await committed(missing);
+    const outcome = await checkContrast({ ledger: missing, ledgerFile: file });
+
+    expect(outcome.findings.map((one) => one.message).join(" ")).toContain("--ink");
+  });
+
+  /* THE ENFORCEMENT SET IS DERIVED, and this is the plant the review used to show a list of three could not hold
+   * the criterion: a new ink written as text, failing on both paper surfaces, shipped green over 506 pairs. */
+  it("enforces the text floor on an ink it was never told about", async () => {
+    const ledger = healthy([
+      pair("--planted-label-ink", "--paper", 2.45, TEXT_FLOOR),
+      pair("--planted-label-ink", "--paper-raised", 2.65, TEXT_FLOOR),
+    ]);
+    const named: Ledger = { ...ledger, inks: [...ledger.inks, "--planted-label-ink"].toSorted() };
+
+    expect(await checksOf(named)).toContain("text-below-the-floor");
+  });
+
+  it("holds every ink the ledger puts at the text floor, minus the declared excuses", async () => {
+    const ledger = healthy();
+    const atTextFloor = ledger.inks.filter(
+      (ink) => ledger.pairs.find((one) => one.ink === ink)?.floor === TEXT_FLOOR,
+    );
+
+    /* The excuses are a subset of the text inks, which is what makes each one checkable: an excuse for an ink the
+     * product does not write as text describes nothing, and the gate says so. */
+    expect(EXCUSED_TEXT_INKS.every((ink) => atTextFloor.includes(ink))).toBe(true);
+    expect(atTextFloor.length).toBeGreaterThan(EXCUSED_TEXT_INKS.length);
+  });
+
+  it("refuses an excuse for an ink no shipped declaration writes as text any more", async () => {
+    const ledger = healthy();
+    const withoutTheExcused: Ledger = {
+      ...ledger,
+      inks: ledger.inks.filter((ink) => ink !== EXCUSED_TEXT_INKS[0]),
+      pairs: ledger.pairs.filter((one) => one.ink !== EXCUSED_TEXT_INKS[0]),
+    };
+
+    expect(await checksOf(withoutTheExcused)).toContain("a-dead-excuse");
   });
 
   it("refuses a committed document that is not what these tokens produce", async () => {

@@ -80,7 +80,7 @@ two measurements supplied and there is no browser pass for it.
 | A pair without a ratio fails the audit | `frontend/scripts/audit-contrast`, which regenerates the ledger and refuses a difference, and reports any value that resolves to no colour |
 | A control's border clears 3:1 on every surface a control can sit on | the same gate, asserted per paper surface |
 | `--rule-strong` is banned on controls | the same gate, as a MEASUREMENT: it is refused because it measures 2.65:1 there, and a retune ABOVE the floor reports that the ban needs revisiting rather than being kept quietly |
-| Text clears 4.5:1 on every surface it can appear on | the same gate, for the three label inks on both paper surfaces |
+| Text clears 4.5:1 on every surface it can appear on | the same gate, over **every ink the ledger holds to the text floor**, on both paper surfaces. The set is derived from the ledger's own floors, which is every ink a `color` declaration writes, so an ink the product starts writing is enforced the day it is written. Three inks are excused, each DECLARED with its reason and asserted to still describe an ink the product writes as text |
 | Amber has no text step | `frontend/src/ui/domain/__tests__/pigment.test.ts`: 4.52:1 on raised paper and 4.18:1 on the page, so a label passes on one and fails on the other; and no rule in the kit puts a signal pigment on anything that is not a mark |
 | Secondary text on a signal wash steps to `--ink-soft` | the same file: `--text-muted` measures 4.31:1 on `--amber-wash`, and no rule that fills with a wash pairs it with `--text-muted` |
 | Colour is never the only encoding | every chart fill pairs with a hatch, asserted in `charts/__tests__`; every Area chip pairs with the Area's name, asserted in `marks/__tests__`; a deviation row carries no Area ink at all and direction is a side and a sign |
@@ -91,6 +91,20 @@ a hatch is a carrier for the hatch's own `currentColor` rather than text, and is
 floor for that reason. A GLYPH is a mark and its own floor is 3:1, which no property can distinguish
 from a label: an ink used only on a mark is therefore shown against the stricter floor, and the
 structural rule that no prose may take a signal pigment is what carries that half.
+
+**The enforcement set was a hand-written list of three and is now derived.** A planted label ink at
+2.45:1 on `--paper` shipped green over 506 pairs while the list decided who was enforced: a list is a
+second copy of a fact, and nothing kept it describing the inks the product writes. Eleven inks are now
+held to the text floor and three are excused: `--on-ink`, which exists for an ink-filled surface;
+`--signal-amber`, which is written on a mark and whose structural guard is `pigment.test.ts`; and
+`--rule`, whose one text-floor declaration is a bounded meter's unfilled track, `aria-hidden`, beside a
+row that states the figure. Each excuse fails in **both** directions: it must still describe an ink the
+product writes as text, or the gate reports it as dead.
+
+**The formula and the two floors have one home.** `scripts/lib/contrast.ts` holds the WCAG arithmetic,
+`INDICATOR_FLOOR` and `TEXT_FLOOR`; `src/testing/contrast.ts` re-exports them for the kit's suites and
+the generated ledger imports them directly. The file that was briefly copied forbids exactly that copy
+in its own header, and it was right to.
 
 **313 of the 484 pairs do not clear the ink's floor and that is not 313 defects.** `--on-ink` on
 `--paper` is 1.08:1 and could not be otherwise: it exists for an ink-filled surface, and an Area pigment
