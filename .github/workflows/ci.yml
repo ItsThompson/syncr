@@ -248,6 +248,68 @@ jobs:
         run: just test-frontend
 
   # ---------------------------------------------------------------------------
+  # The Playwright suite against the Compose stack. The one job that runs the whole
+  # product: a real Postgres, a real api, a real worker consuming the operation queue,
+  # the built frontend served by Caddy, and the external calendar provider replaced at
+  # the NETWORK boundary by an HTTP server answering a real fetch over a real socket.
+  #
+  # `just e2e-up` migrates as a one-shot before api and worker serve traffic, exactly as
+  # a deploy does, so `/readyz` has a head to compare against.
+  #
+  # NOTHING PUBLISHES 5432. The e2e overlay keeps Postgres on the base file's internal
+  # network with no host port, because a host-local Postgres owning that port makes a
+  # compose route silently reach the wrong database. That is a runner-independent hazard
+  # and the reason the recipe migrates from inside the network.
+  #
+  # The logs are captured on failure. A red E2E job whose only evidence is a Playwright
+  # timeout is a job nobody can act on: which of the four containers refused is the
+  # first question, and the answer is in their output.
+  #
+  # Node 22 is a floor, not a preference: the suite and its seeds are TypeScript run
+  # directly by node, which needs 22.18 or later to strip types.
+  # ---------------------------------------------------------------------------
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Install the suite's locked dependency tree and the browser it drives
+        run: just e2e-setup
+
+      - name: Bring the stack up and migrate it as a pre-traffic one-shot
+        run: just e2e-up
+
+      - name: The whole suite
+        run: just e2e
+
+      - name: What the stack said, when the suite went red
+        if: failure()
+        run: docker compose -f docker-compose.yml -f e2e/docker-compose.e2e.yml logs --no-color --tail 400
+
+      - name: Traces and screenshots from the failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failures
+          path: e2e/test-results/
+          retention-days: 7
+
+      - name: Tear the stack down, volumes and all
+        if: always()
+        run: just e2e-down
+
+  # ---------------------------------------------------------------------------
   # The codegen contract. Regenerate the committed OpenAPI document and the types
   # generated from it, and fail on any diff, so a backend change that alters the
   # contract cannot merge without the frontend seeing it.

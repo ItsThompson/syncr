@@ -304,6 +304,108 @@ test-cli:
 test-frontend:
     cd frontend && npm run test:coverage
 
+# --- The E2E suite and the smoke-scenario harness ----------------------------
+# The Playwright suite runs against the COMPOSE STACK rather than against a process this file
+# starts, and the stack is its own compose project with its own volumes: a suite that empties a
+# database must not be able to reach the one a developer is working against.
+#
+# NOTHING HERE PUBLISHES 5432. The dev overlay does, and a host-local Postgres owning
+# 127.0.0.1:5432 and [::1]:5432 makes a compose route silently reach the wrong database. The e2e
+# stack keeps Postgres on the base file's internal network with no host port at all, so the
+# migrations run as a one-shot inside the network exactly as a deploy runs them.
+#
+# One published port, on 57080 by default: Caddy serves the built application and reverse-proxies
+# the api paths, so the browser, the seeder and every API-level scenario reach the product through
+# the ONE origin the deployed stack serves. Override it with SYNCR_E2E_PORT.
+
+# Both files, in this order, so the project directory is the repository root
+e2e_compose := "-f docker-compose.yml -f e2e/docker-compose.e2e.yml"
+
+# Install the suite's locked dependency tree and the browser it drives
+e2e-setup:
+    cd e2e && npm ci
+    cd e2e && npx playwright install chromium
+
+# Bring the stack up and migrate it. Run this before any seed or any suite
+e2e-up:
+    docker compose {{e2e_compose}} up -d --build --wait postgres frontend ics-provider worker
+    docker compose {{e2e_compose}} run --rm --no-deps api alembic upgrade head
+    docker compose {{e2e_compose}} up -d --wait api
+    @echo "e2e stack on http://localhost:${SYNCR_E2E_PORT:-57080} · readiness: curl -s localhost:${SYNCR_E2E_PORT:-57080}/readyz"
+
+# Tear the e2e stack down AND drop its volumes. Its database is scratch by definition
+e2e-down:
+    docker compose {{e2e_compose}} down -v
+
+# The whole suite. Every scenario names its scenario number in its title
+e2e:
+    cd e2e && npx playwright test
+
+# One scenario or one file, by title or path: `just e2e-only S10`
+e2e-only pattern:
+    cd e2e && npx playwright test {{pattern}}
+
+# tsc over the harness. vitest is not what runs here, but the same rule applies: Playwright
+# transpiles with esbuild and strips types without checking them
+typecheck-e2e:
+    cd e2e && npx tsc --noEmit
+
+# --- Fixtures ---------------------------------------------------------------
+# Each recipe loads ONE fixture from nothing: it empties the database, provisions the tenant
+# through the console script a first deployment runs, declares the fixture over the HTTP API, and
+# ticks the plan-horizon maintainer so the weeks inside the horizon hold a plan.
+#
+# SELF-CONTAINED ON PURPOSE, one command each. The ordering matters -- the tick must follow the
+# declarations -- and a recipe with four lines would put that ordering in a file no test reads.
+#
+# THE DECLARATIONS GO THROUGH THE API, not through SQL. A SQL seed restates the schema and can
+# write a row the product cannot; a fixture written through the API is one whose every value passed
+# the same validation a user's would.
+#
+# Five of these fixtures also exist as frozen values in `syncr_domain.fixtures`, read by the domain
+# and api suites. The numbers are taken FROM those modules rather than restated here, through
+# `e2e/harness/constants.py`, so a fixture that stops straddling its gap breaks in one place.
+
+# The week every other question is asked about: 61-ish blocks, a frame span, a compact block, an
+# interview anchor with prep, transit and recovery, an anchor conflict, and a queue binding
+seed-reference:
+    node e2e/src/seed/cli.ts reference_week
+
+# A spring-forward week and a fall-back week, each with a Sunday-night frame span crossing the ISO
+# week boundary. Prints the two week identifiers: at most one is ever inside the horizon
+seed-dst-weeks:
+    node e2e/src/seed/cli.ts dst_weeks
+
+# A Friday-to-Monday off-plan span with keepFrame false
+seed-off-plan-week:
+    node e2e/src/seed/cli.ts off_plan_week
+
+# A sleep routine whose minimum is below its target, and a week that needs the give
+seed-elastic-sleep:
+    node e2e/src/seed/cli.ts elastic_sleep
+
+# A task with a deadline and half its estimate already pinned, plus a past block left unconfirmed
+seed-partial-progress:
+    node e2e/src/seed/cli.ts partial_progress
+
+# Two anchor types at the same wall time, one post_scope areas and one post_scope all
+seed-recovery-scopes:
+    node e2e/src/seed/cli.ts recovery_scopes
+
+# The Interview, Exam and Lecture types with their real leads, durations and buffers
+seed-shadow-geometry:
+    node e2e/src/seed/cli.ts shadow_geometry
+
+# Outcomes sized either side of each learning gate. Prints what it reached: the corpus it can build
+# is bounded by how far into the current week today is, and it does not manufacture a past
+seed-maturity-corpus:
+    node e2e/src/seed/cli.ts maturity_corpus
+
+# Tick the plan-horizon maintainer once, now. S1's "or trigger it": the wait is fifteen minutes,
+# because the runner's first tick only sets its own due time
+e2e-tick:
+    docker compose {{e2e_compose}} run --rm --no-deps worker python /harness/tick.py
+
 # --- Lint and format --------------------------------------------------------
 
 # Every static gate: ruff, the format check, mypy, the deployment's own package, and the hook config
