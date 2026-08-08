@@ -87,16 +87,22 @@ interface Tabbable {
  *
  * A COLUMN BREAK IS NOT A BACKWARD STEP EITHER, and that was the other false report. The shell is two columns:
  * the sidebar's rows are in the DOM before the route's content, so tabbing off the last nav item goes to the TOP
- * of the main column, which is higher up the page and further right. So a stop above the previous one AND to the
- * right of it is a new column, and one above it without moving right is the tab order walking back up the column
- * the reader was in. */
+ * of the main column, which is higher up the page and further right.
+ *
+ * SO THE BREAK IS REQUIRED TO CROSS THE COLUMN, not merely to move right. An unconditional up-and-right carve-out
+ * hides a genuine backward step inside one column that happens to sit further right, and the DOM already knows
+ * where the boundary is: the sidebar's own width, read off the element the shell gives it. A step from inside the
+ * sidebar to beyond it is a new column; a step above the previous one that stays on the same side of the boundary
+ * is the tab order walking back up the column the reader was in. */
 const overlapsVertically = (one: Tabbable, two: Tabbable): boolean =>
   one.top < two.top + two.height && two.top < one.top + one.height;
 
-const isBackwards = (previous: Tabbable, current: Tabbable): boolean => {
+const isBackwards = (previous: Tabbable, current: Tabbable, columnEdge: number): boolean => {
   if (overlapsVertically(previous, current)) return current.left < previous.left;
   const above = current.top + current.height <= previous.top;
-  return above && current.left <= previous.left;
+  if (!above) return false;
+  const crossedIntoTheMainColumn = previous.left < columnEdge && current.left >= columnEdge;
+  return !crossedIntoTheMainColumn;
 };
 
 /* Every tier the grid rendered, read off the elements it drew. A STRING for the reason the readers above are
@@ -115,6 +121,15 @@ const SCREENS = [
   { what: "settings", path: "/settings" },
 ] as const;
 
+/* WHERE THE TWO COLUMNS MEET, read off the element the shell gives the sidebar rather than from `--w-sidebar`:
+ * what decides whether a tab stop crossed into the main column is where the sidebar actually ends on this render. */
+const COLUMN_EDGE = `(() => {
+  const sidebar = document.querySelector('[aria-label="Screens"]');
+  if (sidebar === null) return 0;
+  const box = sidebar.getBoundingClientRect();
+  return Math.round(box.right + window.scrollX);
+})()`;
+
 test.describe("focus order follows visual order", () => {
   for (const screen of SCREENS) {
     test(`on ${screen.what}, every tab stop is at or below the one before it`, async ({
@@ -128,12 +143,17 @@ test.describe("focus order follows visual order", () => {
       expect(stops.length, "a screen with no tab stop cannot be operated at all").toBeGreaterThan(
         2,
       );
+      const columnEdge = (await page.evaluate(COLUMN_EDGE)) as number;
+      expect(
+        columnEdge,
+        "the sidebar was not found, so no column boundary was read",
+      ).toBeGreaterThan(0);
 
       const backwards: string[] = [];
       for (let index = 1; index < stops.length; index += 1) {
         const previous = stops[index - 1];
         const current = stops[index];
-        if (isBackwards(previous, current)) {
+        if (isBackwards(previous, current, columnEdge)) {
           backwards.push(
             `${current.name} at ${current.top},${current.left} follows ` +
               `${previous.name} at ${previous.top},${previous.left}`,
@@ -185,10 +205,20 @@ test.describe("the focus ring", () => {
     const missing: string[] = [];
     /* The first twelve, which is every control in the band and the strip plus the first blocks. Walking all of
      * ~210 blocks would measure the same rule two hundred times. */
-    for (let index = 0; index < Math.min(stops.length, 12); index += 1) {
+    const walked = Math.min(stops.length, 12);
+    let measured = 0;
+    for (let index = 0; index < walked; index += 1) {
       await page.keyboard.press("Tab");
       const ring = (await page.evaluate(RING)) as Ring | null;
-      if (ring === null) continue;
+      /* A NULL READING IS A TAB THAT LANDED ON `document.body`, which is one of the adversarial cases this file
+       * exists for: item 46 measured Radix doing exactly that after a keystroke-opened dialog. Skipping it and
+       * asserting an empty finding list would let a walk that measured NOTHING pass, so the count is asserted
+       * below and a stop with no element is a finding of its own. */
+      if (ring === null) {
+        missing.push(`tab stop ${String(index + 1)} landed on nothing focusable`);
+        continue;
+      }
+      measured += 1;
       if (ring.style === "none" || ring.width !== "2px" || ring.offset !== "2px") {
         missing.push(`${ring.name} draws ${ring.style} ${ring.width} at ${ring.offset}`);
       }
@@ -203,6 +233,7 @@ test.describe("the focus ring", () => {
     }
 
     expect(missing).toEqual([]);
+    expect(measured, "the walk measured fewer rings than it took steps").toBe(walked);
   });
 });
 

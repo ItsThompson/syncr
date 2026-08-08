@@ -41,7 +41,8 @@ import {
 } from "../../testing/apiStub";
 import { indicatorsIn } from "../../testing/indicators";
 import { renderAt } from "../../testing/renderRoute";
-import { SCREENS, SETUP_PATH } from "../../ui/domain/shell/navigation";
+import { SCREENS, SETUP_PATH, SIGN_IN_PATH } from "../../ui/domain/shell/navigation";
+import { routes } from "..";
 import { buildAreas, buildReview } from "../areas/__tests__/fixtures";
 import { buildBacklog } from "../backlog/__tests__/fixtures";
 import { stubBacklog } from "../backlog/__tests__/render";
@@ -57,6 +58,20 @@ import {
 
 /** The two routes that are not destinations: first run, and the redirect that chooses where to land. */
 const OFF_THE_SIDEBAR = [SETUP_PATH, "/"] as const;
+
+/** Every path the real route table declares, so the sweep's own coverage is asked of the app. */
+function routePaths(): string[] {
+  const found: string[] = [];
+  for (const route of routes) {
+    if (route.path !== undefined) found.push(route.path);
+    if (route.index === true) found.push("/");
+    for (const child of route.children ?? []) {
+      if (child.path !== undefined) found.push(child.path);
+      if (child.index === true) found.push("/");
+    }
+  }
+  return found;
+}
 
 /** Every path this sweep covers, derived from the product's own screen table. */
 const PATHS: readonly string[] = [...SCREENS.map((one) => one.path), ...OFF_THE_SIDEBAR];
@@ -209,8 +224,23 @@ describe("the empty states", () => {
 });
 
 describe("the sweep itself", () => {
-  it("covers every screen the product navigates to, so an eighth is covered the day it exists", () => {
-    for (const one of SCREENS) expect(PATHS).toContain(one.path);
+  /* WHAT ACTUALLY GUARDS THE PATH LIST. `PATHS` is built from `SCREENS`, so asserting it contains every screen
+   * cannot fail and reads as coverage it does not provide. What can fail is the pairing between the product's
+   * screen table and its ROUTE table: a screen navigable with no route, or a route the sweep never renders. Both
+   * are real, and the second is what this sweep depends on. */
+  it("renders a route for every screen the sidebar navigates to", () => {
+    const routed = routePaths();
+
+    for (const one of SCREENS) expect(routed).toContain(one.path);
+    expect(PATHS).toEqual([...SCREENS.map((one) => one.path), ...OFF_THE_SIDEBAR]);
+  });
+
+  it("leaves no route unswept but the ones that are not screens", () => {
+    const unswept = routePaths().filter((path) => !PATHS.includes(path));
+
+    /* Sign-in is outside the gate and the catch-all is not a destination: everything else the route table declares
+     * is a path this sweep renders in both states. */
+    expect(unswept.toSorted()).toEqual(["*", SIGN_IN_PATH]);
   });
 
   /* The instrument's own positive control. `indicatorsIn` returning an empty array is the passing answer

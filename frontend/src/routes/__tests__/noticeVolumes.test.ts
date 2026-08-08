@@ -185,7 +185,11 @@ describe("every notice the application declares, found by parsing for the shape"
   it("declares a volume this product has, which is three and not four", async () => {
     const declared = await composed();
 
-    expect(declared.length).toBeGreaterThan(CASES.length);
+    /* AN EXACT COUNT rather than a floor. `>` kept passing if the parse narrowed: the Python teardown guard's own
+     * suffix case records why that matters -- ">= 2 passed with three suffixes, and would keep passing if the walk
+     * narrowed to two, which is how the systemd units came to be invisible". A notice added or removed is a
+     * deliberate change and reddens here with the figure. */
+    expect(declared).toHaveLength(18);
     expect(unreadable(declared, (one) => one.volume)).toEqual([]);
     for (const one of declared) expect(VOLUMES).toContain(one.volume);
   });
@@ -206,10 +210,22 @@ describe("every notice the application declares, found by parsing for the shape"
     expect(declared.filter((one) => one.stillWorks !== "non-empty").map(where)).toEqual([]);
   });
 
-  it("is spread across the modules that raise them, so the scan is not reading one file", async () => {
-    const files = new Set((await composed()).map((one) => one.file));
+  it("is spread across the modules that raise them, and the set of modules is exact", async () => {
+    const files = [...new Set((await composed()).map((one) => one.file))].toSorted();
 
-    expect(files.size).toBeGreaterThanOrEqual(8);
+    /* THE SET, not a floor, for the reason above: a scan that narrowed from eight modules to five would keep
+     * passing a `>= 8` written when there were twelve. Each of these is a module that composes notices in the
+     * words this product wrote. */
+    expect(files).toEqual([
+      "app/capture/refusals.ts",
+      "routes/areas/components/ResidualNotices.tsx",
+      "routes/backlog/notices.ts",
+      "routes/settings/sourceNotices.ts",
+      "routes/templates/rejection.ts",
+      "routes/today/notices.ts",
+      "routes/today/staleFeeds.ts",
+      "routes/week/notices.ts",
+    ]);
   });
 
   /* ONE MODULE MAY BUILD A NOTICE FROM VALUES RATHER THAN FROM WORDS, and this is the assertion that keeps it one.

@@ -213,6 +213,32 @@ describe("a feed that can no longer be read", () => {
     await screen.findByText("Lecture · Signals");
     expect(noticeSurfaces(container, "amber")).toEqual([]);
   });
+
+  /* THE READ DEGRADES TO SILENCE RATHER THAN TO A FAILURE SURFACE, which is the promise `useTodayLedger` makes in
+   * prose: the ledger's whole job is answering for blocks, and a source list that did not arrive must not take the
+   * rows off the screen. The matrix sweep refuses every read at once, so it cannot tell this arm from the day's
+   * own; this is the one case that can. */
+  it("keeps the ledger on screen when the source list itself is refused, and raises no failure", async () => {
+    stubDay(dayWithAnAnchor(), buildTodayAreas());
+    apiServer.use(
+      jsonHandler("/api/v1/calendar-sources", {
+        status: 503,
+        body: {
+          type: "syncr:service-unavailable",
+          title: "The api is not ready",
+          status: 503,
+          detail: "The source list could not be read.",
+        },
+      }),
+    );
+    const { container } = renderAt("/today");
+
+    expect(await screen.findByText("Lecture · Signals")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(container.querySelectorAll(".status--error")).toHaveLength(0);
+    /* And no feed notice either: a list that did not arrive is not evidence that a feed is stale. */
+    expect(noticeSurfaces(container, "amber")).toEqual([]);
+  });
 });
 
 describe("the write target's token expiring", () => {
@@ -440,8 +466,18 @@ describe("only conflicts notify", () => {
     });
   });
 
-  it("sweeps every type the stream declares, so a fifth is covered the day it exists", () => {
-    expect([...INTERRUPTS, ...STAYS_SILENT].toSorted()).toEqual([...EVENT_TYPES].toSorted());
+  /* WHAT ACTUALLY GUARDS THIS PARTITION. Asserting the two arms' union equals `EVENT_TYPES` cannot fail: both are
+   * built by partitioning it. Two things CAN fail and one of them is a live hole: a fifth event type breaks
+   * `Readonly<Record<EventType, boolean>>` at compile time, which `just typecheck-frontend` catches and vitest does
+   * not; and at RUNTIME an unlisted type reads `undefined` from the table and would fall silently into the arm that
+   * expects nothing. So the runtime hole is closed here rather than restated. */
+  it("answers for every type the stream declares, with no type falling through by absence", () => {
+    const answered = EVENT_TYPES.filter((type) => typeof RAISES_A_NOTICE[type] === "boolean");
+
+    expect(answered).toEqual([...EVENT_TYPES]);
+    expect(INTERRUPTS.length + STAYS_SILENT.length).toBe(EVENT_TYPES.length);
+    expect(INTERRUPTS.length).toBeGreaterThan(0);
+    expect(STAYS_SILENT.length).toBeGreaterThan(0);
   });
 });
 
