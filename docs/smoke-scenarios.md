@@ -139,7 +139,7 @@ nothing in a browser can observe a parse.
 | S18 | Travel and DST: the frame moves, anchors stay, the axis is proportional | manual with a seed | `just seed-dst-weeks` |
 | S19 | Write-target expiry: a banner, a Settings panel, and one reconnect action | manual | needs a real Google token to revoke |
 | S20 | The CLI is an API: stable schemas, no prompt when piped, idempotent mutations, exit 9 and 8 | manual, partly automated | `cli/tests/test_every_command.py`; driving every command against a running API is ticket 1520, which this harness is the home for |
-| S21 | Keyboard only, including a sliver-tier block | **not automated** | see below |
+| S21 | Keyboard only, including a sliver-tier block | partly automated | `s21-keyboard-and-focus.spec.ts` drives the whole session on the keyboard: `g w` to the week, `j` through every tier the grid renders with focus following selection, `Shift+Down` to pin with the pin read back over the api, `n` to capture with the caret in the field, `c` to confirm, `Shift+A` to approve. The SLIVER TIER is not reached: no seeded week holds a block short enough to fall under 13px at any available zoom, so the 8-to-13px case is asserted against the real component by role in `frontend/src/ui/domain/week-grid/__tests__/block.test.tsx`. Ticket 1561 |
 | S22 | Nothing spins: no spinner, no skeleton, no progress bar, no transition | automated | `s22-no-motion.spec.ts`, over the computed style of every element on eleven routes: every one of the shell's seven, both weekly-session modes, a week beyond the horizon, and a route that does not exist |
 | S23 | The restore drill | manual | `just drill-local` and `just restore-drill`, ticket 58 |
 | S24 | A week materializes with no solver: every slot drawn as `not_solved`, every block carrying a reason | partly automated | `s01-materialization.spec.ts` asserts the `not_solved` rendering, which is the deliberate opposite of S17's, and the materialized revision. Disabling the solver's binding and search phases is not driven from here |
@@ -189,7 +189,8 @@ same fixture rather than on the same code, so ticket 1572 owns them together.
 
 | Gap | Why | Where it should land |
 |---|---|---|
-| S5, S7, S21 | Each needs a driven interaction on the week grid: a discrete drag with a real `setPointerCapture`, a panel height measured across a sequence of pins, a whole planning session on the keyboard. The harness has the browser and the credential; what is missing is the per-screen driving | ticket 1572 |
+| S5, S7 | Each needs a driven interaction on the week grid: a discrete drag with a real `setPointerCapture`, and a panel height measured across a sequence of pins. The harness has the browser and the credential; what is missing is the per-screen driving | ticket 1572 |
+| S21's sliver tier | The session is driven on the keyboard, and every tier the grid RENDERS is reached; no seeded week holds a block short enough to render between 8 and 13px, so the tier the scenario names is exercised at the component level only | ticket 1561 |
 | S17's capture flow | The `no_eligible_content` rendering is asserted; activating the label and observing a prefilled capture producing a soft preference is not | ticket 1572 |
 | S25, and the exactly-0.5 early-catch ratio | One cause, stated above: a week whose verdict one mutation moves, plus a mutation that carries the session header | ticket 1572 |
 | S29, S36 | Both need the clock moved: across a Sunday-to-Monday boundary, and past a deadline. Nothing in the stack takes an injected clock from outside the process | ticket 1573 |
