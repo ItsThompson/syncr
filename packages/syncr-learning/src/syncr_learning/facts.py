@@ -17,6 +17,11 @@ that was never confirmed reaches the extractor and is dropped there, which is wh
 windows, empty slots, reason records, adjustments. Three of its fields are what any fitter reads, so
 that is what :class:`PlannedBlock` and :class:`StoredRevision` carry. Rebuilding the whole document
 would mean restating the whole of the api's document spelling in a package that must not import it.
+
+**A pin is the one projection this module does not declare.** ``syncr_domain.promotion`` holds
+``PinPlacement``, the shape the rule that reads pins is stated over, and that rule has two readers:
+this job's run report and the weekly session's raised items. So the value belongs to the domain both
+read, and a second declaration here would be a second spelling of one fact.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ if TYPE_CHECKING:
     from syncr_domain.identity import BindingRef, BlockId
     from syncr_domain.intervals import Instant, Interval
     from syncr_domain.outcomes import OutcomeState
+    from syncr_domain.promotion import PinPlacement
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import Date, ZoneId
 
@@ -95,22 +101,6 @@ class RecordedEdit:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class HeldPin:
-    """One live pin, as promotion detection reads it.
-
-    ``zone`` is the tenant's HOME zone rather than the zone active on the pin's own date. A
-    promotion candidate proposes a template entry, a template entry is declared as a wall time in
-    the home zone, and grouping in any other zone would offer the user a time their template cannot
-    hold.
-    """
-
-    binding: BindingRef
-    iso_week: IsoWeek
-    starts_at: Instant
-    zone: ZoneId
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
 class OffPlanSpan:
     """One declared span of time off, as the exclusion reads it. Its two ends and nothing else."""
 
@@ -130,5 +120,5 @@ class TenantCorpus:
     revisions: tuple[StoredRevision, ...]
     outcomes: tuple[LoggedOutcome, ...]
     edits: tuple[RecordedEdit, ...]
-    pins: tuple[HeldPin, ...]
+    pins: tuple[PinPlacement, ...]
     off_plan: tuple[OffPlanSpan, ...]

@@ -212,8 +212,5 @@ THRESHOLDS: Final[dict[str, int]] = {
 }
 """Every gate by the parameter it gates, so a caller reads one mapping rather than six constants."""
 
-CONSECUTIVE_WEEKS_FOR_PROMOTION: Final = 3
-"""How many consecutive ISO weeks of one pin make a template promotion candidate."""
-
 CONFIDENCE: Final = 0.95
 """The interval every ``FitResult`` reports, as a two-sided coverage probability."""

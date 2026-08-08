@@ -17,9 +17,9 @@ from uuid import UUID, uuid4
 from syncr_domain.identity import BindingKind, BindingRef, block_id, index_occurrence_key
 from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import OutcomeState
+from syncr_domain.promotion import PinPlacement
 from syncr_domain.weeks import IsoWeek
 from syncr_learning.facts import (
-    HeldPin,
     LoggedOutcome,
     OffPlanSpan,
     PlannedBlock,
@@ -151,11 +151,11 @@ def edit(
 
 def pin(
     *, index: int = 0, iso_week: IsoWeek | None = None, day: int = 1, hour: int = 13
-) -> HeldPin:
+) -> PinPlacement:
     """One live pin of one week, at one local time."""
     week = iso_week if iso_week is not None else WEEK
     monday = datetime(week.monday().year, week.monday().month, week.monday().day, tzinfo=UTC)
-    return HeldPin(
+    return PinPlacement(
         binding=binding(index=index),
         iso_week=week,
         starts_at=monday + timedelta(days=day, hours=hour),
@@ -174,7 +174,7 @@ def corpus(
     revisions: Sequence[StoredRevision] = (),
     outcomes: Sequence[LoggedOutcome] = (),
     edits: Sequence[RecordedEdit] = (),
-    pins: Sequence[HeldPin] = (),
+    pins: Sequence[PinPlacement] = (),
     spans: Sequence[OffPlanSpan] = (),
 ) -> TenantCorpus:
     """One tenant's whole corpus."""

@@ -49,6 +49,7 @@ from syncr_domain.identity import (
 )
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import Block, PlanDocument
+from syncr_domain.promotion import detect_repeated_pins
 from syncr_domain.reasons import Bound, ReasonRecord
 from syncr_domain.weeks import IsoWeek
 from syncr_learning.artifact import FittedWeightSet
@@ -56,7 +57,6 @@ from syncr_learning.config import OBJECTIVE_TERMS
 from syncr_learning.gates import ParameterMaturity
 from syncr_learning.job import run
 from syncr_learning.preferences import unmeasured
-from syncr_learning.promotion import detect_repeated_pins
 from syncr_learning.storage import spelling
 from syncr_learning.storage.engine import create_database
 from syncr_learning.storage.reader import PostgresCorpusReader

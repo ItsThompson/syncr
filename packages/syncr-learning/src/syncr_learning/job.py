@@ -39,22 +39,22 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_common.logging import get_logger
+from syncr_domain.promotion import detect_repeated_pins
 from syncr_learning import metrics
 from syncr_learning.config import OBJECTIVE_TERMS, OBJECTIVE_WEIGHTS
 from syncr_learning.features import extract
 from syncr_learning.fitting import fit_everything
 from syncr_learning.gates import parameter_of
 from syncr_learning.preferences import unmeasured
-from syncr_learning.promotion import detect_repeated_pins
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import datetime
 
     from syncr_domain.identifiers import TenantId
+    from syncr_domain.promotion import PromotionCandidate
     from syncr_learning.fitting import FittedParameters
     from syncr_learning.ports import CorpusReader, ParameterWriter
-    from syncr_learning.promotion import PromotionCandidate
 
 _log = get_logger("syncr.learning")
 
@@ -207,6 +207,7 @@ def promotion_candidates(report: RunReport) -> Sequence[PromotionCandidate]:
 
     Returned rather than written. The rows the weekly session reads and the accept and decline
     routes over them belong to the promotion surface; a table this job wrote and nothing read would
-    be a number nobody reads. Ticket 1530 carries the persistence.
+    be a number nobody reads. The weekly session computes its own candidates through the same domain
+    rule, over the pins it already reads, so the raise does not wait for a nightly run.
     """
     return [candidate for one in report.tenants for candidate in one.candidates]

@@ -4,6 +4,12 @@ The learner absorbs statistical patterns. **Templates absorb structural ones.** 
 content to the same local time three weeks running is structural, so it is raised as a template
 promotion rather than fitted into a number.
 
+**It is a domain rule with two readers**, which is why it lives here rather than in the offline
+learning package. The nightly run reports the candidates it finds on its run report; the weekly
+session raises them as a question the user answers. The api image cannot depend on the learning
+package, because that package carries scipy, so a rule stated there would have had to be stated a
+second time to reach a request.
+
 ## Grouping drops ``occurrence_key``, and that is what makes it work at all
 
 A pin's binding names the content, which occurrence of it, and which chunk of a split task. The
@@ -15,8 +21,8 @@ So the group is ``(kind, entity, local time)``. It works across weeks because th
 week-scoped is dropped, and across occurrences because a second gym session on the same weekday at
 the same hour is the same structural claim as the first.
 
-**This is one query over pin rows**, which is why pins are first-class rows rather than fields
-inside a revision document: a group spanning three weeks is a scan, and it would otherwise be three
+**This is one pass over pin rows**, which is why pins are first-class rows rather than fields inside
+a revision document: a group spanning three weeks is a scan, and it would otherwise be three
 document reads and a walk.
 
 ## It is raised, never applied
@@ -28,18 +34,39 @@ week count, and it goes to the weekly session as a question.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
+from syncr_domain.budgets import MINUTES_PER_HOUR
+from syncr_domain.errors import DomainError
 from syncr_domain.zones import resolve_zone
-from syncr_learning.config import CONSECUTIVE_WEEKS_FOR_PROMOTION, ConfigError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from uuid import UUID
 
-    from syncr_domain.identity import BindingKind
+    from syncr_domain.identity import BindingKind, BindingRef
+    from syncr_domain.intervals import Instant
     from syncr_domain.weeks import IsoWeek
-    from syncr_learning.facts import HeldPin
+    from syncr_domain.zones import ZoneId
+
+CONSECUTIVE_WEEKS_FOR_PROMOTION: Final = 3
+"""How many consecutive ISO weeks of one pin make a template promotion candidate."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PinPlacement:
+    """One live pin, as promotion detection reads it.
+
+    ``zone`` is the tenant's HOME zone rather than the zone active on the pin's own date. A
+    promotion candidate proposes a template entry, a template entry is declared as a wall time in
+    the home zone, and grouping in any other zone would offer the user a time their template cannot
+    hold.
+    """
+
+    binding: BindingRef
+    iso_week: IsoWeek
+    starts_at: Instant
+    zone: ZoneId
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -64,11 +91,12 @@ class PromotionCandidate:
     @property
     def local_time(self) -> str:
         """The wall time this content keeps being pinned to, as the template would declare it."""
-        return f"{self.minute_of_day // 60:02d}:{self.minute_of_day % 60:02d}"
+        hour, minute = divmod(self.minute_of_day, MINUTES_PER_HOUR)
+        return f"{hour:02d}:{minute:02d}"
 
 
 def detect_repeated_pins(
-    pins: Sequence[HeldPin],
+    pins: Sequence[PinPlacement],
     consecutive_weeks: int = CONSECUTIVE_WEEKS_FOR_PROMOTION,
 ) -> list[PromotionCandidate]:
     """Every group of pins on one content at one local time that spans consecutive ISO weeks.
@@ -82,7 +110,7 @@ def detect_repeated_pins(
     and asking it three times is the nag the product's severity discipline forbids.
     """
     if consecutive_weeks < 2:
-        raise ConfigError(
+        raise DomainError(
             f"a run of {consecutive_weeks} weeks is not a repetition: a candidate says the user "
             "did the same thing in consecutive weeks, which takes at least two of them"
         )
@@ -103,7 +131,7 @@ def detect_repeated_pins(
     return sorted(candidates, key=lambda one: (-one.consecutive_weeks, one.local_time))
 
 
-def _group_of(pin: HeldPin) -> tuple[BindingKind, UUID, int, int]:
+def _group_of(pin: PinPlacement) -> tuple[BindingKind, UUID, int, int]:
     """The identity a pin is grouped under: the content, the weekday, and the minute of the day.
 
     The split index is dropped for the reason the occurrence key is: which chunk of a divided task
@@ -114,7 +142,7 @@ def _group_of(pin: HeldPin) -> tuple[BindingKind, UUID, int, int]:
         pin.binding.kind,
         pin.binding.entity_id,
         local.isoweekday(),
-        local.hour * 60 + local.minute,
+        local.hour * MINUTES_PER_HOUR + local.minute,
     )
 
 

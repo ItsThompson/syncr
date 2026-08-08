@@ -30,7 +30,11 @@ the directory. The pure layer first, in the order the pipeline runs:
 | ``artifact.py`` | the stored spelling of one appendable weight-set version |
 | ``applied.py`` | what each parameter contributes to the artefact, with its gate applied |
 | ``fitting.py`` | observations to one artefact: the pipeline order, and the weight fit's own gate |
-| ``promotion.py`` | the repeated-pin candidates that go to a template rather than to a weight |
+
+Repeated-pin promotion is deliberately absent. ``syncr_domain.promotion`` holds it, because the rule
+has two readers: this run reports the candidates it finds, and the weekly session raises them as a
+question. The api image cannot carry scipy and so cannot depend on this package, so a rule stated
+here would have needed a second statement to reach a request.
 
 And the run, its I/O, and the container's entrypoint:
 

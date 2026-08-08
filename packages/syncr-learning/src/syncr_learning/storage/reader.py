@@ -30,9 +30,9 @@ from sqlalchemy import column, select, table
 
 from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import OutcomeState
+from syncr_domain.promotion import PinPlacement
 from syncr_domain.weeks import IsoWeek
 from syncr_learning.facts import (
-    HeldPin,
     LoggedOutcome,
     OffPlanSpan,
     RecordedEdit,
@@ -261,7 +261,7 @@ class PostgresCorpusReader:
             for row in rows
         )
 
-    async def _pins(self, session: AsyncSession, tenant_id: TenantId) -> tuple[HeldPin, ...]:
+    async def _pins(self, session: AsyncSession, tenant_id: TenantId) -> tuple[PinPlacement, ...]:
         zone = await self._home_zone(session, tenant_id)
         if zone is None:
             # A tenant with no settings row has no home zone, so no wall time a template could hold.
@@ -278,7 +278,7 @@ class PostgresCorpusReader:
             if identity is None:
                 continue
             found.append(
-                HeldPin(
+                PinPlacement(
                     binding=identity,
                     iso_week=IsoWeek.parse(row.iso_week),
                     starts_at=row.starts_at,

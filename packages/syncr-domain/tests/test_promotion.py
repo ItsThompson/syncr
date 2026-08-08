@@ -8,36 +8,51 @@ change.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
+
 import pytest
 
-from syncr_domain.identity import BindingKind, BindingRef
+from syncr_domain.errors import DomainError
+from syncr_domain.identity import BindingKind, BindingRef, index_occurrence_key
+from syncr_domain.promotion import (
+    CONSECUTIVE_WEEKS_FOR_PROMOTION,
+    PinPlacement,
+    detect_repeated_pins,
+)
 from syncr_domain.weeks import IsoWeek
-from syncr_learning.config import CONSECUTIVE_WEEKS_FOR_PROMOTION, ConfigError
-from syncr_learning.facts import HeldPin
-from syncr_learning.promotion import detect_repeated_pins
-from tests.builders import ZONE, pin
 
-GYM = BindingKind.HABIT
+ZONE = "Europe/London"
+GYM_ID = UUID(int=1)
+OTHER_ID = UUID(int=6)
 WEEKS = [IsoWeek(year=2026, week=number) for number in (7, 8, 9, 10)]
 
 
-def pinned(*, week: IsoWeek, occurrence: int = 0, hour: int = 13, day: int = 1) -> HeldPin:
-    """One pin of the same habit, in ``week``, at a local time, under a given occurrence key."""
-    held = pin(index=occurrence, iso_week=week, day=day, hour=hour)
-    return HeldPin(
+def pinned(
+    *,
+    week: IsoWeek,
+    occurrence: int = 0,
+    hour: int = 13,
+    day: int = 1,
+    entity_id: UUID = GYM_ID,
+) -> PinPlacement:
+    """One pin of one habit, in ``week``, at a local time, under a given occurrence key.
+
+    The instant is built from the week's own Monday in UTC, which is the zone the fixture states, so
+    the local weekday and hour the grouping reads are the ones the arguments name.
+    """
+    monday = datetime(week.monday().year, week.monday().month, week.monday().day, tzinfo=UTC)
+    return PinPlacement(
         binding=BindingRef(
-            kind=GYM,
-            entity_id=_GYM_ID,
-            occurrence_key=held.binding.occurrence_key,
+            kind=BindingKind.HABIT,
+            entity_id=entity_id,
+            occurrence_key=index_occurrence_key(occurrence),
             split_index=None,
         ),
         iso_week=week,
-        starts_at=held.starts_at,
+        starts_at=monday + timedelta(days=day, hours=hour),
         zone=ZONE,
     )
-
-
-_GYM_ID = pin().binding.entity_id
 
 
 class TestTheGroupingDropsTheOccurrenceKey:
@@ -73,20 +88,7 @@ class TestTheGroupingDropsTheOccurrenceKey:
 
     def test_two_different_habits_do_not_share_a_group(self) -> None:
         gym = [pinned(week=week) for week in WEEKS[:3]]
-        other = [
-            HeldPin(
-                binding=BindingRef(
-                    kind=GYM,
-                    entity_id=_OTHER_ID,
-                    occurrence_key=one.binding.occurrence_key,
-                    split_index=None,
-                ),
-                iso_week=one.iso_week,
-                starts_at=one.starts_at,
-                zone=ZONE,
-            )
-            for one in gym
-        ]
+        other = [pinned(week=week, entity_id=OTHER_ID) for week in WEEKS[:3]]
 
         assert len(detect_repeated_pins([*gym, *other])) == 2
 
@@ -133,7 +135,7 @@ class TestConsecutiveMeansConsecutive:
         assert len(detect_repeated_pins(two_weeks, consecutive_weeks=2)) == 1
 
     def test_a_run_of_one_is_refused_because_it_is_not_a_repetition(self) -> None:
-        with pytest.raises(ConfigError, match="not a repetition"):
+        with pytest.raises(DomainError, match="not a repetition"):
             detect_repeated_pins([pinned(week=WEEKS[0])], consecutive_weeks=1)
 
 
@@ -157,8 +159,19 @@ class TestTheLocalTimeIsPartOfTheGroup:
         assert len(candidates) == 2
         assert {one.weekday for one in candidates} == {2, 4}
 
+    def test_a_local_time_carrying_minutes_renders_them(self) -> None:
+        # A pin lands on the fifteen-minute grid, so a group's own time is not always on the hour.
+        quarter_past = [
+            PinPlacement(
+                binding=one.binding,
+                iso_week=one.iso_week,
+                starts_at=one.starts_at + timedelta(minutes=45),
+                zone=ZONE,
+            )
+            for one in (pinned(week=week) for week in WEEKS[:3])
+        ]
+
+        assert detect_repeated_pins(quarter_past)[0].local_time == "13:45"
+
     def test_an_empty_pin_list_finds_nothing(self) -> None:
         assert detect_repeated_pins([]) == []
-
-
-_OTHER_ID = pin(index=5).binding.entity_id
