@@ -87,8 +87,7 @@ def chronic_skips(weeks: Sequence[ReviewedWeek], *, consecutive_weeks: int) -> l
     skipped: dict[ContentKey, list[IsoWeek]] = {}
     named: dict[ContentKey, tuple[BindingRef, str]] = {}
     for week in weeks:
-        for binding, title in _skipped_in(week).items():
-            key = binding.content_key
+        for key, (binding, title) in _skipped_in(week).items():
             skipped.setdefault(key, []).append(week.iso_week)
             named[key] = (binding, title)
     found = []
@@ -101,18 +100,21 @@ def chronic_skips(weeks: Sequence[ReviewedWeek], *, consecutive_weeks: int) -> l
     return sorted(found, key=lambda one: (-one.consecutive_weeks, one.title))
 
 
-def _skipped_in(week: ReviewedWeek) -> Mapping[BindingRef, str]:
+def _skipped_in(week: ReviewedWeek) -> Mapping[ContentKey, tuple[BindingRef, str]]:
     """Each item this week both proposed and recorded a confirmed skip for, with its title.
 
-    A mapping rather than a list, because two occurrences of one habit in one week are one week of
-    evidence and collapsing them here is what makes the count a count of weeks.
+    **Keyed on the CONTENT rather than on the whole binding**, which is what collapses two
+    occurrences of one habit in one week into one week of evidence: an occurrence key is scoped to
+    its own week, so keying on the binding would answer two entries and append the week twice. The
+    run walk would still be right, because it collapses duplicates itself, but the count of weeks
+    would then be a property of that collaborator rather than of this reading.
     """
-    found: dict[BindingRef, str] = {}
+    found: dict[ContentKey, tuple[BindingRef, str]] = {}
     for day in week.days:
         for block in day.blocks:
             recorded = week.outcomes.get(str(block.id))
             if recorded is None or not recorded.is_confirmed:
                 continue
             if recorded.state is OutcomeState.SKIPPED:
-                found[block.binding] = block.title
+                found[block.binding.content_key] = (block.binding, block.title)
     return found

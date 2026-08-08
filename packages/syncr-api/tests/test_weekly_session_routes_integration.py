@@ -50,7 +50,7 @@ from syncr_api.plans.pins import PinRepository
 from syncr_api.plans.reality import BlockOutcomeRepository, Presumption
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
-from syncr_api.reviews.config import REVIEWS_PREFIX
+from syncr_api.reviews.config import REVIEWS_PREFIX, SESSION_LOOKBACK_WEEKS
 from syncr_api.reviews.raised import RaisedKind
 from syncr_api.user_settings.config import SETTINGS_PREFIX
 from syncr_domain.habits import BindingSource
@@ -108,6 +108,24 @@ def a_habit_block(
         iso_week=iso_week,
         interval=Interval(an_instant(on, hour), an_instant(on, hour + 1)),
         binding=BindingRef.for_habit(GYM, index=index),
+        title=title,
+        reason=A_REASON,
+        area_id=area_id,
+    )
+
+
+def a_task_block(*, iso_week: IsoWeek, area_id: AreaId, title: str = "Leetcode") -> Block:
+    """The block a collision lands on, which is where its NAME comes from.
+
+    A conflict row stores the binding it collided with and no title, so the only name the raise can
+    give the block is the one a block of the window carries. That is the production shape as well: a
+    collision exists because the week planned something for the commitment to land on.
+    """
+    on = iso_week.monday()
+    return Block(
+        iso_week=iso_week,
+        interval=Interval(an_instant(on, 9), an_instant(on, 10)),
+        binding=BindingRef.for_task(LEETCODE),
         title=title,
         reason=A_REASON,
         area_id=area_id,
@@ -385,16 +403,21 @@ def test_every_review_states_its_confirmed_and_unconfirmed_days(
     assert "No day of this period was answered for" in payload["retro"]["statement"]
 
 
-def test_a_week_with_no_plan_says_so_rather_than_carrying_a_verdict(
+def test_a_week_with_no_plan_carries_no_verdict(
     http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
 ) -> None:
+    """The biconditional the week's own read states, over a week the horizon has not reached.
+
+    The payload states no sentence about it, deliberately: the Week screen answers such a week with
+    its own empty state, which names the reason and carries the two actions that fix it, and the
+    mode is a branch of the READY screen. A second sentence here would be a claim nothing renders.
+    """
     declare_area(http, signed_in)
 
     payload = read_session(http, signed_in, PLANNED)
 
     assert payload["verdict"] is None
-    assert payload["statement"] is not None
-    assert "holds no plan yet" in payload["statement"]
+    assert payload["raised"] == []
 
 
 # --------------------------------------------------------------------------------
@@ -483,24 +506,54 @@ def test_six_weeks_of_confirmed_skips_are_raised_and_nothing_is_deprioritized(
 
     (raised,) = items_of(payload, RaisedKind.CHRONIC_SKIP)
     assert raised["title"] == "Gym"
-    assert raised["weeks"] == SKIP_WEEKS
+    assert f"skipped in {SKIP_WEEKS} weeks running" in raised["statement"]
     assert "has not changed its priority" in raised["statement"]
 
 
-def test_a_repeated_collision_survives_the_anchor_rows_a_horizon_roll_deletes(
+def test_a_repeated_collision_names_the_commitment_the_block_and_the_count(
     http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
 ) -> None:
-    """``US-REV-05``, and ticket 1390's own acceptance: no anchor row exists at all."""
-    declare_area(http, signed_in)
-    weeks = [REVIEWED, REVIEWED.preceding(), REVIEWED.preceding().preceding()]
+    """``US-REV-05``, and ticket 1390's own acceptance: NO anchor row exists at all.
+
+    The block's name comes from the blocks of the reviewed window, because the conflict row stores a
+    binding and no title. So each week is planned with the block the commitment landed on, which is
+    the shape that produced the collision in the first place.
+    """
+    area_id = declare_area(http, signed_in)
+    weeks = [REVIEWED.preceding().preceding(), REVIEWED.preceding(), REVIEWED]
+    for week in weeks:
+        seed_plan(
+            live_database_url,
+            owner.tenant_id,
+            a_week([a_task_block(iso_week=week, area_id=area_id)], iso_week=week),
+        )
     seed_collisions(live_database_url, owner.tenant_id, weeks, series="standup-series")
 
     payload = read_session(http, signed_in, PLANNED)
 
     (raised,) = items_of(payload, RaisedKind.REPEATED_COLLISION)
-    assert raised["title"] == "Standup"
-    assert raised["weeks"] == len(weeks)
+    assert raised["title"] == "Standup over Leetcode"
+    assert f"Standup has landed on Leetcode in {len(weeks)} weeks" in raised["statement"]
     assert "Stated rather than acted on" in raised["statement"]
+
+
+def test_a_collision_outside_the_sessions_window_is_not_raised_at_all(
+    http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+) -> None:
+    """A pattern the reader fixed long ago is not raised forever, because the rows are never pruned.
+
+    The chronic-skip run and the repeated-pin run are both bounded to the session's own window, and
+    this read is bounded to the same one: a raise about a pattern that outlived its period would be
+    the nag every other rule in this module goes out of its way to forbid.
+    """
+    declare_area(http, signed_in)
+    stale = REVIEWED
+    for _ in range(SESSION_LOOKBACK_WEEKS):
+        stale = stale.preceding()
+    weeks = [stale, stale.preceding(), stale.preceding().preceding()]
+    seed_collisions(live_database_url, owner.tenant_id, weeks, series="standup-series")
+
+    assert items_of(read_session(http, signed_in, PLANNED), RaisedKind.REPEATED_COLLISION) == []
 
 
 def test_a_one_off_commitment_never_contributes_to_a_repeated_collision(

@@ -46,7 +46,6 @@ from syncr_api.reviews.session_schemas import (
 )
 from syncr_api.reviews.statements import (
     NOTHING_IS_APPLIED_WITHOUT_ACCEPTANCE,
-    SESSION_PLANS_AN_EMPTY_WEEK,
     basis_statement,
     confirmed_day_statement,
     denominator_statement,
@@ -110,7 +109,6 @@ def _as_session(reading: WeeklySessionReading) -> WeeklySessionResponse:
         concessions=[AdjustmentResponse.of(one) for one in reading.concessions],
         promotions=[_as_promotion(one) for one in reading.promotions],
         promotion_statement=NOTHING_IS_APPLIED_WITHOUT_ACCEPTANCE,
-        statement=None if reading.verdict is not None else SESSION_PLANS_AN_EMPTY_WEEK,
     )
 
 
@@ -137,7 +135,6 @@ def _as_raised(item: RaisedItem) -> RaisedItemResponse:
         kind=item.kind,
         title=item.title,
         statement=item.statement,
-        weeks=item.weeks,
     )
 
 

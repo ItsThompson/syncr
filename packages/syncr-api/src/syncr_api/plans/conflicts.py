@@ -182,6 +182,34 @@ class PlanConflictRepository(TenantScopedRepository):
         )
         return tuple(_as_record(row) for row in rows)
 
+    async def for_weeks(
+        self, weeks: Sequence[IsoWeek], *, limit: int = LIST_LIMIT
+    ) -> tuple[ConflictRecord, ...]:
+        """Every conflict raised in any of ``weeks``, newest week first, resolved ones included.
+
+        One statement for the whole window, because the reader is the weekly session's
+        repeated-collision item and that is one pass over the rows: a read per week would be a read
+        per week to answer one question about all of them.
+
+        **The window is the point rather than the statement count.** :meth:`list_all` reads the
+        newest page of a table that is never pruned, across every week the tenant has ever had, so
+        a pattern the user fixed eight months ago would be raised in every session from now on. A
+        raise about a pattern has to be bounded to a period the way the chronic-skip run and the
+        repeated-pin run already are.
+
+        Newest week first, so the bound cuts the oldest weeks rather than the recent end: a pattern
+        is about weeks the user has just lived.
+        """
+        if not weeks:
+            return ()
+        rows = await self._session.scalars(
+            self.scoped_select(PlanConflict)
+            .where(PlanConflict.iso_week.in_([str(one) for one in weeks]))
+            .order_by(PlanConflict.iso_week.desc(), PlanConflict.overlap_starts_at, PlanConflict.id)
+            .limit(limit)
+        )
+        return tuple(_as_record(row) for row in rows)
+
     async def resolve(
         self, conflict_id: ConflictId, *, resolution: ConflictResolution, at: datetime
     ) -> ConflictRecord | None:

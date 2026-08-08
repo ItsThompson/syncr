@@ -22,6 +22,7 @@ from syncr_api.reviews.coverage import ReviewedDay
 from syncr_api.reviews.history import ReviewedWeek
 from syncr_api.reviews.raised import (
     RaisedKind,
+    block_titles,
     chronic_skip_items,
     floor_items,
     habit_debt_items,
@@ -57,6 +58,10 @@ LEETCODE = uuid4()
 
 # Six consecutive weeks, which is exactly what `US-REV-02` raises on.
 RUN = [IsoWeek(2026, number) for number in (2, 3, 4, 5, 6, 7)]
+
+# The one block every conflict below names, as the window's own blocks would answer for it. Keyed on
+# the content, which is what a binding's occurrence key drops out of.
+LEETCODE_TITLE = {BindingRef.for_task(LEETCODE).content_key: "Leetcode"}
 
 
 def an_instant(on: Date, hour: int) -> datetime:
@@ -286,7 +291,6 @@ class TestAChronicSkipIsSixConsecutiveWeeks:
 
         assert item.kind is RaisedKind.CHRONIC_SKIP
         assert item.title == "Gym"
-        assert item.weeks == 6
         assert "6 weeks" in item.statement
         assert "has not changed its priority" in item.statement
 
@@ -381,25 +385,52 @@ class TestARepeatedCollisionIsThreeOrMoreWeeks:
 
         assert len(repeated_collisions([*leetcode, *gym], at_least_weeks=3)) == 2
 
-    def test_a_group_whose_commitment_was_never_named_states_the_count_anyway(self) -> None:
-        # What the solve commit path writes for an anchor deleted before the raise reached it.
+    def test_a_group_whose_commitment_was_never_named_states_the_block_alone(self) -> None:
+        # What the solve commit path writes for an anchor deleted before the raise reached it. The
+        # count and one name, rather than an invented second one.
         rows = [a_conflict(iso_week=week, title=None) for week in RUN[:3]]
 
-        (item,) = repeated_collision_items(repeated_collisions(rows, at_least_weeks=3))
+        (item,) = repeated_collision_items(
+            repeated_collisions(rows, at_least_weeks=3), titles=LEETCODE_TITLE
+        )
 
-        assert item.weeks == 3
-        assert "an imported commitment" in item.title
+        assert item.title == "Leetcode"
+        assert "An imported commitment has landed on Leetcode in 3 weeks" in item.statement
 
-    def test_the_raise_names_the_commitment_the_count_and_no_action(self) -> None:
+    def test_the_raise_names_the_commitment_the_block_and_the_count(self) -> None:
+        # `US-REV-05`'s own example is `repeated collision: Standup over Leetcode, 4 weeks`, so both
+        # ends and the count are named. The block's name comes from a block, because the conflict
+        # row stores a binding and no title.
         rows = [a_conflict(iso_week=week) for week in RUN[:4]]
 
-        (item,) = repeated_collision_items(repeated_collisions(rows, at_least_weeks=3))
+        (item,) = repeated_collision_items(
+            repeated_collisions(rows, at_least_weeks=3), titles=LEETCODE_TITLE
+        )
 
         assert item.kind is RaisedKind.REPEATED_COLLISION
-        assert item.title == "Standup"
-        assert item.weeks == 4
-        assert "4 weeks" in item.statement
+        assert item.title == "Standup over Leetcode"
+        assert "Standup has landed on Leetcode in 4 weeks" in item.statement
         assert "Stated rather than acted on" in item.statement
+
+    def test_a_block_no_reviewed_week_holds_falls_back_to_its_kind(self) -> None:
+        # A pattern whose block the window has lost is still worth stating with a poor name, which
+        # is the fallback the promotion panel takes for the same reason.
+        rows = [a_conflict(iso_week=week) for week in RUN[:3]]
+
+        (item,) = repeated_collision_items(repeated_collisions(rows, at_least_weeks=3), titles={})
+
+        assert item.title == "Standup over a task"
+        assert "landed on a task in 3 weeks" in item.statement
+
+    def test_the_titles_are_read_from_the_blocks_of_the_window(self) -> None:
+        # `block_titles` turns a window's blocks into the lookup, and the LAST title wins, so a
+        # rename resolves to what the reader last saw rather than to what they saw in January.
+        renamed = a_block(iso_week=RUN[0], entity_id=GYM, title="Gym")
+        later = a_block(iso_week=RUN[1], entity_id=GYM, index=1, title="Gym · legs")
+
+        titles = block_titles([renamed, later])
+
+        assert titles[later.binding.content_key] == "Gym · legs"
 
 
 class TestTheFloorAndTheOverdueRaises:

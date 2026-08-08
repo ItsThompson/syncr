@@ -41,6 +41,10 @@ class RaisedItemResponse(WireModel):
     Every category is one shape with a ``kind`` rather than one shape per category, because they
     render as rows of one panel: section 16's notice-volume table gives the whole set one volume and
     one pigment.
+
+    **There is no count field, and every figure is in ``statement``.** A count of weeks on the wire
+    as well as in the words would be one fact twice, and a surface rendering both would put the same
+    number on the screen in two places, which is the drift ticket 49's own band was corrected for.
     """
 
     key: str = Field(
@@ -48,15 +52,13 @@ class RaisedItemResponse(WireModel):
         "Not an identifier: an item is a reading rather than a row, and nothing addresses one."
     )
     kind: RaisedKind = Field(description="What this item is about.")
-    title: str = Field(description="The thing itself, in the words the user knows it by.")
-    statement: str = Field(
-        description="What to make of it, in the words an interface renders. Composed here so the "
-        "CLI and the screen cannot say two different things about one item."
+    title: str = Field(
+        description="The thing itself, in the words the user knows it by. A repeated collision "
+        "names BOTH ends here, as 'Standup over Leetcode', which is US-REV-05's own form."
     )
-    weeks: int | None = Field(
-        default=None,
-        description="How many weeks the pattern covers, for the kinds that count weeks. Null "
-        "rather than zero on the others, because zero would read as one.",
+    statement: str = Field(
+        description="What to make of it, in the words an interface renders, including every figure "
+        "the item states. Composed here so the CLI and the screen cannot say two different things."
     )
 
 
@@ -129,8 +131,10 @@ class WeeklySessionResponse(WireModel):
     iso_week: str = Field(description="The ISO week being planned, such as '2026-W07'.")
     span: PeriodSpan
     input_version: int = Field(
-        description="The planned week's input version, so a client can see that the week moved on "
-        "while the session was open."
+        description="The planned week's input version AS THIS PAYLOAD WAS COMPOSED. A client "
+        "compares it with the week's own and says the session is stale when the two differ, which "
+        "is what happens the moment a pin made inside the session bumps the week: the raises below "
+        "were computed against the earlier state and the plan beside them is the later one."
     )
     retro: SessionRetroResponse
     raised: list[RaisedItemResponse] = Field(
@@ -151,10 +155,6 @@ class WeeklySessionResponse(WireModel):
     )
     promotion_statement: str = Field(
         description="That syncr has changed nothing and will not without acceptance. Always "
-        "present, because the absence of candidates is not the absence of that promise."
-    )
-    statement: str | None = Field(
-        default=None,
-        description="Why the planned week has no verdict and nothing due in it, stated when it "
-        "holds no plan of record. Null otherwise.",
+        "present, because the absence of candidates is not the absence of that promise; a client "
+        "renders it beside the candidates it has."
     )

@@ -30,11 +30,6 @@ NO_CONFIRMED_DAY_IN_THE_QUARTER: Final = (
     "propose. Confirming a day is what turns a plan into a record."
 )
 
-SESSION_PLANS_AN_EMPTY_WEEK: Final = (
-    "The week you are planning holds no plan yet, so it has no verdict and nothing is due in it. "
-    "Solve the week, and the raises about it appear beside the retrospective below."
-)
-
 NOTHING_IS_APPLIED_WITHOUT_ACCEPTANCE: Final = (
     "syncr noticed these patterns and has changed nothing. A promotion edits your template only "
     "when you accept it, and declining one does not raise it again for a while."

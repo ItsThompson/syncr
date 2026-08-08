@@ -4581,6 +4581,10 @@ export interface components {
          *     Every category is one shape with a ``kind`` rather than one shape per category, because they
          *     render as rows of one panel: section 16's notice-volume table gives the whole set one volume and
          *     one pigment.
+         *
+         *     **There is no count field, and every figure is in ``statement``.** A count of weeks on the wire
+         *     as well as in the words would be one fact twice, and a surface rendering both would put the same
+         *     number on the screen in two places, which is the drift ticket 49's own band was corrected for.
          */
         RaisedItemResponse: {
             /**
@@ -4592,19 +4596,14 @@ export interface components {
             kind: components["schemas"]["RaisedKind"];
             /**
              * Statement
-             * @description What to make of it, in the words an interface renders. Composed here so the CLI and the screen cannot say two different things about one item.
+             * @description What to make of it, in the words an interface renders, including every figure the item states. Composed here so the CLI and the screen cannot say two different things.
              */
             statement: string;
             /**
              * Title
-             * @description The thing itself, in the words the user knows it by.
+             * @description The thing itself, in the words the user knows it by. A repeated collision names BOTH ends here, as 'Standup over Leetcode', which is US-REV-05's own form.
              */
             title: string;
-            /**
-             * Weeks
-             * @description How many weeks the pattern covers, for the kinds that count weeks. Null rather than zero on the others, because zero would read as one.
-             */
-            weeks?: number | null;
         };
         /**
          * RaisedKind
@@ -6142,7 +6141,7 @@ export interface components {
             concessions: components["schemas"]["AdjustmentResponse"][];
             /**
              * Inputversion
-             * @description The planned week's input version, so a client can see that the week moved on while the session was open.
+             * @description The planned week's input version AS THIS PAYLOAD WAS COMPOSED. A client compares it with the week's own and says the session is stale when the two differ, which is what happens the moment a pin made inside the session bumps the week: the raises below were computed against the earlier state and the plan beside them is the later one.
              */
             inputVersion: number;
             /**
@@ -6152,7 +6151,7 @@ export interface components {
             isoWeek: string;
             /**
              * Promotionstatement
-             * @description That syncr has changed nothing and will not without acceptance. Always present, because the absence of candidates is not the absence of that promise.
+             * @description That syncr has changed nothing and will not without acceptance. Always present, because the absence of candidates is not the absence of that promise; a client renders it beside the candidates it has.
              */
             promotionStatement: string;
             /**
@@ -6167,11 +6166,6 @@ export interface components {
             raised: components["schemas"]["RaisedItemResponse"][];
             retro: components["schemas"]["SessionRetroResponse"];
             span: components["schemas"]["PeriodSpan"];
-            /**
-             * Statement
-             * @description Why the planned week has no verdict and nothing due in it, stated when it holds no plan of record. Null otherwise.
-             */
-            statement?: string | null;
             /** @description Whether the planned week can hold its commitments. Null exactly when that week holds no plan, because nothing has been computed about it. Computing it appends no row: reading a review is a read. */
             verdict: components["schemas"]["VerdictResponse"] | null;
         };

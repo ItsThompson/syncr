@@ -1,11 +1,16 @@
 """The raised items the weekly session opens with, and the sentence each one states.
 
-Section 16's `SessionMode` lists seven kinds under one heading, and the notice-volume table gives
+Section 16's `SessionMode` lists the categories under one heading, and the notice-volume table gives
 the panel they sit in one volume and one pigment: **panel, amber, in weekly-session mode only**. So
-they are one collection with a kind on each member rather than seven shapes, and the sentence a
-member renders is composed HERE rather than on a client: two clients would compose two sentences
-from one row, and a figure the CLI printed differently from the screen is the defect the pie
-review's own statements exist to prevent.
+they are one collection with a kind on each member rather than one shape per category, and the
+sentence a member renders is composed HERE rather than on a client: two clients would compose two
+sentences from one row, and a figure the CLI printed differently from the screen is the defect the
+pie review's own statements exist to prevent.
+
+**The sentence carries every figure, and no field repeats one.** A count of weeks appears in the
+words and nowhere else on the item, because a figure on the wire twice is a figure two surfaces can
+render differently. What a client owns is the eyebrow a group of items sits under, which is a label
+rather than a figure.
 
 **Nothing here is an action, and that absence is the design.** There is deliberately no "carry
 forward": an overdue task already surfaces as a raised item, so the backlog carries it implicitly
@@ -32,6 +37,7 @@ from syncr_domain.identity import BindingKind
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
     from datetime import datetime
+    from uuid import UUID
 
     from syncr_api.anchors.records import AnchorRecord
     from syncr_api.habits.records import HabitRecord
@@ -42,7 +48,10 @@ if TYPE_CHECKING:
     from syncr_domain.feasibility import Verdict
     from syncr_domain.identifiers import HabitId
     from syncr_domain.identity import BindingRef
-    from syncr_domain.plan import PlanDocument
+    from syncr_domain.plan import Block, PlanDocument
+
+    # What `BindingRef.content_key` answers: the binding with its week-scoped occurrence dropped.
+    type ContentKey = tuple[BindingKind, UUID, int | None]
 
 
 class RaisedKind(StrEnum):
@@ -72,15 +81,29 @@ class RaisedItem:
     rather than on a position. It is not an identifier of anything: an item is a reading rather than
     a row, and nothing addresses one.
 
-    ``weeks`` is the count of weeks the three counted kinds state and ``None`` on the rest, rather
-    than zero: a new anchor has no week count, and zero would read as one.
+    There is no count field. Every figure an item states is in ``statement``, which is the one place
+    it is spelled: a count on the wire as well as in the words would be one fact twice, and the
+    surface that rendered both would have to choose which to trust.
     """
 
     key: str
     kind: RaisedKind
     title: str
     statement: str
-    weeks: int | None = None
+
+
+def block_titles(blocks: Iterable[Block]) -> Mapping[ContentKey, str]:
+    """The title each content was last seen under, keyed so it can be found across weeks.
+
+    A block's own title is the name the reader saw on the grid, and it is the only name a retained
+    row can be given: a conflict stores the binding it collided with and nothing else, and an
+    outcome stores the same. The key drops the occurrence, because an occurrence key is scoped to
+    its own week and a name is not.
+
+    ``blocks`` arrives OLDEST FIRST, so the most recent title wins a rename: what the reader last
+    saw is what a raise should call it.
+    """
+    return {block.binding.content_key: block.title for block in blocks}
 
 
 def chronic_skip_items(skips: Iterable[ChronicSkip]) -> list[RaisedItem]:
@@ -94,7 +117,6 @@ def chronic_skip_items(skips: Iterable[ChronicSkip]) -> list[RaisedItem]:
                 f"Proposed and skipped in {_weeks(skip.consecutive_weeks)} running. syncr has not "
                 "changed its priority and will not: reschedule it, cut its scope, or drop it."
             ),
-            weeks=skip.consecutive_weeks,
         )
         for skip in skips
     ]
@@ -122,30 +144,46 @@ def habit_debt_items(
     ]
 
 
-def repeated_collision_items(collisions: Iterable[RepeatedCollision]) -> list[RaisedItem]:
+def repeated_collision_items(
+    collisions: Iterable[RepeatedCollision], *, titles: Mapping[ContentKey, str]
+) -> list[RaisedItem]:
     """One item per pair that keeps meeting, in the form ``US-REV-05`` writes out.
 
-    The story's own example is ``repeated collision: Standup over Leetcode, 4 weeks``, and the title
-    is that phrase without the count, which the count travels beside. A pair whose commitment was
-    never named states the block alone, which is a count without a name rather than an invented one.
+    The story's own example is ``repeated collision: Standup over Leetcode, 4 weeks``, so the item
+    names BOTH ends and the count: ``Standup over Leetcode`` as the title, and the two names again
+    in the sentence that carries the count.
+
+    **The block's name comes from a block, because nothing else holds one.** A conflict row stores
+    the binding it collided with and no title, so ``titles`` is the window's own blocks keyed by
+    content: see :func:`block_titles`. A pair whose block no reviewed week holds falls back to the
+    binding's kind, which is the fallback the promotion panel takes for content the planned week has
+    lost. A pair whose COMMITMENT was never recorded states the block alone, which is a count and
+    one name rather than an invented second one.
     """
     items = []
     for collision in collisions:
-        named = "an imported commitment" if collision.commitment is None else collision.commitment
+        block = titles.get(collision.binding.content_key) or _a_kind(collision.binding)
+        named = block if collision.commitment is None else f"{collision.commitment} over {block}"
         items.append(
             RaisedItem(
                 key=f"{RaisedKind.REPEATED_COLLISION}:{_content(collision.binding)}",
                 kind=RaisedKind.REPEATED_COLLISION,
                 title=named,
-                statement=(
-                    f"{named} has landed on this block in {_weeks(collision.week_count)}. Stated "
-                    "rather than acted on: the fix could be a template change, an anchor type, or "
-                    "nothing."
-                ),
-                weeks=collision.week_count,
+                statement=_collision_statement(collision, block=block),
             )
         )
     return items
+
+
+def _collision_statement(collision: RepeatedCollision, *, block: str) -> str:
+    """What the pair has done, naming both ends and the count of weeks."""
+    weeks = _weeks(collision.week_count)
+    unnamed = f"An imported commitment has landed on {block} in {weeks}."
+    named = f"{collision.commitment} has landed on {block} in {weeks}."
+    return (
+        f"{unnamed if collision.commitment is None else named} Stated rather than acted on: the "
+        "fix could be a template change, an anchor type, or nothing."
+    )
 
 
 def overdue_items(tasks: Iterable[TaskRecord], *, now: datetime) -> list[RaisedItem]:
@@ -264,6 +302,15 @@ def _content(binding: BindingRef) -> str:
     """
     kind, entity_id, split_index = binding.content_key
     return f"{kind}:{entity_id}:{split_index}"
+
+
+def _a_kind(binding: BindingRef) -> str:
+    """``a task``, ``a habit``: what to call content no block in the window names.
+
+    A weaker label rather than a missing one, which is the fallback the promotion panel takes for
+    the same reason: an item the product decided to raise is worth stating with a poor name.
+    """
+    return f"a {binding.kind.value.replace('_', ' ')}"
 
 
 def _weeks(count: int) -> str:

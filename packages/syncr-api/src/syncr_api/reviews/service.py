@@ -41,6 +41,7 @@ from syncr_api.reviews.config import (
 )
 from syncr_api.reviews.raised import (
     at_risk_items,
+    block_titles,
     cadence_items,
     chronic_skip_items,
     floor_items,
@@ -59,7 +60,7 @@ from syncr_common.metrics import measured
 from syncr_domain.promotion import detect_repeated_pins
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
     from datetime import datetime
 
     from syncr_api.areas.repository import AreaRepository
@@ -77,6 +78,7 @@ if TYPE_CHECKING:
     from syncr_api.user_settings.solve_inputs import BacklogWideBump
     from syncr_domain.budgets import AreaShare
     from syncr_domain.identifiers import AreaId
+    from syncr_domain.plan import Block, PlanDocument
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import ZoneProfile
 
@@ -255,8 +257,13 @@ def _raised_of(
 
     The order is the payload's, not a client's: a panel renders rows in the order it receives them,
     and two clients choosing their own would give one week two shapes.
+
+    The block titles are the window's own blocks, oldest first and the planned week last, so a
+    repeated collision can name the block it is about: the conflict row stores a binding and no
+    title, and this is the only place a name for one exists without a second read.
     """
     at_risk = tasks_at_risk(view.verdict, facts.open_tasks)
+    titles = block_titles(_blocks_of(reviewed, view.live))
     return (
         *chronic_skip_items(chronic_skips(reviewed, consecutive_weeks=CHRONIC_SKIP_WEEKS)),
         *habit_debt_items(facts.habits, facts.debt),
@@ -266,9 +273,23 @@ def _raised_of(
         *new_anchor_items(facts.arriving),
         *cadence_items(view.live, facts.habits),
         *repeated_collision_items(
-            repeated_collisions(facts.conflicts, at_least_weeks=REPEATED_COLLISION_WEEKS)
+            repeated_collisions(facts.conflicts, at_least_weeks=REPEATED_COLLISION_WEEKS),
+            titles=titles,
         ),
     )
+
+
+def _blocks_of(reviewed: Sequence[ReviewedWeek], planned: PlanDocument | None) -> Iterator[Block]:
+    """Every block the session can see, oldest week first and the planned week last.
+
+    The order is what makes a rename resolve to the latest name: :func:`block_titles` keeps the last
+    title it is handed for one content.
+    """
+    for week in reviewed:
+        for day in week.days:
+            yield from day.blocks
+    if planned is not None:
+        yield from planned.blocks
 
 
 def _window_ending_at(anchor: IsoWeek, *, weeks: int) -> tuple[IsoWeek, ...]:

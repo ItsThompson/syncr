@@ -12,8 +12,8 @@ to a question a screen already asks.
 **A commitment is NEW when the week before did not hold its series.** Two reads of one index rather
 than a stored flag: an anchor carries no notion of being new, and a created-at instant would report
 a commitment as new for as long as nobody had looked rather than for the week it lands in. A one-off
-has no series and is therefore always new, which is right, because it cannot have been there last
-week.
+has no series, so it is reported as new whenever it lands in the planned week and not in the week
+before.
 
 **The pins are read in the HOME zone, not the zone active on each pin's own date.** A promotion
 candidate proposes a template entry, a template entry is declared as a wall time in the home zone,
@@ -32,7 +32,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from syncr_api.plans.conflicts import LIST_LIMIT
 from syncr_domain.debt import debt_reading
 from syncr_domain.habits import MissPolicy
 from syncr_domain.promotion import PinPlacement
@@ -108,8 +107,13 @@ class SessionSources:
         """Every fact the raises are derived from. Reads only, and writes nothing at all.
 
         ``reviewed`` is the history window oldest first, whose last member is the week the
-        retrospective covers. The pins are read over the whole window and the commitments over two
-        weeks of it, because a pattern is about weeks and a new commitment is about one boundary.
+        retrospective covers. The pins and the conflicts are read over the whole window and the
+        commitments over two weeks of it, because a pattern is about weeks and a new commitment is
+        about one boundary.
+
+        **Every window read is bounded to the SAME window**, which is what stops one raise nagging
+        while its siblings expire: a pattern the user fixed half a year ago falls out of the period
+        the review rests on, exactly as a chronic skip and a repeated pin do.
         """
         habits = await self._habits.list_all()
         log = await self._outcomes.read([habit.id for habit in habits])
@@ -118,7 +122,7 @@ class SessionSources:
             habits=habits,
             debt=self._debt(habits, log, reviewed[-1], profile=profile, now=now),
             arriving=await self._arriving(planned, reviewed[-1], profile=profile),
-            conflicts=await self._conflicts.list_all(limit=LIST_LIMIT),
+            conflicts=await self._conflicts.for_weeks(reviewed),
             pins=await self._placements(reviewed, home_zone=home_zone),
         )
 
