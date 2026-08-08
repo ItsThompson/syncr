@@ -17,25 +17,18 @@ from uuid import uuid4
 
 from syncr_api.habits.records import HabitRecord
 from syncr_api.plans.records import BlockOutcomeRecord, ConflictRecord
-from syncr_api.reviews.collisions import repeated_collisions
+from syncr_api.reviews.collisions import repeated_collision_items, repeated_collisions
 from syncr_api.reviews.coverage import ReviewedDay
 from syncr_api.reviews.history import ReviewedWeek
-from syncr_api.reviews.raised import (
-    RaisedKind,
-    block_titles,
-    chronic_skip_items,
-    floor_items,
-    habit_debt_items,
-    overdue_items,
-    repeated_collision_items,
-)
-from syncr_api.reviews.skips import chronic_skips
+from syncr_api.reviews.naming import a_kind, block_titles
+from syncr_api.reviews.raised import RaisedKind, floor_items, habit_debt_items, overdue_items
+from syncr_api.reviews.skips import chronic_skip_items, chronic_skips
 from syncr_api.reviews.statements import period_statement
 from syncr_api.tasks.records import TaskRecord
 from syncr_domain.debt import DebtReading
 from syncr_domain.feasibility import Provenance, Shortfall, ShortfallKind, Verdict
 from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
-from syncr_domain.identity import BindingRef
+from syncr_domain.identity import BindingKind, BindingRef
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.outcomes import OutcomeState
 from syncr_domain.reasons import Bound, ReasonRecord
@@ -292,7 +285,47 @@ class TestAChronicSkipIsSixConsecutiveWeeks:
         assert item.kind is RaisedKind.CHRONIC_SKIP
         assert item.title == "Gym"
         assert "6 weeks" in item.statement
+        assert f"Most recently {RUN[-1]}." in item.statement
         assert "has not changed its priority" in item.statement
+
+
+class TestTheWordForContentTheWindowCannotName:
+    """``a_kind`` is the ONE fallback both naming surfaces of this payload take.
+
+    It reads ``Origin``, which is the vocabulary the grid and the ledger render, rather than
+    ``BindingKind``, which is the wire's. Three of the seven kinds are spelled differently between
+    the two, and all three are reachable here: ``plans.overlaps`` skips only ``Origin.ANCHOR`` when
+    it collects the blocks a commitment can land on, so a prep or a transit block can be the one a
+    repeated collision names.
+    """
+
+    def test_every_binding_kind_takes_the_readers_word_and_the_right_article(self) -> None:
+        assert {kind: a_kind(kind) for kind in BindingKind} == {
+            BindingKind.ROUTINE: "a frame",
+            BindingKind.TEMPLATE_ENTRY: "a template entry",
+            BindingKind.HABIT: "a habit",
+            BindingKind.TASK: "a task",
+            BindingKind.ANCHOR: "an anchor",
+            BindingKind.ANCHOR_PREP: "a prep",
+            BindingKind.ANCHOR_TRANSIT: "a transit",
+        }
+
+    def test_it_is_total_over_the_vocabulary_rather_than_a_list_of_seven(self) -> None:
+        # Derived, so a kind added to either enum arrives with its own word rather than with a
+        # KeyError or a wrong article.
+        for kind in BindingKind:
+            said = a_kind(kind)
+            assert said.startswith(("a ", "an ")), kind
+            assert "_" not in said, kind
+
+    def test_a_prep_block_a_commitment_landed_on_is_named_as_a_prep(self) -> None:
+        # The shape the wire spelling would have rendered as "a anchor prep".
+        prep = BindingRef.for_anchor_prep(uuid4())
+        rows = [a_conflict(iso_week=week, binding=prep) for week in RUN[:3]]
+
+        (item,) = repeated_collision_items(repeated_collisions(rows, at_least_weeks=3), titles={})
+
+        assert item.title == "Standup over a prep"
 
 
 def a_conflict(
@@ -414,13 +447,36 @@ class TestARepeatedCollisionIsThreeOrMoreWeeks:
 
     def test_a_block_no_reviewed_week_holds_falls_back_to_its_kind(self) -> None:
         # A pattern whose block the window has lost is still worth stating with a poor name, which
-        # is the fallback the promotion panel takes for the same reason.
+        # is the fallback the promotion candidate takes for the same reason.
         rows = [a_conflict(iso_week=week) for week in RUN[:3]]
 
         (item,) = repeated_collision_items(repeated_collisions(rows, at_least_weeks=3), titles={})
 
         assert item.title == "Standup over a task"
         assert "landed on a task in 3 weeks" in item.statement
+
+    def test_a_pair_that_can_name_neither_end_is_not_raised_at_all(self) -> None:
+        # THE FOURTH CELL of the naming matrix, and the one shape that is suppressed. A conflict
+        # whose anchor had gone when the solve committed carries no commitment, and a block no week
+        # of the window holds has no title: "something collided with something three times" is not
+        # a pattern anybody can look into, and this raise suggests no action to make up the gap.
+        rows = [a_conflict(iso_week=week, title=None) for week in RUN[:3]]
+
+        assert repeated_collisions(rows, at_least_weeks=3), "the pattern itself must still be found"
+        assert (
+            repeated_collision_items(repeated_collisions(rows, at_least_weeks=3), titles={}) == []
+        )
+
+    def test_the_raise_states_the_week_the_pattern_was_last_seen_in(self) -> None:
+        # A run expires with the window, but nothing else says WHERE inside it the run sits: without
+        # this, three weeks that ended twelve weeks ago read like three that ended last week.
+        rows = [a_conflict(iso_week=week) for week in RUN[:3]]
+
+        (item,) = repeated_collision_items(
+            repeated_collisions(rows, at_least_weeks=3), titles=LEETCODE_TITLE
+        )
+
+        assert f"Most recently {RUN[2]}." in item.statement
 
     def test_the_titles_are_read_from_the_blocks_of_the_window(self) -> None:
         # `block_titles` turns a window's blocks into the lookup, and the LAST title wins, so a

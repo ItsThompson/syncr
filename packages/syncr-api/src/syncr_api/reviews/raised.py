@@ -41,14 +41,11 @@ if TYPE_CHECKING:
 
     from syncr_api.anchors.records import AnchorRecord
     from syncr_api.habits.records import HabitRecord
-    from syncr_api.reviews.collisions import RepeatedCollision
-    from syncr_api.reviews.skips import ChronicSkip
     from syncr_api.tasks.records import TaskRecord
     from syncr_domain.debt import DebtReading
     from syncr_domain.feasibility import Verdict
     from syncr_domain.identifiers import HabitId
-    from syncr_domain.identity import BindingRef
-    from syncr_domain.plan import Block, PlanDocument
+    from syncr_domain.plan import PlanDocument
 
     # What `BindingRef.content_key` answers: the binding with its week-scoped occurrence dropped.
     type ContentKey = tuple[BindingKind, UUID, int | None]
@@ -92,36 +89,6 @@ class RaisedItem:
     statement: str
 
 
-def block_titles(blocks: Iterable[Block]) -> Mapping[ContentKey, str]:
-    """The title each content was last seen under, keyed so it can be found across weeks.
-
-    A block's own title is the name the reader saw on the grid, and it is the only name a retained
-    row can be given: a conflict stores the binding it collided with and nothing else, and an
-    outcome stores the same. The key drops the occurrence, because an occurrence key is scoped to
-    its own week and a name is not.
-
-    ``blocks`` arrives OLDEST FIRST, so the most recent title wins a rename: what the reader last
-    saw is what a raise should call it.
-    """
-    return {block.binding.content_key: block.title for block in blocks}
-
-
-def chronic_skip_items(skips: Iterable[ChronicSkip]) -> list[RaisedItem]:
-    """One item per chronically skipped thing, stating the item and its run of weeks."""
-    return [
-        RaisedItem(
-            key=f"{RaisedKind.CHRONIC_SKIP}:{_content(skip.binding)}",
-            kind=RaisedKind.CHRONIC_SKIP,
-            title=skip.title,
-            statement=(
-                f"Proposed and skipped in {_weeks(skip.consecutive_weeks)} running. syncr has not "
-                "changed its priority and will not: reschedule it, cut its scope, or drop it."
-            ),
-        )
-        for skip in skips
-    ]
-
-
 def habit_debt_items(
     habits: Sequence[HabitRecord], readings: Mapping[HabitId, DebtReading]
 ) -> list[RaisedItem]:
@@ -142,48 +109,6 @@ def habit_debt_items(
         for habit in habits
         if (reading := readings.get(habit.id)) is not None and reading.raised_in_weekly_session
     ]
-
-
-def repeated_collision_items(
-    collisions: Iterable[RepeatedCollision], *, titles: Mapping[ContentKey, str]
-) -> list[RaisedItem]:
-    """One item per pair that keeps meeting, in the form ``US-REV-05`` writes out.
-
-    The story's own example is ``repeated collision: Standup over Leetcode, 4 weeks``, so the item
-    names BOTH ends and the count: ``Standup over Leetcode`` as the title, and the two names again
-    in the sentence that carries the count.
-
-    **The block's name comes from a block, because nothing else holds one.** A conflict row stores
-    the binding it collided with and no title, so ``titles`` is the window's own blocks keyed by
-    content: see :func:`block_titles`. A pair whose block no reviewed week holds falls back to the
-    binding's kind, which is the fallback the promotion panel takes for content the planned week has
-    lost. A pair whose COMMITMENT was never recorded states the block alone, which is a count and
-    one name rather than an invented second one.
-    """
-    items = []
-    for collision in collisions:
-        block = titles.get(collision.binding.content_key) or _a_kind(collision.binding)
-        named = block if collision.commitment is None else f"{collision.commitment} over {block}"
-        items.append(
-            RaisedItem(
-                key=f"{RaisedKind.REPEATED_COLLISION}:{_content(collision.binding)}",
-                kind=RaisedKind.REPEATED_COLLISION,
-                title=named,
-                statement=_collision_statement(collision, block=block),
-            )
-        )
-    return items
-
-
-def _collision_statement(collision: RepeatedCollision, *, block: str) -> str:
-    """What the pair has done, naming both ends and the count of weeks."""
-    weeks = _weeks(collision.week_count)
-    unnamed = f"An imported commitment has landed on {block} in {weeks}."
-    named = f"{collision.commitment} has landed on {block} in {weeks}."
-    return (
-        f"{unnamed if collision.commitment is None else named} Stated rather than acted on: the "
-        "fix could be a template change, an anchor type, or nothing."
-    )
 
 
 def overdue_items(tasks: Iterable[TaskRecord], *, now: datetime) -> list[RaisedItem]:
@@ -292,27 +217,3 @@ def cadence_items(document: PlanDocument | None, habits: Sequence[HabitRecord]) 
         )
         for habit_id, count in counted.items()
     ]
-
-
-def _content(binding: BindingRef) -> str:
-    """A binding's content as one word, so a key names the thing rather than one week's occurrence.
-
-    The occurrence key is what drops out, which is the reason both runs group on it: a chronic skip
-    and a repeated collision are both about the content across weeks.
-    """
-    kind, entity_id, split_index = binding.content_key
-    return f"{kind}:{entity_id}:{split_index}"
-
-
-def _a_kind(binding: BindingRef) -> str:
-    """``a task``, ``a habit``: what to call content no block in the window names.
-
-    A weaker label rather than a missing one, which is the fallback the promotion panel takes for
-    the same reason: an item the product decided to raise is worth stating with a poor name.
-    """
-    return f"a {binding.kind.value.replace('_', ' ')}"
-
-
-def _weeks(count: int) -> str:
-    """``6 weeks``, or ``1 week``. One rendering, so two kinds cannot spell one count two ways."""
-    return f"{count} week{'' if count == 1 else 's'}"

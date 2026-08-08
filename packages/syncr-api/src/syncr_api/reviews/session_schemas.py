@@ -67,7 +67,8 @@ class PromotionCandidateResponse(WireModel):
 
     ``US-TPL-05``: pinning the same binding to the same time for three consecutive weeks raises a
     proposal naming the binding, the time, and the number of weeks. Accepting or declining is a
-    route of its own, so this shape carries no action and no state: it is the question."""
+    route of its own, so this shape carries no action and no state: it is the question.
+    """
 
     entity_id: UUID = Field(
         description="The content that keeps being pinned. Which occurrence of it was pinned is "
@@ -75,6 +76,12 @@ class PromotionCandidateResponse(WireModel):
         "one."
     )
     kind: str = Field(description="What sort of thing that content is: a habit, a task, a routine.")
+    title: str = Field(
+        description="What to call the content, resolved HERE from the blocks of the reviewed "
+        "window and the planned week. A pattern whose content appears in neither falls back to the "
+        "reader's word for its kind, which is the fallback a repeated collision's block takes too: "
+        "one absence, one spelling, on both surfaces of this payload."
+    )
     weekday: int = Field(description="The ISO weekday the pin keeps landing on, Monday being 1.")
     local_time: str = Field(
         description="The wall time it keeps being pinned to, as a template entry would declare it, "

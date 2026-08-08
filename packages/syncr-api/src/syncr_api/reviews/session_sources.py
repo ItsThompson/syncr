@@ -107,13 +107,18 @@ class SessionSources:
         """Every fact the raises are derived from. Reads only, and writes nothing at all.
 
         ``reviewed`` is the history window oldest first, whose last member is the week the
-        retrospective covers. The pins and the conflicts are read over the whole window and the
-        commitments over two weeks of it, because a pattern is about weeks and a new commitment is
-        about one boundary.
+        retrospective covers. The pins are read over that window and the commitments over two weeks
+        of it, because a pattern is about weeks and a new commitment is about one boundary.
 
-        **Every window read is bounded to the SAME window**, which is what stops one raise nagging
-        while its siblings expire: a pattern the user fixed half a year ago falls out of the period
-        the review rests on, exactly as a chronic skip and a repeated pin do.
+        **The conflicts are read over the window PLUS the week being planned**, and the asymmetry
+        is the point. Every other window read is about what has already happened; a collision is
+        about a pattern the reader can still act on, and its third week is often the week in front
+        of them. Bounding it to the reviewed window alone would leave that pattern silent for the
+        week it matters most, which is a bound narrower than the set the raise is about.
+
+        **Every window read is still bounded to ONE period**, which is what stops one raise nagging
+        while its siblings expire: a pattern the user fixed half a year ago falls out of the read
+        entirely, exactly as a chronic skip and a repeated pin do.
         """
         habits = await self._habits.list_all()
         log = await self._outcomes.read([habit.id for habit in habits])
@@ -122,7 +127,7 @@ class SessionSources:
             habits=habits,
             debt=self._debt(habits, log, reviewed[-1], profile=profile, now=now),
             arriving=await self._arriving(planned, reviewed[-1], profile=profile),
-            conflicts=await self._conflicts.for_weeks(reviewed),
+            conflicts=await self._conflicts.for_weeks((*reviewed, planned)),
             pins=await self._placements(reviewed, home_zone=home_zone),
         )
 

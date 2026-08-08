@@ -23,7 +23,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { apiServer } from "../../../../testing/apiServer";
-import { jsonHandler } from "../../../../testing/apiStub";
+import { jsonHandler, pendingHandler } from "../../../../testing/apiStub";
 import { renderAt } from "../../../../testing/renderRoute";
 import { client } from "../../../../api/client";
 import { SESSION_MODE_HEADER } from "../../../../api/sessionMode";
@@ -107,6 +107,19 @@ describe("the mode is reachable by URL and is not a destination", () => {
     renderAt(SESSION_PATH);
     await screen.findByLabelText("Weekly session");
 
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    expect(screen.getByText("Weekly session")).toBeInTheDocument();
+  });
+
+  it("draws no serif page title while its own payload is still in flight", async () => {
+    /* A mode may not claim a destination's type, not even for the second the read takes. The screen's
+     * band is serif, so the session's own pending state takes the MODE's header instead, which states
+     * no range because the week has not been read. */
+    installWeekReads(buildWeekView({ verdict: buildVerdict(), proposal: buildProposal() }));
+    apiServer.use(pendingHandler(`/api/v1/reviews/week/${ISO_WEEK}`));
+    renderAt(SESSION_PATH);
+
+    expect(await screen.findByText("Reading this week's session")).toBeVisible();
     expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
     expect(screen.getByText("Weekly session")).toBeInTheDocument();
   });
@@ -251,11 +264,16 @@ describe("what the session raises", () => {
     expect(screen.getByText("Reading")).toBeInTheDocument();
   });
 
-  it("says nothing is outstanding rather than rendering an empty panel", async () => {
+  it("says nothing is outstanding, and NOT in amber", async () => {
+    /* Amber means "needs attention", so painting the absence of a raise with it would spend the
+     * pigment on nothing. The sentence is still worth saying: it is the most useful thing the session
+     * can tell a reader who has been keeping up. */
     openTheSession(buildSession({ raised: [] }));
     renderAt(SESSION_PATH);
 
     expect(await screen.findByText(/Nothing is outstanding/)).toBeVisible();
+    const raised = screen.getByLabelText("Raised in this session");
+    expect(raised.className).not.toContain("notice--amber");
   });
 
   it("renders the raised panel at amber panel volume", async () => {
@@ -345,7 +363,7 @@ describe("the promotion candidates", () => {
     renderAt(SESSION_PATH);
     await screen.findByLabelText("Repeated pins");
 
-    expect(screen.getByText(`${LEETCODE}`)).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: LEETCODE })).toBeInTheDocument();
     expect(screen.getByText("Tue 13:00")).toBeInTheDocument();
     expect(screen.getByText("4 weeks")).toBeInTheDocument();
   });
@@ -386,16 +404,19 @@ describe("the promotion candidates", () => {
     expect(screen.queryByRole("button", { name: /decline/i })).not.toBeInTheDocument();
   });
 
-  it("falls back to the candidate's kind for content the planned week no longer holds", async () => {
+  it("renders the name the api resolved, including its fallback, and holds none of its own", async () => {
+    /* THE FALLBACK IS THE API'S. A repeated collision's block needs the same answer for the same
+     * reason, so one absence has one spelling: the reader's word for the kind, not the wire's token.
+     * A client that kept its own would have rendered `anchor_prep` verbatim. */
     openTheSession(
       buildSession({
-        promotions: [buildPromotionCandidate({ entityId: "11111111-1111-4111-8111-111111111111" })],
+        promotions: [buildPromotionCandidate({ title: "a habit" })],
       }),
     );
     renderAt(SESSION_PATH);
     await screen.findByLabelText("Repeated pins");
 
-    expect(screen.getByText("task")).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "a habit" })).toBeInTheDocument();
   });
 });
 

@@ -28,57 +28,42 @@ from typing import TYPE_CHECKING
 from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
-from syncr_api.offplan.reading import off_plan_reading
-from syncr_api.plans.at_risk import tasks_at_risk
-from syncr_api.reviews.collisions import repeated_collisions
 from syncr_api.reviews.config import (
-    CHRONIC_SKIP_WEEKS,
     ISO_WEEK_FIELD,
     PERIOD_PARAMETER,
-    REPEATED_COLLISION_WEEKS,
     SESSION_LOOKBACK_WEEKS,
     TREND_WEEKS,
 )
-from syncr_api.reviews.raised import (
-    at_risk_items,
-    block_titles,
-    cadence_items,
-    chronic_skip_items,
-    floor_items,
-    habit_debt_items,
-    new_anchor_items,
-    overdue_items,
-    repeated_collision_items,
-)
-from syncr_api.reviews.readings import budget_review_reading, categories_of
+from syncr_api.reviews.readings import budget_review_reading
 from syncr_api.reviews.rules import require_declared_areas
-from syncr_api.reviews.session import SessionRetro, WeeklySessionReading
-from syncr_api.reviews.skips import chronic_skips
+from syncr_api.reviews.session import (
+    WeeklySessionReading,
+    promotions_of,
+    raised_of,
+    retro_of,
+    titles_of,
+)
 from syncr_api.user_settings.zone_reading import as_domain, stated_rejection, zone_profile
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 from syncr_domain.promotion import detect_repeated_pins
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Sequence
     from datetime import datetime
 
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
     from syncr_api.plans.service import WeekService
-    from syncr_api.plans.week_views import WeekView
     from syncr_api.reviews.declarations import AppliedShares
-    from syncr_api.reviews.history import ReviewedWeek, ReviewHistoryReader
-    from syncr_api.reviews.raised import RaisedItem
+    from syncr_api.reviews.history import ReviewHistoryReader
     from syncr_api.reviews.readings import BudgetReviewReading
-    from syncr_api.reviews.session_sources import SessionFacts, SessionSources
+    from syncr_api.reviews.session_sources import SessionSources
     from syncr_api.user_settings.records import SettingsRecord, TravelOverrideRecord
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
     from syncr_api.user_settings.solve_inputs import BacklogWideBump
-    from syncr_domain.budgets import AreaShare
     from syncr_domain.identifiers import AreaId
-    from syncr_domain.plan import Block, PlanDocument
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import ZoneProfile
 
@@ -209,14 +194,15 @@ class WeeklySessionService:
             home_zone=settings.home_zone,
             now=now,
         )
+        titles = titles_of(reviewed, view.live)
         return WeeklySessionReading(
             iso_week=planned,
             span=view.span,
-            retro=_retro_of(reviewed[-1], shares=shares),
-            raised=_raised_of(view, reviewed, facts, now=now),
+            retro=retro_of(reviewed[-1], shares=shares),
+            raised=raised_of(view, reviewed, facts, titles=titles, now=now),
             verdict=view.verdict,
             concessions=view.adjustments,
-            promotions=tuple(detect_repeated_pins(facts.pins)),
+            promotions=promotions_of(detect_repeated_pins(facts.pins), titles=titles),
             input_version=view.input_version,
         )
 
@@ -232,64 +218,6 @@ def _zone_profile(
     """
     with stated_rejection(field="home zone"):
         return zone_profile(settings.home_zone, as_domain(overrides))
-
-
-def _retro_of(week: ReviewedWeek, *, shares: Sequence[AreaShare]) -> SessionRetro:
-    """Last week's actual against target per Area, over the pie review's own arithmetic."""
-    return SessionRetro(
-        iso_week=week.iso_week,
-        span=week.span,
-        discretionary_minutes=week.discretionary_minutes,
-        days=week.counts,
-        off_plan=off_plan_reading(week.span, week.off_plan),
-        categories=categories_of(week, shares=shares),
-    )
-
-
-def _raised_of(
-    view: WeekView,
-    reviewed: Sequence[ReviewedWeek],
-    facts: SessionFacts,
-    *,
-    now: datetime,
-) -> tuple[RaisedItem, ...]:
-    """Every raised item, in the order section 16's `raised` list gives them.
-
-    The order is the payload's, not a client's: a panel renders rows in the order it receives them,
-    and two clients choosing their own would give one week two shapes.
-
-    The block titles are the window's own blocks, oldest first and the planned week last, so a
-    repeated collision can name the block it is about: the conflict row stores a binding and no
-    title, and this is the only place a name for one exists without a second read.
-    """
-    at_risk = tasks_at_risk(view.verdict, facts.open_tasks)
-    titles = block_titles(_blocks_of(reviewed, view.live))
-    return (
-        *chronic_skip_items(chronic_skips(reviewed, consecutive_weeks=CHRONIC_SKIP_WEEKS)),
-        *habit_debt_items(facts.habits, facts.debt),
-        *floor_items(view.verdict),
-        *overdue_items(facts.open_tasks, now=now),
-        *at_risk_items(one for one in facts.open_tasks if one.id in at_risk),
-        *new_anchor_items(facts.arriving),
-        *cadence_items(view.live, facts.habits),
-        *repeated_collision_items(
-            repeated_collisions(facts.conflicts, at_least_weeks=REPEATED_COLLISION_WEEKS),
-            titles=titles,
-        ),
-    )
-
-
-def _blocks_of(reviewed: Sequence[ReviewedWeek], planned: PlanDocument | None) -> Iterator[Block]:
-    """Every block the session can see, oldest week first and the planned week last.
-
-    The order is what makes a rename resolve to the latest name: :func:`block_titles` keeps the last
-    title it is handed for one content.
-    """
-    for week in reviewed:
-        for day in week.days:
-            yield from day.blocks
-    if planned is not None:
-        yield from planned.blocks
 
 
 def _window_ending_at(anchor: IsoWeek, *, weeks: int) -> tuple[IsoWeek, ...]:

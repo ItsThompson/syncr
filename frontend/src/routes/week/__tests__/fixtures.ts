@@ -430,6 +430,7 @@ export function buildPromotionCandidate(
   return {
     entityId: TASK_ID,
     kind: "task",
+    title: LEETCODE,
     weekday: 2,
     localTime: "13:00",
     consecutiveWeeks: 4,

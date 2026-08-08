@@ -38,11 +38,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_api.reviews.naming import (
+    content_key_text,
+    most_recently,
+    weeks_stated,
+)
+from syncr_api.reviews.raised import RaisedItem, RaisedKind
 from syncr_domain.outcomes import OutcomeState
 from syncr_domain.weeks import longest_consecutive_run
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
     from uuid import UUID
 
     from syncr_api.reviews.history import ReviewedWeek
@@ -98,6 +104,28 @@ def chronic_skips(weeks: Sequence[ReviewedWeek], *, consecutive_weeks: int) -> l
         binding, title = named[key]
         found.append(ChronicSkip(binding=binding, title=title, weeks=run))
     return sorted(found, key=lambda one: (-one.consecutive_weeks, one.title))
+
+
+def chronic_skip_items(skips: Iterable[ChronicSkip]) -> list[RaisedItem]:
+    """One item per chronically skipped thing: the item, its run of weeks, and when it last ran.
+
+    Beside the rule rather than in ``raised``, because the run and the sentence about the run are
+    one subject: a change to what a run counts changes what the sentence has to say, and a reader
+    who wants either wants both.
+    """
+    return [
+        RaisedItem(
+            key=f"{RaisedKind.CHRONIC_SKIP}:{content_key_text(skip.binding)}",
+            kind=RaisedKind.CHRONIC_SKIP,
+            title=skip.title,
+            statement=(
+                f"Proposed and skipped in {weeks_stated(skip.consecutive_weeks)} running."
+                f"{most_recently(skip.weeks)} syncr has not changed its priority and will not: "
+                "reschedule it, cut its scope, or drop it."
+            ),
+        )
+        for skip in skips
+    ]
 
 
 def _skipped_in(week: ReviewedWeek) -> Mapping[ContentKey, tuple[BindingRef, str]]:

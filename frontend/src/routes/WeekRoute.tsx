@@ -41,6 +41,7 @@ import { WeekHead } from "./week/components/WeekHead";
 import { WeekSurface } from "./week/components/WeekSurface";
 import { weekRange } from "./week/labels";
 import { isSessionMode, SessionMode, sessionPath } from "./week/session";
+import { SessionHeader } from "./week/session/components/SessionHeader";
 import { useWeekScreen } from "./week/useWeekScreen";
 import { useWeekScreenInteraction } from "./week/hooks/useWeekScreenInteraction";
 import { useWeekWords } from "./week/hooks/useWeekWords";
@@ -115,23 +116,27 @@ export function WeekRoute() {
   const dates = days.map((day) => day.date);
 
   /* THE MODE IS A BRANCH OF THE READY SCREEN, so everything it draws from is the reading that reached here: a session
-   * cannot open on a week with no plan and then render a grid, because the empty state above already answered. */
+   * cannot open on a week with no plan and then render a grid, because the empty state above already answered.
+   *
+   * THE MODE'S OWN PENDING AND FAILED STATES TAKE THE MODE'S HEADER, not the screen's band. `RouteBand`'s title is
+   * serif, which is the type reserved for a destination, so answering the session's own read inside one would claim it
+   * for the second the payload is in flight. The header states no range yet, because the week has not been read. */
   if (isSession && session !== null) {
-    if (session.status === "loading") {
+    if (session.status !== "ready") {
       return (
-        <RouteBand title="Week" sub={isoWeek}>
-          <PendingState
-            title="Reading this week's session"
-            detail="Last week's figures, everything raised since, and what this week can hold."
-          />
-        </RouteBand>
-      );
-    }
-    if (session.status === "error") {
-      return (
-        <RouteBand title="Week" sub={isoWeek}>
-          <ErrorState title="The session was not read" detail={session.problem.detail} />
-        </RouteBand>
+        <section aria-label="Weekly session">
+          <SessionHeader isoWeek={isoWeek} range={null} />
+          <div className="px-3.75 py-3.25">
+            {session.status === "loading" ? (
+              <PendingState
+                title="Reading this week's session"
+                detail="Last week's figures, everything raised since, and what this week can hold."
+              />
+            ) : (
+              <ErrorState title="The session was not read" detail={session.problem.detail} />
+            )}
+          </div>
+        </section>
       );
     }
     return (

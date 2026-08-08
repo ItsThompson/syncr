@@ -4496,6 +4496,11 @@ export interface components {
              */
             localTime: string;
             /**
+             * Title
+             * @description What to call the content, resolved HERE from the blocks of the reviewed window and the planned week. A pattern whose content appears in neither falls back to the reader's word for its kind, which is the fallback a repeated collision's block takes too: one absence, one spelling, on both surfaces of this payload.
+             */
+            title: string;
+            /**
              * Weekday
              * @description The ISO weekday the pin keeps landing on, Monday being 1.
              */

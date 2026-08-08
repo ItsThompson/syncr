@@ -556,6 +556,32 @@ def test_a_collision_outside_the_sessions_window_is_not_raised_at_all(
     assert items_of(read_session(http, signed_in, PLANNED), RaisedKind.REPEATED_COLLISION) == []
 
 
+def test_a_pattern_whose_third_week_is_the_week_being_planned_is_raised(
+    http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+) -> None:
+    """The near edge of the window, which the bound must NOT cut.
+
+    Every other window read is about what has already happened, so the retrospective's window ends
+    at the week before the one being planned. A collision is about a pattern the reader can still
+    act on, and its third week is often the week in front of them: a bound that stopped at the
+    reviewed week would leave exactly that pattern silent for the week it matters most.
+    """
+    area_id = declare_area(http, signed_in)
+    weeks = [PLANNED.preceding().preceding(), PLANNED.preceding(), PLANNED]
+    for week in weeks:
+        seed_plan(
+            live_database_url,
+            owner.tenant_id,
+            a_week([a_task_block(iso_week=week, area_id=area_id)], iso_week=week),
+        )
+    seed_collisions(live_database_url, owner.tenant_id, weeks, series="standup-series")
+
+    (raised,) = items_of(read_session(http, signed_in, PLANNED), RaisedKind.REPEATED_COLLISION)
+
+    assert raised["title"] == "Standup over Leetcode"
+    assert f"Most recently {PLANNED}." in raised["statement"]
+
+
 def test_a_one_off_commitment_never_contributes_to_a_repeated_collision(
     http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
 ) -> None:
@@ -582,6 +608,32 @@ def test_three_consecutive_weeks_of_one_pin_reach_the_payload_as_a_promotion_can
     assert candidate["consecutiveWeeks"] == len(weeks)
     assert candidate["weeks"] == [str(one) for one in weeks]
     assert "only when you accept it" in payload["promotionStatement"]
+
+
+def test_a_promotion_candidate_is_named_by_the_api_and_falls_back_to_its_kind(
+    http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+) -> None:
+    """The name is resolved HERE, from the same blocks a repeated collision's block name comes from.
+
+    A pin row stores a binding and no title, exactly as a conflict row does, so both surfaces of
+    this payload ask one question and take one answer. The fallback is the reader's word for the
+    kind, not the wire's token, which is what a client holding its own fallback got wrong.
+    """
+    area_id = declare_area(http, signed_in)
+    weeks = [REVIEWED.preceding().preceding(), REVIEWED.preceding(), REVIEWED]
+    seed_pins(live_database_url, owner.tenant_id, weeks)
+
+    without_a_block = read_session(http, signed_in, PLANNED)
+    assert without_a_block["promotions"][0]["title"] == "a habit"
+
+    seed_plan(
+        live_database_url,
+        owner.tenant_id,
+        a_week([a_habit_block(iso_week=REVIEWED, area_id=area_id)], iso_week=REVIEWED),
+    )
+
+    named = read_session(http, signed_in, PLANNED)
+    assert named["promotions"][0]["title"] == "Gym"
 
 
 def test_two_weeks_of_one_pin_are_below_the_threshold(

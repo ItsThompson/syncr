@@ -60,8 +60,7 @@ if TYPE_CHECKING:
     from syncr_api.reviews.raised import RaisedItem
     from syncr_api.reviews.readings import BudgetReviewReading, CategoryReading, TrendWeek
     from syncr_api.reviews.service import AppliedRevision
-    from syncr_api.reviews.session import SessionRetro, WeeklySessionReading
-    from syncr_domain.promotion import PromotionCandidate
+    from syncr_api.reviews.session import NamedPromotion, SessionRetro, WeeklySessionReading
 
 router = APIRouter()
 
@@ -138,10 +137,12 @@ def _as_raised(item: RaisedItem) -> RaisedItemResponse:
     )
 
 
-def _as_promotion(candidate: PromotionCandidate) -> PromotionCandidateResponse:
+def _as_promotion(named: NamedPromotion) -> PromotionCandidateResponse:
+    candidate = named.candidate
     return PromotionCandidateResponse(
         entity_id=candidate.entity_id,
         kind=candidate.kind.value,
+        title=named.title,
         weekday=candidate.weekday,
         local_time=candidate.local_time,
         consecutive_weeks=candidate.consecutive_weeks,

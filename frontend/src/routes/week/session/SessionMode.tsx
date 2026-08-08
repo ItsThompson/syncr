@@ -34,7 +34,6 @@ import type { WeeklySession } from "../../../api/hooks/useWeeklySession";
 import type { WeekInteraction } from "../hooks/useWeekScreenInteraction";
 import type { WeekWords } from "../hooks/useWeekWords";
 import type { WeekScreenState } from "../useWeekScreen";
-import type { WeekView } from "../../../api/hooks/useWeek";
 
 const MOVED_ON =
   "The week has changed since these raises were computed, so the plan and the verdict above are " +
@@ -88,26 +87,9 @@ export function SessionMode({
         <WeekSurface interaction={interaction} nowMs={nowMs} screen={screen} words={words} />
         {hasMovedOn ? <p className="text-sm text-text-muted">{MOVED_ON}</p> : null}
         <RaisedPanel raises={raisesOf(session.raised)} />
-        <PromotionPanel
-          candidates={session.promotions}
-          statement={session.promotionStatement}
-          titles={contentTitles(screen.view)}
-        />
+        <PromotionPanel candidates={session.promotions} statement={session.promotionStatement} />
         <RetroPanel areas={areas} retro={session.retro} />
       </div>
     </section>
   );
-}
-
-/**
- * Each content's name by the id a promotion candidate carries, taken from the planned week's own blocks.
- *
- * A candidate names the CONTENT and not a block, so there is no title on it: the api's arithmetic reads no name at all.
- * The planned week holds a block for anything the reader keeps pinning, which is what makes this the cheap lookup rather
- * than a request per candidate; a candidate for content the week no longer holds falls back to its kind, which is a
- * weaker label rather than a missing row.
- */
-function contentTitles(view: WeekView): ReadonlyMap<string, string> {
-  if (view.live === null) return new Map();
-  return new Map(view.live.blocks.map((block) => [block.binding.entityId, block.title]));
 }

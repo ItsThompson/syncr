@@ -8,6 +8,11 @@
  * cmd-click working, and it carries the same week: a reader who leaves the session should land on the week they were
  * planning rather than on whichever week today falls in.
  *
+ * THE RANGE IS NULLABLE BECAUSE THE HEADER DRAWS BEFORE THE PAYLOAD DOES. The session's pending and failed states are
+ * inside the mode, not on the screen, so they take this header rather than the screen's serif band: a mode may not claim
+ * a destination's type even for the second the payload is in flight. With no week read yet there is no range to state,
+ * and `null` says so rather than an empty string that would leave a stray separator.
+ *
  * NOTHING SCHEDULES THE SESSION AND NOTHING NAGS. The eyebrow says so in words, because a surface that is only ever
  * reached deliberately has no other way to tell a reader that it will not come looking for them. */
 
@@ -17,7 +22,8 @@ import { weekPath } from "../mode";
 
 export interface SessionHeaderProps {
   readonly isoWeek: string;
-  readonly range: string;
+  /** The week's own dates, or null before the week has been read. */
+  readonly range: string | null;
 }
 
 export function SessionHeader({ isoWeek, range }: SessionHeaderProps) {
@@ -26,7 +32,9 @@ export function SessionHeader({ isoWeek, range }: SessionHeaderProps) {
     <div className="flex flex-wrap items-center gap-3.25 border-b border-rule-strong bg-paper-raised px-3.75 py-2">
       <b className="text-label tracking-label uppercase text-ink-deep">Weekly session</b>
       <span className="text-eyebrow text-text-muted">
-        Planning {isoWeek} &middot; {range} &middot; whenever you ask, and syncr never asks for you
+        Planning {isoWeek}
+        {range === null ? "" : ` \u00b7 ${range}`} &middot; whenever you ask, and syncr never asks
+        for you
       </span>
       <Link className="ml-auto text-sm underline" to={weekPath(isoWeek)}>
         Leave the session

@@ -17,11 +17,12 @@ Every module in this package appears in the table below.
 | ``figures.py`` | one week's four figures, stated once for its three consumers |
 | ``proposals.py`` | which weeks are evidence, and the revision they propose |
 | ``readings.py`` | the pie review, assembled |
-| ``skips.py`` | the run of weeks in which one item was proposed and then skipped |
-| ``collisions.py`` | one commitment meeting one block, week after week |
-| ``raised.py`` | the raised items the session opens with, and the sentence each states |
+| ``naming.py`` | the words every raise shares: what to call a thing, how to state a count |
+| ``skips.py`` | the run of weeks in which one item was proposed and skipped, and its raise |
+| ``collisions.py`` | one commitment meeting one block week after week, and its raise |
+| ``raised.py`` | the raised item, and the five kinds the week view alone gives |
 | ``session_sources.py`` | the six reads the session takes beyond the week view |
-| ``session.py`` | the session's reading, assembled |
+| ``session.py`` | the session's reading, and the composers that build it |
 | ``statements.py`` | what a review says in words |
 | ``declarations.py`` | the shares one apply asked to declare |
 | ``rules.py`` | how an apply is refused |

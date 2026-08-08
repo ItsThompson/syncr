@@ -41,8 +41,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_api.reviews.naming import (
+    a_kind,
+    content_key_text,
+    most_recently,
+    weeks_stated,
+)
+from syncr_api.reviews.raised import RaisedItem, RaisedKind
+
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Mapping, Sequence
     from uuid import UUID
 
     from syncr_api.plans.records import ConflictRecord
@@ -52,6 +60,9 @@ if TYPE_CHECKING:
     # The pair a repetition is grouped by: the commitment's series, and the block's content with its
     # week-scoped occurrence dropped.
     type CollisionKey = tuple[str, BindingKind, UUID, int | None]
+
+    # What `BindingRef.content_key` answers, which is what a block title is looked up by.
+    type ContentKey = tuple[BindingKind, UUID, int | None]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -105,3 +116,62 @@ def repeated_collisions(
             RepeatedCollision(commitment=commitment, binding=binding, weeks=tuple(sorted(weeks)))
         )
     return sorted(found, key=lambda one: (-one.week_count, one.commitment or ""))
+
+
+def repeated_collision_items(
+    collisions: Iterable[RepeatedCollision], *, titles: Mapping[ContentKey, str]
+) -> list[RaisedItem]:
+    """One item per pair that keeps meeting, in the form ``US-REV-05`` writes out.
+
+    The story's own example is ``repeated collision: Standup over Leetcode, 4 weeks``, so the item
+    names BOTH ends and the count: ``Standup over Leetcode`` as the title, and the two names again
+    in the sentence that carries the count and the week it last happened in.
+
+    **The block's name comes from a block, because nothing else holds one.** A conflict row stores
+    the binding it collided with and no title, so ``titles`` is the window's own blocks keyed by
+    content: see :func:`syncr_api.reviews.raised.block_titles`. A pair whose block no week of the
+    window holds falls back to the binding's own word, which is the one fallback every surface of
+    this payload takes.
+
+    **A pair that can name NEITHER end is not raised at all.** One name is a raise the reader can
+    act on: the block alone says which part of their own week keeps being interrupted, and the
+    commitment alone says what keeps interrupting. Neither says only that something collided with
+    something, which is not a pattern anybody can look into, and this raise suggests no action to
+    make up the difference. That state is reachable rather than hypothetical: a conflict whose
+    anchor had already gone when the solve committed carries no commitment, and a block no week of
+    the window holds has no title.
+    """
+    items = []
+    for collision in collisions:
+        named = titles.get(collision.binding.content_key)
+        if named is None and collision.commitment is None:
+            continue
+        block = a_kind(collision.binding.kind) if named is None else named
+        items.append(
+            RaisedItem(
+                key=f"{RaisedKind.REPEATED_COLLISION}:{content_key_text(collision.binding)}",
+                kind=RaisedKind.REPEATED_COLLISION,
+                title=_titled(collision, block=block),
+                statement=_collision_statement(collision, block=block),
+            )
+        )
+    return items
+
+
+def _titled(collision: RepeatedCollision, *, block: str) -> str:
+    """The pair, or the one end that is nameable."""
+    if collision.commitment is None:
+        return block
+    return f"{collision.commitment} over {block}"
+
+
+def _collision_statement(collision: RepeatedCollision, *, block: str) -> str:
+    """What the pair has done, naming both ends, the count of weeks, and when it last happened."""
+    weeks = weeks_stated(collision.week_count)
+    unnamed = f"An imported commitment has landed on {block} in {weeks}."
+    named = f"{collision.commitment} has landed on {block} in {weeks}."
+    return (
+        f"{unnamed if collision.commitment is None else named}"
+        f"{most_recently(collision.weeks)} Stated rather than acted on: the fix could be a "
+        "template change, an anchor type, or nothing."
+    )

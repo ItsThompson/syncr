@@ -9,15 +9,17 @@
  * nothing has been pinned three weeks running would spend a notice pigment on the absence of a notice, and the raised
  * panel beside it already states the quiet case.
  *
+ * EVERY WORD AND EVERY FIGURE HERE IS THE API'S. The binding's name arrives resolved, including the fallback for content
+ * the window can no longer name, because a repeated collision needs the same answer and two clients spelling one absence
+ * two ways is the defect the api owns these words to prevent. This file composes only what the wire cannot: the weekday,
+ * which is a label for an ISO number.
+ *
  * IT IS RAISED, NEVER APPLIED. `US-TPL-05` says nothing reaches the template without the reader accepting, and the
  * closing line says so in the api's own words.
  *
  * NO ACCEPT AND NO DECLINE HERE. Both are routes of their own and belong to the Learned screen's ticket, which also
  * owns the interval a decline suppresses a candidate for. Rendering a control this build cannot honour would be worse
- * than rendering the question: a reader who pressed it would be told nothing happened.
- *
- * THE NUMBERS ARE THE CANDIDATE'S OWN. The count of weeks comes from the run the detection found rather than from the
- * threshold it passed, so a five-week pattern says five. */
+ * than rendering the question: a reader who pressed it would be told nothing happened. */
 
 import { Table, type TableColumn } from "../../../../ui/domain";
 import { noticeRole, noticeSurface } from "../../../../ui/domain/notices/surface";
@@ -30,11 +32,9 @@ export interface PromotionPanelProps {
   readonly candidates: readonly PromotionCandidate[];
   /** The api's own sentence that nothing is applied without acceptance. */
   readonly statement: string;
-  /** Each content's name by the id the candidate carries, so a row names the thing rather than a digest. */
-  readonly titles: ReadonlyMap<string, string>;
 }
 
-export function PromotionPanel({ candidates, statement, titles }: PromotionPanelProps) {
+export function PromotionPanel({ candidates, statement }: PromotionPanelProps) {
   if (candidates.length === 0) return null;
 
   return (
@@ -51,7 +51,7 @@ export function PromotionPanel({ candidates, statement, titles }: PromotionPanel
           rowKey={(row) => row.id}
           rows={candidates.map((candidate) => ({
             id: `${candidate.entityId}:${candidate.localTime}:${String(candidate.weekday)}`,
-            binding: titles.get(candidate.entityId) ?? candidate.kind,
+            binding: candidate.title,
             time: `${weekdayOf(candidate.weekday)} ${candidate.localTime}`,
             weeks: `${String(candidate.consecutiveWeeks)} weeks`,
           }))}
