@@ -34,6 +34,11 @@ before and after. **The guard bites rather than being armed**: the week read com
 and the assertion that it did is beside the count, because zero rows written by a path that computed
 nothing is not evidence of anything.
 
+The census's own claim is stated over the PARAMETER each such read takes rather than over the prefix
+it sits under, because the weekly-session payload is a review rather than a week route: the earlier
+form refused a path the guard could drive perfectly well, which is a bound naming more than the set
+it can see.
+
 **The limit of the first three guards, stated because ticket 41 shipped one like it.** They read
 NAMES: the surface a call site binds, the method a package calls, the field a response declares. A
 recorder composed through a second indirection, a probe reached through an alias, or a read that
@@ -44,6 +49,7 @@ ordinary way this goes wrong, which is a new caller written in the shape of the 
 from __future__ import annotations
 
 import ast
+import re
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, get_type_hints
 from uuid import uuid4
@@ -77,6 +83,7 @@ from syncr_api.plans.facts import VerdictEvent
 from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
+from syncr_api.reviews.config import REVIEWS_PREFIX, SESSION_PATH
 from syncr_api.worker.main import WorkerContext
 from tests.boundaries import METHODS_WITHOUT_A_BODY, RouteView, api_routes, read_paths
 from tests.live_horizons import LATE_IN_THE_WEEK, THIS_WEEK, Ticking, declare_the_minimum
@@ -122,6 +129,10 @@ PROBE_METHODS = {"verdict_for", "offered_verdict_for"}
 # The field a response shape declares when it carries a verdict to a client. The census below is
 # stated over it, so a read added later comes under VE6 without this file naming its path.
 VERDICT_FIELD = "verdict"
+
+# The one path parameter a verdict-bearing read may take, which is the value the guard substitutes.
+# Ticket 1363 settled the spelling across the week routes and the weekly session takes the same one.
+ISO_WEEK_PARAMETER = "iso_week"
 
 
 # --------------------------------------------------------------------------------
@@ -321,15 +332,20 @@ def test_the_only_package_exempt_from_recording_is_the_one_that_answers_a_verdic
     """Named so widening the exemption above is a diff a reviewer reads.
 
     Both halves are asserted, because an exemption that covered nothing and an exemption that
-    covered everything would both leave the guard above green: the set is exactly the plan package,
-    and the plan package really is a probe caller that records nothing.
-    """
-    exempt = verdict_reading_packages(settings)
+    covered everything would both leave the guard above green: the set that does any work is exactly
+    the plan package, and the plan package really is a probe caller that records nothing.
 
-    assert exempt == {"plans"}
-    assert exempt <= probing_packages(source_root), (
-        "the exempt package does not compute a verdict at all, so the exemption guards nothing"
-    )
+    **Two packages answer a verdict-bearing read and only one of them is exempted**, which is not an
+    inconsistency: ``reviews`` answers the weekly session's payload and calls the probe NOWHERE. It
+    reaches the plan package's own composed read, which is what makes the verdict on the session and
+    the verdict on the Week screen one computation rather than two that agree today. A package that
+    computes nothing needs no exemption from recording what it computed.
+    """
+    answering = verdict_reading_packages(settings)
+    exempt = answering & probing_packages(source_root)
+
+    assert answering == {"plans", "reviews"}
+    assert exempt == {"plans"}, "another probe caller now answers a read and was exempted silently"
 
 
 def test_the_probe_is_not_counted_as_a_caller_of_itself(source_root: Path) -> None:
@@ -379,37 +395,49 @@ def verdict_bearing_reads(settings: ServiceSettings) -> list[str]:
     return sorted(paths)
 
 
-def test_the_reads_that_carry_a_verdict_are_the_three_that_exist(
+def test_the_reads_that_carry_a_verdict_are_the_four_that_exist(
     settings: ServiceSettings,
 ) -> None:
-    """Named here so the arrival of a fourth is a diff, and so the census below is not empty.
+    """Named here so the arrival of a fifth is a diff, and so the census below is not empty.
 
     ``VE6`` names three surfaces: the week view, the verdict refresh, and the weekly-session
-    payload. The third is ticket 51's and does not exist yet. The proposal read is a fourth ROUTE
-    under the same rule and not a fourth surface: it answers the verdict the solve that filled the
-    slot produced, which is a stored value rather than a computation, and it must still write
-    nothing.
+    payload. The proposal read is a fourth ROUTE under the same rule and not a fourth surface: it
+    answers the verdict the solve that filled the slot produced, which is a stored value rather than
+    a computation, and it must still write nothing.
     """
     assert verdict_bearing_reads(settings) == [
+        f"{REVIEWS_PREFIX}{SESSION_PATH}",
         f"{WEEKS_PREFIX}/{{iso_week}}",
         f"{WEEKS_PREFIX}/{{iso_week}}/proposal",
         f"{WEEKS_PREFIX}/{{iso_week}}/verdict",
     ]
 
 
-def test_every_verdict_bearing_read_is_covered_by_the_week_prefix_guard(
+def test_every_verdict_bearing_read_is_driven_by_a_week_the_guard_can_supply(
     settings: ServiceSettings,
 ) -> None:
-    """The census: each such read is a parameterized week read, which is the set the guard drives.
+    """The census: each such read is a parameterized read addressed by a week and nothing else.
 
-    A verdict-bearing read outside the week prefix would need a value invented for its own parameter
+    That is the set the guard below drives, because driving one substitutes a week identifier into
+    its path. A verdict-bearing read taking any other parameter would need a value invented for it
     and would not be driven by anything, so it fails here rather than being inherited unguarded.
+
+    **Stated over the parameter rather than over a prefix**, and the difference is the
+    weekly-session payload: it is a review rather than a week route, so it sits under ``/reviews``
+    and the earlier form of this claim would have refused it while the guard could drive it
+    perfectly well. A bound that names more than the set it can see is worse than a stated gap,
+    because a reader who trusts the sentence stops looking.
     """
     driven = set(read_paths(create_app(settings), parameterized=True))
 
     for path in verdict_bearing_reads(settings):
         assert path in driven, path
-        assert path.startswith(WEEKS_PREFIX), path
+        assert _parameters_of(path) == {ISO_WEEK_PARAMETER}, path
+
+
+def _parameters_of(path: str) -> set[str]:
+    """Every path parameter this route declares, by the name the route template spells."""
+    return set(re.findall(r"\{([^}]+)\}", path))
 
 
 # --------------------------------------------------------------------------------

@@ -1,12 +1,12 @@
-"""The two pie-review routes.
+"""The three review routes: the pie review's two, and the weekly session's payload.
 
 Thin, on purpose. Each validates the request shape, resolves who is asking, calls one service
-method, and maps the result. The period's own shape is validated in the service, by the domain
-parser that owns the identifier, so no pattern is declared here that could drift from it.
+method, and maps the result. A week's own shape is validated in the service, by the domain parser
+that owns the identifier, so no pattern is declared here that could drift from it.
 
-**The read writes nothing.** No row, no input version bump, and no verdict: reading a review is a
-read. The apply is the one write, and it is what US-REV-03's "syncr never re-cuts the budget on its
-own" means in code: nothing moves a share except a request the user made.
+**Both reads write nothing.** No row, no input version bump, and no verdict event: reading a review
+is a read. The apply is the one write, and it is what US-REV-03's "syncr never re-cuts the budget on
+its own" means in code: nothing moves a share except a request the user made.
 """
 
 from __future__ import annotations
@@ -17,9 +17,17 @@ from fastapi import APIRouter, Query
 
 from syncr_api.accounts.injection import PrincipalDep
 from syncr_api.budgets.schemas import PeriodSpan
-from syncr_api.reviews.config import APPLY_PATH, BUDGET_PATH, PERIOD_EXAMPLE, PERIOD_PARAMETER
+from syncr_api.concessions.schemas import AdjustmentResponse
+from syncr_api.plans.verdict_schemas import VerdictResponse
+from syncr_api.reviews.config import (
+    APPLY_PATH,
+    BUDGET_PATH,
+    PERIOD_EXAMPLE,
+    PERIOD_PARAMETER,
+    SESSION_PATH,
+)
 from syncr_api.reviews.declarations import shares_asked_for
-from syncr_api.reviews.injection import BudgetReviewServiceDep
+from syncr_api.reviews.injection import BudgetReviewServiceDep, WeeklySessionServiceDep
 from syncr_api.reviews.schemas import (
     BudgetApplyRequest,
     BudgetApplyResponse,
@@ -30,10 +38,19 @@ from syncr_api.reviews.schemas import (
     ReviewDayCounts,
     TrendWeekResponse,
 )
+from syncr_api.reviews.session_schemas import (
+    PromotionCandidateResponse,
+    RaisedItemResponse,
+    SessionRetroResponse,
+    WeeklySessionResponse,
+)
 from syncr_api.reviews.statements import (
+    NOTHING_IS_APPLIED_WITHOUT_ACCEPTANCE,
+    SESSION_PLANS_AN_EMPTY_WEEK,
     basis_statement,
     confirmed_day_statement,
     denominator_statement,
+    period_statement,
     proposal_statement,
     quarter_statement,
 )
@@ -41,8 +58,11 @@ from syncr_api.reviews.statements import (
 if TYPE_CHECKING:
     from syncr_api.reviews.coverage import DayCounts
     from syncr_api.reviews.proposals import ProposalReading
+    from syncr_api.reviews.raised import RaisedItem
     from syncr_api.reviews.readings import BudgetReviewReading, CategoryReading, TrendWeek
     from syncr_api.reviews.service import AppliedRevision
+    from syncr_api.reviews.session import SessionRetro, WeeklySessionReading
+    from syncr_domain.promotion import PromotionCandidate
 
 router = APIRouter()
 
@@ -69,6 +89,67 @@ async def apply_budget_review(
     """Declare the shares the caller sent. The proposal's own figures, or its own edits of them."""
     asked = shares_asked_for([(row.area_id, row.budget_percent) for row in body.percentages])
     return _as_applied(await service.apply(principal, asked), asked_for=len(asked.by_area))
+
+
+@router.get(SESSION_PATH, summary="The weekly session's payload. Writes nothing")
+async def read_weekly_session(
+    iso_week: str, principal: PrincipalDep, service: WeeklySessionServiceDep
+) -> WeeklySessionResponse:
+    """One weekly session: last week's retrospective, next week's raises, and the verdict."""
+    return _as_session(await service.read(principal, iso_week))
+
+
+def _as_session(reading: WeeklySessionReading) -> WeeklySessionResponse:
+    return WeeklySessionResponse(
+        iso_week=str(reading.iso_week),
+        span=PeriodSpan(start=reading.span.start, end=reading.span.end),
+        input_version=reading.input_version,
+        retro=_as_retro(reading.retro),
+        raised=[_as_raised(one) for one in reading.raised],
+        verdict=None if reading.verdict is None else VerdictResponse.of(reading.verdict),
+        concessions=[AdjustmentResponse.of(one) for one in reading.concessions],
+        promotions=[_as_promotion(one) for one in reading.promotions],
+        promotion_statement=NOTHING_IS_APPLIED_WITHOUT_ACCEPTANCE,
+        statement=None if reading.verdict is not None else SESSION_PLANS_AN_EMPTY_WEEK,
+    )
+
+
+def _as_retro(retro: SessionRetro) -> SessionRetroResponse:
+    return SessionRetroResponse(
+        period=str(retro.iso_week),
+        span=PeriodSpan(start=retro.span.start, end=retro.span.end),
+        discretionary_minutes=retro.discretionary_minutes,
+        days=_as_days(retro.days, statement=confirmed_day_statement(retro.days.confirmed)),
+        off_plan_minutes=retro.off_plan.minutes,
+        off_plan_statement=retro.off_plan.statement,
+        statement=period_statement(
+            confirmed=retro.days.confirmed,
+            unconfirmed=retro.days.unconfirmed,
+            off_plan=retro.days.off_plan,
+        ),
+        categories=[_as_category(one) for one in retro.categories],
+    )
+
+
+def _as_raised(item: RaisedItem) -> RaisedItemResponse:
+    return RaisedItemResponse(
+        key=item.key,
+        kind=item.kind,
+        title=item.title,
+        statement=item.statement,
+        weeks=item.weeks,
+    )
+
+
+def _as_promotion(candidate: PromotionCandidate) -> PromotionCandidateResponse:
+    return PromotionCandidateResponse(
+        entity_id=candidate.entity_id,
+        kind=candidate.kind.value,
+        weekday=candidate.weekday,
+        local_time=candidate.local_time,
+        consecutive_weeks=candidate.consecutive_weeks,
+        weeks=[str(one) for one in candidate.weeks],
+    )
 
 
 def _as_review(reading: BudgetReviewReading) -> BudgetReviewResponse:

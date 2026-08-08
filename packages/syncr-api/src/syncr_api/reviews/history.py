@@ -60,6 +60,12 @@ class ReviewedWeek:
     ``discretionary_minutes`` is the plan of record's own figure, or ``None`` when the week holds no
     plan. ``covered`` maps an Area to the intervals its blocks really occupied on the confirmed days
     of this week, off-plan spans already removed.
+
+    ``outcomes`` is the log's own rows for this week's blocks, keyed by block id. The pie review
+    does not read it: ``covered`` is the aggregate that review wants. The weekly session does,
+    because a chronic skip is a run of weeks in which one item was PROPOSED and SKIPPED, which is a
+    per-block state rather than an Area total, and both readings have to come from one read of the
+    log or the two could disagree about which day was answered for.
     """
 
     iso_week: IsoWeek
@@ -68,6 +74,7 @@ class ReviewedWeek:
     days: tuple[ReviewedDay, ...]
     off_plan: IntervalSet
     covered: Mapping[AreaId, IntervalSet]
+    outcomes: Mapping[str, BlockOutcomeRecord]
 
     @property
     def counts(self) -> DayCounts:
@@ -147,7 +154,24 @@ class ReviewHistoryReader:
             days=days,
             off_plan=inside,
             covered=confirmed_coverage(days, outcomes=recorded, within=span, off_plan=inside),
+            outcomes=_outcomes_of(days, recorded=recorded),
         )
+
+
+def _outcomes_of(
+    days: Sequence[ReviewedDay], *, recorded: Mapping[str, BlockOutcomeRecord]
+) -> Mapping[str, BlockOutcomeRecord]:
+    """The log's rows for the blocks THIS week planned, out of the whole period's read.
+
+    Narrowed to the week's own blocks rather than handed the whole period, so a per-week rule
+    stated over it cannot reach another week's row by iterating the mapping.
+    """
+    return {
+        block_id: row
+        for day in days
+        for block in day.blocks
+        if (row := recorded.get(block_id := str(block.id))) is not None
+    }
 
 
 def _days_of(

@@ -1,8 +1,7 @@
 """Composition for the review module: the one factory the app factory calls.
 
 The tag, the origin check, and the statuses these routes answer are attached here rather than
-repeated per route, so a route added to ``api.py`` inherits them. The weekly session's own payload
-joins this router at ``/reviews/week/{isoWeek}`` and is ticket 51's.
+repeated per route, so a route added to ``api.py`` inherits them.
 """
 
 from __future__ import annotations
@@ -23,10 +22,11 @@ if TYPE_CHECKING:
 REVIEWS_TAG = "reviews"
 
 # The statuses these routes raise beyond the set every route answers. There is no 404: a period with
-# no Areas and no plan is an empty review rather than an absent one, and a body naming an Area this
-# tenant does not hold is a 422, because the identifier is in the body and the resource addressed is
-# the review. There is no 409 either: applying a revision replaces shares wholly, so a second
-# identical apply changes nothing rather than conflicting with the first.
+# no Areas and no plan is an empty review rather than an absent one, and a week the horizon has not
+# reached is a session whose planned week holds no verdict rather than a missing resource. A body
+# naming an Area this tenant does not hold is a 422, because the identifier is in the body and the
+# resource addressed is the review. There is no 409 either: applying a revision replaces shares
+# wholly, so a second identical apply changes nothing rather than conflicting with the first.
 _REVIEW_RESPONSES: Mapping[int | str, dict[str, Any]] = {
     Unauthorized.status: {"model": Problem, "description": Unauthorized.title},
     Forbidden.status: {"model": Problem, "description": Forbidden.title},
@@ -34,7 +34,7 @@ _REVIEW_RESPONSES: Mapping[int | str, dict[str, Any]] = {
 
 
 def build_reviews_router() -> APIRouter:
-    """The `/api/v1/reviews/budget` read and the `/api/v1/reviews/budget/apply` write."""
+    """The pie review's read and apply, and the weekly session's payload."""
     router = APIRouter(
         tags=[REVIEWS_TAG],
         dependencies=[Depends(require_trusted_origin)],

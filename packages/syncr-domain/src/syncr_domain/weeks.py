@@ -31,7 +31,7 @@ from syncr_domain.intervals import Interval
 from syncr_domain.zones import active_zone, to_instant
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
     from syncr_domain.zones import Date, ZoneId, ZoneProfile
 
@@ -122,6 +122,34 @@ class IsoWeek:
 
     def __str__(self) -> str:
         return f"{self.year}-W{self.week:02d}"
+
+
+def longest_consecutive_run(weeks: Iterable[IsoWeek]) -> tuple[IsoWeek, ...]:
+    """The longest run of consecutive ISO weeks in ``weeks``, earliest run winning a tie.
+
+    Two raises in this product are counts of consecutive weeks: a repeated pin becomes a template
+    promotion, and an item skipped week after week is escalated. Both ask this question and neither
+    may answer it differently, because a user reading "four consecutive weeks" on one surface and
+    "three" on another has no way to tell which is right. A repeated collision is deliberately NOT
+    one of them: its story says "three or more weeks", so it counts distinct weeks instead.
+
+    Consecutive is checked against the week's own successor rather than by counting distinct weeks.
+    Weeks 7, 9 and 11 are a repeated behaviour rather than a run, and counting three of them would
+    report a pattern from three unrelated weeks. Resolving through :meth:`IsoWeek.following` is also
+    what makes a run across a year boundary a run: ``2026-W53`` is followed by ``2027-W01``, so
+    neither the week number nor the ISO year alone decides the answer.
+
+    Duplicates collapse, so a week contributing twice is one week of evidence.
+    """
+    longest: tuple[IsoWeek, ...] = ()
+    current: list[IsoWeek] = []
+    for week in sorted(set(weeks)):
+        if current and current[-1].following() != week:
+            current = []
+        current.append(week)
+        if len(current) > len(longest):
+            longest = tuple(current)
+    return longest
 
 
 def week_span(iso_week: IsoWeek, profile: ZoneProfile) -> Interval:

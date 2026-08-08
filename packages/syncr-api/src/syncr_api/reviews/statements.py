@@ -30,6 +30,16 @@ NO_CONFIRMED_DAY_IN_THE_QUARTER: Final = (
     "propose. Confirming a day is what turns a plan into a record."
 )
 
+SESSION_PLANS_AN_EMPTY_WEEK: Final = (
+    "The week you are planning holds no plan yet, so it has no verdict and nothing is due in it. "
+    "Solve the week, and the raises about it appear beside the retrospective below."
+)
+
+NOTHING_IS_APPLIED_WITHOUT_ACCEPTANCE: Final = (
+    "syncr noticed these patterns and has changed nothing. A promotion edits your template only "
+    "when you accept it, and declining one does not raise it again for a while."
+)
+
 _BASIS_STATEMENTS: Final[dict[ProposalBasis, str]] = {
     ProposalBasis.FLOOR_HOLDS_IT: (
         "Unchanged: this Area declares a floor, and the floor is what holds its time rather than "
@@ -62,6 +72,34 @@ def quarter_statement(confirmed_days: int) -> str | None:
 def denominator_statement(discretionary_minutes: int | None) -> str | None:
     """Why every figure of this week is absent, or ``None`` when the week was planned."""
     return None if discretionary_minutes is not None else NO_PLAN_OF_RECORD
+
+
+def period_statement(*, confirmed: int, unconfirmed: int, off_plan: int) -> str:
+    """How much of the reviewed period the retrospective rests on. Always a sentence.
+
+    ``US-REV-04``: every review states the number of confirmed and unconfirmed days in its period,
+    and reports off-plan days SEPARATELY from unconfirmed ones. Always present, because "most of
+    this week was answered for" and "almost none of it was" are two readings the figures beside them
+    do not distinguish, and a caller that had to infer which it was reading would be inferring it.
+
+    A period with no confirmed day says so rather than leaving a chart to render nothing, which is
+    the third clause of the same story.
+    """
+    off_plan_clause = f", and {off_plan} declared off-plan" if off_plan else ""
+    if confirmed == 0:
+        return (
+            f"No day of this period was answered for: {unconfirmed} hold blocks nobody has "
+            f"confirmed{off_plan_clause}. Nothing below is measured behaviour, so there is nothing "
+            "to chart until a day is confirmed on Today."
+        )
+    return (
+        f"{confirmed} confirmed {_days(confirmed)} and {unconfirmed} unconfirmed"
+        f"{off_plan_clause}. Only the confirmed days contribute to the figures below."
+    )
+
+
+def _days(count: int) -> str:
+    return "day" if count == 1 else "days"
 
 
 def proposal_statement(*, confirmed_weeks: int, required_weeks: int) -> str:

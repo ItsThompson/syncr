@@ -68,6 +68,7 @@ table below**, which a test asserts against the directory:
 | ``shadow_collisions.py`` | which block survives when two commitments cast over each other |
 | ``reach.py`` | how far a declaration casts, and the span a week's assembly must read |
 | ``repository.py`` | scoped persistence for anchors, and the only writer of a fact |
+| ``commitments.py`` | the series and the name a retained conflict records about a commitment |
 | ``type_repository.py`` | scoped persistence for types, and rule order's lock |
 | ``reconcile.py`` | one feed's events into the anchors a tenant holds |
 | ``evaluation.py`` | re-applying the rules after the rule set changes |

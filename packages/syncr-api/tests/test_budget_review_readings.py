@@ -153,6 +153,7 @@ def a_week(
         days=tuple(days),
         off_plan=inside,
         covered=confirmed_coverage(days, outcomes=outcomes or {}, within=span, off_plan=inside),
+        outcomes=outcomes or {},
     )
 
 

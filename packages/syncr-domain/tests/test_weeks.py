@@ -13,6 +13,7 @@ from syncr_domain.weeks import (
     Weekday,
     active_zone_by_date,
     local_days,
+    longest_consecutive_run,
     week_span,
 )
 from syncr_domain.zones import TravelOverride, ZoneProfile
@@ -396,3 +397,63 @@ class TestTheLocalDaysOfAWeek:
         # span's own statement and not this function's to correct.
         assert days[-1].interval.end == span.end
         assert sum(day.interval.total_minutes() for day in days) == span.total_minutes()
+
+
+class TestTheLongestConsecutiveRun:
+    """The one statement of "n consecutive weeks", which two raises are counted with.
+
+    A repeated pin becomes a template promotion and an item skipped week after week is escalated.
+    Both count a run, so both read this, and a second implementation is how one surface comes to say
+    four weeks while the other says three about the same behaviour.
+    """
+
+    def test_an_unbroken_run_is_its_whole_length(self) -> None:
+        weeks = [IsoWeek(2026, number) for number in (7, 8, 9, 10)]
+
+        assert longest_consecutive_run(weeks) == tuple(weeks)
+
+    def test_a_gap_starts_a_new_run(self) -> None:
+        weeks = [IsoWeek(2026, number) for number in (2, 7, 8, 9, 10, 20)]
+
+        assert longest_consecutive_run(weeks) == tuple(
+            IsoWeek(2026, number) for number in (7, 8, 9, 10)
+        )
+
+    def test_weeks_with_a_gap_between_each_are_a_run_of_one(self) -> None:
+        # Weeks 7, 9 and 11 are a repeated behaviour rather than a run, and counting three of them
+        # would report a pattern from three unrelated weeks.
+        weeks = [IsoWeek(2026, number) for number in (7, 9, 11)]
+
+        assert longest_consecutive_run(weeks) == (IsoWeek(2026, 7),)
+
+    def test_the_earliest_run_wins_a_tie(self) -> None:
+        weeks = [IsoWeek(2026, number) for number in (2, 3, 20, 21)]
+
+        assert longest_consecutive_run(weeks) == (IsoWeek(2026, 2), IsoWeek(2026, 3))
+
+    def test_a_run_across_a_year_boundary_is_a_run(self) -> None:
+        # 2026 holds 53 weeks, so 2026-W53 is followed by 2027-W01 and neither the week number nor
+        # the ISO year alone decides the answer.
+        weeks = [IsoWeek(2026, 52), IsoWeek(2026, 53), IsoWeek(2027, 1)]
+
+        assert longest_consecutive_run(weeks) == tuple(weeks)
+
+    def test_a_year_with_52_weeks_still_runs_into_the_next(self) -> None:
+        weeks = [IsoWeek(2025, 51), IsoWeek(2025, 52), IsoWeek(2026, 1)]
+
+        assert longest_consecutive_run(weeks) == tuple(weeks)
+
+    def test_a_week_contributing_twice_is_one_week_of_evidence(self) -> None:
+        weeks = [IsoWeek(2026, 7), IsoWeek(2026, 7), IsoWeek(2026, 8)]
+
+        assert longest_consecutive_run(weeks) == (IsoWeek(2026, 7), IsoWeek(2026, 8))
+
+    def test_the_order_the_caller_read_them_in_does_not_matter(self) -> None:
+        assert longest_consecutive_run([IsoWeek(2026, 9), IsoWeek(2026, 7), IsoWeek(2026, 8)]) == (
+            IsoWeek(2026, 7),
+            IsoWeek(2026, 8),
+            IsoWeek(2026, 9),
+        )
+
+    def test_nothing_is_a_run_of_nothing(self) -> None:
+        assert longest_consecutive_run([]) == ()

@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Final
 
 from syncr_domain.budgets import MINUTES_PER_HOUR
 from syncr_domain.errors import DomainError
+from syncr_domain.weeks import longest_consecutive_run
 from syncr_domain.zones import resolve_zone
 
 if TYPE_CHECKING:
@@ -126,7 +127,7 @@ def detect_repeated_pins(
             weeks=run,
         )
         for (kind, entity_id, weekday, minute_of_day), weeks in grouped.items()
-        if (run := _longest_run(weeks)) and len(run) >= consecutive_weeks
+        if (run := longest_consecutive_run(weeks)) and len(run) >= consecutive_weeks
     ]
     return sorted(candidates, key=lambda one: (-one.consecutive_weeks, one.local_time))
 
@@ -144,16 +145,3 @@ def _group_of(pin: PinPlacement) -> tuple[BindingKind, UUID, int, int]:
         local.isoweekday(),
         local.hour * MINUTES_PER_HOUR + local.minute,
     )
-
-
-def _longest_run(weeks: set[IsoWeek]) -> tuple[IsoWeek, ...]:
-    """The longest run of consecutive ISO weeks in this group, earliest run winning a tie."""
-    longest: tuple[IsoWeek, ...] = ()
-    current: list[IsoWeek] = []
-    for week in sorted(weeks):
-        if current and current[-1].following() != week:
-            current = []
-        current.append(week)
-        if len(current) > len(longest):
-            longest = tuple(current)
-    return longest

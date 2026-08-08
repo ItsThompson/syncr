@@ -5189,6 +5189,55 @@
         "title": "ProjectsResponse",
         "type": "object"
       },
+      "PromotionCandidateResponse": {
+        "description": "One repeated pin the session offers to promote into the template.\n\n``US-TPL-05``: pinning the same binding to the same time for three consecutive weeks raises a\nproposal naming the binding, the time, and the number of weeks. Accepting or declining is a\nroute of its own, so this shape carries no action and no state: it is the question.",
+        "properties": {
+          "consecutiveWeeks": {
+            "description": "How many consecutive weeks the pattern runs for, from the data rather than from the threshold it passed.",
+            "title": "Consecutiveweeks",
+            "type": "integer"
+          },
+          "entityId": {
+            "description": "The content that keeps being pinned. Which occurrence of it was pinned is dropped: the occurrence key is scoped to one week, so a pattern across weeks cannot hold one.",
+            "format": "uuid",
+            "title": "Entityid",
+            "type": "string"
+          },
+          "kind": {
+            "description": "What sort of thing that content is: a habit, a task, a routine.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "localTime": {
+            "description": "The wall time it keeps being pinned to, as a template entry would declare it, in the home zone. A template entry holds a wall time, so no other zone could be offered.",
+            "title": "Localtime",
+            "type": "string"
+          },
+          "weekday": {
+            "description": "The ISO weekday the pin keeps landing on, Monday being 1.",
+            "title": "Weekday",
+            "type": "integer"
+          },
+          "weeks": {
+            "description": "Every ISO week of the run, oldest first, so the count can be checked.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Weeks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entityId",
+          "kind",
+          "weekday",
+          "localTime",
+          "consecutiveWeeks",
+          "weeks"
+        ],
+        "title": "PromotionCandidateResponse",
+        "type": "object"
+      },
       "ProposalBasis": {
         "description": "Why one category's proposal is what it is.\n\nA closed vocabulary rather than free prose, so a caller may group rows by reason and a\nrenderer's sentence for each is one table rather than a formatting decision per row.",
         "enum": [
@@ -5293,6 +5342,65 @@
           "solver"
         ],
         "title": "Provenance",
+        "type": "string"
+      },
+      "RaisedItemResponse": {
+        "description": "One thing the session raises, at amber panel volume and in session mode only.\n\nEvery category is one shape with a ``kind`` rather than one shape per category, because they\nrender as rows of one panel: section 16's notice-volume table gives the whole set one volume and\none pigment.",
+        "properties": {
+          "key": {
+            "description": "Stable for one raised thing across two reads, so a client keys a list on it. Not an identifier: an item is a reading rather than a row, and nothing addresses one.",
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RaisedKind",
+            "description": "What this item is about."
+          },
+          "statement": {
+            "description": "What to make of it, in the words an interface renders. Composed here so the CLI and the screen cannot say two different things about one item.",
+            "title": "Statement",
+            "type": "string"
+          },
+          "title": {
+            "description": "The thing itself, in the words the user knows it by.",
+            "title": "Title",
+            "type": "string"
+          },
+          "weeks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many weeks the pattern covers, for the kinds that count weeks. Null rather than zero on the others, because zero would read as one.",
+            "title": "Weeks"
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "title",
+          "statement"
+        ],
+        "title": "RaisedItemResponse",
+        "type": "object"
+      },
+      "RaisedKind": {
+        "description": "What a raised item is about. One member per row of section 16's `raised` list.",
+        "enum": [
+          "chronic_skip",
+          "habit_at_debt_cap",
+          "repeated_collision",
+          "overdue_task",
+          "at_risk_task",
+          "floor_at_risk",
+          "new_anchor",
+          "cadence_due"
+        ],
+        "title": "RaisedKind",
         "type": "string"
       },
       "RampReading": {
@@ -5920,6 +6028,76 @@
           "expiresAt"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "SessionRetroResponse": {
+        "description": "Last week: what each Area was allotted, what it held, and how much was answered for.",
+        "properties": {
+          "categories": {
+            "description": "One row per declared Area, then the vacancy: actual against target for the reviewed week. The same arithmetic the pie review divides, over the same denominator.",
+            "items": {
+              "$ref": "#/components/schemas/CategoryReadingResponse"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "days": {
+            "$ref": "#/components/schemas/ReviewDayCounts",
+            "description": "Confirmed, unconfirmed, and off-plan days of the reviewed week. Three quantities: an off-plan day is one the user declared away rather than one they failed to answer for."
+          },
+          "discretionaryMinutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reviewed week's own stored denominator, or null when it held no plan of record: a target divides a denominator such a week does not have.",
+            "title": "Discretionaryminutes"
+          },
+          "offPlanMinutes": {
+            "description": "How many of the reviewed week's minutes were declared off-plan.",
+            "title": "Offplanminutes",
+            "type": "integer"
+          },
+          "offPlanStatement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why every figure here is zero, stated when the week was off-plan end to end.",
+            "title": "Offplanstatement"
+          },
+          "period": {
+            "description": "The ISO week under review, which precedes the week planned.",
+            "title": "Period",
+            "type": "string"
+          },
+          "span": {
+            "$ref": "#/components/schemas/PeriodSpan"
+          },
+          "statement": {
+            "description": "How much of the period the figures rest on, always present. A period with no confirmed day says so rather than leaving a chart to render nothing.",
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "span",
+          "discretionaryMinutes",
+          "days",
+          "offPlanMinutes",
+          "statement",
+          "categories"
+        ],
+        "title": "SessionRetroResponse",
         "type": "object"
       },
       "SettingsPatchRequest": {
@@ -7681,6 +7859,92 @@
           "readings"
         ],
         "title": "WeekViewResponse",
+        "type": "object"
+      },
+      "WeeklySessionResponse": {
+        "description": "The weekly session, as one read that writes nothing at all.\n\nAddressed by the week it PLANS. The retrospective covers the week before it, which is what\n``US-REV-01``'s \"planning and retrospective in one pass\" means on the wire: one request, both\nhalves, so last week informs next week without a second sitting.",
+        "properties": {
+          "concessions": {
+            "description": "What the planned week has already given up, listed above the gaps that remain.",
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentResponse"
+            },
+            "title": "Concessions",
+            "type": "array"
+          },
+          "inputVersion": {
+            "description": "The planned week's input version, so a client can see that the week moved on while the session was open.",
+            "title": "Inputversion",
+            "type": "integer"
+          },
+          "isoWeek": {
+            "description": "The ISO week being planned, such as '2026-W07'.",
+            "title": "Isoweek",
+            "type": "string"
+          },
+          "promotionStatement": {
+            "description": "That syncr has changed nothing and will not without acceptance. Always present, because the absence of candidates is not the absence of that promise.",
+            "title": "Promotionstatement",
+            "type": "string"
+          },
+          "promotions": {
+            "description": "Repeated pins the session offers to promote into the template. Nothing is applied without acceptance, which promotionStatement says in words.",
+            "items": {
+              "$ref": "#/components/schemas/PromotionCandidateResponse"
+            },
+            "title": "Promotions",
+            "type": "array"
+          },
+          "raised": {
+            "description": "Everything the session raises about the planned week and the period before it. Rendered at amber panel volume, in session mode only.",
+            "items": {
+              "$ref": "#/components/schemas/RaisedItemResponse"
+            },
+            "title": "Raised",
+            "type": "array"
+          },
+          "retro": {
+            "$ref": "#/components/schemas/SessionRetroResponse"
+          },
+          "span": {
+            "$ref": "#/components/schemas/PeriodSpan"
+          },
+          "statement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the planned week has no verdict and nothing due in it, stated when it holds no plan of record. Null otherwise.",
+            "title": "Statement"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VerdictResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the planned week can hold its commitments. Null exactly when that week holds no plan, because nothing has been computed about it. Computing it appends no row: reading a review is a read."
+          }
+        },
+        "required": [
+          "isoWeek",
+          "span",
+          "inputVersion",
+          "retro",
+          "raised",
+          "verdict",
+          "concessions",
+          "promotions",
+          "promotionStatement"
+        ],
+        "title": "WeeklySessionResponse",
         "type": "object"
       },
       "WeightSetResponse": {
@@ -13396,6 +13660,79 @@
           }
         },
         "summary": "Apply proposed percentages, wholly or adjusted",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/reviews/week/{iso_week}": {
+      "get": {
+        "description": "One weekly session: last week's retrospective, next week's raises, and the verdict.",
+        "operationId": "read_weekly_session_api_v1_reviews_week__iso_week__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "iso_week",
+            "required": true,
+            "schema": {
+              "title": "Iso Week",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklySessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "The weekly session's payload. Writes nothing",
         "tags": [
           "reviews"
         ]

@@ -919,6 +919,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reviews/week/{iso_week}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The weekly session's payload. Writes nothing
+         * @description One weekly session: last week's retrospective, next week's raises, and the verdict.
+         */
+        get: operations["read_weekly_session_api_v1_reviews_week__iso_week__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/routines": {
         parameters: {
             query?: never;
@@ -4446,6 +4466,47 @@ export interface components {
             projects: components["schemas"]["ProjectResponse"][];
         };
         /**
+         * PromotionCandidateResponse
+         * @description One repeated pin the session offers to promote into the template.
+         *
+         *     ``US-TPL-05``: pinning the same binding to the same time for three consecutive weeks raises a
+         *     proposal naming the binding, the time, and the number of weeks. Accepting or declining is a
+         *     route of its own, so this shape carries no action and no state: it is the question.
+         */
+        PromotionCandidateResponse: {
+            /**
+             * Consecutiveweeks
+             * @description How many consecutive weeks the pattern runs for, from the data rather than from the threshold it passed.
+             */
+            consecutiveWeeks: number;
+            /**
+             * Entityid
+             * Format: uuid
+             * @description The content that keeps being pinned. Which occurrence of it was pinned is dropped: the occurrence key is scoped to one week, so a pattern across weeks cannot hold one.
+             */
+            entityId: string;
+            /**
+             * Kind
+             * @description What sort of thing that content is: a habit, a task, a routine.
+             */
+            kind: string;
+            /**
+             * Localtime
+             * @description The wall time it keeps being pinned to, as a template entry would declare it, in the home zone. A template entry holds a wall time, so no other zone could be offered.
+             */
+            localTime: string;
+            /**
+             * Weekday
+             * @description The ISO weekday the pin keeps landing on, Monday being 1.
+             */
+            weekday: number;
+            /**
+             * Weeks
+             * @description Every ISO week of the run, oldest first, so the count can be checked.
+             */
+            weeks: string[];
+        };
+        /**
          * ProposalBasis
          * @description Why one category's proposal is what it is.
          *
@@ -4513,6 +4574,44 @@ export interface components {
          * @enum {string}
          */
         Provenance: "probe" | "solver";
+        /**
+         * RaisedItemResponse
+         * @description One thing the session raises, at amber panel volume and in session mode only.
+         *
+         *     Every category is one shape with a ``kind`` rather than one shape per category, because they
+         *     render as rows of one panel: section 16's notice-volume table gives the whole set one volume and
+         *     one pigment.
+         */
+        RaisedItemResponse: {
+            /**
+             * Key
+             * @description Stable for one raised thing across two reads, so a client keys a list on it. Not an identifier: an item is a reading rather than a row, and nothing addresses one.
+             */
+            key: string;
+            /** @description What this item is about. */
+            kind: components["schemas"]["RaisedKind"];
+            /**
+             * Statement
+             * @description What to make of it, in the words an interface renders. Composed here so the CLI and the screen cannot say two different things about one item.
+             */
+            statement: string;
+            /**
+             * Title
+             * @description The thing itself, in the words the user knows it by.
+             */
+            title: string;
+            /**
+             * Weeks
+             * @description How many weeks the pattern covers, for the kinds that count weeks. Null rather than zero on the others, because zero would read as one.
+             */
+            weeks?: number | null;
+        };
+        /**
+         * RaisedKind
+         * @description What a raised item is about. One member per row of section 16's `raised` list.
+         * @enum {string}
+         */
+        RaisedKind: "chronic_skip" | "habit_at_debt_cap" | "repeated_collision" | "overdue_task" | "at_risk_task" | "floor_at_risk" | "new_anchor" | "cadence_due";
         /**
          * RampReading
          * @description How much of the sealed ramp this tenant's Areas are using.
@@ -4896,6 +4995,45 @@ export interface components {
              * Format: uuid
              */
             userId: string;
+        };
+        /**
+         * SessionRetroResponse
+         * @description Last week: what each Area was allotted, what it held, and how much was answered for.
+         */
+        SessionRetroResponse: {
+            /**
+             * Categories
+             * @description One row per declared Area, then the vacancy: actual against target for the reviewed week. The same arithmetic the pie review divides, over the same denominator.
+             */
+            categories: components["schemas"]["CategoryReadingResponse"][];
+            /** @description Confirmed, unconfirmed, and off-plan days of the reviewed week. Three quantities: an off-plan day is one the user declared away rather than one they failed to answer for. */
+            days: components["schemas"]["ReviewDayCounts"];
+            /**
+             * Discretionaryminutes
+             * @description The reviewed week's own stored denominator, or null when it held no plan of record: a target divides a denominator such a week does not have.
+             */
+            discretionaryMinutes: number | null;
+            /**
+             * Offplanminutes
+             * @description How many of the reviewed week's minutes were declared off-plan.
+             */
+            offPlanMinutes: number;
+            /**
+             * Offplanstatement
+             * @description Why every figure here is zero, stated when the week was off-plan end to end.
+             */
+            offPlanStatement?: string | null;
+            /**
+             * Period
+             * @description The ISO week under review, which precedes the week planned.
+             */
+            period: string;
+            span: components["schemas"]["PeriodSpan"];
+            /**
+             * Statement
+             * @description How much of the period the figures rest on, always present. A period with no confirmed day says so rather than leaving a chart to render nothing.
+             */
+            statement: string;
         };
         /**
          * SettingsPatchRequest
@@ -5987,6 +6125,55 @@ export interface components {
             zoneByDate: {
                 [key: string]: string;
             };
+        };
+        /**
+         * WeeklySessionResponse
+         * @description The weekly session, as one read that writes nothing at all.
+         *
+         *     Addressed by the week it PLANS. The retrospective covers the week before it, which is what
+         *     ``US-REV-01``'s "planning and retrospective in one pass" means on the wire: one request, both
+         *     halves, so last week informs next week without a second sitting.
+         */
+        WeeklySessionResponse: {
+            /**
+             * Concessions
+             * @description What the planned week has already given up, listed above the gaps that remain.
+             */
+            concessions: components["schemas"]["AdjustmentResponse"][];
+            /**
+             * Inputversion
+             * @description The planned week's input version, so a client can see that the week moved on while the session was open.
+             */
+            inputVersion: number;
+            /**
+             * Isoweek
+             * @description The ISO week being planned, such as '2026-W07'.
+             */
+            isoWeek: string;
+            /**
+             * Promotionstatement
+             * @description That syncr has changed nothing and will not without acceptance. Always present, because the absence of candidates is not the absence of that promise.
+             */
+            promotionStatement: string;
+            /**
+             * Promotions
+             * @description Repeated pins the session offers to promote into the template. Nothing is applied without acceptance, which promotionStatement says in words.
+             */
+            promotions: components["schemas"]["PromotionCandidateResponse"][];
+            /**
+             * Raised
+             * @description Everything the session raises about the planned week and the period before it. Rendered at amber panel volume, in session mode only.
+             */
+            raised: components["schemas"]["RaisedItemResponse"][];
+            retro: components["schemas"]["SessionRetroResponse"];
+            span: components["schemas"]["PeriodSpan"];
+            /**
+             * Statement
+             * @description Why the planned week has no verdict and nothing due in it, stated when it holds no plan of record. Null otherwise.
+             */
+            statement?: string | null;
+            /** @description Whether the planned week can hold its commitments. Null exactly when that week holds no plan, because nothing has been computed about it. Computing it appends no row: reading a review is a read. */
+            verdict: components["schemas"]["VerdictResponse"] | null;
         };
         /**
          * WeightSetResponse
@@ -10520,6 +10707,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BudgetApplyResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_weekly_session_api_v1_reviews_week__iso_week__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso_week: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklySessionResponse"];
                 };
             };
             /** @description Authentication required */

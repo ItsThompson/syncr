@@ -53,12 +53,19 @@ from syncr_domain.intervals import Interval
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from syncr_api.plans.declarations import PinToHold
     from syncr_domain.identifiers import PinId
     from syncr_domain.identity import BindingRef
 
 # The columns the `(tenant_id, block_id)` unique index covers, as the upsert names them.
 _IDENTITY = (TENANT_ID_COLUMN, "block_id")
+
+# How many pins one read over a window of weeks returns. A week holds one pin per block and a block
+# is fifteen minutes at its shortest, so a quarter cannot reach this; the bound is what stops a
+# window read from being unbounded in a deployment nobody expected.
+PINS_OVER_A_WINDOW = 2000
 
 
 class PinRepository(TenantScopedRepository):
@@ -121,6 +128,28 @@ class PinRepository(TenantScopedRepository):
         """
         rows = await self._session.scalars(
             self.scoped_select(Pin).where(Pin.iso_week == str(iso_week)).order_by(Pin.block_id)
+        )
+        return tuple(_as_record(row) for row in rows)
+
+    async def for_weeks(
+        self, weeks: Sequence[IsoWeek], *, limit: int = PINS_OVER_A_WINDOW
+    ) -> tuple[PinRecord, ...]:
+        """Every pin bound to any of ``weeks``, newest week first, bounded.
+
+        One statement for the whole window, because the reader is repeated-pin promotion detection
+        and that rule is one pass over pin rows: a read per week would be a read per week to answer
+        one question about all of them.
+
+        Newest first, so the bound cuts the oldest weeks rather than the recent end. A pattern is
+        about weeks the user has just lived, and a page of the oldest rows could never reach them.
+        """
+        if not weeks:
+            return ()
+        rows = await self._session.scalars(
+            self.scoped_select(Pin)
+            .where(Pin.iso_week.in_([str(one) for one in weeks]))
+            .order_by(Pin.iso_week.desc(), Pin.block_id)
+            .limit(limit)
         )
         return tuple(_as_record(row) for row in rows)
 

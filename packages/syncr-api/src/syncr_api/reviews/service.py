@@ -1,8 +1,10 @@
-"""The pie review's service: one read that writes nothing, and one apply that writes shares.
+"""The review services: the pie review's read and apply, and the weekly session's one read.
 
-**The read writes nothing at all.** No row, no input version bump, and no verdict. It reads the
-plan of record, the outcome log, the off-plan periods and the Areas, and hands them to the review's
-own arithmetic.
+**Neither read writes anything at all.** No row, no input version bump, and no verdict event. Each
+reads the plan of record, the outcome log, the off-plan periods and the Areas, and hands them to the
+review's own arithmetic. The apply is the one write in this module, and it is what US-REV-03's
+"syncr never re-cuts the budget on its own" means in code: nothing moves a share except a request
+the user made.
 
 **The denominator is the plan of record's own stored figure.** Not a recomputation. See
 ``reviews.history`` for why, and for what a recomputation gets wrong in each direction.
@@ -26,24 +28,54 @@ from typing import TYPE_CHECKING
 from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
-from syncr_api.reviews.config import PERIOD_PARAMETER, TREND_WEEKS
-from syncr_api.reviews.readings import budget_review_reading
+from syncr_api.offplan.reading import off_plan_reading
+from syncr_api.plans.at_risk import tasks_at_risk
+from syncr_api.reviews.collisions import repeated_collisions
+from syncr_api.reviews.config import (
+    CHRONIC_SKIP_WEEKS,
+    ISO_WEEK_FIELD,
+    PERIOD_PARAMETER,
+    REPEATED_COLLISION_WEEKS,
+    SESSION_LOOKBACK_WEEKS,
+    TREND_WEEKS,
+)
+from syncr_api.reviews.raised import (
+    at_risk_items,
+    cadence_items,
+    chronic_skip_items,
+    floor_items,
+    habit_debt_items,
+    new_anchor_items,
+    overdue_items,
+    repeated_collision_items,
+)
+from syncr_api.reviews.readings import budget_review_reading, categories_of
 from syncr_api.reviews.rules import require_declared_areas
+from syncr_api.reviews.session import SessionRetro, WeeklySessionReading
+from syncr_api.reviews.skips import chronic_skips
 from syncr_api.user_settings.zone_reading import as_domain, stated_rejection, zone_profile
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
+from syncr_domain.promotion import detect_repeated_pins
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import datetime
 
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
+    from syncr_api.plans.service import WeekService
+    from syncr_api.plans.week_views import WeekView
     from syncr_api.reviews.declarations import AppliedShares
-    from syncr_api.reviews.history import ReviewHistoryReader
+    from syncr_api.reviews.history import ReviewedWeek, ReviewHistoryReader
+    from syncr_api.reviews.raised import RaisedItem
     from syncr_api.reviews.readings import BudgetReviewReading
+    from syncr_api.reviews.session_sources import SessionFacts, SessionSources
+    from syncr_api.user_settings.records import SettingsRecord, TravelOverrideRecord
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
     from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_domain.budgets import AreaShare
     from syncr_domain.identifiers import AreaId
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import ZoneProfile
@@ -83,7 +115,7 @@ class BudgetReviewService:
         """The review anchored at ``period``, over the quarter ending with it. Writes nothing."""
         require_scope(principal, Scope.PLAN_READ)
         anchor = require_an_iso_week(period, field=PERIOD_PARAMETER)
-        profile = await self._profile()
+        profile = _zone_profile(await self._settings.read(), await self._overrides.list_all())
         quarter = await self._history.read(_quarter_ending_at(anchor), profile)
         declared = await self._areas.list_all()
         return budget_review_reading(quarter, shares=[area.as_share() for area in declared])
@@ -119,22 +151,139 @@ class BudgetReviewService:
             await self._bump.from_the_week_holding(now)
         return AppliedRevision(declared=tuple(area.id for area in moved), at=now if moved else None)
 
-    async def _profile(self) -> ZoneProfile:
-        """The tenant's zone profile, which every wall time in the quarter resolves against."""
+
+class WeeklySessionService:
+    """Compose the weekly session's payload. One method, and it writes nothing at all."""
+
+    def __init__(
+        self,
+        *,
+        weeks: WeekService,
+        areas: AreaRepository,
+        settings: SettingsRepository,
+        overrides: TravelOverrideRepository,
+        history: ReviewHistoryReader,
+        sources: SessionSources,
+        clock: Clock,
+    ) -> None:
+        self._weeks = weeks
+        self._areas = areas
+        self._settings = settings
+        self._overrides = overrides
+        self._history = history
+        self._sources = sources
+        self._clock = clock
+
+    @measured("reviews")
+    async def read(self, principal: Principal, iso_week: str) -> WeeklySessionReading:
+        """The session for the week ``iso_week`` plans, reviewing the week before it.
+
+        **The week view is reached through its own service rather than reassembled here**, and that
+        is the whole reason the verdict on this payload and the verdict on the Week screen cannot
+        disagree: there is one composition, one served-verdict rule, and one instant. It also means
+        this read inherits that read's guarantee that it writes nothing.
+
+        The window is read once and used three times: as the retrospective's own week, as the weeks
+        a chronic-skip run is walked over, and as the weeks a repeated pin is grouped across.
+        Reading it three times would be three answers to how long each of those weeks was.
+
+        ``VE6``: no row, no operation, no version bump, and no ``VerdictEvent``. The guard that
+        holds it is stated over the response shapes that carry a verdict, so this payload is covered
+        by having declared the field.
+        """
+        require_scope(principal, Scope.PLAN_READ)
+        planned = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
+        now = self._clock()
         settings = await self._settings.read()
-        overrides = await self._overrides.list_all()
-        with stated_rejection(field="home zone"):
-            return zone_profile(settings.home_zone, as_domain(overrides))
+        profile = _zone_profile(settings, await self._overrides.list_all())
+        view = await self._weeks.read(principal, str(planned))
+        window = _window_ending_at(planned.preceding(), weeks=SESSION_LOOKBACK_WEEKS)
+        reviewed = await self._history.read(window, profile)
+        shares = [area.as_share() for area in await self._areas.list_all()]
+        facts = await self._sources.read(
+            planned=planned,
+            reviewed=window,
+            profile=profile,
+            home_zone=settings.home_zone,
+            now=now,
+        )
+        return WeeklySessionReading(
+            iso_week=planned,
+            span=view.span,
+            retro=_retro_of(reviewed[-1], shares=shares),
+            raised=_raised_of(view, reviewed, facts, now=now),
+            verdict=view.verdict,
+            concessions=view.adjustments,
+            promotions=tuple(detect_repeated_pins(facts.pins)),
+            input_version=view.input_version,
+        )
 
 
-def _quarter_ending_at(anchor: IsoWeek) -> tuple[IsoWeek, ...]:
-    """The quarter of ISO weeks ending with ``anchor``, oldest first.
+def _zone_profile(
+    settings: SettingsRecord, overrides: Sequence[TravelOverrideRecord]
+) -> ZoneProfile:
+    """The tenant's zone profile, which every wall time in a reviewed period resolves against.
+
+    A function rather than a method on either service, because both reviews resolve the same thing
+    from the same two rows and a second copy is how one of them comes to read a stale zone. The
+    settings row arrives already read, so a caller that also wants the home zone reads the row once.
+    """
+    with stated_rejection(field="home zone"):
+        return zone_profile(settings.home_zone, as_domain(overrides))
+
+
+def _retro_of(week: ReviewedWeek, *, shares: Sequence[AreaShare]) -> SessionRetro:
+    """Last week's actual against target per Area, over the pie review's own arithmetic."""
+    return SessionRetro(
+        iso_week=week.iso_week,
+        span=week.span,
+        discretionary_minutes=week.discretionary_minutes,
+        days=week.counts,
+        off_plan=off_plan_reading(week.span, week.off_plan),
+        categories=categories_of(week, shares=shares),
+    )
+
+
+def _raised_of(
+    view: WeekView,
+    reviewed: Sequence[ReviewedWeek],
+    facts: SessionFacts,
+    *,
+    now: datetime,
+) -> tuple[RaisedItem, ...]:
+    """Every raised item, in the order section 16's `raised` list gives them.
+
+    The order is the payload's, not a client's: a panel renders rows in the order it receives them,
+    and two clients choosing their own would give one week two shapes.
+    """
+    at_risk = tasks_at_risk(view.verdict, facts.open_tasks)
+    return (
+        *chronic_skip_items(chronic_skips(reviewed, consecutive_weeks=CHRONIC_SKIP_WEEKS)),
+        *habit_debt_items(facts.habits, facts.debt),
+        *floor_items(view.verdict),
+        *overdue_items(facts.open_tasks, now=now),
+        *at_risk_items(one for one in facts.open_tasks if one.id in at_risk),
+        *new_anchor_items(facts.arriving),
+        *cadence_items(view.live, facts.habits),
+        *repeated_collision_items(
+            repeated_collisions(facts.conflicts, at_least_weeks=REPEATED_COLLISION_WEEKS)
+        ),
+    )
+
+
+def _window_ending_at(anchor: IsoWeek, *, weeks: int) -> tuple[IsoWeek, ...]:
+    """The run of ``weeks`` ISO weeks ending with ``anchor``, oldest first.
 
     Walked through :meth:`IsoWeek.preceding`, which resolves through the calendar rather than by
     subtracting one from a week number: ``2027-W01`` precedes into ``2026-W53``, so neither the week
     number nor the ISO year alone decides the answer.
     """
-    weeks = [anchor]
-    for _ in range(TREND_WEEKS - 1):
-        weeks.append(weeks[-1].preceding())
-    return tuple(reversed(weeks))
+    walked = [anchor]
+    for _ in range(weeks - 1):
+        walked.append(walked[-1].preceding())
+    return tuple(reversed(walked))
+
+
+def _quarter_ending_at(anchor: IsoWeek) -> tuple[IsoWeek, ...]:
+    """The quarter of ISO weeks ending with ``anchor``, oldest first."""
+    return _window_ending_at(anchor, weeks=TREND_WEEKS)
