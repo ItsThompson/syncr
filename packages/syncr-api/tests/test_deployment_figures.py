@@ -43,7 +43,7 @@ from tests.test_alert_rules import named as alert_named
 from tests.test_alert_rules import repo_root
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from ops.process import Run
 
@@ -811,17 +811,34 @@ def _recipe_names() -> frozenset[str]:
 
 
 class TheDestructiveTeardown:
-    """Nothing in this tree may TELL anyone to run `docker compose down -v`.
+    """Nothing in this tree may TELL anyone to run ``docker compose down -v`` against a project
+    holding anything a developer or a deployment keeps.
 
-    `down -v` is scoped to the PROJECT, and the dev stack, the deployed stack and the drill share
-    one project name. A local run of this ticket's own drill proved what that means: its teardown
-    deleted `pgdata`, the WAL volume, the staging volume and the bucket. The code path was fixed to
-    remove containers BY SERVICE NAME, and the instruction survived in a refusal message the
-    operator reads while trying to recover years of data, falsely attributed to the recipe that
-    avoids it.
+    ``down -v`` is scoped to the PROJECT, and that is the whole hazard: a local run of ticket 58's
+    own drill proved what it means, because the drill and the deployed stack share a project name
+    and its teardown deleted ``pgdata``, the WAL volume, the staging volume and the bucket. The code
+    path was fixed to remove containers BY SERVICE NAME, and the instruction survived in a refusal
+    message the operator reads while trying to recover years of data, falsely attributed to the
+    recipe that avoids it.
 
-    So the rule is stated over the whole tree rather than over the recipe: every occurrence must be
-    inside the one recipe whose name says what it destroys, or must be a DECLARED line.
+    So the rule is stated over the whole tree rather than over one recipe: every occurrence must be
+    a DECLARED line, or must be inside a recipe whose compose scope is a project that holds nothing
+    anyone keeps.
+
+    **THE SCOPE IS RESOLVED RATHER THAN NAMED.** The first version allowed exactly one recipe by
+    name, which is what the rule needed while one stack existed. A second scratch stack arrived, its
+    overlay declares ``name: syncr-e2e``, and its teardown destroys nothing anyone holds -- and the
+    guard refused it, because a recipe list cannot tell a scratch project from the deployed one.
+    What can is the compose files the recipe itself names: each declares its own ``name:``, the last
+    one wins as compose merges them, and the two projects that hold something are the ones the
+    justfile's own ``dev_compose`` and ``deploy_compose`` resolve to. A third scratch stack is
+    allowed the day it declares a project name of its own, and a recipe pointed at the deployed
+    project is refused whatever it is called. ``restore_compose`` resolves to the DEPLOYED project,
+    which is exactly the reading that cost a ``pgdata``, and a test below states that figure so it
+    cannot drift quietly.
+
+    ``dev-reset`` is the one recipe allowed to destroy a project someone holds, because its name
+    says what it does and the thing it destroys is the developer's own stack.
 
     THREE TIMES THE READING WAS NARROWER THAN THE RULE, and someone else caught each one. Five
     suffixes and one filename, so a `.service` running the command was invisible. Then every text
@@ -838,9 +855,13 @@ class TheDestructiveTeardown:
     the shape this class already used for `DECLARING_FILE`.
     """
 
-    # The one recipe allowed to run it. Its name says what it does, and it names the dev stack's own
-    # compose files, which is a different project from the deployed one.
+    # The one recipe allowed to destroy a project someone holds. Its name says what it does, and
+    # what it destroys is the developer's own stack rather than a deployment's.
     ALLOWED_RECIPE = "dev-reset"
+
+    # The justfile variables whose resolved project a `down -v` may NOT be scoped to, because each
+    # names a stack holding something someone keeps: the developer's database, and the deployment's.
+    PROTECTED_SCOPES = ("dev_compose", "deploy_compose")
 
     # EVERY LINE ALLOWED TO NAME THE COMMAND WITHOUT INSTRUCTING IT, as (path, substring) pairs.
     #
@@ -879,12 +900,13 @@ class TheDestructiveTeardown:
 
 
 class TestTheDestructiveTeardown:
-    def test_nothing_instructs_it_outside_the_recipe_that_owns_it(self) -> None:
+    def test_nothing_instructs_it_outside_a_project_that_holds_nothing(self) -> None:
         offenders = [
             f"{path}:{number}: {line.strip()}"
             for path, number, line in _lines_mentioning("down -v")
             if path != TheDestructiveTeardown.DECLARING_FILE
             and not _inside_dev_reset(path, number)
+            and not _scoped_to_a_scratch_project(path, number, line)
             and not _declared_exempt(path, line)
         ]
 
@@ -893,6 +915,64 @@ class TestTheDestructiveTeardown:
             "`TheDestructiveTeardown.EXEMPTED`, and the command is scoped to the PROJECT rather "
             f"than to a service: {offenders}"
         )
+
+    def test_the_projects_each_compose_scope_resolves_to(self) -> None:
+        """THE FIGURE THE WHOLE RULE TURNS ON, stated so it cannot drift quietly.
+
+        The restore drill resolves to the DEPLOYED project, which is the reading that deleted a
+        `pgdata`: its own overlay declares no name and the deploy overlay it composes with declares
+        `syncr`. The e2e stack resolves to a project of its own, which is why its teardown is
+        allowed. A change to any of these four is a change to what `down -v` would destroy.
+        """
+        variables = _justfile_variables()
+        resolved = {
+            scope: _project_named_by(
+                _compose_files_in(f"docker compose {{{{{scope}}}}} up", variables)
+            )
+            for scope in ("dev_compose", "e2e_compose", "deploy_compose", "restore_compose")
+        }
+
+        assert resolved == {
+            "dev_compose": "syncr-dev",
+            "e2e_compose": "syncr-e2e",
+            "deploy_compose": "syncr",
+            "restore_compose": "syncr",
+        }
+
+    def test_the_scopes_that_hold_something_are_the_two_the_guard_protects(self) -> None:
+        """The protected set is derived, so it cannot be a list that stops describing the stacks."""
+        assert _protected_projects() == {"syncr-dev", "syncr"}
+
+    @pytest.mark.parametrize(
+        ("scope", "is_scratch"),
+        [
+            ("e2e_compose", True),
+            ("dev_compose", False),
+            ("deploy_compose", False),
+            ("restore_compose", False),
+            ("ops_compose", False),
+            ("monitoring_compose", False),
+        ],
+    )
+    def test_which_scopes_the_allowance_admits(self, scope: str, is_scratch: bool) -> None:
+        """THE NEGATIVE CONTROLS THE OLD RULE DID NOT NEED AND THIS ONE DOES.
+
+        Allowing a recipe by its resolved project rather than by its name is a WIDENING, so the
+        shapes it must still refuse are driven: a `down -v` scoped to the deployed stack, to the
+        restore drill (which is the deployed stack), to the monitoring composition or to the ops
+        one-shots is an offender whatever recipe it sits in. Only a scope declaring a project of its
+        own is admitted.
+        """
+        variables = _justfile_variables()
+        project = _project_named_by(
+            _compose_files_in(f"docker compose {{{{{scope}}}}} down -v", variables)
+        )
+
+        assert (project is not None and project not in _protected_projects()) is is_scratch
+
+    def test_a_line_naming_no_compose_file_is_not_admitted(self) -> None:
+        """A bare instruction resolves to no project, so it cannot be a scratch one."""
+        assert _project_named_by(_compose_files_in("docker compose down -v", {})) is None
 
     def test_the_reading_sees_the_line_that_shipped(self, tmp_path: Path) -> None:
         """The positive control, over the WALK, in every file type a reviewer planted it in.
@@ -1127,26 +1207,101 @@ def _files_git_has() -> tuple[str, ...]:
 
 
 def _inside_dev_reset(path: str, number: int) -> bool:
-    """Whether this line is inside the one recipe allowed to destroy volumes."""
+    """Whether this line is inside the one recipe allowed to destroy a project someone holds."""
+    return _recipe_holding(path, number) == TheDestructiveTeardown.ALLOWED_RECIPE
+
+
+def _recipe_holding(path: str, number: int) -> str | None:
+    """The justfile recipe this line is the body of, or None when it is not in one.
+
+    A recipe opens at column zero and ends at the next line that does, which is just's own layout.
+    """
+    import re
+
     if path != "justfile":
-        return False
+        return None
     lines = read(Path("justfile")).splitlines()
-    opener = next(
-        (
-            index
-            for index, line in enumerate(lines, start=1)
-            if line.startswith(f"{TheDestructiveTeardown.ALLOWED_RECIPE}:")
-        ),
-        None,
-    )
-    if opener is None:  # pragma: no cover - the recipe exists, and its absence fails elsewhere
-        return False
-    for index in range(opener + 1, len(lines) + 1):
+    opener: str | None = None
+    for index, line in enumerate(lines, start=1):
+        if line and not line.startswith((" ", "\t", "#")):
+            named = re.match(r"^([a-z][\w-]*)(?:\s+[^:]*)?:", line)
+            opener = None if named is None else named.group(1)
         if index == number:
-            return True
-        if lines[index - 1] and not lines[index - 1].startswith((" ", "\t")):
-            return False
-    return False
+            return opener
+    return None
+
+
+def _justfile_variables() -> dict[str, str]:
+    """Every ``name := "value"`` the justfile declares, which is how a recipe names a compose scope.
+
+    A multi-line ``env_var_or_default(...)`` is read too: the default is the composition an operator
+    gets without overriding it, and that is the scope the guard has to judge.
+    """
+    import re
+
+    text = read(Path("justfile"))
+    declared: dict[str, str] = {}
+    for found in re.finditer(
+        r"^([a-z][\w_]*)\s*:=\s*(.+?)(?=^\S|\Z)", text, re.MULTILINE | re.DOTALL
+    ):
+        declared[found.group(1)] = " ".join(found.group(2).split())
+    return declared
+
+
+def _compose_files_in(command: str, variables: Mapping[str, str]) -> tuple[str, ...]:
+    """The ``-f`` list a command line names, with any justfile variable in it expanded."""
+    import re
+
+    expanded = command
+    for _ in range(4):
+        found = re.search(r"\{\{\s*([a-z][\w_]*)\s*\}\}", expanded)
+        if found is None:
+            break
+        expanded = expanded.replace(found.group(0), variables.get(found.group(1), ""))
+    return tuple(re.findall(r"-f\s+(\S+\.ya?ml)", expanded))
+
+
+def _project_named_by(files: Iterable[str]) -> str | None:
+    """The compose project a ``-f`` list resolves to, which is the LAST file that declares a name.
+
+    Compose merges the files in order and a later ``name:`` wins, so the project a command acts on
+    is decided by the end of the list rather than by the base file.
+    """
+    project: str | None = None
+    for name in files:
+        path = repo_root() / name
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("name:"):
+                project = line.removeprefix("name:").strip()
+    return project
+
+
+def _protected_projects() -> set[str]:
+    """The projects holding something someone keeps: the developer's stack, and the deployment's."""
+    variables = _justfile_variables()
+    protected = set()
+    for scope in TheDestructiveTeardown.PROTECTED_SCOPES:
+        project = _project_named_by(
+            _compose_files_in(f"docker compose {{{{{scope}}}}} up", variables)
+        )
+        if project is not None:
+            protected.add(project)
+    return protected
+
+
+def _scoped_to_a_scratch_project(path: str, number: int, line: str) -> bool:
+    """Whether this line runs the command against a project that holds nothing anyone keeps.
+
+    The compose files the line itself names are resolved and their project read, so a recipe is
+    judged by what it acts on rather than by what it is called. A line naming no compose file, or
+    one whose project is the developer's or the deployment's, is not a scratch project.
+    """
+    if path != "justfile" or _recipe_holding(path, number) is None:
+        return False
+    project = _project_named_by(_compose_files_in(line, _justfile_variables()))
+    return project is not None and project not in _protected_projects()
 
 
 def _recipes_named_in(documents: Iterable[str]) -> set[str]:
