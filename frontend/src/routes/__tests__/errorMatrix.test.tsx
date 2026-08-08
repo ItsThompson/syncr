@@ -100,11 +100,17 @@ describe("every screen, with every read refused", () => {
 
       /* `role="alert"` because a failure interrupts, where an empty state is the screen's own content. The api's
        * `detail` is rendered verbatim: every problem this api produces says what was not applied and what is still
-       * true, and a screen paraphrasing it would be writing the sentence twice. */
-      const failed = await screen.findByRole("alert");
+       * true, and a screen paraphrasing it would be writing the sentence twice.
+       *
+       * ALL of them, for the reason the pending sweep reads all of its own: Settings answers per section, so a
+       * screen with three sentences and one blank panel is exactly what this asks about. */
+      const failed = await screen.findAllByRole("alert");
 
-      expect(failed.textContent ?? "").toContain(readUnavailable.detail);
-      expect(failed).toHaveClass("status--error");
+      expect(failed.length).toBeGreaterThan(0);
+      for (const one of failed) {
+        expect(one.textContent ?? "").toContain(readUnavailable.detail);
+        expect(one).toHaveClass("status--error");
+      }
       noIndicator(container);
     },
   );
