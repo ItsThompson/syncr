@@ -16,6 +16,14 @@ than shared, because a member's test path resolves against its own directory and
 reaching into a sibling's test tree would be a worse coupling than twelve repeated
 lines.
 
+**The probe is told which tree to read, and it says which tree it read.** A subprocess
+inherits none of the parent's `sys.path`, and pytest's `pythonpath` setting does not reach
+it, so a child left to itself resolves `syncr_domain` through the venv's editable install
+and walks whichever checkout that points at. In the main checkout that is this tree, so an
+untold probe reads green while measuring a tree nobody chose. The child is therefore given
+the source root this suite imported and prints `__file__` before it walks anything, and no
+figure from the walk is believed until that path matches.
+
 The **source walk** parses each module instead, because the import walk cannot see
 either of the things it looks for. A clock read leaves no trace in `sys.modules`, since
 `datetime` is imported by every module here for its types, and `os` and `pathlib` are
@@ -35,6 +43,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -42,9 +51,16 @@ from pathlib import Path
 
 import pytest
 
+import syncr_domain
+
 PACKAGE = "syncr_domain"
 
 SOURCE_ROOT = Path(__file__).resolve().parent.parent / "src" / PACKAGE
+
+# Where this suite's own interpreter imported the package from. A separate derivation from
+# SOURCE_ROOT: that one is this worktree's layout, this one is whatever the running
+# interpreter resolved, and they agree only when the suite is measuring its own tree.
+IMPORTED_ROOT = Path(syncr_domain.__file__).resolve().parent
 
 FIXTURES_MODULE = f"{PACKAGE}.fixtures"
 
@@ -141,10 +157,14 @@ FORBIDDEN_ATTRIBUTES = frozenset(
     }
 )
 
+# The resolution is printed BEFORE the walk, so it stands on its own: a caller learns which
+# tree was read even from a walk that then failed, and never the other way round.
 _PROBE = """
 import importlib, json, pkgutil, sys
 
 package = importlib.import_module({package!r})
+print(package.__file__)
+
 names = [package.__name__]
 for module in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
     importlib.import_module(module.name)
@@ -154,29 +174,65 @@ print(json.dumps({{"imported": names, "loaded": sorted(sys.modules)}}))
 """
 
 
-def import_every_module(package: str) -> tuple[list[str], set[str]]:
-    """Import every module in ``package`` in a fresh process.
+@dataclass(frozen=True)
+class Walked:
+    """What the probe found: what it imported, what that loaded, and which tree it read."""
 
-    Returns the modules imported and the top-level packages that ended up loaded.
+    imported: tuple[str, ...]
+    loaded: frozenset[str]
+    resolved: Path
+
+
+def import_every_module(package: str) -> Walked:
+    """Import every module in ``package`` in a fresh process pointed at this suite's tree.
+
+    Reports no figure from another checkout: the child says where it resolved ``package``
+    from, and that path is held against the one this suite imported before the walk is read
+    at all.
     """
     completed = subprocess.run(  # noqa: S603 - fixed argv, no shell, no external input
         [sys.executable, "-c", _PROBE.format(package=package)],
         capture_output=True,
         text=True,
         check=False,
+        # ``PATH`` is carried through so the child can find an interpreter or a subprocess of its
+        # own; nothing else of the ambient environment is, so a variable on the developer's machine
+        # cannot change which tree gets measured.
+        env={"PATH": os.environ.get("PATH", ""), "PYTHONPATH": str(IMPORTED_ROOT.parent)},
     )
     assert completed.returncode == 0, (
         f"the probe could not import {package}: {completed.stderr.strip()}"
     )
-    payload = json.loads(completed.stdout)
-    return payload["imported"], {name.split(".", 1)[0] for name in payload["loaded"]}
+    resolution, _, walked = completed.stdout.partition("\n")
+    resolved = Path(resolution.strip()).resolve().parent
+
+    assert resolved == IMPORTED_ROOT, (
+        f"the probe walked {resolved}, but this suite imported {package} from {IMPORTED_ROOT}"
+    )
+    payload = json.loads(walked)
+    return Walked(
+        imported=tuple(payload["imported"]),
+        loaded=frozenset(name.split(".", 1)[0] for name in payload["loaded"]),
+        resolved=resolved,
+    )
+
+
+def test_the_probe_walked_the_tree_in_this_worktree() -> None:
+    """The other half of the resolution check. `import_every_module` holds the child against
+    the tree this suite imported; this holds that tree against the one in this worktree, and
+    only the two together make every figure below a statement about this checkout."""
+    walked = import_every_module(PACKAGE)
+
+    assert walked.resolved == SOURCE_ROOT, (
+        f"the probe walked {walked.resolved}, which is not this worktree's {SOURCE_ROOT}"
+    )
 
 
 def test_no_domain_module_reaches_for_io_or_a_downstream_package() -> None:
-    imported, loaded = import_every_module(PACKAGE)
-    leaked = sorted(FORBIDDEN_IMPORTS & loaded)
+    walked = import_every_module(PACKAGE)
+    leaked = sorted(FORBIDDEN_IMPORTS & walked.loaded)
 
-    assert imported, f"expected at least {PACKAGE} itself to import"
+    assert walked.imported, f"expected at least {PACKAGE} itself to import"
     assert leaked == [], f"{PACKAGE} must not import {leaked}"
 
 
