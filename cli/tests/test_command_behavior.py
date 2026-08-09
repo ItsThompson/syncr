@@ -497,17 +497,31 @@ def test_the_backlog_asks_for_the_open_work_and_task_list_asks_for_every_status(
 def test_the_at_risk_filter_reaches_the_api_rather_than_narrowing_the_answer(
     tmp_path: Path,
 ) -> None:
-    """Ticket 1521: the narrowing is the server's, because the determination is.
+    """The narrowing is the server's, because the determination is.
 
-    The stubbed answer holds one marked task and one unmarked one whatever is asked for, so a client
-    that filtered the rows itself would print exactly one row here and pass a test that only counted
-    them. What is asserted instead is the REQUEST: the parameter the route serves, spelled the way
-    the route spells it.
+    Asserted from both ends, because either alone leaves the other half free. The REQUEST carries
+    the parameter the route serves, spelled the way the route spells it, so a client that answered
+    the filter out of an unfiltered read would send nothing. And the ANSWER holds one marked row
+    and one unmarked one whatever is asked for, so a client that narrowed what came back as well
+    would print one row beside a header the server computed over two.
     """
     with FakeApi() as api:
         _serving(api, tmp_path)
         api.answer("GET", AREAS_PATH, Answer.json(payloads.areas()))
-        api.answer("GET", TASKS_PATH, Answer.json(payloads.backlog()))
+        api.answer(
+            "GET",
+            TASKS_PATH,
+            Answer.json(
+                payloads.backlog(
+                    tasks=[
+                        payloads.task(title="Owed", at_risk=True),
+                        payloads.task(identifier="other", title="Fine", at_risk=False),
+                    ],
+                    open_count=2,
+                    at_risk_count=1,
+                )
+            ),
+        )
 
         marked = drive(
             ("backlog", "list", "--at-risk"),
@@ -520,6 +534,7 @@ def test_the_at_risk_filter_reaches_the_api_rather_than_narrowing_the_answer(
     asked = [one.query for one in api.requests_to("GET", TASKS_PATH)]
     assert asked == [{"status": ["open"], "atRisk": ["true"]}, {"atRisk": ["true"]}]
     assert marked.code is ExitCode.SUCCESS, marked.stdout
+    assert [task["title"] for task in marked.document["data"]["tasks"]] == ["Owed", "Fine"]
 
 
 def test_the_backlog_sends_no_at_risk_parameter_when_the_flag_is_absent(tmp_path: Path) -> None:
