@@ -32,6 +32,7 @@ from uuid import uuid4
 import pytest
 
 import syncr_api
+import syncr_domain
 from syncr_api.plans.netting import PlacedTime, placements
 from syncr_api.plans.records import BlockOutcomeRecord
 from syncr_api.reviews.coverage import ReviewedDay, confirmed_coverage
@@ -250,17 +251,25 @@ def test_the_walk_measures_the_checkout_whose_behaviour_this_file_asserts() -> N
     # The control for every derivation here. The walk resolves a tree from this file's own path
     # while the assertions below run imported code, so a run against a scratch copy of the tree
     # could otherwise derive one answer from the copy and measure the other from the original.
+    # Both packages, because the table is in one and two of its three readings are in the other.
     root = repository_root()
 
-    assert Path(syncr_api.__file__).resolve().is_relative_to(root), (
-        f"{syncr_api.__file__} is imported from outside {root}, so the walk over that tree and the "
+    imported = {package.__name__: package.__file__ for package in (syncr_api, syncr_domain)}
+
+    elsewhere = {
+        name: found
+        for name, found in imported.items()
+        if found is None or not Path(found).resolve().is_relative_to(root)
+    }
+    assert elsewhere == {}, (
+        f"{elsewhere} is imported from outside {root}, so the walk over that tree and the "
         "behaviour asserted below are answers about two different checkouts"
     )
 
 
-def test_the_walk_finds_every_packages_shipped_source() -> None:
-    # The control for rule 2's subject matter: `modules_using` iterates, so it answers the empty set
-    # over an empty walk and would agree with a register naming nothing.
+def test_the_walk_finds_each_packages_source_and_excludes_its_tests() -> None:
+    # The control for the rule below's subject matter: `modules_using` iterates, so it answers the
+    # empty set over an empty walk and would agree with a register naming nothing.
     found = production_modules(repository_root())
 
     assert len(found) > 100
