@@ -160,7 +160,7 @@ FORBIDDEN_ATTRIBUTES = frozenset(
 # The resolution is printed BEFORE the walk, so it stands on its own: a caller learns which
 # tree was read even from a walk that then failed, and never the other way round.
 _PROBE = """
-import importlib, json, pkgutil, sys
+import importlib, json, os, pkgutil, sys
 
 package = importlib.import_module({package!r})
 print(package.__file__)
@@ -170,17 +170,26 @@ for module in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
     importlib.import_module(module.name)
     names.append(module.name)
 
-print(json.dumps({{"imported": names, "loaded": sorted(sys.modules)}}))
+print(json.dumps({{
+    "imported": names,
+    "loaded": sorted(sys.modules),
+    "environment": sorted(os.environ),
+}}))
 """
 
 
 @dataclass(frozen=True)
 class Walked:
-    """What the probe found: what it imported, what that loaded, and which tree it read."""
+    """What the probe found: what it imported, what that loaded, and which tree it read.
+
+    ``environment`` is the variable NAMES the child saw, never their values, because this is
+    read in a failing assertion and a value could be a credential.
+    """
 
     imported: tuple[str, ...]
     loaded: frozenset[str]
     resolved: Path
+    environment: tuple[str, ...]
 
 
 def import_every_module(package: str) -> Walked:
@@ -195,15 +204,18 @@ def import_every_module(package: str) -> Walked:
         capture_output=True,
         text=True,
         check=False,
-        # ``PATH`` is carried through so the child can find an interpreter or a subprocess of its
-        # own; nothing else of the ambient environment is, so a variable on the developer's machine
-        # cannot change which tree gets measured.
+        # This dict does two things and both are controlled below. It PINS ``PYTHONPATH`` to the
+        # tree this suite imported, and it STRIPS everything ambient but ``PATH``, which the child
+        # needs to find an interpreter or a subprocess of its own. The strip is the half that reads
+        # as tidiness and is not: a variable from whoever is running the suite would otherwise
+        # change what the walk measures.
         env={"PATH": os.environ.get("PATH", ""), "PYTHONPATH": str(IMPORTED_ROOT.parent)},
     )
+    resolution, _, walked = completed.stdout.partition("\n")
+
     assert completed.returncode == 0, (
         f"the probe could not import {package}: {completed.stderr.strip()}"
     )
-    resolution, _, walked = completed.stdout.partition("\n")
     resolved = Path(resolution.strip()).resolve().parent
 
     assert resolved == IMPORTED_ROOT, (
@@ -214,6 +226,41 @@ def import_every_module(package: str) -> Walked:
         imported=tuple(payload["imported"]),
         loaded=frozenset(name.split(".", 1)[0] for name in payload["loaded"]),
         resolved=resolved,
+        environment=tuple(payload["environment"]),
+    )
+
+
+def test_an_ambient_pythonpath_cannot_change_the_tree_the_probe_walks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The control on the stripping half, and the only one of these that bites in a single
+    checkout: a second copy of the package is offered through the environment, and the probe
+    has to walk this suite's tree anyway."""
+    decoy = tmp_path / "offered"
+    (decoy / PACKAGE).mkdir(parents=True)
+    (decoy / PACKAGE / "__init__.py").write_text("", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(decoy))
+
+    walked = import_every_module(PACKAGE)
+
+    assert walked.resolved == IMPORTED_ROOT, (
+        f"the environment offered {decoy / PACKAGE} and the probe took it"
+    )
+
+
+def test_the_child_is_handed_nothing_ambient_but_the_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The control on the rest of the strip, which the decoy above cannot see: merging the
+    ambient environment under a pinned ``PYTHONPATH`` leaves the tree correct and lets every
+    other variable through. ``LOG_LEVEL`` is one `SyncrSettings` reads, so a member that
+    builds its settings at import time would walk differently on two machines."""
+    monkeypatch.setenv("LOG_LEVEL", "debug")
+
+    walked = import_every_module(PACKAGE)
+
+    assert "LOG_LEVEL" not in walked.environment, (
+        f"an ambient variable reached the child: {walked.environment}"
     )
 
 
