@@ -34,7 +34,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
-from statistics import quantiles
+from statistics import median, quantiles
 from typing import TYPE_CHECKING, Any, get_args
 from zoneinfo import ZoneInfo
 
@@ -72,7 +72,7 @@ from tests.live_weeks import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
     from pathlib import Path
 
     from syncr_api.accounts.records import UserRecord
@@ -92,6 +92,17 @@ pytestmark = pytest.mark.integration
 LATENCY_SAMPLES = 30
 CATASTROPHIC_MILLISECONDS = 400
 DEADLINED_TASKS = 20
+
+# What the ceiling is set against, and what the p95 is cut out of.
+#
+# 42 ms is what this suite measures on a developer's machine. It is named rather than left in the
+# prose above because the ceiling's own control drives a twenty-fold regression over it, so how much
+# room 400 ms leaves is asserted rather than argued.
+#
+# The p95 is the last of twenty cuts, so a sample of fewer than twenty reads has no ninety-fifth
+# percentile: `quantiles` interpolates one from the two slowest reads it was given.
+MEASURED_MILLISECONDS = 42
+CUTS_FOR_A_P95 = 20
 
 
 @pytest.fixture
@@ -494,6 +505,21 @@ def test_no_event_builder_puts_a_verdict_on_the_stream(source_root: Path) -> Non
 # --------------------------------------------------------------------------------
 
 
+def the_p95_of(elapsed: Sequence[float]) -> float:
+    """The figure the ceiling is compared against, over a sample big enough to have one.
+
+    Shared by the measurement and by the ceiling's controls below, so what a control proves is the
+    arithmetic the measurement runs rather than a second copy of it. A sample smaller than the cut
+    count is refused instead of answered: an interrupted run that collected two reads would
+    otherwise have a figure interpolated from them and report it as a p95 of thirty.
+    """
+    if len(elapsed) < CUTS_FOR_A_P95:
+        raise ValueError(
+            f"a sample of {len(elapsed)} reads has no p95: it is cut into {CUTS_FOR_A_P95}"
+        )
+    return quantiles(sorted(elapsed), n=CUTS_FOR_A_P95)[-1]
+
+
 def test_the_backlog_read_is_well_under_its_budget_on_a_full_week(
     http: TestClient,
     owner: UserRecord,
@@ -542,7 +568,7 @@ def test_the_backlog_read_is_well_under_its_budget_on_a_full_week(
         assert answered.status_code == HTTPStatus.OK, answered.text
 
     ordered = sorted(elapsed)
-    p95 = quantiles(ordered, n=20)[-1]
+    p95 = the_p95_of(elapsed)
     print(
         f"\nGET /api/v1/tasks on a {BLOCKS_IN_A_FULL_WEEK}-block week with {DEADLINED_TASKS} "
         f"deadlined tasks over {LATENCY_SAMPLES} reads: "
@@ -550,3 +576,38 @@ def test_the_backlog_read_is_well_under_its_budget_on_a_full_week(
     )
 
     assert p95 < CATASTROPHIC_MILLISECONDS, ordered
+
+
+def test_the_ceiling_refuses_a_slow_tail_the_middle_of_the_sample_would_admit() -> None:
+    """The ceiling's own control, because a passing run never reaches the comparison above.
+
+    That comparison fires only on a read that has become catastrophically slow, which a green run
+    does not produce, so on its own it is a claim about a branch nothing takes. Here it is driven
+    over sample values instead. The slowest tenth of the sample carries a twenty-fold regression
+    over the measured figure, which is the size of regression this ceiling exists to catch: the p95
+    refuses it, and the middle of the same sample would have admitted it, so a ceiling read off the
+    wrong quantile does not pass either.
+
+    Both directions are driven, because a ceiling tight enough to refuse the measured figure would
+    pass a test that only asked whether a regression is refused.
+    """
+    slowest = LATENCY_SAMPLES // 10
+    regressed = MEASURED_MILLISECONDS * 20.0
+    slow_tail = [float(MEASURED_MILLISECONDS)] * (LATENCY_SAMPLES - slowest) + [regressed] * slowest
+    healthy = [float(MEASURED_MILLISECONDS)] * LATENCY_SAMPLES
+
+    assert the_p95_of(slow_tail) >= CATASTROPHIC_MILLISECONDS, "the ceiling admits the regression"
+    assert median(slow_tail) < CATASTROPHIC_MILLISECONDS, "the sample's middle is not catastrophic"
+    assert the_p95_of(healthy) < CATASTROPHIC_MILLISECONDS, "the ceiling refuses the measurement"
+
+
+def test_a_p95_is_refused_over_a_sample_too_small_to_have_one() -> None:
+    """The anti-vacuity half, on the sample rather than on the week it was taken over.
+
+    An empty sample and a truncated one both fail rather than answer, so a figure can only be
+    reported over the reads the measurement says it took.
+    """
+    with pytest.raises(ValueError, match="has no p95"):
+        the_p95_of([])
+    with pytest.raises(ValueError, match="has no p95"):
+        the_p95_of([float(MEASURED_MILLISECONDS)] * (CUTS_FOR_A_P95 - 1))
