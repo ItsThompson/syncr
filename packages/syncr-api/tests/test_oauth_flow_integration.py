@@ -611,6 +611,26 @@ def test_a_plan_write_token_is_refused_where_admin_is_required(
     assert allowed.json() == {REACHED_FIELD: Scope.PLAN_WRITE.value}
 
 
+def test_the_refusal_names_the_scopes_held_and_the_one_required(
+    probe_http: TestClient, owner: UserRecord
+) -> None:
+    """The 403 body, not only its status: a refusal a caller can act on without guessing.
+
+    Both scope strings are literals rather than ``Scope`` values joined by ``format_scopes``. An
+    expectation composed by the code that composes the sentence moves with it, so a reordered
+    scope vocabulary would satisfy it while the wire text changed.
+    """
+    session = signed_in(probe_http, owner.email)
+    issued = exchange(probe_http, consent(probe_http, session)["code"])
+
+    refused = probe_http.get(PROBE_ADMIN_PATH, headers=bearer(issued))
+
+    assert refused.status_code == 403
+    detail = refused.json()["detail"]
+    assert "plan:read plan:write" in detail, detail
+    assert "admin" in detail, detail
+
+
 def test_a_route_needing_a_token_says_how_to_present_one(probe_http: TestClient) -> None:
     # RFC 6750 section 3: a 401 from a bearer-protected resource names the scheme, so a client
     # learns what to present rather than guessing.
