@@ -8,15 +8,16 @@
  *
  * A TRANSLUCENT FILL IS NOT A SURFACE, AND THIS READER CANNOT SEE WHICH ONE IS UNDER IT. What a host filled
  * `transparent` shows through is a fact about the DOM, which no stylesheet states. It resolves here to the two
- * papers, which are the surfaces the button family's translucent ranks are rendered on today, and that is the
- * reader's limit rather than a claim about the product: a translucent host inside an ink-filled container is a
- * composition this reader calls a pass and cannot measure, so `ui/domain/marks/__tests__/contrast.test.tsx`
- * measures that pairing directly instead of asking here. Every other value a fill can hold is REFUSED rather
- * than guessed, because a ratio computed against a gradient or an image is a made-up figure. */
+ * papers, which are where those ranks sit almost everywhere and are the only surfaces a stylesheet can name.
+ * That is the reader's limit rather than a claim about the product: a translucent host inside an ink-filled
+ * container is a composition this reader calls a pass and cannot measure, so
+ * `ui/domain/marks/__tests__/contrast.test.tsx` measures that pairing directly instead of asking here. Every
+ * other value a fill can hold is REFUSED rather than guessed, because a ratio computed against a gradient or an
+ * image is a made-up figure. */
 
 import { parse } from "postcss";
 
-/** The two surfaces the translucent ranks are rendered on today. */
+/** The two papers, which are where a translucent rank sits almost everywhere. */
 const PAPERS = ["--paper", "--paper-raised"] as const;
 
 /** The properties that fill a surface. Both are the same channel, so the last one a rule declares wins. */

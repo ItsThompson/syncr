@@ -18,10 +18,12 @@
 import { render } from "@testing-library/react";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { parse } from "postcss";
 import { describe, expect, it } from "vitest";
 
 import { codeWithoutComments } from "../../../../../scripts/lib/css-scan.ts";
-import { repoRoot } from "../../../../../scripts/lib/paths.ts";
+import { filesUnder } from "../../../../../scripts/lib/files.ts";
+import { appSourceDir, repoRoot, tokenDir } from "../../../../../scripts/lib/paths.ts";
 import { declaredTokens } from "../../../../../scripts/lib/tokens.ts";
 import { TEXT_FLOOR, ratioBetween } from "../../../../testing/contrast";
 import { inkRules, surfacesUnder, tokenIn } from "../../../../testing/hostedInk";
@@ -198,16 +200,21 @@ describe("a hint inside a primary button", () => {
 /* THE PAIRING THE RANKS ABOVE CANNOT ANSWER FOR, MEASURED HERE INSTEAD.
  *
  * A rank filled `transparent` shows through to whatever it sits on, and which surface that is belongs to the
- * DOM rather than to a stylesheet. The cases above resolve it to the two papers, which is where those ranks are
- * rendered today and is all a sheet-reader can settle. The product also sanctions two ink fills, a panel header
- * and a dialog header, and `Panel` takes a control in its header through `headerEnd`, so the composition is
- * reachable and shipped.
+ * DOM rather than to a stylesheet. The cases above resolve it to the two papers, which is all a sheet-reader can
+ * settle. The product also sanctions two ink fills, a panel header and a dialog header, and `Panel` takes a
+ * control in its header through `headerEnd`. The rank in that position ships; the hint in it does not yet.
  *
  * Inside one, a translucent rank hands the hint its own --ink, which is the pairing this whole treatment exists
  * to prevent, at the same figure. The ranks' own labels take that ink too, so these figures describe the
- * control as much as the mark. Neither is this ticket's to fix: the container is what has to name the ink its
- * descendants take, the way `ui/layout/Rule.css` already inverts a rule's ink there. What belongs here is the
- * measurement, so the gap is a number rather than a silence, and so a fix reddens these two cases. */
+ * control as much as the mark. The fix is the container's rather than the rank's or the mark's: the container is
+ * what has to name the ink its descendants take, the way `ui/layout/Rule.css` already inverts a rule's ink
+ * there. What belongs here is the measurement, so the gap is a number rather than a silence.
+ *
+ * THESE TWO FIGURES RESOLVE BY DOCUMENT ORDER ACROSS THREE SHEETS, WHICH LIMITS WHAT THEY NOTICE. A browser
+ * picks a container-scoped declaration by specificity whatever sheet it sits in; `effectiveDeclarations` picks
+ * the last one it reads. So a repair written in `Panel.css` wins in the product and loses here, leaving these
+ * two green on a fixed pairing. The case after them is the placement-independent half, and it is the one a
+ * repair has to answer to. */
 describe("a hint inside a translucent rank inside an ink-filled container", () => {
   async function inInkHeader(isDisabled: boolean): Promise<{ ink: string; fill: string }> {
     const cascade = [await panelCss(), await buttonCss(), await marksCss()].join("\n");
@@ -255,5 +262,64 @@ describe("a hint inside a translucent rank inside an ink-filled container", () =
     expect([ink, fill]).toEqual(["--text-muted", "--ink-deep"]);
     expect(ratio).toBeLessThan(TEXT_FLOOR);
     expect(ratio.toFixed(2)).toBe("2.81");
+  });
+});
+
+/* THE REPAIR'S OWN DETECTOR, WHICHEVER SHEET IT LANDS IN.
+ *
+ * The two figures above are read through one concatenation in one order, so they notice a repair written in the
+ * control's sheet and miss the same repair written in the container's. This is a census instead: every shipped
+ * stylesheet, every rule scoped to the ink surface, and the two properties a repair would have to write.
+ *
+ * Today nothing writes either there. `ui/layout/Rule.css` scopes a border to that class and `base.css` scopes a
+ * focus ring, which are the precedents for the repair rather than the repair itself, and the dialog's dismiss
+ * control names --on-ink on itself rather than inheriting it from the container. The day a rule gives a control
+ * or a mark its ink inside the ink surface, this reddens and names the file. */
+describe("the ink a container hands its descendants", () => {
+  /** Every rule in a shipped sheet that scopes an ink to the ink surface, named so a finding is followable. */
+  async function inksScopedToTheInkSurface(): Promise<string[]> {
+    const sheets = (await filesUnder(appSourceDir, [".css"])).filter(
+      (file) => !file.startsWith(`${tokenDir}${path.sep}`),
+    );
+    const perSheet = await Promise.all(
+      sheets.map(async (file) => {
+        const found: string[] = [];
+        parse(await readFile(file, "utf8")).walkRules((rule) => {
+          if (!rule.selector.includes(".on-ink-surface")) return;
+          rule.walkDecls((declaration) => {
+            if (declaration.prop !== "color" && declaration.prop !== HINT_INK) return;
+            found.push(
+              `${path.relative(appSourceDir, file)} ${rule.selector} { ${declaration.prop} }`,
+            );
+          });
+        });
+        return found;
+      }),
+    );
+    return perSheet.flat();
+  }
+
+  it("is no ink at all today, which is the repair the two figures above are waiting for", async () => {
+    expect(await inksScopedToTheInkSurface()).toEqual([]);
+  });
+
+  /* The census's own control: a scan that read no sheet would report nothing found and pass whatever the tree
+   * did, so the sheets it covers are counted and the two that already scope something to the class are named. */
+  it("is read from every shipped sheet, including the two that already scope something there", async () => {
+    const sheets = (await filesUnder(appSourceDir, [".css"])).filter(
+      (file) => !file.startsWith(`${tokenDir}${path.sep}`),
+    );
+    const scoping = await Promise.all(
+      sheets.map(async (file) => {
+        const code = codeWithoutComments(await readFile(file, "utf8"));
+        return /\.on-ink-surface[^{]*\{/.test(code) ? path.relative(appSourceDir, file) : null;
+      }),
+    );
+
+    expect(sheets.length).toBeGreaterThan(40);
+    expect(scoping.filter((name) => name !== null).toSorted()).toEqual([
+      "base.css",
+      "ui/layout/Rule.css",
+    ]);
   });
 });
