@@ -556,6 +556,9 @@ def test_the_backlog_read_is_well_under_its_budget_on_a_full_week(
 
     populated = backlog(http, headers)
     assert populated["header"]["openCount"] == DEADLINED_TASKS
+    assert populated["header"]["atRiskCount"] > 0, (
+        "nothing was marked, so the marking had no shortfall to compare and this measures less"
+    )
     assert week_view(http, headers, week)["verdict"] is not None, (
         "the week served no verdict, so this measures the cheap path rather than the assembly"
     )
