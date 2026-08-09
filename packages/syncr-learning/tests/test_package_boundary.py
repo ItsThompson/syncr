@@ -46,9 +46,10 @@ FORBIDDEN_IMPORTS = frozenset({"syncr_api", "syncr_solver", "fastapi", "starlett
 
 LOCKFILE = Path(__file__).resolve().parents[3] / "uv.lock"
 
-# The importable root this suite's own interpreter read the package from. Children are pointed here
-# unless a caller states another root.
-SOURCE_ROOT = Path(syncr_learning.__file__).resolve().parent.parent
+# The file this suite's own interpreter read the package from, and the importable root children are
+# pointed at unless a caller states another one.
+SOURCE_FILE = Path(syncr_learning.__file__).resolve()
+SOURCE_ROOT = SOURCE_FILE.parent.parent
 
 _PROBE = """
 import importlib, json, pkgutil, sys
@@ -96,8 +97,9 @@ def test_the_probe_measured_the_checkout_this_suite_is_running_from() -> None:
     # install walks another checkout, and every forbidden import added to this tree would pass the
     # walk below.
     probed = import_every_module(PACKAGE)
+    resolved = Path(probed["resolved"]).resolve()
 
-    assert Path(probed["resolved"]).resolve() == Path(syncr_learning.__file__).resolve()
+    assert resolved == SOURCE_FILE, f"the probe read {resolved}, this suite imported {SOURCE_FILE}"
 
 
 def test_no_ambient_pythonpath_can_redirect_the_probe(
@@ -111,8 +113,9 @@ def test_no_ambient_pythonpath_can_redirect_the_probe(
     monkeypatch.setenv("PYTHONPATH", str(tmp_path))
 
     probed = import_every_module(PACKAGE)
+    resolved = Path(probed["resolved"]).resolve()
 
-    assert Path(probed["resolved"]).resolve() == Path(syncr_learning.__file__).resolve()
+    assert resolved == SOURCE_FILE, f"the probe read {resolved}, this suite imported {SOURCE_FILE}"
 
 
 def test_no_learning_module_reaches_for_the_web_stack_or_the_request_path() -> None:
