@@ -234,9 +234,9 @@ def import_every_module(package: str) -> Walked:
 def test_an_ambient_pythonpath_cannot_change_the_tree_the_probe_walks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The control on the stripping half, and the only one of these that bites in a single
-    checkout: a second copy of the package is offered through the environment, and the probe
-    has to walk this suite's tree anyway."""
+    """One of the two controls on the stripping half, and the pair are the only assertions here
+    that bite without a second checkout: a second copy of the package is offered through the
+    environment, and the probe has to walk this suite's tree anyway."""
     decoy = tmp_path / "offered"
     (decoy / PACKAGE).mkdir(parents=True)
     (decoy / PACKAGE / "__init__.py").write_text("", encoding="utf-8")
