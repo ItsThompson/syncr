@@ -2,10 +2,15 @@
 # scheduling one: scipy plus scikit-learn resident is ~800 MB for a job that runs once a day, which is
 # 10% of host memory held for a process idle 99.9% of the time.
 #
-# THE EXIT STATUS IS MONITORED, which is what makes a failed run visible. The container exits non-zero
-# when a tenant's fit failed and writes its exposition into the textfile collector before exiting, so
-# `LearningJobFailed` reads the file rather than a scrape. `systemctl status syncr-learning` is the
-# other end of the same fact.
+# THE EXIT STATUS IS SYSTEMD'S RECORD RATHER THAN A MONITORED SIGNAL. The container exits non-zero
+# when a tenant's fit failed, and `systemctl status syncr-learning` is where that is readable. Nothing
+# in the deployment reads it: the node exporter runs without `--collector.systemd`, so no series
+# carries a unit's result.
+#
+# What monitoring reads is the exposition the container writes into the textfile collector before
+# exiting, because a container that has exited cannot be scraped. The duration family it reports
+# carries no outcome label, so `LearningJobFailed` can see a run that never arrived and not a run that
+# arrived and failed.
 #
 # 03:00, the same hour as the backup, which is why the learning engine turns on `pool_pre_ping`: a
 # connection severed by a Postgres restart must be discarded rather than failing a tenant's night.
