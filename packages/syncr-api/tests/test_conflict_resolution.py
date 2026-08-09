@@ -99,8 +99,9 @@ STANDUP_ENTRY = BindingRef.for_template_entry(uuid4(), on=WEEK.monday())
 class ReleasedPins:
     """A pin release that records what it was asked to free.
 
-    The seam's production implementation releases nothing, because nothing writes a pin yet. This
-    is what makes the pinned row of the resolution table the real code path rather than a claim.
+    The rule under test here is which answers free a pin and which refuse, so it is asserted over
+    what the release was asked to do. What a release then does to the row is the pin feature's, and
+    is driven against the table in ``test_pin_service_integration.py``.
     """
 
     held: set[BindingRef] = field(default_factory=set)
