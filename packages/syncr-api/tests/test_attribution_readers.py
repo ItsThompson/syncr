@@ -251,7 +251,7 @@ def test_the_walk_measures_the_checkout_whose_behaviour_this_file_asserts() -> N
     # The control for every derivation here. The walk resolves a tree from this file's own path
     # while the assertions below run imported code, so a run against a scratch copy of the tree
     # could otherwise derive one answer from the copy and measure the other from the original.
-    # Both packages, because the table is in one and two of its three readings are in the other.
+    # Both packages, because the table is declared in one and every reader of it is in the other.
     root = repository_root()
 
     imported = {package.__name__: package.__file__ for package in (syncr_api, syncr_domain)}
