@@ -48,10 +48,10 @@ That is three things that can break and they look identical from Prometheus:
    `systemctl list-timers 'syncr-*'`.
 2. **The run happened and failed.** It exits non-zero when a tenant's pass failed, and it writes its
    figures **before** exiting, so the series is present rather than absent. **Prometheus cannot tell you
-   which of these two happened.** The duration family carries no `outcome` label, so a night that ran and
-   failed and a night that ran and succeeded are the same series with the same value. The exit status is
-   systemd's record and nothing scrapes it: `systemctl status syncr-learning` and the run's own log are
-   where the difference is readable.
+   whether the run succeeded or failed.** The duration family carries no `outcome` label, so a night that
+   ran and failed and a night that ran and succeeded are the same series with the same value. The exit
+   status is systemd's record and nothing scrapes it: `systemctl status syncr-learning` and the run's own
+   log are where the difference is readable.
 3. **The run happened, succeeded, and the file did not reach Prometheus.** Check the textfile directory,
    the `--collector.textfile.directory` flag, and the `node` job.
 
