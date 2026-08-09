@@ -66,8 +66,9 @@ pytestmark = pytest.mark.integration
 BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 UTC_ZONE = "UTC"
 
-# The index the projection's two predicates exist to reach.
+# The index the projection's two predicates exist to reach, and the clause its key list follows.
 BINDING_INDEX = "ix_block_outcomes_tenant_id_binding_entity"
+KEY_LIST = "USING btree ("
 INDEX_DEFINITION = text(
     "SELECT indexdef FROM pg_indexes WHERE tablename = :table AND indexname = :index"
 )
@@ -254,10 +255,13 @@ def test_the_live_schema_carries_the_index_the_projection_reads_through(
     live_database_url: str,
 ) -> None:
     # The read runs once per habit collection and its two predicates buy nothing but this index, so
-    # an index the migration failed to create has no symptom other than a sequential scan. Asserted
-    # over the database's own definition, in the order a B-tree is read in: the tenant leads, so the
-    # scope is part of the index condition rather than a filter applied after another tenant's rows
-    # have been read.
+    # an index the migration failed to create has no symptom other than a sequential scan.
+    #
+    # Read out of the KEY LIST rather than out of the whole definition, which names the index: the
+    # name carries the word `tenant_id`, so a definition-wide search finds the tenant leading
+    # whatever the index actually leads with. A B-tree is asserted because the ordered condition is
+    # the point: a GIN index over the same two keys cannot carry the tenant, which turns the scope
+    # into a filter applied after another tenant's rows have been read.
     async def definition() -> str | None:
         database = create_database(live_database_url)
         try:
@@ -273,7 +277,10 @@ def test_the_live_schema_carries_the_index_the_projection_reads_through(
     indexdef = run(definition())
 
     assert indexdef is not None, f"{BLOCK_OUTCOMES_TABLE} has no index named {BINDING_INDEX}"
-    keys = [TENANT_ID_COLUMN, f"({BINDING} ->> '{KIND}'", f"({BINDING} ->> '{ENTITY_ID}'"]
-    for key in keys:
-        assert key in indexdef, f"{BINDING_INDEX} does not read {key}: {indexdef}"
-    assert [indexdef.index(key) for key in keys] == sorted(indexdef.index(key) for key in keys)
+    assert KEY_LIST in indexdef, f"{BINDING_INDEX} is not a B-tree: {indexdef}"
+    keys = indexdef.split(KEY_LIST, 1)[1]
+    read_in_order = [TENANT_ID_COLUMN, f"({BINDING} ->> '{KIND}'", f"({BINDING} ->> '{ENTITY_ID}'"]
+    for key in read_in_order:
+        assert key in keys, f"{BINDING_INDEX} does not read {key}: {indexdef}"
+    positions = [keys.index(key) for key in read_in_order]
+    assert positions == sorted(positions), f"{BINDING_INDEX} reads them out of order: {indexdef}"
