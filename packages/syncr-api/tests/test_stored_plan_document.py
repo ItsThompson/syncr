@@ -847,11 +847,20 @@ def published_key_names(source: str) -> dict[str, str]:
     return found
 
 
-def document_key_names(source_root: Path) -> dict[str, str]:
-    """The key each constant published anywhere under ``source_root`` names."""
+def package_sources(source_root: Path) -> dict[Path, str]:
+    """Every module under ``source_root``, read once. The walk's whole subject set.
+
+    One function owns what the walk reads, so the rule and the controls on it cannot come to
+    disagree about which files are covered.
+    """
+    return {path: path.read_text(encoding="utf-8") for path in sorted(source_root.rglob("*.py"))}
+
+
+def document_key_names(sources: Iterable[str]) -> dict[str, str]:
+    """The key each constant published anywhere in these sources names."""
     found: dict[str, str] = {}
-    for path in sorted(source_root.rglob("*.py")):
-        found |= published_key_names(path.read_text(encoding="utf-8"))
+    for source in sources:
+        found |= published_key_names(source)
     return found
 
 
@@ -915,10 +924,8 @@ def modules_that_build_a_stored_document(source_root: Path) -> dict[str, list[st
     Reported with the keys each one names, because that is what makes the answer checkable: a
     mapping caught for some other reason says which keys made it look like a document.
     """
-    sources = {path: path.read_text(encoding="utf-8") for path in sorted(source_root.rglob("*.py"))}
-    names: dict[str, str] = {}
-    for source in sources.values():
-        names |= published_key_names(source)
+    sources = package_sources(source_root)
+    names = document_key_names(sources.values())
     found: dict[str, set[str]] = {}
     for path, source in sources.items():
         for keys in document_mappings(source, names):
@@ -995,20 +1002,22 @@ def test_every_module_that_publishes_a_document_key_name_is_read(source_root: Pa
     The week key this walk filters on is published by ``plans/derivation.py`` rather than by the
     writer, so a producer keyed by that constant is visible only while every publisher is read.
     """
-    names = document_key_names(source_root)
+    names = document_key_names(package_sources(source_root).values())
 
     assert names["ISO_WEEK"] == DOCUMENT_ISO_WEEK_KEY
     assert names["DOCUMENT_ISO_WEEK_KEY"] == DOCUMENT_ISO_WEEK_KEY
-    assert {names["BLOCKS"], names["EMPTY_SLOTS"], names["ZONE_BY_DATE"]} <= DOCUMENT_KEYS
+    assert names["BLOCKS"] == "blocks"
+    assert names["EMPTY_SLOTS"] == "empty_slots"
+    assert names["ZONE_BY_DATE"] == "zone_by_date"
 
 
 def test_the_walk_reads_the_whole_package_rather_than_one_directory_of_it(
     source_root: Path,
 ) -> None:
-    # The control on the subject set. The writer lives one directory down, so a walk over the top
-    # level alone would find no producer at all and the equality above would hold for the wrong
-    # reason.
-    read = {path.parent for path in source_root.rglob("*.py")}
+    # The control on the subject set, read off the walk's own reader rather than off a second glob:
+    # the writer lives one directory down, so a walk over the top level alone would find no producer
+    # at all and the equality above would hold for the wrong reason.
+    read = {path.parent for path in package_sources(source_root)}
 
     assert {source_root, source_root / "plans"} <= read
 
