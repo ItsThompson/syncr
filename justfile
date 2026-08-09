@@ -439,8 +439,9 @@ e2e-tick:
 
 # --- Lint and format --------------------------------------------------------
 
-# Every static gate: ruff, the format check, mypy, the deployment's own package, and the hook config
-lint: lint-style typecheck lint-ops lint-hooks
+# Every static gate: ruff, the format check, mypy, the deployment's own package, the hook config,
+# and the invariant-label census
+lint: lint-style typecheck lint-ops lint-hooks lint-invariants
 
 # ruff check plus the format check over every member
 lint-style:
@@ -487,6 +488,23 @@ lint-ops:
 # rather than a developer's next commit
 lint-hooks:
     uv run --no-sync lefthook validate
+
+# The invariant-label census, the lookup that has to resolve every label it finds, and ruff and mypy
+# over `tools/` itself.
+#
+# A comment citing an invariant by its number points at a document this repository does not contain,
+# and `docs/invariants.md` is the only thing that resolves one. The census reads the index and fails
+# on a label with no row there, so a comment cannot cite a requirement a reader cannot look up.
+#
+# `tools/` is not a workspace member, so `just lint-style` and `just typecheck` never enter it, which
+# is the same hole `lint-ops` exists to close for `deployments/`. Its tests run here too rather than
+# in a member's suite, because the scan belongs to no member and this is where its gate runs.
+lint-invariants:
+    uv run --no-sync python tools/invariant_labels.py --check
+    uv run --no-sync pytest tools
+    uv run --no-sync ruff check tools
+    uv run --no-sync ruff format --check tools
+    uv run --no-sync mypy --strict tools
 
 # Format and apply safe fixes over every member
 fmt:

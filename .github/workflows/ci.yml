@@ -19,8 +19,10 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # ruff check, the format check, and mypy over every member. `just lint` is the
-  # same command a developer runs, so the gate cannot drift from the local one.
+  # ruff check, the format check, and mypy over every member, plus the census that
+  # crosses every invariant label a comment cites against `docs/invariants.md`.
+  # `just lint` is the same command a developer runs, so the gate cannot drift
+  # from the local one.
   # ---------------------------------------------------------------------------
   lint-backend:
     runs-on: ubuntu-latest
@@ -39,7 +41,7 @@ jobs:
       - name: Sync the workspace (one shared root venv, every member)
         run: uv sync --all-packages --frozen
 
-      - name: Lint, typecheck, and validate the hook config
+      - name: Lint, typecheck, validate the hook config, and resolve every cited invariant label
         run: just lint
 
   # ---------------------------------------------------------------------------
