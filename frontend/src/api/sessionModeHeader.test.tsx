@@ -40,12 +40,14 @@ import {
   buildSession,
   buildVerdict,
   buildWeekView,
+  installSessionRead,
   installWeekReads,
   monday,
 } from "../routes/week/__tests__/fixtures";
 import { usePinning } from "./hooks/usePins";
 import { useWeekSolve } from "./hooks/useWeek";
 import { useWeekWrites } from "./hooks/useWeekWrites";
+import { client } from "./client";
 import type { WriteMethod } from "../testing/apiStub";
 import type { Pinning } from "./hooks/usePins";
 import type { SolveRequest } from "./hooks/useWeek";
@@ -58,6 +60,11 @@ const STATED_OPEN = "true";
 const WEEK = `/api/v1/weeks/${ISO_WEEK}`;
 const PIN = buildPin();
 const CONFLICT = buildConflict();
+
+/* A week nothing on screen asks for, which is what a read issued INSIDE the session is made against. The mode's own
+ * payload is fetched before the route's effect declares the session, so a recorder on that read reports an absent
+ * header whatever the middleware does with a safe method. */
+const UNREAD_WEEK = "2026-W09";
 
 /** What one request said about the session: whether the header was there, and what it carried. */
 interface Stated {
@@ -181,30 +188,29 @@ function record(write: WeekWriteCase): Stated[] {
   return stated;
 }
 
+/** A read of a week nothing on screen asks for, recording what it stated about the session. */
+function recordRead(isoWeek: string): Stated[] {
+  const stated: Stated[] = [];
+  apiServer.use(
+    http.get(`${window.location.origin}/api/v1/weeks/${isoWeek}`, ({ request }) => {
+      stated.push(statedIn(request));
+      return HttpResponse.json(buildWeekView({ isoWeek }));
+    }),
+  );
+  return stated;
+}
+
 /** A week with a proposal and a verdict, so the screen and the mode both reach their ready state. */
 function installReads(): void {
   installWeekReads(buildWeekView({ verdict: buildVerdict(), proposal: buildProposal() }));
 }
 
-/**
- * The session, opened the way a reader opens it: at its URL, so the route's own effect declares the mode.
- *
- * What comes back is whatever the session's own READ stated, which is the other half of the same guard. The api
- * resolves the header only where a verdict is recorded, because its refusal for an unreadable value says nothing was
- * changed, and that is meaningless on a read.
- */
-async function openTheSession(): Promise<Stated[]> {
+/** The session, opened the way a reader opens it: at its URL, so the route's own effect declares the mode. */
+async function openTheSession(): Promise<void> {
   installReads();
-  const read: Stated[] = [];
-  apiServer.use(
-    http.get(`${window.location.origin}/api/v1/reviews/week/:isoWeek`, ({ request }) => {
-      read.push(statedIn(request));
-      return HttpResponse.json(buildSession());
-    }),
-  );
+  installSessionRead(buildSession());
   renderAt(SESSION_PATH);
   await screen.findByLabelText("Weekly session");
-  return read;
 }
 
 /** The same screen with no mode in the URL, which is what a reader outside a session is looking at. */
@@ -227,10 +233,16 @@ describe("with the session open, every unsafe write the Week screen can make sta
     expect(stated).toEqual([OPEN]);
   });
 
-  it("sends nothing at all on the session's own read, which has no use for one", async () => {
-    const read = await openTheSession();
+  it("sends nothing at all on a read made while the session is open", async () => {
+    /* THE READ IS ISSUED AFTER THE MODE IS ON SCREEN, which is what makes this the safe-method half of the guard
+     * rather than a restatement of the flag's timing. The api resolves the header only where a verdict is recorded,
+     * because its refusal for an unreadable value says nothing was changed, and that is meaningless on a read. */
+    await openTheSession();
+    const stated = recordRead(UNREAD_WEEK);
 
-    expect(read).toEqual([ABSENT]);
+    await client.GET("/api/v1/weeks/{iso_week}", { params: { path: { iso_week: UNREAD_WEEK } } });
+
+    expect(stated).toEqual([ABSENT]);
   });
 });
 
