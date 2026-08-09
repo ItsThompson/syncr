@@ -120,7 +120,7 @@ def failing_check(name: str, detail: str) -> ReadinessCheck:
 
 @pytest.fixture
 def app(settings: ServiceSettings) -> FastAPI:
-    """An app with both readiness checks passing and no feature routers."""
+    """An app with every feature router mounted and both readiness checks passing."""
     return create_app(
         settings,
         readiness_checks=(passing_check("postgres"), passing_check("migrations")),
