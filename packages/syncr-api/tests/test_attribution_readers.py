@@ -7,11 +7,14 @@ placement index tells them apart with an injected strategy rather than with a br
 register says which quantity takes which.
 
 The subject of this file is the word EVERY. A case written over a reader set somebody listed cannot
-fail on the reader they forgot, so both sets here are derived from the source on every run and then
+fail on the reader they forgot, so every set here is derived from the source on every run and then
 compared against a declared register:
 
 1. the modules whose code reaches the table, walked over every package's shipped source
-2. the placement index's public readings and the span each one takes, read out of the index's own
+2. the modules naming each identifier the attributed span travels under below the table, because a
+   consumer can net it without ever naming the table: one reading of the placement index and one
+   return type hand it out, and reaching either takes an import
+3. the placement index's public readings and the span each one takes, read out of the index's own
    constructor
 
 Each derivation is also run against a synthetic source that breaks it, because a derivation that
@@ -52,6 +55,27 @@ THE_TABLE = "attributed_span"
 # a confirmed day gives an Area. Every member also needs a case in `ATTRIBUTION_BY_MODULE`, so a
 # module added here without one cannot pass either.
 MODULES_READING_THE_TABLE = frozenset({"syncr_api.plans.netting", "syncr_api.reviews.coverage"})
+
+# Every identifier the attributed span travels under, and the modules whose code names each. The
+# register above covers the table's own callers, and a consumer can net the attributed span without
+# ever naming the table: the placement index hands it out through one reading and one return type,
+# and reaching either takes an import. So the chain is walked at every link rather than at the top.
+MODULES_BY_LINK = {
+    "attributed_span": {"syncr_api.plans.netting", "syncr_api.reviews.coverage"},
+    "_attributed_span": {"syncr_api.plans.netting"},
+    # The declaring module is absent because a definition is not a reference, so this row holds the
+    # consumers and nothing else.
+    "attributed_to_task_before": {"syncr_api.plans.demand"},
+    "AttributedMinutes": {"syncr_api.plans.netting"},
+    # Only one of these three reads the field: the other two hold a local of the same name. The row
+    # is over identifiers, so a fourth module reddens it whichever way it means the word, and
+    # looking at that module is the point.
+    "attributed": {
+        "syncr_api.plans.demand",
+        "syncr_api.plans.netting",
+        "syncr_api.reviews.coverage",
+    },
+}
 
 THE_INDEX = "PlacedTime"
 
@@ -101,8 +125,8 @@ def production_modules(root: Path) -> Mapping[str, Path]:
 def modules_using(name: str, modules: Mapping[str, Path]) -> set[str]:
     """The modules whose CODE names ``name``.
 
-    Identifiers only. Five modules describe this table in prose and two read it, so a text search
-    would report five readers, and the defining module would be one of them.
+    Identifiers only. Three modules contain the string ``attributed_span`` and two name it as code,
+    so a text search reports three readers and the module that declares the table is one of them.
     """
     return {
         module
@@ -321,7 +345,47 @@ def test_every_module_that_reads_the_table_has_a_case_in_this_file() -> None:
 
 
 # --------------------------------------------------------------------------------
-# Rule 3: the placement index's readings take exactly the spans the register names
+# Rule 3: nothing nets the attributed span without naming one of the links it travels under
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("link", sorted(MODULES_BY_LINK))
+def test_each_link_the_attributed_span_travels_under_is_named_by_the_register_it_holds(
+    link: str,
+) -> None:
+    naming = modules_using(link, production_modules(repository_root()))
+
+    assert naming == MODULES_BY_LINK[link], (
+        f"{sorted(naming)} name {link!r} and {sorted(MODULES_BY_LINK[link])} are accounted for. "
+        "A consumer that nets the attributed span without naming the table reaches it through one "
+        "of these links"
+    )
+
+
+def test_the_two_registers_cannot_drift_about_the_tables_own_callers() -> None:
+    # The chain's first link and the register the behavioural cases run over answer one question.
+    # Two answers to it would let a reader be added to one and stay absent from the other.
+    assert MODULES_BY_LINK[THE_TABLE] == set(MODULES_READING_THE_TABLE)
+
+
+def test_the_chain_register_reports_a_consumer_that_never_names_the_table(tmp_path: Path) -> None:
+    # The control, written against the shape it exists for: a module that takes the index's reading
+    # and nets the past half without ever naming the table. A register over the table's own callers
+    # is blind to it, which is what the second assertion here states.
+    planted = tmp_path / "shadow_demand.py"
+    planted.write_text(
+        "def shadow_demand(placed, task_id, deadline):\n"
+        "    return placed.attributed_to_task_before(task_id, deadline).past\n",
+        encoding="utf-8",
+    )
+    walked = {"syncr_api.plans.shadow_demand": planted}
+
+    assert modules_using("attributed_to_task_before", walked) == {"syncr_api.plans.shadow_demand"}
+    assert modules_using(THE_TABLE, walked) == set()
+
+
+# --------------------------------------------------------------------------------
+# Rule 4: the placement index's readings take exactly the spans the register names
 # --------------------------------------------------------------------------------
 
 
