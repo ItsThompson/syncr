@@ -31,9 +31,16 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from syncr_domain.discretionary import OccupancyKind, is_subtracted
+from syncr_domain.discretionary import (
+    SUBTRAHEND_BY_KIND,
+    OccupancyKind,
+    Subtrahend,
+    discretionary_intervals,
+    is_subtracted,
+)
 from syncr_domain.gaps import EmptySlotReason
 from syncr_domain.identity import BindingKind, BindingRef, Origin, TransitLeg, block_id
+from syncr_domain.intervals import IntervalSet
 from syncr_domain.plan import MIN_SPLIT_COUNT, Block, PlanDocument, PlanError, RevisionReason
 from syncr_domain.reasons import ReasonError
 from syncr_domain.weeks import IsoWeek
@@ -87,6 +94,15 @@ OCCUPANCY_BY_ORIGIN = {
     Origin.TEMPLATE_ENTRY: OccupancyKind.TEMPLATE_ENTRY_BLOCK,
 }
 
+# Monday 00:00 to the following Monday, and one hour per origin on a day of its own, so every
+# block's contribution to the denominator is a distinct hour rather than one folded into an
+# overlap.
+WEEK_SPAN = between(0, 168)
+WEEK_SPAN_MINUTES = 168 * 60
+AN_HOUR_PER_ORIGIN = {
+    origin: between(9, 10, day=day) for day, origin in enumerate(OCCUPANCY_BY_ORIGIN)
+}
+
 
 class Diff(NamedTuple):
     """What pairing two documents on their block ids produces. The classifier's own shape."""
@@ -125,6 +141,34 @@ def a_week_of(bindings: Iterable[BindingRef]) -> PlanDocument:
             )
             for binding in bindings
         )
+    )
+
+
+def a_block_of_every_origin() -> tuple[Block, ...]:
+    """One block per origin, an hour each on its own day, so no two subtract the same minute."""
+    return tuple(
+        a_block_of(origin, interval=interval) for origin, interval in AN_HOUR_PER_ORIGIN.items()
+    )
+
+
+def denominator_over(blocks: Iterable[Block], span: Interval) -> IntervalSet:
+    """The parts of ``span`` an Area may still claim, sorted out of a week's own blocks.
+
+    Written here rather than imported, because the assembler that will do this is not this
+    module's. Each block is routed by the kind its origin names, so a kind the subtraction table
+    does not name stays in the denominator by never reaching a subtrahend at all.
+    """
+    subtrahends: dict[Subtrahend, list[Interval]] = {member: [] for member in Subtrahend}
+    for block in blocks:
+        carrier = SUBTRAHEND_BY_KIND.get(block.occupancy_kind)
+        if carrier is not None:
+            subtrahends[carrier].append(block.interval)
+    return discretionary_intervals(
+        span,
+        frame=IntervalSet(subtrahends[Subtrahend.FRAME]),
+        anchors=IntervalSet(subtrahends[Subtrahend.ANCHORS]),
+        absolute_forbidden=IntervalSet(subtrahends[Subtrahend.ABSOLUTE_FORBIDDEN]),
+        off_plan=IntervalSet(subtrahends[Subtrahend.OFF_PLAN]),
     )
 
 
@@ -283,6 +327,46 @@ class TestWhichKindOfSpanABlockIs:
     @pytest.mark.parametrize("origin", [Origin.FRAME, Origin.ANCHOR], ids=["frame", "anchor"])
     def test_a_block_carrying_no_area_leaves_it(self, origin: Origin) -> None:
         assert is_subtracted(a_block_of(origin).occupancy_kind) is True
+
+
+class TestTheMinutesAWeeksBlocksLeaveInTheDenominator:
+    """The arithmetic the vocabulary exists for, over a week holding one block of every origin.
+
+    The table tests above assert which side of the subtraction each kind falls on. These assert
+    the minutes, so a kind that changed sides shows up as a figure a budget report would render
+    rather than as a lookup only a test performs.
+    """
+
+    def test_the_frame_and_the_anchor_are_the_only_hours_taken_out(self) -> None:
+        free = denominator_over(a_block_of_every_origin(), WEEK_SPAN)
+
+        assert free.total_minutes() == WEEK_SPAN_MINUTES - 2 * 60
+
+    @pytest.mark.parametrize(
+        "origin", ORIGINS_WITH_AN_AREA, ids=[origin.value for origin in ORIGINS_WITH_AN_AREA]
+    )
+    def test_the_hour_a_block_carrying_an_area_occupies_is_still_discretionary(
+        self, origin: Origin
+    ) -> None:
+        """Allocation is not removal, per origin and in minutes.
+
+        A materialized ``Shower`` is discretionary time its Area claimed, so subtracting it would
+        take the hour out of the denominator AND charge it to that Area.
+        """
+        occupied = IntervalSet([AN_HOUR_PER_ORIGIN[origin]])
+        free = denominator_over(a_block_of_every_origin(), WEEK_SPAN)
+
+        assert free.intersect(occupied) == occupied
+
+    @pytest.mark.parametrize("origin", [Origin.FRAME, Origin.ANCHOR], ids=["frame", "anchor"])
+    def test_the_hour_a_block_carrying_no_area_occupies_is_not_discretionary(
+        self, origin: Origin
+    ) -> None:
+        """The control on the five above: this assembly can remove an hour, and does."""
+        occupied = IntervalSet([AN_HOUR_PER_ORIGIN[origin]])
+        free = denominator_over(a_block_of_every_origin(), WEEK_SPAN)
+
+        assert not free.intersect(occupied)
 
 
 class TestWhatAPinHasToState:
