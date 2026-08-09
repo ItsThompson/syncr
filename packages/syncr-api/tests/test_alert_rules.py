@@ -1144,8 +1144,24 @@ class TestEveryMatcherNamesALabelItsFamilyCarries:
         assert matchers_on_an_undeclared_label() == set(MATCHERS_ON_AN_UNDECLARED_LABEL)
 
     @pytest.mark.parametrize("entry", sorted(MATCHERS_ON_AN_UNDECLARED_LABEL))
-    def test_each_declared_one_states_what_would_revive_it(self, entry: str) -> None:
-        assert len(MATCHERS_ON_AN_UNDECLARED_LABEL[entry]) > 80
+    def test_each_declared_one_states_what_would_remove_it(self, entry: str) -> None:
+        """A reason long enough to look like one is not a reason.
+
+        The change that removes an entry happens in the member that DECLARES the family, and a
+        reader who finds this table needs to be sent there. Both halves are derived from the entry's
+        own key, so a reason that names neither fails: the first version asserted a length alone,
+        which any sentence of the right size satisfies and which certified content it never read.
+        """
+        _, family, label = entry.split(":")
+        member = declaring_member(family)
+        reason = MATCHERS_ON_AN_UNDECLARED_LABEL[entry]
+
+        assert member is not None, f"no member declares {family}, so nothing can be pointed at"
+        assert len(reason) > 80
+        assert label in reason, f"the reason does not name the missing label {label}"
+        assert member in reason or member.replace("_", "-") in reason, (
+            f"the reason does not name {member}, which is where the label has to be added"
+        )
 
     def test_the_reading_finds_the_labels_the_collectors_declare(self) -> None:
         """The positive control: an empty label map reports every matcher in the file as broken."""
