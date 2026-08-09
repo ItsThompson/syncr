@@ -10,9 +10,10 @@ every response renders it read-only with its provenance, a fixed habit renders `
 body carrying one is refused rather than ignored. **The absence group** asserts the two fields
 that do not exist, because an absence nothing tests is an absence a later ticket adds back.
 
-Every occurrence-derived figure reads from an empty log here, because nothing in this deployment
-writes a binding onto an outcome yet. The figures themselves are asserted against an occupied log
-in the service suite, through the same production seam.
+Every occurrence-derived figure reads from an empty log here, because this suite seeds no plan of
+record and records no outcome. The figures themselves are asserted against an occupied log in the
+service suite through the reader seam, and against rows the outcome routes wrote in
+``test_habit_outcome_log_integration.py``.
 
 The cookie is replayed by setting the header rather than through a cookie jar: the cookie is
 ``Secure``, and an HTTP client that honors that attribute will not send it back over
