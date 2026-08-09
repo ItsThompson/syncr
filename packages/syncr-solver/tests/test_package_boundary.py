@@ -7,7 +7,7 @@ The walk runs in a SUBPROCESS because ``sys.modules`` is process-global: a sibli
 test module importing a forbidden package would otherwise fail this test and blame
 `syncr_solver`. The probe is duplicated in each member's boundary test rather than
 shared, because a member's test path resolves against its own directory and reaching
-into a sibling's test tree would be a worse coupling than twelve repeated lines.
+into a sibling's test tree would be a worse coupling than repeating the probe in each.
 
 **The child is told which tree to import, and it reports which one it did.** A subprocess
 inherits none of the parent's ``sys.path``, so without being told it resolves this package
@@ -24,6 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import NamedTuple
+
+import pytest
 
 import syncr_solver
 
@@ -94,19 +96,41 @@ def import_every_module(package: str) -> Walked:
     )
 
 
-def test_the_probe_walks_the_tree_this_test_imported() -> None:
+@pytest.fixture(scope="module")
+def walked() -> Walked:
+    """One walk of this tree: the package is imported in a subprocess once for the whole module."""
+    return import_every_module(PACKAGE)
+
+
+def test_the_probe_walks_the_tree_this_test_imported(walked: Walked) -> None:
     # The instrument's own precondition. A child resolving the package through the interpreter's
     # editable install walks another checkout, and every forbidden import added here would pass.
-    walked = import_every_module(PACKAGE)
-
     assert walked.resolved == SOURCE_ROOT, (
         f"the probe walked {walked.resolved}, this test imported {SOURCE_ROOT}"
     )
 
 
-def test_no_solver_module_reaches_for_io_or_an_ml_library() -> None:
-    walked = import_every_module(PACKAGE)
+def test_no_solver_module_reaches_for_io_or_an_ml_library(walked: Walked) -> None:
     leaked = sorted(FORBIDDEN_IMPORTS & walked.loaded)
 
     assert walked.imported, f"expected at least {PACKAGE} itself to import"
     assert leaked == [], f"{PACKAGE} must not import {leaked}"
+
+
+def test_the_probe_ignores_a_pythonpath_from_the_ambient_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A child that inherits the environment measures whatever a developer's shell points at, and a
+    # PYTHONPATH entry outranks the editable install. Unlike the comparison above, this holds in a
+    # single checkout, where the parent's tree and the editable install are one path.
+    (tmp_path / PACKAGE).mkdir()
+    (tmp_path / PACKAGE / "__init__.py").write_text(
+        '"""a tree nobody chose."""\n', encoding="utf-8"
+    )
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+
+    probed = import_every_module(PACKAGE)
+
+    assert probed.resolved == SOURCE_ROOT, (
+        f"the probe walked {probed.resolved}, this test imported {SOURCE_ROOT}"
+    )
