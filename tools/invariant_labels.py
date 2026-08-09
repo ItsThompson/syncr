@@ -128,11 +128,12 @@ def tracked(root: Path) -> list[Path]:
 def census(paths: Iterable[Path], *, root: Path) -> Census:
     """One reading of those paths: the ones whose kind is read, their prose, and what it cites.
 
-    Every read file is parsed, with no cheap pre-test for a label-shaped token anywhere in the text.
-    Such a test skipped most of the tree and cut the reading's own cost by two thirds, and it made
-    the prose count meaningless: a repository whose comments cite nothing would have skipped every
-    file, so "no prose at all" and "no citations" became one reading and the control below could
-    not tell a swept tree from a broken parser.
+    Every read file is parsed, with no cheap pre-test for a label-shaped token in the text. Such
+    a test cut the reading's cost by two thirds and made both of the control's figures a function
+    of the citations: the files it skips are the files with nothing to find, so a repository that
+    cites nothing reads almost none of itself, and the control cannot then tell a swept tree from a
+    broken parser. The suite holds the read set to every tracked path of a read kind, so the
+    pre-test cannot come back quietly.
     """
     every = tuple(sorted(paths))
     read: list[Path] = []

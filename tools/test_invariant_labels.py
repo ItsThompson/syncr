@@ -66,11 +66,17 @@ class TestTheLookupResolvesEveryLabelTheTreeCites:
     def test_the_reading_read_the_kinds_it_declares(self, head: AtHead) -> None:
         """The control, and it asks about the reading rather than about what the reading found.
 
-        The assertion above passes over a reading that read nothing at all. This one cannot, and it
-        survives the state the sweeps are meant to reach, where every comment states its requirement
-        and no comment cites a label.
+        Non-emptiness is not the property: a reading that covered three files of nineteen hundred
+        would satisfy it, and that is exactly what a pre-test on the label pattern produced. The
+        expected set is computed here from the reading's own paths and the declared partition, so
+        there is no figure to maintain, and any file of a read kind that goes unread reddens this.
+
+        It survives the state the sweeps are meant to reach, where every comment states its
+        requirement and no comment cites a label.
         """
-        assert head.taken.read
+        declared = [path for path in head.taken.paths if comments.kind(path) in comments.READ]
+
+        assert list(head.taken.read) == declared
         assert head.taken.prose > len(head.taken.read)
 
     def test_the_gate_passes(self, capsys: pytest.CaptureFixture[str]) -> None:
