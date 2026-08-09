@@ -15,7 +15,9 @@ subprocess inherits none of the parent's ``sys.path``, so without an explicit
 ``PYTHONPATH`` it resolves ``syncr_learning`` through the venv's editable install and
 walks whatever checkout that points at, which is a boundary test measuring the wrong
 tree. Both the instruction and the assertion on it are load-bearing, and the assertion
-is what makes the instruction impossible to drop silently.
+is what makes the instruction impossible to drop silently. The environment carries
+nothing else, so a ``PYTHONPATH`` on the machine running the suite cannot redirect the
+child either, and that is the half of the instruction one checkout can watch fail.
 
 **Both forbidden workspace packages are DEV dependencies of this member**, because two
 agreement tests need this package's restated spellings and their owners in one process.
@@ -44,7 +46,8 @@ FORBIDDEN_IMPORTS = frozenset({"syncr_api", "syncr_solver", "fastapi", "starlett
 
 LOCKFILE = Path(__file__).resolve().parents[3] / "uv.lock"
 
-# The importable root this suite's own interpreter read the package from. Children are pointed here.
+# The importable root this suite's own interpreter read the package from. Children are pointed here
+# unless a caller states another root.
 SOURCE_ROOT = Path(syncr_learning.__file__).resolve().parent.parent
 
 _PROBE = """
@@ -89,9 +92,24 @@ def import_every_module(package: str, *, source_root: Path = SOURCE_ROOT) -> dic
 
 
 def test_the_probe_measured_the_checkout_this_suite_is_running_from() -> None:
-    # The instrument's own precondition, and the guard on the instruction that satisfies it. A child
-    # resolving the package through the venv's editable install walks another checkout, and every
-    # forbidden import added to this tree would pass the walk below.
+    # The instrument's own precondition. A child resolving the package through the venv's editable
+    # install walks another checkout, and every forbidden import added to this tree would pass the
+    # walk below.
+    probed = import_every_module(PACKAGE)
+
+    assert Path(probed["resolved"]).resolve() == Path(syncr_learning.__file__).resolve()
+
+
+def test_no_ambient_pythonpath_can_redirect_the_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The other half of an explicit environment, and the half that fails in one checkout: a variable
+    # on the machine running the suite must not decide which tree the child reads.
+    decoy = tmp_path / PACKAGE
+    decoy.mkdir()
+    (decoy / "__init__.py").write_text("", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+
     probed = import_every_module(PACKAGE)
 
     assert Path(probed["resolved"]).resolve() == Path(syncr_learning.__file__).resolve()
