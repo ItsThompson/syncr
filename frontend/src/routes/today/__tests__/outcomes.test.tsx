@@ -85,6 +85,33 @@ async function focusRow(title: string): Promise<HTMLElement> {
   return row;
 }
 
+/**
+ * How many times a control named `label` entered the document while `act` ran.
+ *
+ * A keystroke that both navigates and opens a form produces one commit: React batches the router's state
+ * update with the form's, so the form is unmounted with the screen it belonged to and was never in the DOM to
+ * query for. A query made after `act` therefore reads the same empty document whether the keystroke reached
+ * that form or not. The observer's records hold the nodes themselves, so an opening that survived no commit
+ * is still countable.
+ */
+async function appearancesWhile(label: string, act: () => Promise<void>): Promise<number> {
+  let seen = 0;
+  const count = (records: readonly MutationRecord[]): void => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node instanceof HTMLElement)
+          seen += node.querySelectorAll(`[aria-label="${label}"]`).length;
+      }
+    }
+  };
+  const observer = new MutationObserver(count);
+  observer.observe(document.body, { subtree: true, childList: true });
+  await act();
+  count(observer.takeRecords());
+  observer.disconnect();
+  return seen;
+}
+
 const GYM = "Gym \u00B7 Chest & Back";
 
 describe("skipping a row", () => {
@@ -439,6 +466,38 @@ describe("the interval a block really ran in", () => {
     expect(screen.getByRole("button", { name: "record moved" })).toBeDisabled();
     expect(screen.getByText(/both ends need a time/)).toBeInTheDocument();
     expect(sent.bodies).toEqual([]);
+  });
+
+  /* A CHORD IS ONE GESTURE, and `m` is the case where that is hardest to see: it names a screen, so the chord
+     both navigates and would feed this row's own binding, and the navigation unmounts the form that binding
+     opens. `g m` navigated AND opened the moved control on the focused row before the shell consumed the
+     keystroke. */
+  it("does nothing on g m beyond navigating, because the chord consumed the keystroke", async () => {
+    await renderToday(onHostToday(buildDay()));
+    await focusRow(GYM);
+    const user = userEvent.setup();
+
+    const openings = await appearancesWhile(`when ${GYM} really happened, from`, () =>
+      user.keyboard("gm"),
+    );
+
+    expect(openings).toBe(0);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Templates");
+  });
+
+  /* The zero above is evidence only if the same reading can be non-zero, so it is taken again over the
+     keystroke that really does open the form. Without this, a reading that could see nothing at all would
+     report the rule holding. */
+  it("counts the moved control opening on a bare m", async () => {
+    await renderToday(onHostToday(buildDay()));
+    await focusRow(GYM);
+    const user = userEvent.setup();
+
+    const openings = await appearancesWhile(`when ${GYM} really happened, from`, () =>
+      user.keyboard("m"),
+    );
+
+    expect(openings).toBe(1);
   });
 });
 
