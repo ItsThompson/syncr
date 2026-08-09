@@ -47,12 +47,8 @@ export function DayBand({ day, notices, formatSince, onConfirm, onBackfill }: Da
             </Button>
           )}
           <Button isDisabled={day.blockCount === 0} onClick={onConfirm}>
-            Confirm the day
+            Confirm the day <KeyHint keys="c" />
           </Button>
-          {/* The hint sits BESIDE the primary button rather than inside it. The kit's key hint is drawn in
-              --ink-deep with no inverse form, and the primary rank's fill is ink: inside, the brackets are
-              ink on ink and a reader cannot see the keystroke the screen is advertising. */}
-          <KeyHint keys="c" />
         </span>
       </Strip>
       {notices.map((notice) => (

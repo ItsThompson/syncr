@@ -37,11 +37,11 @@ describe("the day band", () => {
 
     expect(screen.getByText("blocks").parentElement).toHaveTextContent("4");
     expect(screen.getByText("presumed complete").parentElement).toHaveTextContent("4");
-    expect(screen.getByRole("button", { name: /Confirm the day/ })).toBeEnabled();
-    /* The keystroke is advertised beside the control rather than inside it: the kit's key hint is drawn in
-       ink, and the primary rank's own fill is ink. */
-    const strip = screen.getByText("blocks").closest(".strip") as HTMLElement;
-    expect(within(strip).getByText("c", { selector: "kbd" })).toBeInTheDocument();
+    const confirm = screen.getByRole("button", { name: /Confirm the day/ });
+    expect(confirm).toBeEnabled();
+    /* The keystroke is advertised INSIDE the control it triggers, which is where a hint belongs: the mark takes
+       the ink of the surface it lands on, so the ink rank's own fill no longer swallows it. */
+    expect(within(confirm).getByText("c", { selector: "kbd" })).toBeInTheDocument();
   });
 
   /* The count is the api's own figure over the last 28 days. Four rows here are presumed and the response
