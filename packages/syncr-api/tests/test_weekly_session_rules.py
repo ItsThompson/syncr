@@ -398,7 +398,7 @@ class TestARepeatedCollisionIsThreeOrMoreWeeks:
 
         assert repeated_collisions(rows, at_least_weeks=3) == []
 
-    def test_a_one_off_over_the_same_block_in_the_same_weeks_is_not_raised_beside_it(self) -> None:
+    def test_a_one_off_sharing_the_block_and_weeks_is_not_raised_beside_the_series(self) -> None:
         # The series is the only thing separating these two pairs: one block, one pair of weeks.
         # A one-off cannot recur, so the pair carrying none is skipped rather than raised as a
         # second pattern over the same block. Two seriesless rows rather than one, because one row
