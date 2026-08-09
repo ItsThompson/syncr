@@ -78,6 +78,10 @@ class TestTheSlashLanguages:
     def test_a_css_block_comment_is_prose(self) -> None:
         assert pieces("x.css", ".a { /* why */ }\n") == ["/* why */"]
 
+    def test_an_escaped_quote_does_not_end_the_value(self) -> None:
+        """Otherwise the marker after it opens a comment and the value's own text becomes prose."""
+        assert pieces("x.ts", 'const a = "say \\" // not a comment";\n') == []
+
 
 class TestTheHashLanguages:
     def test_a_comment_is_prose(self) -> None:

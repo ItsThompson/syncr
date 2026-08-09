@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import invariant_labels
 from invariant_labels import (
     LOOKUP,
     NOT_A_LABEL,
@@ -188,12 +189,72 @@ class TestTheReading:
         with pytest.raises(RuntimeError, match="listed no files"):
             tracked(tmp_path)
 
+    def test_a_reading_that_found_nothing_is_a_complaint(self) -> None:
+        """The control on the gate itself: it must not pass by having read nothing."""
+        lookup = read_lookup(_a_lookup_of("| `H1` | what it requires. |"))
+
+        assert check([], lookup, [_ANY_PATH]) == [
+            "nothing to check: the reading found no citation at all in 1 tracked files"
+        ]
+
     def test_a_resolved_label_nothing_cites_is_reported_rather_than_failed(self) -> None:
         """The rows outlive the comments that pointed at them, so an uncited row is not a fault."""
         lookup = read_lookup(_a_lookup_of("| `H1` | what it requires. |"))
 
         assert uncited([], lookup) == ["H1"]
         assert check([Citation("H1", "x.py", 1)], lookup, [_ANY_PATH]) == []
+
+
+class TestTheCommandItself:
+    """The two exits, driven over a repository built for the purpose.
+
+    The gate's failing exit is the branch that makes the whole check decoration if it is wrong, and
+    nothing in this repository can drive it while this repository passes.
+    """
+
+    def test_the_gate_fails_and_names_the_label(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(invariant_labels, "REPO_ROOT", _a_repository(tmp_path))
+
+        assert main(["--check"]) == 1
+        assert "H42" in capsys.readouterr().err
+
+    def test_the_plain_invocation_reports_without_gating(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Asking what the tree cites is not asking whether it passes."""
+        monkeypatch.setattr(invariant_labels, "REPO_ROOT", _a_repository(tmp_path))
+
+        assert main([]) == 0
+        printed = capsys.readouterr()
+        assert "distinct invariant labels" in printed.out
+        assert "every cited label resolves" not in printed.out
+        assert printed.err == ""
+
+
+def _a_repository(root: Path) -> Path:
+    """A repository of two files: a lookup of one row, and a comment citing a label it lacks."""
+    (root / "docs").mkdir(parents=True)
+    (root / "docs/invariants.md").write_text(
+        _a_lookup_of("| `H1` | what it requires. |"), encoding="utf-8"
+    )
+    (root / "cited.py").write_text("# H42 is what this one has to do\n", encoding="utf-8")
+    subprocess.run(  # noqa: S603 - a fixed argv, and no shell
+        ["git", "init", "--quiet", str(root)],  # noqa: S607
+        check=True,
+    )
+    subprocess.run(  # noqa: S603 - a fixed argv, and no shell
+        ["git", "-C", str(root), "add", "docs/invariants.md", "cited.py"],  # noqa: S607
+        check=True,
+    )
+    return root
 
 
 def _a_lookup_of(*rows: str) -> str:
