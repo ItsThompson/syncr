@@ -21,10 +21,11 @@ no rule to apply for it: a habit occurrence in one week is one block, and one bl
 the rows they are handed by ``habit_id`` themselves, so a read that returned every row of the log
 would still produce the right cursor and the right debt figure. What the two predicates buy is the
 READ: they bound it to the rows a caller asked about, and they are what lets the expression index
-serve it. The index leads with the binding's ``kind``, so a query that did not state it could not
-use the index at all and every habit collection would cost a sequential scan over the tenant's whole
-log. That is why the statement is asserted rather than only its answer: the defect this predicate
-prevents has no symptom other than a slow request.
+serve it. The index is ``(tenant_id, kind, entity_id)``, so stating the kind bounds the scan to the
+one range that pair holds. Omitting it does not lose the index: the scan then covers every entry
+the tenant holds and rechecks each against the entity, which on 60,000 rows costs about twice the
+time and fifteen times the index pages. That is why the statement is asserted rather than only its
+answer: what a missing predicate costs has no symptom other than a slower request.
 
 **The key spellings are the writer's own.** The two extractions name the constants
 ``stored_binding`` writes rather than strings spelled a second time, which is what makes a silent

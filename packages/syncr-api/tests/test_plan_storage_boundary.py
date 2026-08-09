@@ -453,8 +453,9 @@ def test_the_habit_projection_reads_an_index_over_the_keys_a_binding_is_written_
 def test_the_habit_projection_states_both_keys_the_index_leads_with() -> None:
     # The other half, and the half that has no behavioral symptom. Both derivations re-filter the
     # rows they are handed by habit, so a read that dropped either predicate would still produce the
-    # right cursor: what it would cost is the index, because the index leads with the binding's
-    # `kind` and a query that does not state it cannot use the index at all.
+    # right cursor: what it would cost is the index RANGE. The index is
+    # `(tenant_id, kind, entity_id)`, so a query omitting the kind still uses it and scans every
+    # entry the tenant holds rather than the one range the pair bounds.
     #
     # Asserted over the compiled SQL, the way the tenancy rules assert their own predicate, because
     # the claim is about the statement rather than about the rows it returns today.
