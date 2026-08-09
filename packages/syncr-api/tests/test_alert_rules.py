@@ -103,6 +103,21 @@ class Rule:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class Comparison:
+    """One threshold comparison inside a rule's expression, with the term it is stated over.
+
+    A rule fires on an operator, a number and the range the term reads over, so a control that
+    asserts the number alone passes when the operator flips or the window moves. All four are read
+    together here for that reason.
+    """
+
+    families: frozenset[str]
+    window: str
+    operator: str
+    threshold: float
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Inhibition:
     """One Alertmanager inhibit rule, as the matchers it was written with."""
 
@@ -347,6 +362,41 @@ def families_in(text: str) -> set[str]:
     return {base_family(found) for found in _FAMILY.findall(text)}
 
 
+# A threshold comparison, and the range selector a term reads over. An instant vector carries none.
+_COMPARISON = re.compile(r"(?P<operator>==|!=|>=|<=|>|<)\s*(?P<threshold>-?\d+(?:\.\d+)?)")
+_WINDOW = re.compile(r"\[(?P<window>\d+[smhdwy])\]")
+
+
+def comparisons(expr: str) -> list[Comparison]:
+    """Every threshold comparison an expression states, in the order it states them.
+
+    Each comparison is paired with the text to its left, which is the term being compared: a rule
+    disjoins several terms and each carries its own families and its own window, so reading the
+    numbers alone cannot say which term any of them bounds.
+    """
+    read: list[Comparison] = []
+    opened = 0
+    for found in _COMPARISON.finditer(expr):
+        term = expr[opened : found.start()]
+        opened = found.end()
+        windows = _WINDOW.findall(term)
+        read.append(
+            Comparison(
+                families=frozenset(families_in(term)),
+                window=windows[-1] if windows else "",
+                operator=found.group("operator"),
+                threshold=float(found.group("threshold")),
+            )
+        )
+    return read
+
+
+def comparison_on(rule: Rule, family: str) -> Comparison:
+    """The one comparison this rule states over ``family``. Raises if it states none or two."""
+    (found,) = [one for one in comparisons(rule.expr) if family in one.families]
+    return found
+
+
 def exported_families() -> set[str]:
     """Every family this workspace declares, read from the registry.
 
@@ -550,6 +600,45 @@ class TestTheExtractionItself:
             "syncr_solve",
             "syncr_solve_empty_slots",
         }
+
+    def test_it_reads_each_threshold_with_the_operator_and_window_its_own_term_states(self) -> None:
+        """The positive control for the comparison reader, on the shape a real rule has.
+
+        Three terms, two windows, three operators and a number that is not a threshold at all: a
+        reader that took the first number after a family would report `0.99` as the bound on the
+        histogram and would attribute the arming state's `1` to whichever family it found first.
+        """
+        expr = (
+            '(increase(syncr_projection_duration_seconds_count{outcome="failed"}[15m]) > 0 '
+            "and on() syncr_projection_writes_enabled == 1) "
+            "or histogram_quantile(0.99, rate(syncr_probe_duration_seconds_bucket[30m])) >= 0.01"
+        )
+
+        assert comparisons(expr) == [
+            Comparison(
+                families=frozenset({"syncr_projection_duration_seconds"}),
+                window="15m",
+                operator=">",
+                threshold=0.0,
+            ),
+            Comparison(
+                families=frozenset({"syncr_projection_writes_enabled"}),
+                window="",
+                operator="==",
+                threshold=1.0,
+            ),
+            Comparison(
+                families=frozenset({"syncr_probe_duration_seconds"}),
+                window="30m",
+                operator=">=",
+                threshold=0.01,
+            ),
+        ]
+
+    def test_a_term_a_rule_does_not_state_raises_rather_than_reading_as_a_default(self) -> None:
+        """A lookup that answered for a family the rule never mentions would pass on any rule."""
+        with pytest.raises(ValueError, match="not enough values"):
+            comparison_on(named("WriteTargetTokenExpiring"), "syncr_source_staleness_seconds")
 
     def test_a_family_no_process_exports_is_not_in_the_exported_set(self) -> None:
         """The synthetic input the containment assertions would otherwise never see."""
@@ -1058,6 +1147,82 @@ class TestTheRulesThatGovernTheRules:
         assert 'caller="request"' in rule.expr
         assert "0.15" in rule.expr
         assert rule.severity == "warning"
+
+
+class TestTheWriteTargetRulesFire:
+    """The three rules over the write target, each pinned at the condition it fires on.
+
+    Two rule blocks carry them: the token age and the projection failure, plus the contained
+    per-tenant fault, which is folded into both as a disjunct rather than stated as a rule of its
+    own. A contained fault leaves a gauge at its last value and its last value is the healthy one,
+    so the disjunct is what stops a frozen gauge reading healthy, and it therefore belongs on the
+    rule whose consequence it shares.
+
+    EVERY ASSERTION HERE IS ON A PARSED TERM RATHER THAN ON A SUBSTRING. A threshold read out of the
+    whole expression passes when the operator flips, when the window moves, and when the number
+    turns out to bound a different disjunct.
+    """
+
+    def test_the_token_age_fires_on_any_non_zero_age_once_it_has_held_for_fifteen_minutes(
+        self,
+    ) -> None:
+        """The gauge holds the age of the CONDITION, so a bare `> 0` is the condition.
+
+        Read as a level and not over a range: the age grows by itself from the instant refreshing
+        starts failing, so a rate or an increase over it would report zero on a stuck credential
+        nobody has touched. The wait rides out a transient network refusal without waiting out a
+        real expiry.
+        """
+        rule = named("WriteTargetTokenExpiring")
+        term = comparison_on(rule, "syncr_write_target_token_age_seconds")
+
+        assert (term.operator, term.threshold) == (">", 0.0)
+        assert term.window == "", (
+            "an age is a level; an increase over it reads zero when it is stuck"
+        )
+        assert rule.holds_for == "15m"
+        assert rule.severity == "critical"
+
+    def test_the_projection_fires_on_a_failure_in_its_window_and_only_while_writes_are_armed(
+        self,
+    ) -> None:
+        """Both halves of the condition, because either one alone is an alert nobody can use.
+
+        A refused projection is recorded as a failure deliberately, so the failure count alone fires
+        on every plan change in a deployment whose writes are switched off, which is every
+        deployment today. The arming state alone fires on nothing at all.
+        """
+        rule = named("ProjectionFailing")
+        failures = comparison_on(rule, "syncr_projection_duration_seconds")
+        armed = comparison_on(rule, "syncr_projection_writes_enabled")
+
+        assert (failures.operator, failures.threshold, failures.window) == (">", 0.0, "15m")
+        assert (armed.operator, armed.threshold) == ("==", 1.0)
+        assert 'outcome="failed"' in rule.expr
+        assert rule.holds_for == "5m"
+        assert rule.severity == "critical"
+
+    @pytest.mark.parametrize(
+        ("name", "family"),
+        [
+            ("WriteTargetTokenExpiring", "syncr_observability_tenant_failures"),
+            ("ProjectionFailing", "syncr_projection_tenant_failures"),
+        ],
+    )
+    def test_a_contained_tenant_fault_fires_the_rule_whose_reading_it_freezes(
+        self, name: str, family: str
+    ) -> None:
+        """The third rule, and the pairing is the whole of it.
+
+        Each counter has to be read by the rule that goes quiet when its duty stops: the state duty
+        contains a per-tenant fault and counts it, which leaves the token age at zero, and the
+        projection duty does the same for a pass that raised outside its stated failures, which
+        records nothing on the write target at all. A counter read by the wrong rule inherits the
+        wrong wait and the wrong severity, and the frozen reading stays healthy.
+        """
+        term = comparison_on(named(name), family)
+
+        assert (term.operator, term.threshold, term.window) == (">", 0.0, "15m")
 
 
 class TestTheDashboards:
