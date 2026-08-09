@@ -575,6 +575,36 @@ class TestWhatApprovalRefuses:
 
         assert [one.status for one in await revisions_of(sessions, owner.tenant_id)] == ["applied"]
 
+    async def test_a_proposal_that_showed_a_move_may_not_place_the_block_somewhere_else(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """The pairing's other half: the placement has to be the one that was shown.
+
+        The diff names one evening hour and the document holds the block at a different one, so the
+        block was named and its placement was not. This is the case the move list carries: a drop
+        states no placement at all, and pairs with a removal for that reason rather than this one.
+        Unreachable through the shipped writer for the same reason the drop above is.
+        """
+        live = a_week(a_block_holding(GYM, between(9, 10)))
+        document = a_week(a_block_holding(GYM, between(17, 18)))
+        shown_at_another_hour = a_block_holding(GYM, between(20, 21))
+        await seed_live_plan(sessions, owner.tenant_id, live)
+        await seed_slot(
+            sessions,
+            owner.tenant_id,
+            document,
+            diff=a_moved(live.blocks[0], shown_at_another_hour),
+        )
+
+        with pytest.raises(Conflict, match="without asking"):
+            await approve(sessions, owner)
+
+        stored = await revisions_of(sessions, owner.tenant_id)
+        assert [one.status for one in stored] == ["applied"]
+        assert (
+            stored[0].document["blocks"][0]["interval"]["start"] == between(9, 10).start.isoformat()
+        )
+
     async def test_a_proposal_that_restates_a_block_the_week_has_since_reached_is_refused(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
