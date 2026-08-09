@@ -25,8 +25,9 @@ import { repoRoot } from "../../../../../scripts/lib/paths.ts";
 import { declaredTokens } from "../../../../../scripts/lib/tokens.ts";
 import { TEXT_FLOOR, ratioBetween } from "../../../../testing/contrast";
 import { inkRules, surfacesUnder, tokenIn } from "../../../../testing/hostedInk";
-import { domainDir, kitStylesheet } from "../../../../testing/kitStylesheets";
+import { domainDir, kitStylesheet, layoutDir } from "../../../../testing/kitStylesheets";
 import { effectiveDeclarations } from "../../../../testing/visualState";
+import { Panel } from "../../../layout";
 import { Button, type ButtonRank } from "../../../primitives";
 import { KeyHint } from "../KeyHint";
 
@@ -35,6 +36,7 @@ const HINT_INK = "--key-hint-ink";
 
 const marksCss = () => kitStylesheet("marks/marks.css", domainDir);
 const buttonCss = () => kitStylesheet("Button.css");
+const panelCss = () => kitStylesheet("Panel.css", layoutDir);
 
 interface Host {
   readonly name: string;
@@ -147,8 +149,9 @@ describe("every rule the button's stylesheet writes ink in", () => {
 
 describe("the inks a hint can take", () => {
   /* THE DESIGN LANGUAGE NAMES THEM, so the prose is crossed against the sheets rather than trusted: a rank that
-   * took a fifth ink would leave the document describing a system with four. The count is pinned because the
-   * document states it as a number, and a number in prose is the kind of claim that goes stale silently. */
+   * took a fifth ink would leave the document describing a system with four. The count is asserted in both
+   * directions, because the sentence states it in words and the sheets state it in declarations, and either can
+   * move without the other. */
   it("is the four the design language's keyboard section names", async () => {
     const doc = await readFile(path.join(repoRoot, "docs", "DESIGN-LANGUAGE.md"), "utf8");
     const sentence =
@@ -162,6 +165,7 @@ describe("the inks a hint can take", () => {
       ...rules.flatMap((rule) => (rule.markInk === null ? [] : [tokenIn(rule.markInk)])),
     ]);
 
+    expect(sentence).toContain("four surfaces");
     expect(set.size).toBe(4);
     expect([...new Set(named)].toSorted()).toEqual([...set].toSorted());
   });
@@ -174,6 +178,7 @@ describe.each(HOSTS)("a hint inside $name", (host) => {
       surfaces.map(async (surface) => [surface, await ratioBetween(ink, surface)] as const),
     );
 
+    expect(measured.length).toBeGreaterThan(0);
     for (const [surface, ratio] of measured) {
       expect(ratio, `${ink} on ${surface}`).toBeGreaterThanOrEqual(TEXT_FLOOR);
     }
@@ -187,5 +192,68 @@ describe("a hint inside a primary button", () => {
     expect(ink).toBe("--on-ink");
     expect(surfaces).toEqual(["--ink"]);
     expect((await ratioBetween(ink, "--ink")).toFixed(2)).toBe("11.50");
+  });
+});
+
+/* THE PAIRING THE RANKS ABOVE CANNOT ANSWER FOR, MEASURED HERE INSTEAD.
+ *
+ * A rank filled `transparent` shows through to whatever it sits on, and which surface that is belongs to the
+ * DOM rather than to a stylesheet. The cases above resolve it to the two papers, which is where those ranks are
+ * rendered today and is all a sheet-reader can settle. The product also sanctions two ink fills, a panel header
+ * and a dialog header, and `Panel` takes a control in its header through `headerEnd`, so the composition is
+ * reachable and shipped.
+ *
+ * Inside one, a translucent rank hands the hint its own --ink, which is the pairing this whole treatment exists
+ * to prevent, at the same figure. The ranks' own labels take that ink too, so these figures describe the
+ * control as much as the mark. Neither is this ticket's to fix: the container is what has to name the ink its
+ * descendants take, the way `ui/layout/Rule.css` already inverts a rule's ink there. What belongs here is the
+ * measurement, so the gap is a number rather than a silence, and so a fix reddens these two cases. */
+describe("a hint inside a translucent rank inside an ink-filled container", () => {
+  async function inInkHeader(isDisabled: boolean): Promise<{ ink: string; fill: string }> {
+    const cascade = [await panelCss(), await buttonCss(), await marksCss()].join("\n");
+    const { container } = render(
+      <Panel
+        title="Detail"
+        headerEnd={
+          <Button isDisabled={isDisabled} rank="quiet" size="sm">
+            esc <KeyHint keys="esc" />
+          </Button>
+        }
+      >
+        rows
+      </Panel>,
+    );
+    const header = container.querySelector(".on-ink-surface");
+    const button = container.querySelector("button");
+    const hint = container.querySelector(".key-hint");
+    if (header === null || button === null || hint === null) {
+      throw new Error("the ink header rendered no hosted hint");
+    }
+
+    const rank = effectiveDeclarations({ element: button, css: cascade });
+    const mark = effectiveDeclarations({ element: hint, css: cascade });
+    const property = tokenIn(mark.get("color"));
+    return {
+      ink: tokenIn(rank.get(property) ?? `var(${property})`),
+      fill: tokenIn(effectiveDeclarations({ element: header, css: cascade }).get("background")),
+    };
+  }
+
+  it("is the quiet rank's own ink on the header's fill, at 1.29:1, which no rank can fix", async () => {
+    const { ink, fill } = await inInkHeader(false);
+    const ratio = await ratioBetween(ink, fill);
+
+    expect([ink, fill]).toEqual(["--ink", "--ink-deep"]);
+    expect(ratio).toBeLessThan(TEXT_FLOOR);
+    expect(ratio.toFixed(2)).toBe("1.29");
+  });
+
+  it("is 2.81:1 where that rank is disabled, so the muted step does not rescue it either", async () => {
+    const { ink, fill } = await inInkHeader(true);
+    const ratio = await ratioBetween(ink, fill);
+
+    expect([ink, fill]).toEqual(["--text-muted", "--ink-deep"]);
+    expect(ratio).toBeLessThan(TEXT_FLOOR);
+    expect(ratio.toFixed(2)).toBe("2.81");
   });
 });
