@@ -214,7 +214,8 @@ def import_every_module(package: str) -> Walked:
     resolution, _, walked = completed.stdout.partition("\n")
 
     assert completed.returncode == 0, (
-        f"the probe could not import {package}: {completed.stderr.strip()}"
+        f"the probe could not walk {package} at {resolution.strip() or '<unresolved>'}: "
+        f"{completed.stderr.strip()}"
     )
     resolved = Path(resolution.strip()).resolve().parent
 
