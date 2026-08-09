@@ -173,6 +173,12 @@ class TestTheLookupsShape:
 
         assert lookup.problems == ("line 3 states more or less than one sentence for H1",)
 
+    def test_a_row_that_does_not_end_its_sentence_is_a_problem(self) -> None:
+        """The other half of the same check: less than one sentence is not one sentence either."""
+        lookup = read_lookup(_a_lookup_of("| `H1` | what it requires |"))
+
+        assert lookup.problems == ("line 3 states more or less than one sentence for H1",)
+
     def test_a_row_no_citation_could_match_is_a_problem(self) -> None:
         """A family in the lookup and not in the pattern is a row nothing can ever reach."""
         lookup = read_lookup(_a_lookup_of("| `ZZ4` | what it requires. |"))
