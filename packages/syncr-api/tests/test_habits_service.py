@@ -15,19 +15,14 @@ there is no method that could. Editing a habit leaves the outcome log untouched,
 as it did. And a ``PATCH`` naming only a binding source is refused when the stored variants
 contradict it, which is the case a request schema cannot catch because it cannot see the row.
 
-The last section asserts no behavior. ``NoRecordedOutcomes`` states in its own docstring that one
-suite is what keeps it, and the census reads that claim out of the docstring and crosses it against
-every workspace member's suites, so the claim is measured rather than believed.
+This is the one suite that reads against ``NoRecordedOutcomes``, and
+``test_habit_outcome_reader_seam.py`` is what holds that claim to being true.
 """
 
 from __future__ import annotations
 
-import inspect
-import re
-import tomllib
 from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
-from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -54,7 +49,7 @@ from syncr_domain.outcomes import MISS_STATE, HabitOutcome, OutcomeState
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Sequence
 
     from syncr_domain.habits import Habit
     from syncr_domain.identifiers import AreaId, HabitId, TenantId
@@ -705,66 +700,3 @@ async def test_the_bump_reads_the_home_zone_so_a_date_boundary_resolves_where_th
 
     assert in_london.versions.bumped[0].first == WEEK_31
     assert in_auckland.versions.bumped[0].first == IsoWeek.parse("2026-W32")
-
-
-# --------------------------------------------------------------------------------
-# The empty log, and the one suite it is kept for
-# --------------------------------------------------------------------------------
-
-# `packages/syncr-api/src/syncr_api/habits/outcome_log.py` -> `packages/syncr-api`.
-_STUB_MEMBER = Path(inspect.getfile(NoRecordedOutcomes)).resolve().parents[3]
-_WORKSPACE_ROOT = _STUB_MEMBER.parents[1]
-_A_SUITE_PATH = re.compile(r"tests/test_\w+\.py")
-
-
-def member_suite_roots() -> tuple[Path, ...]:
-    """Every workspace member's suite directory, read from the root's own member list.
-
-    Read rather than listed, so a member added later comes under the census without this file
-    being edited, and so the census covers the set it claims to.
-    """
-    declared = tomllib.loads((_WORKSPACE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    members: list[str] = declared["tool"]["uv"]["workspace"]["members"]
-    return tuple(_WORKSPACE_ROOT / member / "tests" for member in members)
-
-
-def suites_naming(symbol: str, roots: Iterable[Path]) -> frozenset[Path]:
-    """Every suite under ``roots`` whose source names ``symbol``.
-
-    Returns data rather than asserting, so the census and its control drive one scan.
-    """
-    return frozenset(
-        path
-        for root in roots
-        for path in sorted(root.glob("test_*.py"))
-        if symbol in path.read_text(encoding="utf-8")
-    )
-
-
-def test_the_suite_the_empty_log_is_kept_for_is_the_only_one_that_uses_it() -> None:
-    """The stub states which suite keeps it. That claim is read out of it and measured.
-
-    A text scan, so a suite reaching the stub under an alias would escape it. What it catches is
-    the ordinary way the claim goes stale: a second suite that starts reading against nothing.
-    """
-    stated = set(_A_SUITE_PATH.findall(NoRecordedOutcomes.__doc__ or ""))
-
-    using = suites_naming(NoRecordedOutcomes.__name__, member_suite_roots())
-
-    assert len(stated) == 1, f"the stub names {sorted(stated)} rather than one suite"
-    assert using == {_STUB_MEMBER / stated.pop()}, f"the suites naming it are {sorted(using)}"
-
-
-def test_the_census_sees_a_user_in_any_member(tmp_path: Path) -> None:
-    """The control. A census blind to a second user would certify the claim above forever."""
-    one, two = tmp_path / "one" / "tests", tmp_path / "two" / "tests"
-    for root in (one, two):
-        root.mkdir(parents=True)
-        (root / "test_reads_nothing.py").write_text(
-            f"log = {NoRecordedOutcomes.__name__}()\n", encoding="utf-8"
-        )
-    (one / "test_reads_the_log.py").write_text("log = HabitOutcomeLog()\n", encoding="utf-8")
-
-    found = suites_naming(NoRecordedOutcomes.__name__, (one, two))
-
-    assert found == {one / "test_reads_nothing.py", two / "test_reads_nothing.py"}
