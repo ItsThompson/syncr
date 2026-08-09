@@ -186,8 +186,8 @@ def a_document(**overrides: Any) -> PlanDocument:
 def a_week_of_every_origin() -> PlanDocument:
     """One block per origin, each at its own hour so no two share a span.
 
-    Seven origins in one document is the shape 1222 asks the round trip to cover, and it is also
-    the shape that catches a reader keyed on one kind: each of the seven is keyed differently.
+    Seven origins in one document is the shape the round trip has to cover, and it is also the
+    shape that catches a reader keyed on one kind: each of the seven is keyed differently.
     """
     return a_document(
         blocks=tuple(
