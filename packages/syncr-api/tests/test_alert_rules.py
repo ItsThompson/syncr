@@ -606,6 +606,23 @@ _SELECTOR_LABEL = re.compile(r"(?P<label>[a-z_]+)\s*(?P<operator>=~|!~|!=|=)")
 # on any of them is about where a series came from rather than about how it was recorded.
 _NOT_DECLARED_BY_A_COLLECTOR: Final = frozenset({"deployment", "instance", "job", "le"})
 
+# What a matcher on a label the family does not declare actually DOES, by operator, measured in the
+# pinned Prometheus against an unlabelled counter. An absent label reads as the empty string, so an
+# equality against a non-empty value matches nothing while a negation matches everything: the two
+# failures are opposites, and a recorded reason that states the wrong one is worse than one that
+# states none. A regex is conditional because it decides on whether its own pattern accepts the
+# empty string.
+_CONSEQUENCE_OF: Final[Mapping[str, str]] = {
+    "=": "selects no series",
+    "=~": "selects no series unless its pattern matches the empty string",
+    "!=": "selects every series",
+    "!~": "selects every series",
+}
+
+# One declared key's matcher half, so the label and the operator are read from the key rather than
+# trusted. A key this cannot parse is malformed and fails.
+_KEYED_MATCHER = re.compile(r"(?P<label>[a-z_]+)(?P<operator>=~|!~|!=|=)")
+
 
 def declared_labelnames() -> Mapping[str, frozenset[str]]:
     """Every family's own label set, read from the construction that declares it.
@@ -1158,13 +1175,20 @@ class TestEveryMatcherNamesALabelItsFamilyCarries:
     def test_each_declared_one_states_what_would_remove_it(self, entry: str) -> None:
         """A reason long enough to look like one is not a reason.
 
-        The change that removes an entry happens in the member that DECLARES the family, and a
-        reader who finds this table needs to be sent there. Both halves are derived from the entry's
-        own key, so a reason that names neither fails: the first version asserted a length alone,
-        which any sentence of the right size satisfies and which certified content it never read.
+        Three things are derived from the entry's own key and crossed against the reason: the
+        missing label, the member that DECLARES the family, since that is where the label has to be
+        added, and THE CONSEQUENCE THE OPERATOR ACTUALLY HAS.
+
+        The first version asserted a length alone, which any sentence of the right size satisfies.
+        The second asserted the label and the member but left the consequence sentence free to say
+        the opposite of what the operator does, so an entry could record a no-op matcher as a silent
+        one and stay green.
         """
         _, family, matcher = entry.split(":")
-        label = matcher.rstrip("=~!")
+        parsed = _KEYED_MATCHER.fullmatch(matcher)
+
+        assert parsed is not None, f"{matcher!r} is not a label and an operator, so the key is bad"
+        label, operator = parsed.group("label"), parsed.group("operator")
         member = declaring_member(family)
         reason = MATCHERS_ON_AN_UNDECLARED_LABEL[entry]
 
@@ -1173,6 +1197,10 @@ class TestEveryMatcherNamesALabelItsFamilyCarries:
         assert label in reason, f"the reason does not name the missing label {label}"
         assert member in reason or member.replace("_", "-") in reason, (
             f"the reason does not name {member}, which is where the label has to be added"
+        )
+        assert _CONSEQUENCE_OF[operator] in reason, (
+            f"the reason must state that this matcher {_CONSEQUENCE_OF[operator]}, because that is "
+            f"what `{operator}` on a label the family does not declare does"
         )
 
     def test_the_reading_finds_the_labels_the_collectors_declare(self) -> None:
