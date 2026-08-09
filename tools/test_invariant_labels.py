@@ -11,22 +11,26 @@ labels below are string values, which the reading does not count.
 
 from __future__ import annotations
 
+import re
 import subprocess
-from collections import Counter
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
+import comments
 import invariant_labels
 from invariant_labels import (
+    FAMILIES,
     LOOKUP,
     NOT_A_LABEL,
     REPO_ROOT,
+    Census,
     Citation,
     Lookup,
+    census,
     check,
-    citations,
+    lookup_of,
     main,
     read_lookup,
     tracked,
@@ -34,42 +38,40 @@ from invariant_labels import (
     unresolved,
 )
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 @dataclass(frozen=True, slots=True)
 class AtHead:
     """One reading of the repository, shared by every test that asks about it."""
 
-    paths: list[Path]
-    found: list[Citation]
+    taken: Census
     lookup: Lookup
+
+    @property
+    def found(self) -> tuple[Citation, ...]:
+        return self.taken.found
 
 
 @pytest.fixture(scope="module")
 def head() -> AtHead:
-    paths = tracked(REPO_ROOT)
     return AtHead(
-        paths=paths,
-        found=citations(paths, root=REPO_ROOT),
-        lookup=read_lookup((REPO_ROOT / LOOKUP).read_text(encoding="utf-8")),
+        taken=census(tracked(REPO_ROOT), root=REPO_ROOT),
+        lookup=lookup_of(REPO_ROOT),
     )
-
-
-def a_row_of(head: AtHead) -> str:
-    """The label the repository cites most, so a test that drops one drops a cited one."""
-    return Counter(citation.label for citation in head.found).most_common(1)[0][0]
 
 
 class TestTheLookupResolvesEveryLabelTheTreeCites:
     def test_every_label_a_comment_cites_has_a_row(self, head: AtHead) -> None:
         assert unresolved(head.found, head.lookup) == []
 
-    def test_the_reading_found_citations_to_check(self, head: AtHead) -> None:
-        """The control. The assertion above passes over an empty reading too."""
-        assert head.found
-        assert len({citation.label for citation in head.found}) > 1
+    def test_the_reading_read_the_kinds_it_declares(self, head: AtHead) -> None:
+        """The control, and it asks about the reading rather than about what the reading found.
+
+        The assertion above passes over a reading that read nothing at all. This one cannot, and it
+        survives the state the sweeps are meant to reach, where every comment states its requirement
+        and no comment cites a label.
+        """
+        assert head.taken.read
+        assert head.taken.prose > len(head.taken.read)
 
     def test_the_gate_passes(self, capsys: pytest.CaptureFixture[str]) -> None:
         """The command `just lint` runs, in this process."""
@@ -79,6 +81,10 @@ class TestTheLookupResolvesEveryLabelTheTreeCites:
     def test_the_lookup_the_repository_ships_is_well_formed(self, head: AtHead) -> None:
         assert head.lookup.problems == ()
 
+    def test_the_pattern_and_the_lookup_declare_the_same_families(self, head: AtHead) -> None:
+        """A family in one and not the other is a row nothing reaches or a token nothing finds."""
+        assert set(FAMILIES) == head.lookup.families
+
 
 class TestALabelWithNoRow:
     def test_a_label_planted_in_a_comment_is_unresolved(self, head: AtHead, tmp_path: Path) -> None:
@@ -86,7 +92,7 @@ class TestALabelWithNoRow:
         planted = tmp_path / "planted.py"
         planted.write_text("# H42 is what this one has to do\n", encoding="utf-8")
 
-        found = citations([planted], root=tmp_path)
+        found = census([planted], root=tmp_path).found
 
         assert unresolved(found, head.lookup) == [Citation("H42", "planted.py", 1)]
 
@@ -96,25 +102,45 @@ class TestALabelWithNoRow:
         planted = tmp_path / "planted.py"
         planted.write_text("value = 1  # H42 applies here\n", encoding="utf-8")
 
-        complaints = check(citations([planted], root=tmp_path), head.lookup, [planted])
+        complaints = check(census([planted], root=tmp_path), head.lookup)
 
         assert len(complaints) == 1
         assert "planted.py:1" in complaints[0]
         assert "H42" in complaints[0]
         assert str(LOOKUP) in complaints[0]
+        assert "add one stating what it requires" in complaints[0]
 
     def test_dropping_a_row_leaves_the_citations_it_resolved_unresolved(self, head: AtHead) -> None:
-        """The other half of the mutation: the lookup loses a row the tree still cites."""
-        dropped = a_row_of(head)
+        """The other half of the mutation, over the lookup this repository ships.
+
+        Stated against a planted citation rather than the live tree's, so it keeps biting once the
+        sweeps have left the tree citing nothing.
+        """
+        dropped = next(iter(head.lookup.rows))
         without = Lookup(
             rows={label: states for label, states in head.lookup.rows.items() if label != dropped},
             problems=(),
         )
 
-        gone = unresolved(head.found, without)
+        gone = unresolved([Citation(dropped, "x.py", 12)], without)
 
-        assert gone
-        assert {citation.label for citation in gone} == {dropped}
+        assert [citation.label for citation in gone] == [dropped]
+
+    def test_a_malformed_lookup_fails_the_gate(self) -> None:
+        """The wire between a shape problem and the exit code, which the shape tests never cross."""
+        lookup = read_lookup(_a_lookup_of("| `H1` | one thing. And another. |"))
+
+        complaints = check(_a_census(), lookup)
+
+        assert complaints == ["line 3 states more or less than one sentence for H1"]
+
+    def test_a_lookup_that_is_not_there_is_a_complaint_rather_than_a_traceback(
+        self, tmp_path: Path
+    ) -> None:
+        lookup = lookup_of(tmp_path)
+
+        assert lookup.rows == {}
+        assert lookup.problems == (f"{LOOKUP} does not exist, so no label resolves at all",)
 
 
 class TestTheLookupsShape:
@@ -165,16 +191,25 @@ class TestWhatIsNotACitation:
         planted = tmp_path / "planted.py"
         planted.write_text("# H99 is fabricated, and H9 is not\n", encoding="utf-8")
 
-        found = citations([planted], root=tmp_path)
+        found = census([planted], root=tmp_path).found
 
         assert [citation.label for citation in found] == ["H9"]
 
     def test_it_is_excluded_by_name_with_a_reason(self) -> None:
         assert NOT_A_LABEL["H99"]
 
-    def test_the_repository_cites_it_nowhere(self, head: AtHead) -> None:
-        """Its occurrences are values a test passes, which the reading does not count anyway."""
-        assert [citation for citation in head.found if citation.label == "H99"] == []
+    def test_the_fixture_that_carries_it_carries_it_as_a_value(self) -> None:
+        """The claim the exclusion rests on, read without the exclusion applied.
+
+        Asserting that the census reports no such citation would pass whatever the file said,
+        because the name is filtered before a citation exists. This reads the file's own prose
+        instead, so it bites the moment someone writes the token into a comment there.
+        """
+        path = REPO_ROOT / "packages/syncr-solver/tests/test_reasons.py"
+        text = comments.text_of(path)
+
+        assert "H99" in text
+        assert all("H99" not in piece for _, piece in comments.prose(path, text))
 
 
 class TestTheReading:
@@ -189,20 +224,60 @@ class TestTheReading:
         with pytest.raises(RuntimeError, match="listed no files"):
             tracked(tmp_path)
 
-    def test_a_reading_that_found_nothing_is_a_complaint(self) -> None:
+    def test_a_reading_that_read_nothing_is_a_complaint(self) -> None:
         """The control on the gate itself: it must not pass by having read nothing."""
         lookup = read_lookup(_a_lookup_of("| `H1` | what it requires. |"))
 
-        assert check([], lookup, [_ANY_PATH]) == [
-            "nothing to check: the reading found no citation at all in 1 tracked files"
+        complaints = check(Census(paths=(Path("a.png"),), read=(), prose=0, found=()), lookup)
+
+        assert complaints == [
+            "nothing was read: no kind this census reads appears among the 1 paths in the index, "
+            "so a green result would say nothing"
         ]
+
+    def test_a_reading_that_found_no_prose_at_all_is_a_complaint(self) -> None:
+        """A collapsed classifier reads the files and returns nothing, which is not a clean tree."""
+        lookup = read_lookup(_a_lookup_of("| `H1` | what it requires. |"))
+
+        complaints = check(Census(paths=(_ANY_PATH,), read=(_ANY_PATH,), prose=0, found=()), lookup)
+
+        assert complaints == [
+            "no comment and no docstring in any of the 1 files read, so this is a broken reading "
+            "rather than a repository that cites nothing"
+        ]
+
+    def test_a_repository_that_cites_nothing_passes(self) -> None:
+        """The state the sweeps are specified to reach: prose everywhere, no label anywhere.
+
+        A control keyed on citations found rather than on the reading fails here, which would turn
+        this gate red on the day the last citation is restated and leave no one able to fix it.
+        """
+        lookup = read_lookup(_a_lookup_of("| `H1` | what it requires. |"))
+
+        swept = Census(paths=(_ANY_PATH,), read=(_ANY_PATH,), prose=40, found=())
+
+        assert check(swept, lookup) == []
+        assert uncited(swept.found, lookup) == ["H1"]
+
+    def test_an_undeclared_kind_is_a_complaint(self) -> None:
+        """The clause the gate reports it through, which the tree test cannot defend on its own."""
+        lookup = read_lookup(_a_lookup_of("| `H1` | what it requires. |"))
+        undecided = Path("a/b.rs")
+
+        complaints = check(
+            Census(paths=(_ANY_PATH, undecided), read=(_ANY_PATH,), prose=1, found=()), lookup
+        )
+
+        assert len(complaints) == 1
+        assert ".rs" in complaints[0]
+        assert "tools/comments.py" in complaints[0]
 
     def test_a_resolved_label_nothing_cites_is_reported_rather_than_failed(self) -> None:
         """The rows outlive the comments that pointed at them, so an uncited row is not a fault."""
         lookup = read_lookup(_a_lookup_of("| `H1` | what it requires. |"))
 
         assert uncited([], lookup) == ["H1"]
-        assert check([Citation("H1", "x.py", 1)], lookup, [_ANY_PATH]) == []
+        assert check(_a_census(), lookup) == []
 
 
 class TestTheCommandItself:
@@ -238,6 +313,21 @@ class TestTheCommandItself:
         assert "every cited label resolves" not in printed.out
         assert printed.err == ""
 
+    def test_the_report_names_the_root_rather_than_the_file_for_a_citation_at_the_top(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The by-tree column groups citations, so a file at the root belongs to the root."""
+        monkeypatch.setattr(invariant_labels, "REPO_ROOT", _a_repository(tmp_path))
+
+        main([])
+
+        printed = capsys.readouterr().out
+        assert re.search(r"^  \.\s+1$", printed, re.MULTILINE)
+        assert "cited.py " not in printed
+
 
 def _a_repository(root: Path) -> Path:
     """A repository of two files: a lookup of one row, and a comment citing a label it lacks."""
@@ -259,6 +349,13 @@ def _a_repository(root: Path) -> Path:
 
 def _a_lookup_of(*rows: str) -> str:
     return "\n".join(("| Label | What it requires |", "|---|---|", *rows)) + "\n"
+
+
+def _a_census() -> Census:
+    """A reading that worked, so a test about the lookup is not also a test about the reading."""
+    return Census(
+        paths=(_ANY_PATH,), read=(_ANY_PATH,), prose=12, found=(Citation("H1", "x.py", 1),)
+    )
 
 
 _ANY_PATH = REPO_ROOT / "justfile"

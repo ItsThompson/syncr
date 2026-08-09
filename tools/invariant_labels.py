@@ -28,6 +28,11 @@ THE CHECK IS ONE-DIRECTIONAL, and deliberately: a label with no row fails, a row
 not. Comments that name a label are being replaced by comments that state what it requires, so the
 citations trend to none while the rows stay: the file is what a reader consults, and its rows
 outlive the last comment that pointed at them. A row nothing cites is printed, never failed.
+
+FOR THE SAME REASON THE CONTROL ON THIS GATE KEYS ON THE READING RATHER THAN ON WHAT IT FOUND. A
+repository whose comments all state their requirement cites no label at all, and that is the state
+this one is meant to reach, so a control keyed on citations would fail on success. Zero files read,
+or no prose in the files read, is a broken reading and does fail.
 """
 
 from __future__ import annotations
@@ -49,9 +54,14 @@ LOOKUP: Final = Path("docs/invariants.md")
 
 # The families, longest prefix first so a ``VE`` label reads as VE rather than as V. A token this
 # pattern cannot match is a label nothing can find, which is the one hole in the reading: the
-# pattern knows the families that exist, and a row is checked against it so a family added to the
-# lookup without being added here fails rather than passing silently.
-LABEL: Final = re.compile(r"\b(?:VE|OP|PN|PP|H|O|R|V)\d{1,2}\b")
+# pattern knows the families that exist, and it is crossed against the lookup in both directions, so
+# a family in one and not the other fails rather than passing silently.
+#
+# The vocabulary is NOT derived from the lookup, which would be circular: deleting every row of a
+# family would then delete the family from the pattern, and every citation of it would become
+# invisible rather than unresolved.
+FAMILIES: Final = ("VE", "OP", "PN", "PP", "H", "O", "R", "V")
+LABEL: Final = re.compile(rf"\b(?:{'|'.join(FAMILIES)})\d{{1,2}}\b")
 
 # A label-shaped token that is not a citation. ``H99`` is a fabricated rule name a solver test
 # passes to the reason reader to prove the reading rejects a clause the solve never made, so it
@@ -84,6 +94,20 @@ class Lookup:
     rows: Mapping[str, str]
     problems: tuple[str, ...]
 
+    @property
+    def families(self) -> set[str]:
+        return {label.rstrip("0123456789") for label in self.rows}
+
+
+@dataclass(frozen=True, slots=True)
+class Census:
+    """One reading of the index: what it read, how much prose it saw, and what that prose cites."""
+
+    paths: tuple[Path, ...]
+    read: tuple[Path, ...]
+    prose: int
+    found: tuple[Citation, ...]
+
 
 def tracked(root: Path) -> list[Path]:
     """Every path in the index, which is the repository as it is about to be committed."""
@@ -101,26 +125,40 @@ def tracked(root: Path) -> list[Path]:
     return paths
 
 
-def citations(paths: Iterable[Path], *, root: Path) -> list[Citation]:
-    """Every invariant label cited in the prose of every path whose kind is read."""
+def census(paths: Iterable[Path], *, root: Path) -> Census:
+    """One reading of those paths: the ones whose kind is read, their prose, and what it cites.
+
+    Every read file is parsed, with no cheap pre-test for a label-shaped token anywhere in the text.
+    Such a test skipped most of the tree and cut the reading's own cost by two thirds, and it made
+    the prose count meaningless: a repository whose comments cite nothing would have skipped every
+    file, so "no prose at all" and "no citations" became one reading and the control below could
+    not tell a swept tree from a broken parser.
+    """
+    every = tuple(sorted(paths))
+    read: list[Path] = []
+    pieces = 0
     found: list[Citation] = []
-    for path in sorted(paths):
+    for path in every:
         if comments.kind(path) not in comments.READ:
             continue
-        text = path.read_text(encoding="utf-8")
-        # Nothing label-shaped anywhere in the file, so nothing in its prose either. The reading
-        # parses over a thousand Python files and this keeps a gate a developer runs under a second
-        # per hundred of them; it can only skip a file no citation could have been found in.
-        if LABEL.search(text) is None:
-            continue
+        read.append(path)
         relative = path.relative_to(root).as_posix()
-        for line, piece in comments.prose(path, text):
+        for line, piece in comments.prose(path, comments.text_of(path)):
+            pieces += 1
             found.extend(
                 Citation(label, relative, line)
                 for label in LABEL.findall(piece)
                 if label not in NOT_A_LABEL
             )
-    return found
+    return Census(paths=every, read=tuple(read), prose=pieces, found=tuple(found))
+
+
+def lookup_of(root: Path) -> Lookup:
+    """The lookup this repository ships, or one problem naming it when the file is not there."""
+    path = root / LOOKUP
+    if not path.is_file():
+        return Lookup(rows={}, problems=(f"{LOOKUP} does not exist, so no label resolves at all",))
+    return read_lookup(path.read_text(encoding="utf-8"))
 
 
 def read_lookup(text: str) -> Lookup:
@@ -163,39 +201,57 @@ def _in_family_order(label: str) -> tuple[str, int]:
 
 
 def _tree_of(relative: str) -> str:
-    return "/".join(Path(relative).parts[:2])
+    """The two outermost directories a citation sits in, or ``.`` for a file at the root."""
+    return "/".join(Path(relative).parts[:-1][:2]) or "."
 
 
-def _report(found: Sequence[Citation], lookup: Lookup, paths: Sequence[Path]) -> None:
-    labels = sorted({citation.label for citation in found}, key=_in_family_order)
+def _report(taken: Census, lookup: Lookup) -> None:
+    labels = sorted({citation.label for citation in taken.found}, key=_in_family_order)
     per_label: dict[str, int] = {}
     per_tree: dict[str, int] = {}
-    for citation in found:
+    for citation in taken.found:
         per_label[citation.label] = per_label.get(citation.label, 0) + 1
         tree = _tree_of(citation.path)
         per_tree[tree] = per_tree.get(tree, 0) + 1
 
-    print(f"{len(labels)} distinct invariant labels, cited {len(found)} times")
+    print(f"{len(labels)} distinct invariant labels, cited {len(taken.found)} times")
     print("  " + " ".join(f"{label}({per_label[label]})" for label in labels))
     print("\nby tree")
     for tree, count in sorted(per_tree.items(), key=lambda pair: (-pair[1], pair[0])):
         print(f"  {tree:40} {count}")
-    read = [path for path in paths if comments.kind(path) in comments.READ]
-    print(f"\nread {len(read)} of {len(paths)} tracked files, by comment spelling")
+    kinds = len(comments.READ) + len(comments.SKIPPED)
+    print(
+        f"\nread {len(taken.read)} of {len(taken.paths)} tracked files over {kinds} declared kinds "
+        f"({len(comments.READ)} read, {len(comments.SKIPPED)} skipped), and {taken.prose} pieces "
+        f"of prose in them"
+    )
     print(f"not read: {', '.join(f'{k} ({v})' for k, v in sorted(comments.SKIPPED.items()))}")
     print(f"not a label, by name: {', '.join(sorted(NOT_A_LABEL))}")
     resolved = len(lookup.rows)
-    print(f"\n{LOOKUP} resolves {resolved} labels; {len(uncited(found, lookup))} of them uncited")
+    print(
+        f"\n{LOOKUP} resolves {resolved} labels; "
+        f"{len(uncited(taken.found, lookup))} of them uncited"
+    )
 
 
-def check(found: Sequence[Citation], lookup: Lookup, paths: Sequence[Path]) -> list[str]:
+def check(taken: Census, lookup: Lookup) -> list[str]:
     """Everything wrong: an unresolved citation, a malformed lookup, an undecided kind of file."""
     complaints = list(lookup.problems)
-    if not found:
+    # THE CONTROL, AND IT KEYS ON THE READING RATHER THAN ON WHAT THE READING FOUND. Zero citations
+    # is a state this repository is meant to reach, because a comment is better off stating a
+    # requirement than naming it, so a control keyed on citations would fail on success. Zero files
+    # read, or no prose in the files read, is a reading that cannot have found anything.
+    if not taken.read:
         complaints.append(
-            f"nothing to check: the reading found no citation at all in {len(paths)} tracked files"
+            f"nothing was read: no kind this census reads appears among the {len(taken.paths)} "
+            f"paths in the index, so a green result would say nothing"
         )
-    for citation in unresolved(found, lookup):
+    elif not taken.prose:
+        complaints.append(
+            f"no comment and no docstring in any of the {len(taken.read)} files read, so this is a "
+            f"broken reading rather than a repository that cites nothing"
+        )
+    for citation in unresolved(taken.found, lookup):
         complaints.append(
             f"{citation} cites {citation.label} and {LOOKUP} has no row for it: add one stating "
             f"what it requires, or spell the token so it does not read as an invariant label"
@@ -203,20 +259,19 @@ def check(found: Sequence[Citation], lookup: Lookup, paths: Sequence[Path]) -> l
     complaints += [
         f"{undecided} is a kind of file neither read nor skipped, so nothing decided whether a "
         f"label in it counts: declare it in tools/comments.py"
-        for undecided in comments.undeclared(paths)
+        for undecided in comments.undeclared(taken.paths)
     ]
     return complaints
 
 
 def main(argv: Sequence[str]) -> int:
     """Print the census, and gate on it when asked."""
-    paths = tracked(REPO_ROOT)
-    found = citations(paths, root=REPO_ROOT)
-    lookup = read_lookup((REPO_ROOT / LOOKUP).read_text(encoding="utf-8"))
-    _report(found, lookup, paths)
+    taken = census(tracked(REPO_ROOT), root=REPO_ROOT)
+    lookup = lookup_of(REPO_ROOT)
+    _report(taken, lookup)
     if "--check" not in argv:
         return 0
-    complaints = check(found, lookup, paths)
+    complaints = check(taken, lookup)
     if complaints:
         print(f"\n{len(complaints)} problem(s):", file=sys.stderr)
         for complaint in complaints:
