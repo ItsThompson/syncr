@@ -31,15 +31,21 @@ const NON_COLOR_TOKENS = new Set([
    * names. A `bg-hatch-ink` utility would compile to `background-color: currentColor`, which is nothing a
    * component should be able to write. */
   "--hatch-ink",
+  /* The key hint's ink is the SURFACE's to supply: the layer names the default and each surface that hosts a
+   * hint overrides it. A `text-key-hint-ink` utility would compile to whatever the nearest host happened to
+   * set, which is a value no component can reason about and no reviewer can read off the markup. */
+  "--key-hint-ink",
 ]);
 
 let themeSource = "";
 let colorTokens: string[] = [];
+let colorLayerNames: Set<string>;
 let rampSteps: Set<string>;
 
 beforeAll(async () => {
   themeSource = await readFile(path.join(srcDir, "theme.css"), "utf8");
   const color = scanCss(await readFile(path.join(srcDir, "tokens", "color.css"), "utf8"));
+  colorLayerNames = new Set(color.declarations.map((declaration) => declaration.name));
   colorTokens = color.declarations
     .map((declaration) => declaration.name)
     .filter((name) => !NON_COLOR_TOKENS.has(name));
@@ -58,6 +64,13 @@ describe("the color namespace", () => {
   it("has one entry per layer 1 semantic name", () => {
     const mapped = [...themeEntries("color").keys()].map((key) => key.replace(/^--color-/, "--"));
     expect(mapped.toSorted()).toEqual([...colorTokens].toSorted());
+  });
+
+  /* The exemptions above are what makes that comparison narrower than the file, so each one is asserted to
+   * describe a token the layer still declares. An exemption that outlived its token would quietly widen the
+   * rule for the next name that happened to match it. */
+  it("exempts only names the colour layer still declares", () => {
+    expect([...NON_COLOR_TOKENS].filter((name) => !colorLayerNames.has(name))).toEqual([]);
   });
 
   it("has no entry per layer 0 ramp step", () => {
