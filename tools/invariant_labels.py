@@ -215,11 +215,14 @@ def _report(taken: Census, lookup: Lookup) -> None:
         tree = _tree_of(citation.path)
         per_tree[tree] = per_tree.get(tree, 0) + 1
 
-    print(f"{len(labels)} distinct invariant labels, cited {len(taken.found)} times")
-    print("  " + " ".join(f"{label}({per_label[label]})" for label in labels))
-    print("\nby tree")
-    for tree, count in sorted(per_tree.items(), key=lambda pair: (-pair[1], pair[0])):
-        print(f"  {tree:40} {count}")
+    if labels:
+        print(f"{len(labels)} distinct invariant labels, cited {len(taken.found)} times")
+        print("  " + " ".join(f"{label}({per_label[label]})" for label in labels))
+        print("\nby tree")
+        for tree, count in sorted(per_tree.items(), key=lambda pair: (-pair[1], pair[0])):
+            print(f"  {tree:40} {count}")
+    else:
+        print("no invariant label is cited anywhere the census reads")
     kinds = len(comments.READ) + len(comments.SKIPPED)
     print(
         f"\nread {len(taken.read)} of {len(taken.paths)} tracked files over {kinds} declared kinds "

@@ -340,14 +340,43 @@ class TestTheCommandItself:
         assert re.search(r"^  \.\s+1$", printed, re.MULTILINE)
         assert "cited.py " not in printed
 
+    def test_a_repository_that_cites_nothing_passes_and_says_so(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The end state the restatement sweeps are meant to reach, through the command itself.
+
+        Prose everywhere, no label anywhere: the gate passes, the rows are reported as uncited, and
+        the report says so in a line rather than printing a heading with nothing under it.
+        """
+        monkeypatch.setattr(invariant_labels, "REPO_ROOT", _a_swept_repository(tmp_path))
+
+        assert main(["--check"]) == 0
+        printed = capsys.readouterr()
+        assert "no invariant label is cited anywhere the census reads" in printed.out
+        assert "by tree" not in printed.out
+        assert "1 of them uncited" in printed.out
+        assert printed.err == ""
+
 
 def _a_repository(root: Path) -> Path:
     """A repository of two files: a lookup of one row, and a comment citing a label it lacks."""
+    return _a_repository_of(root, "# H42 is what this one has to do\n")
+
+
+def _a_swept_repository(root: Path) -> Path:
+    """The same, with the comment stating its requirement instead of naming a label."""
+    return _a_repository_of(root, "# the solve gives way to an imported commitment\n")
+
+
+def _a_repository_of(root: Path, comment: str) -> Path:
     (root / "docs").mkdir(parents=True)
     (root / "docs/invariants.md").write_text(
         _a_lookup_of("| `H1` | what it requires. |"), encoding="utf-8"
     )
-    (root / "cited.py").write_text("# H42 is what this one has to do\n", encoding="utf-8")
+    (root / "cited.py").write_text(comment, encoding="utf-8")
     subprocess.run(  # noqa: S603 - a fixed argv, and no shell
         ["git", "init", "--quiet", str(root)],  # noqa: S607
         check=True,
