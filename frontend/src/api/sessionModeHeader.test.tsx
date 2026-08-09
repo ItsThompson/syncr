@@ -20,9 +20,10 @@
  * that sent `false` outside a session, which is the one spelling this client must never send.
  *
  * THE MODE IS OPENED BY THE URL rather than by calling the flag's setter, because "with the session open" is a state
- * of the product and the route is what declares it. The writes are then issued through the screen's own write hooks,
- * which is where the header has to arrive: the screen offers no control for one of them, so a case driven by pressing
- * a button could not reach it at all. */
+ * of the product and the route is what declares it. The writes are then issued by mounting the same hooks a second
+ * time rather than by pressing the screen's controls: one of them has no control at all, so a case driven by a button
+ * could not reach it. That covers the hook functions inheriting the middleware, which is this file's subject. Whether
+ * the screen wires its controls to those hooks is the week screen's own claim and is asserted there. */
 
 import { renderHook, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
