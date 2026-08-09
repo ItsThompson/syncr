@@ -953,7 +953,7 @@ def test_the_walk_reports_a_second_producer_in_each_spelling(tmp_path: Path) -> 
     # that cannot go red. Written into a directory of its own, so these can never reach the package
     # the rule is stated over.
     #
-    # Five producer modules, between them exercising every way the walk recognizes a key or a
+    # Six producer modules, between them exercising every way the walk recognizes a key or a
     # mapping, plus `spelling.py`, which publishes the names two of them resolve through, and
     # `a_row.py`, the negative: a row naming the week and its own table's columns is not a document.
     #
@@ -961,6 +961,10 @@ def test_the_walk_reports_a_second_producer_in_each_spelling(tmp_path: Path) -> 
     # is exercised rather than assumed, and one of them carries an annotation because a publisher in
     # the package carries one. The attribute spelling reads that constant, so the arm that reads an
     # annotated publisher has a module against it too.
+    #
+    # `by_call_with_a_column.py` is the pair to `by_call.py`: a call naming the week, a document
+    # field, and a column of its own table. It is the module that notices if the keyword filter
+    # goes, which would otherwise report a key no document holds.
     invented = tmp_path / "revisions"
     invented.mkdir()
     (invented / "spelling.py").write_text(
@@ -979,6 +983,9 @@ def test_the_walk_reports_a_second_producer_in_each_spelling(tmp_path: Path) -> 
     (invented / "by_call.py").write_text(
         "stored = dict(iso_week=str(week), forbidden_windows=[])\n", encoding="utf-8"
     )
+    (invented / "by_call_with_a_column.py").write_text(
+        "stored = dict(iso_week=str(week), blocks=[], target_id=target)\n", encoding="utf-8"
+    )
     (invented / "assigned.py").write_text(
         'stored = {}\nstored["iso_week"] = str(week)\nstored["adjustments"] = []\n',
         encoding="utf-8",
@@ -991,6 +998,7 @@ def test_the_walk_reports_a_second_producer_in_each_spelling(tmp_path: Path) -> 
         "revisions/assigned.py": ["adjustments", "iso_week"],
         "revisions/by_attribute.py": ["blocks", "iso_week"],
         "revisions/by_call.py": ["forbidden_windows", "iso_week"],
+        "revisions/by_call_with_a_column.py": ["blocks", "iso_week"],
         "revisions/by_constant.py": ["empty_slots", "iso_week"],
         "revisions/display.py": ["blocks", "iso_week"],
     }
