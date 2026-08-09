@@ -73,6 +73,20 @@ ORIGINS_WITH_AN_AREA = [
     Origin.TRANSIT,
 ]
 
+# Which kind of span the denominator reads a block of each origin as. The mapping in `plan.py`
+# is the statement of record and this is the expectation it is measured against, so a block
+# routed to the wrong kind fails a case of its own rather than passing a membership test that
+# the property's return type already guarantees.
+OCCUPANCY_BY_ORIGIN = {
+    Origin.FRAME: OccupancyKind.FRAME,
+    Origin.ANCHOR: OccupancyKind.ANCHOR,
+    Origin.PREP: OccupancyKind.PREP_BLOCK,
+    Origin.TRANSIT: OccupancyKind.TRANSIT_BLOCK,
+    Origin.TASK: OccupancyKind.TASK_BLOCK,
+    Origin.HABIT: OccupancyKind.HABIT_BLOCK,
+    Origin.TEMPLATE_ENTRY: OccupancyKind.TEMPLATE_ENTRY_BLOCK,
+}
+
 
 class Diff(NamedTuple):
     """What pairing two documents on their block ids produces. The classifier's own shape."""
@@ -213,15 +227,35 @@ class TestWhichBlocksCarryAnArea:
 
 
 class TestWhichKindOfSpanABlockIs:
-    @pytest.mark.parametrize("origin", list(Origin), ids=[origin.value for origin in Origin])
-    def test_every_origin_names_a_kind_the_denominator_knows(self, origin: Origin) -> None:
+    @pytest.mark.parametrize(
+        ("origin", "kind"),
+        list(OCCUPANCY_BY_ORIGIN.items()),
+        ids=[origin.value for origin in OCCUPANCY_BY_ORIGIN],
+    )
+    def test_every_origin_names_the_one_kind_the_denominator_reads_it_as(
+        self, origin: Origin, kind: OccupancyKind
+    ) -> None:
         """Total over the seven, so the assembler converts a block rather than deciding about one.
 
-        Before this, ``template_entry`` mapped to nothing and each caller had to decide per span
-        whether a materialized ``Shower`` was a slot or was absent from the vocabulary, which is
-        the re-litigation the span table exists to prevent.
+        Each origin is a case of its own and each states the kind it expects, so an origin the
+        mapping stops naming fails alone and names itself, and an origin routed to another
+        origin's kind fails as well.
         """
-        assert a_block_of(origin).occupancy_kind in set(OccupancyKind)
+        assert a_block_of(origin).occupancy_kind is kind
+
+    def test_the_pairs_asserted_above_are_every_origin_there_is(self) -> None:
+        """The control on that table: an eighth origin fails here until it names its kind."""
+        assert set(OCCUPANCY_BY_ORIGIN) == set(Origin)
+
+    def test_the_origins_name_a_different_kind_each(self) -> None:
+        """The two vocabularies map bijectively, which is why neither is stored twice.
+
+        Counted off the blocks rather than off the table above, so two origins sharing one kind
+        fails here and not only at the pair whose expectation changed.
+        """
+        kinds = {a_block_of(origin).occupancy_kind for origin in Origin}
+
+        assert len(kinds) == len(Origin)
 
     def test_a_concrete_entry_is_its_own_kind_rather_than_the_slot_it_is_not(self) -> None:
         """A slot's content is bound late, so a filled slot's block takes the filler's origin."""
