@@ -34,6 +34,8 @@ from syncr_api.observability.state_runner import StateGaugeRunner
 from syncr_api.worker.main import WorkerContext
 from syncr_common.metrics import REGISTRY
 from tests.live_tenants import delete_tenant, provision_owner, remove_tenant
+from tests.test_alert_rules import comparison_on
+from tests.test_alert_rules import named as alert_named
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -71,13 +73,29 @@ async def a_source(
 
 
 def sample(name: str, **labels: str) -> float:
-    """One sample out of the rendered exposition. Zero when the series does not exist yet."""
+    """One sample out of the rendered exposition. Zero when the series does not exist yet.
+
+    What an alert's `max()` reads: a series that was removed contributes nothing, which is the same
+    arithmetic as a zero. Use :func:`exposed` where the difference between absent and zero is the
+    thing being asserted.
+    """
+    found = exposed(name, **labels)
+    return 0.0 if found is None else found
+
+
+def exposed(name: str, **labels: str) -> float | None:
+    """One sample out of the rendered exposition, or ``None`` when the exposition carries none.
+
+    A deployment with nothing to report publishes zero rather than nothing, so an absent series and
+    a healthy one must not be the same reading. A reading that answered zero for both cannot tell a
+    duty that set the gauge to zero from a duty that never ran.
+    """
     wanted = ",".join(f'{key}="{value}"' for key, value in sorted(labels.items()))
     prefix = f"{name}{{{wanted}}} " if wanted else f"{name} "
     for line in generate_latest(REGISTRY).decode().splitlines():
         if line.startswith(prefix):
             return float(line.removeprefix(prefix))
-    return 0.0
+    return None
 
 
 @pytest.fixture
@@ -109,10 +127,19 @@ class TestTheStateGauges:
     async def test_the_token_age_reads_zero_while_refreshes_work(
         self, context: WorkerContext, owner: UserRecord
     ) -> None:
-        """A tenant with no credential and one refreshing normally are the same to the alert."""
+        """A tenant with no credential and one refreshing normally are the same to the alert.
+
+        READ AS PRESENT AND ZERO, not as zero. The exposition carrying no series at all would read
+        zero to any absent-tolerant reader, so a duty that stopped setting this gauge entirely would
+        satisfy the assertion this test exists to make, and the critical alert over the gauge would
+        have nothing to fire on.
+        """
         await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
 
-        assert sample(TOKEN_AGE, tenant=str(owner.tenant_id)) == 0.0
+        age = exposed(TOKEN_AGE, tenant=str(owner.tenant_id))
+
+        assert age is not None, "an absent series and a healthy one must not be the same reading"
+        assert age == 0.0
 
     async def test_it_grows_from_the_instant_refreshing_started_failing(
         self, context: WorkerContext, owner: UserRecord
@@ -130,6 +157,51 @@ class TestTheStateGauges:
         await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
 
         assert sample(TOKEN_AGE, tenant=str(owner.tenant_id)) == 3600.0
+
+    async def test_a_failing_credential_crosses_the_threshold_the_critical_rule_fires_on(
+        self, context: WorkerContext, owner: UserRecord
+    ) -> None:
+        """The gauge a duty sets, crossed against the expression that reads it.
+
+        THE THRESHOLD IS READ OUT OF THE DEPLOYED RULE FILE rather than restated here, so this is a
+        reading against the number an operator is actually paged on. The two halves are separately
+        instrumented and neither one is this: the duty's own tests say what the gauge holds, and the
+        rule file's tests say what the rule is stated over. Only a reading taken out of the
+        exposition after the duty has run says that a real failing credential reaches the condition.
+
+        Both directions, because either alone is satisfiable by a broken half: a healthy credential
+        must not reach it, or the deployment is paged from the moment it starts.
+        """
+        async with context.database.sessionmaker() as session, session.begin():
+            credentials = GoogleCredentialRepository(session, owner.tenant_id)
+            await credentials.connect(
+                encrypted_refresh_token="ciphertext",
+                granted_scopes=("https://www.googleapis.com/auth/calendar",),
+                at=NOW - timedelta(days=30),
+            )
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+        healthy = exposed(TOKEN_AGE, tenant=str(owner.tenant_id))
+
+        async with context.database.sessionmaker() as session, session.begin():
+            await GoogleCredentialRepository(session, owner.tenant_id).record_refresh_failure(
+                at=NOW - timedelta(hours=1), reason="invalid"
+            )
+
+        await StateGaugeRunner(interval=STATE_INTERVAL, clock=lambda: NOW).observe(context, now=NOW)
+        failing = exposed(TOKEN_AGE, tenant=str(owner.tenant_id))
+
+        fires_above = comparison_on(alert_named("WriteTargetTokenExpiring"), TOKEN_AGE).threshold
+        assert healthy is not None and failing is not None, (
+            "the duty published no series, so the critical rule over this gauge reads nothing"
+        )
+        assert healthy <= fires_above, (
+            "a credential that refreshes normally would page the operator"
+        )
+        assert failing > fires_above, (
+            f"a credential failing for an hour reads {failing}, which does not cross the "
+            f"{fires_above} the deployed rule fires above"
+        )
 
     async def test_source_staleness_is_measured_from_the_last_success(
         self, context: WorkerContext, owner: UserRecord
