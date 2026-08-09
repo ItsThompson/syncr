@@ -26,24 +26,32 @@ the real release the conflict path reaches answers correctly.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import Request
 from sqlalchemy import select, text
 
 from syncr_api.areas.repository import AreaRepository
+from syncr_api.conflicts.declarations import ChosenResolution
+from syncr_api.conflicts.injection import get_conflict_service
+from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_db_engine, create_sessionmaker
+from syncr_api.core.patches import ABSENT
 from syncr_api.learned.models import WeightSet as WeightSetRow
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.pins.declarations import BlockRejected, PinRequested
 from syncr_api.pins.injection import build_pin_service
 from syncr_api.plans.assembler import AssemblyCaller
-from syncr_api.plans.config import EDIT_EVENTS_TABLE, PINS_TABLE
+from syncr_api.plans.config import EDIT_EVENTS_TABLE, MOVED_RESOLUTION, PINS_TABLE
+from syncr_api.plans.conflicts import Commitment, PlanConflictRepository
 from syncr_api.plans.facts import EditEvent, Pin
 from syncr_api.plans.injection import build_week_assembler
+from syncr_api.plans.overlaps import DetectedConflict
 from syncr_api.plans.placements import constrains_a_solve
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
@@ -70,8 +78,9 @@ if TYPE_CHECKING:
 
     from syncr_api.accounts.records import UserRecord
     from syncr_api.core.principal import Principal
+    from syncr_api.core.settings import ServiceSettings
     from syncr_api.pins.service import PinnedWeek
-    from syncr_api.plans.records import VerdictEventRecord
+    from syncr_api.plans.records import ConflictRecord, VerdictEventRecord
     from syncr_domain.identifiers import TenantId
 
 pytestmark = pytest.mark.integration
@@ -241,6 +250,59 @@ async def _pin(
 async def _row_count(sessions: async_sessionmaker[AsyncSession], table: str) -> int:
     async with sessions() as session:
         return (await session.scalar(text(f"SELECT count(*) FROM {table}"))) or 0  # noqa: S608
+
+
+async def _pins_held_by(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> tuple[Pin, ...]:
+    """The pin rows this tenant holds, so a count is about one tenant and not about the table."""
+    async with sessions() as session:
+        return tuple((await session.scalars(select(Pin).where(Pin.tenant_id == tenant_id))).all())
+
+
+async def _seed_pinned_revision(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, pinned: Block
+) -> None:
+    """The revision a solve appends after a pin: the same week, with the block pinned.
+
+    At a later instant than the seeded revision, because the live plan is the newest one and the
+    pass that reads a pin runs after the pin was made.
+    """
+    async with sessions() as session, session.begin():
+        await PlanRepository(session, tenant_id).append(
+            document=stored_document(a_plan(blocks=(pinned,))),
+            objective_breakdown=dict.fromkeys(OBJECTIVE_TERMS, 0.0),
+            status="applied",
+            reason="auto_applied_fill",
+            weight_set_version=1,
+            input_version=2,
+            created_at=NOW + timedelta(minutes=1),
+        )
+
+
+async def _seed_conflict_against(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, overlapped: Block
+) -> ConflictRecord:
+    """One unanswered conflict against ``overlapped``, shaped as the detector would raise it.
+
+    The overlap is the second half of the block's own span: a fixture that is internally
+    impossible is a trap for whoever reads it next looking for what a real row holds.
+    """
+    anchor_id = uuid4()
+    span = overlapped.interval
+    detected = DetectedConflict(
+        anchor_id=anchor_id,
+        iso_week=WEEK,
+        binding=overlapped.binding,
+        overlap=Interval(span.start + span.duration / 2, span.end),
+    )
+    async with sessions() as session, session.begin():
+        (raised,) = await PlanConflictRepository(session, tenant_id).raise_all(
+            (detected,),
+            at=NOW,
+            commitments={anchor_id: Commitment(series_uid="standup-series", title="Standup")},
+        )
+    return raised
 
 
 # ---------------------------------------------------------------------------
@@ -904,7 +966,7 @@ class TestUnpin:
 
 
 class TestStoredPinRelease:
-    """Ticket 1393: the real release, over the real table, not the fake."""
+    """The release a conflict resolution reaches: over the real table, and through the wiring."""
 
     async def test_releasing_a_held_pin_frees_the_binding(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
@@ -946,6 +1008,58 @@ class TestStoredPinRelease:
             was_pinned = await release.release(WEEK, BINDING)
 
         assert was_pinned is False
+
+    async def test_a_conflict_answered_as_moved_releases_the_pin_through_the_wiring(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        owner: UserRecord,
+        settings: ServiceSettings,
+    ) -> None:
+        """The two cases above hold the class. This one holds what the conflict path is handed.
+
+        Both construct ``StoredPinRelease`` themselves, so they pass whichever release the
+        resolution is composed with. Here the service is built by the dependency a request builds
+        it by, so the pin row's fate after ``moved`` is the composition's answer and not the
+        test's.
+        """
+        placed = a_block(14, 15, day_offset=3)
+        await _seed_plan(sessions, owner.tenant_id, a_plan(blocks=(placed,)))
+        await _seed_area(sessions, owner.tenant_id)
+        await _seed_task(sessions, owner.tenant_id)
+        held = await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
+        pinned = replace(
+            placed,
+            interval=held.pin.interval,
+            pinned=True,
+            superseded_placement=held.pin.superseded_placement,
+            objective_delta=held.pin.objective_delta,
+        )
+        await _seed_pinned_revision(sessions, owner.tenant_id, pinned)
+        conflict = await _seed_conflict_against(sessions, owner.tenant_id, pinned)
+        # Without this the release has nothing to delete, and the assertion below would hold for
+        # the wrong reason.
+        assert len(await _pins_held_by(sessions, owner.tenant_id)) == 1
+
+        request = Request({"type": "http", "app": create_app(settings)})
+        async with sessions() as session, session.begin():
+            service = get_conflict_service(request, _principal(owner), session)
+            resolved = await service.resolve(
+                _principal(owner),
+                conflict.id,
+                ChosenResolution(resolution=MOVED_RESOLUTION, anchor_type=ABSENT),
+            )
+
+        assert resolved.conflict.resolution == MOVED_RESOLUTION
+        assert await _pins_held_by(sessions, owner.tenant_id) == ()
+        # The row was the constraint; the edit event is the fact about the week, and a release
+        # takes only the first.
+        async with sessions() as session:
+            events = (
+                await session.scalars(
+                    select(EditEvent).where(EditEvent.tenant_id == owner.tenant_id)
+                )
+            ).all()
+        assert len(events) == 1
 
 
 class TestDeadlineFeature:
