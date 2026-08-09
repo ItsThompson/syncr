@@ -1,0 +1,15 @@
+# ruff for the repository's own tooling.
+#
+# `tools/` is not a workspace member, so `just lint-style` never enters it: `just lint-invariants`
+# runs ruff and mypy over this directory for the same reason `just lint-ops` does over
+# `deployments/`. A PEP 695 construct placed in a directory no gate reads was caught once by a
+# hand-run linter alone, and that is the hole this file closes for the second such directory.
+#
+# The shared line length, target version and rule selection live in the repo-root file. `src` is
+# local so the two modules here resolve as first-party to each other.
+extend = "../ruff.toml"
+src = ["."]
+
+[lint.per-file-ignores]
+# A test asserts liberally, and bundles multi-condition assertions.
+"test_*.py" = ["S101", "PT018"]
