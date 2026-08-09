@@ -44,10 +44,10 @@ import {
   installWeekReads,
   monday,
 } from "../routes/week/__tests__/fixtures";
+import { client } from "./client";
 import { usePinning } from "./hooks/usePins";
 import { useWeekSolve } from "./hooks/useWeek";
 import { useWeekWrites } from "./hooks/useWeekWrites";
-import { client } from "./client";
 import type { WriteMethod } from "../testing/apiStub";
 import type { Pinning } from "./hooks/usePins";
 import type { SolveRequest } from "./hooks/useWeek";
