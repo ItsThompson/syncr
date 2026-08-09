@@ -10,12 +10,12 @@ test module importing a forbidden package would otherwise fail this test and bla
 shared, because a member's test path resolves against its own directory and reaching
 into a sibling's test tree would be a worse coupling than twelve repeated lines.
 
-**The probe reports the checkout it resolved, and this file asserts it is the one under
-test.** The subprocess inherits no ``PYTHONPATH`` from pytest's own ``pythonpath``
-setting, so it resolves ``syncr_learning`` through the venv's editable install rather
-than through this tree. Today the two are one path; a probe that did not say which it
-read could pass against another checkout entirely, which is a boundary test measuring
-the wrong tree.
+**The child is told which tree to import, and it reports which one it did.** A
+subprocess inherits none of the parent's ``sys.path``, so without an explicit
+``PYTHONPATH`` it resolves ``syncr_learning`` through the venv's editable install and
+walks whatever checkout that points at, which is a boundary test measuring the wrong
+tree. Both the instruction and the assertion on it are load-bearing, and the assertion
+is what makes the instruction impossible to drop silently.
 
 **Both forbidden workspace packages are DEV dependencies of this member**, because two
 agreement tests need this package's restated spellings and their owners in one process.
@@ -27,6 +27,7 @@ not imply the first.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -42,6 +43,9 @@ PACKAGE = "syncr_learning"
 FORBIDDEN_IMPORTS = frozenset({"syncr_api", "syncr_solver", "fastapi", "starlette", "uvicorn"})
 
 LOCKFILE = Path(__file__).resolve().parents[3] / "uv.lock"
+
+# The importable root this suite's own interpreter read the package from. Children are pointed here.
+SOURCE_ROOT = Path(syncr_learning.__file__).resolve().parent.parent
 
 _PROBE = """
 import importlib, json, pkgutil, sys
@@ -60,8 +64,8 @@ print(json.dumps({{
 """
 
 
-def import_every_module(package: str, *, cwd: Path | None = None) -> dict[str, Any]:
-    """Import every module in ``package`` in a fresh process, and report what it resolved.
+def import_every_module(package: str, *, source_root: Path = SOURCE_ROOT) -> dict[str, Any]:
+    """Import every module in ``package`` in a fresh process, pointed at ``source_root``.
 
     Returns the modules imported, the top-level packages that ended up loaded, and the file the
     subprocess resolved the package from, so a caller can prove which checkout it measured.
@@ -71,7 +75,10 @@ def import_every_module(package: str, *, cwd: Path | None = None) -> dict[str, A
         capture_output=True,
         text=True,
         check=False,
-        cwd=cwd,
+        # ``PATH`` is carried through so the child can find an interpreter or a subprocess of its
+        # own. Nothing else of the ambient environment is, so no variable on a developer's machine
+        # can change which tree the probe measures.
+        env={"PATH": os.environ.get("PATH", ""), "PYTHONPATH": str(source_root)},
     )
     assert completed.returncode == 0, (
         f"the probe could not import {package}: {completed.stderr.strip()}"
@@ -82,9 +89,9 @@ def import_every_module(package: str, *, cwd: Path | None = None) -> dict[str, A
 
 
 def test_the_probe_measured_the_checkout_this_suite_is_running_from() -> None:
-    # Without this the walk below could pass against a package installed from somewhere else. The
-    # subprocess does not inherit pytest's `pythonpath`, so the two resolutions are independent and
-    # comparing them is what makes the boundary claim about THIS tree.
+    # The instrument's own precondition, and the guard on the instruction that satisfies it. A child
+    # resolving the package through the venv's editable install walks another checkout, and every
+    # forbidden import added to this tree would pass the walk below.
     probed = import_every_module(PACKAGE)
 
     assert Path(probed["resolved"]).resolve() == Path(syncr_learning.__file__).resolve()
@@ -105,7 +112,7 @@ def test_the_probe_would_see_a_forbidden_import(tmp_path: Path) -> None:
     package.mkdir()
     (package / "__init__.py").write_text("import syncr_solver\n", encoding="utf-8")
 
-    probed = import_every_module("probe_control", cwd=tmp_path)
+    probed = import_every_module("probe_control", source_root=tmp_path)
 
     assert "syncr_solver" in probed["loaded"]
 
