@@ -159,8 +159,11 @@ def an_occurrence(*, habit_id: UUID, index: int, hour: int, area_id: AreaId) -> 
 def seed_plan(database_url: str, tenant_id: TenantId, blocks: Sequence[Block]) -> None:
     """One applied revision holding ``blocks``, appended through the repository that owns it.
 
-    There is no route that produces a plan and there is not meant to be one, so the plan of record
-    the outcome routes address a block through is written the way the horizon maintainer writes it.
+    Not through ``live_weeks.produce_a_plan``, which is the sibling a reader reaches for first: that
+    builds the week through ``build_week_assembler``, and the assembler's own outcome seam is still
+    wired to the empty log. Driving this suite through it would entangle these figures with the very
+    stub they exist to displace. There is no route to reach for either, because no route produces a
+    plan.
     """
     document = PlanDocument(
         iso_week=WEEK,

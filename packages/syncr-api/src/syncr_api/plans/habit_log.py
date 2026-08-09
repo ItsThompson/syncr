@@ -23,9 +23,8 @@ would still produce the right cursor and the right debt figure. What the two pre
 READ: they bound it to the rows a caller asked about, and they are what lets the expression index
 serve it. The index is ``(tenant_id, kind, entity_id)``, so stating the kind bounds the scan to the
 one range that pair holds. Omitting it does not lose the index: the scan then covers every entry
-the tenant holds and rechecks each against the entity, which on 60,000 rows costs about twice the
-time and fifteen times the index pages. That is why the statement is asserted rather than only its
-answer: what a missing predicate costs has no symptom other than a slower request.
+the tenant holds and rechecks each against the entity. That is why the statement is asserted rather
+than only its answer: what a missing predicate costs has no symptom other than a slower request.
 
 **The key spellings are the writer's own.** The two extractions name the constants
 ``stored_binding`` writes rather than strings spelled a second time, which is what makes a silent
