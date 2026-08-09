@@ -380,3 +380,30 @@ UNWATCHED: Final[Mapping[str, str]] = {
         "screen renders it and an activation is a deliberate user act, not an incident."
     ),
 }
+
+# ---------------------------------------------------------------------------
+# MATCHERS THAT SELECT NOTHING, and what each one would take to revive.
+#
+# A term constraining a label its family does not declare selects no series at all, so the term
+# cannot evaluate and the rule cannot fire on it. That is the silent half of a rule: the file reads
+# as though the condition is covered, `promtool check config` accepts it, and the alert stays quiet
+# through the very outcome it names.
+#
+# NOT A DECISION, unlike every other table here. Each entry is a rule that is half dead, recorded so
+# it is visible to a reader of the declarations rather than only to a reader of the expression, and
+# crossed as an exact equality so a new one fails and a repaired one fails too. Each states the
+# change that would revive it.
+#
+# Keyed as `<alert>:<family>:<label>`, which is the form the crossing derives.
+# ---------------------------------------------------------------------------
+MATCHERS_ON_AN_UNDECLARED_LABEL: Final[Mapping[str, str]] = {
+    "LearningJobFailed:syncr_learning_run_duration_seconds:outcome": (
+        "The nightly run's duration histogram declares no labels at all, so the `failed` disjunct "
+        "selects nothing and the rule can only ever fire on its `absent()` half, which is a run "
+        "that has never reported. A night that ran and failed reads healthy, which is the one "
+        "condition the rule exists for. Reviving it takes an `outcome` label on the histogram in "
+        "`syncr-learning` and one observation per outcome, so it is a change to the job rather "
+        "than to the rule: the three other `outcome` matchers in the file read families that "
+        "declare the label, so the shape is settled and this is the only family missing it."
+    ),
+}

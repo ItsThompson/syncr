@@ -60,6 +60,7 @@ from tests.metric_declarations import (
     DASHBOARDS,
     EXTERNALLY_PRODUCED,
     JOBS_BY_MEMBER,
+    MATCHERS_ON_AN_UNDECLARED_LABEL,
     NOT_A_FAMILY,
     NOT_ALERTED,
     SEVERITY_BY_ALERT,
@@ -593,6 +594,84 @@ def declared(names: Mapping[str, str]) -> set[str]:
     return {base_family(one) for one in names}
 
 
+# A series selector a rule reads, with whatever it constrains inside the braces.
+_SELECTOR = re.compile(r"(?P<family>syncr_[a-z0-9_]+)\{(?P<matchers>[^}]*)\}")
+_SELECTOR_LABEL = re.compile(r"(?P<label>[a-z_]+)\s*(?:=~|!~|!=|=)")
+
+# Labels no collector declares and every series may still carry: two the scrape attaches, one the
+# client library adds to a histogram, and one this deployment sets as an external label. A matcher
+# on any of them is about where a series came from rather than about how it was recorded.
+_NOT_THE_COLLECTOR_S: Final = frozenset({"deployment", "instance", "job", "le"})
+
+
+def declared_labelnames() -> Mapping[str, frozenset[str]]:
+    """Every family's own label set, read from the construction that declares it.
+
+    Read from the source rather than from the registry, because the registry cannot answer this: a
+    labelled collector with no child yet reports NO SAMPLES, so nothing in a collected metric names
+    the labels it would carry. The labels are on the page, one keyword away from the name.
+
+    Resolved per file from that file's own imports, for the reason
+    :func:`collector_names_are_plain_literals` states. A ``labelnames`` this cannot read as literal
+    strings FAILS here rather than being reported as no labels, which would turn every matcher over
+    that family into an undeclared one.
+    """
+    found: dict[str, frozenset[str]] = {}
+    for _, path in member_sources():
+        tree = ast.parse(path.read_text())
+        local = _client_library_names(tree)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            called = node.func
+            name = called.attr if isinstance(called, ast.Attribute) else getattr(called, "id", "")
+            if name not in local:
+                continue
+            first = node.args[0]
+            if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
+                continue
+            found[base_family(first.value)] = _labelnames_of(node, at=f"{path.name}:{node.lineno}")
+    assert found, "no collector construction was read, so every matcher below would look broken"
+    return found
+
+
+def _labelnames_of(node: ast.Call, *, at: str) -> frozenset[str]:
+    """The ``labelnames`` one collector construction declares, or the empty set when it declares
+    none."""
+    stated = next(
+        (one.value for one in node.keywords if one.arg == "labelnames"),
+        None,
+    )
+    if stated is None:
+        return frozenset()
+    assert isinstance(stated, ast.Tuple | ast.List), f"{at} states labelnames this cannot read"
+    names = [
+        one.value
+        for one in stated.elts
+        if isinstance(one, ast.Constant) and isinstance(one.value, str)
+    ]
+    assert len(names) == len(stated.elts), f"{at} states a labelname that is not a string literal"
+    return frozenset(names)
+
+
+def matchers_on_an_undeclared_label() -> set[str]:
+    """Every ``<alert>:<family>:<label>`` a rule constrains that its family does not carry.
+
+    A selector over a label the family never declares matches no series, so its whole term is empty
+    and the rule is silent on it. Derived from both ends: the rules as deployed, and the label sets
+    the collectors declare.
+    """
+    labels = declared_labelnames()
+    return {
+        f"{rule.alert}:{family}:{label}"
+        for rule in alert_rules()
+        for found in _SELECTOR.finditer(rule.expr)
+        if (family := base_family(found.group("family"))) in labels
+        for label in _SELECTOR_LABEL.findall(found.group("matchers"))
+        if label not in labels[family] | _NOT_THE_COLLECTOR_S
+    }
+
+
 def liveness_jobs() -> set[str]:
     """Every job an alert rule reads the liveness of."""
     return set(re.findall(r'up\{job="([^"]+)"\}', " ".join(rule.expr for rule in alert_rules())))
@@ -1045,6 +1124,48 @@ class TestTheAbsentDiscipline:
         """An exporter that is down reads as plenty of disk, a live database and a synced clock."""
         for name in ("DiskFillingUp", "DatabaseUnreachable", "ClockDrifting"):
             assert "absent(" in named(name).expr
+
+
+class TestEveryMatcherNamesALabelItsFamilyCarries:
+    """A term over a label the family does not declare selects nothing, and nothing cannot fire.
+
+    The quietest shape a rule can fail in, and the one `promtool check config` cannot see: the file
+    is valid, the family exists, the threshold is sensible, and the selector matches no series in
+    any deployment. Three of this file's four `outcome` matchers read families that declare the
+    label, so the shape is settled and a fourth reading a family that does not is a defect rather
+    than a style.
+
+    Derived from both ends rather than listed, so a rule that gains a matcher and a family that
+    loses a label are the same failure.
+    """
+
+    def test_the_only_matchers_that_select_nothing_are_the_declared_ones(self) -> None:
+        """An exact equality, so a new one fails and a repaired one fails too."""
+        assert matchers_on_an_undeclared_label() == set(MATCHERS_ON_AN_UNDECLARED_LABEL)
+
+    @pytest.mark.parametrize("entry", sorted(MATCHERS_ON_AN_UNDECLARED_LABEL))
+    def test_each_declared_one_states_what_would_revive_it(self, entry: str) -> None:
+        assert len(MATCHERS_ON_AN_UNDECLARED_LABEL[entry]) > 80
+
+    def test_the_reading_finds_the_labels_the_collectors_declare(self) -> None:
+        """The positive control: an empty label map reports every matcher in the file as broken."""
+        labels = declared_labelnames()
+
+        assert labels["syncr_solve"] == frozenset({"outcome"}), "in the registry's own spelling"
+        assert labels["syncr_learning_samples"] == frozenset({"tenant", "parameter"})
+        assert labels["syncr_learning_run_duration_seconds"] == frozenset()
+
+    def test_every_family_a_matcher_reads_has_its_labels_read(self) -> None:
+        """A family the reading cannot see is a family it steps over rather than judges."""
+        labels = declared_labelnames()
+        constrained = {
+            base_family(found.group("family"))
+            for rule in alert_rules()
+            for found in _SELECTOR.finditer(rule.expr)
+        }
+
+        assert constrained, "no rule constrains a label, so this crossing asserts nothing"
+        assert constrained <= set(labels) | declared(EXTERNALLY_PRODUCED)
 
 
 class TestTheCrossing:
