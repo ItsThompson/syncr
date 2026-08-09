@@ -82,26 +82,27 @@ pytestmark = pytest.mark.integration
 
 # The measurement's shape, and the ceiling this suite fails at.
 #
-# The budget is p95 under 150 ms, stated in `19-nonfunctional.md`. The ceiling is looser, because a
-# developer's machine and a CI runner are not the deployment, and the figure is reported rather than
-# asserted. 400 ms rather than the week suite's 1000: at 1000 against a measured 42 ms a twenty-fold
-# regression stayed green, which is a ceiling no plausible regression reaches. 400 is still nearly
-# ten times the measurement and under three times the budget.
+# The budget is p95 under `BUDGET_MILLISECONDS`, stated in `19-nonfunctional.md`. The ceiling is
+# looser, because a developer's machine and a CI runner are not the deployment, and the figure is
+# reported rather than asserted. 400 ms rather than the week suite's 1000: at 1000 against a
+# measured 42 ms a twenty-fold regression stayed green, which is a ceiling no plausible regression
+# reaches. 400 is still nearly ten times the measurement and under three times the budget.
 #
 # Twenty deadlined tasks is review 44's own shape, which is what makes this figure comparable to it.
 LATENCY_SAMPLES = 30
 CATASTROPHIC_MILLISECONDS = 400
 DEADLINED_TASKS = 20
 
-# What the ceiling is set against, and what the p95 is cut out of.
+# What the ceiling is set against, what it is bounded by, and what the p95 is cut out of.
 #
-# 42 ms is what this suite measures on a developer's machine. It is named rather than left in the
-# prose above because the ceiling's own control drives a twenty-fold regression over it, so how much
-# room 400 ms leaves is asserted rather than argued.
+# 42 ms is what this suite measures on a developer's machine, and 150 ms is the route's budget. The
+# control below drives a twenty-fold regression over the measurement and bounds the ceiling by three
+# times the budget, so both halves of the justification above are asserted rather than argued.
 #
 # The p95 is the last of twenty cuts, so a sample of fewer than twenty reads has no ninety-fifth
-# percentile: `quantiles` interpolates one from the two slowest reads it was given.
+# percentile: over two reads `quantiles` answers a figure above both of them.
 MEASURED_MILLISECONDS = 42
+BUDGET_MILLISECONDS = 150
 CUTS_FOR_A_P95 = 20
 
 
@@ -505,16 +506,20 @@ def test_no_event_builder_puts_a_verdict_on_the_stream(source_root: Path) -> Non
 # --------------------------------------------------------------------------------
 
 
+class SampleTooSmall(ValueError):
+    """Raised for a sample with no p95, so a refusal is caught by type rather than by wording."""
+
+
 def the_p95_of(elapsed: Sequence[float]) -> float:
     """The figure the ceiling is compared against, over a sample big enough to have one.
 
     Shared by the measurement and by the ceiling's controls below, so what a control proves is the
     arithmetic the measurement runs rather than a second copy of it. A sample smaller than the cut
-    count is refused instead of answered: an interrupted run that collected two reads would
-    otherwise have a figure interpolated from them and report it as a p95 of thirty.
+    count is refused instead of answered: over two reads the cut lands above both of them, and an
+    interrupted run would report that figure as a p95 of thirty.
     """
     if len(elapsed) < CUTS_FOR_A_P95:
-        raise ValueError(
+        raise SampleTooSmall(
             f"a sample of {len(elapsed)} reads has no p95: it is cut into {CUTS_FOR_A_P95}"
         )
     return quantiles(sorted(elapsed), n=CUTS_FOR_A_P95)[-1]
@@ -592,7 +597,9 @@ def test_the_ceiling_refuses_a_slow_tail_the_middle_of_the_sample_would_admit() 
     wrong quantile does not pass either.
 
     Both directions are driven, because a ceiling tight enough to refuse the measured figure would
-    pass a test that only asked whether a regression is refused.
+    pass a test that only asked whether a regression is refused. The last assertion bounds the
+    ceiling from the other side: refusing a twenty-fold regression leaves everything up to that
+    regression admissible, and the budget is what says how much of that room the ceiling may take.
     """
     slowest = LATENCY_SAMPLES // 10
     regressed = MEASURED_MILLISECONDS * 20.0
@@ -602,15 +609,17 @@ def test_the_ceiling_refuses_a_slow_tail_the_middle_of_the_sample_would_admit() 
     assert the_p95_of(slow_tail) >= CATASTROPHIC_MILLISECONDS, "the ceiling admits the regression"
     assert median(slow_tail) < CATASTROPHIC_MILLISECONDS, "the sample's middle is not catastrophic"
     assert the_p95_of(healthy) < CATASTROPHIC_MILLISECONDS, "the ceiling refuses the measurement"
+    assert CATASTROPHIC_MILLISECONDS < 3 * BUDGET_MILLISECONDS, "the ceiling is loose on the budget"
 
 
 def test_a_p95_is_refused_over_a_sample_too_small_to_have_one() -> None:
     """The anti-vacuity half, on the sample rather than on the week it was taken over.
 
     An empty sample and a truncated one both fail rather than answer, so a figure can only be
-    reported over the reads the measurement says it took.
+    reported over the reads the measurement says it took. The truncated case is the one that needs
+    the refusal: twenty cuts over nineteen reads answers a figure and raises nothing.
     """
-    with pytest.raises(ValueError, match="has no p95"):
+    with pytest.raises(SampleTooSmall):
         the_p95_of([])
-    with pytest.raises(ValueError, match="has no p95"):
+    with pytest.raises(SampleTooSmall):
         the_p95_of([float(MEASURED_MILLISECONDS)] * (CUTS_FOR_A_P95 - 1))
