@@ -370,15 +370,19 @@ _WINDOW = re.compile(r"\[(?P<window>\d+[smhdwy])\]")
 def comparisons(expr: str) -> list[Comparison]:
     """Every threshold comparison an expression states, in the order it states them.
 
-    Each comparison is paired with the text to its left, which is the term being compared: a rule
-    disjoins several terms and each carries its own families and its own window, so reading the
-    numbers alone cannot say which term any of them bounds.
+    Each comparison is paired with the text since the previous one, which is the term being
+    compared: a rule disjoins several terms and each carries its own families and its own window, so
+    reading the numbers alone cannot say which term any of them bounds. A disjunct that states no
+    comparison of its own, such as an `absent()` term, is absorbed into the term that follows it.
     """
     read: list[Comparison] = []
     opened = 0
     for found in _COMPARISON.finditer(expr):
         term = expr[opened : found.start()]
         opened = found.end()
+        # The last range in the term. Every rule here bounds one range per comparison, and a ratio
+        # of two ranges would report only the divisor's, so read `windows` below before relying on
+        # this field for an expression that divides one window by a different one.
         windows = _WINDOW.findall(term)
         read.append(
             Comparison(
@@ -392,9 +396,18 @@ def comparisons(expr: str) -> list[Comparison]:
 
 
 def comparison_on(rule: Rule, family: str) -> Comparison:
-    """The one comparison this rule states over ``family``. Raises if it states none or two."""
-    (found,) = [one for one in comparisons(rule.expr) if family in one.families]
-    return found
+    """The one comparison this rule states over ``family``. Raises if it states none or two.
+
+    The failure names both the rule and the family, because the caller that needs this most is the
+    integration crossing over the token age, which has no parametrized test id to say what it was
+    looking for when a rule stops stating the family it is supposed to read.
+    """
+    found = [one for one in comparisons(rule.expr) if family in one.families]
+    if len(found) != 1:
+        raise ValueError(
+            f"{rule.alert} states {len(found)} comparisons over {family}, wanted exactly one"
+        )
+    return found[0]
 
 
 def exported_families() -> set[str]:
@@ -635,10 +648,41 @@ class TestTheExtractionItself:
             ),
         ]
 
-    def test_a_term_a_rule_does_not_state_raises_rather_than_reading_as_a_default(self) -> None:
-        """A lookup that answered for a family the rule never mentions would pass on any rule."""
-        with pytest.raises(ValueError, match="not enough values"):
+    def test_a_term_a_rule_does_not_state_raises_and_names_what_it_looked_for(self) -> None:
+        """A lookup that answered for a family the rule never mentions would pass on any rule.
+
+        The message is asserted, not only the exception: the caller this protects is the crossing
+        over the token age, and a bare unpacking error there names neither the rule that stopped
+        stating the family nor the family it stopped stating.
+        """
+        with pytest.raises(
+            ValueError,
+            match=r"WriteTargetTokenExpiring states 0 comparisons over "
+            r"syncr_source_staleness_seconds",
+        ):
             comparison_on(named("WriteTargetTokenExpiring"), "syncr_source_staleness_seconds")
+
+    def test_a_family_two_terms_bound_raises_rather_than_answering_for_one_of_them(self) -> None:
+        """The other half of the contract, on a shape no rule states today.
+
+        A rule that bounded one family from both sides would make "the comparison over this family"
+        ambiguous, and answering with either one silently would pin half a condition. No deployed
+        rule does this, so the input is built here rather than read from the file.
+        """
+        both_sides = Rule(
+            alert="Synthetic",
+            expr=(
+                "max(syncr_source_staleness_seconds) > 86400 "
+                "or min(syncr_source_staleness_seconds) < 60"
+            ),
+            holds_for="5m",
+            severity="warning",
+            annotations={},
+        )
+
+        assert len(comparisons(both_sides.expr)) == 2
+        with pytest.raises(ValueError, match=r"Synthetic states 2 comparisons over"):
+            comparison_on(both_sides, "syncr_source_staleness_seconds")
 
     def test_a_family_no_process_exports_is_not_in_the_exported_set(self) -> None:
         """The synthetic input the containment assertions would otherwise never see."""
