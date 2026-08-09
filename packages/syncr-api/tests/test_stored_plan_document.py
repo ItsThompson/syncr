@@ -83,7 +83,7 @@ from syncr_domain.reasons import (
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
 
     from syncr_api.core.columns import JsonObject
     from syncr_domain.intervals import Interval
@@ -816,14 +816,6 @@ def test_no_round_trip_can_see_a_producer_that_stores_the_derived_id(
 # stored form states every field a document has and no others, which is asserted above.
 DOCUMENT_KEYS = frozenset(field.name for field in fields(PlanDocument))
 
-# The writer names each key through a constant of its own, so a producer that imported those
-# constants would hold no string literal at all. Both spellings name the key.
-KEY_BY_CONSTANT = {
-    name: value
-    for name, value in vars(stored_documents).items()
-    if isinstance(value, str) and value in DOCUMENT_KEYS
-}
-
 # How many of a document's nine keys a mapping names before it IS one, on top of the week it is
 # filed under. Two, because that is the shape of a row built by hand: a week and its blocks, with
 # every collection left to default. One key alone is a column most plan-side tables carry, and the
@@ -831,23 +823,55 @@ KEY_BY_CONSTANT = {
 KEYS_THAT_NAME_A_DOCUMENT = 2
 
 
-def _key_named(node: ast.expr | None) -> str | None:
-    """The document key this expression names, written out or through the writer's constant."""
+def published_key_names(source: str) -> dict[str, str]:
+    """Every constant this source publishes whose value is one of a document's keys.
+
+    A producer names a key through a constant as readily as it writes one out, and the constants are
+    published in more than one module: the writer holds nine of them and ``plans/derivation.py``
+    holds the week's own, which is the key this walk filters on.
+    """
+    found: dict[str, str] = {}
+    for statement in ast.parse(source).body:
+        if isinstance(statement, ast.Assign):
+            targets = list(statement.targets)
+        elif isinstance(statement, ast.AnnAssign):
+            targets = [statement.target]
+        else:
+            continue
+        published = statement.value
+        if not isinstance(published, ast.Constant) or published.value not in DOCUMENT_KEYS:
+            continue
+        found.update(
+            {target.id: published.value for target in targets if isinstance(target, ast.Name)}
+        )
+    return found
+
+
+def document_key_names(source_root: Path) -> dict[str, str]:
+    """The key each constant published anywhere under ``source_root`` names."""
+    found: dict[str, str] = {}
+    for path in sorted(source_root.rglob("*.py")):
+        found |= published_key_names(path.read_text(encoding="utf-8"))
+    return found
+
+
+def _key_named(node: ast.expr | None, names: Mapping[str, str]) -> str | None:
+    """The document key this expression names, written out or through a published constant."""
     if isinstance(node, ast.Constant):
         value = node.value
         return value if isinstance(value, str) and value in DOCUMENT_KEYS else None
     if isinstance(node, ast.Name):
-        return KEY_BY_CONSTANT.get(node.id)
+        return names.get(node.id)
     if isinstance(node, ast.Attribute):
-        return KEY_BY_CONSTANT.get(node.attr)
+        return names.get(node.attr)
     return None
 
 
-def _keys_in(nodes: Iterable[ast.expr | None]) -> frozenset[str]:
-    return frozenset(key for node in nodes if (key := _key_named(node)) is not None)
+def _keys_in(nodes: Iterable[ast.expr | None], names: Mapping[str, str]) -> frozenset[str]:
+    return frozenset(key for node in nodes if (key := _key_named(node, names)) is not None)
 
 
-def document_mappings(source: str) -> list[frozenset[str]]:
+def document_mappings(source: str, names: Mapping[str, str]) -> list[frozenset[str]]:
     """Every mapping in this source that could be filed as a document, and the keys it names.
 
     Three spellings, because a producer writes whichever reads best where it stands: a display, a
@@ -863,7 +887,7 @@ def document_mappings(source: str) -> list[frozenset[str]]:
     assigned: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Dict):
-            found.append(_keys_in(node.keys))
+            found.append(_keys_in(node.keys, names))
         elif (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
@@ -877,7 +901,7 @@ def document_mappings(source: str) -> list[frozenset[str]]:
                 )
             )
         elif isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store):
-            assigned |= _keys_in([node.slice])
+            assigned |= _keys_in([node.slice], names)
     return [
         keys
         for keys in [*found, frozenset(assigned)]
@@ -891,9 +915,13 @@ def modules_that_build_a_stored_document(source_root: Path) -> dict[str, list[st
     Reported with the keys each one names, because that is what makes the answer checkable: a
     mapping caught for some other reason says which keys made it look like a document.
     """
+    sources = {path: path.read_text(encoding="utf-8") for path in sorted(source_root.rglob("*.py"))}
+    names: dict[str, str] = {}
+    for source in sources.values():
+        names |= published_key_names(source)
     found: dict[str, set[str]] = {}
-    for path in sorted(source_root.rglob("*.py")):
-        for keys in document_mappings(path.read_text(encoding="utf-8")):
+    for path, source in sources.items():
+        for keys in document_mappings(source, names):
             found.setdefault(str(path.relative_to(source_root)), set()).update(keys)
     return {module: sorted(keys) for module, keys in found.items()}
 
@@ -914,16 +942,30 @@ def test_the_writer_is_the_only_module_that_builds_a_stored_document(source_root
 
 def test_the_walk_reports_a_second_producer_in_each_spelling(tmp_path: Path) -> None:
     # The control, and it runs the WALK rather than the pattern: a rule whose subject set resolved
-    # to no files would pass forever. Written into a directory of its own, so these can never reach
-    # the package the rule is stated over. The fourth module is the negative: a row that names the
-    # week and a column of its own table is not a document.
+    # to no files would pass forever, and a spelling with no control here is a branch of the walk
+    # that cannot go red. Written into a directory of its own, so these can never reach the package
+    # the rule is stated over.
+    #
+    # Five producers, one per way the walk can recognize a key or a mapping, and the sixth module is
+    # the negative: a row that names the week and columns of its own table is not a document. The
+    # published spellings resolve through `spelling.py`, which is how the real package publishes
+    # them, so the alias derivation is exercised here rather than assumed.
     invented = tmp_path / "revisions"
     invented.mkdir()
+    (invented / "spelling.py").write_text(
+        'ISO_WEEK = "iso_week"\nBLOCKS = "blocks"\nEMPTY_SLOTS = "empty_slots"\n', encoding="utf-8"
+    )
     (invented / "display.py").write_text(
         'stored = {"iso_week": str(week), "blocks": []}\n', encoding="utf-8"
     )
-    (invented / "constants.py").write_text(
+    (invented / "by_constant.py").write_text(
         "stored = {ISO_WEEK: str(week), EMPTY_SLOTS: []}\n", encoding="utf-8"
+    )
+    (invented / "by_attribute.py").write_text(
+        "stored = {spelling.ISO_WEEK: str(week), spelling.BLOCKS: []}\n", encoding="utf-8"
+    )
+    (invented / "by_call.py").write_text(
+        "stored = dict(iso_week=str(week), forbidden_windows=[])\n", encoding="utf-8"
     )
     (invented / "assigned.py").write_text(
         'stored = {}\nstored["iso_week"] = str(week)\nstored["adjustments"] = []\n',
@@ -935,9 +977,24 @@ def test_the_walk_reports_a_second_producer_in_each_spelling(tmp_path: Path) -> 
 
     assert modules_that_build_a_stored_document(tmp_path) == {
         "revisions/assigned.py": ["adjustments", "iso_week"],
-        "revisions/constants.py": ["empty_slots", "iso_week"],
+        "revisions/by_attribute.py": ["blocks", "iso_week"],
+        "revisions/by_call.py": ["forbidden_windows", "iso_week"],
+        "revisions/by_constant.py": ["empty_slots", "iso_week"],
         "revisions/display.py": ["blocks", "iso_week"],
     }
+
+
+def test_every_module_that_publishes_a_document_key_name_is_read(source_root: Path) -> None:
+    """The key names are published in more than one module, and the walk reads all of them.
+
+    The week key this walk filters on is published by ``plans/derivation.py`` rather than by the
+    writer, so a producer keyed by that constant is visible only while every publisher is read.
+    """
+    names = document_key_names(source_root)
+
+    assert names["ISO_WEEK"] == DOCUMENT_ISO_WEEK_KEY
+    assert names["DOCUMENT_ISO_WEEK_KEY"] == DOCUMENT_ISO_WEEK_KEY
+    assert {names["BLOCKS"], names["EMPTY_SLOTS"], names["ZONE_BY_DATE"]} <= DOCUMENT_KEYS
 
 
 def test_the_walk_reads_the_whole_package_rather_than_one_directory_of_it(
@@ -946,10 +1003,9 @@ def test_the_walk_reads_the_whole_package_rather_than_one_directory_of_it(
     # The control on the subject set. The writer lives one directory down, so a walk over the top
     # level alone would find no producer at all and the equality above would hold for the wrong
     # reason.
-    read = {path.parent.name for path in source_root.rglob("*.py")}
+    read = {path.parent for path in source_root.rglob("*.py")}
 
-    assert "plans" in read
-    assert len(read) > len(DOCUMENT_KEYS)
+    assert {source_root, source_root / "plans"} <= read
 
 
 def test_a_second_producer_inside_the_package_is_reported(
