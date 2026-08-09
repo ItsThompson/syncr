@@ -97,6 +97,20 @@ class TestTheHashLanguages:
     def test_a_sql_comment_is_prose(self) -> None:
         assert pieces("x.sql", "select 1; -- why\n") == ["-- why"]
 
+    def test_a_non_utf8_file_in_a_read_kind_names_itself(self, tmp_path: Path) -> None:
+        """A bare decode error names no path, which is what the wrapper beside it exists to fix."""
+        latin = tmp_path / "settings.ini"
+        latin.write_bytes(b"# caf\xe9\n")
+
+        with pytest.raises(comments.Unreadable, match=r"settings\.ini is read as \.ini"):
+            comments.text_of(latin)
+
+    def test_a_file_that_decodes_is_read_whole(self, tmp_path: Path) -> None:
+        readable = tmp_path / "settings.ini"
+        readable.write_text("# why\nkey = 1\n", encoding="utf-8")
+
+        assert comments.text_of(readable) == "# why\nkey = 1\n"
+
 
 class TestThePartition:
     def test_every_kind_of_file_the_index_holds_is_declared(self) -> None:

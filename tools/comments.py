@@ -158,6 +158,21 @@ def kind(path: Path) -> str:
     return path.suffix or path.name
 
 
+def text_of(path: Path) -> str:
+    """The file's text, or :class:`Unreadable` naming it.
+
+    A kind this module declares read has to decode as UTF-8. ``UnicodeDecodeError`` does not carry
+    the filename, so a latin-1 file would fail the gate with a traceback naming nothing, which is
+    the failure this exception exists to prevent.
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as broken:
+        raise Unreadable(
+            f"{path} is read as {kind(path)} and does not decode: {broken}"
+        ) from broken
+
+
 def prose(path: Path, text: str) -> Iterator[tuple[int, str]]:
     """Every piece of prose in ``text``, read the way this path's language spells a comment.
 
