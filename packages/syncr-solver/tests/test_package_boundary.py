@@ -12,8 +12,9 @@ into a sibling's test tree would be a worse coupling than repeating the probe in
 **The child is told which tree to import, and it reports which one it did.** A subprocess
 inherits none of the parent's ``sys.path``, so without being told it resolves this package
 through the interpreter's editable install: the probe then walks a different checkout, and a
-forbidden import added here would pass. Both the instruction and the assertion on it are
-load-bearing, and the assertion is what makes the instruction impossible to drop silently.
+forbidden import added here would pass. The stated environment does two things, and each is
+visible somewhere different: comparing the two resolved trees needs a second checkout before
+they can differ at all, while a decoy on the ambient ``PYTHONPATH`` is decidable in one.
 """
 
 from __future__ import annotations
