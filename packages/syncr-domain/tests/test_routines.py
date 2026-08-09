@@ -23,6 +23,8 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from syncr_domain.errors import DomainError
 from syncr_domain.fixtures.dst_weeks import DST_WEEKS, LONDON, DstWeek
@@ -402,3 +404,34 @@ def test_a_date_the_zone_skips_carries_its_occurrence_to_the_next_date() -> None
 
     assert local(skipped.start, APIA) == datetime(2011, 12, 31, 5, 0, tzinfo=resolve_zone(APIA))
     assert skipped.total_minutes() == 30
+
+
+# --------------------------------------------------------------------------------
+# The span carries no overlap bound, and no positive one can be added
+# --------------------------------------------------------------------------------
+
+
+def test_the_accepted_range_is_one_minute_to_a_whole_nominal_day() -> None:
+    # Both ends by their literal values. Narrowing either end to keep an occurrence clear of its
+    # own next one would be a bound wearing the cap's name, and it goes red here rather than only
+    # wherever an occurrence is measured.
+    assert (MIN_DURATION_MINUTES, MAX_DURATION_MINUTES) == (1, 24 * 60)
+
+
+@given(duration=st.integers(min_value=MIN_DURATION_MINUTES, max_value=MAX_DURATION_MINUTES))
+def test_no_duration_the_span_accepts_is_clear_of_its_own_next_occurrence(duration: int) -> None:
+    # Over the WHOLE accepted range rather than at sampled durations, which is what makes this the
+    # absence of a bound rather than three cases that happen to pass: a refusal added at any
+    # threshold is a duration this constructor raises on here.
+    #
+    # `Pacific/Apia` skipped 2011-12-30, so that date's occurrence lands on the 31st's at every
+    # duration. An occurrence reaches its own next one whatever the span, so no positive cap
+    # expresses "never overlaps its own next occurrence" and nothing here attempts one: which
+    # occurrences a week draws is the week assembler's.
+    span = RoutineSpan(time(5, 0), duration, MIN_DURATION_MINUTES, 0)
+
+    skipped = span.occurrence_on(date(2011, 12, 30), APIA)
+    following = span.occurrence_on(date(2011, 12, 31), APIA)
+
+    assert skipped.overlaps(following)
+    assert skipped == following
