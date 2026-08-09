@@ -79,10 +79,9 @@ def _boot_the_entrypoint(*, source_root: Path, keys_path: Path) -> subprocess.Co
 
 
 def _reported_root(stdout: str) -> Path:
-    """The source root the child says it imported."""
     reported = [line for line in stdout.splitlines() if line.startswith(_ROOT_REPORT)]
 
-    assert len(reported) == 1, f"the probe reported no source root: {stdout!r}"
+    assert len(reported) == 1, f"the probe did not report exactly one source root: {stdout!r}"
     return Path(reported[0].removeprefix(_ROOT_REPORT).strip())
 
 
