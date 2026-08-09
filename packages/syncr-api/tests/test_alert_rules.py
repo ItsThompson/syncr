@@ -1149,8 +1149,11 @@ class TestTheRulesThatGovernTheRules:
         assert rule.severity == "warning"
 
 
-class TestTheWriteTargetRulesFire:
+class TestTheWriteTargetFiringConditions:
     """The three rules over the write target, each pinned at the condition it fires on.
+
+    THE CONDITION, NOT THE FIRING: nothing here evaluates the expression, so these are controls over
+    what the deployed rules are stated to be and not over what Prometheus does with them.
 
     Two rule blocks carry them: the token age and the projection failure, plus the contained
     per-tenant fault, which is folded into both as a disjunct rather than stated as a rule of its
@@ -1212,7 +1215,7 @@ class TestTheWriteTargetRulesFire:
     def test_a_contained_tenant_fault_fires_the_rule_whose_reading_it_freezes(
         self, name: str, family: str
     ) -> None:
-        """The third rule, and the pairing is the whole of it.
+        """The fault that is folded into both rules rather than stated as one, and its pairing.
 
         Each counter has to be read by the rule that goes quiet when its duty stops: the state duty
         contains a per-tenant fault and counts it, which leaves the token age at zero, and the
