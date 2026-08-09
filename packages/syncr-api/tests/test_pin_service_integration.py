@@ -39,7 +39,6 @@ from sqlalchemy import select, text
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.conflicts.declarations import ChosenResolution
 from syncr_api.conflicts.injection import get_conflict_service
-from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.patches import ABSENT
 from syncr_api.learned.models import WeightSet as WeightSetRow
@@ -74,11 +73,11 @@ from tests.live_tenants import delete_tenant, seed_owner
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from fastapi import FastAPI
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
     from syncr_api.accounts.records import UserRecord
     from syncr_api.core.principal import Principal
-    from syncr_api.core.settings import ServiceSettings
     from syncr_api.pins.service import PinnedWeek
     from syncr_api.plans.records import ConflictRecord, VerdictEventRecord
     from syncr_domain.identifiers import TenantId
@@ -1013,7 +1012,7 @@ class TestStoredPinRelease:
         self,
         sessions: async_sessionmaker[AsyncSession],
         owner: UserRecord,
-        settings: ServiceSettings,
+        app: FastAPI,
     ) -> None:
         """The two cases above hold the class. This one holds what the conflict path is handed.
 
@@ -1040,7 +1039,7 @@ class TestStoredPinRelease:
         # the wrong reason.
         assert len(await _pins_held_by(sessions, owner.tenant_id)) == 1
 
-        request = Request({"type": "http", "app": create_app(settings)})
+        request = Request({"type": "http", "app": app})
         async with sessions() as session, session.begin():
             service = get_conflict_service(request, _principal(owner), session)
             resolved = await service.resolve(
@@ -1051,8 +1050,9 @@ class TestStoredPinRelease:
 
         assert resolved.conflict.resolution == MOVED_RESOLUTION
         assert await _pins_held_by(sessions, owner.tenant_id) == ()
-        # The row was the constraint; the edit event is the fact about the week, and a release
-        # takes only the first.
+        # The row was the constraint; the edit event is the fact about the week. What makes losing
+        # the row lossless is the label the event keeps: the pair the pin was priced over, the cost,
+        # and the weight set that priced it.
         async with sessions() as session:
             events = (
                 await session.scalars(
@@ -1060,6 +1060,17 @@ class TestStoredPinRelease:
                 )
             ).all()
         assert len(events) == 1
+        survivor = events[0]
+        assert survivor.objective_delta == held.pin.objective_delta
+        assert survivor.weight_set_version == held.pin.weight_set_version
+        assert (survivor.proposed_starts_at, survivor.proposed_ends_at) == (
+            held.pin.superseded_placement.start,
+            held.pin.superseded_placement.end,
+        )
+        assert (survivor.accepted_starts_at, survivor.accepted_ends_at) == (
+            held.pin.interval.start,
+            held.pin.interval.end,
+        )
 
 
 class TestDeadlineFeature:
