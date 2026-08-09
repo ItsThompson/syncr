@@ -1,7 +1,7 @@
-"""``SolveInputs.for_probe()``: a projection, and the three things it must not become.
+"""``SolveInputs.for_probe()``: a projection, and the four things it must not become.
 
 The projection is where four consecutive reviews found the same defect, so this suite is stated
-over the projection's inventory as much as over its values. Three claims carry the weight:
+over the projection's inventory as much as over its values. Four claims carry the weight:
 
 *It computes no netting.* The demands and the floor reservations arrive net from the assembler and
 are carried forward verbatim, which these tests assert as identity rather than as equality where
@@ -134,8 +134,13 @@ NOT_PROJECTED = frozenset(
 # The two projected fields the projection hands over as the very object the assembly holds, rather
 # than as a value built from it. Asserted by identity, because a re-derivation producing an equal
 # value would satisfy an equality check and re-deriving the netted demand is the one mistake this
-# projection must not make. The instants are not here: any re-derivation of one is a clock read,
-# which is a different value rather than an equal copy, so equality already catches it.
+# projection must not make.
+#
+# The instants are not here, and the reason is not that they are safe. ``ProbeInputs`` re-normalizes
+# both of them through ``as_instant``, which is ``astimezone(UTC)``, and that returns the same
+# object for an already-UTC datetime only by CPython's matching-zone fast path. Identity there would
+# pin an interpreter detail rather than anything about this projection, so an equal copy of an
+# instant goes uncaught here and a wrong one does not.
 CARRIED_BY_IDENTITY = frozenset({"span", "deadline_demands"})
 
 
@@ -858,13 +863,26 @@ def test_the_projection_agrees_field_by_field_on_a_week_holding_unpinned_placeme
     projected = week.inputs.for_probe()
     placements = week.placements
 
-    # The generator's own claim, asserted rather than reasoned about. A draw laying an interval
-    # outside the week would make a figure taken over the span disagree with one over the
-    # placements, and the disagreement would read as a defect in the projection.
-    laid = IntervalSet(placement.interval for placement in placements)
+    # The generator's own claims, asserted rather than reasoned about. An interval laid outside the
+    # week would make a figure taken over the span disagree with one taken over the placements, and
+    # a deadline ahead of a placement of its own task would break the netting the property models:
+    # the demand nets the placements before the deadline, and every one of them has to be there.
+    laid = IntervalSet(
+        [
+            *(placement.interval for placement in placements),
+            *(entry.interval for entry in week.inputs.frame),
+            *week.inputs.frame_overhang,
+            *(anchor.interval for anchor in week.inputs.anchors),
+            *(shadow.interval for shadow in week.inputs.shadow_blocks),
+            *(window.interval for window in week.inputs.forbidden_windows),
+            *(period.interval for period in week.inputs.off_plan),
+        ]
+    )
     assert laid == laid.clip(SPAN)
+    assert all(SPAN.start <= task.deadline < SPAN.end for task in week.tasks)
+    assert all(one.interval.end <= task.deadline for task in week.tasks for one in task.placements)
 
-    # 1. Every projected field equals its source, and the four the assembly hands over whole are
+    # 1. Every projected field equals its source, and the two the assembly hands over whole are
     #    the assembly's own objects rather than equal copies of them.
     expected = carried_forward(week)
     assert set(expected) == {field.name for field in dataclasses.fields(ProbeInputs)}
@@ -881,6 +899,7 @@ def test_the_projection_agrees_field_by_field_on_a_week_holding_unpinned_placeme
         for reservation in projected.area_floor_reservations
     }
     by_deadline = {task.deadline: task for task in week.tasks}
+    assert len(by_deadline) == len(week.tasks)
     assert set(by_deadline) == {demand.deadline for demand in projected.deadline_demands}
     assert (
         IntervalSet(one.interval for netted in by_reservation.values() for one in netted)
