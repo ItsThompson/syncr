@@ -52,10 +52,13 @@ if TYPE_CHECKING:
 REPO_ROOT: Final = Path(__file__).resolve().parents[1]
 LOOKUP: Final = Path("docs/invariants.md")
 
-# The families, longest prefix first so a ``VE`` label reads as VE rather than as V. A token this
-# pattern cannot match is a label nothing can find, which is the one hole in the reading: the
-# pattern knows the families that exist, and it is crossed against the lookup in both directions, so
-# a family in one and not the other fails rather than passing silently.
+# The alphabet the reading matches, spelled out because it is the vocabulary rather than a claim
+# about one. A token this pattern cannot match is a label nothing can find, which is the one hole in
+# the reading: the pattern knows the families that exist, and it is crossed against the lookup in
+# both directions, so a family in one and not the other fails rather than passing silently.
+#
+# Order does not matter, because the trailing digits and the boundary make the alternation
+# backtrack: `V` before `VE` still reads a VE label as VE.
 #
 # The vocabulary is NOT derived from the lookup, which would be circular: deleting every row of a
 # family would then delete the family from the pattern, and every citation of it would become
