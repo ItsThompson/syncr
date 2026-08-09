@@ -213,12 +213,19 @@ class TestTheAlertReadsTheWindowTheTimerFiresOn:
 
     def test_the_pending_window_is_shorter_than_the_window_the_evidence_lives_in(self) -> None:
         """A rule pending as long as its own lookback cannot fire: the condition ages out of the
-        window exactly as the pending period elapses, and the rule is decoration."""
+        window exactly as the pending period elapses, and the rule is decoration.
+
+        Bounded against the timer as well as the lookback, so one test names both ends the schedule
+        and the pending window can drift apart at. The two bounds are the same number today, because
+        the test above pins the lookback to the period, and they are asserted separately because a
+        `for` equal to the period is the defect rather than the intent.
+        """
         rule = named(ALERT)
         lookback = promql_seconds(comparison_on(rule, RUN_FAMILY).window)
         pending = promql_seconds(rule.holds_for)
 
         assert 0 < pending < lookback
+        assert pending < timer_period_seconds(directives(TIMER))
 
     def test_the_reading_finds_both_ends_it_crosses(self) -> None:
         """The positive control: an empty window on either side would make the crossing vacuous."""
