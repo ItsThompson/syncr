@@ -149,10 +149,11 @@ def recipe_the_unit_runs(unit: Path) -> str:
     (started,) = [line for line in directives(unit).splitlines() if line.startswith("ExecStart=")]
     words = started.partition("=")[2].split()
 
+    assert words, f"{unit.name} states an empty ExecStart"
     if Path(words[0]).name == "just":
         arguments = words[1:]
     else:
-        assert Path(words[1]).name == "just", started
+        assert len(words) > 1 and Path(words[1]).name == "just", started
         arguments = words[2:]
 
     assert arguments, f"{unit.name} runs `just` with no recipe"
@@ -162,7 +163,12 @@ def recipe_the_unit_runs(unit: Path) -> str:
 def profile_the_recipe_enables() -> str:
     """The one compose profile the nightly recipe turns on."""
     words = nightly_invocation()
-    enabled = [words[position + 1] for position, word in enumerate(words) if word == "--profile"]
+    flags = [position for position, word in enumerate(words) if word == "--profile"]
+
+    assert all(position + 1 < len(words) for position in flags), (
+        f"`{NIGHTLY_RECIPE}` ends on a `--profile` with no profile after it: {words}"
+    )
+    enabled = [words[position + 1] for position in flags]
 
     assert len(enabled) == 1, f"`{NIGHTLY_RECIPE}` enables {enabled}, and the gate is one profile"
     return enabled[0]
