@@ -19,6 +19,15 @@ block existed, and approving it would drop the block with nothing scheduled to p
       the diff named the move and never named the removal        ──▶ refused
 ```
 
+## A request supersedes, and a concession compounds
+
+The two kinds of intent accumulate differently, and this module enforces the first. A user who
+restates a request means the newest statement, so a proposal the live plan has moved past is
+superseded rather than queued: nobody assented to it, and it is not a fact this write may take. An
+approval may therefore make only the changes its own proposal diff named. A concession is the other
+kind and it does not supersede: a stored one and the next are applied in turn, which ``fold`` states
+where the arithmetic is.
+
 ## Additions are exempt, and that is the authority rule rather than an omission
 
 Syncr may add without asking, so a block the document holds that the live plan does not is not
