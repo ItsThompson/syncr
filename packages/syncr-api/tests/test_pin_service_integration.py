@@ -1024,7 +1024,11 @@ class TestStoredPinRelease:
         placed = a_block(14, 15, day_offset=3)
         await _seed_plan(sessions, owner.tenant_id, a_plan(blocks=(placed,)))
         await _seed_area(sessions, owner.tenant_id)
-        await _seed_task(sessions, owner.tenant_id)
+        # A deadline the drag crosses, so the pin carries a non-zero cost. Priced at zero, the
+        # equality between the pin row and the surviving event below would hold for a blanked row.
+        await _seed_task(
+            sessions, owner.tenant_id, deadline=datetime(2026, 2, 12, 12, 0, tzinfo=UTC)
+        )
         held = await _pin(sessions, owner, datetime(2026, 2, 12, 10, 0, tzinfo=UTC))
         pinned = replace(
             placed,
@@ -1061,6 +1065,7 @@ class TestStoredPinRelease:
             ).all()
         assert len(events) == 1
         survivor = events[0]
+        assert held.pin.objective_delta != 0.0
         assert survivor.objective_delta == held.pin.objective_delta
         assert survivor.weight_set_version == held.pin.weight_set_version
         assert (survivor.proposed_starts_at, survivor.proposed_ends_at) == (
