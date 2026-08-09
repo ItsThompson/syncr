@@ -382,28 +382,33 @@ UNWATCHED: Final[Mapping[str, str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# MATCHERS THAT SELECT NOTHING, and what each one would take to revive.
+# MATCHERS THAT CANNOT MEAN WHAT THEY SAY, and what each one would take to remove.
 #
-# A term constraining a label its family does not declare selects no series at all, so the term
-# cannot evaluate and the rule cannot fire on it. That is the silent half of a rule: the file reads
-# as though the condition is covered, `promtool check config` accepts it, and the alert stays quiet
-# through the very outcome it names.
+# A matcher constraining a label its family does not declare does something other than what it reads
+# as, and the operator decides which. Measured in the pinned Prometheus against an unlabelled
+# counter: `=`, and a regex that cannot match the empty string, select NO series, so the term is
+# silent; `!=`, `!~`, and a regex that CAN match the empty string select the WHOLE series, so the
+# filter is a no-op. Both are defects and they are opposite ones, so the operator is part of the key
+# and each reason states the consequence it actually has.
 #
-# NOT A DECISION, unlike every other table here. Each entry is a rule that is half dead, recorded so
-# it is visible to a reader of the declarations rather than only to a reader of the expression, and
+# That is the quiet half of a rule: the file reads as though the condition is covered,
+# `promtool check config` accepts it, and the alert behaves nothing like the way it is written.
+#
+# NOT A DECISION, unlike every other table here. Each entry is a rule that is broken, recorded so it
+# is visible to a reader of the declarations rather than only to a reader of the expression, and
 # crossed as an exact equality so a new one fails and a repaired one fails too. Each states the
-# change that would revive it.
+# change that would remove it.
 #
-# Keyed as `<alert>:<family>:<label>`, which is the form the crossing derives.
+# Keyed as `<alert>:<family>:<label><operator>`, which is the form the crossing derives.
 # ---------------------------------------------------------------------------
 MATCHERS_ON_AN_UNDECLARED_LABEL: Final[Mapping[str, str]] = {
-    "LearningJobFailed:syncr_learning_run_duration_seconds:outcome": (
-        "The nightly run's duration histogram declares no labels at all, so the `failed` disjunct "
-        "selects nothing and the rule can only ever fire on its `absent()` half, which is a run "
-        "that has never reported. A night that ran and failed reads healthy, which is the one "
-        "condition the rule exists for. Reviving it takes an `outcome` label on the histogram in "
+    "LearningJobFailed:syncr_learning_run_duration_seconds:outcome=": (
+        "The nightly run's duration histogram declares no labels at all, so this equality selects "
+        "no series and the rule can only ever fire on its `absent()` half, which is a run that has "
+        "never reported. A night that ran and failed reads healthy, which is the one condition the "
+        "rule exists for. Removing this entry takes an `outcome` label on the histogram in "
         "`syncr-learning` and one observation per outcome, so it is a change to the job rather "
-        "than to the rule: the three other `outcome` matchers in the file read families that "
-        "declare the label, so the shape is settled and this is the only family missing it."
+        "than to the rule: the five other label matchers in the file read families that declare "
+        "theirs, so the shape is settled and this is the only family missing it."
     ),
 }

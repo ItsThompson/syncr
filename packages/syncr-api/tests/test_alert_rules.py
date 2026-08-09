@@ -594,14 +594,17 @@ def declared(names: Mapping[str, str]) -> set[str]:
     return {base_family(one) for one in names}
 
 
-# A series selector a rule reads, with whatever it constrains inside the braces.
-_SELECTOR = re.compile(r"(?P<family>syncr_[a-z0-9_]+)\{(?P<matchers>[^}]*)\}")
-_SELECTOR_LABEL = re.compile(r"(?P<label>[a-z_]+)\s*(?:=~|!~|!=|=)")
+# A series selector a rule reads, with whatever it constrains inside the braces. The space before
+# the brace is optional in PromQL and Prometheus accepts either, so a reading that required the
+# tight spelling would miss a real selector AND the control written to close that hole, because both
+# read this one pattern.
+_SELECTOR = re.compile(r"(?P<family>syncr_[a-z0-9_]+)\s*\{(?P<matchers>[^}]*)\}")
+_SELECTOR_LABEL = re.compile(r"(?P<label>[a-z_]+)\s*(?P<operator>=~|!~|!=|=)")
 
 # Labels no collector declares and every series may still carry: two the scrape attaches, one the
 # client library adds to a histogram, and one this deployment sets as an external label. A matcher
 # on any of them is about where a series came from rather than about how it was recorded.
-_NOT_THE_COLLECTOR_S: Final = frozenset({"deployment", "instance", "job", "le"})
+_NOT_DECLARED_BY_A_COLLECTOR: Final = frozenset({"deployment", "instance", "job", "le"})
 
 
 def declared_labelnames() -> Mapping[str, frozenset[str]]:
@@ -655,20 +658,25 @@ def _labelnames_of(node: ast.Call, *, at: str) -> frozenset[str]:
 
 
 def matchers_on_an_undeclared_label() -> set[str]:
-    """Every ``<alert>:<family>:<label>`` a rule constrains that its family does not carry.
+    """Every ``<alert>:<family>:<label><operator>`` a rule constrains that its family does not have.
 
-    A selector over a label the family never declares matches no series, so its whole term is empty
-    and the rule is silent on it. Derived from both ends: the rules as deployed, and the label sets
-    the collectors declare.
+    A matcher on a label the family never declares CANNOT MEAN WHAT IT SAYS, and which way it fails
+    depends on the operator, measured in the pinned Prometheus against an unlabelled counter: ``=``
+    and a regex that cannot match the empty string select nothing, so the term is silent; ``!=``,
+    ``!~`` and a regex that can match the empty string select the WHOLE series, so the filter is a
+    no-op. Both are defects and they are opposite ones, which is why the operator is carried in the
+    key rather than dropped: an entry's reason has to state the consequence it actually has.
+
+    Derived from both ends: the rules as deployed, and the label sets the collectors declare.
     """
     labels = declared_labelnames()
     return {
-        f"{rule.alert}:{family}:{label}"
+        f"{rule.alert}:{family}:{found.group('label')}{found.group('operator')}"
         for rule in alert_rules()
-        for found in _SELECTOR.finditer(rule.expr)
-        if (family := base_family(found.group("family"))) in labels
-        for label in _SELECTOR_LABEL.findall(found.group("matchers"))
-        if label not in labels[family] | _NOT_THE_COLLECTOR_S
+        for selector in _SELECTOR.finditer(rule.expr)
+        if (family := base_family(selector.group("family"))) in labels
+        for found in _SELECTOR_LABEL.finditer(selector.group("matchers"))
+        if found.group("label") not in labels[family] | _NOT_DECLARED_BY_A_COLLECTOR
     }
 
 
@@ -1127,19 +1135,22 @@ class TestTheAbsentDiscipline:
 
 
 class TestEveryMatcherNamesALabelItsFamilyCarries:
-    """A term over a label the family does not declare selects nothing, and nothing cannot fire.
+    """A matcher on a label the family does not declare cannot mean what it says.
 
     The quietest shape a rule can fail in, and the one `promtool check config` cannot see: the file
-    is valid, the family exists, the threshold is sensible, and the selector matches no series in
-    any deployment. Three of this file's four `outcome` matchers read families that declare the
-    label, so the shape is settled and a fourth reading a family that does not is a defect rather
-    than a style.
+    is valid, the family exists, the threshold is sensible, and the matcher does something other
+    than what it reads as. Which other thing depends on the operator, and the two are opposites: an
+    equality selects nothing, so the term is silent, while a negation selects the whole series, so
+    the filter is a no-op. `matchers_on_an_undeclared_label` records both with the operator.
+
+    Five of this file's six label matchers read a family that declares the label, so the shape is
+    settled and a sixth that does not is a defect rather than a style.
 
     Derived from both ends rather than listed, so a rule that gains a matcher and a family that
     loses a label are the same failure.
     """
 
-    def test_the_only_matchers_that_select_nothing_are_the_declared_ones(self) -> None:
+    def test_the_only_matchers_that_cannot_mean_what_they_say_are_the_declared_ones(self) -> None:
         """An exact equality, so a new one fails and a repaired one fails too."""
         assert matchers_on_an_undeclared_label() == set(MATCHERS_ON_AN_UNDECLARED_LABEL)
 
@@ -1152,7 +1163,8 @@ class TestEveryMatcherNamesALabelItsFamilyCarries:
         own key, so a reason that names neither fails: the first version asserted a length alone,
         which any sentence of the right size satisfies and which certified content it never read.
         """
-        _, family, label = entry.split(":")
+        _, family, matcher = entry.split(":")
+        label = matcher.rstrip("=~!")
         member = declaring_member(family)
         reason = MATCHERS_ON_AN_UNDECLARED_LABEL[entry]
 
@@ -1170,6 +1182,22 @@ class TestEveryMatcherNamesALabelItsFamilyCarries:
         assert labels["syncr_solve"] == frozenset({"outcome"}), "in the registry's own spelling"
         assert labels["syncr_learning_samples"] == frozenset({"tenant", "parameter"})
         assert labels["syncr_learning_run_duration_seconds"] == frozenset()
+
+    def test_no_exempt_label_is_one_a_collector_declares(self) -> None:
+        """The exemption is for labels the scrape and the client library add, so a label some family
+        declares has no business in it: exempting one would blind the crossing to a real matcher."""
+        declared_anywhere = frozenset().union(*declared_labelnames().values())
+
+        assert _NOT_DECLARED_BY_A_COLLECTOR & declared_anywhere == frozenset()
+
+    def test_the_reading_sees_a_selector_written_with_a_space(self) -> None:
+        """Whitespace before the brace is valid PromQL, and both the crossing and the control below
+        read this one pattern, so the tight-only spelling hid a real selector from both."""
+        spaced = 'increase(syncr_learning_run_duration_seconds_count {outcome="failed"}[24h])'
+
+        (found,) = _SELECTOR.finditer(spaced)
+        assert found.group("family") == "syncr_learning_run_duration_seconds_count"
+        assert found.group("matchers") == 'outcome="failed"'
 
     def test_every_family_a_matcher_reads_has_its_labels_read(self) -> None:
         """A family the reading cannot see is a family it steps over rather than judges."""
