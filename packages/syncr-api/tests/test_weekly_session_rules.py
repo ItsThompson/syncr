@@ -398,6 +398,19 @@ class TestARepeatedCollisionIsThreeOrMoreWeeks:
 
         assert repeated_collisions(rows, at_least_weeks=3) == []
 
+    def test_a_one_off_over_the_same_block_in_the_same_weeks_is_not_raised_beside_it(self) -> None:
+        # The series is the only thing separating these two pairs: one block, one pair of weeks.
+        # A one-off cannot recur, so the pair carrying none is skipped rather than raised as a
+        # second pattern over the same block. Two seriesless rows rather than one, because one row
+        # groups to a single week and no threshold above one could raise it either way.
+        standup = [a_conflict(iso_week=week) for week in RUN[:2]]
+        one_offs = [a_conflict(iso_week=week, series_uid=None, title="Dentist") for week in RUN[:2]]
+
+        found = repeated_collisions([*standup, *one_offs], at_least_weeks=2)
+
+        assert [one.commitment for one in found] == ["Standup"]
+        assert found[0].weeks == (RUN[0], RUN[1])
+
     def test_two_different_series_over_one_block_are_two_groups(self) -> None:
         standup = [a_conflict(iso_week=week) for week in RUN[:3]]
         lecture = [
