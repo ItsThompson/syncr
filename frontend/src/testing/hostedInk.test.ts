@@ -1,9 +1,13 @@
-/* The readers a hosted mark's contrast case rests on, including what each REFUSES.
+/* The readers a hosted mark's contrast case rests on, including what each REFUSES and what each cannot see.
  *
  * The refusals are the point. A reader that returned a guess for a fill it could not resolve would let a case
  * pass on a made-up figure, and a reader that returned the page's ink for a host that sets none would report a
  * ratio nobody can see. Both are asserted here against sheets written for the purpose, so the real sheets'
- * cases are about the kit rather than about the reader. */
+ * cases are about the kit rather than about the reader.
+ *
+ * A TRANSLUCENT FILL RESOLVES TO THE TWO PAPERS, AND THAT IS THE READER'S LIMIT RATHER THAN A FACT ABOUT THE
+ * PRODUCT. Which surface shows through a translucent host is a fact about the DOM, so the pairing that limit
+ * hides is measured where the DOM is available, in the marks' own contrast case. */
 
 import { describe, expect, it } from "vitest";
 
@@ -34,6 +38,12 @@ const HOST = `
     background-color: var(--paper-raised);
     color: var(--ink-deep);
   }
+
+  .control--twice {
+    background: var(--ink);
+    background-color: var(--paper-raised);
+    color: var(--ink-deep);
+  }
 `;
 
 describe("the rules a host writes ink in", () => {
@@ -43,6 +53,7 @@ describe("the rules a host writes ink in", () => {
       ".control--bare",
       ".control--unstated",
       ".control--silent",
+      ".control--twice",
     ]);
   });
 
@@ -73,6 +84,15 @@ describe("the rules a host writes ink in", () => {
 
     expect(silent?.fill).toBe("var(--paper-raised)");
   });
+
+  /* Both spellings are one channel, so a rule declaring both is resolved the way the cascade resolves it and
+   * the way `visualState` resolves every other property: the last declaration wins, not the first name looked
+   * for. Nothing in the kit declares both today, which is why this case carries its own sheet. */
+  it("takes the last fill a rule declares, rather than the first of the two spellings", () => {
+    const twice = inkRules(HOST, "--mark-ink").find((rule) => rule.selector === ".control--twice");
+
+    expect(twice?.fill).toBe("var(--paper-raised)");
+  });
 });
 
 describe("the token a value names", () => {
@@ -97,7 +117,9 @@ describe("the surfaces a fill puts under a mark", () => {
     expect(surfacesUnder("var(--ink)")).toEqual(["--ink"]);
   });
 
-  it("is both papers where the fill is translucent, because either can show through", () => {
+  /* What the reader answers, not what the product does. Which paper is under a translucent host is a fact about
+   * the DOM, and an ink-filled container is a third possibility this reader cannot see at all. */
+  it("resolves a translucent fill to the two papers, which is the limit of what it can settle", () => {
     expect(surfacesUnder("transparent")).toEqual(["--paper", "--paper-raised"]);
   });
 

@@ -6,16 +6,21 @@
  * property or not. These readers parse the sheets instead, the way `visualState` does for one element, and hand
  * a test the two token names a ratio needs.
  *
- * A TRANSLUCENT FILL IS NOT A SURFACE. A host filled `transparent` lets through whatever it sits on, and in
- * this system that is either paper, so a mark inside one has to clear its floor on both rather than on the one
- * its author had in mind. Every other value a fill can hold is REFUSED rather than guessed: a ratio computed
- * against a gradient or an image is a made-up figure, and a rule that fills with one has to say what a mark
- * inside it sits on. */
+ * A TRANSLUCENT FILL IS NOT A SURFACE, AND THIS READER CANNOT SEE WHICH ONE IS UNDER IT. What a host filled
+ * `transparent` shows through is a fact about the DOM, which no stylesheet states. It resolves here to the two
+ * papers, which are the surfaces the button family's translucent ranks are rendered on today, and that is the
+ * reader's limit rather than a claim about the product: a translucent host inside an ink-filled container is a
+ * composition this reader calls a pass and cannot measure, so `ui/domain/marks/__tests__/contrast.test.tsx`
+ * measures that pairing directly instead of asking here. Every other value a fill can hold is REFUSED rather
+ * than guessed, because a ratio computed against a gradient or an image is a made-up figure. */
 
 import { parse } from "postcss";
 
-/** The two surfaces a translucent host lets through: a page band, and a raised block, panel or control. */
+/** The two surfaces the translucent ranks are rendered on today. */
 const PAPERS = ["--paper", "--paper-raised"] as const;
+
+/** The properties that fill a surface. Both are the same channel, so the last one a rule declares wins. */
+const FILL_PROPERTIES = new Set(["background", "background-color"]);
 
 export interface InkRule {
   /** The rule's selector as written, which may name several elements. */
@@ -33,8 +38,11 @@ export function inkRules(css: string, markInkProperty: string): InkRule[] {
   const rules: InkRule[] = [];
   parse(css).walkRules((rule) => {
     const declared = new Map<string, string>();
+    const fills: string[] = [];
     rule.walkDecls((declaration) => {
-      declared.set(declaration.prop, declaration.value.trim());
+      const value = declaration.value.trim();
+      declared.set(declaration.prop, value);
+      if (FILL_PROPERTIES.has(declaration.prop)) fills.push(value);
     });
     const ink = declared.get("color");
     if (ink === undefined) return;
@@ -42,7 +50,7 @@ export function inkRules(css: string, markInkProperty: string): InkRule[] {
       selector: rule.selector,
       ink,
       markInk: declared.get(markInkProperty) ?? null,
-      fill: declared.get("background") ?? declared.get("background-color") ?? null,
+      fill: fills.at(-1) ?? null,
     });
   });
   return rules;
@@ -59,7 +67,7 @@ export function tokenIn(value: string | undefined): string {
   return reference[1];
 }
 
-/** The surfaces a fill puts under a mark: its own token, or both papers where it is translucent. */
+/** The surfaces a fill puts under a mark: its own token, or the papers a translucent one is rendered on. */
 export function surfacesUnder(fill: string | null): readonly string[] {
   if (fill === null) {
     throw new Error("the rule declares no fill, so it does not say what a mark inside it sits on");
