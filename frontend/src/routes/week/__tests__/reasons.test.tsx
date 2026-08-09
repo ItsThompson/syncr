@@ -6,10 +6,10 @@
  * runtime can actually produce, and every kind the contract declares is asserted to have one.
  *
  * THE KIND LIST IS READ OFF `openapi.json` RATHER THAN WRITTEN HERE, because a list written beside a test is a
- * memory of the contract and the committed document is the contract. It is read as a file so that the union's own
- * members and its discriminator mapping can be crossed against each other first: a member with no mapping entry, or
- * an entry with no member, is a widening that got half way and would make everything below assert against a
- * vocabulary neither surface holds.
+ * memory of the contract and the committed document is the contract. The list is the union's own members, which is
+ * what a client narrows on, and the discriminator mapping is crossed against it by a test rather than by a check
+ * that runs while this module loads: a widening that got half way would then be a collection error, and a suite that
+ * did not run is not evidence about a guard.
  *
  * THE KEY SET IS COMPARED AT RUNTIME AS WELL AS BY THE COMPILER, and the two are not redundant. Keying the table
  * below on `ClauseKind` makes a kind added to the generated client a compile error, but vitest transpiles with
@@ -96,17 +96,8 @@ function kindsOfTheDiscriminator(): string[] {
   return Object.keys(discriminator.mapping);
 }
 
-/** The clause vocabulary, measured: the members and the mapping agree or this throws before any test runs. */
-const CLAUSE_KINDS: readonly string[] = (() => {
-  const members = kindsOfTheUnionMembers().toSorted();
-  const mapped = kindsOfTheDiscriminator().toSorted();
-  if (members.join() !== mapped.join()) {
-    throw new Error(
-      `ClauseResponse's members are ${members.join()} and its mapping is ${mapped.join()}`,
-    );
-  }
-  return members;
-})();
+/** The clause vocabulary: the union's own members, which is the set a generated client narrows on. */
+const CLAUSE_KINDS: readonly string[] = kindsOfTheUnionMembers().toSorted();
 
 // ---------------------------------------------------------------------------
 // One clause of every kind, beside the row it renders as
