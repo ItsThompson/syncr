@@ -946,14 +946,19 @@ def test_the_walk_reports_a_second_producer_in_each_spelling(tmp_path: Path) -> 
     # that cannot go red. Written into a directory of its own, so these can never reach the package
     # the rule is stated over.
     #
-    # Five producers, one per way the walk can recognize a key or a mapping, and the sixth module is
-    # the negative: a row that names the week and columns of its own table is not a document. The
-    # published spellings resolve through `spelling.py`, which is how the real package publishes
-    # them, so the alias derivation is exercised here rather than assumed.
+    # Five producer modules, between them exercising every way the walk recognizes a key or a
+    # mapping, plus `spelling.py`, which publishes the names two of them resolve through, and
+    # `a_row.py`, the negative: a row naming the week and its own table's columns is not a document.
+    #
+    # The published names resolve here the way they resolve in the real package, so the derivation
+    # is exercised rather than assumed, and one of them carries an annotation because a publisher in
+    # the package carries one. The attribute spelling reads that constant, so the arm that reads an
+    # annotated publisher has a module against it too.
     invented = tmp_path / "revisions"
     invented.mkdir()
     (invented / "spelling.py").write_text(
-        'ISO_WEEK = "iso_week"\nBLOCKS = "blocks"\nEMPTY_SLOTS = "empty_slots"\n', encoding="utf-8"
+        'ISO_WEEK = "iso_week"\nBLOCKS: str = "blocks"\nEMPTY_SLOTS = "empty_slots"\n',
+        encoding="utf-8",
     )
     (invented / "display.py").write_text(
         'stored = {"iso_week": str(week), "blocks": []}\n', encoding="utf-8"
