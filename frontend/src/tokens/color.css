@@ -64,6 +64,14 @@
                                          paper, so a divider inside an ink header is not five
                                          times louder than its equivalent on the page. */
 
+  /* THE INK A KEY HINT TAKES, SET BY THE SURFACE RATHER THAN CHOSEN BY THE MARK. A bracketed hint
+     has one form and lands on four surfaces: paper, an ink-filled button, a bare button, and a
+     disabled control. One ink cannot serve all four, because --ink-deep on the ink rank's own fill
+     measures 1.29:1 and a reader cannot see the keystroke the screen is advertising. So the surface
+     sets this and the mark reads it. --ink-deep is the default because paper is where most hints
+     sit; each of the button's ranks sets it to the ink that rank writes for its own text. */
+  --key-hint-ink: var(--ink-deep);
+
   /* Signals. Sealed to status and severity indicators (dots, rules, glyphs and their
      labels), and to the tradeoff panel's edge. Never a fill, never a heading, never in
      navigation. The severity model pairs each with a position, not with a volume of

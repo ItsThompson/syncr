@@ -11,7 +11,12 @@
  * DISABLED IS A DASHED BORDER at --text-muted, the same form a disabled field takes. That is the one
  * meaning a dashed border carries in this system, which is why a proposal block has no fill instead.
  * `[aria-disabled]` is styled alongside `:disabled` because a control that must stay focusable to explain
- * itself uses the ARIA form, and both are the same visual state. */
+ * itself uses the ARIA form, and both are the same visual state.
+ *
+ * A MARK INSIDE A BUTTON TAKES THE BUTTON'S OWN INK. A key hint sits inside the control it triggers, so every
+ * rank below sets --key-hint-ink to the ink it writes for its own text: a rank that replaces the fill replaces
+ * the ink with it, and a hint left on the page's --ink-deep measures 1.29:1 on the ink rank's fill. The pairing
+ * is read back rather than trusted, rule by rule, in `ui/domain/marks/__tests__/contrast.test.tsx`. */
 
 .button {
   height: var(--h-control);
@@ -20,6 +25,7 @@
   border-radius: var(--radius);
   background: var(--ink);
   color: var(--on-ink);
+  --key-hint-ink: var(--on-ink);
   font: inherit;
   font-size: var(--fs-label);
   letter-spacing: var(--ls-label);
@@ -31,6 +37,7 @@
   border-color: var(--rule-control);
   background: var(--paper-raised);
   color: var(--ink-deep);
+  --key-hint-ink: var(--ink-deep);
 }
 
 /* Tertiary is bare ink with a dotted underline, so it reads as an action without spending a box. The
@@ -42,6 +49,7 @@
   border-bottom: var(--hairline) dotted var(--rule-strong);
   background: transparent;
   color: var(--ink);
+  --key-hint-ink: var(--ink);
   line-height: 1.7;
 }
 
@@ -55,6 +63,7 @@
   border-color: transparent;
   background: transparent;
   color: var(--ink);
+  --key-hint-ink: var(--ink);
 }
 
 .button--sm {
@@ -72,5 +81,6 @@
   border-color: var(--text-muted);
   background: transparent;
   color: var(--text-muted);
+  --key-hint-ink: var(--text-muted);
   cursor: not-allowed;
 }

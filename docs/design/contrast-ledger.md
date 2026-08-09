@@ -66,7 +66,7 @@ hatch's own `currentColor` rather than text, and is held to the indicator floor 
 | `--ink-bright` | 4.5:1 | `ui/domain/notices/notices.css .notice--info .notice__mark { color }` |
 | `--ink-deep` | 4.5:1 | `ui/domain/charts/charts.css .legend__name { color }` |
 | `--ink-soft` | 4.5:1 | `ui/domain/status/status.css .status__detail { color }` |
-| `--on-ink` | 4.5:1 | `ui/layout/Panel.css .panel__header { color }` |
+| `--on-ink` | 4.5:1 | `ui/domain/marks/marks.css .key-hint { color }` |
 | `--oxide-ink` | 4.5:1 | `ui/domain/notices/notices.css .notice--oxide .notice__title { color }` |
 | `--paper-raised` | 3.0:1 | `ui/domain/charts/charts.css .pie__wedge { stroke }` |
 | `--rule` | 4.5:1 | `ui/domain/charts/charts.css .meter__cell--empty { color }` |

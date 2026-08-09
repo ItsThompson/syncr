@@ -13,7 +13,12 @@
  * rather than from two literals here. There is no bordered key cap in this system: a border plus brackets at
  * --fs-label is one idea said twice, and the brackets survive forced-colors mode where a border on a 10px box
  * reads as a smudge. The key itself is real text rather than generated content, so a reader can select it and
- * a screen reader reads `j` rather than nothing. */
+ * a screen reader reads `j` rather than nothing.
+ *
+ * ONE FORM MEANS THE INK IS THE SURFACE'S TO SET, NOT THE MARK'S. A hint sits beside the action it triggers,
+ * which puts it inside a control as often as on the page, and a mark naming its own ink is illegible on any
+ * fill that ink cannot be read on. So it reads --key-hint-ink, which layer 1 defaults to the label ink paper
+ * takes and a host overrides with its own. */
 
 @import "../../primitives/glyphs.css";
 
@@ -46,7 +51,7 @@
 }
 
 .key-hint {
-  color: var(--ink-deep);
+  color: var(--key-hint-ink);
   font-family: var(--font-mono);
   font-size: var(--fs-label);
   white-space: nowrap;
