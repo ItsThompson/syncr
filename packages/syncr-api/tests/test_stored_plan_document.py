@@ -6,7 +6,7 @@ so the two fixtures that stood in for this path were both malformed: a habit key
 a reader written from the fixtures would have produced, which is why the round trip is asserted
 over a week holding one block of each of the seven origins rather than over one convenient block.
 
-Four groups.
+Five groups.
 
 **A round trip is an equality.** Written and read back, a week is the same value, over all seven
 origins, all six clause kinds, both gap types, and the optional halves of a block.
@@ -22,6 +22,11 @@ the field rather than to resolve into a value that pairs with nothing.
 **The vocabularies the stored forms rest on.** The clause discriminator is crossed against the
 domain's own budget table in both directions, and the two vocabularies a ``bound`` source spans are
 asserted disjoint, because one stored word has to name exactly one of them.
+
+**The equality holds because both directions go through the constructors.** The round trip above is
+run again against a producer that spells the document itself, and it has to go red: four spellings a
+second producer plausibly chooses are driven through it, against a hand spelling that round-trips
+before any of them is changed. The one choice no round trip can catch is driven too.
 """
 
 from __future__ import annotations
@@ -45,7 +50,14 @@ from syncr_domain.gaps import (
     ForbiddenWindow,
 )
 from syncr_domain.habits import BindingSource
-from syncr_domain.identity import BindingKind, BindingRef, Origin, TransitLeg, binding_kind_of
+from syncr_domain.identity import (
+    BLOCK_ID_LENGTH,
+    BindingKind,
+    BindingRef,
+    Origin,
+    TransitLeg,
+    binding_kind_of,
+)
 from syncr_domain.plan import Block, PlanDocument
 from syncr_domain.reasons import (
     CLAUSE_BUDGET,
@@ -62,8 +74,11 @@ from syncr_domain.reasons import (
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from syncr_api.core.columns import JsonObject
     from syncr_domain.intervals import Interval
+    from syncr_domain.reasons import Clause
 
 WEEK = IsoWeek(2026, 7)
 MONDAY = WEEK.monday()
@@ -569,3 +584,216 @@ def test_every_bound_source_round_trips_to_its_own_vocabulary(source: Any) -> No
 
     assert isinstance(clause, Bound)
     assert clause.source is source
+
+
+# --------------------------------------------------------------------------------
+# The equality holds because both directions go through the constructors
+# --------------------------------------------------------------------------------
+
+
+def hand_spelled(document: PlanDocument) -> JsonObject:
+    """One week's plan spelled here, key by key, rather than by ``stored_document``.
+
+    Every key and every leaf form is written out rather than imported, because a producer that
+    borrowed the writer's constants and its leaf codecs would not be a second producer at all. This
+    spelling is as close as one gets: legal, and equal on the way back, which is what makes each
+    single change below attributable to the change rather than to hand spelling anything.
+
+    Covers the week of every origin, whose blocks each carry one ``bound`` clause.
+    """
+    return {
+        "iso_week": str(document.iso_week),
+        "zone_by_date": {day.isoformat(): zone for day, zone in document.zone_by_date.items()},
+        "discretionary_minutes": document.discretionary_minutes,
+        "unallocated_minutes": document.unallocated_minutes,
+        "oversubscription_minutes": document.oversubscription_minutes,
+        "blocks": [_spelled_block(block) for block in document.blocks],
+        "forbidden_windows": [_spelled_window(window) for window in document.forbidden_windows],
+        "empty_slots": [_spelled_slot(slot) for slot in document.empty_slots],
+        "adjustments": [str(adjustment) for adjustment in document.adjustments],
+    }
+
+
+def _spelled_block(block: Block) -> JsonObject:
+    superseded = block.superseded_placement
+    return {
+        "interval": _spelled_span(block.interval),
+        "binding": {
+            "kind": block.binding.kind.value,
+            "entity_id": str(block.binding.entity_id),
+            "occurrence_key": block.binding.occurrence_key,
+            "split_index": block.binding.split_index,
+        },
+        "title": block.title,
+        "reason": {"clauses": [_spelled_clause(clause) for clause in block.reason.clauses]},
+        "area_id": None if block.area_id is None else str(block.area_id),
+        "pinned": block.pinned,
+        "superseded_placement": None if superseded is None else _spelled_span(superseded),
+        "objective_delta": block.objective_delta,
+        "split_count": block.split_count,
+    }
+
+
+def _spelled_clause(clause: Clause) -> JsonObject:
+    """The one clause kind every block of the week of every origin carries."""
+    assert isinstance(clause, Bound), clause
+    return {
+        "kind": "bound",
+        "source": clause.source.value,
+        "selected": clause.selected,
+        "cursor": clause.cursor,
+    }
+
+
+def _spelled_window(window: ForbiddenWindow) -> JsonObject:
+    return {
+        "interval": _spelled_span(window.interval),
+        "kind": window.kind.value,
+        "scope": window.scope.value,
+        "forbidden_area_ids": [str(area_id) for area_id in window.forbidden_area_ids],
+        "label": window.label,
+        "anchor_id": str(window.anchor_id),
+    }
+
+
+def _spelled_slot(slot: EmptySlot) -> JsonObject:
+    return {
+        "interval": _spelled_span(slot.interval),
+        "area_id": str(slot.area_id),
+        "reason": slot.reason.value,
+    }
+
+
+def _spelled_span(interval: Interval) -> JsonObject:
+    return {"start": interval.start.isoformat(), "end": interval.end.isoformat()}
+
+
+def _keyed_by_the_day_it_lands_on(spelled: JsonObject) -> None:
+    """A habit occurrence keyed the way the frame and a concrete template entry are keyed."""
+    for block in spelled["blocks"]:
+        if block["binding"]["kind"] == BindingKind.HABIT.value:
+            block["binding"]["occurrence_key"] = MONDAY.isoformat()
+
+
+def _a_binding_kind_by_its_member_name(spelled: JsonObject) -> None:
+    """A closed vocabulary written as the Python member's name rather than as its value."""
+    for block in spelled["blocks"]:
+        block["binding"]["kind"] = BindingKind(block["binding"]["kind"]).name
+
+
+def _wall_times_with_no_offset(spelled: JsonObject) -> None:
+    """Instants written as wall times, which is how a week's own zone map invites reading them."""
+    for block in spelled["blocks"]:
+        for bound in ("start", "end"):
+            block["interval"][bound] = block["interval"][bound].removesuffix("+00:00")
+
+
+def _only_the_fields_its_own_reader_needs(spelled: JsonObject) -> None:
+    """The fields one consumer reads, and none of the rest.
+
+    Every key left out here is a collection the reader defaults to empty, so nothing refuses the
+    row: the week it describes is simply not the week that was written.
+    """
+    for key in ("forbidden_windows", "empty_slots", "adjustments"):
+        del spelled[key]
+
+
+def _the_id_the_block_derives(spelled: JsonObject) -> None:
+    """A block's identity, stored beside the binding it is a hash of."""
+    for block in spelled["blocks"]:
+        block["id"] = "0" * BLOCK_ID_LENGTH
+
+
+def spelled_around_the_writer(
+    choice: Callable[[JsonObject], None],
+) -> Callable[[PlanDocument], JsonObject]:
+    """A producer that spells the document itself, with one choice made its own way."""
+
+    def produce(document: PlanDocument) -> JsonObject:
+        spelled = hand_spelled(document)
+        choice(spelled)
+        return spelled
+
+    return produce
+
+
+REFUSED_SPELLINGS = [
+    pytest.param(_keyed_by_the_day_it_lands_on, "occurrence key", id="a habit keyed by its day"),
+    pytest.param(
+        _a_binding_kind_by_its_member_name, "closed vocabulary", id="a vocabulary by member name"
+    ),
+    pytest.param(_wall_times_with_no_offset, "UTC offset", id="wall times, no offset"),
+]
+
+
+def test_a_week_spelled_by_hand_round_trips_before_a_choice_is_changed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The control on the parametrization below: every producer there is this spelling with one
+    # thing changed, so a spelling that was already illegal would redden the round trip for a
+    # reason that has nothing to do with the change. It is also the disproof of the wider claim:
+    # a document assembled outside the writer is not refused BECAUSE it was assembled outside it.
+    monkeypatch.setitem(globals(), "stored_document", hand_spelled)
+
+    test_a_week_of_every_origin_round_trips_to_the_same_value()
+
+
+@pytest.mark.parametrize(("choice", "stated"), REFUSED_SPELLINGS)
+def test_the_round_trip_reddens_when_a_second_producer_spells_the_document(
+    choice: Callable[[JsonObject], None],
+    stated: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The round trip above, run against a producer that is not the writer. It has to go red.
+
+    Substituted at the name that round trip calls, so what runs is that assertion rather than a
+    copy of it: a copy can drift into asserting something weaker while the original stays green.
+
+    Matched on what each refusal states, because a refusal for another reason would pass a test
+    that only asked whether one was raised.
+    """
+    monkeypatch.setitem(globals(), "stored_document", spelled_around_the_writer(choice))
+
+    with pytest.raises(StoredDocumentCorrupt, match=stated):
+        test_a_week_of_every_origin_round_trips_to_the_same_value()
+
+
+def test_a_producer_spelling_only_what_one_consumer_reads_reddens_it_with_no_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The spelling nothing refuses, which is why the comparison is the whole value.
+
+    Every key it leaves out is a collection the reader defaults to empty, so the row is legal and
+    the week it describes is missing every concession and gap the one that was written held. A
+    comparison over the blocks alone, or over the figures, would hold.
+    """
+    produce = spelled_around_the_writer(_only_the_fields_its_own_reader_needs)
+    document = a_week_of_every_origin()
+    monkeypatch.setitem(globals(), "stored_document", produce)
+
+    read = plan_document(produce(document))
+
+    assert (read.forbidden_windows, read.empty_slots, read.adjustments) == ((), (), ())
+    assert read.blocks == document.blocks
+    assert read != document
+    with pytest.raises(AssertionError):
+        test_a_week_of_every_origin_round_trips_to_the_same_value()
+
+
+def test_no_round_trip_can_see_a_producer_that_stores_the_derived_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one choice above that reddens nothing, and the reason the walk below exists.
+
+    The reader takes the keys it knows and ignores the rest, so a stored id reads back as the week
+    that was written whatever it holds. Only a reading of that producer's own output sees it, and
+    every reading in this file reads the writer's.
+    """
+    monkeypatch.setitem(
+        globals(), "stored_document", spelled_around_the_writer(_the_id_the_block_derives)
+    )
+
+    test_a_week_of_every_origin_round_trips_to_the_same_value()
+
+    with pytest.raises(AssertionError):
+        test_no_stored_block_carries_an_id()
