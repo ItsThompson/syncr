@@ -100,7 +100,9 @@ async function appearancesWhile(label: string, act: () => Promise<void>): Promis
     for (const record of records) {
       for (const node of record.addedNodes) {
         if (node instanceof HTMLElement)
-          seen += node.querySelectorAll(`[aria-label="${label}"]`).length;
+          seen += [...node.querySelectorAll("[aria-label]")].filter(
+            (element) => element.getAttribute("aria-label") === label,
+          ).length;
       }
     }
   };
@@ -240,6 +242,35 @@ describe("skipping a row", () => {
     const row = await rowOf(GYM);
 
     expect(within(row).queryByRole("button", { name: "presumed" })).not.toBeInTheDocument();
+  });
+
+  /* A CHORD IS ONE GESTURE, and the keystroke that resolves it reaches more consumers than a key table can
+     list: a focused control answers `Enter` with its own activation, which no binding declares. `Enter` names
+     no screen, so `g Enter` resolves the chord to nothing, and the control the reader happened to leave focus
+     on must not write on the keystroke they spent navigating. */
+  it("does nothing on g Enter, because the chord consumed the keystroke", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const sent = stubRecording();
+    const row = await rowOf(GYM);
+    within(row).getByRole("button", { name: /skip/ }).focus();
+
+    await userEvent.setup().keyboard("g{Enter}");
+
+    expect(sent.bodies).toEqual([]);
+  });
+
+  /* The empty list above is evidence only if the same keystroke on the same control really does write when no
+     chord is pending. Without this, a keystroke that reached nothing at all would report the rule holding. */
+  it("skips the focused row on a bare Enter, which is what the chord suppresses", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const sent = stubRecording();
+    const row = await rowOf(GYM);
+    within(row).getByRole("button", { name: /skip/ }).focus();
+
+    await userEvent.setup().keyboard("{Enter}");
+
+    await waitFor(() => expect(sent.bodies).toHaveLength(1));
+    expect(sent.bodies[0]).toEqual({ isoWeek: isoWeekOf(hostToday()), state: "skipped" });
   });
 });
 
