@@ -12,9 +12,10 @@ that never makes one, the named suite's membership comes from the use rather tha
 existence. The failure direction is safe too: a construction added here would add a member and go
 red, rather than silently standing in for the one that was removed.
 
-What escapes it: a suite reaching the stub through an alias, a ``getattr``, or a subclass. What it
-catches is the ordinary way the claim goes stale, which is a second suite instantiating it by name,
-or the last one that did stopping.
+What escapes it: a suite reaching the stub through an alias, a ``getattr``, or a subclass. Both
+spellings of a direct construction are covered, the bare name and the module-qualified one. What it
+catches is the ordinary way the claim goes stale, which is a second suite instantiating it, or the
+last one that did stopping.
 """
 
 from __future__ import annotations
@@ -57,11 +58,15 @@ def suites_constructing(symbol: str, roots: Iterable[Path]) -> frozenset[Path]:
     literal is not a use. The text check ahead of the parse is a filter on the 270-odd suites this
     walks, and it changes no answer: a file that never spells the name cannot call it.
 
+    Walked recursively, because the member list is read from the workspace root so that a member
+    added later comes under this without an edit here, and a suite in a new subdirectory should come
+    under it on the same terms.
+
     Returns data rather than asserting, so the census and its controls drive one scan.
     """
     found = []
     for root in roots:
-        for path in sorted(root.glob("test_*.py")):
+        for path in sorted(root.rglob("test_*.py")):
             source = path.read_text(encoding="utf-8")
             if symbol not in source:
                 continue
@@ -71,7 +76,17 @@ def suites_constructing(symbol: str, roots: Iterable[Path]) -> frozenset[Path]:
 
 
 def _is_a_call_of(node: ast.AST, symbol: str) -> bool:
-    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == symbol
+    """Whether ``node`` constructs ``symbol``, under either spelling of a direct import.
+
+    ``Attribute`` covers the module-qualified call, which is the spelling a bare-name check misses
+    while looking like it covers construction.
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    called = node.func
+    return (isinstance(called, ast.Name) and called.id == symbol) or (
+        isinstance(called, ast.Attribute) and called.attr == symbol
+    )
 
 
 def test_the_suite_the_empty_log_is_kept_for_is_the_only_one_that_uses_it() -> None:
@@ -101,7 +116,8 @@ def test_a_suite_that_only_names_the_stub_is_not_counted_as_using_it(tmp_path: P
 
     An import, an attribute read and the name in a string are what this module itself holds. If any
     of them counted, this module would be a user of the stub and the census would be certifying its
-    own existence.
+    own existence. The attribute read is the one that has to stay uncounted now that a
+    module-qualified CALL is counted.
     """
     root = tmp_path / "tests"
     root.mkdir(parents=True)
