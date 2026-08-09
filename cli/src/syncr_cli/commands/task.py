@@ -236,7 +236,9 @@ def filter_arguments(
     ``--at-risk`` reaches the api rather than narrowing the answer here. Whether a task is at risk
     is the week verdict's determination, and the header states the figure over the whole open
     population, so a client that filtered the rows itself would print a count and a row set that
-    disagree. It is on both commands because both read the route that serves it.
+    disagree. It is on both commands because both read the route that serves it. It is a switch, so
+    it asks for the marked rows or asks nothing: the route also answers the rows the verdict does
+    not mark, and no flag here spells that.
     """
     command.add_argument(
         "--area",
