@@ -234,9 +234,8 @@ def import_every_module(package: str) -> Walked:
 def test_an_ambient_pythonpath_cannot_change_the_tree_the_probe_walks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """One of the two controls on the stripping half, and the pair are the only assertions here
-    that bite without a second checkout: a second copy of the package is offered through the
-    environment, and the probe has to walk this suite's tree anyway."""
+    """One of the two controls on the stripping half: a second copy of the package is offered
+    through the environment, and the probe has to walk this suite's tree anyway."""
     decoy = tmp_path / "offered"
     (decoy / PACKAGE).mkdir(parents=True)
     (decoy / PACKAGE / "__init__.py").write_text("", encoding="utf-8")
@@ -252,10 +251,11 @@ def test_an_ambient_pythonpath_cannot_change_the_tree_the_probe_walks(
 def test_the_child_is_handed_nothing_ambient_but_the_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The control on the rest of the strip, which the decoy above cannot see: merging the
-    ambient environment under a pinned ``PYTHONPATH`` leaves the tree correct and lets every
-    other variable through. ``LOG_LEVEL`` is one `SyncrSettings` reads, so a member that
-    builds its settings at import time would walk differently on two machines."""
+    """The other control on the stripping half, and the one the decoy above cannot see: merging
+    the ambient environment under a pinned ``PYTHONPATH`` leaves the tree correct and lets every
+    other variable through. What this holds is the child's hermeticity rather than the tree, and
+    it holds it for the whole family this probe is duplicated across, where a member that builds
+    settings from the environment as it imports would walk differently on two machines."""
     monkeypatch.setenv("LOG_LEVEL", "debug")
 
     walked = import_every_module(PACKAGE)
