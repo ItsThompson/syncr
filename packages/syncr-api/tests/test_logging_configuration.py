@@ -8,11 +8,11 @@ And each entrypoint must actually call `configure_logging`, because two more
 entrypoints (the CLI and the nightly job) are coming and the failure mode is
 console-rendered lines in production.
 
-The second gate reads a child process, so the probe also states which tree that child
-imports and reports the one it resolved. Its environment is curated rather than
-inherited, so it carries no `PYTHONPATH` of the parent's, and without one the child
-resolves `syncr_api` through the interpreter's editable install: that names a single
-checkout whichever checkout the suite is running from.
+The second gate reads a child process, so the probe states which tree that child imports
+and reports the one it resolved. Nothing ambient reaches the child: its environment is
+curated, so the root is stated explicitly, because a child left to itself resolves
+`syncr_api` through the interpreter's editable install, which names a single checkout
+whichever one the suite is running from.
 """
 
 from __future__ import annotations
@@ -70,9 +70,10 @@ def _boot_the_entrypoint(*, source_root: Path, keys_path: Path) -> subprocess.Co
             "SESSION_SIGNING_SECRET": "a-signing-secret-for-this-probe",  # pragma: allowlist secret
             "OAUTH_KEYS_PATH": str(keys_path),
             "OAUTH_KEY_ENCRYPTION_KEY": _PROBE_KEY_ENCRYPTION_KEY,
-            # Which tree the child imports. Nothing else of the ambient environment reaches
-            # it, this one included, so a suite running anywhere but the checkout the
-            # editable install names would assert about a tree nobody is editing.
+            # Which tree the child imports, stated because nothing ambient reaches the child:
+            # without this key it resolves through the editable install, and a suite running
+            # anywhere but the checkout that install names would assert about a tree nobody
+            # is editing.
             "PYTHONPATH": str(source_root),
         },
     )
