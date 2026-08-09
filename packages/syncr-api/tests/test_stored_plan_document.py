@@ -6,7 +6,7 @@ so the two fixtures that stood in for this path were both malformed: a habit key
 a reader written from the fixtures would have produced, which is why the round trip is asserted
 over a week holding one block of each of the seven origins rather than over one convenient block.
 
-Five groups.
+Six groups.
 
 **A round trip is an equality.** Written and read back, a week is the same value, over all seven
 origins, all six clause kinds, both gap types, and the optional halves of a block.
@@ -27,18 +27,27 @@ asserted disjoint, because one stored word has to name exactly one of them.
 run again against a producer that spells the document itself, and it has to go red: four spellings a
 second producer plausibly chooses are driven through it, against a hand spelling that round-trips
 before any of them is changed. The one choice no round trip can catch is driven too.
+
+**The writer is the only producer.** A walk over the package's own source asserts that nothing else
+assembles a mapping that could be filed as a document, because the reader takes the keys it knows
+and ignores the rest: what a second producer stores beside them reads back clean.
 """
 
 from __future__ import annotations
 
+import ast
+import shutil
 from copy import deepcopy
 from dataclasses import fields
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
 
+from syncr_api.plans import stored_documents
+from syncr_api.plans.derivation import DOCUMENT_ISO_WEEK_KEY
 from syncr_api.plans.errors import StoredDocumentCorrupt
 from syncr_api.plans.stored_documents import plan_document, stored_document
 from syncr_api.plans.stored_reasons import CLAUSE_KIND, READERS
@@ -74,7 +83,7 @@ from syncr_domain.reasons import (
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from syncr_api.core.columns import JsonObject
     from syncr_domain.intervals import Interval
@@ -797,3 +806,171 @@ def test_no_round_trip_can_see_a_producer_that_stores_the_derived_id(
 
     with pytest.raises(AssertionError):
         test_no_stored_block_carries_an_id()
+
+
+# --------------------------------------------------------------------------------
+# The writer is the only producer
+# --------------------------------------------------------------------------------
+
+# The keys a stored document holds, read off the domain's own inventory rather than listed: the
+# stored form states every field a document has and no others, which is asserted above.
+DOCUMENT_KEYS = frozenset(field.name for field in fields(PlanDocument))
+
+# The writer names each key through a constant of its own, so a producer that imported those
+# constants would hold no string literal at all. Both spellings name the key.
+KEY_BY_CONSTANT = {
+    name: value
+    for name, value in vars(stored_documents).items()
+    if isinstance(value, str) and value in DOCUMENT_KEYS
+}
+
+# How many of a document's nine keys a mapping names before it IS one, on top of the week it is
+# filed under. Two, because that is the shape of a row built by hand: a week and its blocks, with
+# every collection left to default. One key alone is a column most plan-side tables carry, and the
+# minute figures alone are also a stored edit context's.
+KEYS_THAT_NAME_A_DOCUMENT = 2
+
+
+def _key_named(node: ast.expr | None) -> str | None:
+    """The document key this expression names, written out or through the writer's constant."""
+    if isinstance(node, ast.Constant):
+        value = node.value
+        return value if isinstance(value, str) and value in DOCUMENT_KEYS else None
+    if isinstance(node, ast.Name):
+        return KEY_BY_CONSTANT.get(node.id)
+    if isinstance(node, ast.Attribute):
+        return KEY_BY_CONSTANT.get(node.attr)
+    return None
+
+
+def _keys_in(nodes: Iterable[ast.expr | None]) -> frozenset[str]:
+    return frozenset(key for node in nodes if (key := _key_named(node)) is not None)
+
+
+def document_mappings(source: str) -> list[frozenset[str]]:
+    """Every mapping in this source that could be filed as a document, and the keys it names.
+
+    Three spellings, because a producer writes whichever reads best where it stands: a display, a
+    ``dict`` call, and keys assigned one at a time into a mapping built empty. The assigned form is
+    collected per module rather than per mapping, because what carries the keys there is a name.
+
+    Every qualifying mapping names the week, because that is the key the row's own column is
+    derived from: ``plans/derivation.py`` refuses a document carrying no ``iso_week`` string, so a
+    mapping without one cannot be filed at all.
+    """
+    tree = ast.parse(source)
+    found: list[frozenset[str]] = []
+    assigned: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            found.append(_keys_in(node.keys))
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "dict"
+        ):
+            found.append(
+                frozenset(
+                    keyword.arg
+                    for keyword in node.keywords
+                    if keyword.arg is not None and keyword.arg in DOCUMENT_KEYS
+                )
+            )
+        elif isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store):
+            assigned |= _keys_in([node.slice])
+    return [
+        keys
+        for keys in [*found, frozenset(assigned)]
+        if DOCUMENT_ISO_WEEK_KEY in keys and len(keys) >= KEYS_THAT_NAME_A_DOCUMENT
+    ]
+
+
+def modules_that_build_a_stored_document(source_root: Path) -> dict[str, list[str]]:
+    """Every module under ``source_root`` that assembles a stored plan document itself.
+
+    Reported with the keys each one names, because that is what makes the answer checkable: a
+    mapping caught for some other reason says which keys made it look like a document.
+    """
+    found: dict[str, set[str]] = {}
+    for path in sorted(source_root.rglob("*.py")):
+        for keys in document_mappings(path.read_text(encoding="utf-8")):
+            found.setdefault(str(path.relative_to(source_root)), set()).update(keys)
+    return {module: sorted(keys) for module, keys in found.items()}
+
+
+def test_the_writer_is_the_only_module_that_builds_a_stored_document(source_root: Path) -> None:
+    """One producer, which is what the round trip above is a claim about.
+
+    An equality rather than an emptiness, so it says three things at once: the producer is where it
+    is supposed to be, it names every key a document holds, and no other module of the package
+    names the week plus one more. A second producer is the case no round trip catches, because the
+    reader ignores what it does not know, and a stored value nothing reads back is a value nothing
+    checks.
+    """
+    writer = str(Path(stored_documents.__file__).resolve().relative_to(source_root))
+
+    assert modules_that_build_a_stored_document(source_root) == {writer: sorted(DOCUMENT_KEYS)}
+
+
+def test_the_walk_reports_a_second_producer_in_each_spelling(tmp_path: Path) -> None:
+    # The control, and it runs the WALK rather than the pattern: a rule whose subject set resolved
+    # to no files would pass forever. Written into a directory of its own, so these can never reach
+    # the package the rule is stated over. The fourth module is the negative: a row that names the
+    # week and a column of its own table is not a document.
+    invented = tmp_path / "revisions"
+    invented.mkdir()
+    (invented / "display.py").write_text(
+        'stored = {"iso_week": str(week), "blocks": []}\n', encoding="utf-8"
+    )
+    (invented / "constants.py").write_text(
+        "stored = {ISO_WEEK: str(week), EMPTY_SLOTS: []}\n", encoding="utf-8"
+    )
+    (invented / "assigned.py").write_text(
+        'stored = {}\nstored["iso_week"] = str(week)\nstored["adjustments"] = []\n',
+        encoding="utf-8",
+    )
+    (invented / "a_row.py").write_text(
+        'row = {"iso_week": str(week), "kind": kind, "target_id": target}\n', encoding="utf-8"
+    )
+
+    assert modules_that_build_a_stored_document(tmp_path) == {
+        "revisions/assigned.py": ["adjustments", "iso_week"],
+        "revisions/constants.py": ["empty_slots", "iso_week"],
+        "revisions/display.py": ["blocks", "iso_week"],
+    }
+
+
+def test_the_walk_reads_the_whole_package_rather_than_one_directory_of_it(
+    source_root: Path,
+) -> None:
+    # The control on the subject set. The writer lives one directory down, so a walk over the top
+    # level alone would find no producer at all and the equality above would hold for the wrong
+    # reason.
+    read = {path.parent.name for path in source_root.rglob("*.py")}
+
+    assert "plans" in read
+    assert len(read) > len(DOCUMENT_KEYS)
+
+
+def test_a_second_producer_inside_the_package_is_reported(
+    source_root: Path, tmp_path: Path
+) -> None:
+    # The mutation, against the real tree rather than an invented one: the package is copied, one
+    # module of it gains the mapping a second producer would build, and the walk has to name that
+    # module. Copied rather than edited in place, because a rule that has to modify the tree it
+    # guards in order to prove it works cannot be run on a whole suite.
+    copied = tmp_path / "syncr_api"
+    shutil.copytree(source_root, copied)
+    adoption = copied / "plans" / "adoption.py"
+    adoption.write_text(
+        adoption.read_text(encoding="utf-8")
+        + "\n\ndef _stored_again(document: object) -> dict[str, object]:\n"
+        + '    return {"iso_week": "2026-W07", "blocks": [], "zone_by_date": {}}\n',
+        encoding="utf-8",
+    )
+
+    assert modules_that_build_a_stored_document(copied)["plans/adoption.py"] == [
+        "blocks",
+        "iso_week",
+        "zone_by_date",
+    ]
