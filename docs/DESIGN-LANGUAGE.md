@@ -346,7 +346,7 @@ The product is keyboard-first. Bindings are vim-style single keys, with a `g` pr
 
 **The keyboard reaches every block at every tier.** `j` and `k` do not care how tall a block is, so the smallest block in the week is exactly as reachable as the largest. That matters more than the pointer path, because a 9.8px pointer target is genuinely small.
 
-Key hints take one form everywhere: bracketed bare mono text, as in `[ j ]`. This matches the `[ + ]` and `[ - ]` disclosure marks. A bordered key cap is not used, because a border plus brackets at 10px is redundant and two forms for one idea is one too many.
+Key hints take one form everywhere: bracketed bare mono text, as in `[ j ]`. This matches the `[ + ]` and `[ - ]` disclosure marks. A bordered key cap is not used, because a border plus brackets at 10px is redundant and two forms for one idea is one too many. **The one form takes the ink of the surface it lands on**, which is what lets it sit inside the control it triggers: `--ink-deep` on paper, `--on-ink` inside an ink-filled button, `--ink` inside a bare one, and `--text-muted` inside a disabled control.
 
 ## Token architecture
 

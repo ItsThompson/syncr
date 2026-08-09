@@ -16,9 +16,12 @@
  * through `src/testing/contrast.ts`, so a retuned pigment fails this file. */
 
 import { render } from "@testing-library/react";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { codeWithoutComments } from "../../../../../scripts/lib/css-scan.ts";
+import { repoRoot } from "../../../../../scripts/lib/paths.ts";
 import { declaredTokens } from "../../../../../scripts/lib/tokens.ts";
 import { TEXT_FLOOR, ratioBetween } from "../../../../testing/contrast";
 import { inkRules, surfacesUnder, tokenIn } from "../../../../testing/hostedInk";
@@ -139,6 +142,28 @@ describe("every rule the button's stylesheet writes ink in", () => {
     );
 
     expect(unreached.map((rule) => rule.selector)).toEqual([]);
+  });
+});
+
+describe("the inks a hint can take", () => {
+  /* THE DESIGN LANGUAGE NAMES THEM, so the prose is crossed against the sheets rather than trusted: a rank that
+   * took a fifth ink would leave the document describing a system with four. The count is pinned because the
+   * document states it as a number, and a number in prose is the kind of claim that goes stale silently. */
+  it("is the four the design language's keyboard section names", async () => {
+    const doc = await readFile(path.join(repoRoot, "docs", "DESIGN-LANGUAGE.md"), "utf8");
+    const sentence =
+      doc.split("\n").find((line) => line.includes("takes the ink of the surface it lands on")) ??
+      "";
+    const named = [...sentence.matchAll(/`(--[\w-]+)`/g)].map((match) => match[1]);
+
+    const rules = inkRules(await buttonCss(), HINT_INK);
+    const set = new Set([
+      tokenIn((await declaredTokens()).get(HINT_INK)),
+      ...rules.flatMap((rule) => (rule.markInk === null ? [] : [tokenIn(rule.markInk)])),
+    ]);
+
+    expect(set.size).toBe(4);
+    expect([...new Set(named)].toSorted()).toEqual([...set].toSorted());
   });
 });
 
