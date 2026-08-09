@@ -24,7 +24,7 @@ Two numbers, `H5` and `H15`, name rules that were withdrawn. Their rows stay, an
 | `H1` | The solver never places a block over an imported calendar commitment, which is an external fact the plan gives way to. |
 | `H2` | The solver never places a block inside a window that forbids every Area, such as an absolute recovery window or a buffer whose type named no Area. |
 | `H3` | The solver never places a block over a routine occurrence at the effective duration the week assembler clamped it to. |
-| `H4` | The solver never creates an overlap between two blocks it places, though an overlap the user authored is legitimate and is kept. |
+| `H4` | The solver never creates an overlap between two blocks it places, though an overlap between facts the solve did not choose is kept rather than refused: a routine and its own next occurrence, two imported commitments, or a block the user pinned. |
 | `H5` | A withdrawn rule number, kept so older references still resolve: nothing refuses a placement for sitting outside a preferred window, because a preference is a cost in the objective rather than a refusal. |
 | `H6` | The solver never splits a block whose content is atomic, so it places the whole duration or none of it. |
 | `H7` | The solver never places a piece of a splittable block shorter than the minimum chunk its content declares. |
