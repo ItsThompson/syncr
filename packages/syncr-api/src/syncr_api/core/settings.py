@@ -205,6 +205,9 @@ class EnvSettings(SyncrSettings):
         would otherwise have come from, and an empty origin here would rebuild the host-relative
         redirect this setting exists to replace, on a stack where that redirect names a path the api
         does not serve.
+
+        Assignment inside an after-validator does not re-enter validation, because no settings model
+        sets ``validate_assignment``. Turning that on in the shared base would make this recursive.
         """
         self.app_base_url = self.app_base_url.strip() or self.public_base_url
         return self

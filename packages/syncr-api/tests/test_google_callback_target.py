@@ -23,6 +23,7 @@ from __future__ import annotations
 from http import HTTPStatus
 from itertools import takewhile
 from typing import TYPE_CHECKING, cast
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
@@ -34,6 +35,7 @@ from syncr_api.core.app_factory import create_app
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES
 from syncr_api.core.settings import (
+    API_PREFIX,
     API_SERVICE,
     DEV_PUBLIC_BASE_URL,
     EnvSettings,
@@ -49,7 +51,7 @@ from syncr_api.google_account.outcomes import (
     settings_url,
 )
 from syncr_api.google_account.wiring import build_google_account_router
-from syncr_api.oauth.config import build_oauth_config
+from syncr_api.oauth.config import OAUTH_PREFIX, build_oauth_config
 from syncr_common.config import ROOT_ENV_FILE
 
 if TYPE_CHECKING:
@@ -59,8 +61,8 @@ if TYPE_CHECKING:
     from syncr_api.google_account.outcomes import ConnectOutcome
     from syncr_api.google_account.service import GoogleConnectionService
 
-# The two shapes the epic names. The deployed stack is one origin for both; a development stack runs
-# the Vite dev server beside an api that answers on its own port.
+# The two shapes this repository deploys. The deployed stack is one origin for both; a development
+# stack runs the Vite dev server beside an api that answers on its own port.
 DEPLOYED_ORIGIN = "https://syncr.example"
 DEVELOPMENT_APP_ORIGIN = "http://localhost:5173"
 DEVELOPMENT_API_ORIGIN = DEV_PUBLIC_BASE_URL
@@ -158,21 +160,22 @@ def test_every_outcome_is_carried_to_the_app_origin(outcome: ConnectOutcome) -> 
     """The origin is the route's, not the outcome's: a refusal has a Settings surface too."""
     development = a_deployment(app_base_url=DEVELOPMENT_APP_ORIGIN)
 
-    assert callback_location(development, outcome).startswith(DEVELOPMENT_APP_ORIGIN)
-    assert callback_location(development, outcome).endswith(f"{OUTCOME_QUERY_KEY}={outcome}")
+    location = callback_location(development, outcome)
+
+    assert location == f"{DEVELOPMENT_APP_ORIGIN}{SETTINGS_PATH}?{OUTCOME_QUERY_KEY}={outcome}"
 
 
 def test_the_target_is_absolute_on_a_split_origin_stack_and_names_the_app_host() -> None:
     """Absoluteness is the property, stated separately from the exact string.
 
-    A target that stayed relative would satisfy no reading of the app's origin, and a target built
-    from the api's origin would be absolute and still wrong.
+    A target that stayed relative would name no host at all, and one built from the api's own origin
+    would be absolute and still wrong, so a failure here has to say which host was named.
     """
     location = callback_location(a_deployment(app_base_url=DEVELOPMENT_APP_ORIGIN))
 
-    assert location.startswith("http://")
-    assert location.startswith(DEVELOPMENT_APP_ORIGIN)
-    assert not location.startswith(DEVELOPMENT_API_ORIGIN)
+    named = urlsplit(location)
+
+    assert (named.scheme, named.netloc) == ("http", "localhost:5173")
 
 
 def test_a_base_url_with_a_trailing_slash_does_not_double_the_path_separator() -> None:
@@ -202,9 +205,12 @@ def test_each_setting_is_read_for_its_own_purpose_and_not_the_other() -> None:
     oauth = build_oauth_config(split, is_dev=True)
 
     assert oauth.issuer == DEVELOPMENT_API_ORIGIN
-    assert oauth.audience.startswith(DEVELOPMENT_API_ORIGIN)
-    assert oauth.endpoint("/oauth", "/token").startswith(DEVELOPMENT_API_ORIGIN)
-    assert callback_location(split).startswith(DEVELOPMENT_APP_ORIGIN)
+    assert oauth.audience == f"{DEVELOPMENT_API_ORIGIN}{API_PREFIX}"
+    assert oauth.endpoint(OAUTH_PREFIX, "/token") == f"{DEVELOPMENT_API_ORIGIN}{OAUTH_PREFIX}/token"
+    assert (
+        callback_location(split)
+        == f"{DEVELOPMENT_APP_ORIGIN}{SETTINGS_PATH}?{OUTCOME_QUERY_KEY}={CONNECTED}"
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -225,16 +231,13 @@ def test_the_default_follows_a_supplied_public_base_url_rather_than_the_developm
 
 
 def test_an_empty_value_falls_back_rather_than_producing_a_target_with_no_host() -> None:
-    """An unset compose interpolation is an EMPTY value that overrides the file it came from.
-
-    `docker-compose.yml` says so where it declines to name two other variables. An empty value here
-    would rebuild the relative target this seam exists to replace, silently.
-    """
+    """An empty value is what an unset compose interpolation produces; the validator says why."""
     assert env(app_base_url="").app_base_url == env().public_base_url
     assert env(app_base_url="   ").app_base_url == env().public_base_url
 
 
 def test_a_supplied_value_is_carried_verbatim() -> None:
+    """The consumer normalises a trailing slash, so nothing here rewrites what an operator wrote."""
     assert env(app_base_url=DEVELOPMENT_APP_ORIGIN).app_base_url == DEVELOPMENT_APP_ORIGIN
 
 
@@ -273,14 +276,16 @@ def test_a_real_environment_variable_beats_the_environment_file(
 
 def test_the_target_is_a_function_of_the_origin_it_is_given() -> None:
     """One expression, no branch: the same outcome answers two origins two ways."""
-    assert settings_url(CONNECTED, app_base_url=DEPLOYED_ORIGIN).startswith(DEPLOYED_ORIGIN)
-    assert settings_url(CONNECTED, app_base_url=DEVELOPMENT_APP_ORIGIN).startswith(
-        DEVELOPMENT_APP_ORIGIN
+    assert settings_url(CONNECTED, app_base_url=DEPLOYED_ORIGIN) == (
+        f"{DEPLOYED_ORIGIN}{SETTINGS_PATH}?{OUTCOME_QUERY_KEY}={CONNECTED}"
+    )
+    assert settings_url(CONNECTED, app_base_url=DEVELOPMENT_APP_ORIGIN) == (
+        f"{DEVELOPMENT_APP_ORIGIN}{SETTINGS_PATH}?{OUTCOME_QUERY_KEY}={CONNECTED}"
     )
 
 
 # --------------------------------------------------------------------------------------
-# The file a developer copies
+# The file a developer copies, and what a host that copies it inherits
 # --------------------------------------------------------------------------------------
 
 
@@ -292,12 +297,34 @@ def the_comment_block_above(key: str) -> str:
     return "\n".join(above)
 
 
-def test_the_example_file_ships_the_split_the_development_stack_runs() -> None:
-    """Read by the settings class rather than by a pattern, which is what a developer's copy is."""
+def test_a_host_that_copies_the_example_file_inherits_the_origin_it_already_serves() -> None:
+    """The file is documented as the way to seed a fresh machine, so what it ships reaches a host.
+
+    Read through the settings class rather than through a pattern, because a copy of this file IS
+    that class's input. A development origin shipped here would decide every completed connect on a
+    deployment whose operator had no listed reason to change it.
+    """
     documented = EnvSettings(_env_file=EXAMPLE_ENVIRONMENT_FILE)
 
-    assert documented.app_base_url == DEVELOPMENT_APP_ORIGIN
-    assert documented.app_base_url != documented.public_base_url
+    assert documented.app_base_url == documented.public_base_url
+
+
+def test_the_example_file_offers_a_line_that_produces_the_split_origin() -> None:
+    """The commented value is an instruction, so it is driven rather than trusted.
+
+    Uncommenting it is what the block tells a developer to do, and this asserts the value it offers
+    is one that sends the browser to the application rather than to the api.
+    """
+    offered = [
+        line.lstrip("# ")
+        for line in the_comment_block_above("APP_BASE_URL").splitlines()
+        if line.lstrip("# ").startswith("APP_BASE_URL=")
+    ]
+
+    assert offered == [f"APP_BASE_URL={DEVELOPMENT_APP_ORIGIN}"]
+    assert settings_url(CONNECTED, app_base_url=DEVELOPMENT_APP_ORIGIN).startswith(
+        DEVELOPMENT_APP_ORIGIN
+    )
 
 
 def test_the_example_file_states_the_distinction_where_it_declares_the_key() -> None:
