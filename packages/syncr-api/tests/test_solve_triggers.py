@@ -280,6 +280,13 @@ OUTSIDE_THE_PACKAGE_READING: Final = (KEPT_BOTH_ROUTE, PROMOTIONS_ROUTE)
 ANCHOR_RECONCILER_COMPOSITIONS: Final = ("calendars/injection.py", "calendars/runner.py")
 
 
+# Where a composition may read the tenant's home zone from. Both entry points into a sync already
+# hold the row: the request side has the zone profile it built for the adapters, and the worker's
+# poll has the settings it read for the same profile. A third name arriving here is a third place
+# the value could come from, and it has to be justified rather than inherited.
+TENANT_ZONE_SOURCES: Final = frozenset({"profile", "settings"})
+
+
 def reconciler_call(module: str) -> ast.Call:
     """The one ``AnchorReconciler(...)`` construction in ``module``.
 
@@ -773,14 +780,20 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
         assert passed == {"versions", "home_zone"}, module
 
     @pytest.mark.parametrize("module", list(ANCHOR_RECONCILER_COMPOSITIONS), ids=lambda one: one)
-    def test_the_zone_a_composition_passes_is_the_tenants_rather_than_a_literal(
+    def test_the_zone_a_composition_passes_is_read_off_the_tenants_own_row(
         self, module: str
     ) -> None:
         """Which week an instant falls in is answered in the TENANT's home zone.
 
-        A literal here would answer every tenant's question in one zone, and the answer would be
-        wrong by a week at the seam for anyone east or west of it. Nothing downstream could detect
-        it: the weeks invalidated would be plausible, adjacent, and stale.
+        One zone for every tenant would be wrong by a week at the seam for anyone east or west of
+        it, and nothing downstream could detect it: the weeks invalidated would be plausible,
+        adjacent, and stale.
+
+        The shape is asserted, not merely the absence of a string. A module-level constant is as
+        fixed as a literal and is an ``ast.Name`` rather than an ``ast.Constant``, so refusing
+        literals alone would leave the defect one rename away. What has to hold is that the value is
+        read as ``home_zone`` off something this module obtained from the tenant, which is what
+        ``TENANT_ZONE_SOURCES`` names.
         """
         zone = next(
             keyword.value
@@ -788,7 +801,10 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
             if keyword.arg == "home_zone"
         )
 
-        assert not isinstance(zone, ast.Constant), module
+        assert isinstance(zone, ast.Attribute), f"{module} passes {ast.dump(zone)}"
+        assert zone.attr == "home_zone", module
+        assert isinstance(zone.value, ast.Name), f"{module} passes {ast.dump(zone)}"
+        assert zone.value.id in TENANT_ZONE_SOURCES, f"{module} reads it off {zone.value.id}"
 
     @pytest.mark.parametrize("prefix", list(OUTSIDE_THE_RULE), ids=lambda one: one)
     def test_every_exclusion_still_names_routes_that_exist(
