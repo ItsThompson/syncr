@@ -97,6 +97,19 @@ async def get_google_client() -> AsyncIterator[httpx.AsyncClient]:
 type GoogleClientDep = Annotated[httpx.AsyncClient, Depends(get_google_client)]
 
 
+def configured_app_base_url(request: Request) -> str:
+    """The origin the browser application is served from, per the settings the api booted with.
+
+    One reading, at the composition root, so nothing below it reads an environment variable to
+    decide where a browser is sent.
+    """
+    settings: ServiceSettings = request.app.state.settings
+    return settings.app_base_url
+
+
+type AppBaseUrlDep = Annotated[str, Depends(configured_app_base_url)]
+
+
 def build_oauth_client(settings: ServiceSettings, client: httpx.AsyncClient) -> GoogleOAuthClient:
     """The token-endpoint client for this deployment's registered OAuth client."""
     return GoogleOAuthClient(

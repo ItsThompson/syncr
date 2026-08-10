@@ -52,6 +52,7 @@ from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.settings import (
     API_SERVICE,
     DEV_ALLOWED_ORIGINS,
+    DEV_PUBLIC_BASE_URL,
     EnvSettings,
     build_service_settings,
 )
@@ -241,6 +242,15 @@ def connect(http: TestClient, headers: dict[str, str], owner: UserRecord) -> htt
     return answered
 
 
+def returned_to_settings(outcome: str) -> str:
+    """The target the callback answers with on this deployment, as the browser receives it.
+
+    The fixture names no application origin, so it is the api's own: the single-origin shape the
+    deployed stack serves. `tests/test_google_callback_target.py` drives the split-origin one.
+    """
+    return f"{DEV_PUBLIC_BASE_URL}/settings?{OUTCOME_QUERY_KEY}={outcome}"
+
+
 # --------------------------------------------------------------------------------
 # The connect flow
 # --------------------------------------------------------------------------------
@@ -276,7 +286,7 @@ def test_the_callback_stores_a_grant_and_returns_the_browser_to_settings(
     response = connect(http, signed_in, owner)
 
     assert response.status_code == HTTPStatus.SEE_OTHER
-    assert response.headers["location"] == f"/settings?{OUTCOME_QUERY_KEY}={CONNECTED}"
+    assert response.headers["location"] == returned_to_settings(CONNECTED)
 
     connection = http.get(f"{SOURCES}{CONNECTION_PATH}", headers=signed_in).json()
     assert connection["connected"] is True
@@ -326,7 +336,7 @@ def test_a_user_who_declined_is_returned_to_settings_without_a_grant(
         follow_redirects=False,
     )
 
-    assert response.headers["location"] == f"/settings?{OUTCOME_QUERY_KEY}={DENIED}"
+    assert response.headers["location"] == returned_to_settings(DENIED)
     assert http.get(f"{SOURCES}{CONNECTION_PATH}", headers=signed_in).json()["connected"] is False
 
 
@@ -340,7 +350,7 @@ def test_a_callback_whose_state_does_not_verify_stores_nothing(
         follow_redirects=False,
     )
 
-    assert response.headers["location"] == f"/settings?{OUTCOME_QUERY_KEY}={EXPIRED}"
+    assert response.headers["location"] == returned_to_settings(EXPIRED)
     assert http.get(f"{SOURCES}{CONNECTION_PATH}", headers=signed_in).json()["connected"] is False
 
 

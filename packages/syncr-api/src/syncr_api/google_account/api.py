@@ -29,7 +29,7 @@ from starlette.responses import RedirectResponse
 
 from syncr_api.accounts.injection import PrincipalDep
 from syncr_api.google_account.config import CALLBACK_PATH, CONNECT_PATH, CONNECTION_PATH
-from syncr_api.google_account.injection import GoogleConnectionServiceDep
+from syncr_api.google_account.injection import AppBaseUrlDep, GoogleConnectionServiceDep
 from syncr_api.google_account.outcomes import settings_url
 from syncr_api.google_account.schemas import GoogleConnectionResponse, GoogleConsentResponse
 
@@ -53,6 +53,7 @@ async def begin_google_connect(
 async def complete_google_connect(
     principal: PrincipalDep,
     service: GoogleConnectionServiceDep,
+    app_base_url: AppBaseUrlDep,
     code: str | None = Query(default=None),
     state: str | None = Query(default=None),
     error: str | None = Query(default=None),
@@ -61,7 +62,9 @@ async def complete_google_connect(
     outcome = await service.complete_connect(principal, code=code, state=state, error=error)
     # 303 rather than 302: the browser must GET the Settings route, and a 302 on a GET is
     # ambiguous enough that some clients preserve the query string differently.
-    return RedirectResponse(settings_url(outcome), status_code=HTTPStatus.SEE_OTHER)
+    return RedirectResponse(
+        settings_url(outcome, app_base_url=app_base_url), status_code=HTTPStatus.SEE_OTHER
+    )
 
 
 @router.get(CONNECTION_PATH, summary="Whether Google is connected, and every notice it raises")

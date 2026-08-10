@@ -18,9 +18,10 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
-# The path a completed connect returns to. Relative on purpose: the deployed stack serves the SPA
-# and the api on one origin through the tunnel, so a relative Location resolves to the right host
-# without a second base-URL setting to keep in step with the redirect URI Google holds.
+# The path a completed connect returns to, on the origin the browser application is served from.
+# Google matches a registered redirect URI as an exact string, so the callback is addressed at the
+# api's own origin, and a host-relative Location would resolve there: on a stack that serves the
+# application from a second origin, that names a path the api does not serve.
 SETTINGS_PATH: Final = "/settings"
 OUTCOME_QUERY_KEY: Final = "google"
 
@@ -36,6 +37,10 @@ FAILED: Final[ConnectOutcome] = "failed"
 CONNECT_OUTCOMES: Final = (CONNECTED, DENIED, EXPIRED, FAILED)
 
 
-def settings_url(outcome: ConnectOutcome) -> str:
-    """Where the browser goes once the callback has decided."""
-    return f"{SETTINGS_PATH}?{OUTCOME_QUERY_KEY}={outcome}"
+def settings_url(outcome: ConnectOutcome, *, app_base_url: str) -> str:
+    """Where the browser goes once the callback has decided.
+
+    ``app_base_url`` is the origin the application is served from, which the api is configured with
+    rather than deriving from the request: the request arrived from Google at the api's own origin.
+    """
+    return f"{app_base_url.rstrip('/')}{SETTINGS_PATH}?{OUTCOME_QUERY_KEY}={outcome}"
