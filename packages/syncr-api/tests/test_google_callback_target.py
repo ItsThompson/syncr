@@ -21,6 +21,7 @@ because a swap between them is invisible on a stack where both hold one value.
 from __future__ import annotations
 
 from http import HTTPStatus
+from itertools import takewhile
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
@@ -49,6 +50,7 @@ from syncr_api.google_account.outcomes import (
 )
 from syncr_api.google_account.wiring import build_google_account_router
 from syncr_api.oauth.config import build_oauth_config
+from syncr_common.config import ROOT_ENV_FILE
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -62,6 +64,10 @@ if TYPE_CHECKING:
 DEPLOYED_ORIGIN = "https://syncr.example"
 DEVELOPMENT_APP_ORIGIN = "http://localhost:5173"
 DEVELOPMENT_API_ORIGIN = DEV_PUBLIC_BASE_URL
+
+# The documented template a developer copies to `.env`, resolved from the module that resolves the
+# file it becomes, so a test finds it whichever directory pytest was started from.
+EXAMPLE_ENVIRONMENT_FILE = ROOT_ENV_FILE.with_name(".env.example")
 
 
 def env(**overrides: object) -> EnvSettings:
@@ -271,3 +277,29 @@ def test_the_target_is_a_function_of_the_origin_it_is_given() -> None:
     assert settings_url(CONNECTED, app_base_url=DEVELOPMENT_APP_ORIGIN).startswith(
         DEVELOPMENT_APP_ORIGIN
     )
+
+
+# --------------------------------------------------------------------------------------
+# The file a developer copies
+# --------------------------------------------------------------------------------------
+
+
+def the_comment_block_above(key: str) -> str:
+    """The contiguous comment lines a key is declared under in the example environment file."""
+    lines = EXAMPLE_ENVIRONMENT_FILE.read_text(encoding="utf-8").splitlines()
+    declared = next(index for index, line in enumerate(lines) if line.startswith(f"{key}="))
+    above = takewhile(lambda line: line.startswith("#"), reversed(lines[:declared]))
+    return "\n".join(above)
+
+
+def test_the_example_file_ships_the_split_the_development_stack_runs() -> None:
+    """Read by the settings class rather than by a pattern, which is what a developer's copy is."""
+    documented = EnvSettings(_env_file=EXAMPLE_ENVIRONMENT_FILE)
+
+    assert documented.app_base_url == DEVELOPMENT_APP_ORIGIN
+    assert documented.app_base_url != documented.public_base_url
+
+
+def test_the_example_file_states_the_distinction_where_it_declares_the_key() -> None:
+    """A value explained somewhere else in the file is a value a reader sets by guessing."""
+    assert "PUBLIC_BASE_URL" in the_comment_block_above("APP_BASE_URL")
