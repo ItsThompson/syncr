@@ -5,8 +5,9 @@
  * RESOLUTION, which is a different question and lives in `resolution.ts`.
  *
  * THE FLOOR COMES FROM THE PROPERTY THAT WRITES THE VALUE, which is the only classification a stylesheet can
- * support: `color` is text at 4.5:1 and a border is an indicator at 3:1. Two refinements the first version needed,
- * each measured against a real rule in this kit:
+ * support: `color` is text at 4.5:1 and a border is an indicator at 3:1. The properties that qualify it are read
+ * from one block's own declarations, for the same reason the pairing is. Two refinements, each measured against a
+ * real rule in this kit:
  *
  * A HATCH IS A CARRIER, NOT A LABEL. `color` on a rule that also paints a hatch is what the hatch's own
  * `currentColor` reads: `.week-band` sets `color: var(--forbidden-hatch-ink)` and `background-image:
@@ -39,16 +40,19 @@
  * apply together, and a pairing that never composes is not a pairing. `@layer` and `@supports (color: red)` always
  * apply, so refusing to merge across those two is an under-read rather than conservatism.
  *
- * ONLY A RULE'S OWN DECLARATIONS ARE READ. `walkDecls` is recursive, so reading it whole attributed a nested
- * block's ink to its parent's fill and manufactured a pairing across two elements: `.host { background: ink; &
- * .child { color: pale } }` reported `.host` as stating a pairing it does not state. A nested block is visited
- * under its own selector instead, where it states nothing unless it names both halves itself. The property set
- * that reclassifies a hatch carrier is read from one block's own declarations for the same reason.
+ * ONLY A RULE'S OWN DECLARATIONS ARE READ. `walkDecls` is recursive, so reading it whole attributes a nested
+ * block's ink to its parent's fill and manufactures a pairing across two elements. Each block is read under its
+ * own selector instead, and is keyed like any other block: the parent rule is NOT part of the key, so a nested
+ * block whose selector text matches a top-level one in the same file merges with it. `.host { .probe { background:
+ * ink } }` plus a top-level `.probe { color: pale }` therefore states a pairing, while the flat spelling
+ * `.host .probe { background: ink }` does not. That merge is sound in direction, because the fill reaches a subset
+ * of the elements the ink reaches, so the pairing composes wherever the fill lands. The at-rule chain still
+ * separates the conditional case: the same collision inside `@media print` states nothing.
  *
- * Two consequences, both under-reads. A declaration written directly inside an at-rule nested inside a rule is not
- * read at all, because no rule owns it. And `&:hover` inside a filled rule is the same element in another state,
- * so its ink really does land on that fill, and this reader does not claim it: resolving `&` against a parent
- * selector is selector semantics, which nothing here does.
+ * Two under-reads follow. A declaration written directly inside an at-rule nested inside a rule is read by
+ * nothing, because no rule owns it, and its ink leaves the palette. And `&:hover` inside a filled rule is the same
+ * element in another state, so its ink really does land on that fill, and this reader does not claim it: resolving
+ * `&` against a parent selector is selector semantics, which nothing here does.
  *
  * What is out of reach for the same reason is a pairing split across DIFFERENT selectors, `.a` filling and `.b`
  * drawing, which composes only where the markup nests them. That is the DOM's answer and not a sheet's. */
