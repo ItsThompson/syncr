@@ -31,9 +31,8 @@ of what it just read.
 
 **The horizon is applied here, not at the provider.** Google refuses ``timeMin`` beside a sync
 token, so the detector read sees the whole calendar and the full read that follows is windowed. A
-change
-outside the horizon therefore triggers a windowed read that finds nothing new, which is a wasted
-request rather than a wrong answer.
+change outside the horizon therefore triggers a windowed read that finds nothing new, which is a
+wasted request rather than a wrong answer.
 
 **The cursor is bounded before it is stored.** A sync token is a value Google chooses the length of,
 and the column that holds it is finite. An oversize write does not fail one source: it rolls back
