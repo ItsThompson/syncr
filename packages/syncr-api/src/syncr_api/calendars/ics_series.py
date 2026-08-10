@@ -289,7 +289,11 @@ def _by_instant(
     grouped: dict[InstantKey, list[OccurrenceKey]] = {}
     for key, instant in instants.items():
         grouped.setdefault((key[0], instant), []).append(key)
-    return {at: tuple(sorted(keys)) for at, keys in grouped.items()}
+    return {at: tuple(sorted(keys, key=_wall_of)) for at, keys in grouped.items()}
+
+
+def _wall_of(key: OccurrenceKey) -> datetime:
+    return key[1]
 
 
 def expand(
