@@ -25,11 +25,33 @@
  * THE UNIT IS A SELECTOR IN A FILE, NOT A BLOCK. Two blocks with the same selector in one sheet compose by the
  * cascade, so `.x { background: ink }` and a later `.x { color: pale }` state a pairing neither block states
  * alone, and reading blocks one at a time misses it silently. Declarations are merged per selector before the
- * pairing is derived. The key includes the enclosing at-rules, so a declaration inside `@media print` never merges
- * with one outside it: those two may never apply together, and a pairing that never composes is not a pairing.
+ * pairing is derived.
  *
- * What is still out of reach is a pairing split across DIFFERENT selectors, `.a` filling and `.b` drawing, which
- * composes only where the markup nests them. That is the DOM's answer and not a sheet's. */
+ * THE BOUND IS BYTE-IDENTICAL SELECTOR TEXT, after whitespace is collapsed, within the same at-rule chain. It is
+ * not a semantic bound: nothing here parses a selector, so two spellings of one element are two keys. Measured,
+ * these all compose on one element and all state nothing: a selector list with one member later specialised,
+ * `.host>.probe` against `.host > .probe`, `:is(.probe)` or `:where(.probe)` against `.probe`, `.probe.probe`
+ * against `.probe`, `DIV.probe` against `div.probe`, and one attribute value in single quotes against the same
+ * value in double quotes. Every one is a MISSED pairing rather than a false one, which is the safe direction.
+ * That list is what was measured; it is not a bound on what else could be missed.
+ *
+ * The at-rule chain is part of the key because a declaration inside `@media print` and one outside it may never
+ * apply together, and a pairing that never composes is not a pairing. `@layer` and `@supports (color: red)` always
+ * apply, so refusing to merge across those two is an under-read rather than conservatism.
+ *
+ * ONLY A RULE'S OWN DECLARATIONS ARE READ. `walkDecls` is recursive, so reading it whole attributed a nested
+ * block's ink to its parent's fill and manufactured a pairing across two elements: `.host { background: ink; &
+ * .child { color: pale } }` reported `.host` as stating a pairing it does not state. A nested block is visited
+ * under its own selector instead, where it states nothing unless it names both halves itself. The property set
+ * that reclassifies a hatch carrier is read from one block's own declarations for the same reason.
+ *
+ * Two consequences, both under-reads. A declaration written directly inside an at-rule nested inside a rule is not
+ * read at all, because no rule owns it. And `&:hover` inside a filled rule is the same element in another state,
+ * so its ink really does land on that fill, and this reader does not claim it: resolving `&` against a parent
+ * selector is selector semantics, which nothing here does.
+ *
+ * What is out of reach for the same reason is a pairing split across DIFFERENT selectors, `.a` filling and `.b`
+ * drawing, which composes only where the markup nests them. That is the DOM's answer and not a sheet's. */
 
 import { parse, type Declaration, type Rule } from "postcss";
 import { readFile } from "node:fs/promises";
