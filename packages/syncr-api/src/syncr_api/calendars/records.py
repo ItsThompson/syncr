@@ -12,6 +12,11 @@ feed this product exists to make impossible.
 events were rejected and why is rendered from a READ of the source, not from the response to
 a sync, so a rejection has to survive the attempt that produced it.
 
+``rejections`` is a bounded SAMPLE and ``rejected_total`` is how many there were. A publisher
+decides how many components a feed holds, so the list a panel renders cannot be all of them, and
+a count read off the list would report a feed that refused fifty thousand components as having
+refused fifteen.
+
 ``attempts`` and ``resync_reason`` are there because a provider's own behaviour is part of what
 the panel reports. A rate-limited read backs off and retries, and the attempt count is what makes
 that visible instead of looking like a slow feed; a provider that invalidates an incremental cursor
@@ -60,6 +65,9 @@ class SyncStateRecord:
     events_read: int = 0
     anchors_current: int = 0
     rejections: tuple[RejectedComponent, ...] = ()
+    # How many components the last attempt refused, which is not the length of the sample above:
+    # the sample is bounded per kind and this is not bounded at all.
+    rejected_total: int = 0
     # How many calls the last attempt made. One for a read that worked first time; more when a
     # provider rate-limited it and the read backed off and retried. Exposed on the source because
     # a count that changes is how this product reports progress, and a read that took four calls is
@@ -72,7 +80,8 @@ class SyncStateRecord:
 
     @property
     def rejected_count(self) -> int:
-        return len(self.rejections)
+        """How many components the last attempt refused, sampled or not."""
+        return self.rejected_total
 
 
 @dataclass(frozen=True, slots=True)

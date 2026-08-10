@@ -12,7 +12,9 @@ index is what makes that read a check rather than the whole guarantee.
 
 ``save_sync_state`` writes all seven fields together. An attempt produces one state, and a
 field-by-field update would let a crash between two writes leave a source that succeeded and
-still carries an error.
+still carries an error. The rejection sample and the rejection total are written together for the
+same reason: a count that landed without its sample, or a sample without its count, is a panel
+reporting a figure nothing supports.
 
 No method commits. One request is one transaction, opened and committed by
 :func:`syncr_api.core.db.get_transaction`; the worker opens its own around a tick.
@@ -202,6 +204,7 @@ class CalendarSourceRepository(TenantScopedRepository):
                 events_read=state.events_read,
                 anchors_current=state.anchors_current,
                 rejections=_as_rows(state.rejections),
+                rejected_total=state.rejected_total,
                 attempts=state.attempts,
                 resync_reason=state.resync_reason,
             )
@@ -259,6 +262,7 @@ def _as_record(row: CalendarSource) -> CalendarSourceRecord:
             # Copied out of the row rather than aliased: a mapped JSONB value is the mapper's
             # own mutable object, and handing it out would let a caller change the row.
             rejections=_from_rows(row.rejections),
+            rejected_total=row.rejected_total,
             attempts=row.attempts,
             resync_reason=row.resync_reason,
         ),

@@ -21,6 +21,10 @@ source, every read of a source wants it, and a join to fetch a last-sync time wo
 on every panel render. ``rejections`` is part of it for the same reason: the panel that states
 how many events were rejected is rendered from a read, so a rejection has to survive the
 attempt that produced it.
+
+``rejections`` holds a bounded sample and ``rejected_total`` holds how many there were. The list is
+read whole on every panel render and a publisher chooses its length, so the two are separate columns
+rather than one column and a ``jsonb_array_length``.
 """
 
 from __future__ import annotations
@@ -92,6 +96,9 @@ class CalendarSource(Base, TenantScoped):
     events_read: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     anchors_current: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     rejections: Mapped[list[RejectionRow] | None] = mapped_column(NULLABLE_JSONB, nullable=True)
+    # How many components the last attempt refused. Stored beside the sample rather than derived
+    # from it, because the sample is bounded per kind and this is not.
+    rejected_total: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     # How many calls the last attempt made. More than one means a provider rate-limited the read
     # and it backed off, which is a different story from a slow feed and is reported as such.
     attempts: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
@@ -114,7 +121,8 @@ class CalendarSource(Base, TenantScoped):
             name="horizon_days_within_the_projection_range",
         ),
         CheckConstraint(
-            "events_read >= 0 AND anchors_current >= 0", name="counts_are_not_negative"
+            "events_read >= 0 AND anchors_current >= 0 AND rejected_total >= 0",
+            name="counts_are_not_negative",
         ),
         CheckConstraint("attempts >= 0", name="attempts_are_not_negative"),
         # One source per feed per tenant. Adding the same URL twice would double every anchor

@@ -15,7 +15,8 @@ unconditional, so one outage would cost a full reparse.
 
 **A parse that rejected events is still a success.** A feed that half-works must read as
 neither fully working nor fully broken, so the rejections are recorded next to a moved
-``last_success_at`` rather than as an error.
+``last_success_at`` rather than as an error. What is recorded is the bounded sample the parse
+kept plus the count of every rejection it made, because the second is not the length of the first.
 
 **An unchanged feed is a success that changed nothing.** ``304`` means the last parse still
 stands, so the counts and the rejections carry forward untouched and only the attempt moves. A
@@ -72,6 +73,7 @@ def recorded_success(
         events_read=outcome.events_read,
         anchors_current=len(outcome.events),
         rejections=outcome.rejected,
+        rejected_total=outcome.rejected_count,
         attempts=attempts,
         resync_reason=resync_reason,
     )
