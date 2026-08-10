@@ -35,6 +35,7 @@ reason each is outside.
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple
 
@@ -161,7 +162,7 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         "anchor delta from a calendar sync",
         bumps=True,
         solves=True,
-        module="calendars/service.py",
+        module="anchors/reconcile.py",
         owner="1403",
     ),
     Trigger(
@@ -271,6 +272,30 @@ PROMOTIONS_ROUTE: Final = f"{API_PREFIX}/promotions"
 
 # Every prefix the per-package bump reading does not answer for, each with a test naming why.
 OUTSIDE_THE_PACKAGE_READING: Final = (KEPT_BOTH_ROUTE, PROMOTIONS_ROUTE)
+
+
+# The two modules that compose the anchor reconciler: one per entry point into a sync. A pass
+# invalidates the weeks it moved occupancy in, so a composition that omits the counter produces a
+# reconciler that writes anchors and tells no solve about them.
+ANCHOR_RECONCILER_COMPOSITIONS: Final = ("calendars/injection.py", "calendars/runner.py")
+
+
+def reconciler_call(module: str) -> ast.Call:
+    """The one ``AnchorReconciler(...)`` construction in ``module``.
+
+    Parsed rather than matched as text, so the keywords are read from the call itself and a
+    mention of one in a comment or a docstring cannot stand in for passing it.
+    """
+    tree = ast.parse(module_source(module))
+    found = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "AnchorReconciler"
+    ]
+    assert len(found) == 1, f"{module} composes {len(found)} reconcilers, not one"
+    return found[0]
 
 
 def module_source(module: str | None) -> str:
@@ -727,6 +752,43 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
 
         assert "self._declines.decline(" in service
         assert not any(spelling in service for spelling in BUMPS_A_VERSION)
+
+    @pytest.mark.parametrize("module", list(ANCHOR_RECONCILER_COMPOSITIONS), ids=lambda one: one)
+    def test_every_composition_of_the_anchor_reconciler_hands_it_the_counter(
+        self, module: str
+    ) -> None:
+        """The delegation the anchor-delta row rests on, followed to the collaborator.
+
+        That row's write lives below a service rather than in one, so the per-package reading cannot
+        see it: a sync is reached from a route and from the worker's poll, and the reconciler is
+        composed once per entry point. A composition that omitted the counter would leave that entry
+        point writing anchors and invalidating nothing, with every other test in this file green.
+
+        Parametrized rather than looped, so a failure names WHICH entry point lost its counter: one
+        of the two is a route and the other is a background poll, and they are fixed by different
+        edits.
+        """
+        passed = {keyword.arg for keyword in reconciler_call(module).keywords}
+
+        assert passed == {"versions", "home_zone"}, module
+
+    @pytest.mark.parametrize("module", list(ANCHOR_RECONCILER_COMPOSITIONS), ids=lambda one: one)
+    def test_the_zone_a_composition_passes_is_the_tenants_rather_than_a_literal(
+        self, module: str
+    ) -> None:
+        """Which week an instant falls in is answered in the TENANT's home zone.
+
+        A literal here would answer every tenant's question in one zone, and the answer would be
+        wrong by a week at the seam for anyone east or west of it. Nothing downstream could detect
+        it: the weeks invalidated would be plausible, adjacent, and stale.
+        """
+        zone = next(
+            keyword.value
+            for keyword in reconciler_call(module).keywords
+            if keyword.arg == "home_zone"
+        )
+
+        assert not isinstance(zone, ast.Constant), module
 
     @pytest.mark.parametrize("prefix", list(OUTSIDE_THE_RULE), ids=lambda one: one)
     def test_every_exclusion_still_names_routes_that_exist(
