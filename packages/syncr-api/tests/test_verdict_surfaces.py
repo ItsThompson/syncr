@@ -51,7 +51,7 @@ from __future__ import annotations
 import ast
 import re
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any, get_type_hints
+from typing import TYPE_CHECKING, Any, NamedTuple, get_type_hints
 from uuid import uuid4
 
 import pytest
@@ -101,10 +101,12 @@ if TYPE_CHECKING:
 
 BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 
-# The function every caller composes a recorder through, and the keyword that binds the surface.
-# Both are read from the source rather than imported, because what is under test is the call sites.
+# The function every caller composes a recorder through, and the two keywords that bind what the row
+# it writes will carry. All three are read from the source rather than imported, because what is
+# under test is the call sites.
 BUILDER = "build_verdict_recorder"
 SURFACE_KEYWORD = "surface"
+SESSION_STATE_KEYWORD = "session_mode_active"
 
 # Where each surface with a producer is composed, as module paths under the package root. An exact
 # mapping rather than a membership check: a producer that moves or disappears has to be a diff a
@@ -140,29 +142,48 @@ ISO_WEEK_PARAMETER = "iso_week"
 # --------------------------------------------------------------------------------
 
 
-def composed_surfaces(source_root: Path) -> dict[str, set[str]]:
-    """Which surface each module composes a recorder with, read out of the source.
+class Composition(NamedTuple):
+    """One recorder composition: the surface it binds, and the session state bound beside it."""
 
-    The mapping is derived from the call sites rather than from a registry, because a registry is a
-    thing a new caller can forget to join while still writing rows.
+    surface: str
+    session_state: str
+
+
+type Compositions = list[tuple[str, Composition]]
+
+
+def compositions(source_root: Path) -> Compositions:
+    """Every recorder composition in the package, with the module each sits in.
+
+    Derived from the call sites rather than from a registry, because a registry is a thing a new
+    caller can forget to join while still writing rows.
     """
+    return [
+        (str(module.relative_to(source_root)), composed)
+        for module in sorted(source_root.rglob("*.py"))
+        for node in ast.walk(ast.parse(module.read_text()))
+        if (composed := _composition_of(node)) is not None
+    ]
+
+
+def composed_surfaces(source_root: Path) -> dict[str, set[str]]:
+    """Which surface each module composes a recorder with."""
     found: dict[str, set[str]] = {}
-    for module in sorted(source_root.rglob("*.py")):
-        for call in ast.walk(ast.parse(module.read_text())):
-            surface = _surface_of(call)
-            if surface is not None:
-                found.setdefault(surface, set()).add(str(module.relative_to(source_root)))
+    for module, composed in compositions(source_root):
+        found.setdefault(composed.surface, set()).add(module)
     return found
 
 
-def _surface_of(node: ast.AST) -> str | None:
-    """The surface member this node binds, if it is a recorder composition."""
+def _composition_of(node: ast.AST) -> Composition | None:
+    """The surface and session state this node binds, if it is a recorder composition."""
     if not isinstance(node, ast.Call) or getattr(node.func, "id", None) != BUILDER:
         return None
-    for keyword in node.keywords:
-        if keyword.arg == SURFACE_KEYWORD and isinstance(keyword.value, ast.Attribute):
-            return keyword.value.attr
-    return None
+    bound = {keyword.arg: keyword.value for keyword in node.keywords}
+    surface = bound.get(SURFACE_KEYWORD)
+    state = bound.get(SESSION_STATE_KEYWORD)
+    if not isinstance(surface, ast.Attribute) or state is None:
+        return None
+    return Composition(surface.attr, ast.unparse(state))
 
 
 def test_every_surface_with_a_producer_is_composed_where_this_file_says(source_root: Path) -> None:
