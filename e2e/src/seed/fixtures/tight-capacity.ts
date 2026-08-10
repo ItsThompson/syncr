@@ -1,32 +1,49 @@
-/* `tight_capacity`: a week whose declared floors sit just inside its remaining capacity.
+/* `tight_capacity`: a week whose declared floors sit just inside its remaining capacity, and whose
+ * one deadline owes more before it than the week can hold in front of it.
  *
- * THE FIXTURE THREE STATED GAPS SHARE. `reference_week` holds 92 hours of discretionary time against
- * eight hours of declared floor, so a floor reservation that nets nothing still fits: the B1 assertions
- * have nothing to discriminate and were measured green under a bite that reverted the netting rule.
- * S25 needs the same thing from the other direction, a week where pinning two hours of unrelated work
- * moves a shortfall. And a verdict that one mutation can flip is what makes a session-attributed
- * infeasibility episode constructible at all.
+ * THE FIXTURE THREE OBSERVATIONS SHARE. `reference_week`'s plan week holds 5565 minutes of
+ * discretionary time against 480 minutes of declared floor, so a floor reservation that nets nothing
+ * still fits there: the B1 assertions have nothing to discriminate on a week that roomy, and they were
+ * measured green under a bite that reverted the netting rule. S25 needs the same tightness from the
+ * other direction, a week where pinning two hours of unrelated work moves a shortfall. And a verdict
+ * that one mutation can flip is what makes a session-attributed infeasibility episode constructible at
+ * all.
  *
  * HOW THE WEEK IS MADE TIGHT: by the FRAME, not by an oversized demand. Two routines cover twenty and a
  * half hours of every day, so three and a half hours a day are discretionary, and the Area slots
  * declared in them are what the floors are met by. That is the shape B1 is about: a healthy solved week
  * is one whose floors are met by UNPINNED solver-placed blocks.
  *
- * The arithmetic is stated here and asserted by the scenarios rather than restated by them:
+ * HOW THE DEADLINE IS MADE UNMEETABLE: by the CAPACITY IN FRONT OF IT, for the same reason. The
+ * deadline task is one minimum chunk larger than the discretionary time that precedes its own deadline,
+ * so the week reports a gap of exactly that chunk before anything is solved and before anything is
+ * pinned, and it is a gap a pin moves in either direction: pinning the task's own work leaves both
+ * sides of the comparison net of it, and pinning another Area's work into the same window takes from
+ * one side only.
  *
- *   frame per day        Sleep 22:00 + 9h, Work 09:00 + 11h30m      20h30m
- *   discretionary        3h30m a day, seven days                     1470 minutes
- *   slots declared       Career 07:00 + 90m, Fitness 20:30 + 90m     1260 minutes
- *   floors declared      Career 8h, Fitness 8h                        960 minutes
- *   free once solved     1470 less the placements                     210 minutes
+ * A DEADLINE IS DECLARED AS A DATE AND READ AS THE INSTANT ITS MIDNIGHT FALLS AT, and midnight is
+ * inside the sleep span at either offset, so the capacity in front of a deadline is a whole number of
+ * discretionary days in summer and in winter both.
  *
- * So the correct reservation is zero, because every floor minute is already placed, and 0 fits in 210.
- * A reservation that netted immovable placements only would be 960 against 210 and would report a
- * shortfall of 750 on a week that is fully scheduled, which is the defect B1 names.
+ * The arithmetic is stated here and asserted by the scenarios rather than restated by them. Every
+ * figure below is derived from the declarations underneath it rather than written beside them:
+ *
+ *   frame per day        Sleep 22:00 + 9h, Work 09:00 + 11h30m               20h30m
+ *   discretionary        3h30m a day, seven days                       1470 minutes
+ *   slots declared       Career 07:00 + 90m, Fitness 20:30 + 90m       1260 minutes
+ *   floors declared      Career 8h, Fitness 8h                          960 minutes
+ *   before the deadline  Monday and Tuesday, whole discretionary days   420 minutes
+ *   the deadline's task  420 plus one 90-minute chunk                   510 minutes
+ *   the gap it reports   510 against 420, before any solve or pin        90 minutes
+ *
+ * So the correct floor reservation is zero once the week is solved, because every floor minute is
+ * already placed, and zero fits in whatever the solve leaves. A reservation that netted immovable
+ * placements only would be 960 against that remainder, which is smaller than the floors themselves,
+ * and would report a floor shortfall on a week that is fully scheduled, which is the defect B1 names.
  */
 
 import type { ApiClient } from "../../api/client.ts";
-import { dateIn, WEDNESDAY } from "../../api/weeks.ts";
+import { dateIn, MONDAY, WEDNESDAY } from "../../api/weeks.ts";
 import { planWeek } from "../../harness/subject-weeks.ts";
 import {
   declareAreas,
@@ -44,9 +61,37 @@ const AREAS = [
   { name: "Fitness", budgetPercent: 45, floorHours: 8 },
 ] as const;
 
-export const CAREER_FLOOR_MINUTES = 8 * 60;
-export const FITNESS_FLOOR_MINUTES = 8 * 60;
+const floorMinutesOf = (name: string): number =>
+  AREAS.find((area) => area.name === name)!.floorHours * 60;
+
+export const CAREER_FLOOR_MINUTES = floorMinutesOf("Career");
+export const FITNESS_FLOOR_MINUTES = floorMinutesOf("Fitness");
 export const DEADLINE_TASK = "Lab report";
+
+/* The frame, as two durations rather than as two numbers repeated in a comment. What the week has left
+ * over follows from them, and so does everything the deadline is sized against, so a change to the
+ * frame moves the fixture's whole arithmetic with it instead of leaving a stale figure behind. */
+const SLEEP_MINUTES = 9 * 60;
+const WORK_MINUTES = 11 * 60 + 30;
+const DISCRETIONARY_MINUTES_A_DAY = 24 * 60 - SLEEP_MINUTES - WORK_MINUTES;
+
+/** The week's denominator: what the frame leaves, over seven days. */
+export const DISCRETIONARY_MINUTES = 7 * DISCRETIONARY_MINUTES_A_DAY;
+
+/** The deadline task's own minimum chunk, which is the smallest placement that can close its gap. */
+const CHUNK_MINUTES = 90;
+
+/** Which day of the plan week the deadline falls on, mid-week so that days precede it and follow it. */
+const DEADLINE_WEEKDAY = WEDNESDAY;
+
+/** The discretionary time in front of the deadline: the whole days between Monday and that midnight. */
+export const PRE_DEADLINE_MINUTES = (DEADLINE_WEEKDAY - MONDAY) * DISCRETIONARY_MINUTES_A_DAY;
+
+/** One chunk more than fits, so the week owes more before that instant than it can hold. */
+export const DEADLINE_TASK_MINUTES = PRE_DEADLINE_MINUTES + CHUNK_MINUTES;
+
+/** The gap the week therefore reports, before anything is solved and before anything is pinned. */
+export const PRE_DEADLINE_SHORTFALL_MINUTES = DEADLINE_TASK_MINUTES - PRE_DEADLINE_MINUTES;
 
 export const seedTightCapacity = async (client: ApiClient): Promise<void> => {
   await declareSettings(client);
@@ -58,12 +103,12 @@ export const seedTightCapacity = async (client: ApiClient): Promise<void> => {
   await declareRoutine(client, templateId, {
     title: "Sleep",
     targetTime: "22:00:00",
-    durationMinutes: 540,
+    durationMinutes: SLEEP_MINUTES,
   });
   await declareRoutine(client, templateId, {
     title: "Work",
     targetTime: "09:00:00",
-    durationMinutes: 690,
+    durationMinutes: WORK_MINUTES,
   });
 
   // The slots the floors are met through, one per discretionary window.
@@ -91,22 +136,22 @@ export const seedTightCapacity = async (client: ApiClient): Promise<void> => {
     estimateMinutes: 900,
     minChunkMinutes: 90,
   });
-  // A deadline mid-week, so the DEADLINE CHECK has a demand to read and the backlog's at-risk column has
-  // an entry. It is marked at risk under BOTH netting rules, because the current week's verdict is what
-  // the marking reads and that week cannot meet its floors at all: what the reverted rule changes is the
-  // SIZE of the shortfall, not whether this task is named. So this task exists to give the at-risk set
-  // something to iterate, which is what round 1's version of that assertion did not have.
+  // The deadline the week cannot meet, sized one minimum chunk past the discretionary time in front of
+  // it. High priority and splittable in chunks, so a solve places what fits before the deadline there
+  // rather than refusing the task whole: the gap that survives a solve is then capacity the week does
+  // not have rather than a placement it declined to make.
   await declareTask(client, {
     title: DEADLINE_TASK,
     areaId: areas.Career!,
-    estimateMinutes: 180,
-    minChunkMinutes: 90,
-    deadline: dateIn(planWeek(), WEDNESDAY),
+    estimateMinutes: DEADLINE_TASK_MINUTES,
+    minChunkMinutes: CHUNK_MINUTES,
+    deadline: dateIn(planWeek(), DEADLINE_WEEKDAY),
     priority: "high",
   });
 
   console.log(
-    `tight_capacity: 1470 discretionary minutes a week against floors of ` +
-      `${CAREER_FLOOR_MINUTES} and ${FITNESS_FLOOR_MINUTES}`,
+    `tight_capacity: ${DISCRETIONARY_MINUTES} discretionary minutes a week against floors of ` +
+      `${CAREER_FLOOR_MINUTES} and ${FITNESS_FLOOR_MINUTES}, and ${DEADLINE_TASK_MINUTES} minutes ` +
+      `due against the ${PRE_DEADLINE_MINUTES} in front of the deadline`,
   );
 };
