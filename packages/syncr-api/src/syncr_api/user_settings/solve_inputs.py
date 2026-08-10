@@ -20,6 +20,13 @@ four steps serve every mutation whose effect has no end date: an Area budget, a 
 a routine, a template. Each of them governs every week the user has not yet lived, so each
 needs today's LOCAL date resolved in the home zone, and resolving that in five places would
 let five services disagree about which week the floor is.
+
+**Three shapes of range, together because the counter is one.** A mutation with no end date takes
+the open-ended shape, ``weeks_from``, and it is the one that needs the floor. A mutation bounded by
+local DATES takes ``weeks_covering``. A mutation bounded by two INSTANTS -- an imported commitment
+moving is the one that is -- takes ``weeks_occupied``. Which shape a mutation has decides what it
+may invalidate, and reading the three side by side is what keeps a bounded mutation from reaching
+for the open-ended one.
 """
 
 from __future__ import annotations
@@ -30,7 +37,8 @@ from typing import TYPE_CHECKING, Protocol
 
 from syncr_api.user_settings.zone_reading import local_date
 from syncr_common.logging import get_logger
-from syncr_domain.weeks import IsoWeek
+from syncr_domain.weeks import LOCAL_MIDNIGHT, IsoWeek
+from syncr_domain.zones import to_instant
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -38,6 +46,8 @@ if TYPE_CHECKING:
     from syncr_api.core.clock import Clock
     from syncr_api.plans.versions import WeekInputVersionRepository
     from syncr_api.user_settings.repository import SettingsRepository
+    from syncr_domain.intervals import Interval
+    from syncr_domain.zones import ZoneId
 
 _ONE_DAY = timedelta(days=1)
 
@@ -130,6 +140,41 @@ def weeks_covering(start_date: date, end_date: date, *, today: date) -> WeekRang
     if last < current:
         return None
     return WeekRange(first=max(current, IsoWeek.containing(start_date - _ONE_DAY)), last=last)
+
+
+def weeks_occupied(span: Interval, *, home_zone: ZoneId) -> tuple[IsoWeek, ...]:
+    """Every ISO week ``span`` reaches into, earliest first.
+
+    For a mutation whose effect is bounded at both ends: it names the weeks the span really
+    touches and no others, so two spans a month apart invalidate two weeks rather than the
+    month between them.
+
+    Each week after the first is admitted by comparing the instant it OPENS against ``span``'s
+    end, rather than by resolving the span's own end to a date. A week opens at its Monday's
+    local midnight and ends where the next one opens, so a span ending exactly at a Monday
+    midnight reaches nothing inside the week that begins there. One comparison against that
+    midnight is one reading of the half-open bound; resolving both ends to dates and clamping
+    the far one is two, and two readings of one bound is how an off-by-one week appears.
+
+    The zone is the HOME zone, which is what :func:`local_date` documents for every caller. A
+    travel override displaces a week's real bounds relative to its home-zone dates, so at that
+    seam this can name a week beside the one whose span the instant falls in.
+    """
+    found = [IsoWeek.containing(local_date(span.start, home_zone))]
+    following = found[-1].following()
+    while _opens_at(following, home_zone) < span.end:
+        found.append(following)
+        following = following.following()
+    return tuple(found)
+
+
+def _opens_at(week: IsoWeek, zone: ZoneId) -> datetime:
+    """The instant ``week`` begins: its Monday's local midnight, through the zone layer.
+
+    Resolved the way ``week_span`` resolves the same midnight, so a Monday a transition skips
+    is answered once rather than by date arithmetic that assumes an offset.
+    """
+    return to_instant(LOCAL_MIDNIGHT, week.monday(), zone)
 
 
 class BacklogWideBump:

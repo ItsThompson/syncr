@@ -7,13 +7,17 @@ midnight, and a past week keeps the span it was computed with.
 ``2026-08-02`` is a Sunday and the last day of ``2026-W31``; ``2026-08-03`` is the Monday
 that opens ``2026-W32``. That pair is what makes the "one day before" rule visible, so it
 recurs below.
+
+The third shape, ``weeks_occupied``, is bounded by two INSTANTS rather than by dates, so its
+cases are instants at and around a local midnight: the half-open bound is the whole subject, and
+a test that only asked about the middle of a week would pass under an off-by-one week.
 """
 
 from __future__ import annotations
 
 import io
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -23,9 +27,12 @@ from syncr_api.user_settings.solve_inputs import (
     WeekRange,
     weeks_covering,
     weeks_from,
+    weeks_occupied,
 )
 from syncr_common.logging import configure_logging
-from syncr_domain.weeks import IsoWeek
+from syncr_domain.intervals import Interval
+from syncr_domain.weeks import IsoWeek, week_span
+from syncr_domain.zones import ZoneProfile
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -39,6 +46,13 @@ NOW = datetime(2026, 8, 2, 9, 0, tzinfo=UTC)
 WEEK_31 = IsoWeek.parse("2026-W31")
 WEEK_32 = IsoWeek.parse("2026-W32")
 WEEK_33 = IsoWeek.parse("2026-W33")
+
+# A zone whose offset is not UTC's and which changes twice a year, so a case that resolved a week
+# in UTC by accident reads one hour wrong here and lands in the week before.
+LONDON = "Europe/London"
+# 2026-08-03 00:00 in London is 2026-08-02 23:00Z: the instant 2026-W32 opens.
+WEEK_32_OPENS = datetime(2026, 8, 2, 23, 0, tzinfo=UTC)
+MINUTE = timedelta(minutes=1)
 
 
 def test_a_home_zone_change_invalidates_the_current_week_and_every_week_after_it() -> None:
@@ -123,6 +137,117 @@ def test_an_unbounded_range_covers_a_week_a_bounded_one_does_not() -> None:
 
     assert not bounded.covers(WEEK_33)
     assert WeekRange(first=WEEK_31, last=None).covers(WEEK_33)
+
+
+# --------------------------------------------------------------------------------
+# The weeks a bounded span occupies. Every case is an instant at or beside a local
+# midnight, because the half-open bound is what this can get wrong.
+# --------------------------------------------------------------------------------
+
+
+def test_a_span_inside_one_week_occupies_that_week_alone() -> None:
+    span = Interval(WEEK_32_OPENS + timedelta(days=2), WEEK_32_OPENS + timedelta(days=2, hours=1))
+
+    assert weeks_occupied(span, home_zone=LONDON) == (WEEK_32,)
+
+
+def test_a_span_ending_exactly_when_the_next_week_opens_does_not_occupy_it() -> None:
+    # The bound is half-open, so a span ending at a Monday's local midnight ends where the next
+    # week begins and holds no instant inside it. Reading the end's own week would bump one week
+    # too many at exactly the boundary a publisher is most likely to produce.
+    span = Interval(WEEK_32_OPENS - timedelta(hours=2), WEEK_32_OPENS)
+
+    assert weeks_occupied(span, home_zone=LONDON) == (WEEK_31,)
+
+
+def test_a_span_ending_one_minute_later_occupies_both() -> None:
+    # The other side of the same boundary, which is what makes the case above an assertion about
+    # the bound rather than about the arithmetic being one week short everywhere.
+    span = Interval(WEEK_32_OPENS - timedelta(hours=2), WEEK_32_OPENS + MINUTE)
+
+    assert weeks_occupied(span, home_zone=LONDON) == (WEEK_31, WEEK_32)
+
+
+def test_a_span_beginning_exactly_when_a_week_opens_occupies_it_and_not_the_one_before() -> None:
+    span = Interval(WEEK_32_OPENS, WEEK_32_OPENS + timedelta(hours=1))
+
+    assert weeks_occupied(span, home_zone=LONDON) == (WEEK_32,)
+
+
+def test_a_span_crossing_two_boundaries_occupies_every_week_between_with_no_gap() -> None:
+    # A conference, or a feed publishing one component for a whole term: the weeks in the middle
+    # hold nothing but the span, and their denominators changed too.
+    span = Interval(WEEK_32_OPENS - MINUTE, WEEK_32_OPENS + timedelta(days=14))
+
+    assert weeks_occupied(span, home_zone=LONDON) == (WEEK_31, WEEK_32, WEEK_33)
+
+
+def test_the_zone_decides_which_week_an_instant_falls_in() -> None:
+    # 2026-08-02 23:30Z is Sunday in UTC and Monday 00:30 in London, so the same instant is in two
+    # different ISO weeks. Without this, a derivation that ignored the zone entirely would pass
+    # every case above, since they are all stated in one zone.
+    span = Interval(WEEK_32_OPENS + timedelta(minutes=30), WEEK_32_OPENS + timedelta(hours=1))
+
+    assert weeks_occupied(span, home_zone=LONDON) == (WEEK_32,)
+    assert weeks_occupied(span, home_zone="UTC") == (WEEK_31,)
+
+
+def test_the_zone_decides_when_a_week_OPENS_and_therefore_where_the_walk_stops() -> None:
+    # The other half, and it is a different statement: above, the zone decides which week the span
+    # STARTS in; here it decides the instant the following week begins, which is what admits that
+    # week. This span runs from 22:30Z to 23:30Z, so it crosses London's midnight and not UTC's.
+    span = Interval(WEEK_32_OPENS - timedelta(minutes=30), WEEK_32_OPENS + timedelta(minutes=30))
+
+    assert weeks_occupied(span, home_zone=LONDON) == (WEEK_31, WEEK_32)
+    assert weeks_occupied(span, home_zone="UTC") == (WEEK_31,)
+
+
+def test_every_week_a_span_occupies_is_a_week_whose_own_span_it_overlaps() -> None:
+    """The derivation, crossed against the domain's own week bounds rather than against a list.
+
+    ``week_span`` is what a week's inputs are read over, and this asserts the biconditional: a week
+    is in the answer exactly when the span overlaps that week's span. Both directions matter. Only
+    the forward one would pass for a derivation that named every week in the year, and only the
+    reverse one would pass for a derivation that named none.
+
+    The sweep is deterministic and it steps by a quarter of a day, so it lands on midnights, an
+    hour either side of them, and the middle of days, across four weeks and three lengths.
+    """
+    profile = ZoneProfile(home_zone=LONDON, travel_overrides=())
+    candidates = _ten_weeks_from(WEEK_31.preceding())
+    checked = 0
+    for step in range(4 * 21):
+        start = WEEK_32_OPENS - timedelta(days=7) + timedelta(hours=6) * step
+        for length in (timedelta(minutes=15), timedelta(days=1), timedelta(days=9)):
+            span = Interval(start, start + length)
+            occupied = weeks_occupied(span, home_zone=LONDON)
+            overlapping = tuple(
+                week for week in candidates if _overlaps(week_span(week, profile), span)
+            )
+
+            assert occupied == overlapping, span
+            checked += 1
+
+    # The sweep asserted something: a loop whose body never ran would report the same green.
+    assert checked == 4 * 21 * 3
+    # And the candidates are WIDER than any answer, which is what exercises the reverse direction:
+    # a week in the set that the span does not reach must stay out of the answer.
+    widest = weeks_occupied(
+        Interval(WEEK_32_OPENS, WEEK_32_OPENS + timedelta(days=9)), home_zone=LONDON
+    )
+    assert len(candidates) > len(widest)
+
+
+def _ten_weeks_from(first: IsoWeek) -> tuple[IsoWeek, ...]:
+    """``first`` and the nine weeks after it, which is wider than the sweep above can reach."""
+    weeks = [first]
+    while len(weeks) < 10:
+        weeks.append(weeks[-1].following())
+    return tuple(weeks)
+
+
+def _overlaps(one: Interval, other: Interval) -> bool:
+    return one.start < other.end and one.end > other.start
 
 
 @pytest.fixture
