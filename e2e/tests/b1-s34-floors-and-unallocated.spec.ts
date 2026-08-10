@@ -26,10 +26,12 @@ import { solveAndSettle, weekView } from "../src/harness/week.ts";
 import {
   CAREER_FLOOR_MINUTES,
   DEADLINE_TASK,
+  DEADLINE_TASK_MINUTES,
   DISCRETIONARY_MINUTES,
   FITNESS_FLOOR_MINUTES,
   PRE_DEADLINE_MINUTES,
   PRE_DEADLINE_SHORTFALL_MINUTES,
+  SLOT_MINUTES_A_WEEK,
 } from "../src/seed/fixtures/tight-capacity.ts";
 
 usingFixture("tight_capacity");
@@ -95,13 +97,22 @@ test("the tight-capacity week owes more before its deadline than it can hold, be
   const week = planWeek();
   const seeded = await weekView(api, week);
 
-  // THE WEEK THIS FIXTURE IS, pinned once against the figure this file's own prose, the fixture's header
-  // and `docs/smoke-scenarios.md` each state. Everything below is derived from the declarations, so a
-  // frame change moves the fixture and the derivation together and would rot those three copies while
-  // reaching nothing that fails. This is the one place that fails instead.
-  expect([DISCRETIONARY_MINUTES, CAREER_FLOOR_MINUTES + FITNESS_FLOOR_MINUTES]).toEqual([
-    1470, 960,
-  ]);
+  // THE WEEK THIS FIXTURE IS, pinned once against the figures this file's own prose, the fixture's header
+  // table and `docs/smoke-scenarios.md` each state. Everything else here is derived from the declarations,
+  // so a change made through one of those constants moves the fixture and the derivation together and
+  // would rot every prose copy while reaching nothing that fails. This is the one place that fails instead,
+  // and it covers every figure that header table names.
+  expect(
+    [
+      DISCRETIONARY_MINUTES,
+      CAREER_FLOOR_MINUTES + FITNESS_FLOOR_MINUTES,
+      SLOT_MINUTES_A_WEEK,
+      PRE_DEADLINE_MINUTES,
+      DEADLINE_TASK_MINUTES,
+    ],
+    "the fixture no longer is the week its own header, this file's header and docs/smoke-scenarios.md " +
+      "describe: discretionary, floors, slots, the capacity before the deadline, the task due against it",
+  ).toEqual([1470, 960, 1260, 420, 510]);
 
   // THE STATE THE FIGURES BELOW ARE EXACT IN, ASSERTED RATHER THAN ASSUMED: the week as the seed leaves
   // it, materialized and not yet solved, with nothing pinned. A run that reached this case after another
@@ -133,10 +144,12 @@ test("the tight-capacity week owes more before its deadline than it can hold, be
   // placement, so a shortfall a pin can move survives into the solved week the other cases read. It can
   // only have GROWN: both sides of the comparison are net of the deadline task's own placements, so
   // placing that task before its deadline leaves the gap where it was, and placing anything else there
-  // takes from the capacity side alone.
+  // takes from the capacity side alone. Nothing else competes for that window on this week, because the
+  // other Area's whole floor fits into the days that follow the deadline.
   await solveAndSettle(api, week);
   const solved = await weekView(api, week);
   expect(solved.verdict!.shortfalls.map((gap) => gap.kind)).toEqual(["deadline_capacity"]);
+  expect(solved.verdict!.shortfalls[0]!.against).toEqual([DEADLINE_TASK]);
   expect(solved.verdict!.shortfalls[0]!.minutes).toBeGreaterThanOrEqual(
     PRE_DEADLINE_SHORTFALL_MINUTES,
   );
