@@ -162,6 +162,20 @@ export function textOnAnInkFill(ledger: Ledger): Composed[] {
   return ledger.composed.filter((one) => one.floor === TEXT_FLOOR && fills.has(one.surface));
 }
 
+/**
+ * Every stated pairing that does not clear the floor its own property implies, over every floor.
+ *
+ * Wider than what any rule enforces, on purpose: an indicator's stated pairing below the indicator floor is a
+ * measurement the audit can make and a verdict it does not reach, because whether a given property is an indicator
+ * is a design classification rather than a ratio.
+ */
+export function statedBelowItsFloor(ledger: Ledger): Composed[] {
+  return ledger.composed.filter((one) => {
+    const ratio = ratioOf(ledger, one.ink, one.surface);
+    return ratio === null || ratio < one.floor;
+  });
+}
+
 /** The ratio a pair measures, or null when the matrix has no such cell. */
 export function ratioOf(ledger: Ledger, ink: string, surface: string): number | null {
   return ledger.pairs.find((pair) => pair.ink === ink && pair.surface === surface)?.ratio ?? null;
