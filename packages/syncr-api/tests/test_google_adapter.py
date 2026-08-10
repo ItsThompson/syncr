@@ -423,10 +423,12 @@ async def test_an_incremental_read_carries_the_delta_and_the_identifiers_it_remo
     assert [one.uid for one in outcome.events] == ["moved", "added"]
     assert [one.uid for one in outcome.rejected] == ["unreadable"]
     # Every entry the provider offered is accounted for by exactly one term, so a removal cannot be
-    # a component that vanished with no explanation anywhere.
+    # a component that vanished with no explanation anywhere. The refusals enter as their count
+    # rather than as the sample, because the sample is bounded per kind and the count is what the
+    # accounting closes over.
     assert outcome.events_read == 6
-    assert outcome.events_read == len(outcome.events) + len(outcome.removed_uids) + len(
-        outcome.rejected
+    assert outcome.events_read == len(outcome.events) + len(outcome.removed_uids) + (
+        outcome.rejected_count
     )
     # A delta is not a read of the feed's whole body, and this is the bit the anchor reconciler
     # keys removal on: marking it would make a two-entry delta delete the rest of the calendar.
