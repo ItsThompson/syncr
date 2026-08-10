@@ -99,7 +99,7 @@ gap breaks in one place instead of drifting in two.
 | `recovery_scopes` | `just seed-recovery-scopes` | Two anchor types at the same wall time, one `post_scope: areas` forbidding Study and one `post_scope: all` |
 | `shadow_geometry` | `just seed-shadow-geometry` | The `Interview`, `Exam` and `Lecture` types with their real leads, durations and buffers |
 | `maturity_corpus` | `just seed-maturity-corpus` | Outcomes recorded on every block the weeks in the horizon have ended, and a print of what it reached. It tolerates one named refusal: a solve of the current week is refused with `past_disagreement`, permanently, which is ticket 1570, and its materialized blocks are recorded against anyway |
-| `tight_capacity` | `just seed-tight-capacity` | A week whose declared floors sit just inside its remaining capacity: twenty and a half hours of frame a day, so 1470 discretionary minutes a week against 960 minutes of floor. The one fixture that makes a floor reservation observable |
+| `tight_capacity` | `just seed-tight-capacity` | A week whose declared floors sit just inside its remaining capacity, and whose one deadline owes more before it than the week can hold: twenty and a half hours of frame a day, so 1470 discretionary minutes a week against 960 minutes of floor, and a 510-minute task due against the 420 minutes in front of its own deadline. The one fixture that makes a floor reservation observable, and the only one whose plan week reports a pre-deadline shortfall, of exactly one 90-minute chunk, before anything is solved or pinned |
 
 `hand_tuned_weights` is not a recipe: the bootstrap provisions weight set version 1 with
 `origin = "hand-tuned"`, so it is a fact of every tenant this harness creates rather than a fixture it
@@ -183,17 +183,20 @@ Recorded here because a traceability matrix built from that table mis-files thre
 Stated plainly, because an overstated bound is worse than a stated gap.
 
 **Two of these rows have one cause and it is not two pieces of work.** S25 and the exactly-0.5 ratio both
-need a week whose verdict one mutation can move, which is what `tight_capacity` now provides for B1. What
-S25 additionally needs is a shortfall on that week for a pin to move, and what the ratio needs is a
-verdict-flipping mutation through a route that carries the session header. Both are follow-ups on the
-same fixture rather than on the same code, so ticket 1572 owns them together.
+need a week whose verdict one mutation can move, which is what `tight_capacity` provides for B1. The
+shortfall S25 needs a pin to move is now on that week: its plan week reports a `deadline_capacity` gap of
+one 90-minute chunk before anything is solved or pinned, and the gap survives a solve because what the
+week cannot hold before that instant is capacity rather than a placement. What is still missing is the
+three-step sequence itself, and, for the ratio, a verdict-flipping mutation through a route that carries
+the session header. Both are follow-ups on the same fixture rather than on the same code, so ticket 1572
+owns them together.
 
 | Gap | Why | Where it should land |
 |---|---|---|
 | S5, S7 | Each needs a driven interaction on the week grid: a discrete drag with a real `setPointerCapture`, and a panel height measured across a sequence of pins. The harness has the browser and the credential; what is missing is the per-screen driving | ticket 1572 |
 | S21's sliver tier | The session is driven on the keyboard, and every tier the grid RENDERS is reached; no seeded week holds a block short enough to render between 8 and 13px, so the tier the scenario names is exercised at the component level only | ticket 1561 |
 | S17's capture flow | The `no_eligible_content` rendering is asserted; activating the label and observing a prefilled capture producing a soft preference is not | ticket 1572 |
-| S25, and the exactly-0.5 early-catch ratio | One cause, stated above: a week whose verdict one mutation moves, plus a mutation that carries the session header | ticket 1572 |
+| S25, and the exactly-0.5 early-catch ratio | The week's own half is supplied: `tight_capacity`'s plan week carries a pre-deadline shortfall a pin moves. What is left is the three-step sequence, and a mutation that carries the session header | ticket 1572 |
 | S29, S36 | Both need the clock moved: across a Sunday-to-Monday boundary, and past a deadline. Nothing in the stack takes an injected clock from outside the process | ticket 1573 |
 | A first solve of a week already partly lived | Reproducibly refused, permanently: the maintainer's materialized plan closes the escape hatch the guard leaves for a week with no live plan. `just seed-maturity-corpus` prints this refusal rather than exiting on it | ticket 1570 |
 | The promotion panel's composed layout | `s22-no-motion.spec.ts` renders the weekly session and asserts the RAISED panel is drawn, which is one of the two amber notice surfaces item 51 named. The other one, the promotion panel, returns null on an empty candidate list and no fixture here raises a promotion: that needs repeated pins across three weeks. The same case asserts the panel is absent, so it goes red the day a fixture raises one | ticket 1572 |
