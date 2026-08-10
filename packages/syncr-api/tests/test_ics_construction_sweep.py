@@ -143,8 +143,16 @@ def test_every_renamed_constructor_is_refused_by_name(shape: Shape, tmp_path: Pa
     with pytest.raises(InexpressibleShape) as refused:
         _walked(tmp_path, shape.source)
 
-    assert shape.names in str(refused.value)
-    assert "probe" in str(refused.value)
+    # The parsed segment, compared exactly, never a substring of the whole message. One published
+    # binding's description is a PREFIX of another's, `partial` against `partialmethod`, so a
+    # substring test passes a refusal labelled with the wrong one and holds only for as long as a
+    # closing delimiter happens to sit between them. Parsing puts that delimiter under the
+    # assertion: reword the message and this fails loudly rather than quietly widening.
+    message = str(refused.value)
+    described = message.partition(" constructor as ")[2].partition(", which the walk")[0]
+
+    assert described == shape.names
+    assert "probe:" in message
 
 
 @pytest.mark.parametrize("shape", UNSEEN, ids=lambda shape: shape.what)

@@ -5,9 +5,17 @@ failures cannot fail when a new site is added; a table compared against the sour
 
 **What the class is.** A feed states values, and every value eventually reaches a constructor:
 ``int``, ``timedelta``, ``datetime``. Each of those refuses some inputs, and each refuses them by
-raising something that is NOT an :class:`~syncr_api.calendars.ics_errors.IcsRejection`. Such an
-exception escapes ``IcsAdapter.fetch``, which is documented never to raise, and the cost is a
-tenant's whole sync pass aborted with the sync state written in the same transaction rolled back.
+raising something that is NOT an :class:`~syncr_api.calendars.ics_errors.IcsRejection`. For most of
+them such an exception escapes ``IcsAdapter.fetch``, which is documented never to raise, and the
+cost is a tenant's whole sync pass aborted with the sync state written in the same transaction
+rolled back.
+
+``Interval`` is the one member for which that is not the cost, and the difference belongs here
+because every row of this table names a mechanism. ``IntervalError`` is listed in
+:data:`~syncr_api.calendars.ics_errors.UNREPRESENTABLE`, so ``parse_feed`` nets it and answers with
+a ``malformed-value`` rejection. An unguarded interval site therefore costs a **false rejection**
+rather than an aborted pass: an event syncr could have placed becomes a panel entry blaming the
+publisher. Smaller than the abort, still wrong, and still a harm a call-graph edit can introduce.
 
 **How the table is used.** Two ways, and both matter:
 
@@ -85,9 +93,13 @@ if TYPE_CHECKING:
 # `sys.get_int_max_str_digits()` digits with a ValueError, which no part of this package's own
 # vocabulary covers.
 #
-# `Interval` is here for the same reason one step out: it refuses a non-positive span with an
-# `IntervalError`, which is a `DomainError` and not an `IcsRejection`, so it escapes `fetch` exactly
-# as a `ValueError` does. It is a bare name in this package, so the allowlist reaches it.
+# `Interval` is here for a related reason with a different cost. It refuses a non-positive or naive
+# span with an `IntervalError`, which `UNREPRESENTABLE` lists, so `parse_feed` nets it: the pass
+# survives and the component comes back as a `malformed-value` rejection. What the row protects is
+# therefore not the pass but the ANSWER, because the bound that keeps the span positive lives in
+# another module, at the read site, and a net is a fallback rather than a bound. Move the call away
+# from that bound and a placeable event turns into a panel entry blaming the publisher.
+# It is a bare name in this package, so the allowlist reaches it.
 CONSTRUCTORS: Final = frozenset(
     {
         "int",
@@ -393,6 +405,12 @@ def _refuse_a_second_name(tree: ast.Module, module: str) -> None:
     Both shapes the walk expresses match names in source. A constructor bound to a second name is
     therefore a call it reports nothing for, and nothing is also what it reports for a module that
     constructs nothing, so the two have to be told apart somewhere. Here is that somewhere.
+
+    There is no exemption, deliberately, and the blast radius is wide: one legitimate alias anywhere
+    under the package raises out of :func:`construction_calls` and fails every test that calls it.
+    ``date``, ``time`` and ``combine`` are ordinary names, so that is a real constraint on this
+    package rather than a theoretical one. It is the right trade while an exemption list would be a
+    second memory to keep, but a reader who trips it should know it is a rule and not a bug.
     """
     reachable = CONSTRUCTORS | CONSTRUCTING_RECEIVERS
     for node in ast.walk(tree):
