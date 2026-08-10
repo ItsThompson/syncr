@@ -1,7 +1,7 @@
 """The role rules, the horizon rules, and the provider rules, as pure functions over one source.
 
 They live apart from the service because each is an invariant of the domain rather than a step
-in a request, and because the two that matter most are easy to state and easy to lose:
+in a request, and because the statements that matter most are easy to state and easy to lose:
 
 **A calendar acting as an anchor source is never the write target.** The write target is
 reconciled destructively over its horizon, so a calendar syncr reads and a calendar syncr
