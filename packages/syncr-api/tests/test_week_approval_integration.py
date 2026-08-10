@@ -604,6 +604,7 @@ class TestWhatApprovalRefuses:
         assert (
             stored[0].document["blocks"][0]["interval"]["start"] == between(9, 10).start.isoformat()
         )
+        assert await slot_of(sessions, owner.tenant_id) is not None
 
     async def test_a_proposal_that_restates_a_block_the_week_has_since_reached_is_refused(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
