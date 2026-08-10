@@ -13,6 +13,7 @@ operator searching the file for "lease" has to find what the lease is.
 from __future__ import annotations
 
 import importlib
+import re
 import tomllib
 from datetime import timedelta
 from pathlib import Path
@@ -456,11 +457,16 @@ class TestTheLiveGoogleSuiteProcedure:
     def test_it_names_the_command_that_runs_the_suite(self) -> None:
         """With the marker taken from the configuration that excludes it, not from a second copy.
 
-        Anchored on the trailing space, because a marker name is a prefix of every longer one: a
-        runbook drifting to `pytest -m google_livewire` collects nothing and satisfied an unanchored
-        check.
+        Bounded on the right by a space or an end of line, not by a space alone. A marker name is a
+        prefix of every longer one, so `pytest -m google_livewire` satisfied an unbounded check; but
+        requiring a trailing space reddened on the ticket's own settling command, which carries no
+        flag after the marker.
         """
-        assert f"pytest -m {the_live_marker()} " in read(GOOGLE_OAUTH_VERIFICATION)
+        marker = the_live_marker()
+
+        assert re.search(
+            rf"pytest -m {re.escape(marker)}(?:\s|$)", read(GOOGLE_OAUTH_VERIFICATION)
+        ), f"the procedure names no runnable `pytest -m {marker}`"
 
     def test_it_names_the_calendar_every_write_lands_on(self) -> None:
         assert f"`{DEVELOPMENT_CALENDAR}`" in read(GOOGLE_OAUTH_VERIFICATION)
@@ -493,11 +499,10 @@ class TestTheLiveGoogleSuiteProcedure:
     def test_it_quotes_every_scope_the_client_requests(self) -> None:
         """A grant narrower than the set fails the suite, so the set is what a consent carries.
 
-        Anchored to a line of its own, which is how the verbatim block states them. Two reasons. A
-        scope string is a prefix of a narrower one, and `calendar.events.owned.readonly` is a real
-        scope this very runbook discusses as a rejected alternative; and a mention in prose is not
-        the same claim as the recorded set, so matching anywhere in the file would let the verbatim
-        block drift while the prose kept the check green.
+        Anchored to a line of its own, which is how the verbatim block states them, because a scope
+        string is a prefix of a narrower one: `calendar.events.owned.readonly` is a real scope this
+        runbook discusses as a rejected alternative, and that drift silently downgrades the write
+        grant while an unanchored check stays green.
         """
         text = read(GOOGLE_OAUTH_VERIFICATION)
 
@@ -525,14 +530,24 @@ class TestTheLiveGoogleSuiteProcedure:
         assert f"`{AUTHORIZATION_ENDPOINT}`" in text
         assert f"`{TOKEN_ENDPOINT}`" in text
 
-    def test_it_names_the_callback_route_the_app_actually_serves(self) -> None:
-        """The redirect URI Google matches character for character, taken from the route constant.
+    def test_every_registered_redirect_uri_it_lists_is_the_route_the_app_serves(self) -> None:
+        """Per site, not per file. Google matches a redirect URI character for character.
 
-        Stated against the route rather than against whatever a machine's own `.env` holds, because
-        an operator following this on another machine has a different `.env`. Anchored on the
-        trailing backtick, because a route is a prefix of every longer one.
+        Asking whether the route appears anywhere passes while one of the three registered strings
+        drifts, because the other two still carry it. So every line that looks like a registered
+        redirect URI is checked, and the set is derived from the file rather than counted.
         """
-        assert f"{CALLBACK_ROUTE}`" in read(GOOGLE_OAUTH_VERIFICATION)
+        registered = [
+            line
+            for line in read(GOOGLE_OAUTH_VERIFICATION).splitlines()
+            if line.startswith(("http://", "https://")) and "calendar-sources" in line
+        ]
+
+        assert registered, "the runbook lists no registered redirect URI at all"
+        for line in registered:
+            assert line.endswith(CALLBACK_ROUTE), (
+                f"{line} is not the callback route the app serves ({CALLBACK_ROUTE})"
+            )
 
     def test_it_tells_the_redirect_uri_apart_from_the_browser_applications_origin(self) -> None:
         """Two settings, two different origins, and mistaking one for the other wastes a consent."""
