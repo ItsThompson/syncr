@@ -11,8 +11,15 @@
 
 import { relative } from "node:path";
 
-import type { Ledger, Pair } from "./ledger.ts";
-import { INDICATOR_FLOOR, TEXT_FLOOR } from "./ledger.ts";
+import type { Composed, Ledger, Pair } from "./ledger.ts";
+import {
+  INDICATOR_FLOOR,
+  INK_FILLED,
+  TEXT_FLOOR,
+  ratioOf,
+  textInks,
+  textOnAnInkFill,
+} from "./ledger.ts";
 import { repoRoot } from "../lib/paths.ts";
 
 const HEADER = `# Contrast ledger
@@ -44,6 +51,58 @@ function cell(pair: Pair): string {
   return `${pair.ratio.toFixed(2)}${pair.clears ? "" : " ✗"}`;
 }
 
+/* THE INK FILLS, PUBLISHED AS MEASUREMENTS AND NOTHING ELSE.
+ *
+ * These rows carry no verdict mark, and that is the point of the section: which surface a class sits on is a fact
+ * about the DOM, no stylesheet states it, and most of these pairings are composed by nothing. A ✗ here would read
+ * as a defect list when it is a reference. The pairings the sheets DO state are the second table, and those are
+ * the ones the audit holds to the text floor.
+ *
+ * Every count is derived from the tables above it, because this file's own totals are the figures a reader would
+ * otherwise have to trust. */
+function inkFilledSection(ledger: Ledger): string[] {
+  const text = textInks(ledger);
+  const head = ["ink", ...INK_FILLED.map((surface) => `\`${surface}\``)];
+  const stated = textOnAnInkFill(ledger);
+
+  return [
+    "## What lands on an ink-filled surface",
+    "",
+    `\`${INK_FILLED.join("` and `")}\` are the fills that are ink rather than paper, and an ink chosen to be`,
+    "read on paper is not readable on either. Every ink the product writes as text is measured against both",
+    "here, so the pairing is on record whether or not anything composes it.",
+    "",
+    "| " + head.join(" | ") + " |",
+    `|${head.map(() => "---").join("|")}|`,
+    ...text.map(
+      (ink) =>
+        `| \`${ink}\` | ` +
+        INK_FILLED.map((surface) => (ratioOf(ledger, ink, surface) ?? 0).toFixed(2)).join(" | ") +
+        " |",
+    ),
+    "",
+    `${text.length} ink(s) written as text, against ${INK_FILLED.length} ink-filled surface(s): ` +
+      `${text.length * INK_FILLED.length} pairing(s) measured.`,
+    "",
+    "### The pairings a rule states",
+    "",
+    "A rule that declares its own fill and its own ink names both halves of a pairing in one place, which no",
+    "DOM is needed to read. Those are the pairings held to the text floor on an ink fill; the rest of the",
+    "table above is recorded and not enforced, because nothing says a class reaches that surface.",
+    "",
+    "| rule | ink | fill | ratio |",
+    "|---|---|---|---|",
+    ...stated.map((one: Composed) => {
+      const ratio = ratioOf(ledger, one.ink, one.surface) ?? 0;
+      return `| \`${one.where}\` | \`${one.ink}\` | \`${one.surface}\` | ${ratio.toFixed(2)} |`;
+    }),
+    "",
+    `${stated.length} pairing(s) stated on an ink-filled surface, of ${ledger.composed.length} ` +
+      `stated on any surface, held to ${TEXT_FLOOR.toFixed(1)}:1.`,
+    "",
+  ];
+}
+
 /** The ledger as the committed markdown, one row per ink and one column per surface. */
 export function renderLedger(ledger: Ledger): string {
   const head = ["ink", "floor", ...ledger.surfaces.map((one) => `\`${one}\``)];
@@ -72,6 +131,7 @@ export function renderLedger(ledger: Ledger): string {
     "",
     `${ledger.pairs.length} pair(s) measured, ${ledger.inks.length} ink(s) against ${ledger.surfaces.length} surface(s). ${failing} do not clear the ink's floor and are marked ✗, which means the pairing must not be composed rather than that a token is wrong.`,
     "",
+    ...inkFilledSection(ledger),
     "## Which declaration set each floor",
     "",
     "An ink used both as a label and as a border is held to the label's floor, so the row's floor is the",

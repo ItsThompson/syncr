@@ -51,6 +51,46 @@ signal pigment is asserted in `frontend/src/ui/domain/__tests__/pigment.test.ts`
 
 484 pair(s) measured, 22 ink(s) against 22 surface(s). 313 do not clear the ink's floor and are marked ✗, which means the pairing must not be composed rather than that a token is wrong.
 
+## What lands on an ink-filled surface
+
+`--ink` and `--ink-deep` are the fills that are ink rather than paper, and an ink chosen to be
+read on paper is not readable on either. Every ink the product writes as text is measured against both
+here, so the pairing is on record whether or not anything composes it.
+
+| ink | `--ink` | `--ink-deep` |
+|---|---|---|
+| `--ink` | 1.00 | 1.29 |
+| `--ink-bright` | 1.25 | 1.61 |
+| `--ink-deep` | 1.29 | 1.00 |
+| `--ink-soft` | 1.35 | 1.74 |
+| `--on-ink` | 11.50 | 14.83 |
+| `--oxide-ink` | 1.28 | 1.66 |
+| `--rule` | 6.71 | 8.65 |
+| `--signal-amber` | 2.54 | 3.28 |
+| `--signal-oxide` | 1.74 | 2.24 |
+| `--signal-verdigris` | 1.87 | 2.41 |
+| `--text` | 1.00 | 1.29 |
+| `--text-muted` | 2.18 | 2.81 |
+| `--text-on-wash` | 1.35 | 1.74 |
+| `--verdigris-ink` | 1.31 | 1.69 |
+
+14 ink(s) written as text, against 2 ink-filled surface(s): 28 pairing(s) measured.
+
+### The pairings a rule states
+
+A rule that declares its own fill and its own ink names both halves of a pairing in one place, which no
+DOM is needed to read. Those are the pairings held to the text floor on an ink fill; the rest of the
+table above is recorded and not enforced, because nothing says a class reaches that surface.
+
+| rule | ink | fill | ratio |
+|---|---|---|---|
+| `ui/layout/Panel.css .panel__header { color }` | `--on-ink` | `--ink-deep` | 14.83 |
+| `ui/primitives/Button.css .button { color }` | `--on-ink` | `--ink` | 11.50 |
+| `ui/primitives/Calendar.css .calendar__day[aria-selected="true"] { color }` | `--on-ink` | `--ink-deep` | 14.83 |
+| `ui/primitives/Dialog.css .dialog__header { color }` | `--on-ink` | `--ink-deep` | 14.83 |
+
+4 pairing(s) stated on an ink-filled surface, of 25 stated on any surface, held to 4.5:1.
+
 ## Which declaration set each floor
 
 An ink used both as a label and as a border is held to the label's floor, so the row's floor is the
