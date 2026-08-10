@@ -1693,8 +1693,14 @@ def _is_a_scratch_project(project: str | None) -> bool:
 
     A name the reading cannot resolve to a plain project -- a shell variable, an unexpanded just
     interpolation -- is NOT a scratch project: the guard has to refuse what it cannot judge, because
-    the
-    alternative is admitting a line whose project is decided somewhere this reading cannot see.
+    the alternative is admitting a line whose project is decided somewhere this reading cannot see.
+
+    WHAT IS STILL NOT BOUNDED. The reading judges one line, with the justfile's own variables
+    expanded, so a project name decided anywhere else never reaches it: `COMPOSE_PROJECT_NAME` in a
+    gitignored `.env`, or exported by an earlier line of a shebang recipe, whose body runs in one
+    shell rather than one shell per line. Compose honours that variable over the last `name:` in the
+    `-f` list, so such a line is ADMITTED here while compose acts on the project the variable names.
+    A name this reading can see and cannot resolve is refused; a name it cannot see is not.
     """
     import re
 
