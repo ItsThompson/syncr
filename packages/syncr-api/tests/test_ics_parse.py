@@ -1314,23 +1314,44 @@ def test_an_rdate_in_its_own_zone_is_resolved_in_that_zone(rule: str) -> None:
     ]
 
 
-def test_an_rdate_stating_an_instant_is_not_read_again_in_the_series_zone() -> None:
+@pytest.mark.parametrize(
+    ("series_start", "rdate", "horizon", "starts"),
+    [
+        # February: New York is UTC-5 and London, the profile's zone, is UTC+0.
+        (
+            "20260210T090000",
+            "RDATE:20260212T140000Z",
+            HORIZON,
+            [utc(2026, 2, 10, 14, 0), utc(2026, 2, 12, 14, 0)],
+        ),
+        # July: New York is UTC-4 and London is UTC+1, so the two wrong readings answer differently
+        # from each other as well as from this one. Read as a New York wall time the addition is at
+        # 18:00Z, read in the profile's zone it is at 13:00Z.
+        (
+            "20260706T090000",
+            "RDATE:20260712T140000Z",
+            _SUMMER,
+            [utc(2026, 7, 6, 13, 0), utc(2026, 7, 12, 14, 0)],
+        ),
+    ],
+)
+def test_an_rdate_stating_an_instant_is_read_in_utc_and_in_no_other_zone(
+    series_start: str, rdate: str, horizon: Interval, starts: list[datetime]
+) -> None:
     # A Z suffix is already an instant, so a 14:00Z addition to a New York series is at 14:00Z. Read
-    # as a New York wall time it lands at 19:00Z: five hours out, and in the wrong hour of the
-    # user's evening.
+    # as a New York wall time it lands five hours out, in the wrong hour of the user's evening.
     body = (
         "BEGIN:VCALENDAR\r\n"
         "BEGIN:VEVENT\r\nUID:utc-rdate@example.org\r\nSUMMARY:Instant addition\r\n"
-        "DTSTART;TZID=America/New_York:20260210T090000\r\n"
-        "DTEND;TZID=America/New_York:20260210T100000\r\n"
-        "RDATE:20260212T140000Z\r\n"
+        f"DTSTART;TZID=America/New_York:{series_start}\r\n"
+        "DURATION:PT1H\r\n"
+        f"{rdate}\r\n"
         "END:VEVENT\r\nEND:VCALENDAR\r\n"
     )
 
-    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+    outcome = parse_feed(body, horizon=horizon, profile=HOME)
 
-    added = [event for event in outcome.events if event.interval.start.day == 12]
-    assert [event.interval.start for event in added] == [utc(2026, 2, 12, 14, 0)]
+    assert sorted(event.interval.start for event in outcome.events) == starts
 
 
 def test_a_floating_rdate_stays_on_the_clock_the_series_recurs_in() -> None:
