@@ -43,6 +43,7 @@ from ops.verdict import compare
 
 from tests.test_alert_rules import named as alert_named
 from tests.test_alert_rules import repo_root
+from tests.test_deploy_topology import DEPLOYED_FILES
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -385,19 +386,21 @@ class TestTheDeployRunbook:
         assert "cannot alert on itself" in runbook
 
     def test_it_lists_every_workstation_valued_key_only_the_host_file_can_decide(self) -> None:
-        """A key that points at localhost and that no compose file names is decided by a copy.
+        """A key that addresses a workstation, and that the deployed stack does not name, is
+        decided by a copy.
 
         `google-oauth-verification.md` documents copying `.env.example` to seed a fresh machine, so
-        whatever that file ships reaches a deployed host. Where a compose `environment:` entry names
-        a key the topology decides it and the copy cannot; where none does, the host file is the
-        only layer, and this table is the one place an operator is told to change it.
+        whatever that file ships reaches a deployed host. Where a compose `environment:` entry in
+        the stack a host runs names a key, the topology decides it and the copy cannot; where none
+        does, the host file is the only layer, and this table is the one place an operator is told
+        to change it.
 
         Both readings are controlled first, because an empty set satisfies a subtraction and would
         pass this while checking nothing.
         """
         listed = _keys_the_deploy_table_lists()
         assert "CLOUDFLARE_TUNNEL_TOKEN" in listed, "the table reading found no table"
-        decided_by_compose = _keys_a_compose_file_names()
+        decided_by_compose = _keys_the_deployed_stack_names()
         assert "DATABASE_URL" in decided_by_compose, "the compose reading found no variables"
 
         unlisted = sorted(
@@ -405,9 +408,9 @@ class TestTheDeployRunbook:
         )
 
         assert unlisted == [], (
-            f"{unlisted} name a developer's own machine in .env.example, no compose file names "
-            "them, and the host secret file's table does not list them, so a host seeded by "
-            "copying that file holds a workstation address nobody is told to change"
+            f"{unlisted} address a developer's own machine in .env.example, the deployed stack "
+            "does not name them, and the host secret file's table does not list them, so a host "
+            "seeded by copying that file holds a workstation address nobody is told to change"
         )
 
 
@@ -1938,33 +1941,54 @@ def _keys_the_environment_file_documents() -> set[str]:
 def _keys_the_example_file_points_at_a_workstation() -> frozenset[str]:
     """Every key `.env.example` ships holding an address of the machine it is read on.
 
-    A value naming a loopback host is right for a developer and wrong for every deployment, so these
-    are the keys where what the file ships decides whether a copy of it is safe.
+    A value naming the developer's own host is right for a developer and wrong for every deployment,
+    so these are the keys where what the file ships decides whether a copy of it is safe.
+
+    THE PRIVATE RANGES ARE MATCHED AS DOTTED QUADS, not as prefixes. `10.` as a substring matches a
+    pinned image tag, so a reading that cheap would refuse a value for its version number.
     """
     import re
 
     text = read(Path(".env.example"))
     declared = re.findall(r"^[ \t]*(?:export[ \t]+)?([A-Z][A-Z0-9_]*)=(.*)$", text, re.MULTILINE)
-    return frozenset(
-        key
-        for key, value in declared
-        if "localhost" in value or "127.0.0.1" in value or "[::1]" in value
+    return frozenset(key for key, value in declared if _names_a_workstation(value))
+
+
+def _names_a_workstation(value: str) -> bool:
+    """Whether a value addresses the machine it is read on rather than a deployment.
+
+    The loopback names, the container-to-host name Docker Desktop publishes, and the three private
+    ranges an operator's own network uses.
+    """
+    import re
+
+    literals = ("localhost", "127.0.0.1", "[::1]", "host.docker.internal")
+    private = (
+        r"\b10(?:\.\d{1,3}){3}\b",
+        r"\b172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}\b",
+        r"\b192\.168(?:\.\d{1,3}){2}\b",
+    )
+    return any(one in value for one in literals) or any(
+        re.search(one, value) is not None for one in private
     )
 
 
-def _keys_a_compose_file_names() -> frozenset[str]:
-    """Every variable any compose file names, in either spelling an `environment:` block accepts.
+def _keys_the_deployed_stack_names() -> frozenset[str]:
+    """Every variable the compose files a DEPLOYED HOST runs name, in either accepted spelling.
 
     A key named there is decided by the topology, whatever a host's own file holds, so it is a key
-    an operator cannot get wrong by copying the example. The compose files are taken from the index
-    rather than listed, so a ninth one is read the day it is added.
+    an operator cannot get wrong by copying the example.
+
+    THE FILE SET IS THE DEPLOYED ONE, taken from `tests.test_deploy_topology`, and that is the whole
+    point of this reading rather than an optimisation. A reading over every `docker-compose*.yml` in
+    the tree exempts a key that only the e2e overlay names, and no deployed host composes that file:
+    the same key would then be free to carry a development address into `/opt/syncr/.env` with this
+    guard green.
     """
     import re
 
     named: set[str] = set()
-    for name in _files_git_has():
-        if re.fullmatch(r"(?:.*/)?docker-compose[^/]*\.ya?ml", name) is None:
-            continue
+    for name in DEPLOYED_FILES:
         content = read(Path(name))
         named |= set(re.findall(r"^\s+([A-Z][A-Z0-9_]*):", content, re.MULTILINE))
         named |= set(re.findall(r"^\s+-\s+([A-Z][A-Z0-9_]*)=", content, re.MULTILINE))

@@ -310,10 +310,11 @@ def test_a_host_that_copies_the_example_file_inherits_the_origin_it_already_serv
 
 
 def test_the_example_file_offers_a_line_that_produces_the_split_origin() -> None:
-    """The commented value is an instruction, so it is driven rather than trusted.
+    """The commented value is an instruction, so the value it offers is read rather than trusted.
 
-    Uncommenting it is what the block tells a developer to do, and this asserts the value it offers
-    is one that sends the browser to the application rather than to the api.
+    Uncommenting it is what the block tells a developer to do. What that value then produces is
+    `test_the_target_is_a_function_of_the_origin_it_is_given`, which asserts the whole target for
+    the same origin.
     """
     offered = [
         line.lstrip("# ")
@@ -322,9 +323,6 @@ def test_the_example_file_offers_a_line_that_produces_the_split_origin() -> None
     ]
 
     assert offered == [f"APP_BASE_URL={DEVELOPMENT_APP_ORIGIN}"]
-    assert settings_url(CONNECTED, app_base_url=DEVELOPMENT_APP_ORIGIN).startswith(
-        DEVELOPMENT_APP_ORIGIN
-    )
 
 
 def test_the_example_file_states_the_distinction_where_it_declares_the_key() -> None:
