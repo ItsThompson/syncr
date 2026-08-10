@@ -39,6 +39,7 @@ from syncr_api.calendars.config import (
     RejectionKind,
     SourceState,
 )
+from syncr_api.core.notices import Notice  # noqa: TC001 - pydantic resolves annotations at runtime
 from syncr_api.core.schemas import WireModel
 
 if TYPE_CHECKING:
@@ -234,9 +235,22 @@ class RemoteCalendarsResponse(WireModel):
 
 
 class CalendarSourcesResponse(WireModel):
-    """Every source this tenant has, oldest first."""
+    """Every source this tenant has, oldest first, and every notice their state raises.
+
+    The notices are composed by the api rather than by the screen that renders them, for the reason
+    the write-target expiry notices are: the words a reader acts on are written once, so two
+    surfaces cannot state one outage differently.
+    """
 
     sources: list[CalendarSourceResponse]
+    notices: list[Notice] = Field(
+        default_factory=list,
+        description=(
+            "Every notice this tenant's sources raise. A stale feed raises one amber panel naming "
+            "the source and the days it put in doubt, so a surface marks a day without deciding "
+            "anything. There is no staleness threshold on this document: the server applies it."
+        ),
+    )
 
 
 class AddCalendarSourceRequest(WireModel):

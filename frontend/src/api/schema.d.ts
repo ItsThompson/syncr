@@ -312,7 +312,7 @@ export interface paths {
         };
         /**
          * Every calendar source, with its sync state
-         * @description Each source's provider, anchor count, last sync time, and state.
+         * @description Each source's provider, anchor count, last sync time and state, with the notices raised.
          */
         get: operations["list_calendar_sources_api_v1_calendar_sources_get"];
         put?: never;
@@ -2931,9 +2931,18 @@ export interface components {
         };
         /**
          * CalendarSourcesResponse
-         * @description Every source this tenant has, oldest first.
+         * @description Every source this tenant has, oldest first, and every notice their state raises.
+         *
+         *     The notices are composed by the api rather than by the screen that renders them, for the reason
+         *     the write-target expiry notices are: the words a reader acts on are written once, so two
+         *     surfaces cannot state one outage differently.
          */
         CalendarSourcesResponse: {
+            /**
+             * Notices
+             * @description Every notice this tenant's sources raise. A stale feed raises one amber panel naming the source and the days it put in doubt, so a surface marks a day without deciding anything. There is no staleness threshold on this document: the server applies it.
+             */
+            notices?: components["schemas"]["Notice"][];
             /** Sources */
             sources: components["schemas"]["CalendarSourceResponse"][];
         };
@@ -3855,12 +3864,22 @@ export interface components {
         /**
          * NoticeScope
          * @description What the notice is about, where it is about one thing.
+         *
+         *     ``date`` is the ONE day a notice is raised on and ``dates`` is every day it puts in doubt: the
+         *     two answer different questions, so a surface reading one must not read the other. An inline
+         *     notice on a day carries the first; a panel about a source that fed several days carries the
+         *     second, which is what lets that surface mark a day without computing anything.
          */
         NoticeScope: {
             /** Blockid */
             blockId?: string | null;
             /** Date */
             date?: string | null;
+            /**
+             * Dates
+             * @description Every day this condition puts in doubt, as ISO dates, earliest first. Empty when the condition affects no particular day, or when nothing is known to be affected.
+             */
+            dates?: string[];
             /** Screen */
             screen?: string | null;
             /** Sourceid */

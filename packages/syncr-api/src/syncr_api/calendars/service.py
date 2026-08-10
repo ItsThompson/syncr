@@ -55,11 +55,13 @@ from syncr_common.metrics import measured
 if TYPE_CHECKING:
     from syncr_api.calendars.config import CalendarProvider
     from syncr_api.calendars.events import RemoteCalendar
+    from syncr_api.calendars.feed_notices import StaleFeedReading
     from syncr_api.calendars.records import CalendarSourceId, CalendarSourceRecord
     from syncr_api.calendars.remote_calendars import RemoteCalendarReader
     from syncr_api.calendars.repository import CalendarSourceRepository
     from syncr_api.calendars.sync import SourceSyncer
     from syncr_api.core.clock import Clock
+    from syncr_api.core.notices import Notice
     from syncr_api.core.principal import Principal
     from syncr_api.solving.records import OperationRecord
     from syncr_api.user_settings.solve_inputs import WeekInputVersions
@@ -89,6 +91,18 @@ class SourceChange:
     display_name: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SourceListing:
+    """Every source this tenant has, and every notice their state raises.
+
+    One value rather than two calls, because the notices are composed FROM the sources: a second
+    method would read the same rows again and could be given a different instant to decide against.
+    """
+
+    sources: tuple[CalendarSourceRecord, ...]
+    notices: tuple[Notice, ...]
+
+
 class CalendarSourceService:
     """Add, read, change, sync, and remove one tenant's calendar sources."""
 
@@ -99,18 +113,27 @@ class CalendarSourceService:
         versions: WeekInputVersions,
         clock: Clock,
         remote_calendars: RemoteCalendarReader,
+        feeds: StaleFeedReading,
     ) -> None:
         self._sources = sources
         self._syncer = syncer
         self._versions = versions
         self._clock = clock
         self._remote_calendars = remote_calendars
+        self._feeds = feeds
 
     @measured("calendars")
-    async def list_sources(self, principal: Principal) -> tuple[CalendarSourceRecord, ...]:
-        """Every source this tenant has, oldest first, each with its sync state."""
+    async def list_sources(self, principal: Principal) -> SourceListing:
+        """Every source this tenant has, oldest first, each with its sync state.
+
+        The notices come back with the rows rather than from a second read, because a feed's panel
+        is a reading of the same row the table renders and the two must not disagree about which
+        instant they were decided at.
+        """
         require_scope(principal, Scope.PLAN_READ)
-        return await self._sources.list_all()
+        sources = await self._sources.list_all()
+        now = self._clock()
+        return SourceListing(sources=sources, notices=await self._feeds.of(sources, now=now))
 
     @measured("calendars")
     async def read_source(

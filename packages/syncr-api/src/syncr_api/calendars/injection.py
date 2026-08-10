@@ -49,6 +49,7 @@ from syncr_api.anchors.reconcile import AnchorReconciler
 from syncr_api.anchors.repository import AnchorRepository
 from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.calendars.config import GOOGLE, ICS
+from syncr_api.calendars.feed_notices import StaleFeedReading
 from syncr_api.calendars.feeds import HttpFeedFetcher, create_feed_client
 from syncr_api.calendars.google_adapter import GoogleAdapter
 from syncr_api.calendars.google_client import GoogleCalendarClient
@@ -258,6 +259,7 @@ async def get_calendar_source_service(
     sources = CalendarSourceRepository(transaction, principal.tenant_id)
     now = utc_now()
     profile = await read_zone_profile(transaction, principal)
+    horizon = await read_ingest_horizon(sources, now=now)
     adapters, remote_calendars = build_adapters(
         settings,
         transaction,
@@ -265,7 +267,7 @@ async def get_calendar_source_service(
         feeds=client,
         google=google,
         profile=profile,
-        horizon=await read_ingest_horizon(sources, now=now),
+        horizon=horizon,
     )
     # One counter for the request, shared by the horizon change and the anchor reconciliation.
     # Both invalidate weeks in this transaction and neither holds state, so a second instance
@@ -293,6 +295,9 @@ async def get_calendar_source_service(
         versions=versions,
         clock=utc_now,
         remote_calendars=remote_calendars,
+        feeds=StaleFeedReading(
+            AnchorRepository(transaction, principal.tenant_id), profile=profile, horizon=horizon
+        ),
     )
 
 

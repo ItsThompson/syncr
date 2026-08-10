@@ -50,10 +50,11 @@ SYNC_SOURCE_ROUTE = "calendars.sync_source"
 async def list_calendar_sources(
     principal: PrincipalDep, service: CalendarSourceServiceDep
 ) -> CalendarSourcesResponse:
-    """Each source's provider, anchor count, last sync time, and state."""
-    sources = await service.list_sources(principal)
+    """Each source's provider, anchor count, last sync time and state, with the notices raised."""
+    listing = await service.list_sources(principal)
     return CalendarSourcesResponse(
-        sources=[CalendarSourceResponse.of(source) for source in sources]
+        sources=[CalendarSourceResponse.of(source) for source in listing.sources],
+        notices=list(listing.notices),
     )
 
 

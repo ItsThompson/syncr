@@ -197,7 +197,7 @@ class RecordingSources:
 def service_over(sources: RecordingSources) -> CalendarSourceService:
     """The service with only the collaborator the add path uses.
 
-    The other three are absent rather than faked: ``add_source`` reaches none of them, and a
+    The other four are absent rather than faked: ``add_source`` reaches none of them, and a
     ``None`` that is reached raises where a permissive fake would pass silently.
     """
     return CalendarSourceService(
@@ -206,6 +206,7 @@ def service_over(sources: RecordingSources) -> CalendarSourceService:
         versions=None,  # type: ignore[arg-type]
         clock=lambda: NOW,
         remote_calendars=None,  # type: ignore[arg-type]
+        feeds=None,  # type: ignore[arg-type]
     )
 
 

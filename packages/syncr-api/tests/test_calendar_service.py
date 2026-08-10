@@ -21,7 +21,7 @@ counting.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -39,9 +39,11 @@ from syncr_api.calendars.config import (
     WRITE_TARGET,
 )
 from syncr_api.calendars.events import RemoteCalendar
+from syncr_api.calendars.feed_notices import StaleFeedReading
 from syncr_api.calendars.google_client import CalendarsAnswer, CalendarsRead, GoogleReadFailed
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 from syncr_api.calendars.service import CalendarSourceService, NewSource, SourceChange
+from syncr_api.calendars.sync_state import recorded_failure
 from syncr_api.core.errors import (
     Conflict,
     DependencyUnavailable,
@@ -53,6 +55,8 @@ from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES, Scope
 from syncr_api.solving.config import CALENDAR_SYNC, PENDING, SUCCEEDED
 from syncr_api.solving.records import OperationRecord
+from syncr_domain.intervals import Interval
+from syncr_domain.zones import ZoneProfile
 from tests.boundaries import public_methods
 
 if TYPE_CHECKING:
@@ -61,6 +65,24 @@ if TYPE_CHECKING:
     from syncr_api.user_settings.solve_inputs import WeekRange
 
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
+
+LONDON = ZoneProfile(home_zone="Europe/London")
+INGEST_HORIZON = Interval(NOW, NOW + timedelta(days=HORIZON_DAYS_DEFAULT))
+
+
+class FakeAnchorStarts:
+    """When a source's commitments begin. Empty for every source unless a test says otherwise."""
+
+    def __init__(self) -> None:
+        self.starts: dict[CalendarSourceId, tuple[datetime, ...]] = {}
+        self.asked: list[CalendarSourceId] = []
+
+    async def start_instants_for_source(
+        self, source_id: CalendarSourceId, *, span: Interval
+    ) -> tuple[datetime, ...]:
+        self.asked.append(source_id)
+        return tuple(at for at in self.starts.get(source_id, ()) if span.start <= at < span.end)
+
 
 TIMETABLE = "https://example.ac.uk/timetable.ics"
 REMOTE_CALENDAR = RemoteCalendar(
@@ -268,6 +290,7 @@ class Wiring:
     syncer: FakeSyncer
     versions: RecordingVersions
     remote_calendars: FakeRemoteCalendars
+    anchors: FakeAnchorStarts
     service: CalendarSourceService
 
 
@@ -277,17 +300,22 @@ def wiring() -> Wiring:
     syncer = FakeSyncer()
     versions = RecordingVersions()
     remote_calendars = FakeRemoteCalendars()
+    anchors = FakeAnchorStarts()
     return Wiring(
         sources=sources,
         syncer=syncer,
         versions=versions,
         remote_calendars=remote_calendars,
+        anchors=anchors,
         service=CalendarSourceService(
             sources=sources,  # type: ignore[arg-type]  # a fake over the repository's surface
             syncer=syncer,  # type: ignore[arg-type]
             versions=versions,
             clock=lambda: NOW,
             remote_calendars=remote_calendars,
+            # The real composer over a fake anchor read, so the listing this service answers with
+            # is composed by the code that ships rather than by a stub that always says nothing.
+            feeds=StaleFeedReading(anchors, profile=LONDON, horizon=INGEST_HORIZON),
         ),
     )
 
@@ -340,7 +368,8 @@ async def test_a_reading_credential_reaches_the_reading_methods(wiring: Wiring, 
     # making the product unusable. A read with plan:read gets past the scope and reaches the
     # lookup, so the 404 below is the row missing rather than the scope.
     if name == "list_sources":
-        assert await wiring.service.list_sources(READ_ONLY) == ()
+        listing = await wiring.service.list_sources(READ_ONLY)
+        assert (listing.sources, listing.notices) == ((), ())
         return
     with pytest.raises(NotFound):
         await wiring.service.read_source(READ_ONLY, uuid4())
@@ -351,6 +380,39 @@ async def test_another_tenants_source_is_not_found(wiring: Wiring) -> None:
 
     with pytest.raises(NotFound):
         await wiring.service.read_source(OWNER, foreign.id)
+
+
+# --------------------------------------------------------------------------------
+# The notices the listing carries
+# --------------------------------------------------------------------------------
+
+
+async def test_the_listing_carries_the_panel_a_stale_feed_raises(wiring: Wiring) -> None:
+    # The rows and the notices come back from one call, decided against one instant. Two calls could
+    # be given two clocks and then the table and its panel would disagree about the same feed.
+    stale = wiring.sources.hold(
+        record(sync_state=recorded_failure(SyncStateRecord(), at=NOW, reason="No answer."))
+    )
+    wiring.anchors.starts[stale.id] = (NOW + timedelta(days=1),)
+
+    listing = await wiring.service.list_sources(OWNER)
+
+    assert [source.id for source in listing.sources] == [stale.id]
+    scopes = [notice.scope for notice in listing.notices]
+    assert [scope and scope.source_id for scope in scopes] == [str(stale.id)]
+    assert [scope and scope.dates for scope in scopes] == [["2026-02-10"]]
+
+
+async def test_a_listing_of_healthy_sources_carries_no_notice_and_reads_no_anchor(
+    wiring: Wiring,
+) -> None:
+    healthy = SyncStateRecord(last_success_at=NOW, last_attempt_at=NOW)
+    wiring.sources.hold(record(sync_state=healthy))
+
+    listing = await wiring.service.list_sources(OWNER)
+
+    assert listing.notices == ()
+    assert wiring.anchors.asked == []
 
 
 # --------------------------------------------------------------------------------
