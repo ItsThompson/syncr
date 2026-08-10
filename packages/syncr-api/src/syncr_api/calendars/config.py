@@ -135,6 +135,16 @@ MAX_FEED_BYTES: Final = 8 * 1024 * 1024
 # finer than the data changes.
 SYNC_INTERVAL: Final = timedelta(minutes=15)
 
+# How long a feed may go on failing before it is worth telling the user about. Long enough that one
+# missed poll of the interval above is not a notice, short enough that a reader planning tomorrow
+# morning is told today.
+#
+# THE SERVER OWNS THIS FIGURE AND IT DOES NOT REACH THE WIRE. Three surfaces want to apply it: the
+# Settings panel, the day a reader is looking at, and the week grid. A threshold on the wire lets
+# each of them decide staleness for itself, which is three answers to one question and two of them
+# free to drift. `calendars/feed_notices.py` applies it once and names what it decided.
+STALE_AFTER: Final = timedelta(hours=12)
+
 # How many days one event may span. A multi-year all-day event is legitimate, so this is not the
 # projection horizon; a century is past anything a calendar publishes and well inside what date
 # arithmetic can represent from any year a feed can name.

@@ -327,6 +327,13 @@ SITES: Final[tuple[Site, ...]] = (
         guard=BOUNDED_WHERE_IT_WAS_READ,
     ),
     Site(
+        module="feed_notices",
+        function="markable_span",
+        constructor="Interval",
+        reads="local midnight today and the end of the ingest horizon",
+        guard=GUARDED_HERE,
+    ),
+    Site(
         module="google_values",
         function="read_instant",
         constructor="fromisoformat",
