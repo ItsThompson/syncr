@@ -114,6 +114,16 @@ LAST_ERROR_MAX_LENGTH: Final = 500
 # reader has to be able to tell a long value from a truncated explanation.
 DETAIL_MAX_LENGTH: Final = 300
 
+# How many entries of ONE rejection kind are kept. The panel groups by kind and states a reason per
+# kind, so what a reader acts on is the class plus a few instances of it, and the instances past
+# those are the same explanation with a different line number. Five kinds times three is a stored
+# payload of at most fifteen entries, each already bounded by DETAIL_MAX_LENGTH.
+#
+# The COUNT of rejections is carried separately and this does not bound it. A feed that refuses
+# 50,000 components stores fifteen of them and a total of 50,000: a term that stopped closing
+# against the components the feed offered would lose occupancy with no explanation anywhere.
+REJECTIONS_KEPT_PER_KIND: Final = 3
+
 # How long a feed read may take, and how much of one is read. A publisher that stalls must
 # not hold a worker tick open, and a feed that streams forever must not exhaust memory: both
 # become a stated `last_error` with the anchors retained.

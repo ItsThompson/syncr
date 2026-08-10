@@ -63,6 +63,7 @@ from syncr_api.calendars.google_values import ReadSpan, read_span
 from syncr_api.calendars.projection import ProjectionAction, ReconcileResult
 from syncr_api.calendars.projection_errors import ProjectionFailed, ProjectionRefused
 from syncr_api.calendars.reconciliation import ExistingEvent, plan_reconciliation
+from syncr_api.calendars.rejections import RejectionAccumulator
 from syncr_api.calendars.sync_state import (
     recorded_failure,
     recorded_success,
@@ -435,7 +436,7 @@ class GoogleAdapter:
     def _outcome(self, answer: EventsRead) -> FetchOutcome:
         """Partition one full read's events into what was kept, rejected, and dropped."""
         events: list[RawEvent] = []
-        rejected: list[RejectedComponent] = []
+        rejections = RejectionAccumulator()
         cancelled = 0
         placed = 0
         unplaced = 0
@@ -448,7 +449,7 @@ class GoogleAdapter:
                 continue
             read = read_span(payload.start, payload.end, profile=self._profile)
             if not isinstance(read, ReadSpan):
-                rejected.append(
+                rejections.add(
                     RejectedComponent(
                         kind=read.kind,
                         line=UNKNOWN_LINE,
@@ -467,7 +468,7 @@ class GoogleAdapter:
             placed += 1
         return FetchOutcome(
             events=tuple(events),
-            rejected=tuple(rejected),
+            rejections=rejections.tally(),
             events_read=len(answer.events),
             cancelled_discarded=cancelled,
             placed=placed,

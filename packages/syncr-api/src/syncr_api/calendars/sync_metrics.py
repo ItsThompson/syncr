@@ -187,13 +187,17 @@ def observed_attempt(
     ``events_read`` is observed even when it is zero, because a histogram told only about non-empty
     reads makes a rate over it unreadable. The rejections are counted by their own kind, so a feed
     cut short by the read budget is not read as a recurrence the publisher should fix.
+
+    The rejection counts come off the outcome's tally rather than off its sample, which is bounded
+    per kind: iterating the sample would cap this counter at the sample size per attempt, so a feed
+    refusing fifty thousand components would raise the same rate as one refusing fifteen.
     """
     labels = {"provider": source.provider, "outcome": FAILED if failed else SUCCEEDED}
     SYNC_DURATION.labels(**labels).observe(elapsed)
     SYNC_TOTAL.labels(**labels).inc()
     EVENTS_READ.labels(provider=source.provider).observe(outcome.events_read)
-    for rejection in outcome.rejected:
-        EVENTS_REJECTED.labels(provider=source.provider, reason=rejection.kind).inc()
+    for reason, count in outcome.rejections.counted.items():
+        EVENTS_REJECTED.labels(provider=source.provider, reason=reason).inc(count)
 
 
 def observed_state(

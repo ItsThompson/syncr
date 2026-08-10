@@ -10,6 +10,10 @@ not raise on a bad event. A feed that half-works must read as neither fully work
 fully broken, so the rejections travel back alongside the events with enough detail to
 render a panel: the component, the line it started on, and the class of the failure.
 
+``RejectionTally`` is how they travel: a bounded sample of them and the count of all of them.
+Those are different figures, because a feed offers as many components as its bytes allow while
+the sample is stored and served whole on every panel render.
+
 ``FetchOutcome`` binds them together with the counts the source's panel reports. A count
 that changes is how progress is reported in this product, so the counts are part of the
 return rather than something a caller derives. It is ONE shape for both the parser and the
@@ -19,10 +23,13 @@ adapter: an unchanged feed is a fetch that read nothing, which is the same tally
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from syncr_api.calendars.config import RejectionKind
     from syncr_domain.intervals import Interval
 
@@ -93,6 +100,42 @@ class RejectedComponent:
 
 
 @dataclass(frozen=True, slots=True)
+class RejectionTally:
+    """The refused components a read kept, and how many it refused by kind.
+
+    ``sample`` is what a panel renders and ``counted`` is what the accounting closes over, and they
+    are separate because only one of them is bounded. A publisher decides how many components a
+    feed holds, so keeping every rejection is an unbounded write to JSONB and an unbounded response
+    on page load, while a count that stopped at the sample would report a feed that refused fifty
+    thousand components as having refused fifteen.
+    """
+
+    sample: tuple[RejectedComponent, ...] = ()
+    counted: Mapping[RejectionKind, int] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Refuse a sample the counts do not account for.
+
+        The pair is one figure and its denominator. A sample holding entries the counts never saw
+        is a panel rendering a rejection the total denies happened, which is the state the two
+        fields exist to make impossible.
+        """
+        kept = Counter(entry.kind for entry in self.sample)
+        counted = self.counted
+        unaccounted = sorted(kind for kind, held in kept.items() if held > counted.get(kind, 0))
+        if unaccounted:
+            raise ValueError(
+                f"the sample holds more {unaccounted} entries than the counts account for: "
+                f"{dict(kept)} kept against {dict(self.counted)} counted"
+            )
+
+    @property
+    def total(self) -> int:
+        """How many components were refused, sampled or not."""
+        return sum(self.counted.values())
+
+
+@dataclass(frozen=True, slots=True)
 class FetchOutcome:
     """Everything one fetch produced: the events, the rejections, and the counts.
 
@@ -111,7 +154,9 @@ class FetchOutcome:
     """
 
     events: tuple[RawEvent, ...] = ()
-    rejected: tuple[RejectedComponent, ...] = ()
+    # The refused components, as a bounded sample and a full count. One field rather than two, so a
+    # caller cannot state either half without the other.
+    rejections: RejectionTally = field(default_factory=RejectionTally)
     events_read: int = 0
     # Components another component superseded: a duplicate master or override the higher SEQUENCE
     # beat, and a repeated cancellation, which has no SEQUENCE question but still loses to the
@@ -141,8 +186,13 @@ class FetchOutcome:
     reparsed: bool = False
 
     @property
+    def rejected(self) -> tuple[RejectedComponent, ...]:
+        """The refused components a panel can render, which is a sample rather than all of them."""
+        return self.rejections.sample
+
+    @property
     def rejected_count(self) -> int:
-        return len(self.rejected)
+        return self.rejections.total
 
     def as_log_fields(self) -> dict[str, int]:
         """This tally as log fields, under names the redactor does not eat.

@@ -95,7 +95,9 @@ class SyncPass:
             attempted=self.attempted + 1,
             succeeded=self.succeeded + (0 if failed else 1),
             events=self.events + len(outcome.events),
-            rejected=self.rejected + len(outcome.rejected),
+            # The outcome's count rather than the length of its sample: the sample is bounded per
+            # kind, so a pass over a hostile feed would report a fraction of what it refused.
+            rejected=self.rejected + outcome.rejected_count,
         )
 
     def as_log_fields(self) -> dict[str, int]:

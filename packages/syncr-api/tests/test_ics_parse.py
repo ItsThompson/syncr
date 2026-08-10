@@ -55,7 +55,7 @@ from tests.hostile_ics import (
 )
 
 if TYPE_CHECKING:
-    from syncr_api.calendars.events import FetchOutcome, RawEvent, RejectedComponent
+    from syncr_api.calendars.events import FetchOutcome, RawEvent
 
 LONDON = "Europe/London"
 TOKYO = "Asia/Tokyo"
@@ -770,7 +770,7 @@ def test_every_component_of_every_feed_is_accounted_for() -> None:
         outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
         accounted = (
             outcome.placed
-            + len(_component_rejections(outcome))
+            + _component_rejection_count(outcome)
             + outcome.duplicates_discarded
             + outcome.cancelled_discarded
             + outcome.overrides_applied
@@ -802,14 +802,18 @@ def test_the_accounting_sees_two_orphans_of_one_series() -> None:
     assert outcome.placed + outcome.overrides_applied + outcome.unplaced == outcome.events_read
 
 
-def _component_rejections(outcome: FetchOutcome) -> list[RejectedComponent]:
-    """The rejections that describe a component the parser read.
+def _component_rejection_count(outcome: FetchOutcome) -> int:
+    """How many components the parser refused, counted rather than measured off the sample.
 
-    A feed-level rejection names the calendar rather than an event, because the lexer refused the
-    body before any component was read. It is excluded here rather than skipped, so the arithmetic
-    stays a real check on every body including that one, whose ``events_read`` is zero.
+    ``rejected`` keeps at most a few entries per kind, so its length is not the number of refusals
+    for any feed that made more of them than the sample holds. The tally's total is.
+
+    A feed-level rejection is subtracted rather than skipped. It names the calendar rather than an
+    event, because the lexer refused the body before any component was read, so the arithmetic stays
+    a real check on that body too, whose ``events_read`` is zero.
     """
-    return [rejected for rejected in outcome.rejected if rejected.component == VEVENT]
+    feed_level = sum(1 for rejected in outcome.rejected if rejected.component != VEVENT)
+    return outcome.rejected_count - feed_level
 
 
 @pytest.mark.parametrize("label", sorted(ALL_FEEDS))
@@ -1100,7 +1104,9 @@ def test_a_feed_cannot_spend_more_than_its_reading_budget() -> None:
     outcome = parse_feed(_slow_feed(6), horizon=HORIZON, profile=HOME, budget=0.0)
 
     assert outcome.events == ()
-    assert len(outcome.rejected) == 6
+    # The count of what was refused rather than the length of what was kept: the stored sample holds
+    # at most a few entries per kind, and six refusals of one kind exceed that.
+    assert outcome.rejected_count == 6
     # Its own class, because nothing is wrong with these components: they were not read. The panel
     # groups by class and states a reason per class, so a feed of ordinary meetings cut short must
     # not read as a recurrence problem it does not have.
@@ -1121,7 +1127,7 @@ def test_a_feed_that_spends_its_budget_still_accounts_for_every_component() -> N
     accounted = (
         outcome.placed
         + outcome.unplaced
-        + len(outcome.rejected)
+        + outcome.rejected_count
         + outcome.duplicates_discarded
         + outcome.cancelled_discarded
     )

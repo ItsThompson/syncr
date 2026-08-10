@@ -20,6 +20,10 @@ bound is refused whole with a reason, rather than the total being sliced afterwa
 neither the memory nor the time it took to build, and it discards occupancy with nothing counting
 the loss.
 
+**Every rejection is counted and only some are kept.** A publisher decides how many components a
+feed holds, and the refused ones are stored and served whole, so what a panel gets is a bounded
+sample per kind while the count stays true. :mod:`syncr_api.calendars.rejections` owns both.
+
 The panel's arithmetic closes over every component: kept, rejected, discarded as a duplicate,
 discarded by a cancellation, applied as a replacement, or read and found to place nothing inside the
 horizon.
@@ -49,6 +53,7 @@ from syncr_api.calendars.ics_errors import (
 )
 from syncr_api.calendars.ics_lines import VEVENT, events_in, parse_components
 from syncr_api.calendars.ics_series import expand, place_replacement, sort_components, stranded
+from syncr_api.calendars.rejections import RejectionAccumulator, one_rejection
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -79,7 +84,7 @@ class _Collected:
     replacement, and a second copy of them is where the two would drift.
     """
 
-    rejected: list[RejectedComponent]
+    rejections: RejectionAccumulator
     deadline: float = 0.0
     budget: float = 0.0
     events: list[RawEvent] = field(default_factory=list)
@@ -96,7 +101,7 @@ class _Collected:
             placed = produce()
             _require_room_for(placed.events, remaining=self.remaining)
         except _REPORTABLE as error:
-            self.rejected.append(_rejection(source.component, as_rejection(error), uid=source.uid))
+            self.rejections.add(_rejection(source.component, as_rejection(error), uid=source.uid))
             return
         # Recorded on the way through rather than inferred later, because "this series expanded" is
         # what decides the fate of a replacement nothing claimed, and a rejected master expands as
@@ -125,18 +130,20 @@ def parse_feed(
     except _REPORTABLE as error:
         # The lexer refused the body itself, so there is no component to attribute this to and no
         # events to keep. One rejection for the whole feed, at the line it gave up on.
-        return FetchOutcome(reparsed=True, rejected=(_feed_rejection(as_rejection(error)),))
+        return FetchOutcome(
+            reparsed=True, rejections=one_rejection(_feed_rejection(as_rejection(error)))
+        )
 
-    rejected: list[RejectedComponent] = []
+    rejections = RejectionAccumulator()
     readable: list[EventComponent] = []
     for component in components:
         try:
             readable.append(read_component(component, profile))
         except _REPORTABLE as error:
-            rejected.append(_rejection(component, as_rejection(error)))
+            rejections.add(_rejection(component, as_rejection(error)))
 
     series = sort_components(readable)
-    collected = _Collected(rejected=rejected, deadline=deadline, budget=budget)
+    collected = _Collected(rejections=rejections, deadline=deadline, budget=budget)
     for master in series.masters:
         collected.take(master, partial(expand, master, series, horizon=horizon, profile=profile))
 
@@ -158,7 +165,7 @@ def parse_feed(
     return FetchOutcome(
         reparsed=True,
         events=tuple(collected.events),
-        rejected=tuple(collected.rejected),
+        rejections=collected.rejections.tally(),
         events_read=len(components),
         duplicates_discarded=series.duplicates,
         cancelled_discarded=series.cancelled + unclaimed,

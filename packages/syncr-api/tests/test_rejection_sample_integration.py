@@ -1,7 +1,9 @@
-"""The rejection count against a real Postgres, and the revision that added the column.
+"""The rejection sample and its count against a real Postgres, plus the revision that added it.
 
-Two claims, neither of which a fake repository could make:
+Three claims, none of which a fake repository could make:
 
+- a feed planted over the sample size stores a bounded sample and the number of refusals it made,
+  driven through the adapter and read back out of the column rather than off the outcome;
 - the stored count is not the stored list's length, so the column carries its own figure;
 - a row written before the column existed takes the length of its own list, which is what makes the
   revision non-lossy, driven with the statement the revision itself runs.
@@ -9,6 +11,7 @@ Two claims, neither of which a fake repository could make:
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -22,27 +25,48 @@ from syncr_api.calendars.config import (
     MISSING_DURATION,
     UNKNOWN_ZONE,
 )
+from syncr_api.calendars.feeds import FeedBody
+from syncr_api.calendars.ics_adapter import IcsAdapter
 from syncr_api.calendars.records import SyncStateRecord
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.migrations import ALEMBIC_DIR
+from syncr_domain.intervals import Interval
+from syncr_domain.zones import ZoneProfile
 from tests.live_tenants import delete_tenant, seed_owner
-from tests.rejection_feeds import NOW, rejection
+from tests.rejection_feeds import NOW, refused_feed, rejection
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+    from datetime import datetime
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
     from syncr_api.accounts.records import UserRecord
+    from syncr_api.calendars.feeds import FeedAnswer
     from syncr_api.calendars.records import CalendarSourceId, CalendarSourceRecord
     from syncr_domain.identifiers import TenantId
 
 pytestmark = pytest.mark.integration
 
 FEED_URL = "https://example.ac.uk/refusals.ics"
+HOME = ZoneProfile(home_zone="Europe/London")
+# The fortnight the write target would project, starting the Monday the shared instant falls on.
+HORIZON = Interval(NOW.replace(hour=0), NOW.replace(hour=0) + timedelta(days=14))
 
 REVISION = "0061_rejection_total"
+
+
+class OneFeed:
+    """A fetcher that answers one URL with one body, so the parse under test is the real one."""
+
+    def __init__(self, body: str) -> None:
+        self._body = body
+
+    async def get(self, url: str, *, cursor: str | None) -> FeedAnswer:
+        assert url == FEED_URL
+        assert cursor is None
+        return FeedBody(body=self._body, cursor='etag:"planted"')
 
 
 @pytest.fixture
@@ -91,6 +115,31 @@ async def stored(
         read = await CalendarSourceRepository(session, tenant_id).find(source_id)
     assert read is not None
     return read.sync_state
+
+
+def clock() -> datetime:
+    return NOW
+
+
+async def test_a_planted_feed_over_the_sample_size_stores_a_sample_and_the_whole_count(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> None:
+    # The bound driven end to end: a feed of 50,000 refusals reaches the column through the adapter
+    # and the repository, and what comes back out is nine entries and a count of all of them.
+    source = await add(sessions, tenant_id)
+    adapter = IcsAdapter(
+        fetcher=OneFeed(refused_feed(50_000)), profile=HOME, horizon=HORIZON, clock=clock
+    )
+
+    _outcome, state = await adapter.fetch(source)
+    async with sessions() as session, session.begin():
+        await CalendarSourceRepository(session, tenant_id).save_sync_state(source.id, state)
+
+    read = await stored(sessions, tenant_id, source.id)
+    assert read.rejected_count == 50_000
+    # Three kinds at three kept each, written out rather than read off the bound.
+    assert len(read.rejections) == 9
+    assert read.events_read == 50_000
 
 
 async def test_the_stored_count_is_not_the_length_of_the_stored_sample(
