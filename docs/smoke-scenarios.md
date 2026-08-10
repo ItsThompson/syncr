@@ -60,9 +60,10 @@ would need TLS interception, because the API base is a module constant rather th
 scenarios that turn on a real Google account are manual for that reason.
 
 **The projection is computed and refused rather than written.** `GOOGLE_PROJECTION_WRITES` is false in
-every environment, because the destructive reconciliation has never met the real Google API. So the
-projection pass runs in full and stops before any request is sent; S3 is the scenario that observes an
-event arriving on a device.
+every environment: the destructive reconciliation has met the real Google API only from the marked live
+suite against a development calendar, never from an armed deployment over a horizon of real plan
+blocks. So the projection pass runs in full and stops before any request is sent; S3 is the scenario
+that observes an event arriving on a device.
 
 ## The clock, and why no scenario names a fixed week
 

@@ -167,12 +167,13 @@ class EnvSettings(SyncrSettings):
     # The Fernet key a stored Google refresh token is encrypted with.
     google_token_encryption_key: SecretStr = SecretStr(DEV_GOOGLE_TOKEN_ENCRYPTION_KEY)
     # Whether this deployment may WRITE to the calendar it owns. Off everywhere by default, and
-    # deliberately not gated on the environment: the destructive reconciliation has never been run
-    # against the real Google API, because obtaining the standing authorization it needs takes a
-    # human at a consent screen. Until somebody has done that and run the live suite, a deployment
-    # that projected would be exercising an unverified write path against a real calendar. With it
-    # off, the whole projection is computed and then refused before any request is sent, and the
-    # refusal is stated in the same banner a failure raises rather than being silent.
+    # deliberately not gated on the environment. The destructive reconciliation HAS met the real
+    # Google Calendar API, from the marked live suite, over a short window on a development calendar
+    # that holds nothing real. What has never run is a projection from an armed deployment over a
+    # horizon of real plan blocks: a different quantity of writes, against a calendar somebody
+    # reads, and that is what this default is off for. With it off, the whole projection is computed
+    # and then refused before any request is sent, and the refusal is stated in the same banner a
+    # failure raises rather than being silent.
     google_projection_writes: bool = False
 
     # How long the solve coordinator waits before a debounced solve becomes due, in

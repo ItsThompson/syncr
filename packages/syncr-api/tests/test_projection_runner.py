@@ -7,11 +7,10 @@ is faked, and the fake KEEPS STATE: it applies the inserts, patches and deletes 
 answers the next read from what it holds. That is what makes convergence assertable rather than
 argued -- a second drain over an unchanged plan has to write nothing at all.
 
-**Nothing here has run against the real Google API.** The live suite that would prove syncr's
-reading of Google's write contract needs a standing authorization only a person at a consent screen
-can obtain, so the deployment default is that writing is off. These tests arm it explicitly, which
-is also the honest statement of what is unverified: the shape of the requests is proven and the
-provider's answers to them are not.
+**Nothing here runs against the real Google API.** The marked suite in ``test_google_live.py`` does,
+and it has now met the provider, so the provider's answers are no longer the unverified half. What
+is still unverified is a projection from an armed deployment over a horizon of real plan blocks,
+which is why the deployment default is that writing is off. These tests arm it explicitly.
 
 Seven groups.
 

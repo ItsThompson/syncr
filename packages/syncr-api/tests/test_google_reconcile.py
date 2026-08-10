@@ -4,10 +4,11 @@ This is the one path in the product whose partial state is a real calendar on a 
 assertions are about the requests: which method, carrying which body, and how many of them had
 landed when the provider refused one.
 
-**Nothing here has ever run against the real Google API.** The live suite that would prove syncr's
-reading of Google's write contract needs a standing authorization only a person at a consent screen
-can obtain, so the destructive write ships behind a refusal and the marked test in
-``test_google_live.py`` is where it will first meet the real thing.
+**Nothing here runs against the real Google API, and the marked suite in ``test_google_live.py``
+does.** That suite has now met the provider, and what it found is why one group below exists: a
+patch of an event that has been deleted answers ``200`` and echoes the tombstone rather than
+answering ``404``, so a reading that tested the status alone counted a write that landed nowhere.
+The shape of the requests is proven here; the provider's answers to them are proven there.
 
 Six groups.
 

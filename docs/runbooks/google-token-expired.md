@@ -177,7 +177,7 @@ The projection stops for reasons that have nothing to do with the authorization,
 
 | Cause | What the message says | Fix |
 |---|---|---|
-| Writing is switched off in this deployment | "writing is switched off", and it names `GOOGLE_PROJECTION_WRITES` | An operator sets `GOOGLE_PROJECTION_WRITES=true` and restarts the worker. **Off is the shipped default**, because the destructive write had never been run against the real Google API |
+| Writing is switched off in this deployment | "writing is switched off", and it names `GOOGLE_PROJECTION_WRITES` | An operator sets `GOOGLE_PROJECTION_WRITES=true` and restarts the worker. **Off is the shipped default**: the destructive write has met the real Google API only from the marked live suite against a development calendar, never from an armed deployment over a horizon of real plan blocks |
 | This deployment has no Google OAuth client | "no Google OAuth client" | Set the three `GOOGLE_OAUTH_*` values and restart |
 | The designated write target is an ICS feed | "a feed is published by somebody else" | Designate a Google calendar. A feed cannot be written to at all, and this is a **refusal**: it is not retried, because retrying cannot change a source's provider |
 | The reconciliation ran out of time | "stopped after 90s without finishing" | Nothing, immediately. It states the counts that landed and the next pass converges. A first projection of a full horizon is the likely one; if it recurs, the horizon is larger than the budget and `horizon_days` is the lever |

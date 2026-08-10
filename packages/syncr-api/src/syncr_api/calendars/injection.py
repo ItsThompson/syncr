@@ -106,10 +106,10 @@ READS_ONLY = WritesUnavailable(
 )
 
 # Why a deployment that has not been armed will not write. The destructive reconciliation removes
-# anything inside its horizon that syncr does not intend, including events the user created by hand,
-# and no part of it has been run against the real Google API: the live suite needs a standing
-# authorization that only a person at a consent screen can obtain. So it is off until an operator
-# says otherwise, and the refusal is loud rather than silent.
+# anything inside its horizon that syncr does not intend, including events the user created by hand.
+# It has met the real Google API, from the marked live suite against a development calendar; it has
+# never run from an armed deployment over a horizon of real plan blocks. So it is off until an
+# operator says otherwise, and the refusal is loud rather than silent.
 UNARMED = WritesUnavailable(
     reason=(
         "syncr is not writing the plan to your Google calendar, because writing is switched off in "
