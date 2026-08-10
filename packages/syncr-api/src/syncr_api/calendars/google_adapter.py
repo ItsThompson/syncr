@@ -448,9 +448,10 @@ class GoogleAdapter:
         window is a change this read has to report, and clipping is exactly what would hide it:
         Google refuses ``timeMin`` beside a sync token, so the provider does not hide it either.
 
-        A cancellation becomes an identifier rather than a count, because that is the only form a
-        removal can take here. A read of the calendar removes a commitment by not listing it; a list
-        of changes lists almost nothing, so the entry itself is the whole evidence.
+        A cancellation becomes an identifier rather than only a count, because that is the only
+        form a removal can take here. A read of the calendar removes a commitment by not listing it;
+        a list of changes lists almost nothing, so the entry itself is the whole evidence. It is
+        still counted as discarded, so one accounting identity covers both reads.
         """
         events: list[RawEvent] = []
         rejections = RejectionAccumulator()
@@ -468,6 +469,7 @@ class GoogleAdapter:
             events=tuple(events),
             rejections=rejections.tally(),
             events_read=len(answer.events),
+            cancelled_discarded=len(removed),
             placed=len(events),
             removed_uids=tuple(removed),
             incremental=True,

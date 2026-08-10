@@ -198,6 +198,10 @@ class FetchOutcome:
     # The identifiers the provider reported as removed. Only a read that asked what changed carries
     # one, and it is the only form a removal can take there: a read of the calendar states what is
     # present and absence removes the rest, so it has nothing to name.
+    #
+    # Not a count term of its own. A removal IS a component a cancellation discarded, so it is
+    # counted under ``cancelled_discarded`` exactly as a full read's cancellation is, and this tuple
+    # says WHICH ones. One accounting identity therefore covers both readings.
     removed_uids: tuple[str, ...] = ()
 
     @property
