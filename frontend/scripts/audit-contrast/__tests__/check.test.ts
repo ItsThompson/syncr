@@ -441,6 +441,39 @@ describe("an excuse that describes nothing", () => {
   });
 });
 
+/* THE PAIRINGS THAT FAIL A FLOOR THIS GATE DOES NOT ENFORCE, printed rather than judged.
+ *
+ * The gate holds a stated pairing to the TEXT floor, so an indicator's stated pairing below the INDICATOR floor is
+ * a measurement it can make and a verdict it does not reach: whether a given property is an indicator is a design
+ * classification rather than a ratio. A note carries the figure to whoever has to make that call, at no risk of
+ * reddening a tree on an unresolved question, and these cases are what keep the note from drifting. */
+describe("the stated pairings that fall below their own floor", () => {
+  it("reports none when every stated pairing clears the floor its own property implies", async () => {
+    const ledger = healthy();
+    const { notes } = await checkContrast({ ledger, ledgerFile: await committed(ledger) });
+
+    expect(figureIn(notes, "fall below their own floor")).toBe(0);
+  });
+
+  it("names the ink, the figure and the rule, and fails nothing", async () => {
+    const border: Composed = {
+      where: "probe.css .divider { border-top-color }",
+      ink: "--rule-strong",
+      surface: INK_FILLED[0],
+      floor: INDICATOR_FLOOR,
+    };
+    const ledger = healthy([], [STATED, border]);
+    const outcome = await checkContrast({ ledger, ledgerFile: await committed(ledger) });
+    const note = outcome.notes.find((one) => one.includes("fall below their own floor")) ?? "";
+
+    expect(outcome.findings).toEqual([]);
+    expect(figureIn(outcome.notes, "fall below their own floor")).toBe(1);
+    expect(note).toContain("--rule-strong");
+    expect(note).toContain("2.65");
+    expect(note).toContain(border.where);
+  });
+});
+
 describe("the ratio itself", () => {
   /* The formula, against figures that are known independently of this code: WCAG's own bounds. */
   it("is 21 for black on white and 1 for a colour on itself", () => {
