@@ -21,7 +21,7 @@ from typing import Final
 
 import pytest
 
-from syncr_api.calendars.config import SYNC_INTERVAL
+from syncr_api.calendars.config import CALENDAR_SOURCES_PREFIX, SYNC_INTERVAL
 from syncr_api.calendars.google_config import WRITE_DEADLINE_SECONDS
 from syncr_api.calendars.injection import UNARMED
 from syncr_api.calendars.projection_errors import ProjectionFailed, ProjectionRefused
@@ -32,6 +32,8 @@ from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
 from syncr_api.google_account.config import (
     AUTHORIZATION_ENDPOINT,
     CALLBACK_ROUTE,
+    CONNECT_PATH,
+    CONNECTION_PATH,
     FORCE_CONSENT,
     OFFLINE_ACCESS,
     REQUESTED_SCOPES,
@@ -531,22 +533,32 @@ class TestTheLiveGoogleSuiteProcedure:
         assert f"`{TOKEN_ENDPOINT}`" in text
 
     def test_every_callback_path_it_names_is_the_route_the_app_serves(self) -> None:
-        """Per site, and every site: Google matches a redirect URI character for character.
+        """Per site, every site, and every character. Google matches a redirect URI exactly.
 
         The file names the path in three shapes, and a check against the file as a whole passes
-        while any one drifts. So every occurrence is derived from the text and compared, over a set
-        the file decides rather than a count that would go stale: the fenced registered URIs, the
-        settings table's row, and the decision that fixed the route.
+        while any one drifts, so every occurrence is derived from the text rather than counted.
 
-        The prefix comes from the route constant, so this cannot drift into asking about a path the
-        app does not serve. The counterexample the prose names on purpose,
-        `/calendar-sources/{id}/callback`, carries no `/api/v1` and is correctly not matched.
+        **The trailing slash is the case worth naming.** This runbook says itself that a trailing
+        slash is a usual cause of `redirect_uri_mismatch`, so it is exactly the drift the check
+        exists for, and a pattern that stopped at the last word character read it as correct. The
+        match therefore admits `/` and the comparison is against the whole token.
+
+        The routes that legitimately share the prefix are **excluded by derivation** rather than by
+        a pattern that happens not to reach them: `connect` and `connection` are real siblings, and
+        a runbook naming either is not naming a broken callback. Deriving them from the app's own
+        constants is what keeps a typo like `callbak` red while those two stay green.
         """
         below = CALLBACK_ROUTE.rsplit("/", 1)[0]
-        named = re.findall(rf"{re.escape(below)}/[A-Za-z0-9\-_]+", read(GOOGLE_OAUTH_VERIFICATION))
+        siblings = {
+            f"{CALENDAR_SOURCES_PREFIX}{CONNECT_PATH}",
+            f"{CALENDAR_SOURCES_PREFIX}{CONNECTION_PATH}",
+        }
+        named = re.findall(rf"{re.escape(below)}/[A-Za-z0-9\-_/]*", read(GOOGLE_OAUTH_VERIFICATION))
 
-        assert named, "the runbook names no callback path at all"
+        assert named, "the runbook names no path under the Google calendar-source prefix at all"
         for path in named:
+            if path in siblings:
+                continue
             assert path == CALLBACK_ROUTE, (
                 f"{path} is not the callback route the app serves ({CALLBACK_ROUTE})"
             )

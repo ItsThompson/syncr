@@ -2744,17 +2744,21 @@ class TestEveryTeardownRefusesAnInheritedProject:
         _assert_it_refused(done, tmp_path, saying="cannot resolve to a project")
 
 
-# --- Why writing to a real calendar is off, stated in twelve places ------------------------------
+# --- Why writing to a real calendar is off, stated wherever it is stated --------------------------
 
 # Every file that states WHY `GOOGLE_PROJECTION_WRITES` ships false. The reason is one fact and the
-# tree spells it twelve times, in six languages of comment, so flipping the default falsifies all
-# twelve at once and each has to be corrected in the same change.
+# tree spells it in several languages of comment, so flipping the default falsifies every one of
+# them at once and each has to be corrected in the same change.
 #
-# Enumerated rather than discovered, because discovery has now failed five times on this exact set.
-# A review found 4, a sweep of two directories found 6, both greps that surfaced the rest miss
-# `.env.example`, and a declared set of ten still left the self-settling sentence standing in a
-# Grafana dashboard and an alert-rule docstring. A declared tuple cannot wrap and cannot rephrase,
-# and it is the only form that has ever been complete.
+# The size of this set is deliberately not written in prose anywhere below. The tuple is the count,
+# and a restated one rots: the commit that widened this set from ten left four sentences saying
+# "ten" and "three", inside the very guard that exists because a restated fact drifted.
+#
+# Enumerated rather than discovered, because discovery has failed on this exact set every time it
+# was tried. A review found 4, a sweep of two directories found 6, both greps that surfaced the
+# rest miss `.env.example`, and a declared set of ten still left the self-settling sentence standing
+# in a Grafana dashboard and an alert-rule docstring. A declared tuple cannot wrap and cannot
+# rephrase, and it is the only form that has ever been complete.
 WHY_WRITING_IS_OFF: Final = (
     Path("packages/syncr-api/src/syncr_api/core/settings.py"),
     Path("packages/syncr-api/src/syncr_api/calendars/injection.py"),
@@ -2773,7 +2777,7 @@ WHY_WRITING_IS_OFF: Final = (
 # The clause every one of them carries, naming the condition that is still open. Short deliberately:
 # a longer phrase is likelier to wrap, and wrapping is what hid one site from two greps.
 #
-# Re-deriving this set finds thirteen files, not twelve: this one matches too, because the corrected
+# Re-deriving this set finds one file more than the tuple declares: this one, because the corrected
 # clause and the lapsed spellings both live here as the strings the checks below search for. That is
 # the expected reconciliation rather than a missing site, and it is written down so the next reading
 # does not chase it.
@@ -2789,7 +2793,7 @@ def _prose_of(relative: Path) -> str:
 
     The reason is prose in Python, YAML, shell, TypeScript and Markdown comments, and it wraps
     across lines in most of them. Matching raw text would miss a site whose phrase broke over a
-    newline, which is exactly how the widest-readership site of the ten survived every earlier
+    newline, which is exactly how the widest-readership site survived every earlier
     reading.
     """
     import re
@@ -2799,11 +2803,12 @@ def _prose_of(relative: Path) -> str:
 
 
 class TestWhyWritingToARealCalendarIsOff:
-    """The default, and the ten statements of why, crossed against each other.
+    """The default, and every statement of why, crossed against each other.
 
     This exists because the reason drifted twice inside one ticket. The live Google suite met the
-    provider, which falsified the sentence "it has never met the real API" wherever it was written,
-    and it was written in twelve files. Four rounds of reading found 4, then 6, then 10, then 12.
+    provider, which falsified the sentence "it has never met the real API" wherever it was written.
+    Four rounds of reading found 4 sites, then 6, then 10, then 12: no reading of the tree was ever
+    complete on its first attempt, which is the whole argument for a declared tuple.
 
     The guard is positive and bounded on purpose. A check that no sentence in the tree CLAIMS the
     write path is unproven would be a check over unbounded wordings that goes green the moment a
@@ -2841,11 +2846,11 @@ class TestWhyWritingToARealCalendarIsOff:
 
     @pytest.mark.parametrize("relative", WHY_WRITING_IS_OFF, ids=lambda one: one.name)
     def test_the_site_does_not_claim_the_provider_was_never_met(self, relative: Path) -> None:
-        """The one negative worth keeping, because these three spellings are what actually drifted.
+        """The one negative worth keeping, because these spellings are what actually drifted.
 
         Bounded to the phrasings the tree really used rather than to every way the claim could be
-        written: as a general check it would be decoration, and it is recorded here as covering
-        three known drifts and nothing more.
+        written: as a general check it would be decoration, and it is recorded here as covering the
+        known drifts and nothing more.
         """
         prose = _prose_of(relative)
 
@@ -2853,7 +2858,11 @@ class TestWhyWritingToARealCalendarIsOff:
             "never met the real",
             "never been run against the real",
             "never run against",
-            "until a person has run",
+            # Anchored past "run", because "until a person has run" also opens a TRUE arming
+            # sentence: the day somebody arms this, "off until a person has run one projection from
+            # an armed deployment" is correct prose and must not redden. Every known drift
+            # continues "the live".
+            "until a person has run the live",
         ):
             assert lapsed not in prose, (
                 f"{relative} still says {lapsed!r}, which the live suite made false"
