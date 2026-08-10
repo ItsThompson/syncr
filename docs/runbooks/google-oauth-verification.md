@@ -140,6 +140,66 @@ Two secondary calendars exist in the owning account. Both are owned rather than 
 
 Reconciliation removes every event in the horizon that syncr does not intend, including events it did not create. **Point it at `syncr (dev)` until the restore drill has passed.** A calendar holding real events is not a safe target, and neither is the account's primary calendar, which is read as an anchor source at most. A calendar acting as an anchor source can never be the write target: otherwise each solve would read the previous solve's output back as immovable external commitments.
 
+## Running the live Google suite
+
+`packages/syncr-api/tests/test_google_live.py` is the only suite that talks to Google. Everything else about the integration is proven against a fake, which is the right default; what a fake cannot prove is that syncr's reading of Google's contract matches Google's. The suite is excluded from every default run by a marker rather than a skip, so it runs only when somebody asks for it:
+
+```bash
+cd packages/syncr-api && uv run pytest -m google_live -s
+```
+
+`-s` is what shows the measured durations. Without it a passing run prints no figure.
+
+### The four values it reads
+
+All four come from the process environment, and nothing loads a dotenv for this suite, so exporting them is part of running it. An absent value skips every test and names what is missing.
+
+| Variable | Where it comes from |
+|---|---|
+| `GOOGLE_OAUTH_CLIENT_ID` | the OAuth client in *Credentials* above, already in the repository-root `.env` |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | the same |
+| `GOOGLE_OAUTH_REDIRECT_URI` | the same, and one of the three registered strings verbatim |
+| `SYNCR_GOOGLE_LIVE_REFRESH_TOKEN` | the procedure below. Never committed, never a fixture, never printed |
+
+```bash
+set -a; . ../../.env; set +a     # the three client values, from the repository-root secret file
+export SYNCR_GOOGLE_LIVE_REFRESH_TOKEN=     # then paste the value from step 7
+```
+
+The token has to be minted against that same client id, by the account that owns `syncr (dev)`, carrying all three scopes. A grant narrower than the three does not skip: it fails, on whichever call it cannot make.
+
+### Two costs to weigh before consenting
+
+**Consenting mints a refresh token, and one account holds at most 100 live ones per client id.** At the limit Google invalidates the oldest silently, with no error and no notice anywhere. So consent once and keep the token rather than repeating this procedure. *Two different hundreds* above has the detail.
+
+**A refresh token that goes unused for six months dies.** Running this suite occasionally is what keeps it alive.
+
+### Obtaining the refresh token
+
+`access_type=offline` is what makes Google issue a refresh token at all, and `prompt=consent` is what makes it issue a new one for an account that has already granted these scopes. Without both, the exchange answers with an access token and nothing to store.
+
+1. Sign the browser in as the account that owns `syncr` and `syncr (dev)`. Any other account produces a token the suite will not use, because it finds its target calendar by name.
+2. Open the authorization URL: `https://accounts.google.com/o/oauth2/v2/auth`, carrying `response_type=code`, `access_type=offline`, `prompt=consent`, the `client_id` from `.env`, the `redirect_uri` from `GOOGLE_OAUTH_REDIRECT_URI` verbatim, and `scope` set to the three strings in *Requested scopes, verbatim* above, separated by spaces.
+3. The consent screen says "Google hasn't verified this app". That is the expected path, for the reason *Where things stand* gives: choose **Advanced**, then **Go to syncr (unsafe)**.
+4. Grant all three scopes. Declining any one produces a grant the suite cannot use.
+5. Google sends the browser to the redirect URI carrying `?code=...`. Nothing is listening on that port unless the dev stack is running, so the browser shows a connection error; the code is in the address bar either way. Copy it. It is single-use and expires in minutes.
+6. Exchange the code at `https://oauth2.googleapis.com/token` with `grant_type=authorization_code` and the same client id, client secret and redirect URI. The answer carries `refresh_token`.
+7. Export it as `SYNCR_GOOGLE_LIVE_REFRESH_TOKEN`. Never paste it into a chat, an issue, or a shell that records history.
+
+The alternative is to complete syncr's own connect flow against a development deployment, which stores the token encrypted in `google_credentials.encrypted_refresh_token`; recovering the plaintext then means decrypting that column with `GOOGLE_TOKEN_ENCRYPTION_KEY`. The exchange above stores it nowhere.
+
+### What the suite does to the account, in the order it does it
+
+**It reads wide before it writes anything.** One test reads events over the next 14 days from **every** calendar in the account, the primary included, because its claim is about every timestamp Google sends rather than about one calendar chosen to be convenient. It reports identifiers and refusal reasons and never a title. It writes nothing.
+
+**Every write lands on `syncr (dev)`.** The suite finds that calendar by name and refuses to run if the account does not hold it, rather than falling back to another one.
+
+**One test is destructive over its window.** The reconciliation removes every event inside its window that syncr did not put there, including one created by hand. That window is 2 hours long, starts at the top of the current hour, and sits 2 days ahead of the moment the suite runs. The suite reads the window first and refuses if anything occupies it, naming the calendar, both bounds and the identifiers, so clearing it is the repair.
+
+**The three write probes are not destructive.** Each sends one insert and then a patch or a delete against the identifier the provider gave that insert, and removes what it made. They take one day each, three, four and five days ahead.
+
+So before running this, **the development calendar must hold nothing between 2 and 5 days from now.** A failed run can leave one event behind, titled `syncr live suite · safe to delete`; deleting it by hand is safe, and is sometimes what the next run needs.
+
 ## Two decisions recorded here rather than rediscovered
 
 **The callback path is `/api/v1/calendar-sources/google/callback`.** The route catalog did not define one. It sits under the existing calendar-sources resource so the connect flow needs no new top-level namespace. Changing it means re-registering redirect URIs in the console, so it is fixed here. Note for whoever adds the route: this puts a literal `google` where the sibling calendar-source routes put `{id}`. Nothing collides, because no sibling has the shape `/calendar-sources/{id}/callback`, but a router that greedily matches `{id}` two segments deep would capture it.

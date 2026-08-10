@@ -1,4 +1,4 @@
-"""The figures the two operation runbooks quote, crossed against the code that decides them.
+"""The figures the operation runbooks quote, crossed against the code that decides them.
 
 A runbook is read once, under pressure, by someone deciding whether to intervene. One whose numbers
 have drifted from the deployment is worse than none: it will be trusted, and it will be wrong. So
@@ -13,6 +13,7 @@ operator searching the file for "lease" has to find what the lease is.
 from __future__ import annotations
 
 import importlib
+import tomllib
 from datetime import timedelta
 from pathlib import Path
 from typing import Final
@@ -27,6 +28,14 @@ from syncr_api.calendars.projection_notices import PROJECTION_STOPPED
 from syncr_api.calendars.projection_runner import TENANT_PROJECTION_FAILURES
 from syncr_api.calendars.schemas import SyncStateResponse
 from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
+from syncr_api.google_account.config import (
+    AUTHORIZATION_ENDPOINT,
+    FORCE_CONSENT,
+    OFFLINE_ACCESS,
+    REQUESTED_SCOPES,
+    RESPONSE_TYPE_CODE,
+    TOKEN_ENDPOINT,
+)
 from syncr_api.google_account.models import GoogleCredential
 from syncr_api.google_account.notices import WRITE_TARGET_EXPIRED
 from syncr_api.horizon.config import MAINTAINER_INTERVAL
@@ -42,6 +51,18 @@ from syncr_api.solving.config import SUPERSEDED as SUPERSEDED_STATUS
 from syncr_api.solving.maintenance import MAINTENANCE_INTERVAL
 from syncr_common.metrics import REGISTRY
 from tests.test_alert_rules import named as alert_named
+from tests.test_google_live import (
+    CLIENT_ID_VAR,
+    CLIENT_SECRET_VAR,
+    DEVELOPMENT_CALENDAR,
+    HORIZON_DAYS,
+    RECONCILED_DAY,
+    REDIRECT_URI_VAR,
+    REFRESH_TOKEN_VAR,
+    SAFE_TITLE,
+    WINDOW_LENGTH,
+    WRITE_DAYS_AHEAD,
+)
 
 RUNBOOKS: Final = Path(__file__).resolve().parents[3] / "docs" / "runbooks"
 
@@ -49,6 +70,7 @@ STUCK_OPERATION = RUNBOOKS / "stuck-operation.md"
 SOLVE_FAILING = RUNBOOKS / "solve-failing.md"
 DEBOUNCE_TUNING = RUNBOOKS / "debounce-tuning.md"
 GOOGLE_TOKEN_EXPIRED = RUNBOOKS / "google-token-expired.md"
+GOOGLE_OAUTH_VERIFICATION = RUNBOOKS / "google-oauth-verification.md"
 SOURCE_STALE = RUNBOOKS / "ics-feed-broken.md"
 HORIZON_NOT_MAINTAINED = RUNBOOKS / "horizon-not-maintained.md"
 
@@ -77,6 +99,7 @@ def hours(value: timedelta) -> int:
         SOLVE_FAILING,
         DEBOUNCE_TUNING,
         GOOGLE_TOKEN_EXPIRED,
+        GOOGLE_OAUTH_VERIFICATION,
         SOURCE_STALE,
         HORIZON_NOT_MAINTAINED,
     ],
@@ -392,3 +415,87 @@ class TestADutyCadenceAgainstTheAlertThatWatchesIt:
 
         assert f"**{minutes(MAINTAINER_INTERVAL)} minutes**" in text
         assert f"**{hours(alert_waits('HorizonNotMaintained'))} hours**" in text
+
+
+def the_live_marker() -> str:
+    """The marker that keeps the live suite out of a default run, read from the config that does it.
+
+    Found by its own description rather than by position, so declaring a third marker cannot
+    silently move which one this resolves to.
+    """
+    manifest = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    options = tomllib.loads(manifest.read_text(encoding="utf-8"))["tool"]["pytest"]["ini_options"]
+    declared: list[str] = list(options["markers"])
+    marked = dict(one.split(":", 1) for one in declared)
+    found = [name for name, stated in marked.items() if "Google" in stated]
+    assert len(found) == 1, f"exactly one declared marker should name Google, and {found} do"
+    return found[0]
+
+
+class TestTheLiveGoogleSuiteProcedure:
+    """The one procedure in this repository a human runs against a real account.
+
+    Every claim here gates that a referent RESOLVES: the environment variable the suite reads, the
+    marker that excludes it, the calendar it writes to, the window it removes from, the scopes the
+    grant has to carry. A wording can be anything; a referent either exists or it does not.
+
+    It exists because the suite's own docstring said the runbook recorded where the refresh token
+    lives, and no runbook mentioned the suite at all: the variable's name occurred once in the whole
+    repository, in the test that reads it.
+    """
+
+    def test_it_names_every_value_the_suite_reads(self) -> None:
+        """Four, and an absent one skips the whole suite, so a partial list wastes a consent."""
+        text = read(GOOGLE_OAUTH_VERIFICATION)
+
+        for named in (CLIENT_ID_VAR, CLIENT_SECRET_VAR, REDIRECT_URI_VAR, REFRESH_TOKEN_VAR):
+            assert f"`{named}`" in text, f"the procedure does not name {named}"
+
+    def test_it_names_the_command_that_runs_the_suite(self) -> None:
+        """With the marker taken from the configuration that excludes it, not from a second copy."""
+        assert f"pytest -m {the_live_marker()}" in read(GOOGLE_OAUTH_VERIFICATION)
+
+    def test_it_names_the_calendar_every_write_lands_on(self) -> None:
+        assert f"`{DEVELOPMENT_CALENDAR}`" in read(GOOGLE_OAUTH_VERIFICATION)
+
+    def test_it_states_the_window_the_destructive_test_removes_from(self) -> None:
+        """Both halves of it. An operator clearing the wrong two hours has cleared nothing."""
+        text = read(GOOGLE_OAUTH_VERIFICATION)
+
+        assert f"{hours(WINDOW_LENGTH)} hours long" in text
+        assert f"{RECONCILED_DAY} days ahead of the moment" in text
+
+    def test_it_states_the_whole_span_the_suite_writes_in(self) -> None:
+        """Derived from the days the suite uses, so adding a probe day fails this, not the run."""
+        span = f"between {min(WRITE_DAYS_AHEAD)} and {max(WRITE_DAYS_AHEAD)} days from now"
+
+        assert span in read(GOOGLE_OAUTH_VERIFICATION)
+
+    def test_it_states_the_horizon_the_read_of_every_calendar_covers(self) -> None:
+        """The one test that touches the account's own calendars, so its reach is stated."""
+        assert f"over the next {HORIZON_DAYS} days" in read(GOOGLE_OAUTH_VERIFICATION)
+
+    def test_it_names_the_title_a_failed_run_leaves_behind(self) -> None:
+        """So an event found on the calendar can be recognised rather than guessed at."""
+        assert f"`{SAFE_TITLE}`" in read(GOOGLE_OAUTH_VERIFICATION)
+
+    def test_it_quotes_every_scope_the_client_requests(self) -> None:
+        """A grant narrower than the set fails the suite, so the set is what a consent carries."""
+        text = read(GOOGLE_OAUTH_VERIFICATION)
+
+        for scope in REQUESTED_SCOPES:
+            assert scope in text, f"the runbook does not quote {scope}"
+
+    def test_it_names_the_parameters_without_which_no_refresh_token_is_issued(self) -> None:
+        """Both, because either one alone answers with an access token and nothing to store."""
+        text = read(GOOGLE_OAUTH_VERIFICATION)
+
+        assert f"access_type={OFFLINE_ACCESS}" in text
+        assert f"prompt={FORCE_CONSENT}" in text
+        assert f"response_type={RESPONSE_TYPE_CODE}" in text
+
+    def test_it_names_both_endpoints_the_procedure_calls(self) -> None:
+        text = read(GOOGLE_OAUTH_VERIFICATION)
+
+        assert AUTHORIZATION_ENDPOINT in text
+        assert TOKEN_ENDPOINT in text
