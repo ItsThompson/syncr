@@ -142,7 +142,8 @@ test("the tight-capacity week owes more before its deadline than it can hold, be
   );
 
   // And what the solve leaves free is less than the floors it met, which is the property the two netting
-  // rules are told apart by: the immovable-only rule reserves all 960 against this remainder.
+  // rules are told apart by: the immovable-only rule reserves the whole of both floors against this
+  // remainder, and this is where the figures to compare come from.
   const placed = solved
     .live!.blocks.filter((block) => block.origin !== "frame")
     .reduce(
