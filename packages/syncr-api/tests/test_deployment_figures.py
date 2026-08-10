@@ -2564,43 +2564,70 @@ class TestEveryTeardownRefusesAnInheritedProject:
     @pytest.mark.parametrize(
         "dotenv",
         [
-            pytest.param("MY_COMPOSE_PROJECT_NAME=x\n", id="a-longer-key-is-a-different-key"),
-            pytest.param("COMPOSE_PROJECT_NAME=\n", id="compose-ignores-an-empty-value"),
+            pytest.param(
+                'MY_COMPOSE_PROJECT_NAME="x" COMPOSE_PROJECT_NAME=syncr\n', id="prefixed-then-syncr"
+            ),
+            pytest.param(
+                'MY_COMPOSE_PROJECT_NAME="x" COMPOSE_PROJECT_NAME=syncr-dev\n',
+                id="prefixed-then-syncr-dev",
+            ),
+            pytest.param(
+                'X_COMPOSE_PROJECT_NAME="x" COMPOSE_PROJECT_NAME=syncr\n', id="one-char-prefix"
+            ),
+            pytest.param(
+                '1COMPOSE_PROJECT_NAME="x" COMPOSE_PROJECT_NAME=syncr\n', id="digit-prefix"
+            ),
         ],
     )
-    def test_a_line_compose_does_not_take_a_project_from_is_admitted(
+    def test_a_longer_key_beside_a_real_assignment_does_not_hide_it(
         self, dotenv: str, tmp_path: Path
     ) -> None:
-        """THE FALSE POSITIVES THE POSITION GATE RETIRED, each measured against compose.
+        """WHY THIS READS THE LINE RATHER THAN THE IDENTIFIER.
 
-        Compose resolves the compose file's own `name:` for both files here, so refusing them was a
-        cost with no safety behind it. The first is excluded because the key must not be preceded by
-        a word character; the second because its assignment IS the last line the pattern matched, so
-        nothing sits below it.
+        Compose resolves the protected project on every file here, because the second assignment on
+        the line is a real one. An exclusion for a longer key was tried and reverted: it dropped the
+        whole LINE rather than the occurrence, so the mention disappeared, the value pattern had
+        never matched it either, and the teardown ran silently.
+
+        The cost of reading the line is that a longer key on its own is refused. That case is one
+        `unset` away and it is asserted below; this one was volumes.
         """
         done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
 
-        _assert_it_ran(done, tmp_path)
+        _assert_it_refused(done, tmp_path, saying="sets COMPOSE_PROJECT_NAME on line 1")
 
-    def test_a_suffixed_key_is_still_refused_and_that_is_the_accepted_cost(
-        self, tmp_path: Path
+    @pytest.mark.parametrize(
+        "dotenv",
+        [
+            pytest.param("MY_COMPOSE_PROJECT_NAME=x\n", id="a-longer-key-alone"),
+            pytest.param("COMPOSE_PROJECT_NAME_OVERRIDE=x\n", id="a-suffixed-key-alone"),
+        ],
+    )
+    def test_a_longer_key_alone_is_refused_and_that_is_the_accepted_cost(
+        self, dotenv: str, tmp_path: Path
     ) -> None:
-        """THE FALSE POSITIVE THAT STAYS, asserted so it is a known cost rather than a surprise.
+        """THE FALSE REFUSALS THIS READING KEEPS, asserted so they are known rather than surprising.
 
-        Compose takes no project from `COMPOSE_PROJECT_NAME_OVERRIDE=x`, and this refuses it: the
-        key sits at the start of the line, so the word-character exclusion does not apply, and the
-        value pattern needs `=` straight after the key so nothing was read.
+        Compose takes no project from either file: it resolves the compose file's own `name:`. This
+        refuses both, because it reads whole lines, and the case above is why. The message names the
+        way out for exactly this shape.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
 
-        Excluding a trailing word character would retire it and would open a shape worth more than
-        it costs: the exclusion drops the whole LINE, so a line carrying a longer key alongside a
-        real assignment would stop being seen. A spurious refusal is the safe direction and this one
-        is one `unset` away.
+        _assert_it_refused(done, tmp_path, saying="only carries a LONGER key")
+
+    def test_an_empty_value_is_admitted(self, tmp_path: Path) -> None:
+        """THE FALSE REFUSAL THE POSITION GATE RETIRED, measured against compose.
+
+        Compose ignores an empty `COMPOSE_PROJECT_NAME` and falls back to the compose file's own
+        `name:`, so refusing it was a cost with no safety behind it. The assignment IS the last line
+        the pattern matched, so nothing sits below it and the gate stays quiet.
         """
         done = _the_scratch_teardown_in_a_tree_of_its_own(
-            tmp_path, dotenv="COMPOSE_PROJECT_NAME_OVERRIDE=x\n"
+            tmp_path, dotenv="COMPOSE_PROJECT_NAME=\n"
         )
 
-        _assert_it_refused(done, tmp_path, saying="sets COMPOSE_PROJECT_NAME on line 1")
+        _assert_it_ran(done, tmp_path)
 
     def test_a_name_it_cannot_resolve_is_refused(self, tmp_path: Path) -> None:
         """Compose interpolates the file's values, and this refusal does not.

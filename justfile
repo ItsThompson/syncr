@@ -163,10 +163,12 @@ dev-down:
 # reading has been found too narrow was a miss that would otherwise have admitted, and a refusal is
 # one command away for whoever hits it while a teardown of the wrong project is not.
 #
-# A MENTION IS NEITHER A COMMENT NOR A LONGER KEY: a dotenv comment is a line whose FIRST non-blank
-# character is `#`, and the key must not be preceded by a word character. Both exclusions drop the
-# whole LINE rather than the occurrence, so a longer key sharing one line with a real assignment hides
-# that assignment. That shape is known and is not closed here.
+# A MENTION IS ANY LINE THAT IS NOT A COMMENT: a dotenv comment is a line whose FIRST non-blank
+# character is `#`. A longer key such as `MY_COMPOSE_PROJECT_NAME` therefore counts as a mention and is
+# REFUSED, which is a false refusal accepted on purpose. Excluding it was tried and reverted: the
+# exclusion dropped the whole LINE rather than the occurrence, so `MY_COMPOSE_PROJECT_NAME="x"
+# COMPOSE_PROJECT_NAME=syncr` stopped being seen at all and the teardown ran silently against the
+# deployed project. A spurious refusal costs one `unset`; that cost the volumes.
 #
 # The condition is a POSITION rather than an emptiness. Compose acts on the LAST assignment IT sees,
 # and `tail -n 1` takes the last assignment THIS PATTERN sees. Testing "did I read nothing" only
@@ -203,7 +205,6 @@ _refuse-a-retargeted-teardown:
       read_at="$(LC_ALL=C sed -nE "$strip""/${assigns}/=" .env | tail -n 1)"
       set_at="$(LC_ALL=C grep -n COMPOSE_PROJECT_NAME .env \
         | LC_ALL=C grep -vE '^[0-9]+:[[:space:]]*#' \
-        | LC_ALL=C grep -vE '^[0-9]+:.*[A-Za-z0-9_]COMPOSE_PROJECT_NAME' \
         | tail -n 1 | cut -d: -f1)"
       if [ -n "$set_at" ] && { [ -z "$read_at" ] || [ "$set_at" -gt "$read_at" ]; }; then
         echo "\`.env\` sets COMPOSE_PROJECT_NAME on line $set_at and this refusal cannot read that" >&2
@@ -215,6 +216,9 @@ _refuse-a-retargeted-teardown:
         echo "    than adding a line above it;" >&2
         echo "  * run \`export COMPOSE_PROJECT_NAME=<project>\` in this shell, which compose and this" >&2
         echo "    refusal both read before the file." >&2
+        echo "If line $set_at only carries a LONGER key, such as MY_COMPOSE_PROJECT_NAME, rename it or" >&2
+        echo "move it: this reads the line rather than the identifier, on purpose, because excluding a" >&2
+        echo "longer key dropped the whole line and hid a real assignment beside it." >&2
         exit 1
       fi
     fi
