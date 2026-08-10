@@ -2769,6 +2769,11 @@ WHY_WRITING_IS_OFF: Final = (
 
 # The clause every one of them carries, naming the condition that is still open. Short deliberately:
 # a longer phrase is likelier to wrap, and wrapping is what hid one site from two greps.
+#
+# Re-deriving this set finds eleven files, not ten: this one matches too, because the corrected
+# clause and the three lapsed spellings both live here as the strings the checks below search for.
+# That is the expected reconciliation rather than a missing site, and it is written down so the next
+# reading does not chase it.
 THE_OPEN_CONDITION: Final = "armed deployment"
 
 
