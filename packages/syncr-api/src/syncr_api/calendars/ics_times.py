@@ -27,14 +27,14 @@ reusing the series' time would silently place such an occurrence at the wrong ho
 
 from __future__ import annotations
 
-from datetime import UTC, timedelta
-from typing import TYPE_CHECKING
+from datetime import timedelta
+from typing import TYPE_CHECKING, Final
 
 from syncr_api.calendars.day_spans import local_day_span
 from syncr_api.calendars.ics_errors import MalformedValue
 from syncr_api.calendars.ics_values import ZoneKind
-from syncr_domain.intervals import Interval, as_instant
-from syncr_domain.zones import active_zone, to_instant
+from syncr_domain.intervals import Interval
+from syncr_domain.zones import active_zone, resolve_zone, to_instant
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -45,13 +45,21 @@ if TYPE_CHECKING:
 
 ONE_DAY = timedelta(days=1)
 
+_UTC_ZONE: Final[ZoneId] = "UTC"
+
 
 def zone_for(moment: IcsTime, on: date, profile: ZoneProfile) -> ZoneId:
     """Which zone resolves ``moment`` on ``on``.
 
+    All three kinds answer here, so which zone reads a value is stated once and both directions
+    read it: :func:`resolve` turns wall time into an instant and :func:`as_wall` turns an instant
+    back into wall time.
+
     The date is separate from the value because a weekly series crossing a travel boundary
     resolves each occurrence against the zone active on that occurrence's own date.
     """
+    if moment.kind is ZoneKind.UTC:
+        return _UTC_ZONE
     if moment.kind is ZoneKind.NAMED and moment.zone is not None:
         return moment.zone
     return active_zone(profile, on)
@@ -60,9 +68,27 @@ def zone_for(moment: IcsTime, on: date, profile: ZoneProfile) -> ZoneId:
 def resolve(moment: IcsTime, profile: ZoneProfile, *, wall: datetime | None = None) -> Instant:
     """The instant this occurrence names. ``wall`` defaults to the series' own value."""
     at = moment.wall if wall is None else wall
-    if moment.kind is ZoneKind.UTC:
-        return as_instant(at.replace(tzinfo=UTC))
     return to_instant(at.time(), at.date(), zone_for(moment, at.date(), profile))
+
+
+def as_wall(instant: Instant, *, zone_of: IcsTime, profile: ZoneProfile) -> datetime:
+    """``instant`` as the wall time the zone ``zone_of`` resolves against reads it.
+
+    The other direction from :func:`resolve`, for a value that states an instant of its own and has
+    to join a series expanded in wall time. What comes back is naive, because that is what a wall
+    time is.
+
+    The zone is chosen against the instant's own UTC date rather than the local date it is about to
+    name, because that date does not exist until the conversion is done. The two differ only where
+    a travel override begins or ends between them.
+
+    Not every instant has a wall time that resolves back to it. Two instants inside a repeated hour
+    share one wall time and :func:`syncr_domain.zones.to_instant` takes the earlier of them, so an
+    instant in the second hour restates onto a wall time that resolves an hour before it. That is a
+    property of expanding in wall time, not of this conversion.
+    """
+    zone = zone_for(zone_of, instant.date(), profile)
+    return instant.astimezone(resolve_zone(zone)).replace(tzinfo=None)
 
 
 def resolve_span(

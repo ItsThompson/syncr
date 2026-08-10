@@ -15,7 +15,13 @@ import pytest
 
 from syncr_api.calendars.config import MAX_EVENT_DAYS
 from syncr_api.calendars.ics_errors import MalformedValue, UnmappedZone
-from syncr_api.calendars.ics_times import resolve, resolve_day_span, resolve_span, zone_for
+from syncr_api.calendars.ics_times import (
+    as_wall,
+    resolve,
+    resolve_day_span,
+    resolve_span,
+    zone_for,
+)
 from syncr_api.calendars.ics_values import (
     MAX_MAGNITUDE_DIGITS,
     IcsTime,
@@ -50,6 +56,11 @@ TRAVELLING = ZoneProfile(
 
 def timed(text: str, **params: str) -> IcsTime:
     return parse_time(text, params=tuple((key.upper(), value) for key, value in params.items()))
+
+
+def wall(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
+    """A naive datetime: wall time, which is what a feed carries and what a rule expands in."""
+    return datetime(year, month, day, hour, minute)  # noqa: DTZ001 - wall time by definition
 
 
 # --------------------------------------------------------------------------------
@@ -144,6 +155,14 @@ def test_a_named_zone_ignores_the_travel_override() -> None:
     moment = timed("20261025T090000", tzid=LONDON)
 
     assert zone_for(moment, moment.on, TRAVELLING) == LONDON
+
+
+def test_a_utc_value_names_utc_whatever_zone_the_user_is_in() -> None:
+    # The third kind answers from the same place as the other two, because both directions read it:
+    # a value that states its own instant is read in UTC and written back in UTC.
+    moment = timed("20261025T090000Z")
+
+    assert zone_for(moment, moment.on, TRAVELLING) == "UTC"
 
 
 def test_a_value_date_is_an_all_day_event_and_so_is_a_bare_date() -> None:
@@ -324,6 +343,39 @@ def test_an_occurrence_spanning_a_gap_keeps_the_length_the_publisher_stated() ->
 
     assert span.total_minutes() == 30
     assert span.start == datetime(2026, 3, 29, 1, 30, tzinfo=UTC)
+
+
+def test_an_instant_becomes_the_wall_time_the_series_zone_reads() -> None:
+    # The direction a value stating its own instant needs, to join a series expanded in wall time.
+    # 09:00 in New York in February is 14:00Z, which London reads as 14:00 and Tokyo as 23:00: the
+    # value's own zone decides the instant, and the series' zone decides the wall time it lands on.
+    stated = resolve(timed("20260212T090000", tzid="America/New_York"), HOME)
+    london = timed("20260210T090000", tzid=LONDON)
+    tokyo = timed("20260210T090000", tzid=TOKYO)
+    absolute = timed("20260210T090000Z")
+    floating = timed("20260210T090000")
+
+    assert stated == datetime(2026, 2, 12, 14, 0, tzinfo=UTC)
+    assert as_wall(stated, zone_of=london, profile=HOME) == wall(2026, 2, 12, 14)
+    assert as_wall(stated, zone_of=tokyo, profile=HOME) == wall(2026, 2, 12, 23)
+    assert as_wall(stated, zone_of=absolute, profile=HOME) == wall(2026, 2, 12, 14)
+    # A floating series is read in the zone the user is in on that date. The travel override covers
+    # one day in October, so February is the home zone.
+    assert as_wall(stated, zone_of=floating, profile=TRAVELLING) == wall(2026, 2, 12, 14)
+
+
+def test_an_instant_inside_a_repeated_hour_has_no_wall_time_that_resolves_back_to_it() -> None:
+    # The stated limit of writing an instant back as wall time. London's 01:xx hour happens twice on
+    # 25 October 2026, `to_instant` takes the earlier of the two, and no wall time in that zone
+    # resolves to the later one. So an instant in the second hour restates onto a wall time that
+    # resolves an hour before it, and a series expanded in wall time cannot hold it.
+    london = timed("20261025T003000", tzid=LONDON)
+    second_hour = datetime(2026, 10, 25, 1, 30, tzinfo=UTC)
+
+    restated = as_wall(second_hour, zone_of=london, profile=HOME)
+
+    assert restated == wall(2026, 10, 25, 1, 30)
+    assert resolve(london, HOME, wall=restated) == datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
 
 
 def test_an_all_day_event_occupies_the_whole_local_day() -> None:
