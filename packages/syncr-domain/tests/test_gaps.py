@@ -12,13 +12,15 @@ them to.
 subtraction table has one home in ``discretionary``, so the assertion here is that the mapping
 agrees with it rather than a second statement of it.
 
-**Each empty-slot reason renders exactly one label.** The four are asserted pairwise distinct,
-and ``not_solved`` is asserted not to borrow the wording that claims the backlog was looked
-at, because nobody looked.
+**Each empty-slot reason renders exactly one label.** They are asserted pairwise distinct over
+whatever members exist, and neither ``not_solved`` nor ``elapsed`` may borrow the wording that
+claims the backlog was looked at, because nobody looked. The vocabulary's own docstring is
+asserted to count nothing, because a count of members goes false the moment one is added.
 """
 
 from __future__ import annotations
 
+import re
 from uuid import uuid4
 
 import pytest
@@ -39,6 +41,20 @@ FITNESS = uuid4()
 
 SCOPED_KINDS = [ForbiddenKind.PREP_UNATTRIBUTED, ForbiddenKind.TRANSIT_UNATTRIBUTED]
 
+# Every word that states a quantity above one. ``one`` is absent deliberately: "one label per
+# reason" stays true at any size, and every larger number is a claim about how many members exist.
+COUNTING_WORDS = frozenset({"two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"})
+
+
+def counted_in(text: str) -> set[str]:
+    """Every word and numeral in this text that states a quantity above one."""
+    tokens = set(re.findall(r"[a-z0-9]+", text.lower()))
+    return {token for token in tokens if token in COUNTING_WORDS or _is_above_one(token)}
+
+
+def _is_above_one(token: str) -> bool:
+    return token.isdigit() and int(token) > 1
+
 
 class TestTheVocabularies:
     def test_a_window_forbids_everything_or_named_areas(self) -> None:
@@ -55,13 +71,23 @@ class TestTheVocabularies:
             "transit_unattributed",
         ]
 
-    def test_there_are_four_reasons_a_slot_is_empty(self) -> None:
+    def test_every_reason_a_slot_is_empty_is_named_here(self) -> None:
         assert [reason.value for reason in EmptySlotReason] == [
             "no_eligible_content",
             "off_plan",
             "blocked_by_constraint",
             "not_solved",
+            "elapsed",
         ]
+
+    def test_the_reason_vocabulary_counts_its_own_members_nowhere(self) -> None:
+        """A docstring stating how many reasons exist goes false when the next one lands.
+
+        Asserted rather than reviewed because the sentence it guards is the one a reader trusts
+        to tell them what the members have in common, and a stale count is the part of it they
+        cannot check.
+        """
+        assert counted_in(EmptySlotReason.__doc__ or "") == set()
 
 
 class TestWhatAWindowForbids:
@@ -182,6 +208,7 @@ class TestTheGutterLabels:
             (EmptySlotReason.BLOCKED_BY_CONSTRAINT, "no legal window"),
             (EmptySlotReason.NOT_SOLVED, "content not yet chosen"),
             (EmptySlotReason.OFF_PLAN, "off plan"),
+            (EmptySlotReason.ELAPSED, "already passed"),
         ],
         ids=[reason.value for reason in EmptySlotReason],
     )
@@ -218,13 +245,26 @@ class TestTheGutterLabels:
 
     def test_not_solved_does_not_borrow_the_empty_backlog_wording(self) -> None:
         """Nobody looked at the backlog, so claiming it was empty would assert something
-        uncomputed. This is the label pair the ticket names explicitly."""
+        uncomputed. These two are the wordings a reader is likeliest to conflate."""
         not_solved = gutter_label(EmptySlotReason.NOT_SOLVED, SlotContext("Career"))
 
         assert "eligible" not in not_solved
         assert not_solved != gutter_label(
             EmptySlotReason.NO_ELIGIBLE_CONTENT, SlotContext("Career")
         )
+
+    def test_an_elapsed_slot_borrows_neither_neighbouring_wording(self) -> None:
+        """The clock emptied this slot, so neither of the two readings about content holds.
+
+        Nobody will look at the backlog for it again, which is what separates it from
+        ``not_solved``; and whether the Area had content is a question its span never reached,
+        which is what separates it from ``no_eligible_content``.
+        """
+        context = SlotContext("Career")
+        elapsed = gutter_label(EmptySlotReason.ELAPSED, context)
+
+        assert elapsed != gutter_label(EmptySlotReason.NOT_SOLVED, context)
+        assert elapsed != gutter_label(EmptySlotReason.NO_ELIGIBLE_CONTENT, context)
 
     def test_a_slot_renders_its_own_reason(self) -> None:
         slot = a_slot(reason=EmptySlotReason.BLOCKED_BY_CONSTRAINT)

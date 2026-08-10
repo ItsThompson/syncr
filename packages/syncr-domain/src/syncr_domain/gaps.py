@@ -71,14 +71,19 @@ class EmptySlotReason(StrEnum):
     """Why a template slot the solver could not fill is empty.
 
     ``not_solved`` is the materialized case, where no binding was attempted at all. It is a
-    member of its own because nobody looked at the backlog, and the other three all report
-    something that was computed.
+    member of its own because nobody looked at the backlog, and every other member reports
+    something a phase computed.
+
+    ``elapsed`` is the one the clock decides rather than the backlog. The week had already
+    reached the slot when the solve ran, so no content could be placed into it and none will
+    be: whether the Area had any is a question the span never got to ask.
     """
 
     NO_ELIGIBLE_CONTENT = "no_eligible_content"
     OFF_PLAN = "off_plan"
     BLOCKED_BY_CONSTRAINT = "blocked_by_constraint"
     NOT_SOLVED = "not_solved"
+    ELAPSED = "elapsed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +117,10 @@ def _content_not_yet_chosen(_: SlotContext) -> str:
     return "content not yet chosen"
 
 
+def _already_passed(_: SlotContext) -> str:
+    return "already passed"
+
+
 # One label per reason. The conditional half of the off-plan wording lives inside that
 # member's own renderer rather than in a branch every reason passes through, so adding a
 # reason cannot change what another one renders.
@@ -120,6 +129,7 @@ _LABEL_BY_REASON: Final[Mapping[EmptySlotReason, Callable[[SlotContext], str]]] 
     EmptySlotReason.OFF_PLAN: _off_plan,
     EmptySlotReason.BLOCKED_BY_CONSTRAINT: _no_legal_window,
     EmptySlotReason.NOT_SOLVED: _content_not_yet_chosen,
+    EmptySlotReason.ELAPSED: _already_passed,
 }
 
 
