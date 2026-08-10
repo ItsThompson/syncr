@@ -10,7 +10,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { checkContrast, deadExcuses, EXCUSED_TEXT_INKS } from "../check.ts";
+import { checkContrast } from "../check.ts";
+import { deadExcuses, EXCUSED_TEXT_INKS } from "../excuses.ts";
 import {
   buildLedger,
   contrastRatio,
@@ -18,13 +19,13 @@ import {
   INK_FILLED,
   ratioOf,
   TEXT_FLOOR,
-  textInks,
   textOnAnInkFill,
   type Composed,
   type Ledger,
   type Pair,
 } from "../ledger.ts";
 import { renderLedger } from "../render.ts";
+import { paletteInUse } from "../usage.ts";
 
 const PAPER = ["--paper", "--paper-raised"] as const;
 
@@ -108,9 +109,16 @@ async function committed(ledger: Ledger, text = renderLedger(ledger)): Promise<s
   return file;
 }
 
-async function checksOf(ledger: Ledger, text?: string): Promise<string[]> {
+async function checksOf(
+  ledger: Ledger,
+  text?: string,
+  excuses?: {
+    readonly excusedOnPaper?: Readonly<Record<string, string>>;
+    readonly excusedOnAnInkFill?: Readonly<Record<string, string>>;
+  },
+): Promise<string[]> {
   const file = await committed(ledger, text);
-  const outcome = await checkContrast({ ledger, ledgerFile: file });
+  const outcome = await checkContrast({ ledger, ledgerFile: file, ...excuses });
   return outcome.findings.map((finding) => finding.check);
 }
 
@@ -119,6 +127,24 @@ function figureIn(notes: readonly string[], phrase: string): number {
   const note = notes.find((one) => one.includes(phrase));
   if (note === undefined) throw new Error(`no note mentions ${phrase}`);
   return Number.parseInt(note, 10);
+}
+
+/* THE EXPECTED FIGURES, DERIVED FROM THE LEDGER WITHOUT CALLING WHAT THE GATE CALLS.
+ *
+ * An assertion that restates the implementation's expression agrees with a wrong formula by construction. These
+ * read `ledger.pairs` and `ledger.composed` directly, so a rule count used where a cell count belongs is visible
+ * here even though both readings walk the same data. */
+function textInksOf(ledger: Ledger): Set<string> {
+  return new Set(ledger.pairs.filter((one) => one.floor === TEXT_FLOOR).map((one) => one.ink));
+}
+
+function inkFillCellsOf(ledger: Ledger): Set<string> {
+  const fills = new Set<string>(INK_FILLED);
+  return new Set(
+    ledger.composed
+      .filter((one) => one.floor === TEXT_FLOOR && fills.has(one.surface))
+      .map((one) => `${one.ink} ${one.surface}`),
+  );
 }
 
 describe("the contrast audit", () => {
@@ -186,20 +212,35 @@ describe("the contrast audit", () => {
     expect(outcome.findings.map((one) => one.check)).toEqual(["ledger-missing"]);
   });
 
-  /* THE NOTES ARE DERIVED, AND THAT IS ASSERTED. Every figure the gate prints is computed from the ledger it
-   * just read, so a count restated by hand would drift from the thing it describes. A printed figure nothing
-   * crosses is exactly the shape this repository has shipped wrong before. */
+  /* THE NOTES ARE DERIVED, AND THAT IS ASSERTED against a second reading rather than against a copy of the
+   * expression that produces them. A figure crossed against its own formula agrees with a wrong formula, which is
+   * how a rule count came to be printed where a cell count belonged. */
   it("prints figures computed from the ledger it read, so a count cannot drift from its own subject", async () => {
     const ledger = healthy();
     const { notes } = await checkContrast({ ledger, ledgerFile: await committed(ledger) });
+    const cells = textInksOf(ledger).size * INK_FILLED.length;
 
-    expect(figureIn(notes, "stated pairing(s) held to")).toBe(textOnAnInkFill(ledger).length);
-    expect(figureIn(notes, "recorded and not enforced")).toBe(
-      textInks(ledger).length * INK_FILLED.length - textOnAnInkFill(ledger).length,
+    expect(figureIn(notes, "stated pairing(s) on")).toBe(
+      ledger.composed.filter((one) => one.floor === TEXT_FLOOR).length,
     );
+    expect(figureIn(notes, "recorded and not enforced")).toBe(cells - inkFillCellsOf(ledger).size);
     expect(figureIn(notes, "do not clear the ink's floor")).toBe(
       ledger.pairs.filter((one) => !one.clears).length,
     );
+  });
+
+  /* THE CASE THAT TELLS THE TWO UNITS APART. Three of the shipped tree's four ink-fill pairings are the same matrix
+   * cell, so a fixture carrying one rule per cell cannot see a rule count subtracted from a cell count. This one
+   * states one cell twice: the pairing count is 2 and the unenforced figure has to move by 1, not by 2. */
+  it("counts a cell once when two rules state it, so a rule count is not a cell count", async () => {
+    const twice: Composed[] = [STATED, { ...STATED, where: "probe.css .dialog__header { color }" }];
+    const ledger = healthy([], twice);
+    const { notes } = await checkContrast({ ledger, ledgerFile: await committed(ledger) });
+    const cells = textInksOf(ledger).size * INK_FILLED.length;
+
+    expect(inkFillCellsOf(ledger).size).toBe(1);
+    expect(figureIn(notes, "stated pairing(s) on")).toBe(2);
+    expect(figureIn(notes, "recorded and not enforced")).toBe(cells - 1);
   });
 
   /* THE ENFORCEMENT SET IS DERIVED, and this is the plant the review used to show a list of three could not hold
@@ -331,11 +372,61 @@ describe("the text floor on an ink-filled surface", () => {
   });
 });
 
-/* THE STALENESS RULE, WHICH RUNS IN THE OTHER DIRECTION FOR BOTH EXCUSE SETS.
+/* THE STALENESS RULE, AND THE SKIP AN ENTRY PRODUCES, both reached through the gate.
  *
- * The ink-fill list is empty today, so the rule cannot be reached through the real records. It is reached here
- * instead, because an empty list whose guard is never exercised is the same decoration as no guard: the day an
- * entry is added to silence a red, this is what holds it to describing something real. */
+ * The ink-fill list is empty in the shipped tree, so neither path can be reached through the module's own record.
+ * The gate takes both lists as input for exactly that reason: a finding whose loop body has never executed in any
+ * run or test is decoration, whatever its message says. */
+describe("an excuse on an ink-filled surface", () => {
+  const SUB_FLOOR: Composed = { ...STATED, ink: "--probe-illegible" };
+
+  /** A ledger where one rule states a pairing that cannot be read on the fill it names. */
+  function stating(): Ledger {
+    const ledger = healthy([], [SUB_FLOOR]);
+    return {
+      ...ledger,
+      inks: [...ledger.inks, SUB_FLOOR.ink].toSorted(),
+      pairs: [
+        ...ledger.pairs,
+        ...SURFACES.map((surface) => pair(SUB_FLOOR.ink, surface, 1.29, TEXT_FLOOR)),
+      ],
+    };
+  }
+
+  it("silences the pairing it names, which is what an excuse is for", async () => {
+    const ledger = stating();
+
+    expect(await checksOf(ledger)).toContain("text-below-the-floor-on-an-ink-fill");
+    expect(
+      await checksOf(ledger, undefined, {
+        excusedOnAnInkFill: {
+          [SUB_FLOOR.ink]: "a structural guard stronger than a ratio covers it",
+        },
+      }),
+    ).not.toContain("text-below-the-floor-on-an-ink-fill");
+  });
+
+  it("is reported when no rule states it any more, so it cannot outlive its case", async () => {
+    const checks = await checksOf(healthy(), undefined, {
+      excusedOnAnInkFill: { "--gone": "a reason for a pairing no rule states" },
+    });
+
+    expect(checks).toEqual(["a-dead-ink-fill-excuse"]);
+  });
+
+  it("names the ink and repeats the reason, so a stale excuse can be found and read", async () => {
+    const outcome = await checkContrast({
+      ledger: healthy(),
+      ledgerFile: await committed(healthy()),
+      excusedOnAnInkFill: { "--gone": "a reason for a pairing no rule states" },
+    });
+
+    expect(outcome.findings[0]?.message).toContain("--gone");
+    expect(outcome.findings[0]?.message).toContain("a reason for a pairing no rule states");
+  });
+});
+
+/* The staleness rule itself, over both lists, because each has a different notion of the case still existing. */
 describe("an excuse that describes nothing", () => {
   it("is reported, whatever the set it was declared in", () => {
     const planted = { "--gone": "a reason for a case that no longer exists" };
@@ -430,5 +521,74 @@ describe("the ledger the shipped stylesheets produce", () => {
     const ledger = await buildLedger();
 
     expect(ledger.composed.filter((one) => one.where.includes(".button--quiet"))).toEqual([]);
+  });
+});
+
+/* THE UNIT THE READER WORKS IN, which is a selector in a file rather than a block.
+ *
+ * Two blocks with the same selector compose by the cascade with nothing concatenated, so a pairing split across
+ * them is provable from the sheet alone. A reader that took a block at a time would miss it and report `ok`, which
+ * is the evasion these cases exist to refuse. Blocks in different at-rule contexts are NOT merged, because two
+ * conditions that never both apply state no pairing.
+ */
+/** The pairings one synthetic sheet states, so the reader's unit can be probed without a fixture in the tree. */
+async function statedBy(css: string): Promise<string[]> {
+  const directory = await mkdtemp(path.join(tmpdir(), "syncr-usage-"));
+  const file = path.join(directory, "probe.css");
+  await writeFile(file, css, "utf8");
+  const usage = await paletteInUse([file]);
+  return usage.compositions.map((one) => `${one.ink} on ${one.surface}`);
+}
+
+describe("the pairings a sheet states", () => {
+  it("reads a fill and an ink split across two blocks with the same selector", async () => {
+    const stated = await statedBy(
+      ".probe { background: var(--ink-deep); }\n.probe { color: var(--ink-soft); }\n",
+    );
+
+    expect(stated).toEqual(["--ink-soft on --ink-deep"]);
+  });
+
+  it("reads them in either order, because the cascade does not care which block came first", async () => {
+    const stated = await statedBy(
+      ".probe { color: var(--ink-soft); }\n.probe { background: var(--ink-deep); }\n",
+    );
+
+    expect(stated).toEqual(["--ink-soft on --ink-deep"]);
+  });
+
+  it("takes the last fill, so a later transparent leaves the selector stating nothing", async () => {
+    const stated = await statedBy(
+      ".probe { background: var(--ink-deep); color: var(--ink-soft); }\n" +
+        ".probe { background: transparent; }\n",
+    );
+
+    expect(stated).toEqual([]);
+  });
+
+  it("states nothing across two selectors that only meet in the DOM", async () => {
+    const stated = await statedBy(
+      ".probe-host { background: var(--ink-deep); }\n.probe-child { color: var(--ink-soft); }\n",
+    );
+
+    expect(stated).toEqual([]);
+  });
+
+  /* A fill inside a media query and an ink outside it may never both apply, so merging them would state a pairing
+   * that never composes. The key includes the enclosing at-rules for that reason. */
+  it("does not merge blocks whose at-rule contexts differ", async () => {
+    const stated = await statedBy(
+      "@media print { .probe { background: var(--ink-deep); } }\n.probe { color: var(--ink-soft); }\n",
+    );
+
+    expect(stated).toEqual([]);
+  });
+
+  it("does merge blocks inside the same at-rule", async () => {
+    const stated = await statedBy(
+      "@media print { .probe { background: var(--ink-deep); } .probe { color: var(--ink-soft); } }\n",
+    );
+
+    expect(stated).toEqual(["--ink-soft on --ink-deep"]);
   });
 });
