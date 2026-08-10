@@ -5,11 +5,10 @@ payload validation, the value parsing, the horizon clip, and the sync-state arit
 
 What is asserted here is the arithmetic that decides whether a stale calendar is visible, and the
 design decision a reader will want to check: **the sync token is a change detector, and the read
-that follows it is a full one.** An incremental answer is a delta, and the
-reconciler removes anchors the events do not mention, so handing it a delta would delete every
-commitment the provider did not happen to change. A poll that finds no change costs one small
-request, which is the saving the token exists for; a poll that finds one costs a second request and
-returns the calendar.
+that follows it is a full one.** An incremental answer is a delta, and the reconciler removes
+anchors the events do not mention, so handing it a delta would delete every commitment the provider
+did not happen to change. A poll that finds no change costs one small request, which is the saving
+the token exists for; a poll that finds one costs a second request and returns the calendar.
 
 The other claims worth naming: a failure keeps everything the source already had, a rate limit says
 when syncr will try again, an unstorable token says why the next read is full, and no line this
@@ -516,6 +515,37 @@ async def test_a_delta_reports_an_occurrence_that_moved_out_of_the_horizon() -> 
     # Not counted as unplaced either: a delta places nothing, so there is no window to fall outside
     # of and nothing for that term to mean here.
     assert outcome.unplaced == 0
+
+
+async def test_a_delta_outside_the_horizon_still_accounts_for_every_entry() -> None:
+    # The identity on the one delta shape that can break it while leaving every count zero. A clip
+    # applied here drops the entry from `placed` and adds it to nothing, so one entry the provider
+    # sent would sit in no term at all: the state the tally exists to make impossible. Its own test
+    # rather than another assertion in the test above, because that one asserts the event list first
+    # and would fail there before reaching this, which would leave the identity unarmed.
+    google, _ = adapter(
+        [
+            ok(
+                events_page(
+                    event("moved-away", start="2027-02-10T09:00:00Z", end="2027-02-10T10:00:00Z")
+                )
+            )
+        ]
+    )
+
+    outcome, _state = await google.read_changes(
+        source(sync_state=synced()), since=SYNC_TOKEN, at=NOW
+    )
+
+    assert outcome.events_read == 1
+    assert outcome.events_read == (
+        outcome.placed
+        + outcome.rejected_count
+        + outcome.cancelled_discarded
+        + outcome.duplicates_discarded
+        + outcome.overrides_applied
+        + outcome.unplaced
+    )
 
 
 async def test_a_change_outside_the_horizon_still_reads_the_calendar_in_full() -> None:
