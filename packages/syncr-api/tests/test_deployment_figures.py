@@ -821,10 +821,15 @@ def _dependencies_of(name: str, *, text: str | None = None) -> list[str]:
     THE OPENER MAY CARRY PARAMETERS BEFORE THE COLON. The first version matched `f"{name}:"` and
     so RAISED for `e2e-only pattern:` rather than answering `[]`, which is fine while every caller
     names a recipe by hand and wrong the moment a caller asks this of every recipe declared.
+
+    AND AN OPENER'S COLON IS NOT A `:=`. Widening for the parameter admitted `members := "..."`, so
+    this answered a variable declaration with the pieces of its value instead of saying no such
+    recipe exists. Its sibling below learned the same thing separately, which is how two readers
+    came to disagree about what an opener is.
     """
     import re
 
-    opener = re.compile(rf"^{re.escape(name)}(?:\s+[^:]*)?:(.*)$")
+    opener = re.compile(rf"^{re.escape(name)}(?:\s+[^:]*)?:(?!=)(.*)$")
     for line in (read(Path("justfile")) if text is None else text).splitlines():
         found = opener.match(line)
         if found is not None:
@@ -1979,5 +1984,12 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
         assert "members" not in names, "a `name := value` declaration is not a recipe"
 
     def test_the_dependency_reading_answers_for_a_recipe_with_a_parameter(self) -> None:
-        """`e2e-only pattern:` raised rather than answering, and the set covers every recipe."""
+        """`e2e-only pattern:` raised rather than answering, and the set covers every recipe.
+
+        And a `name := value` line is not an opener. Widening for the parameter admitted one, so the
+        reading answered `members` with the pieces of a variable's value.
+        """
         assert _dependencies_of("e2e-only") == []
+
+        with pytest.raises(AssertionError, match="no recipe named members"):
+            _dependencies_of("members")
