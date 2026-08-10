@@ -19,6 +19,11 @@ that changes is how progress is reported in this product, so the counts are part
 return rather than something a caller derives. It is ONE shape for both the parser and the
 adapter: an unchanged feed is a fetch that read nothing, which is the same tally with
 ``reparsed`` unset, and a second near-identical struct would have to be kept in step by hand.
+
+One shape covers a second pair of readings, which is why it also carries whether the read was
+incremental and what the provider reported as removed. "Here is what changed since you last
+asked" answers a different question from "here is the calendar", and the difference between them
+is entirely in what they LEAVE OUT: only one removes a commitment by not mentioning it.
 """
 
 from __future__ import annotations
@@ -184,6 +189,16 @@ class FetchOutcome:
     # genuinely holds no events: all three carry an empty event list, and only one of them
     # means the caller should remove the anchors it holds.
     reparsed: bool = False
+
+    # Whether this outcome is a list of CHANGES to the calendar rather than the calendar itself.
+    # The two are read the same way and mean opposite things about what is MISSING from them: a
+    # caller that removes what a read does not mention is right to do so for a calendar, and would
+    # delete almost everything the source holds if it were handed a delta.
+    incremental: bool = False
+    # The identifiers the provider reported as removed. Only a read that asked what changed carries
+    # one, and it is the only form a removal can take there: a read of the calendar states what is
+    # present and absence removes the rest, so it has nothing to name.
+    removed_uids: tuple[str, ...] = ()
 
     @property
     def rejected(self) -> tuple[RejectedComponent, ...]:
