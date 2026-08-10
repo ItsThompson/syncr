@@ -115,6 +115,26 @@ def test_a_kind_the_sample_has_no_room_for_is_still_counted() -> None:
     assert dict(tally.counted) == {MISSING_DURATION: 1, UNKNOWN_ZONE: 1}
 
 
+def test_a_tally_already_handed_out_does_not_move_when_the_accumulator_counts_more() -> None:
+    # A tally is a value: a caller holding one holds a reading of a moment. The accumulator hands
+    # out copies for that reason, and the two figures fail differently without them. The counts
+    # would keep rising under a caller that already reported them, and the sample would grow past
+    # the bound it was built with.
+    accumulated = RejectionAccumulator(kept_per_kind=2)
+    accumulated.add(rejection(MISSING_DURATION, line=1))
+    reported = accumulated.tally()
+
+    accumulated.add(rejection(MISSING_DURATION, line=2))
+    accumulated.add(rejection(UNKNOWN_ZONE, line=3))
+
+    assert reported.total == 1
+    assert dict(reported.counted) == {MISSING_DURATION: 1}
+    assert [entry.line for entry in reported.sample] == [1]
+    # And the accumulator did go on counting, so this is a claim about the copy rather than about a
+    # dead accumulator.
+    assert accumulated.tally().total == 3
+
+
 def test_a_tally_refuses_a_sample_its_counts_do_not_account_for() -> None:
     # The pair is a figure and its denominator. A sample holding entries the counts never saw is a
     # panel rendering a rejection the total denies happened.
