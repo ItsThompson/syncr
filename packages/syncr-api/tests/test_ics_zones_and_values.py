@@ -175,6 +175,20 @@ def test_a_value_date_is_an_all_day_event_and_so_is_a_bare_date() -> None:
     assert declared.wall == bare.wall
 
 
+@pytest.mark.parametrize("params", [{}, {"tzid": TOKYO}, {"value": "DATE", "tzid": TOKYO}])
+def test_an_all_day_time_is_floating_whatever_zone_the_parameters_name(
+    params: dict[str, str],
+) -> None:
+    # A whole day is a local span, so its zone comes from the date it falls on and never from a
+    # TZID. Readers downstream act on that: the recurrence expansion has no all-day branch, and
+    # merges a floating addition without resolving it, which is only safe while this holds.
+    moment = timed("20260209", **params)
+
+    assert moment.all_day is True
+    assert moment.kind is ZoneKind.FLOATING
+    assert moment.zone is None
+
+
 def test_a_timed_event_at_midnight_is_not_an_all_day_event() -> None:
     assert timed("20260209T000000Z").all_day is False
 
