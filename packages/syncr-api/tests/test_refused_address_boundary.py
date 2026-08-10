@@ -9,7 +9,7 @@ express an address range and requires that exactly one module uses any of them. 
 of a range set is how an accept-list and a redirect check come to disagree, and the
 disagreement is invisible while both are green.
 
-**A feed address is normalized at one site, and every site that names one is accounted for.**
+**A feed address is normalized at one site, and every site that admits one is accounted for.**
 Putting the refusal in the normalizer is only sound while there is one place a pasted address
 becomes a stored one. That is a claim about the package, so it is derived from the package.
 
@@ -143,10 +143,14 @@ def test_the_one_module_uses_every_mechanism_the_scan_looks_for(source_root: Pat
 # Where an address is normalized, and where one is admitted
 # --------------------------------------------------------------------------------
 
-# Every function of the package that names a feed address on its way in or out, derived below
-# rather than listed. Four are one path: the route builds the request, the service normalizes,
+# Every function of the package that admits a feed address: one that passes the column as a call
+# keyword or assigns to it. Four are one path: the route builds the request, the service normalizes,
 # the repository writes the row. The fifth reads a stored row back out. A sixth entry would be a
 # second place an address is admitted, which is the premise the refusal's placement rests on.
+#
+# The bound: an attribute READ is not an admission and is not counted, so the fetch path's own
+# `source.external_id` is deliberately absent. Six modules read the column that way, four of them
+# reading a Google calendarId rather than a feed address.
 ADDRESS_SITES: Final = frozenset(
     {
         "calendars.api.add_calendar_source",
@@ -163,10 +167,15 @@ NORMALIZER = "normalize_feed_url"
 
 
 def functions_by_reference(source: str, module: str) -> dict[str, set[str]]:
-    """Every call name and keyword argument this source uses, by the function that uses it.
+    """Every name this source calls, passes as a call keyword, or assigns to, by the using function.
 
     Qualified through the enclosing classes, so two methods of one name in two classes are two
     sites rather than one.
+
+    Three shapes, and the bound is the shape that is absent: an attribute **read**. A module that
+    reads a stored address does not admit one, and the Google adapter reads a provider's opaque
+    identifier through the same attribute name, so counting reads would report four sites that
+    handle no feed address at all.
     """
     found: dict[str, set[str]] = {}
 
@@ -181,6 +190,8 @@ def functions_by_reference(source: str, module: str) -> dict[str, set[str]]:
                 if called is not None:
                     names.add(called)
                 names.update(keyword.arg for keyword in child.keywords if keyword.arg)
+            if isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Store):
+                found.setdefault(scope, set()).add(child.attr)
             walk(child, scope)
 
     walk(ast.parse(source), module)
@@ -188,7 +199,7 @@ def functions_by_reference(source: str, module: str) -> dict[str, set[str]]:
 
 
 def sites_referencing(source_root: Path, name: str) -> set[str]:
-    """Every function of the package that calls ``name`` or passes it as a keyword."""
+    """Every function of the package that calls ``name``, passes it as a keyword, or assigns it."""
     return {
         scope
         for path in sorted(source_root.rglob("*.py"))
@@ -210,6 +221,17 @@ def test_the_walk_finds_a_reference_inside_a_method_of_a_class() -> None:
     assert found["here.Repository.create"] == {"row", "external_id"}
 
 
+def test_the_walk_finds_a_column_assigned_rather_than_passed() -> None:
+    # The control for the second shape an admission has. A writer that assigns the column reaches
+    # storage without passing it to anything, so a walk reading calls alone would not see it.
+    found = functions_by_reference(
+        "def admit(row, raw):\n    row.external_id = raw.strip()\n",
+        "here",
+    )
+
+    assert "external_id" in found["here.admit"]
+
+
 def test_a_feed_address_is_normalized_at_one_site(source_root: Path) -> None:
     # The premise of putting the refusal in the normalizer: there is one place a pasted address
     # becomes a stored one. A second caller is a second place to refuse from, and this goes red
@@ -217,9 +239,10 @@ def test_a_feed_address_is_normalized_at_one_site(source_root: Path) -> None:
     assert sites_referencing(source_root, NORMALIZER) == NORMALIZING_SITES
 
 
-def test_every_site_that_names_a_feed_address_is_accounted_for(source_root: Path) -> None:
-    # Derived from the package, so a new writer of the column cannot appear without a decision
-    # about whether it, too, admits an address the normalizer never saw.
+def test_every_site_that_admits_a_feed_address_is_accounted_for(source_root: Path) -> None:
+    # Derived from the package, so a writer that passes the column or assigns it cannot appear
+    # without a decision about whether it, too, admits an address the normalizer never saw. A
+    # reader is outside the claim, and the docstring on the walk says which shape that is.
     assert sites_referencing(source_root, EXTERNAL_ID) == ADDRESS_SITES
 
 
