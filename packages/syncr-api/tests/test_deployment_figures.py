@@ -2498,8 +2498,7 @@ class TestEveryTeardownRefusesAnInheritedProject:
     def test_a_file_that_only_mentions_the_key_in_a_comment_is_admitted(
         self, tmp_path: Path
     ) -> None:
-        """The condition is ASSIGNS rather than MENTIONS, and this is what turns on that
-        difference."""
+        """A line that only names the key after a `#` sets nothing, and this turns on that."""
         done = _the_scratch_teardown_in_a_tree_of_its_own(
             tmp_path,
             dotenv="# COMPOSE_PROJECT_NAME is forbidden\n  # nor indented\nLOG_LEVEL=info\n",

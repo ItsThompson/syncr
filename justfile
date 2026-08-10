@@ -156,15 +156,18 @@ dev-down:
 # resolved the file without complaint. Reading bytes rather than characters is what makes the two
 # agree, and it costs nothing: the pattern is ASCII.
 #
-# AND THE FAILURE DIRECTION IS INVERTED, WHICH IS THE ONLY PART THAT MAKES THIS SAFE. No pattern here
-# can match compose's own reader: compose reads BYTES and also trims UNICODE whitespace before a key,
-# and no single locale gives a text tool both. A reading that cannot in principle match its subject
-# must not fail open. So when the file assigns this key and the pattern above could not read a value,
-# the answer is REFUSE rather than admit: every way this reading has been found too narrow so far was
-# a miss that admitted, and under this rule each would have been a refusal a developer could clear in
-# one command instead of volumes nobody could restore.
+# AND IT REFUSES WHAT IT CANNOT READ, which is what makes a narrow reading survivable rather than
+# fatal. No pattern here can match compose's own reader: compose reads BYTES and also trims UNICODE
+# whitespace before a key, and no single locale gives a text tool both. So when the file sets this key
+# on a line this reading could not read, the answer is REFUSE rather than admit. Every way this
+# reading has been found too narrow was a miss that would otherwise have admitted, and a refusal is
+# one command away for whoever hits it while a teardown of the wrong project is not.
 #
-# The condition is "assigns", not "mentions": a line naming the key after a `#` is a comment, which is
+# A MENTION IS NEITHER A COMMENT NOR A LONGER KEY: a dotenv comment is a line whose FIRST non-blank
+# character is `#`, and the key must not be preceded by a word character. Both exclusions drop the
+# whole LINE rather than the occurrence, so a longer key sharing one line with a real assignment hides
+# that assignment. That shape is known and is not closed here.
+#
 # The condition is a POSITION rather than an emptiness. Compose acts on the LAST assignment IT sees,
 # and `tail -n 1` takes the last assignment THIS PATTERN sees. Testing "did I read nothing" only
 # catches the case where both sets are empty: one readable line above an invisible one left the
