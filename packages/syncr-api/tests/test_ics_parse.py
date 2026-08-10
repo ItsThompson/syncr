@@ -1333,6 +1333,26 @@ def test_an_rdate_stating_an_instant_is_not_read_again_in_the_series_zone() -> N
     assert [event.interval.start for event in added] == [utc(2026, 2, 12, 14, 0)]
 
 
+def test_a_floating_rdate_stays_on_the_clock_the_series_recurs_in() -> None:
+    # An RDATE with no TZID and no Z suffix names no zone, so it means 09:00 on the series' own
+    # clock. Read in the zone the USER is in instead, one feed would answer differently for two
+    # readers, and a value the publisher wrote without a zone would move.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:floating-rdate@example.org\r\nSUMMARY:Floating addition\r\n"
+        "DTSTART;TZID=Asia/Tokyo:20260210T090000\r\n"
+        "DTEND;TZID=Asia/Tokyo:20260210T100000\r\n"
+        "RDATE:20260212T090000\r\n"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    # Tokyo is UTC+9, so 09:00 there is 00:00Z. The profile's London would have made it 09:00Z.
+    added = [event for event in outcome.events if event.interval.start.day == 12]
+    assert [event.interval.start for event in added] == [utc(2026, 2, 12, 0, 0)]
+
+
 def test_two_rdates_naming_two_zones_each_land_in_the_zone_they_name() -> None:
     # One series, two additions, two zones, neither of them the series'. A reading that resolved
     # every addition in ONE zone lands at least one of these in the wrong hour, whichever zone it
