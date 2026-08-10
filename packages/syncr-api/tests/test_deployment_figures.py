@@ -86,8 +86,8 @@ DEPLOYED_HOST_REFUSAL: Final = "_refuse-a-local-drill-on-a-deployed-host"
 DOCKER_LOG: Final = "docker-was-reached"
 
 # A `docker` that records being called and can reach nothing, so "started nothing" is an OBSERVATION
-# rather than an inference from an exit status: a tree with no compose file fails either way, so a
-# returncode alone would stay green with the refusal deleted.
+# rather than an inference from an exit status: a guard that starts something and refuses afterwards
+# exits non-zero too, so a returncode cannot tell an early refusal from a late one.
 RECORDING_DOCKER: Final = '#!/bin/sh\nprintf "%s\\n" "$*" >> "$SYNCR_DOCKER_LOG"\n'
 
 
