@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -1285,23 +1286,20 @@ def test_a_cancelled_occurrence_is_suppressed_in_either_form(recurrence_id: str)
     assert outcome.overrides_applied == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="an RDATE's own TZID does not travel into the candidate generator, so it resolves in "
-    "the series' zone: measured five hours out. Tracked as ticket 64, which removes this marker.",
-)
-def test_an_rdate_in_its_own_zone_is_resolved_in_that_zone() -> None:
-    # A KNOWN DEFECT, written as the test that will turn green when it is fixed rather than left as
-    # prose. RFC 5545 lets an RDATE carry its own TZID, and a publisher that writes one means it: a
-    # New York time on a London series is 14:00 UTC, not 09:00 UTC.
+@pytest.mark.parametrize("rule", ["", "RRULE:FREQ=WEEKLY;COUNT=1\r\n"])
+def test_an_rdate_in_its_own_zone_is_resolved_in_that_zone(rule: str) -> None:
+    # RFC 5545 lets an RDATE carry its own TZID, and a publisher that writes one means it: 09:00 in
+    # New York is 14:00 UTC, whatever zone the series it is added to recurs in.
     #
-    # The sibling EXDATE path is correct, which is what makes this a gap rather than a design: the
-    # exclusion resolves each value in its own zone and the addition does not.
+    # Both parameters are here because an extra date reaches the expansion two ways. A series with
+    # no rule is its own occurrence plus its extra dates; a series with one merges them into the
+    # values the rule produces. The zone has to travel down both.
     body = (
         "BEGIN:VCALENDAR\r\n"
         "BEGIN:VEVENT\r\nUID:rdate@example.org\r\nSUMMARY:Zoned addition\r\n"
         "DTSTART;TZID=Europe/London:20260210T090000\r\n"
         "DTEND;TZID=Europe/London:20260210T100000\r\n"
+        f"{rule}"
         "RDATE;TZID=America/New_York:20260212T090000\r\n"
         "END:VEVENT\r\nEND:VCALENDAR\r\n"
     )
@@ -1310,6 +1308,80 @@ def test_an_rdate_in_its_own_zone_is_resolved_in_that_zone() -> None:
 
     added = [event for event in outcome.events if event.interval.start.day == 12]
     assert [event.interval.start for event in added] == [utc(2026, 2, 12, 14, 0)]
+    # The series' own occurrence is unmoved: 09:00 London in February is 09:00 UTC.
+    assert [event.interval.start for event in outcome.events if event.interval.start.day == 10] == [
+        utc(2026, 2, 10, 9, 0)
+    ]
+
+
+def test_an_rdate_stating_an_instant_is_not_read_again_in_the_series_zone() -> None:
+    # A Z suffix is already an instant, so a 14:00Z addition to a New York series is at 14:00Z. Read
+    # as a New York wall time it lands at 19:00Z: five hours out, and in the wrong hour of the
+    # user's evening.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:utc-rdate@example.org\r\nSUMMARY:Instant addition\r\n"
+        "DTSTART;TZID=America/New_York:20260210T090000\r\n"
+        "DTEND;TZID=America/New_York:20260210T100000\r\n"
+        "RDATE:20260212T140000Z\r\n"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    added = [event for event in outcome.events if event.interval.start.day == 12]
+    assert [event.interval.start for event in added] == [utc(2026, 2, 12, 14, 0)]
+
+
+def test_two_rdates_naming_two_zones_each_land_in_the_zone_they_name() -> None:
+    # One series, two additions, two zones, neither of them the series'. A reading that resolved
+    # every addition in ONE zone lands at least one of these in the wrong hour, whichever zone it
+    # picked: the series', UTC, or the first value's.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:two-zones@example.org\r\nSUMMARY:Two zoned additions\r\n"
+        "DTSTART;TZID=Europe/London:20260210T090000\r\n"
+        "DTEND;TZID=Europe/London:20260210T100000\r\n"
+        "RDATE;TZID=America/New_York:20260212T090000\r\n"
+        "RDATE;TZID=Asia/Tokyo:20260213T090000\r\n"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    # New York is UTC-5 in February and Tokyo is UTC+9 all year.
+    assert spans(outcome.events) == [
+        (utc(2026, 2, 10, 9, 0), utc(2026, 2, 10, 10, 0)),
+        (utc(2026, 2, 12, 14, 0), utc(2026, 2, 12, 15, 0)),
+        (utc(2026, 2, 13, 0, 0), utc(2026, 2, 13, 1, 0)),
+    ]
+
+
+def test_a_rule_across_the_spring_forward_stays_at_nine_local_on_both_sides() -> None:
+    # The rule recurs in wall time, so a 09:00 series is at 09:00 local on both sides of a
+    # transition: 09:00Z while London is on GMT, 08:00Z once it is on BST. Expanding in absolute
+    # time instead would hold the instant and move the local hour, which is a lecture at 10:00 for
+    # half of a term.
+    body = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\nUID:transition@example.org\r\nSUMMARY:Daily 09:00 London\r\n"
+        "DTSTART;TZID=Europe/London:20260327T090000\r\n"
+        "DTEND;TZID=Europe/London:20260327T100000\r\n"
+        "RRULE:FREQ=DAILY;COUNT=4\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    across = Interval(utc(2026, 3, 27, 0, 0), utc(2026, 3, 31, 0, 0))
+
+    events = parse_feed(body, horizon=across, profile=HOME).events
+
+    # London springs forward on 29 March 2026: 01:00 GMT becomes 02:00 BST.
+    assert spans(events) == [
+        (utc(2026, 3, 27, 9, 0), utc(2026, 3, 27, 10, 0)),
+        (utc(2026, 3, 28, 9, 0), utc(2026, 3, 28, 10, 0)),
+        (utc(2026, 3, 29, 8, 0), utc(2026, 3, 29, 9, 0)),
+        (utc(2026, 3, 30, 8, 0), utc(2026, 3, 30, 9, 0)),
+    ]
+    # The same claim in the words a publisher would use.
+    assert {event.interval.start.astimezone(ZoneInfo(LONDON)).hour for event in events} == {9}
 
 
 @pytest.mark.parametrize(

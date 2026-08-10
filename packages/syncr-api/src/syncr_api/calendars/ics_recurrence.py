@@ -34,7 +34,7 @@ from zoneinfo import ZoneInfo
 from dateutil.rrule import rruleset, rrulestr
 
 from syncr_api.calendars.ics_errors import IcsRejection, UnparseableRecurrence
-from syncr_api.calendars.ics_times import resolve
+from syncr_api.calendars.ics_times import as_wall, resolve
 from syncr_api.calendars.ics_values import MAX_MAGNITUDE_DIGITS, ZoneKind
 
 if TYPE_CHECKING:
@@ -151,7 +151,11 @@ def occurrences(
     """
     excluded_instants, excluded_dates = _exclusions(recurrence.excluded, profile)
     kept: list[datetime] = []
-    candidates = _candidates(start, recurrence)
+    candidates = _candidates(
+        start,
+        recurrence.rule_text,
+        _additions(recurrence.extra_dates, start, window=window, profile=profile),
+    )
     for _step in range(limit):
         # `next` is called under the bound rather than the loop being driven by the iterator,
         # because a rule can spend unbounded work WITHOUT yielding: dateutil advances by `INTERVAL`,
@@ -189,19 +193,50 @@ def occurrences(
     return tuple(kept)
 
 
-def _candidates(start: IcsTime, recurrence: Recurrence) -> Iterator[datetime]:
+def _candidates(
+    start: IcsTime, rule_text: str | None, additions: tuple[datetime, ...]
+) -> Iterator[datetime]:
     """Every wall datetime the rule and the extra dates produce, in order.
 
     A component with no rule and no extra date is its own single occurrence, so a caller
     needs no branch for the non-recurring case.
     """
-    if recurrence.rule_text is None:
-        yield from sorted({start.wall, *(extra.wall for extra in recurrence.extra_dates)})
+    if rule_text is None:
+        yield from sorted({start.wall, *additions})
         return
-    merged = _parsed_rule(recurrence.rule_text, start)
-    for extra in recurrence.extra_dates:
-        merged.rdate(extra.wall)
+    merged = _parsed_rule(rule_text, start)
+    for wall in additions:
+        merged.rdate(wall)
     yield from merged
+
+
+def _additions(
+    extra_dates: Sequence[IcsTime], start: IcsTime, *, window: Interval, profile: ZoneProfile
+) -> tuple[datetime, ...]:
+    """Every ``RDATE`` inside ``window``, as wall time in the zone the series recurs in.
+
+    An ``RDATE`` carrying a ``TZID`` or a ``Z`` suffix states an INSTANT, and expansion runs in the
+    series' own wall clock, so each one is resolved in the zone it names and then restated in the
+    series'. Merging its wall time as it stands reads a New York value on a London series as a
+    London value: measured five hours out. The sibling ``EXDATE`` path resolves each value in its
+    own zone already, which is why this is a gap rather than a design.
+
+    A floating ``RDATE`` names no zone of its own, so it is already on the clock that resolves the
+    series and is merged unchanged rather than sent through the profile and back.
+
+    The window is applied to the values that state an instant, because the instant is in hand and a
+    date the caller cannot reach needs no wall time at all: one at the end of representable time
+    restates into arithmetic that overflows, for a value no window could have placed.
+    """
+    kept: list[datetime] = []
+    for extra in extra_dates:
+        if extra.kind is ZoneKind.FLOATING:
+            kept.append(extra.wall)
+            continue
+        instant = resolve(extra, profile)
+        if window.start <= instant < window.end:
+            kept.append(as_wall(instant, zone_of=start, profile=profile))
+    return tuple(kept)
 
 
 # What a foreign expander raises when a rule it accepted turns out to be unexpandable. dateutil
