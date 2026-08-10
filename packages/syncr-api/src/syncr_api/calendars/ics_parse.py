@@ -207,7 +207,9 @@ def _require_room_for(produced: tuple[RawEvent, ...], *, remaining: int) -> None
     """Refuse a component whose events would overrun the per-feed bound.
 
     Refused whole rather than truncated, which is also what keeps the component counted exactly
-    once, in ``rejected``: a partial contribution would be both kept and refused.
+    once, as one refusal in the tally: a partial contribution would be both kept and refused. The
+    tally's count is what carries that, not the sample it keeps, which holds a few entries per kind
+    and may not hold this one at all.
     """
     if len(produced) <= remaining:
         return

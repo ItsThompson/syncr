@@ -38,12 +38,14 @@ class RejectionAccumulator:
     """The rejections one read produced, sampled for a panel and counted in full.
 
     ``kept_per_kind`` is a parameter rather than only a constant so a test can plant a feed over a
-    small bound instead of over the shipped one.
+    small bound instead of over the shipped one. It is the only parameter: the sample and the counts
+    are built here and never handed in, because an accumulator constructed around a caller's own
+    list would alias the mutable state the copies in :meth:`tally` exist to protect.
     """
 
     kept_per_kind: int = REJECTIONS_KEPT_PER_KIND
-    _kept: list[RejectedComponent] = field(default_factory=list)
-    _counted: Counter[RejectionKind] = field(default_factory=Counter)
+    _kept: list[RejectedComponent] = field(default_factory=list, init=False)
+    _counted: Counter[RejectionKind] = field(default_factory=Counter, init=False)
 
     def add(self, rejected: RejectedComponent) -> None:
         """Count one rejection, and keep it when its kind still has room in the sample."""
