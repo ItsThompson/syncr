@@ -133,10 +133,12 @@ def test_a_publishers_address_still_normalizes(raw: str) -> None:
 
 def test_a_spelling_ipaddress_cannot_read_is_not_a_literal() -> None:
     # `ipaddress` reads the dotted and colon spellings only, so the decimal and hexadecimal forms
-    # of an address are names here rather than literals, and a resolver still accepts them. What
-    # refuses these is the same question asked of the address a socket connects to.
+    # of an address are names here rather than literals, and a resolver still accepts them. A host
+    # name is the same class: `localhost` resolves to two refused addresses and is neither. What
+    # refuses all three is the same question asked of the address a socket connects to.
     assert address_in(DECIMAL_LOOPBACK) is None
     assert address_in(HEXADECIMAL_LOOPBACK) is None
+    assert address_in("localhost") is None
     assert (
         normalize_feed_url(f"https://{DECIMAL_LOOPBACK}/t.ics")
         == f"https://{DECIMAL_LOOPBACK}/t.ics"
