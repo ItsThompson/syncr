@@ -240,7 +240,7 @@ def test_the_recorded_success_stores_the_count_and_not_the_length_of_the_sample(
 def test_the_rejection_counter_is_spent_once_per_rejection_and_not_once_per_kept_entry() -> None:
     # The metric is labelled by kind and the sample keeps three per kind, so a counter fed from the
     # sample would raise the same rate for a feed refusing 50,000 components as for one refusing 15,
-    # and the alert reading it would be measuring the bound rather than the feed.
+    # and the panel drawing that rate would be reporting the bound rather than the feed.
     #
     # Read as a delta, because the registry is process-global and the family is a counter.
     outcome = parse_feed(refused_feed(50_000), horizon=HORIZON, profile=HOME)
