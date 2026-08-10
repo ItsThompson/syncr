@@ -165,7 +165,17 @@ dev-down:
 # one command instead of volumes nobody could restore.
 #
 # The condition is "assigns", not "mentions": a line naming the key after a `#` is a comment, which is
-# how a byte copy of `.env.example` stays admitted while its own prohibition names the key.
+# The condition is a POSITION rather than an emptiness. Compose acts on the LAST assignment IT sees,
+# and `tail -n 1` takes the last assignment THIS PATTERN sees. Testing "did I read nothing" only
+# catches the case where both sets are empty: one readable line above an invisible one left the
+# pattern with a value, the emptiness test quiet, and compose acting on the line below. So the two
+# line numbers are compared, and a mention BELOW the last match means this reading is behind compose.
+#
+# A MENTION IS A LINE THAT IS NOT A COMMENT AND NOT A LONGER KEY. A dotenv comment is a line whose
+# FIRST non-blank character is `#`, which is why a `#` earlier in a value no longer hides an
+# assignment after it. And the key must not be preceded by a word character, so `MY_COMPOSE_PROJECT_
+# NAME` is a different key rather than this one wearing a prefix. That is how a byte copy of
+# `.env.example` stays admitted while its own prohibition names the key.
 #
 # One divergence is deliberate and safe: compose treats an empty `COMPOSE_PROJECT_NAME` as SET and
 # does not fall back to the file, while `${COMPOSE_PROJECT_NAME:-}` here treats it as unset and reads
@@ -183,14 +193,23 @@ _refuse-a-retargeted-teardown:
     set -uo pipefail
     inherited="${COMPOSE_PROJECT_NAME:-}"
     if [ -z "$inherited" ] && [ -f .env ]; then
-      inherited="$(LC_ALL=C sed -nE $'1s/^\xef\xbb\xbf//; s/\r$//; s/^[[:space:]]*(export[[:space:]]+)?COMPOSE_PROJECT_NAME[[:space:]]*=//p' .env | tail -n 1 | tr -d "\"'")"
-      if [ -z "$inherited" ] && LC_ALL=C grep -qE '^[^#]*COMPOSE_PROJECT_NAME' .env; then
-        echo "\`.env\` assigns COMPOSE_PROJECT_NAME and this refusal could not read the value, so it" >&2
-        echo "cannot tell which project compose would act on. It refuses rather than guess, because" >&2
-        echo "this command drops a project's volumes and compose reads that file before its own." >&2
-        echo "To clear it, do any one of these:" >&2
-        echo "  * delete the COMPOSE_PROJECT_NAME line from \`.env\`;" >&2
-        echo "  * rewrite it as plain ASCII, with no space of any kind before the key;" >&2
+      # One spelling of the preprocessing, used by both readings below, so they cannot drift.
+      strip=$'1s/^\xef\xbb\xbf//; s/\r$//; '
+      assigns='^[[:space:]]*(export[[:space:]]+)?COMPOSE_PROJECT_NAME[[:space:]]*='
+      inherited="$(LC_ALL=C sed -nE "$strip""s/${assigns}//p" .env | tail -n 1 | tr -d "\"'")"
+      read_at="$(LC_ALL=C sed -nE "$strip""/${assigns}/=" .env | tail -n 1)"
+      set_at="$(LC_ALL=C grep -n COMPOSE_PROJECT_NAME .env \
+        | LC_ALL=C grep -vE '^[0-9]+:[[:space:]]*#' \
+        | LC_ALL=C grep -vE '^[0-9]+:.*[A-Za-z0-9_]COMPOSE_PROJECT_NAME' \
+        | tail -n 1 | cut -d: -f1)"
+      if [ -n "$set_at" ] && { [ -z "$read_at" ] || [ "$set_at" -gt "$read_at" ]; }; then
+        echo "\`.env\` sets COMPOSE_PROJECT_NAME on line $set_at and this refusal cannot read that" >&2
+        echo "line, so it cannot tell which project compose would act on. It refuses rather than" >&2
+        echo "guess: this command drops a project's volumes, and compose reads that file before its" >&2
+        echo "own. Any one of these clears it, and each is safe here:" >&2
+        echo "  * delete line $set_at from \`.env\`;" >&2
+        echo "  * REPLACE line $set_at with plain ASCII, no space of any kind before the key, rather" >&2
+        echo "    than adding a line above it;" >&2
         echo "  * run \`export COMPOSE_PROJECT_NAME=<project>\` in this shell, which compose and this" >&2
         echo "    refusal both read before the file." >&2
         exit 1

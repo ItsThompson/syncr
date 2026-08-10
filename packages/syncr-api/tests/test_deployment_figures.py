@@ -2378,33 +2378,33 @@ class TestEveryTeardownRefusesAnInheritedProject:
             _assert_it_ran(done, tmp_path)
 
     @pytest.mark.parametrize(
-        ("dotenv", "refused"),
+        ("dotenv", "saying"),
         [
-            ("COMPOSE_PROJECT_NAME=syncr\nCOMPOSE_PROJECT_\rNAME=syncr-e2e\n", True),
-            ("COMPOSE_PROJECT_NAME=syncr-e2e\nCOMPOSE_PROJECT_\rNAME=syncr\n", False),
-            ("COMPOSE_PROJECT_NAME=syncr\n\ufeffCOMPOSE_PROJECT_NAME=syncr-e2e\n", True),
+            ("COMPOSE_PROJECT_NAME=syncr\nCOMPOSE_PROJECT_\rNAME=syncr-e2e\n", "names `syncr`"),
+            ("COMPOSE_PROJECT_NAME=syncr-e2e\nCOMPOSE_PROJECT_\rNAME=syncr\n", None),
+            ("COMPOSE_PROJECT_NAME=syncr\n\ufeffCOMPOSE_PROJECT_NAME=syncr-e2e\n", "on line 2"),
         ],
     )
     def test_the_two_tolerances_are_scoped_the_way_compose_scopes_them(
-        self, dotenv: str, refused: bool, tmp_path: Path
+        self, dotenv: str, saying: str | None, tmp_path: Path
     ) -> None:
         """A mark is forgiven at the start of the FILE and a carriage return at the end of a LINE.
 
-        Compose reads the FIRST line of each file below, because the second line's key carries a
+        Compose reads the FIRST line of the first two files, because the second line's key carries a
         byte that makes it a different key. A reading that deleted either byte from anywhere would
-        see a second assignment compose does not honour, and the last matching line wins.
+        see a second assignment compose does not honour, and the last matching line would win.
 
-        The carriage-return rows carry the same two names in both orders, so a reading that refused
-        every file containing an out-of-scope byte, judging no name at all, fails the second row.
-        The mark row has no such counterpart on purpose: compose refuses to read a file whose mark
-        sits before a later key, so there is no admitting verdict to assert against it.
+        The carriage-return rows carry the same two names in both orders and must come out opposite,
+        so a reading that refused every file containing an out-of-scope byte fails the second. The
+        mark row refuses through the position arm rather than by name, because a mark before a later
+        key is a line this reading cannot read and compose cannot read the file either.
         """
         done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
 
-        if refused:
-            _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
-        else:
+        if saying is None:
             _assert_it_ran(done, tmp_path)
+        else:
+            _assert_it_refused(done, tmp_path, saying=saying)
 
     @pytest.mark.parametrize(
         ("project", "refused"),
@@ -2455,27 +2455,30 @@ class TestEveryTeardownRefusesAnInheritedProject:
         principle match its subject. Each space below makes compose resolve the name on that line
         while the pattern reads nothing.
 
-        The reading therefore refuses when the file ASSIGNS this key and no value could be read.
+        The reading therefore refuses when the file sets this key on a line it could not read.
         Each of these was an admitted teardown of the deployed project before that rule existed.
         """
         done = _the_scratch_teardown_in_a_tree_of_its_own(
             tmp_path, dotenv=f"{before_the_key}COMPOSE_PROJECT_NAME=syncr\n"
         )
 
-        _assert_it_refused(done, tmp_path, saying="could not read the value")
+        _assert_it_refused(done, tmp_path, saying="sets COMPOSE_PROJECT_NAME on line 1")
 
-    def test_the_refusal_names_a_way_out(self, tmp_path: Path) -> None:
+    def test_the_refusal_names_a_way_out_and_every_way_out_is_safe(self, tmp_path: Path) -> None:
         """A refusal a developer cannot act on is a refusal someone disables.
 
-        The unreadable-value arm is the one with a real false-positive cost, so it has to say what
-        clears it. The shell arm is the load-bearing remedy: compose and this reading both take the
-        environment before the file.
+        And every action it advises has to be safe under this gate, which is not automatic: the
+        earlier message said "rewrite it as plain ASCII", and adding an ASCII line ABOVE the
+        unreadable one satisfied that wording while leaving compose acting on the line below. The
+        advice now says REPLACE, and the position case below is why the half-followed version is
+        refused rather than admitted.
         """
         done = _the_scratch_teardown_in_a_tree_of_its_own(
             tmp_path, dotenv=f"{NO_BREAK_SPACE}COMPOSE_PROJECT_NAME=syncr\n"
         )
 
-        assert "delete the COMPOSE_PROJECT_NAME line" in done.stderr, done.stderr
+        assert "delete line 1" in done.stderr, done.stderr
+        assert "REPLACE line 1" in done.stderr, done.stderr
         assert "export COMPOSE_PROJECT_NAME=<project>" in done.stderr, done.stderr
 
     def test_the_cost_of_that_rule_is_one_false_refusal(self, tmp_path: Path) -> None:
@@ -2490,7 +2493,7 @@ class TestEveryTeardownRefusesAnInheritedProject:
             tmp_path, dotenv=f"{NO_BREAK_SPACE}COMPOSE_PROJECT_NAME=syncr-e2e\n"
         )
 
-        _assert_it_refused(done, tmp_path, saying="could not read the value")
+        _assert_it_refused(done, tmp_path, saying="sets COMPOSE_PROJECT_NAME on line 1")
 
     def test_a_file_that_only_mentions_the_key_in_a_comment_is_admitted(
         self, tmp_path: Path
@@ -2516,6 +2519,89 @@ class TestEveryTeardownRefusesAnInheritedProject:
         )
 
         _assert_it_ran(done, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("dotenv", "saying"),
+        [
+            (
+                f"COMPOSE_PROJECT_NAME=syncr-e2e\n{NO_BREAK_SPACE}COMPOSE_PROJECT_NAME=syncr\n",
+                "line 2",
+            ),
+            (f"{NO_BREAK_SPACE}COMPOSE_PROJECT_NAME=syncr\nCOMPOSE_PROJECT_NAME=syncr-e2e\n", None),
+        ],
+    )
+    def test_a_readable_line_above_an_unreadable_one_is_refused(
+        self, dotenv: str, saying: str | None, tmp_path: Path
+    ) -> None:
+        """THE GATE IS A POSITION, BECAUSE COMPOSE TAKES THE LAST ASSIGNMENT IT SEES.
+
+        `tail -n 1` takes the last assignment THIS pattern sees, so asking only "did I read nothing"
+        caught the case where both sets were empty and missed this one: compose acts on line 2 while
+        the pattern reads line 1 and finds a name that holds nothing.
+
+        Both orders, and they must come out opposite. In the second file compose acts on the
+        readable line, which is the last one, so admitting is correct and a gate that refused any
+        file with an unreadable mention anywhere would fail it.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
+
+        if saying is None:
+            _assert_it_ran(done, tmp_path)
+        else:
+            _assert_it_refused(done, tmp_path, saying=saying)
+
+    def test_a_hash_earlier_in_the_line_does_not_make_it_a_comment(self, tmp_path: Path) -> None:
+        """A dotenv comment is a line whose FIRST non-blank character is `#`.
+
+        Compose resolves `syncr` here. A condition that asked whether any `#` preceded the key read
+        this assignment as a comment and admitted the teardown.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, dotenv='FOO="a#b" COMPOSE_PROJECT_NAME=syncr\n'
+        )
+
+        _assert_it_refused(done, tmp_path, saying="sets COMPOSE_PROJECT_NAME on line 1")
+
+    @pytest.mark.parametrize(
+        "dotenv",
+        [
+            pytest.param("MY_COMPOSE_PROJECT_NAME=x\n", id="a-longer-key-is-a-different-key"),
+            pytest.param("COMPOSE_PROJECT_NAME=\n", id="compose-ignores-an-empty-value"),
+        ],
+    )
+    def test_a_line_compose_does_not_take_a_project_from_is_admitted(
+        self, dotenv: str, tmp_path: Path
+    ) -> None:
+        """THE FALSE POSITIVES THE POSITION GATE RETIRED, each measured against compose.
+
+        Compose resolves the compose file's own `name:` for both files here, so refusing them was a
+        cost with no safety behind it. The first is excluded because the key must not be preceded by
+        a word character; the second because its assignment IS the last line the pattern matched, so
+        nothing sits below it.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
+
+        _assert_it_ran(done, tmp_path)
+
+    def test_a_suffixed_key_is_still_refused_and_that_is_the_accepted_cost(
+        self, tmp_path: Path
+    ) -> None:
+        """THE FALSE POSITIVE THAT STAYS, asserted so it is a known cost rather than a surprise.
+
+        Compose takes no project from `COMPOSE_PROJECT_NAME_OVERRIDE=x`, and this refuses it: the
+        key sits at the start of the line, so the word-character exclusion does not apply, and the
+        value pattern needs `=` straight after the key so nothing was read.
+
+        Excluding a trailing word character would retire it and would open a shape worth more than
+        it costs: the exclusion drops the whole LINE, so a line carrying a longer key alongside a
+        real assignment would stop being seen. A spurious refusal is the safe direction and this one
+        is one `unset` away.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, dotenv="COMPOSE_PROJECT_NAME_OVERRIDE=x\n"
+        )
+
+        _assert_it_refused(done, tmp_path, saying="sets COMPOSE_PROJECT_NAME on line 1")
 
     def test_a_name_it_cannot_resolve_is_refused(self, tmp_path: Path) -> None:
         """Compose interpolates the file's values, and this refusal does not.
