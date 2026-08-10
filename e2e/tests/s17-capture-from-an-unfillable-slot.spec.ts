@@ -5,11 +5,11 @@
  * rendering: activating the label opens capture prefilled with the slot's own Area and duration, and one confirm
  * produces a task that fits the slot, carrying a soft preference and no pin.
  *
- * WHY IT IS A BROWSER CASE AND NOT A COMPONENT ONE. Both defects item 46 found by opening a browser once were
- * invisible to a green unit suite: a select list drawn under a dialog's scrim, visible and unclickable, and a form
- * opening with the caret on its dismiss control so that typing typed nothing. A control a pointer cannot reach and
- * a prefill that reached a draft but not the rendered field are the same class, and jsdom has neither layout nor
- * hit-testing nor a computed style to see them with.
+ * WHY IT IS A BROWSER CASE AND NOT A COMPONENT ONE. The two defects a browser pass over this product's forms once
+ * found were both invisible to a green unit suite: a select list drawn under a dialog's scrim, visible and
+ * unclickable, and a form opening with the caret on its dismiss control so that typing typed nothing. A control a
+ * pointer cannot reach and a prefill that reached a draft but not the rendered field are the same class, and jsdom
+ * has neither layout nor hit-testing nor a computed style to see them with.
  *
  * THE FIRST CASE IS THAT CLASS, MEASURED. A band is transparent to the pointer, so a drag can begin on the canvas
  * underneath it, and the control inside the band inherited that: every gutter label the grid draws as a button read
@@ -21,8 +21,8 @@
  * reason names every part that is missing, each measured rather than read.
  *
  * WHY THE PREFILL IS READ OFF THE RENDERED CONTROLS as well as from the task the confirm produces: see the
- * paragraph above about item 46. The form is also asserted to open with nothing refused, because a required field
- * nobody has filled in yet is incomplete rather than wrong.
+ * paragraph above about the two defects a browser found. The form is also asserted to open with nothing refused,
+ * because a required field nobody has filled in yet is incomplete rather than wrong.
  *
  * THE URL IS DELIBERATELY NOT ASSERTED. The week screen states the opening in the query string, and the reader of
  * it clears the parameters once capture is open so a reload does not reopen the dialog. A case asserting the
