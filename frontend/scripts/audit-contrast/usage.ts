@@ -20,10 +20,18 @@
  *
  * A RULE THAT NAMES BOTH STATES A PAIRING. Which surface a class sits on is a fact about the DOM, so the ledger
  * measures every ink against every surface and enforces on the pairs it can prove. One shape it can prove: a rule
- * that declares its own fill AND its own ink names both halves in one place, with no DOM to consult. That is what
- * `compositionsOf` reads, and it is the only reachability a stylesheet supports. */
+ * that declares its own fill AND its own ink names both halves in one place, with no DOM to consult.
+ *
+ * THE UNIT IS A SELECTOR IN A FILE, NOT A BLOCK. Two blocks with the same selector in one sheet compose by the
+ * cascade, so `.x { background: ink }` and a later `.x { color: pale }` state a pairing neither block states
+ * alone, and reading blocks one at a time misses it silently. Declarations are merged per selector before the
+ * pairing is derived. The key includes the enclosing at-rules, so a declaration inside `@media print` never merges
+ * with one outside it: those two may never apply together, and a pairing that never composes is not a pairing.
+ *
+ * What is still out of reach is a pairing split across DIFFERENT selectors, `.a` filling and `.b` drawing, which
+ * composes only where the markup nests them. That is the DOM's answer and not a sheet's. */
 
-import { parse } from "postcss";
+import { parse, type Rule } from "postcss";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -77,10 +85,19 @@ export interface Usage {
   readonly compositions: Composition[];
 }
 
-/** One ink declaration a rule keeps after its own cascade, with the floor its property implies. */
+/** One ink declaration a selector keeps after the cascade, with the floor its property implies. */
 interface Drawn {
   readonly value: string;
   readonly floor: number;
+}
+
+/** What one selector in one file declares, accumulated across every block that writes it. */
+interface Declared {
+  readonly where: string;
+  /** The last fill any block for this selector declares, which is the one the cascade keeps. */
+  fill: string | null;
+  /** The last ink per property, for the same reason. */
+  readonly drawn: Map<string, Drawn>;
 }
 
 /** The floor a property implies, or undefined when the property writes no ink. */
@@ -97,30 +114,52 @@ function isMix(value: string): boolean {
 }
 
 /**
- * The pairings one rule states, from the fill and the inks it keeps.
+ * The pairings one selector states, from the fill and the inks it keeps.
  *
- * Both halves are resolved by document order WITHIN THE ONE RULE, which is what the cascade does there and is
- * sound because nothing is concatenated: a later `background: transparent` in the same rule really does replace an
- * earlier ink fill, and then the rule states no pairing at all.
+ * Resolved by document order across the blocks sharing the selector IN ONE FILE, which is what the cascade does at
+ * equal specificity. Nothing is concatenated across files or layers, so the unsoundness that comes from ordering
+ * two sheets against each other cannot arise: a later `background: transparent` really does replace an earlier ink
+ * fill, and then the selector states no pairing at all.
  */
-function compositionsOf(
-  where: string,
-  fill: string | null,
-  drawn: ReadonlyMap<string, Drawn>,
-): Composition[] {
+function compositionsOf(declared: Declared): Composition[] {
+  const { where, fill, drawn } = declared;
   if (fill === null || isMix(fill)) return [];
-  const surfaces = tokensIn(fill);
-  if (surfaces.length === 0) return [];
 
   const stated: Composition[] = [];
   for (const [property, one] of drawn) {
-    for (const surface of surfaces) {
+    for (const surface of tokensIn(fill)) {
       for (const ink of tokensIn(one.value)) {
         stated.push({ where: `${where} { ${property} }`, ink, surface, floor: one.floor });
       }
     }
   }
   return stated;
+}
+
+/**
+ * The at-rules a block sits inside, as a key, so two blocks merge only where both can apply.
+ *
+ * postcss types `parent` as a union that includes `Document`, whose own `nodes` are roots rather than children, so
+ * following the chain with the library's types requires a cast at every hop. One local shape describing what this
+ * walk actually reads keeps the cast to the single boundary below.
+ */
+interface Enclosing {
+  readonly type: string;
+  readonly name?: string | undefined;
+  readonly params?: string | undefined;
+  readonly parent?: Enclosing | undefined;
+}
+
+function contextOf(rule: Rule): string {
+  const enclosing: string[] = [];
+  let node = rule.parent as Enclosing | undefined;
+  while (node !== undefined) {
+    if (node.type === "atrule") {
+      enclosing.unshift(`@${node.name ?? ""} ${node.params ?? ""}`.trim());
+    }
+    node = node.parent;
+  }
+  return enclosing.join(" ");
 }
 
 /** The inks and the surfaces the shipped stylesheets actually use. */
@@ -132,14 +171,21 @@ export async function paletteInUse(sheets: readonly string[]): Promise<Usage> {
 
   for (const file of sheets) {
     const sheet = path.relative(appSourceDir, file);
+    const perSelector = new Map<string, Declared>();
+
     parse(await readFile(file, "utf8")).walkRules((rule) => {
       const properties = new Set<string>();
       rule.walkDecls((declaration) => {
         properties.add(declaration.prop.toLowerCase());
       });
 
-      let fill: string | null = null;
-      const drawn = new Map<string, Drawn>();
+      const key = `${contextOf(rule)}|${rule.selector.replace(/\s+/g, " ").trim()}`;
+      const declared = perSelector.get(key) ?? {
+        where: `${sheet} ${rule.selector}`,
+        fill: null,
+        drawn: new Map<string, Drawn>(),
+      };
+      perSelector.set(key, declared);
 
       rule.walkDecls((declaration) => {
         const property = declaration.prop.toLowerCase();
@@ -154,7 +200,7 @@ export async function paletteInUse(sheets: readonly string[]): Promise<Usage> {
             });
             return;
           }
-          drawn.set(property, { value: declaration.value, floor });
+          declared.drawn.set(property, { value: declaration.value, floor });
           for (const token of tokensIn(declaration.value)) {
             const held = inks.get(token);
             if (held === undefined || floor > held.floor) {
@@ -163,13 +209,13 @@ export async function paletteInUse(sheets: readonly string[]): Promise<Usage> {
           }
         }
         if (SURFACE_PROPERTIES.has(property) && !isMix(declaration.value)) {
-          fill = declaration.value;
+          declared.fill = declaration.value;
           for (const token of tokensIn(declaration.value)) surfaces.add(token);
         }
       });
-
-      compositions.push(...compositionsOf(`${sheet} ${rule.selector}`, fill, drawn));
     });
+
+    for (const declared of perSelector.values()) compositions.push(...compositionsOf(declared));
   }
 
   return {
