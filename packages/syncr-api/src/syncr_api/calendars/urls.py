@@ -10,9 +10,10 @@ Normalization is stored rather than applied per fetch. A stored URL is the recon
 key a user reads back on the Settings panel, and two rows differing only in a scheme nobody
 can fetch would look like two sources for one feed.
 
-Nothing here reaches the network. A URL that parses is accepted; whether the publisher
-answers is the fetch's answer, and refusing to store a feed that is momentarily down would
-make setup depend on a publisher's uptime.
+Nothing here reaches the network. Whether the publisher answers is the fetch's answer, and
+refusing to store a feed that is momentarily down would make setup depend on a publisher's
+uptime. What is refused without asking is an address syncr will not fetch at all, whose
+ranges are stated in ``addresses.py``.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlsplit, urlunsplit
 
+from syncr_api.calendars.addresses import address_in, refusal_of
 from syncr_api.calendars.config import EXTERNAL_ID_MAX_LENGTH
 from syncr_api.core.errors import ValidationFailed
 
@@ -59,6 +61,11 @@ def normalize_feed_url(raw: str) -> str:
     if not parts.netloc:
         raise ValidationFailed(_rejection("it names no host"))
 
+    host = _host(parts)
+    literal = address_in(host)
+    if literal is not None and (refusal := refusal_of(literal)) is not None:
+        raise ValidationFailed(refusal)
+
     fetchable = HTTPS if scheme in REWRITTEN_SCHEMES else scheme
     # Three things are dropped or folded, all for the reason this module exists. The fragment is
     # never sent to a server. The host is case-insensitive, so `Example.com` and `example.com` are
@@ -67,7 +74,7 @@ def normalize_feed_url(raw: str) -> str:
     #
     # Path and query are preserved exactly, because a feed's token lives in one of them and
     # normalizing either would break the subscription.
-    return urlunsplit((fetchable, _host(parts), parts.path, parts.query, ""))
+    return urlunsplit((fetchable, host, parts.path, parts.query, ""))
 
 
 def _host(parts: SplitResult) -> str:
