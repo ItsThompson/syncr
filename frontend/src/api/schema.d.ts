@@ -3379,11 +3379,15 @@ export interface components {
          * @description Why a template slot the solver could not fill is empty.
          *
          *     ``not_solved`` is the materialized case, where no binding was attempted at all. It is a
-         *     member of its own because nobody looked at the backlog, and the other three all report
-         *     something that was computed.
+         *     member of its own because nobody looked at the backlog, and every other member reports
+         *     something a phase computed.
+         *
+         *     ``elapsed`` is the one the clock decides rather than the backlog. The week had already
+         *     reached the slot when the solve ran, so no content could be placed into it and none will
+         *     be: whether the Area had any is a question the span never got to ask.
          * @enum {string}
          */
-        EmptySlotReason: "no_eligible_content" | "off_plan" | "blocked_by_constraint" | "not_solved";
+        EmptySlotReason: "no_eligible_content" | "off_plan" | "blocked_by_constraint" | "not_solved" | "elapsed";
         /**
          * EmptySlotResponse
          * @description Discretionary time an Area was offered, and nothing filled.

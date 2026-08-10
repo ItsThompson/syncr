@@ -2987,12 +2987,13 @@
         "type": "string"
       },
       "EmptySlotReason": {
-        "description": "Why a template slot the solver could not fill is empty.\n\n``not_solved`` is the materialized case, where no binding was attempted at all. It is a\nmember of its own because nobody looked at the backlog, and the other three all report\nsomething that was computed.",
+        "description": "Why a template slot the solver could not fill is empty.\n\n``not_solved`` is the materialized case, where no binding was attempted at all. It is a\nmember of its own because nobody looked at the backlog, and every other member reports\nsomething a phase computed.\n\n``elapsed`` is the one the clock decides rather than the backlog. The week had already\nreached the slot when the solve ran, so no content could be placed into it and none will\nbe: whether the Area had any is a question the span never got to ask.",
         "enum": [
           "no_eligible_content",
           "off_plan",
           "blocked_by_constraint",
-          "not_solved"
+          "not_solved",
+          "elapsed"
         ],
         "title": "EmptySlotReason",
         "type": "string"

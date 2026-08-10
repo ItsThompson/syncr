@@ -10,8 +10,8 @@
  * pixel-identical and the solver appears to decline a gap for no reason.
  *
  * WHY AN EMPTY SLOT CARRIES NO LABEL YET. Each empty-slot reason maps to exactly one gutter label and
- * `syncr_domain.gaps.gutter_label` is that one statement. It is Python, two of its four labels take a
- * substitution, and the week payload does not carry the rendered string, so composing the wording here would be
+ * `syncr_domain.gaps.gutter_label` is that one statement. It is Python, a label may take a substitution, and
+ * the week payload does not carry the rendered string, so composing the wording here would be
  * the second statement the one-label rule exists to forbid. The reason CODE travels instead and the band draws
  * with an empty gutter. Tracked in ticket 1350. The two kinds whose label the wire already carries render
  * theirs, and a window's is the STORED one, so an anchor retitled in March cannot change what a week approved

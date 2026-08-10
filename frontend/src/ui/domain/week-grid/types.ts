@@ -32,7 +32,13 @@ export interface OffsetSpan {
 /** The four heights a block's title degrades through. The block degrades; the axis does not. */
 export type BlockTier = "label" | "compact" | "sliver" | "hairline";
 
-/** Why a band is drawn instead of a block. It changes no pixel: it is what a test and a reader key on. */
+/**
+ * Why a band is drawn instead of a block. It changes no pixel: it is what a test and a reader key on.
+ *
+ * A hand-written copy of two server enums, `ForbiddenKind` and `EmptySlotReason`, because the generated
+ * payload types are assigned into it. Widening either of those without widening this is a compile error at
+ * the assignment in `routes/week/bands.ts` rather than a silent divergence.
+ */
 export type BandReason =
   | "recovery"
   | "prep_unattributed"
@@ -40,7 +46,8 @@ export type BandReason =
   | "off_plan"
   | "no_eligible_content"
   | "blocked_by_constraint"
-  | "not_solved";
+  | "not_solved"
+  | "elapsed";
 
 /** One thing that happens in the week, reduced to what the grid draws it from. */
 export interface GridBlock {
