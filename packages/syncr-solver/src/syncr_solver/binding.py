@@ -22,11 +22,29 @@ owns a reason's wording.
 
 ## Which reason a slot states, and how it is decided rather than chosen
 
-``no_eligible_content`` when the Area had nothing that could take the slot's duration.
-``off_plan`` when every candidate offered was refused by the span the user declared off, because
-then it is the span rather than the content that emptied the slot. ``blocked_by_constraint``
-otherwise, which is a candidate the rules refused for some other reason. ``not_solved`` is
-deliberately unreachable here: it means nobody looked at the backlog, and this phase is the looking.
+``elapsed`` when the week had already reached the slot, which is read from the clock before any
+content is considered: see below. ``no_eligible_content`` when the Area had nothing that could
+take the slot's duration. ``off_plan`` when every candidate offered was refused by the span the
+user declared off, because then it is the span rather than the content that emptied the slot.
+``blocked_by_constraint`` otherwise, which is a candidate the rules refused for some other reason.
+``not_solved`` is deliberately unreachable here: it means nobody looked at the backlog, and this
+phase is the looking.
+
+## A slot the week has already reached is left unbound, and the clock decides that first
+
+The slot's span is not a choice, so a slot whose span has begun can only be filled by placing a
+block in a part of the week that has gone. Nothing can be spent there, the packer's own gap set is
+clipped to ``inputs.now`` for that reason, and a block the solve chose sitting in a past the plan
+of record does not already hold is refused where the document becomes that record. So this phase
+reads the same instant and hands out none of it.
+
+The boundary is the slot's START rather than its end, and a slot straddling the instant is left
+unbound whole. Shrinking it to the part still ahead is the refusal at the top of this file, so
+there is no half of it to fill.
+
+The clock is read BEFORE eligibility, which is what keeps the week's content for the days it can
+still be placed in: consulting the backlog first would spend a task's remaining minutes on a
+Monday nobody can reach and leave Friday's slot saying the Area had nothing.
 
 ## Eligible means "can take this slot's duration", in one expression for all three shapes
 
@@ -51,7 +69,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from syncr_domain.identifiers import AreaId, TemplateEntryId
-    from syncr_domain.intervals import Instant
+    from syncr_domain.intervals import Instant, Interval
     from syncr_solver.attempt import Attempt
     from syncr_solver.candidates import Candidate
     from syncr_solver.constraints import BlockedCandidate
@@ -72,6 +90,8 @@ def bind_slots(attempt: Attempt) -> Attempt:
 
 def _bind_one(entry: MaterializedEntry, attempt: Attempt) -> Attempt:
     """One slot: the first eligible candidate the rules accept, or the slot with its reason."""
+    if _has_begun(entry.interval, attempt.inputs.now):
+        return attempt.with_slot(_slot(entry, EmptySlotReason.ELAPSED))
     eligible = _eligible_for(entry, attempt)
     if not eligible:
         return attempt.with_slot(_slot(entry, EmptySlotReason.NO_ELIGIBLE_CONTENT))
@@ -83,6 +103,17 @@ def _bind_one(entry: MaterializedEntry, attempt: Attempt) -> Attempt:
             return attempt.adding(offer.placed)
         refusals.append(refusal)
     return attempt.with_blocked(refusals).with_slot(_slot(entry, _reason_of(refusals)))
+
+
+def _has_begun(interval: Interval, now: Instant) -> bool:
+    """Whether the week has spent any of this span, which is what makes it unfillable.
+
+    Strict, so a slot beginning exactly at ``now`` still binds: it has spent nothing, and the
+    interval algebra keeps a span starting at that instant whole when it clips a set to what
+    follows. The instant comes from the assembled inputs rather than from a clock read here, so
+    one assembly cannot answer this two ways.
+    """
+    return interval.start < now
 
 
 def _eligible_for(entry: MaterializedEntry, attempt: Attempt) -> tuple[Candidate, ...]:

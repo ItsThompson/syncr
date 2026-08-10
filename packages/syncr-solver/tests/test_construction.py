@@ -5,8 +5,8 @@ elastic occurrence's length is chosen, how a slot is filled or explained, and wh
 with the rest of the week.
 
 Every test drives ``solve`` or the phase itself against literals. The week's whole span is ahead of
-``now``, so a placement that did not happen is a placement the phase refused rather than one the
-clip removed.
+``now`` unless a test states its own clock, which the two about a slot the week has already reached
+do, because what those two measure is the clip itself.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from syncr_domain.gaps import EmptySlotReason
 from syncr_domain.habits import BindingSource
+from syncr_domain.identity import is_placed_by_the_solver
 from syncr_solver.attempt import Attempt
 from syncr_solver.binding import bind_slots
 from syncr_solver.candidates import candidates_for
@@ -26,6 +27,7 @@ from syncr_solver.reading import demand_key
 from tests.materialized_weeks import (
     CAREER,
     FITNESS,
+    NOW,
     a_frame_entry,
     a_slot,
     an_area_budget,
@@ -367,6 +369,70 @@ def test_no_solve_ever_leaves_a_slot_saying_nobody_looked_at_the_backlog() -> No
 
     assert len(document.empty_slots) == 2
     assert all(slot.reason is not EmptySlotReason.NOT_SOLVED for slot in document.empty_slots)
+
+
+def test_a_slot_the_week_has_already_reached_is_left_unbound_and_says_it_has_passed() -> None:
+    """Three slots against one clock: Monday's is spent, Wednesday's half spent, Friday's not.
+
+    The straddling slot is what decides where the boundary sits. A slot is never shrunk, so
+    binding that one would place a block over the half hour that has gone, which is the same
+    minute the packer's own clip already refuses to hand out.
+    """
+    week = a_week(
+        now=NOW,
+        template_entries=(
+            a_slot(area_id=CAREER, day=0),
+            a_slot(area_id=CAREER, day=2, interval=between(8.5, 9.5, day=2)),
+            a_slot(area_id=CAREER, day=4),
+        ),
+        eligible_tasks=(
+            an_eligible_task(
+                remaining_minutes=180, min_chunk_minutes=60, area_id=CAREER, title="Papers"
+            ),
+        ),
+        areas=(an_area_budget(area_id=CAREER, name="Career", target_minutes=600),),
+    )
+
+    attempt = bind_slots(an_attempt(week))
+
+    assert [(slot.interval, slot.reason) for slot in attempt.slots] == [
+        (between(18, 19, day=0), EmptySlotReason.ELAPSED),
+        (between(8.5, 9.5, day=2), EmptySlotReason.ELAPSED),
+    ]
+    assert [block.interval for block in attempt.blocks()] == [between(18, 19, day=4)]
+
+
+def test_a_solve_of_a_week_already_half_lived_places_nothing_it_chose_in_the_past() -> None:
+    """One slot a day and a clock at Wednesday morning, so two of the seven cannot be filled.
+
+    Phase 3 clips the gaps it packs to ``now`` and phase 2 now reads the same instant, so no
+    part of the solve hands out time the week has spent. What the guard on the plan of record
+    refuses is exactly a chosen block the live plan does not already hold in the past, so this
+    is that refusal made unreachable rather than caught.
+    """
+    week = a_week(
+        now=NOW,
+        template_entries=tuple(a_slot(area_id=CAREER, day=day) for day in range(7)),
+        eligible_tasks=(
+            an_eligible_task(
+                remaining_minutes=300, min_chunk_minutes=60, area_id=CAREER, title="Papers"
+            ),
+        ),
+        areas=(an_area_budget(area_id=CAREER, name="Career", target_minutes=600),),
+    )
+
+    document = solved(week).document
+    chosen = tuple(block for block in document.blocks if is_placed_by_the_solver(block.origin))
+
+    # The control for the assertion under it, which an empty solve would satisfy on its own.
+    assert {between(18, 19, day=day) for day in (2, 3, 4, 5, 6)} <= {
+        block.interval for block in chosen
+    }
+    assert [block.title for block in chosen if block.interval.start < NOW] == []
+    assert [(slot.interval, slot.reason) for slot in document.empty_slots] == [
+        (between(18, 19, day=0), EmptySlotReason.ELAPSED),
+        (between(18, 19, day=1), EmptySlotReason.ELAPSED),
+    ]
 
 
 # --------------------------------------------------------------------------------------
