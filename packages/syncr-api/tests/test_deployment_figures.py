@@ -384,6 +384,32 @@ class TestTheDeployRunbook:
         assert "A Cloudflare outage is a syncr outage" in runbook
         assert "cannot alert on itself" in runbook
 
+    def test_it_lists_every_workstation_valued_key_only_the_host_file_can_decide(self) -> None:
+        """A key that points at localhost and that no compose file names is decided by a copy.
+
+        `google-oauth-verification.md` documents copying `.env.example` to seed a fresh machine, so
+        whatever that file ships reaches a deployed host. Where a compose `environment:` entry names
+        a key the topology decides it and the copy cannot; where none does, the host file is the
+        only layer, and this table is the one place an operator is told to change it.
+
+        Both readings are controlled first, because an empty set satisfies a subtraction and would
+        pass this while checking nothing.
+        """
+        listed = _keys_the_deploy_table_lists()
+        assert "CLOUDFLARE_TUNNEL_TOKEN" in listed, "the table reading found no table"
+        decided_by_compose = _keys_a_compose_file_names()
+        assert "DATABASE_URL" in decided_by_compose, "the compose reading found no variables"
+
+        unlisted = sorted(
+            _keys_the_example_file_points_at_a_workstation() - decided_by_compose - listed
+        )
+
+        assert unlisted == [], (
+            f"{unlisted} name a developer's own machine in .env.example, no compose file names "
+            "them, and the host secret file's table does not list them, so a host seeded by "
+            "copying that file holds a workstation address nobody is told to change"
+        )
+
 
 class TestTheSecretsRunbook:
     """Eight values, and two of them cost the user something."""
@@ -1907,6 +1933,56 @@ def _keys_the_environment_file_documents() -> set[str]:
 
     text = read(Path(".env.example"))
     return set(re.findall(r"^[ \t]*(?:export[ \t]+)?([A-Z][A-Z0-9_]*)=", text, re.MULTILINE))
+
+
+def _keys_the_example_file_points_at_a_workstation() -> frozenset[str]:
+    """Every key `.env.example` ships holding an address of the machine it is read on.
+
+    A value naming a loopback host is right for a developer and wrong for every deployment, so these
+    are the keys where what the file ships decides whether a copy of it is safe.
+    """
+    import re
+
+    text = read(Path(".env.example"))
+    declared = re.findall(r"^[ \t]*(?:export[ \t]+)?([A-Z][A-Z0-9_]*)=(.*)$", text, re.MULTILINE)
+    return frozenset(
+        key
+        for key, value in declared
+        if "localhost" in value or "127.0.0.1" in value or "[::1]" in value
+    )
+
+
+def _keys_a_compose_file_names() -> frozenset[str]:
+    """Every variable any compose file names, in either spelling an `environment:` block accepts.
+
+    A key named there is decided by the topology, whatever a host's own file holds, so it is a key
+    an operator cannot get wrong by copying the example. The compose files are taken from the index
+    rather than listed, so a ninth one is read the day it is added.
+    """
+    import re
+
+    named: set[str] = set()
+    for name in _files_git_has():
+        if re.fullmatch(r"(?:.*/)?docker-compose[^/]*\.ya?ml", name) is None:
+            continue
+        content = read(Path(name))
+        named |= set(re.findall(r"^\s+([A-Z][A-Z0-9_]*):", content, re.MULTILINE))
+        named |= set(re.findall(r"^\s+-\s+([A-Z][A-Z0-9_]*)=", content, re.MULTILINE))
+    return frozenset(named)
+
+
+def _keys_the_deploy_table_lists() -> frozenset[str]:
+    """Every key named in the deploy runbook's host-secret-file table.
+
+    Bounded by the heading that table sits under, so another table in the same runbook is not read
+    as this one.
+    """
+    import re
+
+    section = (
+        read(DEPLOY_AND_ROLLBACK).partition("### 4. The host secret file")[2].partition("\n### ")[0]
+    )
+    return frozenset(re.findall(r"^\|\s*`([A-Z][A-Z0-9_*]*)`", section, re.MULTILINE))
 
 
 def _first_use(document: str, variable: str) -> int:
