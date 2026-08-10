@@ -175,6 +175,14 @@ NO_CONTENT = GoogleResponse(status=204, body=b"")
 # What it answers a successful insert or patch: the event it stored. Nothing syncr reads, but a body
 # is what a real answer carries and a fake that answered none would hide a reader of one.
 EVENT_STORED = GoogleResponse(status=200, body=b'{"id": "evt-stored"}')
+# What it answers a patch of an event that has already been deleted: 200, carrying the tombstone,
+# whose status stays `cancelled`. Recorded from the real API rather than assumed, because a reading
+# that tested the status alone took this for an applied write while no windowed read of the calendar
+# returns the event at all.
+EVENT_TOMBSTONE = GoogleResponse(status=200, body=b'{"id": "evt-stored", "status": "cancelled"}')
+# What a success looks like when the answer's body was larger than the bound the transport reads it
+# under: accepted, with nothing to read back. The write landed either way.
+EVENT_BODY_TOO_LARGE = GoogleResponse(status=200, body=None)
 
 
 @dataclass(frozen=True, slots=True)

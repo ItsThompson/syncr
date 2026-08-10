@@ -20,10 +20,15 @@ owns the calendar, and an extended property rather than a convention in the titl
 is the user's to read and a key in it would be a key they could edit.
 
 **A deletion of something already gone is done, and a patch of something already gone is not.**
-Both answer 404, and the two mean opposite things: the deletion got what it wanted, and the patch
-left the target missing an event the plan holds. Reporting the second as a success is exactly the
-failure that reads as a success, so it ends the reconciliation and the next attempt inserts the
-event.
+The two mean opposite things: the deletion got what it wanted, and the patch left the target missing
+an event the plan holds. Reporting the second as a success is exactly the failure that reads as a
+success, so it ends the reconciliation and the next attempt inserts the event.
+
+**The provider does not state the second case in its status, and that had never been checked.**
+Measured against the real API: a second delete of the same event answers ``410``, but a patch of a
+deleted event answers ``200`` carrying the tombstone, whose ``status`` is ``cancelled``. So a status
+test alone reads that patch as applied while no read of the calendar returns the event, and the
+echoed status is the only thing in the answer that tells the two apart.
 
 **A write refused for want of an authorization has already raised the loudest notice in the
 product**, because the token source records a dead grant where it discovers one. This module does
@@ -47,7 +52,7 @@ from syncr_api.calendars.google_config import (
     event_url,
     events_url,
 )
-from syncr_api.calendars.google_payloads import GoogleErrorPayload
+from syncr_api.calendars.google_payloads import GoogleErrorPayload, GoogleEventPayload
 from syncr_api.google_account.tokens import GoogleAccess
 
 if TYPE_CHECKING:
@@ -73,6 +78,14 @@ DELETE: Final = "DELETE"
 
 RATE_LIMITED_REASON: Final = (
     "Google is rate limiting syncr, so this reconciliation stopped part way through"
+)
+
+# What a write says when the event it was changing is not there any more. One spelling, because two
+# answers reach it: the status the provider states for an event it has forgotten, and the tombstone
+# it echoes for one it still holds as cancelled.
+GONE_WHILE_WRITING: Final = (
+    "Google no longer holds an event syncr was updating, so it was removed while the plan was "
+    "being written"
 )
 
 
@@ -219,18 +232,11 @@ def read_write_answer(response: GoogleResponse, *, gone_is_done: bool) -> WriteA
     """
     status = response.status
     if not response.is_error:
+        if not gone_is_done and _echoed_cancelled(response.body):
+            return WriteRefused(reason=GONE_WHILE_WRITING)
         return WriteApplied()
     if status in {HTTPStatus.NOT_FOUND, HTTPStatus.GONE}:
-        return (
-            WriteApplied()
-            if gone_is_done
-            else WriteRefused(
-                reason=(
-                    "Google no longer holds an event syncr was updating, so it was removed while "
-                    "the plan was being written"
-                )
-            )
-        )
+        return WriteApplied() if gone_is_done else WriteRefused(reason=GONE_WHILE_WRITING)
     reasons = _reasons(response.body)
     if status == HTTPStatus.TOO_MANY_REQUESTS or (
         status == HTTPStatus.FORBIDDEN and reasons & RATE_LIMIT_REASONS
@@ -262,6 +268,22 @@ def read_write_answer(response: GoogleResponse, *, gone_is_done: bool) -> WriteA
             )
         )
     return WriteRefused(reason=f"Google answered {status} to a write")
+
+
+def _echoed_cancelled(body: bytes | None) -> bool:
+    """Whether the event a successful mutating answer echoed is one the provider holds as cancelled.
+
+    Google accepts a patch of an event that has been deleted, answers ``200``, and echoes the
+    tombstone, which stays cancelled. So the write was applied to something no windowed read of the
+    calendar returns, and a caller told it succeeded would count a block onto a calendar that does
+    not hold it. A deletion is the one write for which this state is the goal.
+    """
+    if body is None:
+        return False
+    try:
+        return GoogleEventPayload.model_validate_json(body).is_cancelled
+    except ValidationError:
+        return False
 
 
 def _reasons(body: bytes | None) -> frozenset[str]:

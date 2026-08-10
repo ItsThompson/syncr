@@ -69,7 +69,9 @@ from syncr_domain.intervals import Interval
 from syncr_domain.zones import ZoneProfile
 from tests.fake_google import (
     ACCESS_TOKEN,
+    EVENT_BODY_TOO_LARGE,
     EVENT_STORED,
+    EVENT_TOMBSTONE,
     NO_CONTENT,
     FixedTokens,
     RecordedGoogle,
@@ -390,6 +392,53 @@ async def test_a_delete_of_an_event_that_vanished_is_done() -> None:
     result = await google.reconcile(TARGET, [])
 
     assert result.deleted == 1
+
+
+async def test_a_patch_the_provider_answers_with_a_tombstone_does_not_read_as_a_success() -> None:
+    """The same condition as the 404 above, which the provider states in the BODY instead.
+
+    Measured against the real API: a patch of an event that has been deleted answers 200 and echoes
+    the tombstone, still cancelled. A reading that tested only the status counted a block onto a
+    calendar that no windowed read returns it from, which is the failure that reads as a success.
+    """
+    google, _written = projecting(mine(identifier="evt-7"), by_method={PATCH: EVENT_TOMBSTONE})
+
+    with pytest.raises(ProjectionFailed, match="removed while the plan was being written"):
+        await google.reconcile(TARGET, [intended(title="Gym · Push")])
+
+
+async def test_a_patch_the_provider_answers_with_a_live_event_is_applied() -> None:
+    """The other direction of the same reading, so the check cannot be a blanket refusal."""
+    google, _written = projecting(mine(identifier="evt-7"), by_method={PATCH: EVENT_STORED})
+
+    result = await google.reconcile(TARGET, [intended(title="Gym · Push")])
+
+    assert result.patched == 1
+
+
+async def test_an_insert_the_provider_answers_with_a_tombstone_does_not_read_as_a_success() -> None:
+    """An insert has the same stake as a patch: the plan holds an event the calendar does not."""
+    google, _written = projecting(by_method={POST: EVENT_TOMBSTONE})
+
+    with pytest.raises(ProjectionFailed, match="removed while the plan was being written"):
+        await google.reconcile(TARGET, [intended()])
+
+
+async def test_a_delete_the_provider_answers_with_a_tombstone_is_done() -> None:
+    google, _written = projecting(mine(identifier="evt-stale"), by_method={DELETE: EVENT_TOMBSTONE})
+
+    result = await google.reconcile(TARGET, [])
+
+    assert result.deleted == 1
+
+
+async def test_an_insert_answered_with_a_body_too_large_to_read_is_still_applied() -> None:
+    """A bound was hit on the way back rather than a tombstone echoed: the write was accepted."""
+    google, _written = projecting(by_method={POST: EVENT_BODY_TOO_LARGE})
+
+    result = await google.reconcile(TARGET, [intended()])
+
+    assert result.inserted == 1
 
 
 # --------------------------------------------------------------------------------
