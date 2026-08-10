@@ -31,7 +31,7 @@
  * What is still out of reach is a pairing split across DIFFERENT selectors, `.a` filling and `.b` drawing, which
  * composes only where the markup nests them. That is the DOM's answer and not a sheet's. */
 
-import { parse, type Rule } from "postcss";
+import { parse, type Declaration, type Rule } from "postcss";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -174,10 +174,8 @@ export async function paletteInUse(sheets: readonly string[]): Promise<Usage> {
     const perSelector = new Map<string, Declared>();
 
     parse(await readFile(file, "utf8")).walkRules((rule) => {
-      const properties = new Set<string>();
-      rule.walkDecls((declaration) => {
-        properties.add(declaration.prop.toLowerCase());
-      });
+      const own = rule.nodes.filter((node): node is Declaration => node.type === "decl");
+      const properties = new Set(own.map((declaration) => declaration.prop.toLowerCase()));
 
       const key = `${contextOf(rule)}|${rule.selector.replace(/\s+/g, " ").trim()}`;
       const declared = perSelector.get(key) ?? {
@@ -187,7 +185,7 @@ export async function paletteInUse(sheets: readonly string[]): Promise<Usage> {
       };
       perSelector.set(key, declared);
 
-      rule.walkDecls((declaration) => {
+      for (const declaration of own) {
         const property = declaration.prop.toLowerCase();
         const floor = floorFor(property, properties);
         if (floor !== undefined) {
@@ -198,7 +196,7 @@ export async function paletteInUse(sheets: readonly string[]): Promise<Usage> {
               reason:
                 "it is a mix, measured where its percentage is known, in the charts' own contrast ledger",
             });
-            return;
+            continue;
           }
           declared.drawn.set(property, { value: declaration.value, floor });
           for (const token of tokensIn(declaration.value)) {
@@ -212,7 +210,7 @@ export async function paletteInUse(sheets: readonly string[]): Promise<Usage> {
           declared.fill = declaration.value;
           for (const token of tokensIn(declaration.value)) surfaces.add(token);
         }
-      });
+      }
     });
 
     for (const declared of perSelector.values()) compositions.push(...compositionsOf(declared));

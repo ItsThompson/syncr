@@ -624,4 +624,75 @@ describe("the pairings a sheet states", () => {
 
     expect(stated).toEqual(["--ink-soft on --ink-deep"]);
   });
+
+  /* ONLY A RULE'S OWN DECLARATIONS ARE READ, because `walkDecls` is recursive and reading it whole attributed a
+   * nested block's ink to its parent's fill. That reported a pairing across TWO elements as one rule stating it
+   * outright, which is a false finding rather than a missed one: `--ink-soft` on `--ink-deep` is 1.74:1, so a
+   * flat-to-nested refactor would have reddened the tree. The flat equivalent has always been correctly silent,
+   * so the reader's verdict depended on authoring style. */
+  it("states nothing for a nested descendant, which is a pairing across two elements", async () => {
+    const stated = await statedBy(
+      ".probe {\n  background: var(--ink-deep);\n  & .child { color: var(--ink-soft); }\n}\n",
+    );
+
+    expect(stated).toEqual([]);
+  });
+
+  it("states nothing for the flat equivalent either, so nesting and flat now agree", async () => {
+    const stated = await statedBy(
+      ".probe { background: var(--ink-deep); }\n.probe .child { color: var(--ink-soft); }\n",
+    );
+
+    expect(stated).toEqual([]);
+  });
+
+  /* A nested at-rule reaches the ink through the parent's own block, so reading descendants merged it with the
+   * bare fill and defeated the at-rule keying from the inside. */
+  it("states nothing for an at-rule nested inside a filled rule", async () => {
+    const stated = await statedBy(
+      ".probe {\n  background: var(--ink-deep);\n  @media print { color: var(--ink-soft); }\n}\n",
+    );
+
+    expect(stated).toEqual([]);
+  });
+
+  /* `&:hover` is the same element in another state, so its ink really does land on the parent's fill and this
+   * reader does not claim it. Resolving `&` against a parent selector is selector semantics, which the reader
+   * does not do, and an under-read is the safe direction. Pinned so the bound is measured rather than assumed. */
+  it("states nothing for a nested &:hover, which is an under-read rather than a false one", async () => {
+    const stated = await statedBy(
+      ".probe {\n  background: var(--ink-deep);\n  &:hover { color: var(--ink-soft); }\n}\n",
+    );
+
+    expect(stated).toEqual([]);
+  });
+});
+
+/* THE FLOOR A PROPERTY IMPLIES IS READ FROM ITS OWN BLOCK'S SIBLINGS.
+ *
+ * A `color` beside a `background-image` is a carrier for the hatch's own `currentColor` rather than a label, so it
+ * drops to the indicator floor. Reading descendants let a NESTED `background-image` demote a parent's own label,
+ * which silently widens what the gate declines to enforce: an ink at 3:1 is no longer held to 4.5:1 anywhere. */
+/** The floor one synthetic sheet puts `--ink-soft` to, so the classification can be probed per block. */
+async function floorOf(css: string): Promise<number | undefined> {
+  const directory = await mkdtemp(path.join(tmpdir(), "syncr-floor-"));
+  const file = path.join(directory, "probe.css");
+  await writeFile(file, css, "utf8");
+  return (await paletteInUse([file])).inks.get("--ink-soft")?.floor;
+}
+
+describe("the floor an ink is held to", () => {
+  it("drops to the indicator floor beside a background-image in the same block", async () => {
+    expect(
+      await floorOf(".probe { color: var(--ink-soft); background-image: var(--hatch-back); }\n"),
+    ).toBe(INDICATOR_FLOOR);
+  });
+
+  it("stays at the text floor when the background-image is in a nested block", async () => {
+    expect(
+      await floorOf(
+        ".probe {\n  color: var(--ink-soft);\n  & .child { background-image: var(--hatch-back); }\n}\n",
+      ),
+    ).toBe(TEXT_FLOOR);
+  });
 });
