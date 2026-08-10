@@ -150,6 +150,34 @@ class AnchorRepository(TenantScopedRepository):
         )
         return counted or 0
 
+    async def start_instants_for_source(
+        self, source_id: CalendarSourceId, *, span: Interval
+    ) -> tuple[datetime, ...]:
+        """Every instant an anchor of this source begins at in ``span``, earliest first.
+
+        Beginning inside rather than overlapping, which is the opposite reading from the two reads
+        above and deliberately: the caller asks which local DAYS this source fed, and a commitment
+        belongs to the day it starts in wherever this product answers that question.
+
+        Instants rather than rows, because the one caller wants dates. It reads no title, no
+        location and no type, so a notice about a failing feed cannot come to disclose what is on
+        the days it names.
+
+        Repeats are kept. Two commitments starting at one instant are two rows here and one date to
+        the caller, which already collapses instants to dates and would collapse these with them.
+        """
+        found = await self._session.scalars(
+            self.scoped_select(Anchor)
+            .where(
+                Anchor.source_id == source_id,
+                Anchor.starts_at >= span.start,
+                Anchor.starts_at < span.end,
+            )
+            .with_only_columns(Anchor.starts_at)
+            .order_by(Anchor.starts_at)
+        )
+        return tuple(found)
+
     async def list_matchable(self) -> tuple[AnchorRecord, ...]:
         """Every anchor whose type a rule may still decide, earliest first.
 
