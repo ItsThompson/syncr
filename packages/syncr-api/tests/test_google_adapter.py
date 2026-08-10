@@ -299,6 +299,30 @@ async def test_a_full_read_is_not_a_delta_and_reports_no_removed_identifier() ->
     assert outcome.removed_uids == ()
 
 
+async def test_a_full_read_names_no_removal_even_when_the_provider_volunteers_one() -> None:
+    # The emptiness has to survive the case that could fill it. A full read asks for no deleted
+    # events and gets them anyway, and naming those identifiers would leave one outcome carrying two
+    # removal rules: everything absent from it, plus a list. Absence already covers both.
+    google, _ = adapter(
+        [
+            ok(
+                events_page(
+                    event("kept"),
+                    event("gone-1", status="cancelled", start=None, end=None),
+                    event("gone-2", status="cancelled", start=None, end=None),
+                )
+            )
+        ]
+    )
+
+    outcome, _state = await google.fetch(source())
+
+    assert outcome.removed_uids == ()
+    # Counted, and by a figure that is neither the event count nor one.
+    assert outcome.cancelled_discarded == 2
+    assert [one.uid for one in outcome.events] == ["kept"]
+
+
 # --------------------------------------------------------------------------------------
 # The sync token as a change detector
 # --------------------------------------------------------------------------------------
@@ -452,6 +476,54 @@ async def test_a_delta_syncr_cannot_read_still_reads_the_calendar_in_full() -> N
     assert len(transport.calls) == 2
     assert state.resync_reason == CHANGES_DETECTED
     assert [one.uid for one in outcome.events] == ["a", "b"]
+
+
+async def test_a_delta_reports_an_occurrence_that_moved_out_of_the_horizon() -> None:
+    # The case a windowed reading of a delta would hide, and the one that matters most: the anchor
+    # inside the window is the one that has to go. A full read is windowed at the provider and would
+    # simply not list it, which removes it by absence; a delta is not windowed at all, because
+    # Google refuses `timeMin` beside a sync token, so clipping here is syncr choosing to lose it.
+    google, _ = adapter(
+        [
+            ok(
+                events_page(
+                    event("moved-away", start="2027-02-10T09:00:00Z", end="2027-02-10T10:00:00Z")
+                )
+            )
+        ]
+    )
+
+    outcome, _state = await google.read_changes(
+        source(sync_state=synced()), since=SYNC_TOKEN, at=NOW
+    )
+
+    assert [one.uid for one in outcome.events] == ["moved-away"]
+    # Not counted as unplaced either: a delta places nothing, so there is no window to fall outside
+    # of and nothing for that term to mean here.
+    assert outcome.unplaced == 0
+
+
+async def test_a_change_outside_the_horizon_still_reads_the_calendar_in_full() -> None:
+    # The same rule at the decision it feeds. The full read that follows is windowed and finds
+    # nothing new, which is a wasted request rather than a wrong answer; treating the delta as
+    # unchanged is the wrong answer, because the occurrence has already left the plan's window.
+    google, transport = adapter(
+        [
+            ok(
+                events_page(
+                    event("moved-away", start="2027-02-10T09:00:00Z", end="2027-02-10T10:00:00Z"),
+                    sync_token=NEXT_TOKEN,
+                )
+            ),
+            ok(events_page(event("still-here"))),
+        ]
+    )
+
+    outcome, state = await google.fetch(source(sync_state=synced()))
+
+    assert len(transport.calls) == 2
+    assert state.resync_reason == CHANGES_DETECTED
+    assert [one.uid for one in outcome.events] == ["still-here"]
 
 
 async def test_a_poll_that_finds_no_change_answers_with_an_empty_delta() -> None:
