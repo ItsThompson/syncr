@@ -485,6 +485,9 @@ class TestTheTimersAgreeWithTheConfiguration:
         door was not true of the suite.
 
         This asserts what the test's own name claims: the thing invoked is a recipe that exists.
+
+        THE SET IS DELIBERATELY WIDE. `_recipe_names()` includes `[private]` recipes, because `just`
+        runs one when a unit names it, so this crossing accepts a unit that calls one.
         """
         content = directives(SYSTEMD / unit)
         started = _exec_start(content).split()
@@ -1919,9 +1922,9 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
     ) -> None:
         """THE DELETION PROOF, run rather than read: `just drill-seed` on a simulated host.
 
-        The exit status alone proves nothing here, because the recipe fails in a tree with no
-        compose file whether or not it refuses. What proves it is that `docker` was never reached,
-        which is the whole claim: nothing is written and nothing is started.
+        The recording stub answers whether the recipe REACHED a container, which an exit status
+        cannot: a guard that starts something and refuses afterwards exits non-zero too, and firing
+        late is the regression this recipe pair has already suffered once.
         """
         done = _drill_seed_in_a_tree_of_its_own(tmp_path, evidence=(fact,))
         reached = tmp_path / DOCKER_LOG
@@ -1933,10 +1936,12 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
         )
 
     def test_it_does_not_refuse_a_workstation(self, tmp_path: Path) -> None:
-        """THE OTHER DIRECTION, and the only case that can see a refusal that always fires.
+        """THE OTHER DIRECTION, and the case that sees an always-firing guard for its own reason.
 
-        A guard neutralized by making its condition true refuses everything and passes every case
-        above. The two facts are what a workstation does not have, so a tree without them runs.
+        The two directions redden overlapping sets rather than disjoint ones: forcing the condition
+        true also reddens a refusal case, because the loop then refuses on the first fact in the
+        list and the message names the wrong one. This is the only case that fails because the guard
+        refused a tree holding neither fact, which is what a workstation is.
         """
         done = _drill_seed_in_a_tree_of_its_own(tmp_path, evidence=())
 
