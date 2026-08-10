@@ -115,9 +115,11 @@ services:
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
       GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
-      # Whether the worker may write to the calendar syncr owns. Off unless a person has run the
-      # live Google suite: the destructive reconciliation has never met the real API. Named on the
-      # worker only, because the worker is the one process that projects.
+      # Whether the worker may write to the calendar syncr owns. The destructive reconciliation has
+      # met the real Google API from the marked live suite against a development calendar; it has
+      # never run from an armed deployment over a horizon of real plan blocks, which is what this
+      # default is off for. Named on the worker only, because the worker is the one process that
+      # projects.
       GOOGLE_PROJECTION_WRITES: ${GOOGLE_PROJECTION_WRITES:-false}
     networks:
       - app-net

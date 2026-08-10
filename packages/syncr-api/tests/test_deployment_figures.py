@@ -41,6 +41,7 @@ from ops.process import Result
 from ops.restore import RestoreRefused, require_empty
 from ops.verdict import compare
 
+from syncr_api.core.settings import EnvSettings
 from tests.test_alert_rules import named as alert_named
 from tests.test_alert_rules import repo_root
 from tests.test_deploy_topology import DEPLOYED_FILES
@@ -2741,3 +2742,106 @@ class TestEveryTeardownRefusesAnInheritedProject:
         )
 
         _assert_it_refused(done, tmp_path, saying="cannot resolve to a project")
+
+
+# --- Why writing to a real calendar is off, stated in ten places ---------------------------------
+
+# Every file that states WHY `GOOGLE_PROJECTION_WRITES` ships false. The reason is one fact and the
+# tree spells it ten times, in five comment languages, so flipping the default falsifies all ten at
+# once and each has to be corrected in the same change.
+#
+# Enumerated rather than discovered, because discovery has now failed four times on this exact set.
+# A review found 4, a sweep of two directories found 6, and both greps that surfaced the rest miss
+# `.env.example`: its sentence wraps between "the real" and "Google API", and it says "has ever been
+# run" rather than "never". A declared tuple cannot wrap and cannot rephrase.
+WHY_WRITING_IS_OFF: Final = (
+    Path("packages/syncr-api/src/syncr_api/core/settings.py"),
+    Path("packages/syncr-api/src/syncr_api/calendars/injection.py"),
+    Path("packages/syncr-api/tests/test_google_reconcile.py"),
+    Path("packages/syncr-api/tests/test_projection_runner.py"),
+    Path("docs/runbooks/google-token-expired.md"),
+    Path("docs/smoke-scenarios.md"),
+    Path("docker-compose.yml"),
+    Path(".env.example"),
+    Path("e2e/tests/paths.spec.ts"),
+    Path("e2e/docker-compose.e2e.yml"),
+)
+
+# The clause every one of them carries, naming the condition that is still open. Short deliberately:
+# a longer phrase is likelier to wrap, and wrapping is what hid one site from two greps.
+THE_OPEN_CONDITION: Final = "armed deployment"
+
+
+def _prose_of(relative: Path) -> str:
+    """One file's text with comment markers stripped and every run of whitespace flattened.
+
+    The reason is prose in Python, YAML, shell, TypeScript and Markdown comments, and it wraps
+    across lines in most of them. Matching raw text would miss a site whose phrase broke over a
+    newline, which is exactly how the widest-readership site of the ten survived every earlier
+    reading.
+    """
+    import re
+
+    unmarked = re.sub(r"(?m)^\s*(?:#|//|\*|--)+[ \t]?", " ", read(relative))
+    return re.sub(r"\s+", " ", unmarked)
+
+
+class TestWhyWritingToARealCalendarIsOff:
+    """The default, and the ten statements of why, crossed against each other.
+
+    This exists because the reason drifted twice inside one ticket. The live Google suite met the
+    provider, which falsified the sentence "it has never met the real API" wherever it was written,
+    and it was written in ten files. Two rounds of human sweeping found 4 and then 6 of them.
+
+    The guard is positive and bounded on purpose. A check that no sentence in the tree CLAIMS the
+    write path is unproven would be a check over unbounded wordings that goes green the moment a
+    writer picks a phrasing it does not know. This asserts instead that a declared set of files each
+    still names the condition that is genuinely open, and that the default those statements justify
+    is still what they say it is.
+    """
+
+    def test_the_shipped_default_is_still_off(self) -> None:
+        """The field default, not a resolved setting: a stray environment variable is not the ship.
+
+        When this reddens, every file in `WHY_WRITING_IS_OFF` is stating a reason that has lapsed
+        and has to be corrected in the same change. That is the whole purpose of this check.
+        """
+        declared = EnvSettings.model_fields["google_projection_writes"].default
+
+        assert declared is False, (
+            "GOOGLE_PROJECTION_WRITES now ships armed, so the stated reason has lapsed at every "
+            "one of these and each needs correcting in this change: "
+            f"{[str(one) for one in WHY_WRITING_IS_OFF]}"
+        )
+
+    @pytest.mark.parametrize("relative", WHY_WRITING_IS_OFF, ids=lambda one: one.name)
+    def test_the_site_names_the_condition_that_is_still_open(self, relative: Path) -> None:
+        """Each one says what has NOT happened yet, rather than what has.
+
+        The distinction is the whole defect: "has never met the real API" became false when the live
+        suite ran, while "has never run from an armed deployment" is still true and is what the
+        default is for.
+        """
+        assert THE_OPEN_CONDITION in _prose_of(relative), (
+            f"{relative} states why writing is off without naming the condition that is still open "
+            f"({THE_OPEN_CONDITION!r}), so its reason cannot be told from one that has lapsed"
+        )
+
+    @pytest.mark.parametrize("relative", WHY_WRITING_IS_OFF, ids=lambda one: one.name)
+    def test_the_site_does_not_claim_the_provider_was_never_met(self, relative: Path) -> None:
+        """The one negative worth keeping, because these three spellings are what actually drifted.
+
+        Bounded to the phrasings the tree really used rather than to every way the claim could be
+        written: as a general check it would be decoration, and it is recorded here as covering
+        three known drifts and nothing more.
+        """
+        prose = _prose_of(relative)
+
+        for lapsed in (
+            "never met the real",
+            "never been run against the real",
+            "never run against",
+        ):
+            assert lapsed not in prose, (
+                f"{relative} still says {lapsed!r}, which the live suite made false"
+            )

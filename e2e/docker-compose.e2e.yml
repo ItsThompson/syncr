@@ -59,7 +59,7 @@ services:
       GOOGLE_TOKEN_ENCRYPTION_KEY: ZGV2LW9ubHktZ29vZ2xlLXRva2VuLWVuY3J5cHQta2U=
       # Left FALSE, which is what every environment runs. With it off the projection is
       # computed in full and refused before any request is sent, so the projection pass
-      # is exercised and no unverified destructive write reaches a real calendar. S3 is
+      # is exercised and no write from an armed deployment reaches a real calendar. S3 is
       # the manual scenario that observes a real write.
       GOOGLE_PROJECTION_WRITES: "false"
     volumes:

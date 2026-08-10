@@ -8,7 +8,9 @@
  *
  * The projection END of the first path is where this suite stops short of the phone, and the reason is
  * a product decision rather than a gap in the harness: `GOOGLE_PROJECTION_WRITES` is false in every
- * environment, because the destructive reconciliation has never been run against the real Google API.
+ * environment, because the destructive reconciliation has never run from an armed deployment over a
+ * horizon of real plan blocks. It has met the real Google API from the marked live suite against a
+ * development calendar, which is a different quantity of writes against a calendar nobody reads.
  * So the path is driven until the projection operation reports its outcome, and S3 is the manual
  * scenario that observes an event on a device.
  */

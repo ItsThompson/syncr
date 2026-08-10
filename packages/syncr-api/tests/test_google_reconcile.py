@@ -8,7 +8,9 @@ landed when the provider refused one.
 does.** That suite has now met the provider, and what it found is why one group below exists: a
 patch of an event that has been deleted answers ``200`` and echoes the tombstone rather than
 answering ``404``, so a reading that tested the status alone counted a write that landed nowhere.
-The shape of the requests is proven here; the provider's answers to them are proven there.
+The shape of the requests is proven here; the provider's answers to them are proven there. What is
+still unproven, and why the deployment default keeps the write off, is a projection from an armed
+deployment over a horizon of real plan blocks.
 
 Six groups.
 
