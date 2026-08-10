@@ -17,7 +17,9 @@ would assert the fixture rather than the adapter. Every expected instant and cou
 out by hand in the test that makes the claim.
 
 The dates sit in February 2026, the same period the repository's other fixtures use, so a
-question about a plan and a question about a feed can be asked about one week.
+question about a plan and a question about a feed can be asked about one week. Two bodies sit
+elsewhere because a real zone transition is what they are about, and those dates are not the
+repository's to choose.
 """
 
 from __future__ import annotations
@@ -576,6 +578,68 @@ SPRING_FORWARD_GAP: Final = (
 HOSTILE_MAGNITUDES: Final[dict[str, str]] = _crossed()
 
 
+def calendar_of(*components: str) -> str:
+    """The given components wrapped in one ``VCALENDAR``, in the order given.
+
+    Public because declaration ORDER is what one body below is about: a test composes the same
+    components every way round and asserts the answer does not move.
+    """
+    return "BEGIN:VCALENDAR\r\n" + "".join(components) + "END:VCALENDAR\r\n"
+
+
+# `Pacific/Apia` skipped 30 December 2011 entirely when it crossed the date line: 29 December ended
+# at UTC-10 and 31 December began at UTC+14. So a daily series at 09:00 produces a wall time on the
+# skipped date, and it resolves onto the same instant as 09:00 on the 31st, which the series also
+# produces. A ONE-HOUR gap cannot make that shape: the two walls it collapses are an hour apart on
+# one date, and no daily rule yields both.
+_ACROSS_THE_SKIPPED_DATE: Final = (
+    "BEGIN:VEVENT\r\nUID:apia@example.org\r\nSUMMARY:Daily across the skipped date\r\n"
+    "DTSTART;TZID=Pacific/Apia:20111229T090000\r\n"
+    "DTEND;TZID=Pacific/Apia:20111229T093000\r\n"
+    "RRULE:FREQ=DAILY;COUNT=3\r\nEND:VEVENT\r\n"
+)
+# The skipped date's occurrence, named in the UTC form RFC 5545 permits. Its wall stamp is a time
+# the series never produces, so nothing but the instant connects it to the occurrence it replaces.
+SKIPPED_DATE_IN_UTC_FORM: Final = (
+    "BEGIN:VEVENT\r\nUID:apia@example.org\r\nSUMMARY:Moved from the skipped date\r\n"
+    "RECURRENCE-ID:20111230T190000Z\r\n"
+    "DTSTART;TZID=Pacific/Apia:20111231T160000\r\n"
+    "DTEND;TZID=Pacific/Apia:20111231T163000\r\nEND:VEVENT\r\n"
+)
+# The next day's occurrence, named in its own wall time. Same instant as the one above.
+SKIPPED_DATE_IN_WALL_FORM: Final = (
+    "BEGIN:VEVENT\r\nUID:apia@example.org\r\nSUMMARY:Moved from the day after\r\n"
+    "RECURRENCE-ID;TZID=Pacific/Apia:20111231T090000\r\n"
+    "DTSTART;TZID=Pacific/Apia:20111231T180000\r\n"
+    "DTEND;TZID=Pacific/Apia:20111231T183000\r\nEND:VEVENT\r\n"
+)
+# A further spelling of that same instant: a `RECURRENCE-ID` naming a zone that is neither the
+# series' nor UTC, which the standard permits as readily as the other two. `Asia/Tokyo` was UTC+9,
+# so this states the instant above with a wall time that matches nothing else in the body.
+SKIPPED_DATE_IN_A_FOREIGN_ZONE: Final = (
+    "BEGIN:VEVENT\r\nUID:apia@example.org\r\nSUMMARY:Moved, named in Tokyo\r\n"
+    "RECURRENCE-ID;TZID=Asia/Tokyo:20111231T040000\r\n"
+    "DTSTART;TZID=Pacific/Apia:20111231T200000\r\n"
+    "DTEND;TZID=Pacific/Apia:20111231T203000\r\nEND:VEVENT\r\n"
+)
+
+# Two occurrences on one instant, each carrying a replacement of its own.
+SKIPPED_DATE_COMPONENTS: Final = (
+    _ACROSS_THE_SKIPPED_DATE,
+    SKIPPED_DATE_IN_UTC_FORM,
+    SKIPPED_DATE_IN_WALL_FORM,
+)
+SKIPPED_DATE_GAP: Final = calendar_of(*SKIPPED_DATE_COMPONENTS)
+
+# The same two occurrences with a third replacement on that instant, so the instant carries more
+# keys than there are occurrences to claim them.
+CROWDED_INSTANT_COMPONENTS: Final = (
+    *SKIPPED_DATE_COMPONENTS,
+    SKIPPED_DATE_IN_A_FOREIGN_ZONE,
+)
+CROWDED_INSTANT: Final = calendar_of(*CROWDED_INSTANT_COMPONENTS)
+
+
 def _series_with(*replacements: str) -> str:
     """A weekly master, plus whatever replacements of its second occurrence are given."""
     master = (
@@ -583,7 +647,7 @@ def _series_with(*replacements: str) -> str:
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
         "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\n"
     )
-    return "BEGIN:VCALENDAR\r\n" + master + "".join(replacements) + "END:VCALENDAR\r\n"
+    return calendar_of(master, *replacements)
 
 
 def _replacement(*lines: str) -> str:
@@ -721,5 +785,7 @@ ALL_FEEDS: Final = {
     "cancelled_orphan": CANCELLED_ORPHAN,
     "cancelled_newer_revision": CANCELLED_NEWER_REVISION,
     "spring_forward_gap": SPRING_FORWARD_GAP,
+    "skipped_date_gap": SKIPPED_DATE_GAP,
+    "crowded_instant": CROWDED_INSTANT,
     **HOSTILE_MAGNITUDES,
 }
