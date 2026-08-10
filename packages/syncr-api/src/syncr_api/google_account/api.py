@@ -8,7 +8,7 @@ application. Three things follow from that, and each is deliberate:
 
 *It answers with a redirect, not a document.* The user arrives by top-level navigation, so a JSON
 body would be a blank page with JSON in it. The outcome travels as one query value from a closed
-set and Settings states what it means.
+set, which no screen reads today: ``google_account/outcomes.py`` says what that leaves a user with.
 
 *It resolves a session like every other route.* The cookie is ``SameSite=Lax``, which a browser
 sends on a top-level GET navigation, so Google's redirect carries it. Completing a connect without

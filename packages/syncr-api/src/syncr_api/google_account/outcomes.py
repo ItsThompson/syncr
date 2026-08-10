@@ -2,10 +2,11 @@
 
 The callback is a top-level navigation from Google, so its answer is a redirect rather than a
 document: a problem-details body in the address bar is a blank page with JSON in it. The outcome
-therefore travels as one query value from a closed set, and Settings renders the sentence for it.
+therefore travels as one query value from a closed set. **No screen reads that value today**, so
+what a user sees on arrival is the durable read below and nothing about the attempt itself.
 
-The set is closed for the same reason a rejection kind is: the screen states a different thing per
-member, so a new member is a deliberate edit here and in the copy that renders it, rather than a
+The set is closed for the same reason a rejection kind is: a screen states a different thing per
+member, so a new member is a deliberate edit here and in whatever renders it, rather than a
 free-text reason reaching a user through a URL. Google's own error code never reaches the address
 bar for that reason: it is a value Google chooses the content of.
 
