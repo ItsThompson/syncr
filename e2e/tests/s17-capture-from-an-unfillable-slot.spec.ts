@@ -11,10 +11,12 @@
  * pointer cannot reach and a prefill that reached a draft but not the rendered field are the same class, and jsdom
  * has neither layout nor hit-testing nor a computed style to see them with.
  *
- * THE FIRST CASE IS THAT CLASS, MEASURED. A band is transparent to the pointer, so a drag can begin on the canvas
- * underneath it, and the control inside the band inherited that: every gutter label the grid draws as a button read
- * `pointer-events: none`. The pair is asserted rather than the label alone, because a band that stopped refusing
- * the pointer would take the presses the canvas under it needs.
+ * THE FIRST CASE IS THAT CLASS, MEASURED. A band takes no pointer, because it is a reading and there is nothing
+ * on it to press, and the control inside it inherited that: every gutter label the grid draws as a button read
+ * `pointer-events: none`, and a trial click on one was refused. The pair is asserted rather than the label alone,
+ * because either half alone is satisfiable in a way that defeats the other: a band that took the pointer would
+ * make its whole hatched area an event target when only the words are pressable, and the label's opt-in would then
+ * be redundant rather than load-bearing.
  *
  * THE SECOND CASE IS EXPECTED TO FAIL AT THIS COMMIT, and it is written as the assertion it will be rather than as
  * a skip, so the day the flow exists it goes red for passing unexpectedly and the marker has to be removed. Its
@@ -90,6 +92,9 @@ const wallTimeIn = (instant: string, zone: string): string =>
 /** Minutes from midnight for a stored wall time, which the api spells `HH:MM:SS`. */
 const fromMidnight = (wallTime: string): number => {
   const [hours, minutes] = wallTime.split(":");
+  if (hours === undefined || minutes === undefined) {
+    throw new Error(`${wallTime} is not a wall time the api produces, which is HH:MM:SS`);
+  }
   return Number(hours) * MINUTES_IN_HOUR + Number(minutes);
 };
 
@@ -113,10 +118,25 @@ test("S17 a gutter label drawn as a control takes the pointer, and the band hold
     `the grid drew no gutter label as a control, so nothing was measured. It drew: ${JSON.stringify(drawn)}`,
   ).toBeGreaterThan(0);
 
-  /* THE PAIR. A control inside the band opts back into the pointer; the band itself does not take one, so a press
-   * on the hatch beside the words still reaches the canvas a drag begins on. */
+  /* THE PAIR. The band takes no pointer and the control inside it takes one, so the words are pressable and the
+   * hatch beside them is not. */
   expect(controls.filter((each) => each.onTheLabel === "none")).toEqual([]);
   expect(controls.filter((each) => each.onTheBand !== "none")).toEqual([]);
+
+  /* AND THE POLICY HAS THE EFFECT IT CLAIMS, which a computed string does not prove: Playwright's trial click runs
+   * every check a real click runs, including whether the element receives the pointer, and acts on nothing.
+   *
+   * ONE CONTROL RATHER THAN ALL OF THEM. The opt-in is a single declaration on a shared selector, so one press
+   * settles whether it reaches the pointer; pressing every label would instead measure where each one happens to
+   * land. A refusal here therefore has two possible causes, and the message names both: the declaration, or a
+   * canvas grown so tall that the label's own box is beyond a scroll's reach. */
+  const control = page.locator("button.week-band__label").first();
+  await expect(
+    control,
+    "a gutter label drawn as a control refused a pointer: either the opt-in is gone, or the grid's canvas has " +
+      "grown past where a pointer can be delivered",
+  ).toBeVisible();
+  await control.click({ timeout: 15_000, trial: true });
 });
 
 test("S17 an unfillable slot's label opens capture prefilled, and one confirm produces a task that fits the slot", async ({
@@ -260,7 +280,9 @@ test("S17 an unfillable slot's label opens capture prefilled, and one confirm pr
    * work is, and pinning it would decide where it goes on the reader's behalf. */
   expect(unsafe.filter((each) => each.endsWith("/pins"))).toEqual([]);
   expect(unsafe.filter((each) => each === "POST /api/v1/tasks")).toHaveLength(1);
-  expect(unsafe.filter((each) => /^PUT .*\/preference$/.test(each))).toHaveLength(1);
+  expect(
+    unsafe.filter((each) => /^PUT \/api\/v1\/tasks\/[^/]+\/preference$/.test(each)),
+  ).toHaveLength(1);
   const after = await weekView(api, week);
   expect(after.pins.length).toBe(pinsBefore);
 });
