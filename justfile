@@ -42,6 +42,11 @@ restore_compose := env_var_or_default(
     "-f docker-compose.yml -f docker-compose.restore.yml -f docker-compose.deploy.yml"
 )
 
+# The projects that hold something someone keeps: the developer's database, and the deployment's.
+# They are what `dev_compose` and `deploy_compose` above resolve to, and
+# `_refuse-an-inherited-project` below is the only reader.
+protected_projects := "syncr-dev syncr"
+
 # Every Python member, in dependency order, so lint and test output reads bottom-up.
 members := "packages/syncr-common packages/syncr-domain packages/syncr-solver packages/syncr-api packages/syncr-learning cli"
 
@@ -124,8 +129,51 @@ dev:
 dev-down:
     docker compose {{dev_compose}} down
 
+# REFUSE A TEARDOWN AN INHERITED PROJECT NAME WOULD RETARGET at a project that holds something.
+#
+# Compose resolves `COMPOSE_PROJECT_NAME` ABOVE the last `name:` in the `-f` list, and it takes that
+# value from the shell environment first and from the project directory's `.env` second. So a name no
+# recipe here mentions decides which project a teardown destroys: one gitignored line in `.env`, or
+# one `export` in a developer's shell, retargets every teardown in this file at the deployment's
+# volumes, and no tracked file changes.
+#
+# `just` does not read `.env` -- this file sets no `dotenv-load` -- so the file is read here rather
+# than inherited, in compose's own precedence: the environment wins over the file, and the last
+# assignment wins within it. Compose's dotenv reader also accepts an `export ` prefix on a line, so
+# this reading has to as well: measured, `export COMPOSE_PROJECT_NAME=x` in `.env` sets the project
+# compose acts on, and a pattern anchored on the key alone reads nothing and admits the teardown.
+#
+# A NAME THIS READING CANNOT RESOLVE IS REFUSED. Compose interpolates the file's values, so one
+# carrying `$` names a project decided somewhere this recipe cannot see, and the safe answer for a
+# command that drops a project's volumes is no.
+#
+# A DEPENDENCY RATHER THAN A LINE OF EACH BODY, and the first one, because `just` runs dependencies
+# left to right and nothing a teardown depends on should run before it is refused.
+[private]
+_refuse-an-inherited-project:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    inherited="${COMPOSE_PROJECT_NAME:-}"
+    if [ -z "$inherited" ] && [ -f .env ]; then
+      inherited="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?COMPOSE_PROJECT_NAME[[:space:]]*=//p' .env | tail -n 1 | tr -d "\"'")"
+    fi
+    [ -n "$inherited" ] || exit 0
+    if ! printf '%s' "$inherited" | grep -Eq '^[a-z0-9][a-z0-9_.-]*$'; then
+      echo "COMPOSE_PROJECT_NAME is \`$inherited\`, which this refusal cannot resolve to a project:" >&2
+      echo "compose interpolates it and would act on a project decided somewhere else. Unset it, or" >&2
+      echo "spell the project out." >&2
+      exit 1
+    fi
+    for held in {{protected_projects}}; do
+      [ "$inherited" = "$held" ] || continue
+      echo "COMPOSE_PROJECT_NAME names \`$held\`, which holds a database someone keeps, and compose" >&2
+      echo "reads it above the \`-f\` list: this teardown would drop THAT project's volumes rather" >&2
+      echo "than the ones this recipe is about. Unset it, in your shell and in \`.env\`." >&2
+      exit 1
+    done
+
 # Tear the dev stack down AND drop its volumes, for a fresh Postgres
-dev-reset:
+dev-reset: _refuse-an-inherited-project
     docker compose {{dev_compose}} down -v
 
 # Postgres only, published to localhost for the host-run inner loop
@@ -360,7 +408,7 @@ e2e-up:
     @echo "e2e stack on http://localhost:${SYNCR_E2E_PORT:-57080} · readiness: curl -s localhost:${SYNCR_E2E_PORT:-57080}/readyz"
 
 # Tear the e2e stack down AND drop its volumes. Its database is scratch by definition
-e2e-down:
+e2e-down: _refuse-an-inherited-project
     docker compose {{e2e_compose}} down -v
 
 # The whole suite. Every scenario names its scenario number in its title

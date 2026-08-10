@@ -82,6 +82,10 @@ SYSTEMD: Final = Path("deployments/systemd")
 # `TestEveryRecipeThatSeedsRefusesADeployedHost` is stated over a derived set of recipes.
 DEPLOYED_HOST_REFUSAL: Final = "_refuse-a-local-drill-on-a-deployed-host"
 
+# The refusal every recipe that drops a project's volumes carries, spelled once because the rule in
+# `TestEveryTeardownRefusesAnInheritedProject` is stated over a derived set of recipes.
+INHERITED_PROJECT_REFUSAL: Final = "_refuse-an-inherited-project"
+
 # Where the stub `docker` below records having been reached, relative to the tree a case builds.
 DOCKER_LOG: Final = "docker-was-reached"
 
@@ -992,6 +996,56 @@ def _drill_seed_in_a_tree_of_its_own(
     )
 
 
+def _the_scratch_teardown_in_a_tree_of_its_own(
+    root: Path,
+    *,
+    inherited: str | None = None,
+    dotenv: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run `just e2e-down` against a copy of the justfile, in a tree that holds nothing.
+
+    NOT IN THE CHECKOUT, and against a `docker` that can reach nothing, because the command under
+    test is the one that destroys a project: the admitting direction needs the recipe to run to
+    completion, and the only safe way to watch that is a stub. THE SCRATCH TEARDOWN RATHER THAN
+    EITHER, for the same reason: no caller can point this at the recipe whose own scope is a
+    developer's database.
+
+    ``inherited`` is the environment a developer's shell would hand the recipe, and ``dotenv`` is
+    the gitignored file compose reads from the project directory. A case passes one, the other, or
+    both, which is how the precedence between them is driven.
+    """
+    assert shutil.which("just") is not None, (
+        "`just` is not on PATH, and it is what CI and the hooks run every gate through"
+    )
+    (root / "justfile").write_bytes((repo_root() / "justfile").read_bytes())
+    if dotenv is not None:
+        (root / ".env").write_text(dotenv, encoding="utf-8")
+
+    stub = root / "bin" / "docker"
+    stub.parent.mkdir()
+    stub.write_text(RECORDING_DOCKER, encoding="utf-8")
+    stub.chmod(0o755)
+
+    environment = {
+        **os.environ,
+        "PATH": f"{stub.parent}:{os.environ['PATH']}",
+        "SYNCR_DOCKER_LOG": str(root / DOCKER_LOG),
+    }
+    environment.pop("COMPOSE_PROJECT_NAME", None)
+    if inherited is not None:
+        environment["COMPOSE_PROJECT_NAME"] = inherited
+
+    return subprocess.run(
+        # `just` from the PATH the developer and CI both have, like every other call here.
+        ["just", "e2e-down"],  # noqa: S607
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
+    )
+
+
 class TheDestructiveTeardown:
     """Nothing in this tree may TELL anyone to run ``docker compose down -v`` against a project
     holding anything a developer or a deployment keeps.
@@ -1252,6 +1306,7 @@ class TestTheDestructiveTeardown:
     # that a FLAG beats `COMPOSE_PROJECT_NAME` and the LAST flag beats an earlier one, so the pairs
     # below carry the same two names in both orders and must come out opposite: a case that only
     # refused "a line with two overrides" would pass without implementing either rule.
+    # two overrides" would pass without implementing either rule.
     # two overrides" would pass without implementing either rule.
 
     @pytest.mark.parametrize(
@@ -1761,6 +1816,32 @@ def _dev_reset_line() -> int:
     return found[0]
 
 
+def _recipes_carrying_the_command() -> frozenset[str]:
+    """Every justfile recipe that RUNS the destructive teardown, derived rather than listed.
+
+    The declared exemptions are not members: a line that forbids the command names it without
+    running it, and one of them sits in a recipe body.
+    """
+    return frozenset(
+        recipe
+        for path, number, line in _lines_mentioning("down -v")
+        if path == "justfile"
+        and not _declared_exempt(path, line)
+        and (recipe := _recipe_holding(path, number)) is not None
+    )
+
+
+def _projects_the_refusal_reads() -> frozenset[str]:
+    """The projects the runtime refusal names, read from the justfile variable it expands."""
+    variables = _justfile_variables()
+
+    assert "protected_projects" in variables, (
+        "the justfile no longer declares the projects the runtime refusal iterates, so nothing "
+        "crosses that list against the stacks it is meant to describe"
+    )
+    return frozenset(variables["protected_projects"].strip('"').split())
+
+
 def _recipes_named_in(documents: Iterable[str]) -> set[str]:
     """Every `just <recipe>` a runbook tells the operator to RUN.
 
@@ -2009,3 +2090,231 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
 
         with pytest.raises(AssertionError, match="no recipe named members"):
             _dependencies_of("members")
+
+
+def _assert_it_refused(done: subprocess.CompletedProcess[str], root: Path, *, saying: str) -> None:
+    """The refusing direction: a non-zero exit, the reason, and NO container reached.
+
+    The third claim is the one an exit status cannot make. A guard that starts something and refuses
+    afterwards exits non-zero too, and the whole point of a teardown refusal is that it fires before
+    compose acts.
+    """
+    assert done.returncode != 0, done.stdout
+    assert saying in done.stderr, done.stderr
+
+    reached = root / DOCKER_LOG
+    assert not reached.exists(), (
+        f"the recipe reached docker before refusing: {reached.read_text(encoding='utf-8')}"
+    )
+
+
+def _assert_it_ran(done: subprocess.CompletedProcess[str], root: Path) -> None:
+    """The admitting direction, which a refusal that fires on any name at all cannot satisfy."""
+    assert done.returncode == 0, done.stderr
+
+    reached = root / DOCKER_LOG
+    assert reached.is_file() and "down -v" in reached.read_text(encoding="utf-8"), (
+        "the teardown never reached docker, so the refusal refused a project holding nothing"
+    )
+
+
+class TestEveryTeardownRefusesAnInheritedProject:
+    """A recipe that drops a project's volumes refuses an inherited project name, and the SET of
+    those recipes is derived.
+
+    `_scoped_to_a_scratch_project` judges ONE LINE, so it reads a project override written on that
+    line and nothing else. Compose takes `COMPOSE_PROJECT_NAME` from the shell environment first and
+    from the project directory's `.env` second, and honours it ABOVE the last `name:` in the `-f`
+    list. So a name that appears neither on the line nor in any tracked file decides which project a
+    teardown destroys, and `pgdata`, the WAL volume, the staging volume and the bucket go together.
+
+    NEITHER CARRIER CAN BE CLOSED BY A READING OF THE INDEX. `.env` is gitignored, so
+    `git ls-files --cached` cannot see the one file that reprojects every teardown here, and an
+    exported variable sits in no file at all. What can refuse them is the recipe itself, at the
+    moment it would run, which is what the cases below drive.
+
+    THE RUNTIME CASES RUN `e2e-down` AGAINST A STUB `docker`, IN A TREE OF ITS OWN. The admitting
+    direction has to let the recipe finish, and what it finishes with is the command that destroys
+    a project: the tree holds no compose file, so a `docker` escaping the stub would resolve
+    nothing, and that recipe's own scope is the scratch stack rather than one anyone keeps. Which
+    recipes carry the refusal is a separate claim, and it is the derived one below.
+
+    THIS CLASS SITS BELOW THE READERS IT USES rather than beside its siblings, because two of its
+    parametrizations are derived and a decorator is evaluated when the class is created.
+    """
+
+    def test_the_recipes_that_carry_the_command(self) -> None:
+        """The derived set, stated whole so a member that stops being derived is visible.
+
+        A parametrization derived from this set SHRINKS silently: a recipe that stopped carrying the
+        command would drop its own case rather than redden it.
+        """
+        assert _recipes_carrying_the_command() == {"dev-reset", "e2e-down"}
+
+    @pytest.mark.parametrize("recipe", sorted(_recipes_carrying_the_command()))
+    def test_it_refuses_before_any_other_dependency(self, recipe: str) -> None:
+        """A DEPENDENCY, AND THE FIRST ONE, which is the order `just` runs them in."""
+        dependencies = _dependencies_of(recipe)
+
+        assert INHERITED_PROJECT_REFUSAL in dependencies, (
+            f"`just {recipe}` drops the volumes of whatever project COMPOSE_PROJECT_NAME names, "
+            "and nothing here stops that name being a deployment's"
+        )
+        assert dependencies.index(INHERITED_PROJECT_REFUSAL) == 0, (
+            f"`just` runs dependencies left to right, so {dependencies} lets {dependencies[0]} run "
+            "before the teardown it precedes is refused"
+        )
+
+    def test_the_projects_the_refusal_iterates_are_the_ones_that_hold_something(self) -> None:
+        """The justfile's own list crossed against what its compose scopes resolve to.
+
+        The refusal cannot read a compose file's `name:` in four lines of shell, so it names the two
+        projects. This crossing is what keeps that list from becoming a second definition of which
+        projects hold something, drifting from the one the scopes decide.
+        """
+        assert _projects_the_refusal_reads() == _protected_projects()
+
+    def test_the_example_environment_file_does_not_teach_the_pattern(self) -> None:
+        """A key here is copied into `.env` by everyone who follows that file's first line."""
+        keys = _keys_the_environment_file_documents()
+
+        assert "POSTGRES_DB" in keys, "no key was read at all, so the claim below is vacuous"
+        assert "COMPOSE_PROJECT_NAME" not in keys, (
+            "`.env.example` is copied to `.env`, and compose reads that file's project name above "
+            "every `-f` list in this repository"
+        )
+
+    @pytest.mark.parametrize("held", sorted(_protected_projects()))
+    def test_it_refuses_a_project_the_environment_names(self, held: str, tmp_path: Path) -> None:
+        """One case per project that holds something, so neither passes on the other's arm."""
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, inherited=held)
+
+        _assert_it_refused(done, tmp_path, saying=f"COMPOSE_PROJECT_NAME names `{held}`")
+
+    def test_it_admits_a_project_the_environment_names_that_holds_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """THE OTHER DIRECTION. A refusal reading no name at all passes every case above."""
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, inherited="syncr-e2e")
+
+        _assert_it_ran(done, tmp_path)
+
+    def test_it_admits_a_tree_that_inherits_nothing(self, tmp_path: Path) -> None:
+        """What a developer with no `.env` and nothing exported has, which is the ordinary run."""
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path)
+
+        _assert_it_ran(done, tmp_path)
+
+    def test_it_refuses_a_project_only_a_gitignored_file_names(self, tmp_path: Path) -> None:
+        """THE CARRIER NO READING OF THE INDEX REACHES, which is why the refusal reads the file."""
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, dotenv="COMPOSE_PROJECT_NAME=syncr\n"
+        )
+
+        _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
+
+    def test_it_admits_a_gitignored_file_naming_a_project_that_holds_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """The file arm's own other direction: reading the file is not refusing every file."""
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, dotenv="COMPOSE_PROJECT_NAME=syncr-e2e\n"
+        )
+
+        _assert_it_ran(done, tmp_path)
+
+    def test_it_reads_the_quotes_compose_strips(self, tmp_path: Path) -> None:
+        """Compose acts on `syncr` for a quoted value, so a reading that kept the quotes would
+        compare a name no project has and admit the teardown."""
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, dotenv='COMPOSE_PROJECT_NAME="syncr"\n'
+        )
+
+        _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
+
+    @pytest.mark.parametrize(
+        ("dotenv", "refused"),
+        [
+            ("export COMPOSE_PROJECT_NAME=syncr\n", True),
+            ("export COMPOSE_PROJECT_NAME=syncr-e2e\n", False),
+        ],
+    )
+    def test_it_reads_the_export_prefix_compose_accepts(
+        self, dotenv: str, refused: bool, tmp_path: Path
+    ) -> None:
+        """THE SPELLING A READING ANCHORED ON THE KEY ALONE ADMITS.
+
+        Compose's dotenv reader accepts `export ` on a line, measured against `docker compose`
+        `config` on a scratch project: `export COMPOSE_PROJECT_NAME=x` decides the project. So a
+        refusal that matched only an assignment at the start of the line read nothing here and let
+        the teardown run against `syncr`, which is the carrier this refusal exists for, in the
+        spelling a developer who writes shell files reaches for first.
+
+        Both directions, because a reading that refused any line carrying `export` would pass the
+        first row while judging no name at all.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
+
+        if refused:
+            _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
+        else:
+            _assert_it_ran(done, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("dotenv", "refused"),
+        [
+            ("COMPOSE_PROJECT_NAME=syncr-e2e\nCOMPOSE_PROJECT_NAME=syncr\n", True),
+            ("COMPOSE_PROJECT_NAME=syncr\nCOMPOSE_PROJECT_NAME=syncr-e2e\n", False),
+        ],
+    )
+    def test_the_last_assignment_in_the_file_is_the_one_it_judges(
+        self, dotenv: str, refused: bool, tmp_path: Path
+    ) -> None:
+        """THE SAME TWO NAMES IN BOTH ORDERS, which must come out opposite.
+
+        One order alone passes on a reading that takes the first assignment, and compose takes the
+        last.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
+
+        if refused:
+            _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
+        else:
+            _assert_it_ran(done, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("inherited", "dotenv", "refused"),
+        [
+            ("syncr-e2e", "COMPOSE_PROJECT_NAME=syncr\n", False),
+            ("syncr", "COMPOSE_PROJECT_NAME=syncr-e2e\n", True),
+        ],
+    )
+    def test_the_environment_beats_the_file(
+        self, inherited: str, dotenv: str, refused: bool, tmp_path: Path
+    ) -> None:
+        """COMPOSE'S OWN PRECEDENCE, driven with the same two names in both positions.
+
+        A reading that consulted the file first would refuse the row compose runs as `syncr-e2e` and
+        admit the row it runs as `syncr`, which is wrong in both directions at once.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, inherited=inherited, dotenv=dotenv
+        )
+
+        if refused:
+            _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
+        else:
+            _assert_it_ran(done, tmp_path)
+
+    def test_a_name_it_cannot_resolve_is_refused(self, tmp_path: Path) -> None:
+        """Compose interpolates the file's values, and this refusal does not.
+
+        The value below is `syncr` by the time compose reads it, so admitting what cannot be
+        resolved would admit the deployed project by way of a second variable.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path,
+            dotenv="INNER=syncr\nCOMPOSE_PROJECT_NAME=${INNER}\n",
+        )
+
+        _assert_it_refused(done, tmp_path, saying="cannot resolve to a project")
