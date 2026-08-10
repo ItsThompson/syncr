@@ -116,6 +116,7 @@ from tests.boundaries import (
     route_identity,
     service_calls,
 )
+from tests.conftest import TEST_SERVICE
 from tests.live_horizons import LATE_IN_THE_WEEK, THIS_WEEK, Ticking, declare_the_minimum
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 from tests.test_authorization_boundary import accepts_a_cli_credential
@@ -168,11 +169,11 @@ VERDICT_FIELD = "verdict"
 # Ticket 1363 settled the spelling across the week routes and the weekly session takes the same one.
 ISO_WEEK_PARAMETER = "iso_week"
 
-# How a service writes a transition: the attribute its wiring hands it, and the recorder's own
-# method. Both halves are the key, because a service that writes something else calls a method of
-# the same name: ``outcomes/service.py`` records an outcome through ``self._outcomes.record(...)``.
-RECORDER_ATTRIBUTE = "_verdicts"
-RECORDER_METHOD = VerdictRecorder.record.__name__
+# How a service reaches the collaborator that matters here: the attribute its wiring hands it, and
+# the method it calls on it. Both halves are the key, because a service that writes something else
+# calls a method of the same name: ``outcomes/service.py`` records an outcome through
+# ``self._outcomes.record(...)``.
+RECORDS_A_TRANSITION = ("_verdicts", VerdictRecorder.record.__name__)
 
 # The two spellings a composition binds when nothing about a session is stated: the constant
 # ``plans/recording.py`` names, and the bare value it holds. What separates the worker's recorders
@@ -228,39 +229,49 @@ OUTSIDE_THE_TABLES_REACH = frozenset(
 
 
 class Composition(NamedTuple):
-    """One recorder composition: the surface it binds, and the session state bound beside it."""
+    """One recorder composition: the module it sits in, the surface it binds, and the state beside
+    it."""
 
+    module: str
     surface: str
     session_state: str
 
 
-type Compositions = list[tuple[str, Composition]]
+type Compositions = list[Composition]
 
 
 def compositions(source_root: Path) -> Compositions:
-    """Every recorder composition in the package, with the module each sits in.
+    """Every recorder composition in the package.
 
-    One scan read twice: by the mapping of surfaces to producers below, and by the attribution of
-    each mutating route further down. Derived from the call sites rather than from a registry,
-    because a registry is a thing a new caller can forget to join while still writing rows.
+    The one reader of the tree. Every claim below about which surface is composed where, and about
+    what each binds beside it, takes this list rather than the root, so a reader can tell at the
+    signature which helpers parse and which only rearrange.
+
+    Derived from the call sites rather than from a registry, because a registry is a thing a new
+    caller can forget to join while still writing rows.
     """
-    return [
-        (str(module.relative_to(source_root)), composed)
-        for module in sorted(source_root.rglob("*.py"))
-        for node in ast.walk(ast.parse(module.read_text()))
-        if (composed := _composition_of(node)) is not None
-    ]
-
-
-def composed_surfaces(source_root: Path) -> dict[str, set[str]]:
-    """Which surface each module composes a recorder with."""
-    found: dict[str, set[str]] = {}
-    for module, composed in compositions(source_root):
-        found.setdefault(composed.surface, set()).add(module)
+    found: Compositions = []
+    for module in sorted(source_root.rglob("*.py")):
+        # Named once per module rather than once per node: `relative_to` costs more than the
+        # membership test below, and this walk visits every node of every module in the package.
+        named = str(module.relative_to(source_root))
+        found.extend(
+            composed
+            for node in ast.walk(ast.parse(module.read_text()))
+            if (composed := _composition_of(node, named)) is not None
+        )
     return found
 
 
-def _composition_of(node: ast.AST) -> Composition | None:
+def composed_surfaces(composed: Compositions) -> dict[str, set[str]]:
+    """Which surface each module composes a recorder with."""
+    found: dict[str, set[str]] = {}
+    for one in composed:
+        found.setdefault(one.surface, set()).add(one.module)
+    return found
+
+
+def _composition_of(node: ast.AST, module: str) -> Composition | None:
     """The surface and session state this node binds, if it is a recorder composition."""
     if not isinstance(node, ast.Call) or getattr(node.func, "id", None) != BUILDER:
         return None
@@ -269,12 +280,12 @@ def _composition_of(node: ast.AST) -> Composition | None:
     state = bound.get(SESSION_STATE_KEYWORD)
     if not isinstance(surface, ast.Attribute) or state is None:
         return None
-    return Composition(surface.attr, ast.unparse(state))
+    return Composition(module, surface.attr, ast.unparse(state))
 
 
 def test_every_surface_with_a_producer_is_composed_where_this_file_says(source_root: Path) -> None:
     """An exact mapping, so a producer that moves is a diff rather than a silent change."""
-    composed = composed_surfaces(source_root)
+    composed = composed_surfaces(compositions(source_root))
 
     assert {surface.name: modules for surface, modules in PRODUCERS.items()} == composed
 
@@ -310,7 +321,7 @@ def test_every_cli_reachable_mutation_that_records_a_verdict_binds_the_cli_surfa
     }
     recorded = {
         module: surfaces
-        for module, surfaces in _surfaces_by_module(source_root).items()
+        for module, surfaces in _surfaces_by_module(compositions(source_root)).items()
         if module.split("/")[0] in changing_state_for_the_cli
     }
     assert recorded, (
@@ -326,12 +337,11 @@ def test_every_cli_reachable_mutation_that_records_a_verdict_binds_the_cli_surfa
     )
 
 
-def _surfaces_by_module(source_root: Path) -> dict[str, set[str]]:
+def _surfaces_by_module(composed: Compositions) -> dict[str, set[str]]:
     """The inverse of :data:`PRODUCERS`, read out of the source the same way it is."""
     inverted: dict[str, set[str]] = {}
-    for surface, modules in composed_surfaces(source_root).items():
-        for module in modules:
-            inverted.setdefault(module, set()).add(surface)
+    for one in composed:
+        inverted.setdefault(one.module, set()).add(one.surface)
     return inverted
 
 
@@ -422,7 +432,7 @@ def test_every_package_that_computes_a_verdict_records_the_transition(
     probing = probing_packages(source_root)
     recording = {
         module.split("/")[0]
-        for modules in composed_surfaces(source_root).values()
+        for modules in composed_surfaces(compositions(source_root)).values()
         for module in modules
     }
     assert probing, "no caller of the probe was found, so this asserted nothing"
@@ -495,6 +505,31 @@ class Attributed(NamedTuple):
     carries_the_requests_statement: bool
 
 
+@pytest.fixture(scope="session")
+def composed(source_root: Path) -> Compositions:
+    """The one scan of the package's recorder compositions, shared by every guard that reads it.
+
+    Session-scoped because it parses every module of the package and nothing consumes it
+    destructively. Without it the guards below re-read the tree a dozen times for one answer.
+    """
+    return compositions(source_root)
+
+
+@pytest.fixture(scope="session")
+def attributed(composed: Compositions) -> dict[MutatingRoute, Attributed]:
+    """What records each mutation that can move a week's reading, computed once for this module.
+
+    Its settings are built here rather than taken from the ``settings`` fixture, which is
+    function-scoped: what they decide is which routers the app mounts, and both readings build them
+    from defaults only so a developer's ``.env`` cannot change the enumeration.
+    """
+    return attributions(
+        build_service_settings(service=TEST_SERVICE, env=EnvSettings(_env_file=None)),
+        composed,
+        TRIGGER_TABLE,
+    )
+
+
 def routes_that_can_move_a_weeks_reading(
     settings: ServiceSettings, table: tuple[Trigger, ...]
 ) -> list[MutatingRoute]:
@@ -518,18 +553,26 @@ def routes_that_can_move_a_weeks_reading(
 
 
 def attributions(
-    settings: ServiceSettings, source_root: Path, table: tuple[Trigger, ...]
+    settings: ServiceSettings, composed: Compositions, table: tuple[Trigger, ...]
 ) -> dict[MutatingRoute, Attributed]:
     """What records the flip each of those routes can cause, one entry per route."""
-    composed = compositions(source_root)
-    views = {
-        identity: view
-        for view in api_routes(create_app(settings))
-        for identity in route_identity(view)
-    }
+    views = _views_by_identity(settings)
     return {
         route: _attribution_of(route, views[route.method, route.path], composed, table)
         for route in routes_that_can_move_a_weeks_reading(settings, table)
+    }
+
+
+def _views_by_identity(settings: ServiceSettings) -> dict[tuple[str, str], RouteView]:
+    """Every route the app answers, addressed the way :func:`mutating_routes` names one.
+
+    The dependency tree is what the header reading needs and what a ``MutatingRoute`` does not
+    carry, so the two are paired here rather than by widening the sibling's shape.
+    """
+    return {
+        identity: view
+        for view in api_routes(create_app(settings))
+        for identity in route_identity(view)
     }
 
 
@@ -576,28 +619,43 @@ def the_scheduled_solves_surface(composed: Compositions) -> VerdictSurface:
     """The surface a completed solve records under, derived from the enum rather than named.
 
     Five of the six surfaces reach a verdict by probing and only a solve attempts a placement, so
-    the one whose provenance is the solver's is the one an operation writes under.
+    the one whose provenance is the solver's is the one an operation writes under. The enum states
+    that as a property of a member, so this is a lookup over the composed members rather than a
+    structural derivation: what it buys is that the fact has one home, and the test below holds the
+    answer against the member it must resolve to.
     """
-    (found,) = [
-        surface
-        for surface in _composed_members(composed)
-        if surface.provenance is Provenance.SOLVER
-    ]
-    return found
+    return _the_one_member(
+        [one for one in _composed_members(composed) if one.provenance is Provenance.SOLVER],
+        "whose provenance is the solver's",
+    )
 
 
 def the_time_driven_surface(composed: Compositions) -> VerdictSurface:
     """The periodic probe's surface, which the enum marks as the one a re-confirmation is not news
     for."""
-    (found,) = [
-        surface for surface in _composed_members(composed) if surface.records_only_a_feasible_flip
-    ]
-    return found
+    return _the_one_member(
+        [one for one in _composed_members(composed) if one.records_only_a_feasible_flip],
+        "that records only a feasible flip",
+    )
+
+
+def _the_one_member(found: list[VerdictSurface], selected_by: str) -> VerdictSurface:
+    """The single member a property selects, or a failure naming the property that stopped doing so.
+
+    Destructuring a one-element list would raise an unpacking error here, which says nothing about
+    which reading broke: both callers derive their answer from a property of the enum, and a
+    property that starts selecting none or two of the six is the diagnosis worth printing.
+    """
+    assert len(found) == 1, (
+        f"exactly one composed surface must be the one {selected_by}, and "
+        f"{sorted(one.value for one in found)} are"
+    )
+    return found[0]
 
 
 def _composed_members(composed: Compositions) -> set[VerdictSurface]:
     """The members some module composes a recorder with, as members rather than as names."""
-    return {VerdictSurface[one.surface] for _module, one in composed}
+    return {VerdictSurface[one.surface] for one in composed}
 
 
 def _answers_from_the_request(surface: VerdictSurface, composed: Compositions) -> bool:
@@ -606,15 +664,15 @@ def _answers_from_the_request(surface: VerdictSurface, composed: Compositions) -
     Read as the argument's own text, because what separates the two kinds of caller is whether the
     value can vary with the request: a name can, and the constant cannot.
     """
-    states = {one.session_state for _module, one in composed if one.surface == surface.name}
+    states = {one.session_state for one in composed if one.surface == surface.name}
     return bool(states) and not (states & STATES_NO_SESSION)
 
 
 def _surfaces_by_package(composed: Compositions) -> dict[str, set[str]]:
     """The surfaces each feature package composes a recorder with."""
     found: dict[str, set[str]] = {}
-    for module, one in composed:
-        found.setdefault(module.split("/")[0], set()).add(one.surface)
+    for one in composed:
+        found.setdefault(one.module.split("/")[0], set()).add(one.surface)
     return found
 
 
@@ -625,24 +683,29 @@ def _writes_its_own_transition(view: RouteView) -> bool:
     helper the pin and the rejection share, and neither public method names the recorder. So the
     reading follows the private methods of the same class, and stops there.
     """
+    return _reaches(view, RECORDS_A_TRANSITION)
+
+
+def _reaches(view: RouteView, through: tuple[str, str]) -> bool:
+    """Whether any service method this route calls reaches that collaborator's method."""
     return any(
-        _reaches_the_recorder(service, method, set())
+        _reaches_from(service, method, through, set())
         for service, method in service_calls(view.endpoint)
     )
 
 
-def _reaches_the_recorder(service: type, method: str, seen: set[str]) -> bool:
-    """Whether this method writes a transition, or reaches one of its own that does."""
+def _reaches_from(service: type, method: str, through: tuple[str, str], seen: set[str]) -> bool:
+    """Whether this method calls it, or reaches one of its own that does."""
     if method in seen:
         return False
     seen.add(method)
     tree = _method_tree(service, method)
     if tree is None:
         return False
-    if any(_records_a_transition(node) for node in ast.walk(tree)):
+    if any(_calls(node, through) for node in ast.walk(tree)):
         return True
     return any(
-        _reaches_the_recorder(service, called, seen)
+        _reaches_from(service, called, through, seen)
         for called in _own_calls(tree)
         if called.startswith("_")
     )
@@ -656,14 +719,15 @@ def _method_tree(service: type, method: str) -> ast.AST | None:
     return ast.parse(textwrap.dedent(inspect.getsource(found)))
 
 
-def _records_a_transition(node: ast.AST) -> bool:
-    """Whether this node is the recorder being CALLED, rather than a mention of it."""
+def _calls(node: ast.AST, through: tuple[str, str]) -> bool:
+    """Whether this node is that collaborator's method being CALLED, rather than a mention of it."""
+    attribute, method = through
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
-        and node.func.attr == RECORDER_METHOD
+        and node.func.attr == method
         and isinstance(node.func.value, ast.Attribute)
-        and node.func.value.attr == RECORDER_ATTRIBUTE
+        and node.func.value.attr == attribute
     )
 
 
@@ -713,7 +777,7 @@ def _as_reported(route: MutatingRoute, attributed: Attributed) -> str:
 
 
 def test_the_mutations_that_can_move_a_weeks_reading_divide_into_three_attributions(
-    settings: ServiceSettings, source_root: Path
+    composed: Compositions, attributed: dict[MutatingRoute, Attributed]
 ) -> None:
     """The enumeration, with every figure exact so a reading that covers nothing fails here.
 
@@ -725,27 +789,25 @@ def test_the_mutations_that_can_move_a_weeks_reading_divide_into_three_attributi
     The union closes the three against the whole, so with the counts beside it a route cannot fall
     into two groups or into none.
     """
-    composed = compositions(source_root)
-    found = attributions(settings, source_root, TRIGGER_TABLE)
     carrying = {
-        _identity(route) for route, one in found.items() if one.carries_the_requests_statement
+        _identity(route) for route, one in attributed.items() if one.carries_the_requests_statement
     }
     by_the_solve = {
         _identity(route)
-        for route, one in found.items()
+        for route, one in attributed.items()
         if one.surfaces == {the_scheduled_solves_surface(composed)}
     }
     by_the_probe = {
         _identity(route)
-        for route, one in found.items()
+        for route, one in attributed.items()
         if one.surfaces == {the_time_driven_surface(composed)}
     }
 
-    assert len(found) == MUTATIONS_THAT_CAN_MOVE_A_READING
+    assert len(attributed) == MUTATIONS_THAT_CAN_MOVE_A_READING
     assert carrying == CARRY_THE_REQUESTS_STATEMENT
     assert by_the_solve == FLIPS_THE_SCHEDULED_SOLVE_RECORDS
     assert len(by_the_probe) == FLIPS_THE_PERIODIC_PROBE_RECORDS
-    assert carrying | by_the_solve | by_the_probe == {_identity(route) for route in found}
+    assert carrying | by_the_solve | by_the_probe == {_identity(route) for route in attributed}
 
 
 def test_a_table_whose_rows_move_no_reading_derives_no_route(settings: ServiceSettings) -> None:
@@ -782,7 +844,7 @@ def test_the_mutating_routes_no_row_of_the_table_can_see_are_named(
 
 
 def test_the_periodic_probe_binds_a_state_no_request_supplies_and_the_request_surfaces_do_not(
-    source_root: Path,
+    composed: Compositions,
 ) -> None:
     """``VE3`` read off the compositions, which is the split the attribution rests on.
 
@@ -795,7 +857,6 @@ def test_the_periodic_probe_binds_a_state_no_request_supplies_and_the_request_su
     from a property of the enum rather than from a name, and a property that stopped selecting one
     member would otherwise pick a different surface silently.
     """
-    composed = compositions(source_root)
     from_the_request = {
         one for one in _composed_members(composed) if _answers_from_the_request(one, composed)
     }
@@ -807,7 +868,7 @@ def test_the_periodic_probe_binds_a_state_no_request_supplies_and_the_request_su
 
 
 def test_every_package_that_composes_a_recorder_and_serves_a_mutation_writes_through_it(
-    settings: ServiceSettings, source_root: Path
+    composed: Compositions, attributed: dict[MutatingRoute, Attributed]
 ) -> None:
     """The control on the reading of what a service writes, which is keyed on an attribute name.
 
@@ -821,11 +882,9 @@ def test_every_package_that_composes_a_recorder_and_serves_a_mutation_writes_thr
     worker composes serve none: their recorders are reached from a job, and a rule that demanded a
     route of them would fail for the reason they exist.
     """
-    composed = compositions(source_root)
-    found = attributions(settings, source_root, TRIGGER_TABLE)
-    serving = {route.package for route in found}
+    serving = {route.package for route in attributed}
     composing = {package for package in _surfaces_by_package(composed) if package in serving}
-    writing = {route.package for route, one in found.items() if one.by_the_act}
+    writing = {route.package for route, one in attributed.items() if one.by_the_act}
 
     assert writing == {"pins", "concessions"}
     assert composing == writing, (
@@ -846,19 +905,16 @@ def test_every_package_that_composes_a_recorder_and_serves_a_mutation_writes_thr
     ),
 )
 def test_a_flip_the_scheduled_solve_records_carries_what_the_request_stated(
-    settings: ServiceSettings, source_root: Path
+    composed: Compositions, attributed: dict[MutatingRoute, Attributed]
 ) -> None:
     """Asserts the CORRECT behavior and is expected to fail, rather than pinning the defect.
 
     Every route is named in the failure with the surface that records it and what the row says, so a
     route this rule starts holding for is visible and one still unattributed cannot hide in a count.
     """
-    composed = compositions(source_root)
-    found = attributions(settings, source_root, TRIGGER_TABLE)
-
     unattributed = sorted(
         _as_reported(route, one)
-        for route, one in found.items()
+        for route, one in attributed.items()
         if one.surfaces == {the_scheduled_solves_surface(composed)}
         and not one.carries_the_requests_statement
     )
@@ -879,21 +935,24 @@ def test_a_flip_the_scheduled_solve_records_carries_what_the_request_stated(
         "the day it gets one is the day this marker has to be deleted."
     ),
 )
-def test_a_flip_no_scheduled_work_records_is_recorded_by_the_mutation_that_caused_it(
-    settings: ServiceSettings, source_root: Path
+def test_no_mutation_leaves_its_flip_to_whatever_next_reads_the_week(
+    composed: Compositions, attributed: dict[MutatingRoute, Attributed]
 ) -> None:
     """Asserts the CORRECT behavior and is expected to fail, rather than pinning the defect.
 
     The set is larger than the one above and its shape is different: there, an operation exists and
     carries no answer, and here nothing at all is set in motion, so the answer has nowhere to travel
     until the mutation records its own probe. Both are named per route for the same reason.
-    """
-    composed = compositions(source_root)
-    found = attributions(settings, source_root, TRIGGER_TABLE)
 
+    **What this asserts is emptiness of that group, which is weaker than "the mutation records
+    it".** A route leaves the group either by recording its own flip, which is the end state, or by
+    gaining a solve request, which only moves the row to the solve's surface. So this could reach
+    green without a mutation recording anything, and the guard that catches that is the exact
+    division above: a route moving between the two groups changes both named sets and both counts.
+    """
     unattributed = sorted(
         _as_reported(route, one)
-        for route, one in found.items()
+        for route, one in attributed.items()
         if one.surfaces == {the_time_driven_surface(composed)}
     )
 
