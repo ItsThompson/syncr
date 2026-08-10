@@ -435,6 +435,52 @@ def test_a_solve_of_a_week_already_half_lived_places_nothing_it_chose_in_the_pas
     ]
 
 
+def test_a_slot_that_has_begun_states_the_clocks_reason_and_not_the_backlogs() -> None:
+    """The one input the clock and the backlog answer differently, and the clock owns it.
+
+    Reading the backlog first answers ``no_eligible_content``, which claims the Area was searched
+    and found empty for a span nobody will search again. What emptied this slot is the clock, so
+    that is what it states. This is the distinction the labels are held to, enforced where the
+    reason is decided rather than only where it is worded.
+    """
+    week = a_week(
+        now=NOW,
+        template_entries=(a_slot(area_id=CAREER, day=0),),
+        areas=(an_area_budget(area_id=CAREER, name="Career"),),
+    )
+
+    attempt = bind_slots(an_attempt(week))
+
+    assert [slot.reason for slot in attempt.slots] == [EmptySlotReason.ELAPSED]
+
+
+def test_a_slot_beginning_exactly_at_now_has_spent_nothing_and_binds() -> None:
+    """The strict side of the boundary, which the packer's own clip agrees with.
+
+    ``IntervalSet.after`` keeps a span starting at the instant whole, so a slot beginning there is
+    capacity phase 3 would hand out. Leaving it unbound would cost the user a slot they can still
+    use and would put the two phases one instant apart.
+    """
+    week = a_week(
+        now=NOW,
+        template_entries=(a_slot(area_id=CAREER, day=2, interval=between(9, 10, day=2)),),
+        eligible_tasks=(
+            an_eligible_task(
+                remaining_minutes=60, min_chunk_minutes=60, area_id=CAREER, title="Papers"
+            ),
+        ),
+        areas=(an_area_budget(area_id=CAREER, name="Career", target_minutes=600),),
+    )
+    # The premise the assertions rest on: this slot starts AT the instant, not near it. Stated so
+    # the fixture cannot drift off the boundary and leave the test passing about something else.
+    assert week.template_entries[0].interval.start == week.now
+
+    attempt = bind_slots(an_attempt(week))
+
+    assert attempt.slots == ()
+    assert [block.interval for block in attempt.blocks()] == [between(9, 10, day=2)]
+
+
 # --------------------------------------------------------------------------------------
 # Phase 3: the gaps, the division, and the log
 # --------------------------------------------------------------------------------------

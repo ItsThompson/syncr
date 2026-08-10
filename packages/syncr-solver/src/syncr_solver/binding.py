@@ -40,11 +40,18 @@ reads the same instant and hands out none of it.
 
 The boundary is the slot's START rather than its end, and a slot straddling the instant is left
 unbound whole. Shrinking it to the part still ahead is the refusal at the top of this file, so
-there is no half of it to fill.
+there is no half of it to fill. It is also strict: a slot beginning exactly at ``inputs.now`` has
+spent nothing and still binds, which is the boundary the packer's clip keeps as well.
 
-The clock is read BEFORE eligibility, which is what keeps the week's content for the days it can
-still be placed in: consulting the backlog first would spend a task's remaining minutes on a
-Monday nobody can reach and leave Friday's slot saying the Area had nothing.
+**The guard sits before the bind, and that is what keeps the week's content for the days it can
+still be placed in.** Without it a task's remaining minutes go to a Monday nobody can reach, and a
+later slot then reports that its Area had nothing.
+
+**It also sits before the backlog is read, and that decides one thing on its own.** A slot that has
+begun in an Area holding nothing eligible states the clock's reason rather than the backlog's:
+answering ``no_eligible_content`` would claim the Area was searched and found empty for a span
+nobody will search again. Reading the backlog first preserves the content either way, so the
+position buys the reason and not the minutes.
 
 ## Eligible means "can take this slot's duration", in one expression for all three shapes
 
