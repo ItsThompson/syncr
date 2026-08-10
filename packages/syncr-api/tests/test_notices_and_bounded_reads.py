@@ -65,6 +65,10 @@ def test_a_notice_renders_camel_case_on_the_wire() -> None:
         "blockId": None,
         "sourceId": None,
         "date": None,
+        # The one day a notice is raised on, and every day it puts in doubt, are two questions. A
+        # scope that named neither carries the empty list rather than a null, so a surface reading
+        # it iterates instead of testing for absence first.
+        "dates": [],
     }
 
 

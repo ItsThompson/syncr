@@ -50,12 +50,25 @@ class NoticeAction(WireModel):
 
 
 class NoticeScope(WireModel):
-    """What the notice is about, where it is about one thing."""
+    """What the notice is about, where it is about one thing.
+
+    ``date`` is the ONE day a notice is raised on and ``dates`` is every day it puts in doubt: the
+    two answer different questions, so a surface reading one must not read the other. An inline
+    notice on a day carries the first; a panel about a source that fed several days carries the
+    second, which is what lets that surface mark a day without computing anything.
+    """
 
     screen: str | None = None
     block_id: str | None = None
     source_id: str | None = None
     date: str | None = None
+    dates: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Every day this condition puts in doubt, as ISO dates, earliest first. Empty when the "
+            "condition affects no particular day, or when nothing is known to be affected."
+        ),
+    )
 
 
 class Notice(WireModel):
