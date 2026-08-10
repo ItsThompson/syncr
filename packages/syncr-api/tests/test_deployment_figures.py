@@ -1916,8 +1916,7 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
 
         The exit status alone proves nothing here, because the recipe fails in a tree with no
         compose file whether or not it refuses. What proves it is that `docker` was never reached,
-        which is the acceptance in its own words: before writing anything and before starting
-        anything.
+        which is the whole claim: nothing is written and nothing is started.
         """
         done = _drill_seed_in_a_tree_of_its_own(tmp_path, evidence=(fact,))
         reached = tmp_path / DOCKER_LOG
