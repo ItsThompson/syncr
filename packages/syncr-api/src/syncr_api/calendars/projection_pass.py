@@ -83,16 +83,17 @@ NO_WRITE_TARGET = (
     "project onto"
 )
 
-# Why nothing was written when the designated calendar is one syncr cannot write to. Assigning the
-# write-target role does not currently require a Google source, so an ICS feed can hold it and
-# cannot be written to: a feed is published by somebody else and has no API to write through.
+# Why nothing was written when the designated calendar is one syncr cannot write to: the plan is
+# written through a calendar API, and an ICS feed is published by somebody else and has none.
 #
 # A REFUSAL rather than a failure, because retrying cannot clear it: the provider of a source is
 # immutable, so every attempt reaches the conclusion the first one did, and the repair is to
 # designate a different calendar. Classified as a failure it would spend three attempts and two
-# backoffs per plan change to say so, and would contradict the runbook's own table. Whether the role
-# assignment should refuse it too is ticket 1301; this refusal has to exist either way, because a
-# stored role predates any rule about assigning one.
+# backoffs per plan change to say so, and would contradict the runbook's own table.
+#
+# Assigning the role refuses an unwritable provider at the boundary. This is the backstop rather
+# than a duplicate of it: a role already stored is state no rule over a request sees, and here is
+# where that state is read.
 UNWRITABLE_TARGET = (
     "the calendar designated as syncr's write target is a {provider} feed, and the plan can only "
     "be written to a Google calendar: a feed is published by somebody else and has no API to write "
