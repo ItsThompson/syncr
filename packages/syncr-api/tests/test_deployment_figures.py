@@ -93,6 +93,9 @@ DOCKER_LOG: Final = "docker-was-reached"
 # case that needs it does not carry a literal a secret scanner reads as high entropy.
 CP1252_O_UMLAUT: Final = bytes([0xF6])
 
+# The space compose trims and a byte-oriented pattern cannot see. Named for the same reason.
+NO_BREAK_SPACE: Final = "\u00a0"
+
 # A `docker` that records being called and can reach nothing, so "started nothing" is an OBSERVATION
 # rather than an inference from an exit status: a guard that starts something and refuses afterwards
 # exits non-zero too, so a returncode cannot tell an early refusal from a late one.
@@ -2430,6 +2433,89 @@ class TestEveryTeardownRefusesAnInheritedProject:
             _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
         else:
             _assert_it_ran(done, tmp_path)
+
+    @pytest.mark.parametrize(
+        "before_the_key",
+        [
+            "\u00a0",
+            "\u3000",
+            "\u202f",
+            "\u2028",
+            "\u1680",
+            "\u0085",
+        ],
+    )
+    def test_a_space_this_reading_cannot_see_is_refused_rather_than_admitted(
+        self, before_the_key: str, tmp_path: Path
+    ) -> None:
+        """THE PART THAT MAKES A READING NARROWER THAN COMPOSE SAFE RATHER THAN FATAL.
+
+        Compose trims Unicode whitespace before a key, and a byte-oriented pattern cannot see it: no
+        locale gives a text tool both byte semantics and Unicode classes, so this pattern cannot in
+        principle match its subject. Each space below makes compose resolve the name on that line
+        while the pattern reads nothing.
+
+        The reading therefore refuses when the file ASSIGNS this key and no value could be read.
+        Each of these was an admitted teardown of the deployed project before that rule existed.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, dotenv=f"{before_the_key}COMPOSE_PROJECT_NAME=syncr\n"
+        )
+
+        _assert_it_refused(done, tmp_path, saying="could not read the value")
+
+    def test_the_refusal_names_a_way_out(self, tmp_path: Path) -> None:
+        """A refusal a developer cannot act on is a refusal someone disables.
+
+        The unreadable-value arm is the one with a real false-positive cost, so it has to say what
+        clears it. The shell arm is the load-bearing remedy: compose and this reading both take the
+        environment before the file.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, dotenv=f"{NO_BREAK_SPACE}COMPOSE_PROJECT_NAME=syncr\n"
+        )
+
+        assert "delete the COMPOSE_PROJECT_NAME line" in done.stderr, done.stderr
+        assert "export COMPOSE_PROJECT_NAME=<project>" in done.stderr, done.stderr
+
+    def test_the_cost_of_that_rule_is_one_false_refusal(self, tmp_path: Path) -> None:
+        """THE PRICE, ASSERTED RATHER THAN LEFT FOR SOMEONE TO DISCOVER.
+
+        Compose resolves `syncr-e2e` here, which holds nothing, so the teardown would have been
+        safe. The reading cannot see the name at all, and it refuses on the same rule that catches
+        the deployed project. That is the trade: a spurious refusal a developer clears in one
+        command, in exchange for a miss that cannot destroy volumes.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, dotenv=f"{NO_BREAK_SPACE}COMPOSE_PROJECT_NAME=syncr-e2e\n"
+        )
+
+        _assert_it_refused(done, tmp_path, saying="could not read the value")
+
+    def test_a_file_that_only_mentions_the_key_in_a_comment_is_admitted(
+        self, tmp_path: Path
+    ) -> None:
+        """The condition is ASSIGNS rather than MENTIONS, and this is what turns on that
+        difference."""
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path,
+            dotenv="# COMPOSE_PROJECT_NAME is forbidden\n  # nor indented\nLOG_LEVEL=info\n",
+        )
+
+        _assert_it_ran(done, tmp_path)
+
+    def test_a_byte_copy_of_the_example_file_is_admitted(self, tmp_path: Path) -> None:
+        """THE FILE THE PROHIBITION TELLS EVERYONE TO COPY, read from the repository rather than
+        reconstructed.
+
+        `.env.example` names this key in its own prohibition, in comments. A developer who follows
+        its first line gets those comments in `.env`, and that must not refuse every teardown.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, dotenv_bytes=(repo_root() / ".env.example").read_bytes()
+        )
+
+        _assert_it_ran(done, tmp_path)
 
     def test_a_name_it_cannot_resolve_is_refused(self, tmp_path: Path) -> None:
         """Compose interpolates the file's values, and this refusal does not.

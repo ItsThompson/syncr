@@ -156,6 +156,17 @@ dev-down:
 # resolved the file without complaint. Reading bytes rather than characters is what makes the two
 # agree, and it costs nothing: the pattern is ASCII.
 #
+# AND THE FAILURE DIRECTION IS INVERTED, WHICH IS THE ONLY PART THAT MAKES THIS SAFE. No pattern here
+# can match compose's own reader: compose reads BYTES and also trims UNICODE whitespace before a key,
+# and no single locale gives a text tool both. A reading that cannot in principle match its subject
+# must not fail open. So when the file assigns this key and the pattern above could not read a value,
+# the answer is REFUSE rather than admit: every way this reading has been found too narrow so far was
+# a miss that admitted, and under this rule each would have been a refusal a developer could clear in
+# one command instead of volumes nobody could restore.
+#
+# The condition is "assigns", not "mentions": a line naming the key after a `#` is a comment, which is
+# how a byte copy of `.env.example` stays admitted while its own prohibition names the key.
+#
 # One divergence is deliberate and safe: compose treats an empty `COMPOSE_PROJECT_NAME` as SET and
 # does not fall back to the file, while `${COMPOSE_PROJECT_NAME:-}` here treats it as unset and reads
 # the file. That can only refuse where compose would have used the file's name, never admit.
@@ -173,6 +184,17 @@ _refuse-a-retargeted-teardown:
     inherited="${COMPOSE_PROJECT_NAME:-}"
     if [ -z "$inherited" ] && [ -f .env ]; then
       inherited="$(LC_ALL=C sed -nE $'1s/^\xef\xbb\xbf//; s/\r$//; s/^[[:space:]]*(export[[:space:]]+)?COMPOSE_PROJECT_NAME[[:space:]]*=//p' .env | tail -n 1 | tr -d "\"'")"
+      if [ -z "$inherited" ] && LC_ALL=C grep -qE '^[^#]*COMPOSE_PROJECT_NAME' .env; then
+        echo "\`.env\` assigns COMPOSE_PROJECT_NAME and this refusal could not read the value, so it" >&2
+        echo "cannot tell which project compose would act on. It refuses rather than guess, because" >&2
+        echo "this command drops a project's volumes and compose reads that file before its own." >&2
+        echo "To clear it, do any one of these:" >&2
+        echo "  * delete the COMPOSE_PROJECT_NAME line from \`.env\`;" >&2
+        echo "  * rewrite it as plain ASCII, with no space of any kind before the key;" >&2
+        echo "  * run \`export COMPOSE_PROJECT_NAME=<project>\` in this shell, which compose and this" >&2
+        echo "    refusal both read before the file." >&2
+        exit 1
+      fi
     fi
     [ -n "$inherited" ] || exit 0
     if ! printf '%s' "$inherited" | grep -Eq '^[a-z0-9][a-z0-9_.-]*$'; then
