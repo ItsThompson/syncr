@@ -16,11 +16,18 @@ reconciler as though it were the calendar would delete every anchor the provider
 mention, and applying it as a delta is a second reconciliation path with its own removal rule. So an
 incremental read that reports nothing changed is answered exactly as an ICS ``304`` is, and one that
 reports any change is followed by a full read of the horizon, whose events ARE the calendar. The
-detector stops on the first page that carries an entry, because ``bool(events)`` is the whole
-question it asks: a delta of ten thousand entries costs one page rather than forty. What the token
-buys is the poll that costs one small request instead of a fortnight of events, which is the saving
-Google's own guide describes; what it costs is one extra request on a poll that found a change. The
-three attempt kinds the syncer already distinguishes stay three.
+detector stops on the first page that carries an entry, because whether anything changed is the
+whole question it asks: a delta of ten thousand entries costs one page rather than forty. What the
+token buys is the poll that costs one small request instead of a fortnight of events, which is the
+saving Google's own guide describes; what it costs is one extra request on a poll that found a
+change. The three attempt kinds the syncer already distinguishes stay three.
+
+**The delta itself is carried as a value, marked incremental and naming what the provider removed.**
+A cancellation is the one thing a delta cannot express by absence, so it travels as an identifier;
+and delta-ness travels with it because the decision that a second read is needed is made on the
+answer rather than on which method produced it. A read of the calendar reports entries too, so a
+decision made on "did this report anything" alone would send every first poll back for a second copy
+of what it just read.
 
 **The horizon is applied here, not at the provider.** Google refuses ``timeMin`` beside a sync
 token, so the detector read sees the whole calendar and the full read that follows is windowed. A
@@ -161,13 +168,84 @@ class GoogleAdapter:
 
     @measured("google_adapter")
     async def fetch(self, source: CalendarSourceRecord) -> GoogleFetch:
-        """One attempt on ``source``: what it produced, and the sync state to store."""
-        now = self._clock()
-        identity = {"source_id": str(source.id), "tenant_id": str(source.tenant_id)}
+        """One attempt on ``source``: what it produced, and the sync state to store.
+
+        **A delta is not the calendar, and this is the one place that difference is acted on.** An
+        answer that lists only what changed is followed by an answer that lists the calendar, whose
+        events ARE the calendar: the anchor reconciler removes every anchor a read does not mention,
+        and a delta mentions almost nothing.
+
+        The answer's own delta-ness is what gates that, rather than which method produced it. A read
+        of the calendar reports events too, so a decision made on "did this report anything" alone
+        would send every first poll back for a second copy of what it just read.
+        """
+        at = self._clock()
+        outcome, state = await self._read(source, at=at)
+        if not outcome.incremental:
+            return outcome, state
+        if not _reports_a_change(outcome):
+            _log.info(
+                "calendars.google.unchanged", **_identity(source), attempt_count=state.attempts
+            )
+            return outcome, state
+        _log.info(
+            "calendars.google.changes_detected",
+            **_identity(source),
+            changed_count=len(outcome.events),
+            removed_count=len(outcome.removed_uids),
+        )
+        return await self._read_fully(
+            source, at=at, spent=state.attempts, resync_reason=CHANGES_DETECTED
+        )
+
+    async def _read(self, source: CalendarSourceRecord, *, at: datetime) -> GoogleFetch:
+        """The cheap read when a cursor is held, and the whole calendar when there is none."""
         held = sync_token_of(source.sync_state.cursor)
         if held is None:
-            return await self._read_fully(source, at=now, identity=identity)
-        return await self._after_detecting(source, held, at=now, identity=identity)
+            return await self._read_fully(source, at=at)
+        return await self.read_changes(source, since=held, at=at)
+
+    async def read_changes(
+        self, source: CalendarSourceRecord, *, since: str, at: datetime
+    ) -> GoogleFetch:
+        """What changed on ``source`` since ``since``, as a delta rather than as the calendar.
+
+        The same two values ``fetch`` answers with, so an attempt is recorded whatever it found, and
+        it does not raise for the same reason nothing here does. Three answers: the token is no
+        longer accepted, which is a full read; the read failed, which is a recorded attempt; or a
+        delta, marked incremental and carrying the identifiers the provider reported as removed.
+
+        The state is the one a poll that found NOTHING stores, because that is the only case where
+        this read is the whole attempt. A caller that goes on to read the calendar records what that
+        read cost instead.
+
+        ``at`` is passed rather than read from the clock here, so one poll's two reads record one
+        instant rather than two microseconds apart.
+        """
+        answer = await self._client.list_events(
+            source.external_id,
+            sync_token=since,
+            window=self._horizon,
+            # The detector asks WHETHER anything changed, so it stops on the first page that carries
+            # an entry. A delta bigger than the page bound is then a change rather than a read
+            # that fails on a bound while keeping the cursor that produced it, which stranded the
+            # source: the next poll re-paged the same delta, and the provider's own token expiry
+            # was the only escape.
+            stop_at_first_change=True,
+        )
+        if isinstance(answer, GoogleReadFailed):
+            return self._failed(source, answer, at=at)
+        if isinstance(answer, SyncTokenExpired):
+            _log.info("calendars.google.sync_token_invalidated", **_identity(source))
+            return await self._read_fully(
+                source, at=at, spent=answer.attempts, resync_reason=CURSOR_INVALIDATED
+            )
+        # The token is replaced by the fresh one Google issued, and dropped when it will not fit,
+        # which costs one full read on the next poll rather than a failed write.
+        cursor = bounded_cursor(answer.sync_token) or source.sync_state.cursor
+        return self._delta(answer), recorded_unchanged(
+            source.sync_state, at=at, cursor=cursor, attempts=answer.attempts
+        )
 
     async def reconcile(
         self, target: CalendarSourceRecord, desired: list[ProjectedEvent]
@@ -187,7 +265,7 @@ class GoogleAdapter:
         if isinstance(self._writes, WritesUnavailable):
             raise ProjectionRefused(self._writes.reason)
         started = perf_counter()
-        identity = {"source_id": str(target.id), "tenant_id": str(target.tenant_id)}
+        identity = _identity(target)
         plan = plan_reconciliation(desired, await self._existing(target))
         _log.info(
             "calendars.projection.planned",
@@ -303,56 +381,11 @@ class GoogleAdapter:
             raise ProjectionFailed(answer.reason, applied=_result(counts, plan, started))
         counts[action] += 1
 
-    async def _after_detecting(
-        self, source: CalendarSourceRecord, held: str, *, at: datetime, identity: dict[str, str]
-    ) -> GoogleFetch:
-        """Ask what changed since the held token, and decide what that means.
-
-        Three answers: nothing changed, something changed, or the token is no longer accepted. The
-        first is the cheap poll the token exists for; the other two are a full read, and each says
-        so on the source.
-        """
-        answer = await self._client.list_events(
-            source.external_id,
-            sync_token=held,
-            window=self._horizon,
-            # The detector asks WHETHER anything changed, so it stops on the first page that carries
-            # an entry. A delta bigger than the page bound is then a change rather than a read
-            # that fails on a bound while keeping the cursor that produced it, which stranded the
-            # source: the next poll re-paged the same delta, and the provider's own token expiry
-            # was the only escape.
-            stop_at_first_change=True,
-        )
-        if isinstance(answer, GoogleReadFailed):
-            return self._failed(source, answer, at=at, identity=identity)
-        if isinstance(answer, SyncTokenExpired):
-            _log.info("calendars.google.sync_token_invalidated", **identity)
-            return await self._read_fully(
-                source,
-                at=at,
-                identity=identity,
-                spent=answer.attempts,
-                resync_reason=CURSOR_INVALIDATED,
-            )
-        if answer.events:
-            _log.info(
-                "calendars.google.changes_detected", **identity, changed_count=len(answer.events)
-            )
-            return await self._read_fully(
-                source,
-                at=at,
-                identity=identity,
-                spent=answer.attempts,
-                resync_reason=CHANGES_DETECTED,
-            )
-        return self._unchanged(source, answer, at=at, identity=identity)
-
     async def _read_fully(
         self,
         source: CalendarSourceRecord,
         *,
         at: datetime,
-        identity: dict[str, str],
         spent: int = 0,
         resync_reason: str | None = None,
     ) -> GoogleFetch:
@@ -371,12 +404,11 @@ class GoogleAdapter:
                 source,
                 GoogleReadFailed(reason=_reason_of(answer), attempts=spent + answer.attempts),
                 at=at,
-                identity=identity,
             )
         outcome = self._outcome(answer)
         cursor = bounded_cursor(answer.sync_token)
         unstorable = answer.sync_token is not None and cursor is None
-        _log.info("calendars.google.read", **identity, **outcome.as_log_fields())
+        _log.info("calendars.google.read", **_identity(source), **outcome.as_log_fields())
         return outcome, recorded_success(
             outcome,
             at=at,
@@ -385,37 +417,13 @@ class GoogleAdapter:
             resync_reason=CURSOR_UNSTORABLE if unstorable else resync_reason,
         )
 
-    def _unchanged(
-        self,
-        source: CalendarSourceRecord,
-        answer: EventsRead,
-        *,
-        at: datetime,
-        identity: dict[str, str],
-    ) -> GoogleFetch:
-        """Record a poll that found no change: a success that read nothing.
-
-        The token is replaced by the fresh one Google issued, and dropped when it will not fit,
-        which costs one full read on the next poll rather than a failed write.
-        """
-        _log.info("calendars.google.unchanged", **identity, attempt_count=answer.attempts)
-        cursor = bounded_cursor(answer.sync_token) or source.sync_state.cursor
-        return FetchOutcome(), recorded_unchanged(
-            source.sync_state, at=at, cursor=cursor, attempts=answer.attempts
-        )
-
     def _failed(
-        self,
-        source: CalendarSourceRecord,
-        answer: GoogleReadFailed,
-        *,
-        at: datetime,
-        identity: dict[str, str],
+        self, source: CalendarSourceRecord, answer: GoogleReadFailed, *, at: datetime
     ) -> GoogleFetch:
         """Record an attempt that read nothing, keeping everything the source already had."""
         _log.warning(
             "calendars.google.unreachable",
-            **identity,
+            **_identity(source),
             attempt_count=answer.attempts,
             rate_limited=answer.rate_limited,
             anchors_retained=source.sync_state.anchors_current,
@@ -433,6 +441,38 @@ class GoogleAdapter:
             return answer.reason
         return f"{answer.reason}. {_BACKING_OFF} {(at + SYNC_INTERVAL):%H:%M} UTC."
 
+    def _delta(self, answer: EventsRead) -> FetchOutcome:
+        """Partition one incremental read into what changed and what the provider says is gone.
+
+        **Not clipped to the horizon, unlike a full read.** An occurrence the user moved OUT of the
+        window is a change this read has to report, and clipping is exactly what would hide it:
+        Google refuses ``timeMin`` beside a sync token, so the provider does not hide it either.
+
+        A cancellation becomes an identifier rather than a count, because that is the only form a
+        removal can take here. A read of the calendar removes a commitment by not listing it; a list
+        of changes lists almost nothing, so the entry itself is the whole evidence.
+        """
+        events: list[RawEvent] = []
+        rejections = RejectionAccumulator()
+        removed: list[str] = []
+        for payload in answer.events:
+            if payload.is_cancelled:
+                removed.append(payload.id)
+                continue
+            parsed = _read_one(payload, profile=self._profile)
+            if isinstance(parsed, RejectedComponent):
+                rejections.add(parsed)
+                continue
+            events.append(parsed)
+        return FetchOutcome(
+            events=tuple(events),
+            rejections=rejections.tally(),
+            events_read=len(answer.events),
+            placed=len(events),
+            removed_uids=tuple(removed),
+            incremental=True,
+        )
+
     def _outcome(self, answer: EventsRead) -> FetchOutcome:
         """Partition one full read's events into what was kept, rejected, and dropped."""
         events: list[RawEvent] = []
@@ -447,24 +487,16 @@ class GoogleAdapter:
                 # event that occupies no time is not occupancy.
                 cancelled += 1
                 continue
-            read = read_span(payload.start, payload.end, profile=self._profile)
-            if not isinstance(read, ReadSpan):
-                rejections.add(
-                    RejectedComponent(
-                        kind=read.kind,
-                        line=UNKNOWN_LINE,
-                        component=GOOGLE_COMPONENT,
-                        detail=read.detail,
-                        uid=payload.id,
-                    )
-                )
+            parsed = _read_one(payload, profile=self._profile)
+            if isinstance(parsed, RejectedComponent):
+                rejections.add(parsed)
                 continue
-            if not read.interval.overlaps(self._horizon):
+            if not parsed.interval.overlaps(self._horizon):
                 # Outside the window this read was placed over. Not a loss and not an error, but
                 # counted, because otherwise it is indistinguishable from occupancy that vanished.
                 unplaced += 1
                 continue
-            events.append(_as_raw_event(payload, read))
+            events.append(parsed)
             placed += 1
         return FetchOutcome(
             events=tuple(events),
@@ -475,6 +507,40 @@ class GoogleAdapter:
             unplaced=unplaced,
             reparsed=True,
         )
+
+
+def _identity(source: CalendarSourceRecord) -> dict[str, str]:
+    """The two identifiers every line about one source carries, and nothing the redactor eats."""
+    return {"source_id": str(source.id), "tenant_id": str(source.tenant_id)}
+
+
+def _reports_a_change(outcome: FetchOutcome) -> bool:
+    """Whether a delta found anything to report.
+
+    Its terms are named rather than counted through ``events_read``, because they are three
+    different answers and only two of them are an event. A poll whose every entry is a cancellation
+    carries no event at all, and reading such a delta as "nothing changed" leaves the removed
+    commitments occupying the plan until something unrelated moves.
+
+    The refusals are read as their COUNT rather than as the sample, which is bounded per kind: what
+    is asked here is whether the read refused anything, and that is the figure the accounting closes
+    over rather than the one a panel renders.
+    """
+    return bool(outcome.events or outcome.removed_uids or outcome.rejected_count)
+
+
+def _read_one(payload: GoogleEventPayload, *, profile: ZoneProfile) -> RawEvent | RejectedComponent:
+    """One provider event as the value a caller reads, or the reason it could not be read."""
+    read = read_span(payload.start, payload.end, profile=profile)
+    if not isinstance(read, ReadSpan):
+        return RejectedComponent(
+            kind=read.kind,
+            line=UNKNOWN_LINE,
+            component=GOOGLE_COMPONENT,
+            detail=read.detail,
+            uid=payload.id,
+        )
+    return _as_raw_event(payload, read)
 
 
 def _reason_of(answer: SyncTokenExpired | GoogleReadFailed) -> str:
