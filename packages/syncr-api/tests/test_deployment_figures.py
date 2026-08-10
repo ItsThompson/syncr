@@ -803,6 +803,26 @@ def _justfile_text(text: str | None) -> str:
     return read(Path("justfile")) if text is None else text
 
 
+# What follows a recipe's NAME in its opener: optional parameters, then `:` and not `:=`.
+#
+# ONE SPELLING FOR THREE READERS, which each grew their own and disagreed. Two admitted
+# `members := "..."` as a recipe named `members`, because a name followed by a space looked like a
+# parameter list, and one raised for `e2e-only pattern:` because it demanded the colon immediately.
+_OPENER_TAIL: Final = r"(?:\s+[^:]*)?:(?!=)"
+
+
+def _recipe_opener(line: str, name: str) -> str | None:
+    """``name``'s dependency text if ``line`` opens that recipe, otherwise None.
+
+    The text after the colon, which may be empty, so a caller tells "not an opener" from "an opener
+    with no dependencies".
+    """
+    import re
+
+    found = re.match(rf"^{re.escape(name)}{_OPENER_TAIL}(.*)$", line)
+    return None if found is None else found.group(1)
+
+
 def _recipe_body(name: str, *, text: str | None = None) -> str:
     """One `just` recipe's body, from its opening line to the next unindented one.
 
@@ -811,10 +831,10 @@ def _recipe_body(name: str, *, text: str | None = None) -> str:
     """
     lines = _justfile_text(text).splitlines()
     opener = next(
-        index
-        for index, line in enumerate(lines)
-        if line.startswith(f"{name}:") or line.startswith(f"{name} ")
+        (index for index, line in enumerate(lines) if _recipe_opener(line, name) is not None),
+        None,
     )
+    assert opener is not None, f"the justfile declares no recipe named {name}"
     body: list[str] = []
     for line in lines[opener + 1 :]:
         if line and not line.startswith((" ", "\t")):
@@ -824,46 +844,27 @@ def _recipe_body(name: str, *, text: str | None = None) -> str:
 
 
 def _dependencies_of(name: str, *, text: str | None = None) -> list[str]:
-    """The recipes `just` runs before ``name``, in the order it runs them.
-
-    THE OPENER MAY CARRY PARAMETERS BEFORE THE COLON. The first version matched `f"{name}:"` and
-    so RAISED for `e2e-only pattern:` rather than answering `[]`, which is fine while every caller
-    names a recipe by hand and wrong the moment a caller asks this of every recipe declared.
-
-    AND AN OPENER'S COLON IS NOT A `:=`. Widening for the parameter admitted `members := "..."`, so
-    this answered a variable declaration with the pieces of its value instead of saying no such
-    recipe exists. Its sibling below learned the same thing separately, which is how two readers
-    came to disagree about what an opener is.
-    """
-    import re
-
-    opener = re.compile(rf"^{re.escape(name)}(?:\s+[^:]*)?:(?!=)(.*)$")
+    """The recipes `just` runs before ``name``, in the order it runs them."""
     for line in _justfile_text(text).splitlines():
-        found = opener.match(line)
+        found = _recipe_opener(line, name)
         if found is not None:
-            return found.group(1).split()
+            return found.split()
     raise AssertionError(f"the justfile declares no recipe named {name}")
 
 
 def _recipe_names(*, text: str | None = None) -> frozenset[str]:
     """Every recipe the justfile declares, read from its own declarations.
 
-    A recipe opens at column zero, may carry parameters, and ends its opener with `:`. Read rather
-    than listed, because the point of crossing a unit's `ExecStart` against this is that a second
-    copy of the recipe name is what would rot.
-
-    TWO CORRECTIONS, both of which a caller asking this for EVERY recipe needs and a caller
-    checking one name did not. A `[private]` recipe is still a recipe and `just` still runs it: the
-    leading underscore was excluded, so the deployed-host refusal was not in this set. And
-    `members := "..."` was IN it, because the name is followed by a space, so a variable
-    declaration was answered as a recipe by every reader that took its word for it.
+    Read rather than listed, because the point of crossing a unit's `ExecStart` against this is that
+    a second copy of the recipe name is what would rot. A `[private]` recipe is included, because
+    `just` runs one when a caller names it.
     """
     import re
 
     found = {
         match.group(1)
         for line in _justfile_text(text).splitlines()
-        if (match := re.match(r"^(_?[a-z][a-z0-9-]*)(?:\s+[^:]*)?:(?!=)", line))
+        if (match := re.match(rf"^(_?[a-z][a-z0-9-]*){_OPENER_TAIL}", line))
     }
     assert found, "no recipe was read out of the justfile, so this crossing is vacuous"
     return frozenset(found)
@@ -1993,13 +1994,18 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
         assert DEPLOYED_HOST_REFUSAL in names, "a `[private]` recipe is one `just` still runs"
         assert "members" not in names, "a `name := value` declaration is not a recipe"
 
-    def test_the_dependency_reading_answers_for_a_recipe_with_a_parameter(self) -> None:
-        """`e2e-only pattern:` raised rather than answering, and the set covers every recipe.
+    def test_the_three_readings_share_one_definition_of_an_opener(self) -> None:
+        """`e2e-only pattern:` is an opener with no dependencies; `members := "..."` is not one.
 
-        And a `name := value` line is not an opener. Widening for the parameter admitted one, so the
-        reading answered `members` with the pieces of a variable's value.
+        THREE READERS, and each grew its own definition. One demanded the colon immediately and
+        raised for a parameter; two took a name followed by a space as a parameter list and answered
+        `members` with the pieces of a variable's value. They now share `_OPENER_TAIL`, so all three
+        answer the same question and a fourth reader has one to reuse.
         """
         assert _dependencies_of("e2e-only") == []
+        assert _recipe_opener("e2e-only pattern:", "e2e-only") == ""
+        assert _recipe_opener('members := "a b"', "members") is None
 
-        with pytest.raises(AssertionError, match="no recipe named members"):
-            _dependencies_of("members")
+        for reading in (_dependencies_of, _recipe_body):
+            with pytest.raises(AssertionError, match="no recipe named members"):
+                reading("members")
