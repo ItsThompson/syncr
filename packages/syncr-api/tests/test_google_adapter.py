@@ -4,8 +4,8 @@ The transport is faked and everything below the adapter is real: the client, the
 payload validation, the value parsing, the horizon clip, and the sync-state arithmetic.
 
 What is asserted here is the arithmetic that decides whether a stale calendar is visible, and the
-one design decision this ticket made that a reader will want to check: **the sync token is a change
-detector, and the read that follows it is a full one.** An incremental answer is a delta, and the
+design decision a reader will want to check: **the sync token is a change detector, and the read
+that follows it is a full one.** An incremental answer is a delta, and the
 reconciler removes anchors the events do not mention, so handing it a delta would delete every
 commitment the provider did not happen to change. A poll that finds no change costs one small
 request, which is the saving the token exists for; a poll that finds one costs a second request and
@@ -427,6 +427,19 @@ async def test_an_incremental_read_carries_the_delta_and_the_identifiers_it_remo
     # rather than as the sample, because the sample is bounded per kind and the count is what the
     # accounting closes over.
     assert outcome.events_read == 6
+    # The identity the class documents, over the terms it names. A removal is a component a
+    # cancellation discarded, so it closes here as well as in the crossing below: two identities
+    # over one set of entries would let a term go missing from whichever one nobody asserts.
+    assert outcome.events_read == (
+        outcome.placed
+        + outcome.rejected_count
+        + outcome.cancelled_discarded
+        + outcome.duplicates_discarded
+        + outcome.overrides_applied
+        + outcome.unplaced
+    )
+    # And the same total over the terms a delta's READER cares about, which is where the identifiers
+    # rather than the count are what a removal is evidenced by.
     assert outcome.events_read == len(outcome.events) + len(outcome.removed_uids) + (
         outcome.rejected_count
     )
@@ -647,6 +660,20 @@ async def test_a_cursor_written_by_another_provider_is_not_sent_as_a_sync_token(
 # --------------------------------------------------------------------------------------
 # Failures
 # --------------------------------------------------------------------------------------
+
+
+async def test_a_failed_read_is_not_a_delta() -> None:
+    # The third answer `fetch` sorts, and the one that was sorted by a field's DEFAULT rather than
+    # by anything asserted. A failure record carries an empty event list for a different reason than
+    # a quiet poll does, and a caller that read its silence about an event as a removal would delete
+    # the calendar every time Google was briefly unreachable.
+    google, _ = adapter([failed(500)])
+
+    outcome, state = await google.fetch(source(sync_state=synced()))
+
+    assert outcome.incremental is False
+    assert outcome.removed_uids == ()
+    assert state.last_error is not None
 
 
 async def test_a_failed_read_retains_the_anchors_the_cursor_and_the_last_success() -> None:
