@@ -46,9 +46,9 @@ computes a verdict and returns it under another name would escape them. What the
 ordinary way this goes wrong, which is a new caller written in the shape of the existing ones.
 
 **Every mutation that can move a week's reading is attributed to the act that caused it, or the row
-is the worker's.** Which mutations those are is derived from section 10's trigger table rather than
-listed here: a row that bumps a week's input version or asks for a solve can move the reading, and
-the routes are the walk ``tests/test_solve_triggers.py`` bounds the bump rule with. What records
+is the worker's.** Which mutations those are is derived from ``tests/test_solve_triggers.py``'s
+trigger table rather than listed here: a row that bumps a week's input version or asks for a solve
+can move the reading, and the routes are the walk that file bounds the bump rule with. What records
 each is then read off the wiring: the service method the route calls, whether that method writes a
 transition, and whether the framework resolved the session header for it. A minority record their
 own flip, and those rows carry what the request stated. The rest leave it to one of the two
