@@ -454,18 +454,27 @@ class TestTheLiveGoogleSuiteProcedure:
             assert f"`{named}`" in text, f"the procedure does not name {named}"
 
     def test_it_names_the_command_that_runs_the_suite(self) -> None:
-        """With the marker taken from the configuration that excludes it, not from a second copy."""
-        assert f"pytest -m {the_live_marker()}" in read(GOOGLE_OAUTH_VERIFICATION)
+        """With the marker taken from the configuration that excludes it, not from a second copy.
+
+        Anchored on the trailing space, because a marker name is a prefix of every longer one: a
+        runbook drifting to `pytest -m google_livewire` collects nothing and satisfied an unanchored
+        check.
+        """
+        assert f"pytest -m {the_live_marker()} " in read(GOOGLE_OAUTH_VERIFICATION)
 
     def test_it_names_the_calendar_every_write_lands_on(self) -> None:
         assert f"`{DEVELOPMENT_CALENDAR}`" in read(GOOGLE_OAUTH_VERIFICATION)
 
     def test_it_states_the_window_the_destructive_test_removes_from(self) -> None:
-        """Both halves of it. An operator clearing the wrong two hours has cleared nothing."""
+        """Both halves of it. An operator clearing the wrong two hours has cleared nothing.
+
+        Anchored on the leading word, because a figure is a suffix of every longer figure: "12 hours
+        long" contains "2 hours long", and "12 days ahead" contains "2 days ahead".
+        """
         text = read(GOOGLE_OAUTH_VERIFICATION)
 
-        assert f"{hours(WINDOW_LENGTH)} hours long" in text
-        assert f"{RECONCILED_DAY} days ahead of the moment" in text
+        assert f"is {hours(WINDOW_LENGTH)} hours long" in text
+        assert f"sits {RECONCILED_DAY} days ahead of the moment" in text
 
     def test_it_states_the_whole_span_the_suite_writes_in(self) -> None:
         """Derived from the days the suite uses, so adding a probe day fails this, not the run."""
@@ -482,33 +491,48 @@ class TestTheLiveGoogleSuiteProcedure:
         assert f"`{SAFE_TITLE}`" in read(GOOGLE_OAUTH_VERIFICATION)
 
     def test_it_quotes_every_scope_the_client_requests(self) -> None:
-        """A grant narrower than the set fails the suite, so the set is what a consent carries."""
+        """A grant narrower than the set fails the suite, so the set is what a consent carries.
+
+        Anchored to a line of its own, which is how the verbatim block states them. Two reasons. A
+        scope string is a prefix of a narrower one, and `calendar.events.owned.readonly` is a real
+        scope this very runbook discusses as a rejected alternative; and a mention in prose is not
+        the same claim as the recorded set, so matching anywhere in the file would let the verbatim
+        block drift while the prose kept the check green.
+        """
         text = read(GOOGLE_OAUTH_VERIFICATION)
 
         for scope in REQUESTED_SCOPES:
-            assert scope in text, f"the runbook does not quote {scope}"
+            assert f"\n{scope}\n" in text, f"{scope} is not quoted on a line of its own"
 
     def test_it_names_the_parameters_without_which_no_refresh_token_is_issued(self) -> None:
-        """Both, because either one alone answers with an access token and nothing to store."""
+        """All three, because any one alone answers with an access token and nothing to store.
+
+        Backticked on both sides, because each value is a prefix of a real longer one:
+        `response_type=code` is a prefix of `response_type=code id_token`.
+        """
         text = read(GOOGLE_OAUTH_VERIFICATION)
 
-        assert f"access_type={OFFLINE_ACCESS}" in text
-        assert f"prompt={FORCE_CONSENT}" in text
-        assert f"response_type={RESPONSE_TYPE_CODE}" in text
+        assert f"`access_type={OFFLINE_ACCESS}`" in text
+        assert f"`prompt={FORCE_CONSENT}`" in text
+        assert f"`response_type={RESPONSE_TYPE_CODE}`" in text
 
     def test_it_names_both_endpoints_the_procedure_calls(self) -> None:
+        """Backticked, because an endpoint is a prefix of a different real one: `/token` against
+        `/tokeninfo`, and the authorization endpoint against any path below it.
+        """
         text = read(GOOGLE_OAUTH_VERIFICATION)
 
-        assert AUTHORIZATION_ENDPOINT in text
-        assert TOKEN_ENDPOINT in text
+        assert f"`{AUTHORIZATION_ENDPOINT}`" in text
+        assert f"`{TOKEN_ENDPOINT}`" in text
 
     def test_it_names_the_callback_route_the_app_actually_serves(self) -> None:
         """The redirect URI Google matches character for character, taken from the route constant.
 
         Stated against the route rather than against whatever a machine's own `.env` holds, because
-        an operator following this on another machine has a different `.env`.
+        an operator following this on another machine has a different `.env`. Anchored on the
+        trailing backtick, because a route is a prefix of every longer one.
         """
-        assert CALLBACK_ROUTE in read(GOOGLE_OAUTH_VERIFICATION)
+        assert f"{CALLBACK_ROUTE}`" in read(GOOGLE_OAUTH_VERIFICATION)
 
     def test_it_tells_the_redirect_uri_apart_from_the_browser_applications_origin(self) -> None:
         """Two settings, two different origins, and mistaking one for the other wastes a consent."""
