@@ -44,7 +44,7 @@ restore_compose := env_var_or_default(
 
 # The projects that hold something someone keeps: the developer's database, and the deployment's.
 # They are what `dev_compose` and `deploy_compose` above resolve to, and
-# `_refuse-an-inherited-project` below is the only reader.
+# `_refuse-a-retargeted-teardown` below is the only reader.
 protected_projects := "syncr-dev syncr"
 
 # Every Python member, in dependency order, so lint and test output reads bottom-up.
@@ -139,9 +139,13 @@ dev-down:
 #
 # `just` does not read `.env` -- this file sets no `dotenv-load` -- so the file is read here rather
 # than inherited, in compose's own precedence: the environment wins over the file, and the last
-# assignment wins within it. Compose's dotenv reader also accepts an `export ` prefix on a line, so
-# this reading has to as well: measured, `export COMPOSE_PROJECT_NAME=x` in `.env` sets the project
-# compose acts on, and a pattern anchored on the key alone reads nothing and admits the teardown.
+# assignment wins within it. Two spellings of that file compose's own reader accepts and a naive
+# pattern does not: an `export ` prefix on the line, and a UTF-8 BOM before the first key. A `\r`
+# is dropped for the same reason, so a CRLF file resolves rather than reading as unresolvable.
+#
+# One divergence is deliberate and safe: compose treats an empty `COMPOSE_PROJECT_NAME` as SET and
+# does not fall back to the file, while `${COMPOSE_PROJECT_NAME:-}` here treats it as unset and reads
+# the file. That can only refuse where compose would have used the file's name, never admit.
 #
 # A NAME THIS READING CANNOT RESOLVE IS REFUSED. Compose interpolates the file's values, so one
 # carrying `$` names a project decided somewhere this recipe cannot see, and the safe answer for a
@@ -150,12 +154,12 @@ dev-down:
 # A DEPENDENCY RATHER THAN A LINE OF EACH BODY, and the first one, because `just` runs dependencies
 # left to right and nothing a teardown depends on should run before it is refused.
 [private]
-_refuse-an-inherited-project:
+_refuse-a-retargeted-teardown:
     #!/usr/bin/env bash
     set -uo pipefail
     inherited="${COMPOSE_PROJECT_NAME:-}"
     if [ -z "$inherited" ] && [ -f .env ]; then
-      inherited="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?COMPOSE_PROJECT_NAME[[:space:]]*=//p' .env | tail -n 1 | tr -d "\"'")"
+      inherited="$(tr -d $'\357\273\277\r' < .env | sed -nE 's/^[[:space:]]*(export[[:space:]]+)?COMPOSE_PROJECT_NAME[[:space:]]*=//p' | tail -n 1 | tr -d "\"'")"
     fi
     [ -n "$inherited" ] || exit 0
     if ! printf '%s' "$inherited" | grep -Eq '^[a-z0-9][a-z0-9_.-]*$'; then
@@ -173,7 +177,7 @@ _refuse-an-inherited-project:
     done
 
 # Tear the dev stack down AND drop its volumes, for a fresh Postgres
-dev-reset: _refuse-an-inherited-project
+dev-reset: _refuse-a-retargeted-teardown
     docker compose {{dev_compose}} down -v
 
 # Postgres only, published to localhost for the host-run inner loop
@@ -408,7 +412,7 @@ e2e-up:
     @echo "e2e stack on http://localhost:${SYNCR_E2E_PORT:-57080} · readiness: curl -s localhost:${SYNCR_E2E_PORT:-57080}/readyz"
 
 # Tear the e2e stack down AND drop its volumes. Its database is scratch by definition
-e2e-down: _refuse-an-inherited-project
+e2e-down: _refuse-a-retargeted-teardown
     docker compose {{e2e_compose}} down -v
 
 # The whole suite. Every scenario names its scenario number in its title

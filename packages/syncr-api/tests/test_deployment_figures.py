@@ -84,7 +84,7 @@ DEPLOYED_HOST_REFUSAL: Final = "_refuse-a-local-drill-on-a-deployed-host"
 
 # The refusal every recipe that drops a project's volumes carries, spelled once because the rule in
 # `TestEveryTeardownRefusesAnInheritedProject` is stated over a derived set of recipes.
-INHERITED_PROJECT_REFUSAL: Final = "_refuse-an-inherited-project"
+RETARGETED_TEARDOWN_REFUSAL: Final = "_refuse-a-retargeted-teardown"
 
 # Where the stub `docker` below records having been reached, relative to the tree a case builds.
 DOCKER_LOG: Final = "docker-was-reached"
@@ -1307,7 +1307,6 @@ class TestTheDestructiveTeardown:
     # below carry the same two names in both orders and must come out opposite: a case that only
     # refused "a line with two overrides" would pass without implementing either rule.
     # two overrides" would pass without implementing either rule.
-    # two overrides" would pass without implementing either rule.
 
     @pytest.mark.parametrize(
         ("line", "admitted", "why"),
@@ -1884,11 +1883,18 @@ def _variables_defined_in(document: str) -> set[str]:
 
 
 def _keys_the_environment_file_documents() -> set[str]:
-    """Every key `.env.example` declares, which is what sourcing the host secret file provides."""
+    """Every key `.env.example` declares, which is what sourcing the host secret file provides.
+
+    THE SPELLINGS A DOTENV READER ACCEPTS, not the one this file happens to use. An `export ` prefix
+    and leading whitespace both declare a key to compose and to `set -a; . ./.env`, so a reading
+    anchored on an upper-case letter at column zero answers a narrower question than either consumer
+    asks. `_first_definition` below already accepts the prefix, and the runtime refusal in the
+    justfile accepts both.
+    """
     import re
 
     text = read(Path(".env.example"))
-    return set(re.findall(r"^([A-Z][A-Z0-9_]*)=", text, re.MULTILINE))
+    return set(re.findall(r"^[ \t]*(?:export[ \t]+)?([A-Z][A-Z0-9_]*)=", text, re.MULTILINE))
 
 
 def _first_use(document: str, variable: str) -> int:
@@ -2156,11 +2162,11 @@ class TestEveryTeardownRefusesAnInheritedProject:
         """A DEPENDENCY, AND THE FIRST ONE, which is the order `just` runs them in."""
         dependencies = _dependencies_of(recipe)
 
-        assert INHERITED_PROJECT_REFUSAL in dependencies, (
+        assert RETARGETED_TEARDOWN_REFUSAL in dependencies, (
             f"`just {recipe}` drops the volumes of whatever project COMPOSE_PROJECT_NAME names, "
             "and nothing here stops that name being a deployment's"
         )
-        assert dependencies.index(INHERITED_PROJECT_REFUSAL) == 0, (
+        assert dependencies.index(RETARGETED_TEARDOWN_REFUSAL) == 0, (
             f"`just` runs dependencies left to right, so {dependencies} lets {dependencies[0]} run "
             "before the teardown it precedes is refused"
         )
@@ -2305,6 +2311,45 @@ class TestEveryTeardownRefusesAnInheritedProject:
             _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
         else:
             _assert_it_ran(done, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("dotenv", "refused"),
+        [
+            ("\ufeffCOMPOSE_PROJECT_NAME=syncr\n", True),
+            ("\ufeffCOMPOSE_PROJECT_NAME=syncr-e2e\n", False),
+        ],
+    )
+    def test_it_reads_past_a_byte_order_mark(
+        self, dotenv: str, refused: bool, tmp_path: Path
+    ) -> None:
+        """THE OTHER SPELLING A LINE-ANCHORED PATTERN MISSES, and the worse one.
+
+        Compose's dotenv reader skips a leading byte order mark, so the first key still declares the
+        project. A pattern anchored at the start of the line does not: the mark sits before the key,
+        nothing matches, and an empty reading admits. An editor writing UTF-8 with a mark, or a
+        PowerShell copy of the example file, produces exactly this file.
+
+        Both directions, because dropping the mark must not become refusing every file that carries
+        one.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
+
+        if refused:
+            _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
+        else:
+            _assert_it_ran(done, tmp_path)
+
+    def test_it_reads_a_file_written_with_crlf_endings(self, tmp_path: Path) -> None:
+        """A `\\r` belongs to the line ending rather than to the value.
+
+        Compose acts on `syncr` here. Keeping the carriage return made the value unresolvable, which
+        refused for the wrong reason: safe, but it reported a project name nobody wrote.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(
+            tmp_path, dotenv="COMPOSE_PROJECT_NAME=syncr\r\n"
+        )
+
+        _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
 
     def test_a_name_it_cannot_resolve_is_refused(self, tmp_path: Path) -> None:
         """Compose interpolates the file's values, and this refusal does not.
