@@ -31,7 +31,7 @@ for the open-ended one.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import TYPE_CHECKING, Protocol
 
@@ -41,6 +41,7 @@ from syncr_domain.weeks import LOCAL_MIDNIGHT, IsoWeek
 from syncr_domain.zones import to_instant
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from datetime import date, datetime
 
     from syncr_api.core.clock import Clock
@@ -161,11 +162,32 @@ def weeks_occupied(span: Interval, *, home_zone: ZoneId) -> tuple[IsoWeek, ...]:
     seam this can name a week beside the one whose span the instant falls in.
     """
     found = [IsoWeek.containing(local_date(span.start, home_zone))]
-    following = found[-1].following()
+    following = found[0].following()
     while _opens_at(following, home_zone) < span.end:
         found.append(following)
         following = following.following()
     return tuple(found)
+
+
+def contiguous_ranges(weeks: Iterable[IsoWeek]) -> tuple[WeekRange, ...]:
+    """``weeks`` as the fewest closed ranges that cover them and no week besides.
+
+    One range per unbroken run. A mutation reaching a hundred consecutive weeks is then one
+    statement rather than a hundred, and two mutations a term apart stay two ranges with the weeks
+    between them untouched.
+
+    **Every week a range covers is one of ``weeks``**, because a run has no gap in it by
+    construction. That is what makes the collapse safe rather than a convenience: the set bumped is
+    the set asked for, and a range is only widened onto the week that immediately follows its end.
+    """
+    ranges: list[WeekRange] = []
+    for week in sorted(set(weeks)):
+        previous = ranges[-1] if ranges else None
+        if previous is not None and previous.last is not None and previous.last.following() == week:
+            ranges[-1] = replace(previous, last=week)
+            continue
+        ranges.append(WeekRange(first=week, last=week))
+    return tuple(ranges)
 
 
 def _opens_at(week: IsoWeek, zone: ZoneId) -> datetime:

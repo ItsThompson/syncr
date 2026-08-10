@@ -45,7 +45,7 @@ from syncr_api.anchors.identity import (
 from syncr_api.anchors.matching import first_match, series_overrides
 from syncr_api.anchors.reach import widest_reach
 from syncr_api.calendars.anchor_writing import AnchorDelta
-from syncr_api.user_settings.solve_inputs import WeekRange, weeks_occupied
+from syncr_api.user_settings.solve_inputs import contiguous_ranges, weeks_occupied
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
@@ -213,23 +213,27 @@ class AnchorReconciler:
         return weeks_occupied(reach.envelope(anchor), home_zone=self._home_zone)
 
     async def _invalidate(self, weeks: frozenset[IsoWeek]) -> None:
-        """Bump each of these weeks, one range closed at both ends.
+        """Bump the weeks this pass changed, as ranges closed at both ends.
 
-        **Closed at both ends, and one range per week rather than one range spanning them.** A poll
-        runs every fifteen minutes, and a bump with no end date invalidates every tracked week from
-        its first week onwards: each pass that moved one commitment would then supersede the solve
-        of every week the user has not yet lived, each supersession enqueues a follow-up, and the
-        next pass supersedes those. The single-flight invariant holds throughout -- one solve per
-        week -- while no week ever reaches a write, which is a worse failure than a missing bump
-        because it looks like work. A range spanning the weeks a feed touches has the same shape in
-        miniature: two commitments a term apart would invalidate the weeks between them, which
-        nothing changed.
+        **Closed at both ends, and never one range spanning the weeks a feed touches.** A poll runs
+        every fifteen minutes, and a bump with no end date invalidates every tracked week from its
+        first week onwards: each pass that moved one commitment would then supersede the solve of
+        every week the user has not yet lived, each supersession enqueues a follow-up, and the next
+        pass supersedes those. The single-flight invariant holds throughout -- one solve per week --
+        while no week ever reaches a write, which is a worse failure than a missing bump because it
+        looks like work. A range spanning what one pass touched has the same shape in miniature: two
+        commitments a term apart would invalidate the weeks between them, which nothing changed.
 
         The open-ended shape exists and is reserved for a mutation that genuinely has no end date,
         which a poll is not.
+
+        One range per unbroken run rather than one per week, because a published component may
+        legitimately be a year long and the weeks it covers are all genuinely its own. The grouping
+        widens a range only onto the week that immediately follows it, so the weeks bumped are the
+        weeks this pass changed and no others.
         """
-        for week in sorted(weeks):
-            await self._versions.bump(WeekRange(first=week, last=week))
+        for span in contiguous_ranges(weeks):
+            await self._versions.bump(span)
 
     async def _create(
         self,

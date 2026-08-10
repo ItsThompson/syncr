@@ -24,9 +24,16 @@ the evening before, which is the previous ISO week, so that week is an input of 
 invalidated by it. The discriminating pair is the same commitment under two different sets of
 declared types: with a lead, and with types that cast nothing. A constant would answer both alike.
 
-**Every range is closed at both ends.** The bound is not tidiness. An open-ended bump on a
-fifteen-minute poll would invalidate every week the user has not yet lived on every pass that moved
-one commitment, so no week would ever reach a write.
+**So does the zone.** One commitment at the seam between two ISO weeks is invalidated in one week
+for a tenant in London and the other for a tenant in UTC. Every other case here chooses a date where
+those two agree, which is exactly why that one exists: without it, a reconciler answering in one
+fixed zone would pass this whole file.
+
+**Every range is closed at both ends, and covers only weeks the pass changed.** The bound is not
+tidiness. An open-ended bump on a fifteen-minute poll would invalidate every week the user has not
+yet lived on every pass that moved one commitment, so no week would ever reach a write. Adjacent
+weeks collapse into one range, because a run has no gap in it; a range reaching a week the pass did
+not change is the failure that shape must not have.
 """
 
 from __future__ import annotations
@@ -54,7 +61,7 @@ from tests.anchor_specifications import EXAM, STANDUP
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Sequence
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -66,10 +73,18 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-# The tenant's home zone here, which is also what a tenant that has never opened Settings holds.
-# Every instant below is therefore a wall time as well as an instant, which is what makes the
-# weekday claims in the test names readable.
+# The tenant's home zone for most cases here, which is also what a tenant that has never opened
+# Settings holds. Every instant below is therefore a wall time as well as an instant, which is what
+# makes the weekday claims in the test names readable.
 HOME_ZONE = "UTC"
+# A zone whose offset is NOT UTC's at the date the zone case below chooses: `Europe/London` runs an
+# hour ahead through August. One instant then falls in two different ISO weeks depending on which of
+# the two answers the question, which is what makes that case discriminating.
+LONDON = "Europe/London"
+# 2026-08-02 23:30Z is Sunday 23:30 in UTC and Monday 00:30 in London.
+AUGUST_SEAM = datetime(2026, 8, 2, 23, 30, tzinfo=UTC)
+AUGUST_WEEK_31 = IsoWeek(2026, 31)
+AUGUST_WEEK_32 = IsoWeek(2026, 32)
 
 # 2026-02-09 is the Monday that opens 2026-W07.
 WEEK = IsoWeek(2026, 7)
@@ -198,12 +213,16 @@ async def declare(
 
 @asynccontextmanager
 async def a_pass(
-    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, *, home_zone: str = HOME_ZONE
 ) -> AsyncIterator[tuple[AnchorReconciler, RecordingVersions]]:
     """The reconciler as both compositions build it, in one transaction, with its counter.
 
     One transaction per pass, because that is what a pass is: the rows a sync writes and the
     versions its changes invalidate either both land or neither does.
+
+    ``home_zone`` is what production reads off the tenant's row. It is a parameter here rather than
+    the module constant everywhere, because a suite that only ever passed one zone could not tell
+    the reconciler's plumbing from a constant of its own.
     """
     async with sessions() as session, session.begin():
         versions = RecordingVersions(
@@ -216,7 +235,7 @@ async def a_pass(
                 AnchorRepository(session, tenant_id),
                 AnchorTypeRepository(session, tenant_id),
                 versions=versions,
-                home_zone=HOME_ZONE,
+                home_zone=home_zone,
             ),
             versions,
         )
@@ -227,9 +246,11 @@ async def synced(
     tenant_id: TenantId,
     source: CalendarSourceRecord,
     outcome: FetchOutcome,
+    *,
+    home_zone: str = HOME_ZONE,
 ) -> tuple[AnchorDelta, RecordingVersions]:
     """An attempt that actually read the feed, which is the only one that may remove."""
-    async with a_pass(sessions, tenant_id) as (reconciler, versions):
+    async with a_pass(sessions, tenant_id, home_zone=home_zone) as (reconciler, versions):
         delta = await reconciler.reconcile(source, outcome)
     return delta, versions
 
@@ -266,6 +287,23 @@ async def version_of(
 def one_week(week: IsoWeek) -> list[WeekRange]:
     """The one range a pass that touched exactly ``week`` must ask for."""
     return [WeekRange(first=week, last=week)]
+
+
+def weeks_covered(asked: Sequence[WeekRange]) -> set[IsoWeek]:
+    """Every week the ranges asked for reach, so a collapsed range can be checked against the set.
+
+    A range covers its endpoints and everything between them, so this is what the counter will act
+    on. Enumerated here rather than trusted, because the whole point of grouping weeks into runs is
+    that the two sets stay equal.
+    """
+    covered: set[IsoWeek] = set()
+    for span in asked:
+        assert span.last is not None, f"{span} has no end, so the weeks it covers are unbounded"
+        week = span.first
+        while week <= span.last:
+            covered.add(week)
+            week = week.following()
+    return covered
 
 
 # --------------------------------------------------------------------------------
@@ -450,9 +488,13 @@ async def test_a_commitment_moved_across_a_week_boundary_invalidates_both_weeks(
     tenant_id: TenantId,
     source: CalendarSourceRecord,
 ) -> None:
-    # The pair as one set, and one range per week. Stated beside the two halves above rather than
-    # instead of them: this assertion holds for a pass that named a THIRD week as well, and each
-    # half names which side of the move it is about.
+    # The pair as one set. Stated beside the two halves above rather than instead of them: this
+    # assertion holds for a pass that named a THIRD week as well, and each half names which side of
+    # the move it is about.
+    #
+    # The two weeks are adjacent, so they are asked for as ONE closed range rather than two. What
+    # makes that safe is the second assertion: the weeks the range covers are exactly the weeks the
+    # pass changed.
     await synced(sessions, tenant_id, source, a_read(an_event()))
     await track(sessions, tenant_id, WEEK, NEXT_WEEK)
 
@@ -462,10 +504,8 @@ async def test_a_commitment_moved_across_a_week_boundary_invalidates_both_weeks(
 
     assert delta.updated == 1
     assert delta.occupied_weeks == frozenset({WEEK, NEXT_WEEK})
-    assert versions.asked == [
-        WeekRange(first=WEEK, last=WEEK),
-        WeekRange(first=NEXT_WEEK, last=NEXT_WEEK),
-    ]
+    assert versions.asked == [WeekRange(first=WEEK, last=NEXT_WEEK)]
+    assert weeks_covered(versions.asked) == set(delta.occupied_weeks)
 
 
 async def test_a_commitment_spanning_a_week_boundary_invalidates_both_weeks(
@@ -485,6 +525,53 @@ async def test_a_commitment_spanning_a_week_boundary_invalidates_both_weeks(
     )
 
     assert delta.occupied_weeks == frozenset({WEEK, NEXT_WEEK})
+
+
+# --------------------------------------------------------------------------------
+# The zone the weeks are resolved in is the tenant's own.
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("home_zone", "invalidated", "untouched"),
+    [
+        (LONDON, AUGUST_WEEK_32, AUGUST_WEEK_31),
+        (HOME_ZONE, AUGUST_WEEK_31, AUGUST_WEEK_32),
+    ],
+    ids=["london-runs-an-hour-ahead-in-august", "utc"],
+)
+async def test_the_week_a_sync_invalidates_is_resolved_in_the_tenants_own_zone(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+    home_zone: str,
+    invalidated: IsoWeek,
+    untouched: IsoWeek,
+) -> None:
+    """One commitment, two tenants' zones, two different weeks invalidated.
+
+    A fifteen-minute commitment at 2026-08-02 23:30Z is Sunday night in UTC and Monday morning in
+    London, so which ISO week it occupies is decided by the zone and by nothing else. The pair is
+    what makes this discriminating: a reconciler answering in one fixed zone would satisfy either
+    case on its own, and every other case in this file chooses a date where the two agree.
+
+    The version row is asserted as well as the delta, because the plumbing under test runs the whole
+    way from the reconciler's own zone to the row a running solve is guarded on.
+    """
+    await track(sessions, tenant_id, AUGUST_WEEK_31, AUGUST_WEEK_32)
+
+    delta, versions = await synced(
+        sessions,
+        tenant_id,
+        source,
+        a_read(an_event(start=AUGUST_SEAM, minutes=15)),
+        home_zone=home_zone,
+    )
+
+    assert delta.occupied_weeks == frozenset({invalidated})
+    assert versions.asked == one_week(invalidated)
+    assert await version_of(sessions, tenant_id, invalidated) == FIRST_INPUT_VERSION + 1
+    assert await version_of(sessions, tenant_id, untouched) == FIRST_INPUT_VERSION
 
 
 # --------------------------------------------------------------------------------
@@ -512,7 +599,7 @@ async def test_a_monday_morning_exam_invalidates_the_previous_week_through_its_p
 
     assert delta.created == 1
     assert delta.occupied_weeks == frozenset({PREVIOUS_WEEK, WEEK})
-    assert versions.weeks == [PREVIOUS_WEEK, WEEK]
+    assert weeks_covered(versions.asked) == {PREVIOUS_WEEK, WEEK}
 
 
 async def test_the_expansion_comes_from_the_tenants_types_rather_than_from_a_constant(
@@ -559,19 +646,22 @@ async def test_every_range_a_sync_asks_for_is_closed_at_both_ends(
     tenant_id: TenantId,
     source: CalendarSourceRecord,
 ) -> None:
-    """One range per week, each ending where it begins, over a pass that touched three weeks.
+    """Closed at both ends, and covering exactly the weeks the pass changed.
 
     The open-ended shape exists in the same module and is reserved for a mutation with no end date.
     Reached from here it would invalidate every week from the earliest one this feed touches
     onwards, on every pass that moved one commitment: each supersession enqueues a follow-up, the
-    next poll fifteen minutes later supersedes that, and no week ever reaches a write. A range
-    SPANNING these three would be the same failure in miniature, invalidating a week between two
-    commitments that nothing changed.
+    next poll fifteen minutes later supersedes that, and no week ever reaches a write.
+
+    The second assertion is what the first one cannot say. Ranges are grouped into unbroken runs, so
+    a pass may legitimately ask for fewer ranges than it changed weeks; what may never happen is a
+    range reaching a week the pass did not change, which is the failure a range spanning everything
+    it touched would be.
     """
     await declare(sessions, tenant_id, EXAM)
     await track(sessions, tenant_id, PREVIOUS_WEEK, WEEK, NEXT_WEEK)
 
-    _delta, versions = await synced(
+    delta, versions = await synced(
         sessions,
         tenant_id,
         source,
@@ -581,9 +671,11 @@ async def test_every_range_a_sync_asks_for_is_closed_at_both_ends(
         ),
     )
 
-    assert versions.weeks == [PREVIOUS_WEEK, WEEK, NEXT_WEEK]
+    assert versions.asked, "a pass that changed three weeks asked for nothing"
     for asked in versions.asked:
-        assert asked.last == asked.first, asked
+        assert asked.last is not None, asked
+    assert weeks_covered(versions.asked) == set(delta.occupied_weeks)
+    assert delta.occupied_weeks == frozenset({PREVIOUS_WEEK, WEEK, NEXT_WEEK})
 
 
 async def test_a_week_between_two_commitments_a_term_apart_is_not_invalidated(
@@ -592,11 +684,12 @@ async def test_a_week_between_two_commitments_a_term_apart_is_not_invalidated(
     source: CalendarSourceRecord,
 ) -> None:
     # The control for the shape above. A range spanning what one pass touched would invalidate
-    # every tracked week between two commitments, and this is the week that would notice.
+    # every tracked week between two commitments, and this is the week that would notice. The two
+    # runs stay two ranges, because the grouping only widens onto the week that follows.
     between = NEXT_WEEK
     await track(sessions, tenant_id, WEEK, between, IsoWeek(2026, 9))
 
-    _delta, versions = await synced(
+    delta, versions = await synced(
         sessions,
         tenant_id,
         source,
@@ -607,7 +700,36 @@ async def test_a_week_between_two_commitments_a_term_apart_is_not_invalidated(
     )
 
     assert versions.weeks == [WEEK, IsoWeek(2026, 9)]
+    assert weeks_covered(versions.asked) == set(delta.occupied_weeks)
+    assert between not in delta.occupied_weeks
     assert await version_of(sessions, tenant_id, between) == FIRST_INPUT_VERSION
+
+
+async def test_a_year_long_commitment_is_asked_for_as_one_range_rather_than_fifty_three(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    """A publisher decides how long a component is, so it decides how many weeks a pass reaches.
+
+    The accepted length is bounded in days, not in weeks, so one component can occupy every week of
+    a year. Those weeks are all genuinely its own, so every one of them is invalidated; what must
+    not scale with them is the number of statements the pass issues inside one tenant transaction.
+    """
+    await track(sessions, tenant_id, WEEK, NEXT_WEEK)
+
+    delta, versions = await synced(
+        sessions,
+        tenant_id,
+        source,
+        a_read(an_event(start=WEDNESDAY_1000, minutes=366 * 24 * 60)),
+    )
+
+    assert len(delta.occupied_weeks) > 50
+    assert versions.asked == [
+        WeekRange(first=min(delta.occupied_weeks), last=max(delta.occupied_weeks))
+    ]
+    assert weeks_covered(versions.asked) == set(delta.occupied_weeks)
 
 
 async def test_a_week_nobody_has_planned_is_not_given_a_version_row_by_a_sync(
