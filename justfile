@@ -1043,7 +1043,12 @@ drill-keys:
 # BASE FILE ONLY, deliberately. The dev overlay publishes 5432, and a host-local Postgres owning that
 # port makes a compose route silently reach the wrong database: the most expensive hazard in this
 # repository. Nothing here needs a host port, so nothing here publishes one.
-drill-seed:
+#
+# AND ON A DEPLOYED HOST THAT ROUTE IS THE LIVE DATABASE. `docker-compose.yml` declares the project
+# `syncr`, which is the deployment's own, so this recipe would write invented rows into real plan
+# history. So it carries the same refusal `just drill-local` does, as a dependency, for the reason
+# stated where that refusal is declared.
+drill-seed: _refuse-a-local-drill-on-a-deployed-host
     docker compose -f docker-compose.yml exec -T postgres \
       psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-syncr}" -d "${POSTGRES_DB:-syncr}" \
       -f /dev/stdin < deployments/drill/seed-local.sql
@@ -1053,9 +1058,13 @@ drill-seed:
 # Without this, running the local drill on a host would generate a THROWAWAY keypair, dump the LIVE
 # database to that host's own disk encrypted to that key, restore into a locally-built image, and print
 # "Every claim held. This backup restores, and the data came back." Every guard in the path would be
-# satisfied and the drill would prove nothing about the real bucket or the real key. This ticket's
-# standard is that an instrument refuses rather than relying on its name, which is why `ops.restore`
+# satisfied and the drill would prove nothing about the real bucket or the real key. The standard
+# here is that an instrument refuses rather than relying on its name, which is why `ops.restore`
 # requires the live target instead of trusting its caller.
+#
+# TWO CALLERS, ONE REFUSAL. `just drill-seed` carries it as well, and its hazard is a different one:
+# it writes invented rows into whatever `docker-compose.yml` resolves to, which on a host is the live
+# database rather than a throwaway copy of one.
 #
 # TWO FACTS, BECAUSE ONE FILE GOING MISSING MUST NOT RE-ENABLE THE PATH:
 #
@@ -1081,6 +1090,8 @@ _refuse-a-local-drill-on-a-deployed-host:
       echo "real bucket and the real key. \`just drill-local\` proves the mechanics on a development" >&2
       echo "machine and nothing about this host: it would dump the live database under a throwaway" >&2
       echo "key." >&2
+      echo "\`just drill-seed\` writes invented rows into that same live database, which is the" >&2
+      echo "project \`docker-compose.yml\` resolves to." >&2
       exit 1
     done
 
