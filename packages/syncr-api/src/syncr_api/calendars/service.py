@@ -39,6 +39,7 @@ from syncr_api.calendars.rules import (
     require_a_google_source,
     require_a_projectable_horizon,
     require_a_readable_provider,
+    require_a_writable_provider,
     require_no_anchor_history,
     require_no_write_target,
     require_the_write_target,
@@ -182,11 +183,17 @@ class CalendarSourceService:
     async def designate_write_target(
         self, principal: Principal, source_id: CalendarSourceId
     ) -> CalendarSourceRecord:
-        """Give one source the write-target role, or state why it cannot have it."""
+        """Give one source the write-target role, or state why it cannot have it.
+
+        The role a source already holds is re-asserted before any rule is applied, because ``PUT``
+        names a state and re-asserting one changes nothing. Every rule below is therefore stated
+        over a transition, and a target already stored is answered by the projection instead.
+        """
         require_scope(principal, Scope.ADMIN)
         found = await self._found(principal, source_id)
         if found.role == WRITE_TARGET:
             return found
+        require_a_writable_provider(found)
         require_no_anchor_history(found)
         require_no_write_target(await self._sources.write_target())
 

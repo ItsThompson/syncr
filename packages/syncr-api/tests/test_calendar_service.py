@@ -29,6 +29,7 @@ import pytest
 
 from syncr_api.calendars.config import (
     ANCHOR_SOURCE,
+    CALENDAR_PROVIDERS,
     EXCLUDED,
     GOOGLE,
     HORIZON_DAYS_DEFAULT,
@@ -430,15 +431,48 @@ async def test_changing_a_source_bumps_no_input_version(wiring: Wiring) -> None:
 # --------------------------------------------------------------------------------
 
 
-async def test_a_never_synced_source_becomes_the_write_target_with_the_default_horizon(
+async def test_a_never_synced_google_source_becomes_the_write_target_with_the_default_horizon(
     wiring: Wiring,
 ) -> None:
-    held = wiring.sources.hold(record(external_id=PLAN))
+    held = wiring.sources.hold(record(provider=GOOGLE, external_id="primary"))
 
     designated = await wiring.service.designate_write_target(OWNER, held.id)
 
     assert designated.role == WRITE_TARGET
     assert designated.horizon_days == HORIZON_DAYS_DEFAULT
+
+
+@pytest.mark.parametrize("provider", [one for one in CALENDAR_PROVIDERS if one != GOOGLE])
+async def test_a_source_syncr_cannot_write_to_is_refused_naming_the_provider(
+    wiring: Wiring, provider: CalendarProvider
+) -> None:
+    # Parametrized over the closed provider set rather than over `ics` by name, so a provider added
+    # to it is a decision this rule has to make rather than one it silently accepts.
+    held = wiring.sources.hold(record(provider=provider, external_id=PLAN))
+
+    with pytest.raises(ValidationFailed) as raised:
+        await wiring.service.designate_write_target(OWNER, held.id)
+
+    assert f"is a {provider} source" in raised.value.detail
+    assert "no API to write through" in raised.value.detail
+    # What still works, so the refusal leaves the user able to decide what to do next.
+    assert "still contributes its anchors" in raised.value.detail
+    assert wiring.sources.rows[held.id].role == ANCHOR_SOURCE
+    assert wiring.sources.rows[held.id].horizon_days is None
+
+
+async def test_re_asserting_a_stored_unwritable_target_is_not_refused(wiring: Wiring) -> None:
+    # The rule is stated over the transition. A role already stored is state no rule over a request
+    # reaches, and refusing to re-assert it would answer 422 to a request that changes nothing;
+    # the projection is what refuses to write such a target.
+    held = wiring.sources.hold(
+        record(provider=ICS, external_id=PLAN, role=WRITE_TARGET, horizon_days=21)
+    )
+
+    again = await wiring.service.designate_write_target(OWNER, held.id)
+
+    assert again.role == WRITE_TARGET
+    assert again.horizon_days == 21
 
 
 async def test_a_source_that_has_ever_synced_cannot_become_the_write_target(
@@ -447,7 +481,11 @@ async def test_a_source_that_has_ever_synced_cannot_become_the_write_target(
     # "Active" is having ever synced, not currently reporting anchors: a feed that read zero
     # events last night is still a calendar the user reads elsewhere.
     held = wiring.sources.hold(
-        record(sync_state=SyncStateRecord(last_success_at=NOW, anchors_current=0))
+        record(
+            provider=GOOGLE,
+            external_id="read@example.org",
+            sync_state=SyncStateRecord(last_success_at=NOW, anchors_current=0),
+        )
     )
 
     with pytest.raises(ValidationFailed) as raised:
@@ -461,9 +499,15 @@ async def test_a_second_write_target_is_refused_naming_the_one_that_holds_the_ro
     wiring: Wiring,
 ) -> None:
     wiring.sources.hold(
-        record(external_id=PLAN, role=WRITE_TARGET, horizon_days=14, display_name="syncr plan")
+        record(
+            provider=GOOGLE,
+            external_id="plan@group.calendar.google.com",
+            role=WRITE_TARGET,
+            horizon_days=14,
+            display_name="syncr plan",
+        )
     )
-    other = wiring.sources.hold(record(external_id="https://x.ac.uk/other.ics"))
+    other = wiring.sources.hold(record(provider=GOOGLE, external_id="other@example.org"))
 
     with pytest.raises(Conflict) as raised:
         await wiring.service.designate_write_target(OWNER, other.id)
@@ -473,7 +517,9 @@ async def test_a_second_write_target_is_refused_naming_the_one_that_holds_the_ro
 
 async def test_re_designating_the_current_target_changes_nothing(wiring: Wiring) -> None:
     # PUT names a state, so re-asserting it must not be the 409 a SECOND target is.
-    held = wiring.sources.hold(record(external_id=PLAN, role=WRITE_TARGET, horizon_days=21))
+    held = wiring.sources.hold(
+        record(provider=GOOGLE, external_id="primary", role=WRITE_TARGET, horizon_days=21)
+    )
 
     again = await wiring.service.designate_write_target(OWNER, held.id)
 

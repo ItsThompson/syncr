@@ -1,13 +1,20 @@
-"""The two role rules and the horizon rule, as pure functions over one source.
+"""The role rules, the horizon rules, and the provider rules, as pure functions over one source.
 
 They live apart from the service because each is an invariant of the domain rather than a step
-in a request, and because the one that matters most is easy to state and easy to lose:
+in a request, and because the two that matter most are easy to state and easy to lose:
 
 **A calendar acting as an anchor source is never the write target.** The write target is
 reconciled destructively over its horizon, so a calendar syncr reads and a calendar syncr
 overwrites cannot be the same one. If they were, every solve would treat the previous solve's
 output as immovable external commitments, and the reconciliation would delete the user's real
 calendar.
+
+**The write target is a calendar syncr can write to, and assigning the role is where that is
+settled.** The plan is written through a calendar API, and an ICS feed has none, so an unwritable
+target costs the whole plan: it never reaches the calendar, and no retry clears it, because a
+source's provider never changes. The projection refuses an unwritable target as well, and the pair
+is not a duplicate. A role already stored is state, not an assignment, and no rule over a request
+reaches it, so the projection is where that state is answered.
 
 Each rejection names the surviving capability, because a notice that says only what broke
 leaves the user unable to decide what to do next.
@@ -42,6 +49,23 @@ def require_no_anchor_history(source: CalendarSourceRecord) -> None:
         "is reconciled destructively and its contents are overwritten, so it cannot also be a "
         "calendar syncr reads. Add a new, empty calendar for the plan. Nothing was changed; "
         "this source still contributes its anchors."
+    )
+
+
+def require_a_writable_provider(source: CalendarSourceRecord) -> None:
+    """Reject the write-target role on a source syncr has no way to write to.
+
+    Refused on the transition rather than on the state: re-asserting a role a source already holds
+    changes nothing, and the projection is what answers for a target already stored.
+    """
+    if source.provider == GOOGLE:
+        return
+    raise ValidationFailed(
+        f"{source.display_name!r} is a {source.provider} source, and the plan can only be written "
+        "to a Google calendar: a feed is published by somebody else and has no API to write "
+        "through, so the plan would never reach it. Connect a Google account and designate a "
+        "calendar there. Nothing was changed; this source still contributes its anchors, and the "
+        "plan still solves."
     )
 
 
