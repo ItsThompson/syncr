@@ -21,10 +21,16 @@ import { filesUnder } from "../lib/files.ts";
 import { appSourceDir, tokenDir } from "../lib/paths.ts";
 import { INDICATOR_FLOOR, TEXT_FLOOR, contrastRatio } from "../lib/contrast.ts";
 import { assignments, coloursOf, hexOf, type Unmeasurable } from "./resolution.ts";
-import { paletteInUse, type InkUse } from "./usage.ts";
+import { paletteInUse, type Composition, type InkUse } from "./usage.ts";
 
 export { INDICATOR_FLOOR, TEXT_FLOOR, contrastRatio };
 export type { Unmeasurable };
+
+/* THE FILLS THAT ARE INK RATHER THAN PAPER, which is where an ink written for paper stops being readable.
+ * `--on-ink` exists for exactly these, so the list is crossable against the sheets rather than trusted: every
+ * pairing a rule states with `--on-ink` names one of these fills and no other. The audit's cases assert that in
+ * both directions, so a third ink fill cannot appear without this constant moving. */
+export const INK_FILLED = ["--ink", "--ink-deep"] as const;
 
 export interface Pair {
   readonly ink: string;
@@ -37,6 +43,15 @@ export interface Pair {
   readonly clears: boolean;
 }
 
+/** A pairing a single rule states, with both halves resolved to the names the matrix reports. */
+export interface Composed {
+  /** The rule that states it, so a finding names something a reader can open. */
+  readonly where: string;
+  readonly ink: string;
+  readonly surface: string;
+  readonly floor: number;
+}
+
 export interface Ledger {
   readonly inks: readonly string[];
   readonly surfaces: readonly string[];
@@ -44,6 +59,8 @@ export interface Ledger {
   readonly unmeasurable: readonly Unmeasurable[];
   /** Every stylesheet the palette was read from, so the ledger says what it covered. */
   readonly sheets: readonly string[];
+  /** The pairings the sheets state outright, which are the ones a floor can be enforced on off paper. */
+  readonly composed: readonly Composed[];
 }
 
 /** The ledger: every ink against every surface, with the ratio each pair measures. */
@@ -96,11 +113,56 @@ export async function buildLedger(): Promise<Ledger> {
     pairs,
     unmeasurable: deduplicate(unmeasurable),
     sheets: usage.sheets,
+    composed: resolveComposed(held, usage.compositions),
   };
+}
+
+/**
+ * The stated pairings, with both halves put through the same resolution the matrix uses.
+ *
+ * A carrier resolves to several colours, so one rule can state several pairings, and a token that resolves to no
+ * flat colour states none: whatever it holds is already recorded as unmeasurable with its reason.
+ */
+function resolveComposed(
+  held: ReadonlyMap<string, Set<string>>,
+  stated: readonly Composition[],
+): Composed[] {
+  const byKey = new Map<string, Composed>();
+  for (const one of stated) {
+    for (const ink of coloursOf(held, one.ink).tokens) {
+      for (const surface of coloursOf(held, one.surface).tokens) {
+        byKey.set(`${one.where} ${ink} ${surface}`, {
+          where: one.where,
+          ink,
+          surface,
+          floor: one.floor,
+        });
+      }
+    }
+  }
+  return [...byKey.values()].toSorted((one, two) => one.where.localeCompare(two.where));
 }
 
 function deduplicate(found: readonly Unmeasurable[]): Unmeasurable[] {
   const byKey = new Map<string, Unmeasurable>();
   for (const one of found) byKey.set(`${one.token} ${one.value}`, one);
   return [...byKey.values()].toSorted((one, two) => one.token.localeCompare(two.token));
+}
+
+/** Every ink the ledger holds to the text floor, which is every ink a `color` declaration writes. */
+export function textInks(ledger: Ledger): string[] {
+  return ledger.inks.filter(
+    (ink) => ledger.pairs.find((pair) => pair.ink === ink)?.floor === TEXT_FLOOR,
+  );
+}
+
+/** The pairings a rule states that put text on an ink fill, which is the reachable set off paper. */
+export function textOnAnInkFill(ledger: Ledger): Composed[] {
+  const fills = new Set<string>(INK_FILLED);
+  return ledger.composed.filter((one) => one.floor === TEXT_FLOOR && fills.has(one.surface));
+}
+
+/** The ratio a pair measures, or null when the matrix has no such cell. */
+export function ratioOf(ledger: Ledger, ink: string, surface: string): number | null {
+  return ledger.pairs.find((pair) => pair.ink === ink && pair.surface === surface)?.ratio ?? null;
 }
