@@ -139,10 +139,14 @@ def test_the_index_carries_every_key_that_survived_sorting(label: str) -> None:
 
 
 @pytest.mark.parametrize("label", sorted(ALL_FEEDS))
-def test_every_key_sits_on_an_instant_that_key_names(label: str) -> None:
+def test_every_key_sits_on_an_instant_the_body_declares_for_it(label: str) -> None:
     # The second conjunct: ON one instant. The index is keyed by the series and the INSTANT a key
     # resolves onto, so an entry built from anything else -- the key's own wall time, the series
     # alone -- offers an occurrence a replacement belonging to a different moment.
+    #
+    # An instant the body declares for that key, not THE instant: two components can name one key in
+    # two zones, so a key can be declared at more than one instant. Which of those the index should
+    # file it under is a precedence question this does not answer.
     body = ALL_FEEDS[label]
     declared = _declared_instants(body)
 
