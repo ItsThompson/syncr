@@ -5,8 +5,8 @@ elastic occurrence's length is chosen, how a slot is filled or explained, and wh
 with the rest of the week.
 
 Every test drives ``solve`` or the phase itself against literals. The week's whole span is ahead of
-``now`` unless a test states its own clock, which the two about a slot the week has already reached
-do, because what those two measure is the clip itself.
+``now`` unless a test states its own clock, which the ones about a slot the week has already reached
+do, because for those the instant is the subject rather than a setting.
 """
 
 from __future__ import annotations
@@ -371,7 +371,7 @@ def test_no_solve_ever_leaves_a_slot_saying_nobody_looked_at_the_backlog() -> No
     assert all(slot.reason is not EmptySlotReason.NOT_SOLVED for slot in document.empty_slots)
 
 
-def test_a_slot_the_week_has_already_reached_is_left_unbound_and_says_it_has_passed() -> None:
+def test_a_slot_the_week_has_already_reached_is_left_unbound_and_says_it_has_begun() -> None:
     """Three slots against one clock: Monday's is spent, Wednesday's half spent, Friday's not.
 
     The straddling slot is what decides where the boundary sits. A slot is never shrunk, so
@@ -448,6 +448,10 @@ def test_a_slot_that_has_begun_states_the_clocks_reason_and_not_the_backlogs() -
         template_entries=(a_slot(area_id=CAREER, day=0),),
         areas=(an_area_budget(area_id=CAREER, name="Career"),),
     )
+    # The premise the assertion rests on: the backlog offers this slot's Area nothing, which is
+    # what makes the reordering observable at all. Given one eligible task instead, both orders
+    # bind it and this test passes whichever way round the two checks are.
+    assert candidates_for(week, placed_minutes={}, floor_shortfalls={}) == ()
 
     attempt = bind_slots(an_attempt(week))
 
