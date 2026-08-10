@@ -51,6 +51,13 @@ function cell(pair: Pair): string {
   return `${pair.ratio.toFixed(2)}${pair.clears ? "" : " ✗"}`;
 }
 
+/* A cell with no ratio renders EMPTY rather than as a number, matching the matrix above. A pair nobody has
+ * measured and a pair measured at zero must not read the same in a document whose whole claim is that nothing in
+ * it is claimed. */
+function measured(ledger: Ledger, ink: string, surface: string): string {
+  return ratioOf(ledger, ink, surface)?.toFixed(2) ?? "";
+}
+
 /* THE INK FILLS, PUBLISHED AS MEASUREMENTS AND NOTHING ELSE.
  *
  * These rows carry no verdict mark, and that is the point of the section: which surface a class sits on is a fact
@@ -77,7 +84,7 @@ function inkFilledSection(ledger: Ledger): string[] {
     ...text.map(
       (ink) =>
         `| \`${ink}\` | ` +
-        INK_FILLED.map((surface) => (ratioOf(ledger, ink, surface) ?? 0).toFixed(2)).join(" | ") +
+        INK_FILLED.map((surface) => measured(ledger, ink, surface)).join(" | ") +
         " |",
     ),
     "",
@@ -92,10 +99,10 @@ function inkFilledSection(ledger: Ledger): string[] {
     "",
     "| rule | ink | fill | ratio |",
     "|---|---|---|---|",
-    ...stated.map((one: Composed) => {
-      const ratio = ratioOf(ledger, one.ink, one.surface) ?? 0;
-      return `| \`${one.where}\` | \`${one.ink}\` | \`${one.surface}\` | ${ratio.toFixed(2)} |`;
-    }),
+    ...stated.map(
+      (one: Composed) =>
+        `| \`${one.where}\` | \`${one.ink}\` | \`${one.surface}\` | ${measured(ledger, one.ink, one.surface)} |`,
+    ),
     "",
     `${stated.length} pairing(s) stated on an ink-filled surface, of ${ledger.composed.length} ` +
       `stated on any surface, held to ${TEXT_FLOOR.toFixed(1)}:1.`,
