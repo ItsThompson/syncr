@@ -15,7 +15,7 @@ where a move should have been.
 
 **Identical is its own arm, and it is the common one.** An ordinary reconciliation after a re-solve
 finds almost everything already correct and writes only what moved, which is what makes the
-thirty-second budget reachable and what stops a destructive path touching a calendar it need not.
+projection budget reachable and what stops a destructive path touching a calendar it need not.
 
 **Two existing events can hold one key**, and the resolution is deterministic. Duplicating an event
 in a calendar client copies its private extended properties, so a key is not unique on the target

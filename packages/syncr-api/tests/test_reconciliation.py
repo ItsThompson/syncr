@@ -175,7 +175,7 @@ def test_an_event_already_correct_produces_no_write() -> None:
 
 
 def test_a_whole_horizon_already_correct_produces_no_write_at_all() -> None:
-    """The steady state after a reconciliation, and why the thirty-second budget is reachable."""
+    """The steady state after a reconciliation, and why the projection budget is reachable."""
     events = [intended(chr(ordinal) * 64) for ordinal in range(ord("a"), ord("a") + 20)]
 
     plan = plan_reconciliation(

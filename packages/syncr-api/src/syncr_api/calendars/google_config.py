@@ -97,16 +97,18 @@ RATE_LIMIT_REASONS: Final = frozenset(
 # because the failure modes do. A read is one paginated request; a reconciliation is one request per
 # event it changes, made SEQUENTIALLY, so its cost scales with how much the plan moved.
 
+# The budget one reconciliation is held to. A constant rather than a figure spelled into prose,
+# because the deadline below is derived from it and the live suite measures against it.
+PROJECTION_BUDGET_SECONDS: Final = 30.0
 # How long ONE reconciliation may take, including every write and every wait. Three times the
-# thirty-second budget `19-nonfunctional.md` sets, so exceeding the budget is visible in the
-# duration histogram while a provider that has stopped answering still cannot hold the worker
-# indefinitely: the duties on the loop are serial, so an unbounded write would stop the calendar
-# poll and the horizon maintainer as well.
+# budget above, so exceeding the budget is visible in the duration histogram while a provider that
+# has stopped answering still cannot hold the worker indefinitely: the duties on the loop are
+# serial, so an unbounded write would stop the calendar poll and the horizon maintainer as well.
 #
 # Not a hard reading of the budget. A first projection of a full horizon is a couple of hundred
-# writes and may legitimately exceed thirty seconds; a reconciliation in the steady state writes
-# only what moved, which is a handful.
-WRITE_DEADLINE_SECONDS: Final = 90.0
+# writes and may legitimately exceed it; a reconciliation in the steady state writes only what
+# moved, which is a handful.
+WRITE_DEADLINE_SECONDS: Final = 3 * PROJECTION_BUDGET_SECONDS
 # How long one write request may take. Inside the deadline above, so one hung request cannot consume
 # the whole budget and leave nothing for the events after it.
 WRITE_REQUEST_TIMEOUT_SECONDS: Final = 20.0
