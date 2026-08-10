@@ -41,3 +41,4 @@ export type CalendarSource = Schemas["CalendarSourceResponse"];
 export type Anchors = Schemas["AnchorsResponse"];
 export type Anchor = Schemas["AnchorResponse"];
 export type Adjustments = Schemas["AdjustmentsResponse"];
+export type Preference = Schemas["PreferenceResponse"];
