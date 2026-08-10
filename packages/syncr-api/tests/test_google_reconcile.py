@@ -426,6 +426,12 @@ async def test_an_insert_the_provider_answers_with_a_tombstone_does_not_read_as_
 
 
 async def test_a_delete_the_provider_answers_with_a_tombstone_is_done() -> None:
+    """One body, two opposite meanings, and which write asked for it decides.
+
+    A cancelled event is what a deletion wanted, so the answer that refuses a patch applies here.
+    Without the flag the reading would refuse every delete the provider echoed rather than answered
+    empty.
+    """
     google, _written = projecting(mine(identifier="evt-stale"), by_method={DELETE: EVENT_TOMBSTONE})
 
     result = await google.reconcile(TARGET, [])

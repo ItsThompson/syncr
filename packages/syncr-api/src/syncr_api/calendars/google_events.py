@@ -228,7 +228,7 @@ def read_write_answer(response: GoogleResponse, *, gone_is_done: bool) -> WriteA
     """What one response to a mutating request means.
 
     ``gone_is_done`` is true for a deletion and false for everything else, which is the whole of the
-    difference between the two readings of a 404.
+    difference between the two readings of an event that is no longer there.
     """
     status = response.status
     if not response.is_error:

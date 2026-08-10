@@ -6,7 +6,7 @@ would fail for reasons that have nothing to do with the code. What a fake cannot
 syncr's reading of Google's contract matches Google's, so this exists and is run deliberately.
 
 **The destructive write is here, and it is the last test in the file.** It exercises one
-reconciliation against the development calendar ticket 2 created: it inserts one event syncr
+reconciliation against the development calendar: it inserts one event syncr
 intends, reads the calendar back to confirm the diff key survived the round trip, and then removes
 it by reconciling against an empty plan. Nothing else in the account is touched, because the
 horizon is a two-hour window on a calendar that holds nothing real, and the window is read before
@@ -79,8 +79,10 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.google_live
 
-# The calendar ticket 2 created for exactly this: a secondary owned calendar holding nothing real,
-# so a read here and the destructive write below cannot touch the user's own commitments.
+# The development calendar the owning account holds for exactly this: a secondary owned calendar
+# holding nothing real, so a read here and the destructive write below cannot touch the user's own
+# commitments. `docs/runbooks/google-oauth-verification.md` records why it exists and what it is
+# for.
 DEVELOPMENT_CALENDAR = "syncr (dev)"
 
 CLIENT_ID_VAR = "GOOGLE_OAUTH_CLIENT_ID"
@@ -192,7 +194,7 @@ async def test_the_accounts_calendars_include_the_development_calendar(
     names = [one.display_name for one in answer.calendars]
     assert DEVELOPMENT_CALENDAR in names, (
         f"the development calendar {DEVELOPMENT_CALENDAR!r} is not in this account: {names}. "
-        "Ticket 2 created it so a read here and the destructive write below cannot touch a "
+        "The owning account holds it so a read here and the destructive write below cannot touch a "
         "real calendar."
     )
     development = next(one for one in answer.calendars if one.display_name == DEVELOPMENT_CALENDAR)
@@ -232,23 +234,33 @@ async def test_every_event_the_real_api_returns_is_one_syncr_can_read(
     profile = ZoneProfile(home_zone="Europe/London")
 
     unreadable: list[str] = []
+    examined = 0
     for remote in listed.calendars:
         answer = await live_client.list_events(
             remote.calendar_id,
             sync_token=None,
             window=Interval(now, now + timedelta(days=HORIZON_DAYS)),
         )
-        if not isinstance(answer, EventsRead):
-            continue
+        # Failed rather than skipped. A read that did not answer is not a calendar full of readable
+        # timestamps, and continuing past it let this test report the contract settled having
+        # examined nothing at all.
+        assert isinstance(answer, EventsRead), (remote.display_name, answer)
         for payload in answer.events:
             if payload.is_cancelled:
                 continue
+            examined += 1
             read = read_span(payload.start, payload.end, profile=profile)
             if not isinstance(read, ReadSpan):
                 # The identifier and the reason, never the title: a live account holds real ones.
                 unreadable.append(f"{payload.id}: {read.detail}")
 
     assert unreadable == [], f"the real API returned values syncr refused: {unreadable}"
+    # The denominator, because the assertion above holds over an empty set. Three ways to reach it
+    # with nothing read: an account with no calendars, every read failing, every event cancelled.
+    assert examined > 0, (
+        "no timestamp was examined, so this run settled nothing about Google's timestamp contract "
+        f"however green it looks: {len(listed.calendars)} calendar(s) answered"
+    )
 
 
 async def test_an_incremental_read_after_a_full_one_reports_no_change(
@@ -330,7 +342,7 @@ async def live_writer(live_client: GoogleCalendarClient) -> AsyncIterator[Google
 
 
 async def a_development_target(client: GoogleCalendarClient) -> CalendarSourceRecord:
-    """The development calendar as a write target, found by the name ticket 2 gave it."""
+    """The development calendar as a write target, found by the name the owning account gave it."""
     listed = await client.list_calendars()
     assert isinstance(listed, CalendarsRead), listed
     development = next(
