@@ -798,13 +798,18 @@ def _files_git_has() -> tuple[str, ...]:
     return tuple(name for name in listed.stdout.split("\0") if name)
 
 
+def _justfile_text(text: str | None) -> str:
+    """The justfile a reading is about: the repository's, or one a control wrote."""
+    return read(Path("justfile")) if text is None else text
+
+
 def _recipe_body(name: str, *, text: str | None = None) -> str:
     """One `just` recipe's body, from its opening line to the next unindented one.
 
     ``text`` is for the synthetic controls, which drive the derivation below over a justfile they
     wrote rather than over this one.
     """
-    lines = (read(Path("justfile")) if text is None else text).splitlines()
+    lines = _justfile_text(text).splitlines()
     opener = next(
         index
         for index, line in enumerate(lines)
@@ -833,7 +838,7 @@ def _dependencies_of(name: str, *, text: str | None = None) -> list[str]:
     import re
 
     opener = re.compile(rf"^{re.escape(name)}(?:\s+[^:]*)?:(?!=)(.*)$")
-    for line in (read(Path("justfile")) if text is None else text).splitlines():
+    for line in _justfile_text(text).splitlines():
         found = opener.match(line)
         if found is not None:
             return found.group(1).split()
@@ -857,14 +862,14 @@ def _recipe_names(*, text: str | None = None) -> frozenset[str]:
 
     found = {
         match.group(1)
-        for line in (read(Path("justfile")) if text is None else text).splitlines()
+        for line in _justfile_text(text).splitlines()
         if (match := re.match(r"^(_?[a-z][a-z0-9-]*)(?:\s+[^:]*)?:(?!=)", line))
     }
     assert found, "no recipe was read out of the justfile, so this crossing is vacuous"
     return frozenset(found)
 
 
-def _statements_of(body: str) -> str:
+def _commands_of(body: str) -> str:
     """A recipe body with its comment lines and its shebang removed.
 
     A comment inside a body NAMES the recipes and the files it is explaining rather than reaching
@@ -893,7 +898,7 @@ def _recipes_invoked_in(body: str) -> frozenset[str]:
     import re
 
     commands = "\n".join(
-        re.sub(r"\"[^\"]*\"|'[^']*'", "", line) for line in _statements_of(body).splitlines()
+        re.sub(r"\"[^\"]*\"|'[^']*'", "", line) for line in _commands_of(body).splitlines()
     )
     return frozenset(re.findall(r"(?<![\w-])just\s+([a-z][a-z0-9-]*)", commands))
 
@@ -909,10 +914,10 @@ def _recipes_reaching_seed_data(*, text: str | None = None) -> frozenset[str]:
     migrations. That is the ordering that once wrote a throwaway keypair onto a host and refused
     afterwards.
     """
-    justfile = read(Path("justfile")) if text is None else text
+    justfile = _justfile_text(text)
     artifacts = _seed_artifacts()
     names = _recipe_names(text=justfile)
-    statements = {name: _statements_of(_recipe_body(name, text=justfile)) for name in names}
+    statements = {name: _commands_of(_recipe_body(name, text=justfile)) for name in names}
     reaching = {
         name for name, body in statements.items() if any(artifact in body for artifact in artifacts)
     }
@@ -1890,7 +1895,7 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
         and the rule above wants re-deriving rather than keeping.
         """
         project = _project_named_by(
-            _compose_files_in(_statements_of(_recipe_body("drill-seed")), _justfile_variables())
+            _compose_files_in(_commands_of(_recipe_body("drill-seed")), _justfile_variables())
         )
 
         assert project in _protected_projects(), (
@@ -1947,9 +1952,9 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
 
         assert done.returncode == 0, done.stderr
         assert "this host is a deployment" not in done.stderr
-        assert "compose" in (tmp_path / DOCKER_LOG).read_text(encoding="utf-8"), (
-            "the recipe refused a tree holding neither fact, so it refuses a workstation too"
-        )
+        assert "compose -f docker-compose.yml exec" in (tmp_path / DOCKER_LOG).read_text(
+            encoding="utf-8"
+        ), "the recipe refused a tree holding neither fact, so it refuses a workstation too"
 
     def test_the_reading_follows_a_recipe_that_only_calls_the_seeder(self) -> None:
         """The derivation's own controls, over a justfile the case wrote.
