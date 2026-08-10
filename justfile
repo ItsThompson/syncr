@@ -150,6 +150,12 @@ dev-down:
 # not honour, and the last such line would win: `COMPOSE_PROJECT_\rNAME=x` is a different key to
 # compose and would have become this key here.
 #
+# `LC_ALL=C` BECAUSE COMPOSE'S READER IS BYTE-ORIENTED AND `sed` IS NOT. In a UTF-8 locale BSD `sed`
+# aborts with `illegal byte sequence` at the first line that is not valid UTF-8 and reads no further,
+# so one CP1252 password above this key emptied the reading and admitted the teardown while compose
+# resolved the file without complaint. Reading bytes rather than characters is what makes the two
+# agree, and it costs nothing: the pattern is ASCII.
+#
 # One divergence is deliberate and safe: compose treats an empty `COMPOSE_PROJECT_NAME` as SET and
 # does not fall back to the file, while `${COMPOSE_PROJECT_NAME:-}` here treats it as unset and reads
 # the file. That can only refuse where compose would have used the file's name, never admit.
@@ -166,7 +172,7 @@ _refuse-a-retargeted-teardown:
     set -uo pipefail
     inherited="${COMPOSE_PROJECT_NAME:-}"
     if [ -z "$inherited" ] && [ -f .env ]; then
-      inherited="$(sed -nE $'1s/^\xef\xbb\xbf//; s/\r$//; s/^[[:space:]]*(export[[:space:]]+)?COMPOSE_PROJECT_NAME[[:space:]]*=//p' .env | tail -n 1 | tr -d "\"'")"
+      inherited="$(LC_ALL=C sed -nE $'1s/^\xef\xbb\xbf//; s/\r$//; s/^[[:space:]]*(export[[:space:]]+)?COMPOSE_PROJECT_NAME[[:space:]]*=//p' .env | tail -n 1 | tr -d "\"'")"
     fi
     [ -n "$inherited" ] || exit 0
     if ! printf '%s' "$inherited" | grep -Eq '^[a-z0-9][a-z0-9_.-]*$'; then

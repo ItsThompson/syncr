@@ -89,6 +89,10 @@ RETARGETED_TEARDOWN_REFUSAL: Final = "_refuse-a-retargeted-teardown"
 # Where the stub `docker` below records having been reached, relative to the tree a case builds.
 DOCKER_LOG: Final = "docker-was-reached"
 
+# One byte that is a valid CP1252 character and not valid UTF-8 on its own, spelled as a byte so the
+# case that needs it does not carry a literal a secret scanner reads as high entropy.
+CP1252_O_UMLAUT: Final = bytes([0xF6])
+
 # A `docker` that records being called and can reach nothing, so "started nothing" is an OBSERVATION
 # rather than an inference from an exit status: a guard that starts something and refuses afterwards
 # exits non-zero too, so a returncode cannot tell an early refusal from a late one.
@@ -1001,6 +1005,7 @@ def _the_scratch_teardown_in_a_tree_of_its_own(
     *,
     inherited: str | None = None,
     dotenv: str | None = None,
+    dotenv_bytes: bytes | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run `just e2e-down` against a copy of the justfile, in a tree that holds nothing.
 
@@ -1012,7 +1017,9 @@ def _the_scratch_teardown_in_a_tree_of_its_own(
 
     ``inherited`` is the environment a developer's shell would hand the recipe, and ``dotenv`` is
     the gitignored file compose reads from the project directory. A case passes one, the other, or
-    both, which is how the precedence between them is driven.
+    both, which is how the precedence between them is driven. ``dotenv_bytes`` writes that file
+    without an encoding, which is the only way to express a file compose reads and a text tool
+    cannot.
     """
     assert shutil.which("just") is not None, (
         "`just` is not on PATH, and it is what CI and the hooks run every gate through"
@@ -1020,6 +1027,8 @@ def _the_scratch_teardown_in_a_tree_of_its_own(
     (root / "justfile").write_bytes((repo_root() / "justfile").read_bytes())
     if dotenv is not None:
         (root / ".env").write_text(dotenv, encoding="utf-8")
+    if dotenv_bytes is not None:
+        (root / ".env").write_bytes(dotenv_bytes)
 
     stub = root / "bin" / "docker"
     stub.parent.mkdir()
@@ -2366,25 +2375,61 @@ class TestEveryTeardownRefusesAnInheritedProject:
             _assert_it_ran(done, tmp_path)
 
     @pytest.mark.parametrize(
-        "dotenv",
+        ("dotenv", "refused"),
         [
-            "COMPOSE_PROJECT_NAME=syncr\nCOMPOSE_PROJECT_\rNAME=syncr-e2e\n",
-            "COMPOSE_PROJECT_NAME=syncr\n\ufeffCOMPOSE_PROJECT_NAME=syncr-e2e\n",
+            ("COMPOSE_PROJECT_NAME=syncr\nCOMPOSE_PROJECT_\rNAME=syncr-e2e\n", True),
+            ("COMPOSE_PROJECT_NAME=syncr-e2e\nCOMPOSE_PROJECT_\rNAME=syncr\n", False),
+            ("COMPOSE_PROJECT_NAME=syncr\n\ufeffCOMPOSE_PROJECT_NAME=syncr-e2e\n", True),
         ],
     )
     def test_the_two_tolerances_are_scoped_the_way_compose_scopes_them(
-        self, dotenv: str, tmp_path: Path
+        self, dotenv: str, refused: bool, tmp_path: Path
     ) -> None:
         """A mark is forgiven at the start of the FILE and a carriage return at the end of a LINE.
 
-        Compose reads the first line of each file below, so both name a project that holds
-        something. A reading that deleted either byte from anywhere would see a second assignment
-        compose does not honour, and the last matching line wins: the first file's second line is a
-        different key to compose, and the second file makes compose refuse to read the file at all.
+        Compose reads the FIRST line of each file below, because the second line's key carries a
+        byte that makes it a different key. A reading that deleted either byte from anywhere would
+        see a second assignment compose does not honour, and the last matching line wins.
+
+        The carriage-return rows carry the same two names in both orders, so a reading that refused
+        every file containing an out-of-scope byte, judging no name at all, fails the second row.
+        The mark row has no such counterpart on purpose: compose refuses to read a file whose mark
+        sits before a later key, so there is no admitting verdict to assert against it.
         """
         done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
 
-        _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
+        if refused:
+            _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
+        else:
+            _assert_it_ran(done, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("project", "refused"),
+        [(b"syncr", True), (b"syncr-e2e", False)],
+    )
+    def test_it_reads_a_file_that_is_not_valid_utf_8(
+        self, project: bytes, refused: bool, tmp_path: Path
+    ) -> None:
+        """COMPOSE'S READER IS BYTE-ORIENTED AND A TEXT TOOL IS NOT.
+
+        One CP1252 byte in `POSTGRES_PASSWORD` is the whole trigger: that key ships in
+        `.env.example` under a first line telling the reader to copy the file, so a Latin-1 editor
+        and a non-ASCII password produce this file. Compose resolves it without complaint. In a
+        UTF-8 locale BSD `sed` aborts at that line with `illegal byte sequence` and reads nothing
+        after it, so the project name below was never seen and the teardown ran.
+
+        Both directions, because reading bytes must not become refusing every file that holds one.
+        """
+        dotenv_bytes = (
+            b"POSTGRES_PASSWORD=pw" + CP1252_O_UMLAUT + b"\nCOMPOSE_PROJECT_NAME=" + project + b"\n"
+        )
+
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv_bytes=dotenv_bytes)
+
+        if refused:
+            _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
+        else:
+            _assert_it_ran(done, tmp_path)
 
     def test_a_name_it_cannot_resolve_is_refused(self, tmp_path: Path) -> None:
         """Compose interpolates the file's values, and this refusal does not.
