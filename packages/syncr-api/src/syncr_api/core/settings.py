@@ -119,7 +119,8 @@ class EnvSettings(SyncrSettings):
 
     Field names mirror the root ``.env`` keys: ``ENVIRONMENT``, ``LOG_LEVEL``,
     ``HOST``, ``DATABASE_URL``, ``SESSION_SIGNING_SECRET``, ``ALLOWED_ORIGINS``,
-    ``PUBLIC_BASE_URL``, ``OAUTH_KEYS_PATH``, ``OAUTH_KEY_ENCRYPTION_KEY``,
+    ``PUBLIC_BASE_URL``, ``APP_BASE_URL``, ``OAUTH_KEYS_PATH``,
+    ``OAUTH_KEY_ENCRYPTION_KEY``,
     ``GOOGLE_OAUTH_CLIENT_ID``, ``GOOGLE_OAUTH_CLIENT_SECRET``,
     ``GOOGLE_OAUTH_REDIRECT_URI``, ``GOOGLE_TOKEN_ENCRYPTION_KEY``,
     ``GOOGLE_PROJECTION_WRITES``.
@@ -143,6 +144,9 @@ class EnvSettings(SyncrSettings):
     allowed_origins: Annotated[tuple[str, ...], NoDecode] = DEV_ALLOWED_ORIGINS
     # The pinned origin every OAuth URL and token claim is built from.
     public_base_url: str = DEV_PUBLIC_BASE_URL
+    # The origin the browser application is served from, which is where the api sends a browser
+    # it has finished with. Empty means the api's own origin: see the validator below.
+    app_base_url: str = ""
     # Where the encrypted OAuth signing keys are read from. Empty means "no key file",
     # which development answers with an ephemeral in-memory keypair and every other
     # environment refuses, so a deployment cannot serve a JWKS whose keys vanish on
@@ -187,6 +191,23 @@ class EnvSettings(SyncrSettings):
         if isinstance(value, str):
             return tuple(origin.strip() for origin in value.split(",") if origin.strip())
         return value
+
+    @model_validator(mode="after")
+    def _serve_the_application_from_the_api_s_origin_by_default(self) -> EnvSettings:
+        """Resolve the application's origin to the api's own when nobody named one.
+
+        A field default cannot read a sibling field, so the default is applied here: a deployment
+        that serves both through one hostname needs no value, and one that splits them names the
+        half the browser talks to.
+
+        An EMPTY value resolves the same way, which is the case worth spelling out. Compose
+        interpolation of an unset host variable produces an empty value that overrides the file it
+        would otherwise have come from, and an empty origin here would rebuild the host-relative
+        redirect this setting exists to replace, on a stack where that redirect names a path the api
+        does not serve.
+        """
+        self.app_base_url = self.app_base_url.strip() or self.public_base_url
+        return self
 
     @model_validator(mode="after")
     def _refuse_the_development_session_secret_elsewhere(self) -> EnvSettings:
@@ -315,6 +336,7 @@ class ServiceSettings(BaseModel):
     session_signing_secret: SecretStr
     allowed_origins: tuple[str, ...]
     public_base_url: str
+    app_base_url: str
     oauth_keys_path: str
     oauth_key_encryption_key: SecretStr
     google_oauth_client_id: str
@@ -340,6 +362,7 @@ def build_service_settings(
         session_signing_secret=env.session_signing_secret,
         allowed_origins=env.allowed_origins,
         public_base_url=env.public_base_url,
+        app_base_url=env.app_base_url,
         oauth_keys_path=env.oauth_keys_path,
         oauth_key_encryption_key=env.oauth_key_encryption_key,
         google_oauth_client_id=env.google_oauth_client_id,

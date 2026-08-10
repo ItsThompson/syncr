@@ -44,6 +44,9 @@ EXPORT_SETTINGS = ServiceSettings(
     session_signing_secret=SecretStr("openapi-export-not-a-session-key"),
     allowed_origins=(),
     public_base_url="https://openapi-export.invalid",
+    # The same host as the api's own, for the same reason: which origin serves the application is a
+    # property of the deployment, and no redirect target reaches the document.
+    app_base_url="https://openapi-export.invalid",
     # Empty, so nothing is read from the filesystem: the export must not depend on a key
     # file existing on the machine that runs it.
     oauth_keys_path="",
