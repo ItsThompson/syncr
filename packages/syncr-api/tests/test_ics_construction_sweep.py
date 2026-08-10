@@ -27,13 +27,20 @@ from syncr_api.calendars.ics_values import MAX_MAGNITUDE_DIGITS
 from tests.hostile_ics import _EXTREMES, _STARTS, HOSTILE_MAGNITUDES
 from tests.ics_construction_sites import (
     AT_INT_CONVERSION,
+    EXPRESSED,
+    GUARDS,
     PAST_INT_CONVERSION,
+    REFUSED,
     SITES,
+    UNSEEN,
+    InexpressibleShape,
     construction_calls,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from tests.ics_construction_sites import Shape
 
 PACKAGE = "calendars"
 
@@ -72,6 +79,10 @@ def test_the_walk_finds_a_construction_call_and_ignores_other_calls(source_root:
 
     assert ("ics_values", "_number", "int") in found
     assert ("ics_values", "_build", "datetime") in found
+    # The interval the placement half builds, named here rather than only in the table, because this
+    # assertion reads the SOURCE. A row moving module with its call is a table edit; a call moving
+    # module is what the two directions above are for, and this is the site they are about.
+    assert ("ics_series", "_window", "Interval") in found
     # And it is a filter rather than a firehose: most of the package's calls construct nothing, so
     # the walk finds far fewer sites than the package has modules times three. Asserting the found
     # NAMES are all in `CONSTRUCTORS` would be wrong: an attribute on a datetime type counts however
@@ -84,6 +95,58 @@ def test_every_declared_site_states_a_guard() -> None:
     # the failure mode of a table that is only ever read by people.
     assert all(site.guard for site in SITES)
     assert all(site.reads for site in SITES)
+
+
+def test_every_guard_is_one_of_the_named_mechanisms() -> None:
+    # Non-blank is not enough: prose passes that. A guard has to name a mechanism from the closed
+    # vocabulary, or a row can answer "looks fine" and read as though it answered something.
+    stated = {site.guard for site in SITES}
+
+    assert stated <= GUARDS, f"{sorted(stated - GUARDS)} are not terms this table defines."
+
+
+# --------------------------------------------------------------------------------
+# What the walk can express, what it refuses, and what it cannot see
+# --------------------------------------------------------------------------------
+
+
+def _walked(tmp_path: Path, source: str) -> set[tuple[str, str, str]]:
+    """The census over a one-module package holding ``source``, as module ``probe``."""
+    package = tmp_path / "probed"
+    package.mkdir()
+    (package / "probe.py").write_text(source, encoding="utf-8")
+    return construction_calls(tmp_path, "probed")
+
+
+@pytest.mark.parametrize("shape", EXPRESSED, ids=lambda shape: shape.what)
+def test_every_expressed_shape_is_reported_with_its_triple(shape: Shape, tmp_path: Path) -> None:
+    # The published bound, driven. A paragraph claiming the walk sees a shape is the walk's own
+    # claim about itself; running the shape through it is the measurement.
+    assert shape.triple is not None
+
+    assert shape.triple in _walked(tmp_path, shape.source)
+
+
+@pytest.mark.parametrize("shape", REFUSED, ids=lambda shape: shape.what)
+def test_every_renamed_constructor_is_refused_by_name(shape: Shape, tmp_path: Path) -> None:
+    # A census that answers "no calls here" for a module reaching a constructor under a second name
+    # is indistinguishable from one answering for a module that constructs nothing. The refusal is
+    # what tells those apart, and it has to name the binding or a reader cannot act on it.
+    with pytest.raises(InexpressibleShape) as refused:
+        _walked(tmp_path, shape.source)
+
+    assert shape.names in str(refused.value)
+    assert "probe" in str(refused.value)
+
+
+@pytest.mark.parametrize("shape", UNSEEN, ids=lambda shape: shape.what)
+def test_an_unseen_shape_is_reported_as_no_call_and_as_no_refusal(
+    shape: Shape, tmp_path: Path
+) -> None:
+    # The claimed blind spot, measured. A limit an instrument asserts about itself is a claim like
+    # any other, and this one is only worth stating if a container binding really does pass both
+    # halves silently. If this test starts failing, the walk grew and the docstring owes an edit.
+    assert _walked(tmp_path, shape.source) == set()
 
 
 # --------------------------------------------------------------------------------
