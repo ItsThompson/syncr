@@ -2,7 +2,7 @@
 
 ``VerdictSurface`` has six members and the corpus they write into is never pruned, so a member with
 no producer is a hole in a product metric that nothing detects, and a producer with no member is a
-transition nobody can attribute. Four guards, each derived from the thing it is stated over rather
+transition nobody can attribute. Five guards, each derived from the thing it is stated over rather
 than from a list this file keeps.
 
 **Every surface has a producer, or a stated reason and a guard that expires with it.** The producers
@@ -44,12 +44,31 @@ NAMES: the surface a call site binds, the method a package calls, the field a re
 recorder composed through a second indirection, a probe reached through an alias, or a read that
 computes a verdict and returns it under another name would escape them. What they catch is the
 ordinary way this goes wrong, which is a new caller written in the shape of the existing ones.
+
+**Every mutation that can move a week's reading is attributed to the act that caused it, or the row
+is the worker's.** Which mutations those are is derived from section 10's trigger table rather than
+listed here: a row that bumps a week's input version or asks for a solve can move the reading, and
+the routes are the walk ``tests/test_solve_triggers.py`` bounds the bump rule with. What records
+each is then read off the wiring: the service method the route calls, whether that method writes a
+transition, and whether the framework resolved the session header for it. A minority record their
+own flip, and those rows carry what the request stated. The rest leave it to one of the two
+recorders the worker composes, both of which bind ``NO_SESSION_IS_OPEN``, so the row reads false
+however the request answered. The two guards over that set assert the correct behavior and fail
+today, so what the code does now cannot become the contract by being written down.
+
+**That guard's blind spot is the row's own ``module``.** A row names one module, so a mutation that
+reaches its write through another package's service belongs to a package no row names, and three
+routes are in that position: they are named here rather than left to be discovered. A recorder
+reached through a collaborator rather than through the service's own attribute escapes the same way,
+which is the residue the paragraph above describes from the other side.
 """
 
 from __future__ import annotations
 
 import ast
+import inspect
 import re
+import textwrap
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, NamedTuple, get_type_hints
 from uuid import uuid4
@@ -72,6 +91,7 @@ from syncr_api.core.db import (
 from syncr_api.core.errors import ValidationFailed
 from syncr_api.core.session_mode import SESSION_MODE_HEADER, read_session_mode
 from syncr_api.core.settings import (
+    API_PREFIX,
     DEV_ALLOWED_ORIGINS,
     WORKER_SERVICE,
     EnvSettings,
@@ -81,14 +101,25 @@ from syncr_api.horizon.runner import PlanHorizonRunner
 from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.facts import VerdictEvent
 from syncr_api.plans.injection import build_week_assembler
+from syncr_api.plans.recording import NO_SESSION_IS_OPEN, VerdictRecorder
 from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
 from syncr_api.reviews.config import REVIEWS_PREFIX, SESSION_PATH
 from syncr_api.worker.main import WorkerContext
-from tests.boundaries import METHODS_WITHOUT_A_BODY, RouteView, api_routes, read_paths
+from syncr_domain.feasibility import Provenance
+from tests.boundaries import (
+    METHODS_WITHOUT_A_BODY,
+    RouteView,
+    api_routes,
+    read_paths,
+    resolved_dependencies,
+    route_identity,
+    service_calls,
+)
 from tests.live_horizons import LATE_IN_THE_WEEK, THIS_WEEK, Ticking, declare_the_minimum
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 from tests.test_authorization_boundary import accepts_a_cli_credential
+from tests.test_solve_triggers import TRIGGER_TABLE, mutating_routes
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -98,6 +129,7 @@ if TYPE_CHECKING:
 
     from syncr_api.accounts.records import UserRecord
     from syncr_api.core.settings import ServiceSettings
+    from tests.test_solve_triggers import MutatingRoute, Trigger
 
 BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 
@@ -136,6 +168,59 @@ VERDICT_FIELD = "verdict"
 # Ticket 1363 settled the spelling across the week routes and the weekly session takes the same one.
 ISO_WEEK_PARAMETER = "iso_week"
 
+# How a service writes a transition: the attribute its wiring hands it, and the recorder's own
+# method. Both halves are the key, because a service that writes something else calls a method of
+# the same name: ``outcomes/service.py`` records an outcome through ``self._outcomes.record(...)``.
+RECORDER_ATTRIBUTE = "_verdicts"
+RECORDER_METHOD = VerdictRecorder.record.__name__
+
+# The two spellings a composition binds when nothing about a session is stated: the constant
+# ``plans/recording.py`` names, and the bare value it holds. What separates the worker's recorders
+# from a request's is that theirs cannot vary with the caller, and these are how that reads.
+STATES_NO_SESSION = frozenset({"NO_SESSION_IS_OPEN", repr(NO_SESSION_IS_OPEN)})
+
+# How many mutating routes the trigger table derives, and how many of them the periodic probe is
+# left to notice. Exact numbers rather than a non-empty set, so an enumeration that stopped seeing
+# routes fails rather than covering nothing quietly.
+MUTATIONS_THAT_CAN_MOVE_A_READING = 57
+FLIPS_THE_PERIODIC_PROBE_RECORDS = 49
+
+# The routes whose own act records the flip it causes, so the row carries what the request stated.
+# Named rather than counted, because this is the set the two failing guards below exist to grow: a
+# route that joins it has to be a diff a reviewer reads.
+CARRY_THE_REQUESTS_STATEMENT = frozenset(
+    {
+        f"POST {WEEKS_PREFIX}/{{iso_week}}/pins",
+        f"POST {WEEKS_PREFIX}/{{iso_week}}/reject-block",
+        f"POST {WEEKS_PREFIX}/{{iso_week}}/tradeoffs",
+    }
+)
+
+# The routes whose flip the solve they schedule records instead. An operation exists on each of
+# these paths, which is what makes them a different question from the ones that schedule nothing at
+# all: there is something for a statement to travel on.
+FLIPS_THE_SCHEDULED_SOLVE_RECORDS = frozenset(
+    {
+        f"DELETE {WEEKS_PREFIX}/{{iso_week}}/adjustments/{{adjustment_id}}",
+        f"DELETE {WEEKS_PREFIX}/{{iso_week}}/pins/{{pin_id}}",
+        f"POST {API_PREFIX}/conflicts/{{conflict_id}}/resolve",
+        f"POST {API_PREFIX}/weight-sets/{{version}}/activate",
+        f"POST {WEEKS_PREFIX}/{{iso_week}}/solve",
+    }
+)
+
+# The mutating routes no row of the trigger table can see, because each reaches its write through
+# another package's service: the promotion accept moves a day shape's entry, and the pie review's
+# apply edits an area's percentages. The decline is under the same prefix and moves no reading at
+# all, which is what this derivation cannot tell apart from the other two.
+OUTSIDE_THE_TABLES_REACH = frozenset(
+    {
+        f"POST {API_PREFIX}/promotions/{{promotion_id}}/accept",
+        f"POST {API_PREFIX}/promotions/{{promotion_id}}/decline",
+        f"POST {REVIEWS_PREFIX}/budget/apply",
+    }
+)
+
 
 # --------------------------------------------------------------------------------
 # Every surface has a producer, or a reason that expires
@@ -155,8 +240,9 @@ type Compositions = list[tuple[str, Composition]]
 def compositions(source_root: Path) -> Compositions:
     """Every recorder composition in the package, with the module each sits in.
 
-    Derived from the call sites rather than from a registry, because a registry is a thing a new
-    caller can forget to join while still writing rows.
+    One scan read twice: by the mapping of surfaces to producers below, and by the attribution of
+    each mutating route further down. Derived from the call sites rather than from a registry,
+    because a registry is a thing a new caller can forget to join while still writing rows.
     """
     return [
         (str(module.relative_to(source_root)), composed)
@@ -388,6 +474,432 @@ def test_the_probe_is_not_counted_as_a_caller_of_itself(source_root: Path) -> No
     assert "plans/served_verdicts.py" in modules, "the read in the probe's own package was hidden"
     assert {"pins", "concessions", "horizon"} <= probing_packages(source_root), (
         "a real caller was not seen at all"
+    )
+
+
+# --------------------------------------------------------------------------------
+# The mutations that can move a week's reading, and what records each
+# --------------------------------------------------------------------------------
+
+
+class Attributed(NamedTuple):
+    """What records one mutation's flip, and what the row it writes says about the session.
+
+    ``by_the_act`` is whether the mutation itself writes the row. The rest follows from it: a row
+    the act does not write is one of the worker's, and only the act has a request to read an answer
+    from.
+    """
+
+    surfaces: frozenset[VerdictSurface]
+    by_the_act: bool
+    carries_the_requests_statement: bool
+
+
+def routes_that_can_move_a_weeks_reading(
+    settings: ServiceSettings, table: tuple[Trigger, ...]
+) -> list[MutatingRoute]:
+    """Every mutating route whose package holds a trigger that can change a week's verdict.
+
+    Derived from the trigger table rather than listed. A row that bumps the week's input version
+    changes what a solve reads, and a row that asks for a solve can change the plan the verdict is
+    computed over: either moves the reading, and a row that does neither cannot, so the kept-both
+    resolution and the two viewport rows fall outside without being named here.
+
+    The routes are the walk ``tests/test_solve_triggers.py`` bounds the bump rule with, read from
+    there rather than restated, so a route added to one of these packages arrives inside this
+    enumeration and a package that loses its bump leaves it.
+    """
+    moving = {
+        row.module.split("/")[0]
+        for row in table
+        if row.module is not None and (row.bumps or row.solves)
+    }
+    return [route for route in mutating_routes(settings) if route.package in moving]
+
+
+def attributions(
+    settings: ServiceSettings, source_root: Path, table: tuple[Trigger, ...]
+) -> dict[MutatingRoute, Attributed]:
+    """What records the flip each of those routes can cause, one entry per route."""
+    composed = compositions(source_root)
+    views = {
+        identity: view
+        for view in api_routes(create_app(settings))
+        for identity in route_identity(view)
+    }
+    return {
+        route: _attribution_of(route, views[route.method, route.path], composed, table)
+        for route in routes_that_can_move_a_weeks_reading(settings, table)
+    }
+
+
+def _attribution_of(
+    route: MutatingRoute, view: RouteView, composed: Compositions, table: tuple[Trigger, ...]
+) -> Attributed:
+    """Three answers, and the third can carry nothing at all.
+
+    A route whose service writes the transition records under its own package's surface, and what
+    the row says about the session is what the framework resolved for that route. A route that
+    writes none leaves the flip to the worker: to the solve it schedules, when its package's trigger
+    reaches the coordinator, and otherwise to the periodic probe, which is what next reads the week
+    if nothing else happens. The third answer is false rather than derived, because a flip nothing
+    the act set in motion records has no row to carry an answer.
+
+    Both readings the second answer rests on are the fixed state's as well as today's: a flip the
+    scheduled solve records carries the request's answer once the route resolves the header AND that
+    surface stops binding a state a request cannot supply. Neither half is a name this file keeps.
+    """
+    if _writes_its_own_transition(view):
+        surfaces = {VerdictSurface[name] for name in _surfaces_by_package(composed)[route.package]}
+        return Attributed(
+            frozenset(surfaces),
+            by_the_act=True,
+            carries_the_requests_statement=_resolves_the_session_header(view)
+            and all(_answers_from_the_request(one, composed) for one in surfaces),
+        )
+    if _asks_for_a_solve(route.package, table):
+        solves = the_scheduled_solves_surface(composed)
+        return Attributed(
+            frozenset({solves}),
+            by_the_act=False,
+            carries_the_requests_statement=_resolves_the_session_header(view)
+            and _answers_from_the_request(solves, composed),
+        )
+    return Attributed(
+        frozenset({the_time_driven_surface(composed)}),
+        by_the_act=False,
+        carries_the_requests_statement=False,
+    )
+
+
+def the_scheduled_solves_surface(composed: Compositions) -> VerdictSurface:
+    """The surface a completed solve records under, derived from the enum rather than named.
+
+    Five of the six surfaces reach a verdict by probing and only a solve attempts a placement, so
+    the one whose provenance is the solver's is the one an operation writes under.
+    """
+    (found,) = [
+        surface
+        for surface in _composed_members(composed)
+        if surface.provenance is Provenance.SOLVER
+    ]
+    return found
+
+
+def the_time_driven_surface(composed: Compositions) -> VerdictSurface:
+    """The periodic probe's surface, which the enum marks as the one a re-confirmation is not news
+    for."""
+    (found,) = [
+        surface for surface in _composed_members(composed) if surface.records_only_a_feasible_flip
+    ]
+    return found
+
+
+def _composed_members(composed: Compositions) -> set[VerdictSurface]:
+    """The members some module composes a recorder with, as members rather than as names."""
+    return {VerdictSurface[one.surface] for _module, one in composed}
+
+
+def _answers_from_the_request(surface: VerdictSurface, composed: Compositions) -> bool:
+    """Whether every recorder bound to this surface takes its session state from the caller.
+
+    Read as the argument's own text, because what separates the two kinds of caller is whether the
+    value can vary with the request: a name can, and the constant cannot.
+    """
+    states = {one.session_state for _module, one in composed if one.surface == surface.name}
+    return bool(states) and not (states & STATES_NO_SESSION)
+
+
+def _surfaces_by_package(composed: Compositions) -> dict[str, set[str]]:
+    """The surfaces each feature package composes a recorder with."""
+    found: dict[str, set[str]] = {}
+    for module, one in composed:
+        found.setdefault(module.split("/")[0], set()).add(one.surface)
+    return found
+
+
+def _writes_its_own_transition(view: RouteView) -> bool:
+    """Whether the service method this route calls writes a transition, through its own helpers.
+
+    The handler is one hop above the write and often two: ``pins/service.py`` records inside the
+    helper the pin and the rejection share, and neither public method names the recorder. So the
+    reading follows the private methods of the same class, and stops there.
+    """
+    return any(
+        _reaches_the_recorder(service, method, set())
+        for service, method in service_calls(view.endpoint)
+    )
+
+
+def _reaches_the_recorder(service: type, method: str, seen: set[str]) -> bool:
+    """Whether this method writes a transition, or reaches one of its own that does."""
+    if method in seen:
+        return False
+    seen.add(method)
+    tree = _method_tree(service, method)
+    if tree is None:
+        return False
+    if any(_records_a_transition(node) for node in ast.walk(tree)):
+        return True
+    return any(
+        _reaches_the_recorder(service, called, seen)
+        for called in _own_calls(tree)
+        if called.startswith("_")
+    )
+
+
+def _method_tree(service: type, method: str) -> ast.AST | None:
+    """One method's own source as a tree, or ``None`` when the class has no such method."""
+    found = getattr(service, method, None)
+    if found is None:
+        return None
+    return ast.parse(textwrap.dedent(inspect.getsource(found)))
+
+
+def _records_a_transition(node: ast.AST) -> bool:
+    """Whether this node is the recorder being CALLED, rather than a mention of it."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == RECORDER_METHOD
+        and isinstance(node.func.value, ast.Attribute)
+        and node.func.value.attr == RECORDER_ATTRIBUTE
+    )
+
+
+def _own_calls(tree: ast.AST) -> set[str]:
+    """Every method of the same object this body calls."""
+    return {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "self"
+    }
+
+
+def _resolves_the_session_header(view: RouteView) -> bool:
+    """Whether the framework reads the session-mode header for this route, at any depth."""
+    return read_session_mode in resolved_dependencies(view)
+
+
+def _asks_for_a_solve(package: str, table: tuple[Trigger, ...]) -> bool:
+    """Whether a trigger of this package reaches the coordinator today.
+
+    Read off the table's own owner rather than out of the service, because a package may ask for its
+    solve below the method a route calls: ``learned/activation.py`` holds the weight-set row's
+    request, and no reading of ``LearnedService.activate`` can see it.
+    """
+    return any(
+        row.solves
+        and row.owner is None
+        and row.module is not None
+        and row.module.split("/")[0] == package
+        for row in table
+    )
+
+
+def _identity(route: MutatingRoute) -> str:
+    """One route as the sets above name it."""
+    return f"{route.method} {route.path}"
+
+
+def _as_reported(route: MutatingRoute, attributed: Attributed) -> str:
+    """One route's reading, in the form a failure names it."""
+    surfaces = ", ".join(sorted(one.value for one in attributed.surfaces))
+    carried = "what the request stated" if attributed.carries_the_requests_statement else "false"
+    return f"{_identity(route)} -> {surfaces}, session_mode_active={carried}"
+
+
+def test_the_mutations_that_can_move_a_weeks_reading_divide_into_three_attributions(
+    settings: ServiceSettings, source_root: Path
+) -> None:
+    """The enumeration, with every figure exact so a reading that covers nothing fails here.
+
+    The two small sets are named because each is a handoff. The first is what the rule already
+    holds for, and it is what grows. The second is where an operation the mutation scheduled already
+    exists to carry the answer, which is a different question from the rest: those schedule nothing,
+    so there is no producer to carry anything until ``VerdictSurface.MUTATION`` gets one.
+
+    The union closes the three against the whole, so with the counts beside it a route cannot fall
+    into two groups or into none.
+    """
+    composed = compositions(source_root)
+    found = attributions(settings, source_root, TRIGGER_TABLE)
+    carrying = {
+        _identity(route) for route, one in found.items() if one.carries_the_requests_statement
+    }
+    by_the_solve = {
+        _identity(route)
+        for route, one in found.items()
+        if one.surfaces == {the_scheduled_solves_surface(composed)}
+    }
+    by_the_probe = {
+        _identity(route)
+        for route, one in found.items()
+        if one.surfaces == {the_time_driven_surface(composed)}
+    }
+
+    assert len(found) == MUTATIONS_THAT_CAN_MOVE_A_READING
+    assert carrying == CARRY_THE_REQUESTS_STATEMENT
+    assert by_the_solve == FLIPS_THE_SCHEDULED_SOLVE_RECORDS
+    assert len(by_the_probe) == FLIPS_THE_PERIODIC_PROBE_RECORDS
+    assert carrying | by_the_solve | by_the_probe == {_identity(route) for route in found}
+
+
+def test_a_table_whose_rows_move_no_reading_derives_no_route(settings: ServiceSettings) -> None:
+    """The control on the derivation, and what makes the enumeration above non-vacuous.
+
+    The route set comes from the TABLE: a table whose every row neither bumps nor asks for a solve
+    leaves the walk with nothing to enumerate, and an absent table leaves it with nothing either.
+    Without this, a filter that had silently stopped matching would leave the count above as the
+    only thing between this file and an enumeration of every mutating route, or of none.
+    """
+    settled = tuple(row._replace(bumps=False, solves=False) for row in TRIGGER_TABLE)
+
+    assert routes_that_can_move_a_weeks_reading(settings, settled) == []
+    assert routes_that_can_move_a_weeks_reading(settings, ()) == []
+    assert routes_that_can_move_a_weeks_reading(settings, TRIGGER_TABLE) != []
+
+
+def test_the_mutating_routes_no_row_of_the_table_can_see_are_named(
+    settings: ServiceSettings,
+) -> None:
+    """This derivation's blind spot, stated rather than left to be discovered.
+
+    A row names ONE module, so a mutation that reaches its write through another package's service
+    belongs to a package no row names. Two of the three really can move a week's reading from
+    outside this enumeration, and the third moves none: the reading cannot tell them apart, which is
+    why all three are named. A fourth is then a diff rather than a silence.
+    """
+    every = {_identity(route) for route in mutating_routes(settings)}
+    derived = {
+        _identity(route) for route in routes_that_can_move_a_weeks_reading(settings, TRIGGER_TABLE)
+    }
+
+    assert every - derived == OUTSIDE_THE_TABLES_REACH
+
+
+def test_the_periodic_probe_binds_a_state_no_request_supplies_and_the_request_surfaces_do_not(
+    source_root: Path,
+) -> None:
+    """``VE3`` read off the compositions, which is the split the attribution rests on.
+
+    The maintainer's recorder must keep the literal: time passing is not a request, so there is no
+    caller to ask. The surfaces a request composes must not bind it, because the answer is the
+    client's own screen state. Both directions are stated, so a request-side recorder that began
+    binding the constant fails here rather than being read as an answer nobody could have given.
+
+    The two derived pickers are held against the members they resolve to, because each is derived
+    from a property of the enum rather than from a name, and a property that stopped selecting one
+    member would otherwise pick a different surface silently.
+    """
+    composed = compositions(source_root)
+    from_the_request = {
+        one for one in _composed_members(composed) if _answers_from_the_request(one, composed)
+    }
+
+    assert from_the_request == {VerdictSurface.PIN, VerdictSurface.CLI, VerdictSurface.TRADEOFF}
+    assert the_time_driven_surface(composed) is VerdictSurface.MAINTAINER
+    assert the_scheduled_solves_surface(composed) is VerdictSurface.SOLVE
+    assert not _answers_from_the_request(the_time_driven_surface(composed), composed)
+
+
+def test_every_package_that_composes_a_recorder_and_serves_a_mutation_writes_through_it(
+    settings: ServiceSettings, source_root: Path
+) -> None:
+    """The control on the reading of what a service writes, which is keyed on an attribute name.
+
+    A recorder composed for a package whose routes never reach it would leave the attribution
+    answering "the worker records this" for every route of that package, with nothing failing. So
+    the two readings are crossed: each package that composes one AND serves a mutation in the
+    enumeration has a route whose service really does write through it, and a renamed attribute
+    reddens here.
+
+    The crossing is stated over the packages that serve one of these routes, because the two the
+    worker composes serve none: their recorders are reached from a job, and a rule that demanded a
+    route of them would fail for the reason they exist.
+    """
+    composed = compositions(source_root)
+    found = attributions(settings, source_root, TRIGGER_TABLE)
+    serving = {route.package for route in found}
+    composing = {package for package in _surfaces_by_package(composed) if package in serving}
+    writing = {route.package for route, one in found.items() if one.by_the_act}
+
+    assert writing == {"pins", "concessions"}
+    assert composing == writing, (
+        f"{sorted(composing - writing)} compose a recorder and serve a mutation that can move a "
+        "week's reading, and no route of theirs writes through it, so every flip they cause is "
+        "attributed to the worker with nothing here failing"
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "ticket 1571: a mutation that schedules a solve hands the operation no statement about the "
+        "weekly session, and the solve's recorder binds NO_SESSION_IS_OPEN, so the row recording "
+        "the flip reads false however the request answered. Measured at five routes, including the "
+        "revocation the ticket names. Under strict=True the day the operation carries the answer "
+        "is the day this marker has to be deleted."
+    ),
+)
+def test_a_flip_the_scheduled_solve_records_carries_what_the_request_stated(
+    settings: ServiceSettings, source_root: Path
+) -> None:
+    """Asserts the CORRECT behavior and is expected to fail, rather than pinning the defect.
+
+    Every route is named in the failure with the surface that records it and what the row says, so a
+    route this rule starts holding for is visible and one still unattributed cannot hide in a count.
+    """
+    composed = compositions(source_root)
+    found = attributions(settings, source_root, TRIGGER_TABLE)
+
+    unattributed = sorted(
+        _as_reported(route, one)
+        for route, one in found.items()
+        if one.surfaces == {the_scheduled_solves_surface(composed)}
+        and not one.carries_the_requests_statement
+    )
+
+    assert unattributed == [], (
+        "these mutations schedule a solve and hand it nothing about the weekly session, so the row "
+        f"recording the flip they caused says none was open: {unattributed}"
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "ticket 1403: these mutations bump the week and schedule nothing, so no act of theirs "
+        "records the flip and the first row about it is the periodic probe's, which binds "
+        "NO_SESSION_IS_OPEN because time passing is not a request. The surface their own probe "
+        "would record under is VerdictSurface.MUTATION, which has no producer. Under strict=True "
+        "the day it gets one is the day this marker has to be deleted."
+    ),
+)
+def test_a_flip_no_scheduled_work_records_is_recorded_by_the_mutation_that_caused_it(
+    settings: ServiceSettings, source_root: Path
+) -> None:
+    """Asserts the CORRECT behavior and is expected to fail, rather than pinning the defect.
+
+    The set is larger than the one above and its shape is different: there, an operation exists and
+    carries no answer, and here nothing at all is set in motion, so the answer has nowhere to travel
+    until the mutation records its own probe. Both are named per route for the same reason.
+    """
+    composed = compositions(source_root)
+    found = attributions(settings, source_root, TRIGGER_TABLE)
+
+    unattributed = sorted(
+        _as_reported(route, one)
+        for route, one in found.items()
+        if one.surfaces == {the_time_driven_surface(composed)}
+    )
+
+    assert unattributed == [], (
+        "these mutations can move a week's reading, record nothing, and schedule nothing, so the "
+        f"flip they caused is left to whatever next reads the week: {unattributed}"
     )
 
 
