@@ -117,8 +117,8 @@ def _content_not_yet_chosen(_: SlotContext) -> str:
     return "content not yet chosen"
 
 
-def _already_passed(_: SlotContext) -> str:
-    return "already passed"
+def _already_begun(_: SlotContext) -> str:
+    return "already begun"
 
 
 # One label per reason. The conditional half of the off-plan wording lives inside that
@@ -129,7 +129,7 @@ _LABEL_BY_REASON: Final[Mapping[EmptySlotReason, Callable[[SlotContext], str]]] 
     EmptySlotReason.OFF_PLAN: _off_plan,
     EmptySlotReason.BLOCKED_BY_CONSTRAINT: _no_legal_window,
     EmptySlotReason.NOT_SOLVED: _content_not_yet_chosen,
-    EmptySlotReason.ELAPSED: _already_passed,
+    EmptySlotReason.ELAPSED: _already_begun,
 }
 
 

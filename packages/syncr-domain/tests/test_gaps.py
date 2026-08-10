@@ -205,11 +205,13 @@ class TestTheGutterLabels:
         ("reason", "expected"),
         [
             (EmptySlotReason.NO_ELIGIBLE_CONTENT, "no eligible Career content"),
+            (EmptySlotReason.OFF_PLAN, "off plan"),
             (EmptySlotReason.BLOCKED_BY_CONSTRAINT, "no legal window"),
             (EmptySlotReason.NOT_SOLVED, "content not yet chosen"),
-            (EmptySlotReason.OFF_PLAN, "off plan"),
-            (EmptySlotReason.ELAPSED, "already passed"),
+            (EmptySlotReason.ELAPSED, "already begun"),
         ],
+        # Enum order, so a case's id names the member it runs. Written in another order the ids,
+        # which are generated from the enum, label each case with a different member's name.
         ids=[reason.value for reason in EmptySlotReason],
     )
     def test_each_reason_renders_its_one_label(
@@ -254,7 +256,7 @@ class TestTheGutterLabels:
         )
 
     def test_an_elapsed_slot_borrows_neither_neighbouring_wording(self) -> None:
-        """The clock emptied this slot, so neither of the two readings about content holds.
+        """The clock emptied this slot, so a wording about content states something uncomputed.
 
         Nobody will look at the backlog for it again, which is what separates it from
         ``not_solved``; and whether the Area had content is a question its span never reached,
