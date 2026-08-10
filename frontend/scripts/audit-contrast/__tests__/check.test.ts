@@ -1,27 +1,46 @@
 /* THE CONTRAST AUDIT'S OWN VERDICT, CHECKED AGAINST LEDGERS WRITTEN TO BREAK EACH RULE.
  *
  * This repository has produced five measurement-tooling bugs, every one of them in code whose only job was
- * verifying something else, so the audit gets its own cases: a ledger with a control border below the floor, one
- * where the banned rule has drifted above it, one with a label that fails on a paper surface, and one whose
- * committed document has gone stale. Each is a hand-built ledger small enough to reason about by eye. */
+ * verifying something else, so the audit gets its own cases. Each is a hand-built ledger small enough to reason
+ * about by eye, written to break exactly one of the rules `check.ts` states, so a rule that stopped being enforced
+ * has a red of its own rather than disappearing quietly. */
 
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { checkContrast, EXCUSED_TEXT_INKS } from "../check.ts";
+import { checkContrast, deadExcuses, EXCUSED_TEXT_INKS } from "../check.ts";
 import {
   buildLedger,
   contrastRatio,
   INDICATOR_FLOOR,
+  INK_FILLED,
+  ratioOf,
   TEXT_FLOOR,
+  textOnAnInkFill,
+  type Composed,
   type Ledger,
   type Pair,
 } from "../ledger.ts";
 import { renderLedger } from "../render.ts";
 
-const SURFACES = ["--paper", "--paper-raised"] as const;
+const PAPER = ["--paper", "--paper-raised"] as const;
+
+/* Both surface classes, because the audit asks a different question of each: every ink can land on paper, and only
+ * a stated pairing lands on an ink fill. */
+const SURFACES = [...PAPER, ...INK_FILLED] as const;
+
+/** The ink a synthetic ink-filled header draws with, and the ratio at which it is legible there. */
+const INVERSE = "--probe-inverse";
+
+/** The one pairing the healthy ledger's sheets state: an inverse ink on the fill it exists for. */
+const STATED: Composed = {
+  where: "probe.css .header { color }",
+  ink: INVERSE,
+  surface: INK_FILLED[1],
+  floor: TEXT_FLOOR,
+};
 
 /* Every ink the real check excuses from the text floor, so a synthetic ledger can carry them and the both-ways
  * staleness rule has something to describe. Imported rather than restated: a fourth excuse added to the check
@@ -40,13 +59,17 @@ function pair(ink: string, surface: string, ratio: number, floor: number): Pair 
 }
 
 /** A ledger where every rule the audit states is satisfied. */
-function healthy(overrides: readonly Pair[] = []): Ledger {
+function healthy(
+  overrides: readonly Pair[] = [],
+  composed: readonly Composed[] = [STATED],
+): Ledger {
   const inks: Record<string, number> = {
     "--rule-control": 3.1,
     "--rule-strong": 2.65,
     "--ink": 10.6,
     "--ink-deep": 13.7,
     "--text-muted": 4.9,
+    [INVERSE]: 14.8,
     /* The excused inks, each at a ratio that WOULD fail, which is why each is excused. A synthetic ledger without
      * them would leave the excuses describing nothing, and the check refuses that too. */
     ...Object.fromEntries(EXCUSED.map((ink) => [ink, 1.2])),
@@ -57,6 +80,7 @@ function healthy(overrides: readonly Pair[] = []): Ledger {
     "--ink": TEXT_FLOOR,
     "--ink-deep": TEXT_FLOOR,
     "--text-muted": TEXT_FLOOR,
+    [INVERSE]: TEXT_FLOOR,
     ...Object.fromEntries(EXCUSED.map((ink) => [ink, TEXT_FLOOR])),
   };
   const pairs = Object.entries(inks).flatMap(([ink, ratio]) =>
@@ -71,6 +95,7 @@ function healthy(overrides: readonly Pair[] = []): Ledger {
     pairs: [...replaced, ...overrides],
     unmeasurable: [],
     sheets: ["probe.css"],
+    composed,
   };
 }
 
@@ -185,6 +210,92 @@ describe("the contrast audit", () => {
   });
 });
 
+/* THE INK-FILLED SURFACES, where the question is not the same as on paper.
+ *
+ * Every ink can land on paper, so the whole column is enforced there. Nothing states which class sits on an ink
+ * fill, so enforcing that column would report every text ink against it and mean nothing. What a sheet can prove
+ * is a rule that names its own fill and its own ink, and that is the set these cases hold. */
+describe("the text floor on an ink-filled surface", () => {
+  it("refuses a stated pairing whose ink cannot be read on the fill the same rule names", async () => {
+    const drifted = healthy([pair(INVERSE, INK_FILLED[1], 1.29, TEXT_FLOOR)]);
+
+    expect(await checksOf(drifted)).toEqual(["text-below-the-floor-on-an-ink-fill"]);
+  });
+
+  it("names the rule that states the pairing, because that is what a reader has to open", async () => {
+    const drifted = healthy([pair(INVERSE, INK_FILLED[1], 1.29, TEXT_FLOOR)]);
+    const outcome = await checkContrast({
+      ledger: drifted,
+      ledgerFile: await committed(drifted),
+    });
+
+    expect(outcome.findings[0]?.message).toContain(STATED.where);
+  });
+
+  /* THE BOUNDARY, ASSERTED RATHER THAN LEFT IMPLICIT. An ink that fails on an ink fill and that no rule puts
+   * there is recorded in the ledger and not enforced. Enforcing it would report every text ink against both fills,
+   * which is a finding list nobody can act on and the reason this gate keys on the stated pairing. */
+  it("does not enforce a pairing no rule states, however badly it measures", async () => {
+    const unreachable = healthy([pair("--ink-deep", INK_FILLED[0], 1.29, TEXT_FLOOR)]);
+
+    expect(await checksOf(unreachable)).toEqual([]);
+  });
+
+  /* THE ANTI-VACUITY CASE. Every pairing the real sheets state on an ink fill draws `--on-ink`, and `--on-ink` is
+   * excused from the text floor on paper. One shared excuse list would therefore skip every pairing this rule has
+   * to check, leaving a green that measured nothing. */
+  it("holds an ink the paper rule excuses, because a paper excuse is not an ink-fill excuse", async () => {
+    const excusedOnPaper = EXCUSED_TEXT_INKS[0];
+    const composed: Composed = {
+      where: "probe.css .header { color }",
+      ink: excusedOnPaper,
+      surface: INK_FILLED[0],
+      floor: TEXT_FLOOR,
+    };
+
+    expect(await checksOf(healthy([], [composed]))).toEqual([
+      "text-below-the-floor-on-an-ink-fill",
+    ]);
+  });
+
+  /* THE READING'S OWN CONTROL. The enforced set is derived, so a reader that stopped finding pairings would hold
+   * nothing to the floor and pass whatever the tree did. That is the vacuous green a list of three inks once
+   * shipped over 506 pairs, and it is refused here in the only direction it can be: by absence. */
+  it("refuses a run that found no stated pairing on an ink fill at all", async () => {
+    expect(await checksOf(healthy([], []))).toEqual(["no-ink-fill-composition-read"]);
+  });
+
+  it("holds an indicator's stated pairing to no text floor, because its property is not a label's", async () => {
+    const border: Composed = {
+      where: "probe.css .divider { border-top-color }",
+      ink: "--rule-strong",
+      surface: INK_FILLED[0],
+      floor: INDICATOR_FLOOR,
+    };
+
+    expect(await checksOf(healthy([], [STATED, border]))).toEqual([]);
+  });
+});
+
+/* THE STALENESS RULE, WHICH RUNS IN THE OTHER DIRECTION FOR BOTH EXCUSE SETS.
+ *
+ * The ink-fill list is empty today, so the rule cannot be reached through the real records. It is reached here
+ * instead, because an empty list whose guard is never exercised is the same decoration as no guard: the day an
+ * entry is added to silence a red, this is what holds it to describing something real. */
+describe("an excuse that describes nothing", () => {
+  it("is reported, whatever the set it was declared in", () => {
+    const planted = { "--gone": "a reason for a case that no longer exists" };
+
+    expect(deadExcuses(planted, () => false)).toEqual([
+      { ink: "--gone", reason: "a reason for a case that no longer exists" },
+    ]);
+  });
+
+  it("is not reported while the case it names still exists", () => {
+    expect(deadExcuses({ "--here": "still true" }, () => true)).toEqual([]);
+  });
+});
+
 describe("the ratio itself", () => {
   /* The formula, against figures that are known independently of this code: WCAG's own bounds. */
   it("is 21 for black on white and 1 for a colour on itself", () => {
@@ -223,11 +334,47 @@ describe("the ledger the shipped stylesheets produce", () => {
    * comment. Amber has no text step precisely because these two differ across the floor. */
   it("measures amber at 4.52 on raised paper and 4.18 on the page, which is why it has no text step", async () => {
     const ledger = await buildLedger();
-    const on = (surface: string) =>
-      ledger.pairs.find((one) => one.ink === "--signal-amber" && one.surface === surface)?.ratio ??
-      0;
+    const on = (surface: string) => ratioOf(ledger, "--signal-amber", surface) ?? 0;
 
     expect(on("--paper-raised").toFixed(2)).toBe("4.52");
     expect(on("--paper").toFixed(2)).toBe("4.18");
+  });
+
+  /* THE INK FILLS ARE CROSSED AGAINST THE SHEETS, BOTH WAYS, so the constant cannot rot. `--on-ink` is the ink
+   * that exists for an ink-filled surface, so the fills the sheets state it onto are exactly the fills that are
+   * ink. A third one appearing, or one of these two losing its last rule, reddens here. */
+  it("fills with ink in exactly the surfaces the sheets state the inverse ink onto", async () => {
+    const ledger = await buildLedger();
+    const stated = ledger.composed.filter((one) => one.ink === "--on-ink");
+
+    expect(stated.length).toBeGreaterThan(0);
+    expect([...new Set(stated.map((one) => one.surface))].toSorted()).toEqual(
+      [...INK_FILLED].toSorted(),
+    );
+  });
+
+  /* The enforced set on an ink fill, read from the sheets. Non-empty, because a run that found none would hold
+   * nothing to the floor, and every one clearing, because the treatment for each is already in its own rule. */
+  it("states a pairing on an ink fill in more than one sheet, and every one clears the text floor", async () => {
+    const ledger = await buildLedger();
+    const stated = textOnAnInkFill(ledger);
+
+    expect(stated.length).toBeGreaterThan(0);
+    expect(new Set(stated.map((one) => one.where.split(" ")[0])).size).toBeGreaterThan(1);
+    for (const one of stated) {
+      const ratio = ratioOf(ledger, one.ink, one.surface) ?? 0;
+      expect(ratio, `${one.ink} on ${one.surface} per ${one.where}`).toBeGreaterThanOrEqual(
+        TEXT_FLOOR,
+      );
+    }
+  });
+
+  /* A rule states a pairing only when it names both halves, so a rule that replaces its own fill with
+   * `transparent` states none: what shows through is the DOM's answer and not the sheet's. That boundary is what
+   * keeps this gate from claiming a reachability it cannot derive. */
+  it("states no pairing for a rule whose own fill is transparent", async () => {
+    const ledger = await buildLedger();
+
+    expect(ledger.composed.filter((one) => one.where.includes(".button--quiet"))).toEqual([]);
   });
 });

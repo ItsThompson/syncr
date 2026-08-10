@@ -1,6 +1,6 @@
 /* THE AUDIT'S VERDICT ON THE PALETTE, over the ledger the tokens produce.
  *
- * Three rules, and they are different questions.
+ * The rules below are different questions rather than variations on one.
  *
  * COVERAGE. Every ink the shipped stylesheets draw with, and every surface they fill with, has a ratio against the
  * other. A pair without one is a pair nobody has measured, which is what section 19 refuses. The matrix is
@@ -13,10 +13,25 @@
  * three is not every ink. The set is now every ink the ledger holds to the TEXT floor, which is every ink a
  * `color` declaration writes, so an ink the product starts writing is enforced the day it is written.
  *
+ * TEXT CLEARS ITS FLOOR ON AN INK-FILLED SURFACE TOO, over the pairings the SHEETS STATE rather than over the
+ * whole column. Paper needs no reachability argument, because every label can land on it. An ink fill does: the
+ * matrix measures 22 inks against `--ink` and `--ink-deep` and nothing composes 21 of them, so enforcing the
+ * column would report 22 pairs of which one is real and then be narrowed back to get green. What a stylesheet CAN
+ * prove is a rule that declares its own fill and its own ink, and that set is enforced here.
+ *
+ * WHAT THIS RULE CANNOT SEE, stated because a reader meets the rule before the limit. A rule filled `transparent`
+ * draws on whatever it is placed under, and no stylesheet says what that is. So a control whose own fill is
+ * translucent, sitting inside an ink-filled container, is a pairing this gate is blind to by construction: it is
+ * measured where a DOM exists, in `src/ui/domain/marks/__tests__/contrast.test.tsx`, which renders the
+ * composition and computes the ratio from these same tokens. The class enforced here has never failed; the class
+ * that has is the one above. Both facts belong beside each other.
+ *
  * AN INK EXCUSED FROM THAT RULE IS DECLARED, with the reason, in the shape the Python teardown guard's `EXEMPTED`
  * uses: enumerated rather than recognised, and asserted to match something real, so an excuse cannot outlive the
- * case it was written for. Two inks are excused today and each has a structural guard elsewhere that is stronger
- * than a ratio.
+ * case it was written for. There is one list per surface class, because an ink excused on paper is not thereby
+ * excused on an ink fill and the reverse: `--on-ink` is excused on paper for measuring 1.08:1 there, and it is
+ * the ink of every pairing the sheets state on an ink fill. Every ink excused today has a structural guard
+ * elsewhere that is stronger than a ratio.
  *
  * THE STRUCTURAL RULES section 19 states in absolute terms are asserted too, because they are the pairs the
  * product composes on purpose: a control's border clears 3:1 on both paper surfaces, and `--rule-strong` is banned
@@ -25,7 +40,15 @@
 import { readFile } from "node:fs/promises";
 
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
-import { INDICATOR_FLOOR, TEXT_FLOOR, type Ledger } from "./ledger.ts";
+import {
+  INDICATOR_FLOOR,
+  INK_FILLED,
+  TEXT_FLOOR,
+  ratioOf,
+  textInks,
+  textOnAnInkFill,
+  type Ledger,
+} from "./ledger.ts";
 import { renderLedger } from "./render.ts";
 
 /* THE TWO PAPER SURFACES EVERY LABEL AND EVERY CONTROL BORDER CAN LAND ON. `--paper` is the page and
@@ -68,19 +91,39 @@ export const EXCUSED_FROM_THE_TEXT_FLOOR: Readonly<Record<string, string>> = {
 /** Every ink the enforcement excuses, for a case that needs the set rather than the reasons. */
 export const EXCUSED_TEXT_INKS: readonly string[] = Object.keys(EXCUSED_FROM_THE_TEXT_FLOOR);
 
-function ratioOf(ledger: Ledger, ink: string, surface: string): number | null {
-  return ledger.pairs.find((pair) => pair.ink === ink && pair.surface === surface)?.ratio ?? null;
+/**
+ * The excuses that describe nothing, which is the staleness rule run in the other direction.
+ *
+ * An excuse is only checkable while the case it was written for still exists. Both excuse sets are held to it,
+ * with a different notion of "still exists": an ink the product no longer writes as text, and a pairing no rule
+ * states any more.
+ */
+export function deadExcuses(
+  excused: Readonly<Record<string, string>>,
+  describesSomething: (ink: string) => boolean,
+): { readonly ink: string; readonly reason: string }[] {
+  return Object.entries(excused).flatMap(([ink, reason]) =>
+    describesSomething(ink) ? [] : [{ ink, reason }],
+  );
 }
+
+/**
+ * The inks excused from the text floor on an ink-filled surface, each with the reason and the guard that replaces
+ * it, in the same shape the paper excuses take.
+ *
+ * EMPTY, AND THAT IS A MEASUREMENT RATHER THAN AN OMISSION. Every pairing the sheets state on an ink fill is
+ * `--on-ink`, at 11.50:1 on `--ink` and 14.83:1 on `--ink-deep`, so nothing needs excusing. It is declared
+ * because the day a rule states an ink fill under an ink that cannot clear there, the choice is to fix the rule
+ * or to say here why a ratio is the wrong instrument for it -- and an excuse added to get green is held to
+ * describing a pairing some rule really states, by the same both-ways rule the paper excuses carry.
+ *
+ * SEPARATE FROM THE PAPER SET ON PURPOSE. `--on-ink` is excused on paper and is the ink of every ink-fill
+ * composition there is; one shared list would excuse it here too and leave this rule enforcing nothing.
+ */
+export const EXCUSED_ON_AN_INK_FILL: Readonly<Record<string, string>> = {};
 
 function finding(file: string, check: string, message: string): Finding {
   return { file, check, message };
-}
-
-/** Every ink the ledger holds to the text floor, which is every ink a `color` declaration writes. */
-function textInks(ledger: Ledger): string[] {
-  return ledger.inks.filter(
-    (ink) => ledger.pairs.find((pair) => pair.ink === ink)?.floor === TEXT_FLOOR,
-  );
 }
 
 export interface CheckContrastInput {
@@ -140,17 +183,32 @@ export async function checkContrast(input: CheckContrastInput): Promise<CheckOut
 
   /* An excuse for an ink the product no longer writes as text is an excuse nobody can check, so it fails in that
    * direction too: the same both-ways staleness rule the teardown guard's declared exemptions carry. */
-  for (const [ink, reason] of Object.entries(EXCUSED_FROM_THE_TEXT_FLOOR)) {
-    if (!textInks(ledger).includes(ink)) {
-      findings.push(
-        finding(
-          ledgerFile,
-          "a-dead-excuse",
-          `${ink} is excused from the text floor and no shipped declaration writes it as text any ` +
-            `more, so the excuse describes nothing. It said: ${reason}`,
-        ),
-      );
-    }
+  const written = textInks(ledger);
+  for (const dead of deadExcuses(EXCUSED_FROM_THE_TEXT_FLOOR, (ink) => written.includes(ink))) {
+    findings.push(
+      finding(
+        ledgerFile,
+        "a-dead-excuse",
+        `${dead.ink} is excused from the text floor and no shipped declaration writes it as text any ` +
+          `more, so the excuse describes nothing. It said: ${dead.reason}`,
+      ),
+    );
+  }
+
+  /* The same rule for the ink-fill excuses, and it is what keeps that list honest when it is empty: an entry
+   * there has to describe a pairing some rule states, or it is silencing a red that describes nothing. */
+  const composedOnInkFills = textOnAnInkFill(ledger);
+  for (const dead of deadExcuses(EXCUSED_ON_AN_INK_FILL, (ink) =>
+    composedOnInkFills.some((one) => one.ink === ink),
+  )) {
+    findings.push(
+      finding(
+        ledgerFile,
+        "a-dead-ink-fill-excuse",
+        `${dead.ink} is excused from the text floor on an ink-filled surface and no rule states it ` +
+          `there, so the excuse describes nothing. It said: ${dead.reason}`,
+      ),
+    );
   }
 
   for (const surface of PAPER) {
@@ -198,7 +256,43 @@ export async function checkContrast(input: CheckContrastInput): Promise<CheckOut
     }
   }
 
+  /* THE INK FILLS, over the stated pairings rather than over the column. Enforcement and the excuse both key on
+   * the ink, so a rule that states an unreadable pairing names itself in the finding. */
+  for (const one of composedOnInkFills) {
+    if (one.ink in EXCUSED_ON_AN_INK_FILL) continue;
+    const text = ratioOf(ledger, one.ink, one.surface);
+    if (text === null || text < TEXT_FLOOR) {
+      findings.push(
+        finding(
+          ledgerFile,
+          "text-below-the-floor-on-an-ink-fill",
+          `${one.ink} measures ${text === null ? "nothing" : text.toFixed(2)} against ${one.surface}, ` +
+            `and ${one.where} states that pairing outright: it fills with ${one.surface} and draws ` +
+            `${one.ink} in the same rule, so text there has to clear ${String(TEXT_FLOOR)}:1.`,
+        ),
+      );
+    }
+  }
+
+  /* THE READING'S OWN CONTROL. The set above is derived, so a reader that stopped finding compositions would
+   * enforce nothing and pass whatever the tree did -- the same vacuous green a list-of-three once shipped. The
+   * product fills with ink in a panel header, a dialog header and a selected day, so a run that reaches none of
+   * them has stopped working rather than found nothing. */
+  if (composedOnInkFills.length === 0) {
+    findings.push(
+      finding(
+        ledgerFile,
+        "no-ink-fill-composition-read",
+        `no rule in ${String(ledger.sheets.length)} shipped stylesheet(s) states an ink drawn on ` +
+          `${INK_FILLED.join(" or ")}, so the text floor was enforced on nothing there. The product ` +
+          "fills with ink in a panel header, a dialog header and a selected day: a reading that finds " +
+          "none of them has stopped working rather than found a clean tree.",
+      ),
+    );
+  }
+
   const failing = ledger.pairs.filter((pair) => !pair.clears);
+  const inkFillPairs = textInks(ledger).length * INK_FILLED.length;
 
   return {
     findings,
@@ -206,7 +300,10 @@ export async function checkContrast(input: CheckContrastInput): Promise<CheckOut
       `${ledger.pairs.length} pair(s) computed from the token files, not claimed`,
       `${ledger.inks.length} ink(s) and ${ledger.surfaces.length} surface(s), read from ${String(ledger.sheets.length)} shipped stylesheet(s)`,
       `${enforced.length} ink(s) held to ${String(TEXT_FLOOR)}:1 on both paper surfaces, derived from the ledger's own floors`,
+      `${composedOnInkFills.length} stated pairing(s) held to ${String(TEXT_FLOOR)}:1 on ${INK_FILLED.join(" or ")}, each one a rule that names the fill and the ink together`,
+      `${String(inkFillPairs - composedOnInkFills.length)} of ${String(inkFillPairs)} ink-on-ink-fill pairing(s) recorded and not enforced, because no rule states them and no stylesheet can say which surface a class sits on`,
       `${Object.keys(EXCUSED_FROM_THE_TEXT_FLOOR).length} declared excuse(s), each asserted to describe an ink the product still writes as text`,
+      `${Object.keys(EXCUSED_ON_AN_INK_FILL).length} declared excuse(s) on an ink-filled surface, each asserted to describe a pairing a rule states`,
       `${failing.length} pair(s) do not clear the ink's floor and are recorded as pairings the product must not compose`,
       `${ledger.unmeasurable.length} value(s) no ratio can describe, each recorded with the reason`,
     ],
