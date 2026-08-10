@@ -172,9 +172,11 @@ def weeks_occupied(span: Interval, *, home_zone: ZoneId) -> tuple[IsoWeek, ...]:
 def contiguous_ranges(weeks: Iterable[IsoWeek]) -> tuple[WeekRange, ...]:
     """``weeks`` as the fewest closed ranges that cover them and no week besides.
 
-    One range per unbroken run. A mutation reaching a hundred consecutive weeks is then one
-    statement rather than a hundred, and two mutations a term apart stay two ranges with the weeks
-    between them untouched.
+    One range per unbroken run. A mutation reaching a hundred consecutive weeks is then one range
+    rather than a hundred, and two mutations a term apart stay two ranges with the weeks between
+    them untouched. What that bounds is the number of ranges a caller asks for, and with it the
+    enumeration each range costs; the counter still writes one row per TRACKED week inside a range,
+    which is bounded by what the tenant has planned rather than by what a publisher published.
 
     **Every week a range covers is one of ``weeks``**, because a run has no gap in it by
     construction. That is what makes the collapse safe rather than a convenience: the set bumped is
