@@ -60,6 +60,11 @@ if TYPE_CHECKING:
 # SECOND index instead: see ``Series.same_instant``.
 type OccurrenceKey = tuple[str, datetime]
 
+# Where a replacement is found when the publisher wrote the other form: the series, and the instant
+# a key resolves onto. Spelled the same as an ``OccurrenceKey`` and meaning something else, so the
+# two are named apart: this one holds an INSTANT where that one holds a WALL time.
+type InstantKey = tuple[str, datetime]
+
 # What a component sorted as a replacement always has, so a missing one is syncr's bug rather than
 # the feed's. Named once because two sites assert it.
 _NOT_A_REPLACEMENT: Final = "a component with no RECURRENCE-ID was sorted as a replacement"
@@ -85,7 +90,7 @@ class Series:
     masters: tuple[EventComponent, ...] = ()
     overrides: Mapping[OccurrenceKey, EventComponent] = field(default_factory=dict)
     tombstones: frozenset[OccurrenceKey] = frozenset()
-    same_instant: Mapping[tuple[str, datetime], OccurrenceKey] = field(default_factory=dict)
+    same_instant: Mapping[InstantKey, tuple[OccurrenceKey, ...]] = field(default_factory=dict)
     orphans: tuple[EventComponent, ...] = ()
     duplicates: int = 0
     cancelled: int = 0
@@ -192,7 +197,7 @@ class _Resolved:
 
     overrides: dict[OccurrenceKey, EventComponent]
     tombstones: set[OccurrenceKey]
-    same_instant: dict[tuple[str, datetime], OccurrenceKey]
+    same_instant: dict[InstantKey, tuple[OccurrenceKey, ...]]
     duplicates: int
     cancelled: int
 
@@ -218,8 +223,8 @@ def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
     direction, because the alternative is immovable occupancy the user was told does not happen.
 
     ``same_instant`` is built alongside: the instant each surviving key names, so an occurrence can
-    find a replacement written in the other legal form. It is an INDEX and not the key, because two
-    keys can share one instant.
+    find a replacement written in the other legal form. It is an INDEX and not the key, because
+    several keys can share one instant: see :func:`_by_instant`.
     """
     overrides: dict[OccurrenceKey, EventComponent] = {}
     tombstones: set[OccurrenceKey] = set()
@@ -253,18 +258,38 @@ def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
     for key in tombstones & overrides.keys():
         del overrides[key]
         cancelled += 1
-    same_instant = {
-        (key[0], instant): key
-        for key, instant in instants.items()
-        if key in overrides or key in tombstones
-    }
     return _Resolved(
         overrides=overrides,
         tombstones=tombstones,
-        same_instant=same_instant,
+        same_instant=_by_instant(instants),
         duplicates=duplicates,
         cancelled=cancelled,
     )
+
+
+def _by_instant(
+    instants: Mapping[OccurrenceKey, datetime],
+) -> dict[InstantKey, tuple[OccurrenceKey, ...]]:
+    """Every key, grouped by its series and the instant it resolves onto.
+
+    EVERY key on an instant rather than one, because how many can share an instant is not bounded at
+    two. A wall time inside a gap resolves onto the same instant as the real wall time after it, a
+    ``RECURRENCE-ID`` in the UTC form states a third wall for that instant, and one naming any other
+    zone states a fourth. One key per instant leaves the rest unreachable, and makes a body's answer
+    depend on which of them the publisher declared last.
+
+    Ordered by wall time rather than by declaration, so a lookup answers from the keys a body
+    declares and not from the order it declares them in.
+
+    Every key handed here survived sorting, because a replacement is recorded against a key that is
+    then held as an override or as a tombstone, and a repeated one is counted against a key already
+    held. Filtering for that again cannot exclude anything, so the invariant is crossed in the test
+    that reports it rather than asserted by a condition no input can fail.
+    """
+    grouped: dict[InstantKey, list[OccurrenceKey]] = {}
+    for key, instant in instants.items():
+        grouped.setdefault((key[0], instant), []).append(key)
+    return {at: tuple(sorted(keys)) for at, keys in grouped.items()}
 
 
 def expand(
@@ -335,7 +360,7 @@ def _named_by(
 
     A ``RECURRENCE-ID`` matching this occurrence's own wall time is the ordinary case and is taken
     first. RFC 5545 also permits the UTC form, which names the same occurrence with different text,
-    so a miss falls back to the instant the occurrence lands on.
+    so a miss falls back to the keys sharing the instant this occurrence lands on.
 
     **A cross-form match is refused when the replacement's own wall is one this series produces.**
     Two occurrences can share an instant, because a wall time inside a spring-forward gap resolves
@@ -357,10 +382,10 @@ def _named_by(
         # occurrence of every series in every feed pays for a resolve only a cross-form body needs.
         return exact
     instant = resolve(master.start, profile, wall=wall)
-    other = series.same_instant.get((master.uid, instant))
-    if other is None or other in applied or other[1] in walls:
-        return exact
-    return other
+    for other in series.same_instant.get((master.uid, instant), ()):
+        if other not in applied and other[1] not in walls:
+            return other
+    return exact
 
 
 def place_replacement(
