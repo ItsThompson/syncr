@@ -120,7 +120,7 @@ from tests.conftest import TEST_SERVICE
 from tests.live_horizons import LATE_IN_THE_WEEK, THIS_WEEK, Ticking, declare_the_minimum
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 from tests.test_authorization_boundary import accepts_a_cli_credential
-from tests.test_solve_triggers import TRIGGER_TABLE, mutating_routes
+from tests.test_solve_triggers import REQUESTS_A_SOLVE, TRIGGER_TABLE, mutating_routes
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -169,11 +169,13 @@ VERDICT_FIELD = "verdict"
 # Ticket 1363 settled the spelling across the week routes and the weekly session takes the same one.
 ISO_WEEK_PARAMETER = "iso_week"
 
-# How a service reaches the collaborator that matters here: the attribute its wiring hands it, and
-# the method it calls on it. Both halves are the key, because a service that writes something else
-# calls a method of the same name: ``outcomes/service.py`` records an outcome through
-# ``self._outcomes.record(...)``.
+# How a service reaches a collaborator that matters here: the attribute its wiring hands it, and the
+# method it calls on it. Both halves are the key, because a service that writes something else calls
+# a method of the same name: ``outcomes/service.py`` records an outcome through
+# ``self._outcomes.record(...)``. The solve request is taken from the sibling's own key rather than
+# restated, and the attribute is that name with the underscore every collaborator here carries.
 RECORDS_A_TRANSITION = ("_verdicts", VerdictRecorder.record.__name__)
+ASKS_FOR_A_SOLVE = (f"_{REQUESTS_A_SOLVE.split('.')[0]}", REQUESTS_A_SOLVE.split(".")[1])
 
 # The two spellings a composition binds when nothing about a session is stated: the constant
 # ``plans/recording.py`` names, and the bare value it holds. What separates the worker's recorders
@@ -209,6 +211,13 @@ FLIPS_THE_SCHEDULED_SOLVE_RECORDS = frozenset(
         f"POST {WEEKS_PREFIX}/{{iso_week}}/solve",
     }
 )
+
+# The one route in a package wired to request a solve whose own method never reaches the
+# coordinator, because the request lives below it. Named so a second such route is a diff: the
+# attribution answers "does this schedule a solve" per package, and a route that neither records
+# nor schedules would otherwise inherit its siblings' answer.
+DELEGATES_ITS_SOLVE_REQUEST = f"POST {API_PREFIX}/weight-sets/{{version}}/activate"
+DELEGATED_TO = "learned/activation.py"
 
 # The mutating routes no row of the trigger table can see, because each reaches its write through
 # another package's service: the promotion accept moves a day shape's entry, and the pie review's
@@ -686,6 +695,16 @@ def _writes_its_own_transition(view: RouteView) -> bool:
     return _reaches(view, RECORDS_A_TRANSITION)
 
 
+def _asks_the_coordinator_itself(view: RouteView) -> bool:
+    """Whether the service method this route calls asks for a solve, through its own helpers.
+
+    The per-route half of the table's per-package answer. Not what the attribution reads, because a
+    package may ask for its solve below the method a route calls, but crossing the two is what keeps
+    a package's answer from being inherited by a route that does neither.
+    """
+    return _reaches(view, ASKS_FOR_A_SOLVE)
+
+
 def _reaches(view: RouteView, through: tuple[str, str]) -> bool:
     """Whether any service method this route calls reaches that collaborator's method."""
     return any(
@@ -841,6 +860,39 @@ def test_the_mutating_routes_no_row_of_the_table_can_see_are_named(
     }
 
     assert every - derived == OUTSIDE_THE_TABLES_REACH
+
+
+def test_the_one_route_whose_solve_request_lives_below_it_is_named(
+    settings: ServiceSettings,
+    source_root: Path,
+    composed: Compositions,
+    attributed: dict[MutatingRoute, Attributed],
+) -> None:
+    """The blind spot in the OTHER reading, closed by crossing it against the route's own method.
+
+    "Does this mutation schedule a solve" is answered off the trigger table, which answers per
+    package, and two packages serve more than one of these routes: ``pins`` serves three and
+    ``concessions`` two. So a route added to either that neither records nor schedules would inherit
+    its siblings' answer and be reported as the solve's, and once the solve carries the request's
+    statement it would be reported as carrying it while the flip was in fact the periodic probe's.
+
+    Crossing the table's answer against the route's own method closes that: every route the table
+    puts in the by-the-solve group calls the coordinator itself, except one, whose request lives
+    below the method the handler calls. That one is named, and the delegation is followed to the
+    module that does call it, the way the sibling follows the promotion accept's bump into the day
+    shapes.
+    """
+    views = _views_by_identity(settings)
+
+    delegating = sorted(
+        _identity(route)
+        for route, one in attributed.items()
+        if one.surfaces == {the_scheduled_solves_surface(composed)}
+        and not _asks_the_coordinator_itself(views[route.method, route.path])
+    )
+
+    assert delegating == [DELEGATES_ITS_SOLVE_REQUEST]
+    assert REQUESTS_A_SOLVE in (source_root / DELEGATED_TO).read_text(encoding="utf-8")
 
 
 def test_the_periodic_probe_binds_a_state_no_request_supplies_and_the_request_surfaces_do_not(
