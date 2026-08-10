@@ -1357,9 +1357,10 @@ class TestTheRulesThatGovernTheRules:
     def test_the_projection_alert_inhibits_on_the_arming_state(self) -> None:
         """Two outcome values alone would trade a silent alert for an always-firing one.
 
-        Writes are off in every deployment until a person has run the live Google suite, so every
-        plan change produces a refusal recorded as a failure. The arming gauge is what separates
-        'syncr cannot write' from 'syncr is not permitted to write'.
+        Writes are off in every deployment because no projection from an armed deployment has run
+        over a horizon of real plan blocks, so every plan change produces a refusal recorded as a
+        failure. The arming gauge is what separates 'syncr cannot write' from 'syncr is not
+        permitted to write'.
         """
         assert "syncr_projection_writes_enabled == 1" in named("ProjectionFailing").expr
 

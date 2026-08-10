@@ -130,7 +130,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "Projection outcomes, and whether writes are permitted",
-      "description": "A refused projection is recorded as FAILED deliberately, because the consequence is identical: the plan is not reaching the phone. The arming gauge is what separates 'syncr cannot write' from 'syncr is not permitted to write', and it is why ProjectionFailing can be stated without either always firing or never firing. Writes are off in every deployment until a person has run the live Google suite.",
+      "description": "A refused projection is recorded as FAILED deliberately, because the consequence is identical: the plan is not reaching the phone. The arming gauge is what separates 'syncr cannot write' from 'syncr is not permitted to write', and it is why ProjectionFailing can be stated without either always firing or never firing. Writes are off in every deployment because no projection from an armed deployment has run over a horizon of real plan blocks.",
       "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "targets": [

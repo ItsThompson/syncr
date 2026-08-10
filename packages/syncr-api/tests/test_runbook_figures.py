@@ -530,23 +530,25 @@ class TestTheLiveGoogleSuiteProcedure:
         assert f"`{AUTHORIZATION_ENDPOINT}`" in text
         assert f"`{TOKEN_ENDPOINT}`" in text
 
-    def test_every_registered_redirect_uri_it_lists_is_the_route_the_app_serves(self) -> None:
-        """Per site, not per file. Google matches a redirect URI character for character.
+    def test_every_callback_path_it_names_is_the_route_the_app_serves(self) -> None:
+        """Per site, and every site: Google matches a redirect URI character for character.
 
-        Asking whether the route appears anywhere passes while one of the three registered strings
-        drifts, because the other two still carry it. So every line that looks like a registered
-        redirect URI is checked, and the set is derived from the file rather than counted.
+        The file names the path in three shapes, and a check against the file as a whole passes
+        while any one drifts. So every occurrence is derived from the text and compared, over a set
+        the file decides rather than a count that would go stale: the fenced registered URIs, the
+        settings table's row, and the decision that fixed the route.
+
+        The prefix comes from the route constant, so this cannot drift into asking about a path the
+        app does not serve. The counterexample the prose names on purpose,
+        `/calendar-sources/{id}/callback`, carries no `/api/v1` and is correctly not matched.
         """
-        registered = [
-            line
-            for line in read(GOOGLE_OAUTH_VERIFICATION).splitlines()
-            if line.startswith(("http://", "https://")) and "calendar-sources" in line
-        ]
+        below = CALLBACK_ROUTE.rsplit("/", 1)[0]
+        named = re.findall(rf"{re.escape(below)}/[A-Za-z0-9\-_]+", read(GOOGLE_OAUTH_VERIFICATION))
 
-        assert registered, "the runbook lists no registered redirect URI at all"
-        for line in registered:
-            assert line.endswith(CALLBACK_ROUTE), (
-                f"{line} is not the callback route the app serves ({CALLBACK_ROUTE})"
+        assert named, "the runbook names no callback path at all"
+        for path in named:
+            assert path == CALLBACK_ROUTE, (
+                f"{path} is not the callback route the app serves ({CALLBACK_ROUTE})"
             )
 
     def test_it_tells_the_redirect_uri_apart_from_the_browser_applications_origin(self) -> None:

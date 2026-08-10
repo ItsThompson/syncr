@@ -2744,36 +2744,43 @@ class TestEveryTeardownRefusesAnInheritedProject:
         _assert_it_refused(done, tmp_path, saying="cannot resolve to a project")
 
 
-# --- Why writing to a real calendar is off, stated in ten places ---------------------------------
+# --- Why writing to a real calendar is off, stated in twelve places ------------------------------
 
 # Every file that states WHY `GOOGLE_PROJECTION_WRITES` ships false. The reason is one fact and the
-# tree spells it ten times, in five comment languages, so flipping the default falsifies all ten at
-# once and each has to be corrected in the same change.
+# tree spells it twelve times, in six languages of comment, so flipping the default falsifies all
+# twelve at once and each has to be corrected in the same change.
 #
-# Enumerated rather than discovered, because discovery has now failed four times on this exact set.
-# A review found 4, a sweep of two directories found 6, and both greps that surfaced the rest miss
-# `.env.example`: its sentence wraps between "the real" and "Google API", and it says "has ever been
-# run" rather than "never". A declared tuple cannot wrap and cannot rephrase.
+# Enumerated rather than discovered, because discovery has now failed five times on this exact set.
+# A review found 4, a sweep of two directories found 6, both greps that surfaced the rest miss
+# `.env.example`, and a declared set of ten still left the self-settling sentence standing in a
+# Grafana dashboard and an alert-rule docstring. A declared tuple cannot wrap and cannot rephrase,
+# and it is the only form that has ever been complete.
 WHY_WRITING_IS_OFF: Final = (
     Path("packages/syncr-api/src/syncr_api/core/settings.py"),
     Path("packages/syncr-api/src/syncr_api/calendars/injection.py"),
     Path("packages/syncr-api/tests/test_google_reconcile.py"),
     Path("packages/syncr-api/tests/test_projection_runner.py"),
+    Path("packages/syncr-api/tests/test_alert_rules.py"),
     Path("docs/runbooks/google-token-expired.md"),
     Path("docs/smoke-scenarios.md"),
     Path("docker-compose.yml"),
     Path(".env.example"),
     Path("e2e/tests/paths.spec.ts"),
     Path("e2e/docker-compose.e2e.yml"),
+    Path("deployments/grafana/dashboards/plan-pipeline.json"),
 )
 
 # The clause every one of them carries, naming the condition that is still open. Short deliberately:
 # a longer phrase is likelier to wrap, and wrapping is what hid one site from two greps.
 #
-# Re-deriving this set finds eleven files, not ten: this one matches too, because the corrected
-# clause and the three lapsed spellings both live here as the strings the checks below search for.
-# That is the expected reconciliation rather than a missing site, and it is written down so the next
-# reading does not chase it.
+# Re-deriving this set finds thirteen files, not twelve: this one matches too, because the corrected
+# clause and the lapsed spellings both live here as the strings the checks below search for. That is
+# the expected reconciliation rather than a missing site, and it is written down so the next reading
+# does not chase it.
+#
+# A re-derivation over the lapsed spellings also collides benignly with
+# `docs/runbooks/deploy-and-rollback.md`, which says `just deploy` "has never run against a Hetzner
+# host". Same shape, different subject, and not a site: it says nothing about the Google write path.
 THE_OPEN_CONDITION: Final = "armed deployment"
 
 
@@ -2796,7 +2803,7 @@ class TestWhyWritingToARealCalendarIsOff:
 
     This exists because the reason drifted twice inside one ticket. The live Google suite met the
     provider, which falsified the sentence "it has never met the real API" wherever it was written,
-    and it was written in ten files. Two rounds of human sweeping found 4 and then 6 of them.
+    and it was written in twelve files. Four rounds of reading found 4, then 6, then 10, then 12.
 
     The guard is positive and bounded on purpose. A check that no sentence in the tree CLAIMS the
     write path is unproven would be a check over unbounded wordings that goes green the moment a
@@ -2846,6 +2853,7 @@ class TestWhyWritingToARealCalendarIsOff:
             "never met the real",
             "never been run against the real",
             "never run against",
+            "until a person has run",
         ):
             assert lapsed not in prose, (
                 f"{relative} still says {lapsed!r}, which the live suite made false"
