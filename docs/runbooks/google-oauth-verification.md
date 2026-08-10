@@ -161,13 +161,11 @@ All four come from the process environment, and nothing loads a dotenv for this 
 | `GOOGLE_OAUTH_REDIRECT_URI` | `.env.example` ships the default, `/api/v1/calendar-sources/google/callback` on `localhost:8000`, and the root `.env` may override it. Whatever the layer, the value must appear verbatim in the console's registered list |
 | `SYNCR_GOOGLE_LIVE_REFRESH_TOKEN` | the procedure below. Shipped nowhere, never committed, never a fixture, never printed |
 
-Read the three from the file rather than sourcing it: an env file is data, and `.` would execute it.
+Read the three from the host secret file the same way every other runbook here does.
 
 ```bash
 cd packages/syncr-api
-for v in GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REDIRECT_URI; do
-  export "$v=$(grep -m1 "^$v=" ../../.env | cut -d= -f2-)"
-done
+set -a; . ../../.env; set +a                # the three client values
 export SYNCR_GOOGLE_LIVE_REFRESH_TOKEN=     # then paste the value from step 7
 ```
 
