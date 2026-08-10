@@ -140,8 +140,15 @@ dev-down:
 # `just` does not read `.env` -- this file sets no `dotenv-load` -- so the file is read here rather
 # than inherited, in compose's own precedence: the environment wins over the file, and the last
 # assignment wins within it. Two spellings of that file compose's own reader accepts and a naive
-# pattern does not: an `export ` prefix on the line, and a UTF-8 BOM before the first key. A `\r`
-# is dropped for the same reason, so a CRLF file resolves rather than reading as unresolvable.
+# pattern does not: an `export ` prefix on the line, and a UTF-8 BOM before the first key. A `\r` at
+# the end of a line is dropped for the same reason, so a CRLF file resolves rather than reading as
+# unresolvable.
+#
+# BOTH OF THOSE ARE SCOPED THE WAY COMPOSE SCOPES THEM, which is why they are two `sed` anchors and
+# not one deletion: compose forgives a mark only at the START OF THE FILE and a carriage return only
+# as a LINE ENDING. Dropping either from anywhere makes this reading see an assignment compose does
+# not honour, and the last such line would win: `COMPOSE_PROJECT_\rNAME=x` is a different key to
+# compose and would have become this key here.
 #
 # One divergence is deliberate and safe: compose treats an empty `COMPOSE_PROJECT_NAME` as SET and
 # does not fall back to the file, while `${COMPOSE_PROJECT_NAME:-}` here treats it as unset and reads
@@ -159,7 +166,7 @@ _refuse-a-retargeted-teardown:
     set -uo pipefail
     inherited="${COMPOSE_PROJECT_NAME:-}"
     if [ -z "$inherited" ] && [ -f .env ]; then
-      inherited="$(tr -d $'\357\273\277\r' < .env | sed -nE 's/^[[:space:]]*(export[[:space:]]+)?COMPOSE_PROJECT_NAME[[:space:]]*=//p' | tail -n 1 | tr -d "\"'")"
+      inherited="$(sed -nE $'1s/^\xef\xbb\xbf//; s/\r$//; s/^[[:space:]]*(export[[:space:]]+)?COMPOSE_PROJECT_NAME[[:space:]]*=//p' .env | tail -n 1 | tr -d "\"'")"
     fi
     [ -n "$inherited" ] || exit 0
     if ! printf '%s' "$inherited" | grep -Eq '^[a-z0-9][a-z0-9_.-]*$'; then

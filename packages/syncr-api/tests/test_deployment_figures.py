@@ -2339,15 +2339,50 @@ class TestEveryTeardownRefusesAnInheritedProject:
         else:
             _assert_it_ran(done, tmp_path)
 
-    def test_it_reads_a_file_written_with_crlf_endings(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize(
+        ("dotenv", "refused"),
+        [
+            ("COMPOSE_PROJECT_NAME=syncr\r\n", True),
+            ("COMPOSE_PROJECT_NAME=syncr-e2e\r\n", False),
+        ],
+    )
+    def test_it_reads_a_file_written_with_crlf_endings(
+        self, dotenv: str, refused: bool, tmp_path: Path
+    ) -> None:
         """A `\\r` belongs to the line ending rather than to the value.
 
-        Compose acts on `syncr` here. Keeping the carriage return made the value unresolvable, which
-        refused for the wrong reason: safe, but it reported a project name nobody wrote.
+        Compose acts on the name without the carriage return. Keeping it made the value
+        unresolvable, which refused for the wrong reason: safe, but it named a project nobody wrote.
+
+        Both directions, because dropping the carriage return must not become refusing every file
+        that carries one: a reading that mapped any such file to a held project would pass a single
+        row.
         """
-        done = _the_scratch_teardown_in_a_tree_of_its_own(
-            tmp_path, dotenv="COMPOSE_PROJECT_NAME=syncr\r\n"
-        )
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
+
+        if refused:
+            _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
+        else:
+            _assert_it_ran(done, tmp_path)
+
+    @pytest.mark.parametrize(
+        "dotenv",
+        [
+            "COMPOSE_PROJECT_NAME=syncr\nCOMPOSE_PROJECT_\rNAME=syncr-e2e\n",
+            "COMPOSE_PROJECT_NAME=syncr\n\ufeffCOMPOSE_PROJECT_NAME=syncr-e2e\n",
+        ],
+    )
+    def test_the_two_tolerances_are_scoped_the_way_compose_scopes_them(
+        self, dotenv: str, tmp_path: Path
+    ) -> None:
+        """A mark is forgiven at the start of the FILE and a carriage return at the end of a LINE.
+
+        Compose reads the first line of each file below, so both name a project that holds
+        something. A reading that deleted either byte from anywhere would see a second assignment
+        compose does not honour, and the last matching line wins: the first file's second line is a
+        different key to compose, and the second file makes compose refuse to read the file at all.
+        """
+        done = _the_scratch_teardown_in_a_tree_of_its_own(tmp_path, dotenv=dotenv)
 
         _assert_it_refused(done, tmp_path, saying="COMPOSE_PROJECT_NAME names `syncr`")
 
