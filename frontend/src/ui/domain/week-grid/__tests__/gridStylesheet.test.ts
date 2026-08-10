@@ -67,6 +67,24 @@ describe("the band that explains a gap", () => {
       "var(--text-muted)",
     ]);
   });
+
+  it("takes no pointer, and lets the label that is a control take one", async () => {
+    /* A pair rather than two claims. The band is a reading and nothing on it is pressable, so it takes no
+     * pointer; a descendant inherits that, so the button form of the label declares its own. Either half alone
+     * is satisfiable in a way that defeats the other, and neither is visible to a rendered assertion here,
+     * because jsdom applies no stylesheet. What a browser adds is the INHERITANCE and the click it costs, which
+     * `e2e/tests/s17-capture-from-an-unfillable-slot.spec.ts` measures. */
+    expect(await rule("band.css", ".week-band")).toContainEqual(["pointer-events", "none"]);
+    expect(await rule("band.css", "button.week-band__label")).toContainEqual([
+      "pointer-events",
+      "auto",
+    ]);
+    /* On the button form only: the reading form of the same class stays a reading. */
+    expect(await rule("band.css", ".week-band__label")).not.toContainEqual([
+      "pointer-events",
+      "auto",
+    ]);
+  });
 });
 
 describe("the grid lines", () => {

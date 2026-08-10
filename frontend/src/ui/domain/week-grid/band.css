@@ -28,22 +28,29 @@
 }
 
 /* The gutter label knocks out its own background for the same reason the hour label does: a hatch behind
-   uppercase micro-type at --fs-eyebrow reads as a smudge rather than as a word.
-
-   IT OPTS BACK INTO THE POINTER, because the band it sits in does not take one: a band is transparent to the
-   pointer so a press on the hatch reaches the canvas a drag begins on. Without this the label inherits that
-   refusal, and a label an empty slot draws as a button is a control no pointer can act on. Neither the
-   inheritance nor its cost is visible without layout and a computed style, which is why the assertion for it is
-   a browser case. */
+   uppercase micro-type at --fs-eyebrow reads as a smudge rather than as a word. */
 .week-band__label {
   position: absolute;
   left: 4px;
   top: 2px;
   padding: 0 3px;
-  pointer-events: auto;
   background-color: var(--paper-raised);
   color: var(--text-muted);
   font-size: var(--fs-eyebrow);
   letter-spacing: var(--ls-eyebrow);
   text-transform: uppercase;
+}
+
+/* WHERE THE LABEL IS A CONTROL IT OPTS BACK INTO THE POINTER, because the band it sits in takes none and a
+   descendant inherits that: a label an empty slot draws as a button is otherwise a control no pointer can act
+   on, which no test without layout and a computed style can see.
+
+   The two declarations are asserted as a PAIR, in this sheet and in a browser, because either alone is
+   satisfiable in a way that defeats the other. A band takes no pointer because it is a reading and there is
+   nothing on it to press: were it to take one, its whole hatched area would become an event target when only the
+   words are pressable, and this opt-in would be redundant rather than load-bearing.
+
+   Qualified by the element, so the reading form of the same class stays a reading. */
+button.week-band__label {
+  pointer-events: auto;
 }
