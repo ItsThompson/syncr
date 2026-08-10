@@ -20,6 +20,10 @@ direction of tightness.
 BACK into it, so the read widens forwards by the lead and backwards by what runs from a
 commitment's end. Asserted as the "is it loaded" question over a commitment placed at each edge,
 against the generated shadows for the same commitment.
+
+**The envelope and the read are one bound from two sides**, and that biconditional is what lets a
+writer answer "which weeks is this commitment an input of" without restating the geometry: a week
+reads a commitment exactly when the commitment's envelope reaches that week.
 """
 
 from __future__ import annotations
@@ -198,6 +202,40 @@ def test_the_commitment_whose_prep_lands_in_the_previous_week_is_inside_that_wee
     assert prep.overlaps(previous_week)
     assert exam.interval.start < read.end
     assert not exam.interval.start < previous_week.end
+
+
+def test_a_commitment_is_read_by_exactly_the_weeks_its_envelope_reaches() -> None:
+    """The two sides of one bound, crossed over a week swept past a fixed commitment.
+
+    An assembly loads every commitment overlapping ``casting_span(week)``. A writer that has just
+    moved a commitment needs the same question from the other side: which weeks was it an input of.
+    ``envelope`` is that answer, and the two agree by derivation rather than by coincidence, so
+    this asserts the biconditional directly. If they came apart, a week could load a commitment
+    that nothing told it had moved, and its plan would be stale with every counter green.
+
+    Swept rather than asserted at one offset, because the two disagree only at an edge, and a
+    single offset in the middle of the overlap would pass for a bound that was wrong by a day.
+    """
+    reach = widest_reach(ATTRIBUTED_GEOMETRY)
+    anchor = Interval(at(EXAM_MONDAY, 9, 30), at(EXAM_MONDAY, 11, 30))
+    envelope = reach.envelope(anchor)
+    monday = at(EXAM_MONDAY, 0)
+    reached = []
+
+    for offset in range(-21, 22):
+        week = Interval(monday + timedelta(days=offset), monday + timedelta(days=offset + 7))
+
+        assert anchor.overlaps(casting_span(week, ATTRIBUTED_GEOMETRY)) == envelope.overlaps(
+            week
+        ), offset
+        if envelope.overlaps(week):
+            reached.append(offset)
+
+    # Neither side is vacuous: the week holding the commitment reads it, a week three weeks away
+    # does not, and the sweep covers both answers.
+    assert 0 in reached
+    assert -21 not in reached
+    assert 0 < len(reached) < 43
 
 
 def test_a_journey_at_the_turn_of_the_week_needs_the_transit_lead_in_the_read() -> None:
