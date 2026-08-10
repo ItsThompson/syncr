@@ -21,7 +21,8 @@ cannot disagree.
 **The anchor reconciler's seam is composed here.** ``SourceSyncer`` reconciles anchors between the
 fetch and the sync-state write, and it takes the reconciler as a protocol it declares rather than
 as an import of the anchor package. This is the request-side composition of that seam; the worker's
-is in ``calendars/runner.py``.
+is in ``calendars/runner.py``. The reconciler is handed the week input counter and the home zone,
+because a pass that moved a commitment invalidates the weeks it moved it in.
 
 The HTTP client is per request rather than shared through application state. A request forces one
 source at a time, so pooling would buy one connection's worth of setup while making the client's
@@ -256,14 +257,21 @@ async def get_calendar_source_service(
     settings: ServiceSettings = request.app.state.settings
     sources = CalendarSourceRepository(transaction, principal.tenant_id)
     now = utc_now()
+    profile = await read_zone_profile(transaction, principal)
     adapters, remote_calendars = build_adapters(
         settings,
         transaction,
         principal.tenant_id,
         feeds=client,
         google=google,
-        profile=await read_zone_profile(transaction, principal),
+        profile=profile,
         horizon=await read_ingest_horizon(sources, now=now),
+    )
+    # One counter for the request, shared by the horizon change and the anchor reconciliation.
+    # Both invalidate weeks in this transaction and neither holds state, so a second instance
+    # would only be a second name for one row.
+    versions = TrackedWeekInputVersions(
+        WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
     )
     return CalendarSourceService(
         sources=sources,
@@ -276,13 +284,13 @@ async def get_calendar_source_service(
             anchors=AnchorReconciler(
                 AnchorRepository(transaction, principal.tenant_id),
                 AnchorTypeRepository(transaction, principal.tenant_id),
+                versions=versions,
+                home_zone=profile.home_zone,
             ),
             collisions=IngestConflicts(transaction, principal.tenant_id),
             clock=utc_now,
         ),
-        versions=TrackedWeekInputVersions(
-            WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
-        ),
+        versions=versions,
         clock=utc_now,
         remote_calendars=remote_calendars,
     )

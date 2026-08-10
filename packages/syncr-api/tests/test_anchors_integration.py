@@ -47,6 +47,9 @@ from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
 from syncr_api.calendars.events import FetchOutcome, RawEvent
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.db import create_db_engine, create_sessionmaker
+from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.user_settings.config import HOME_ZONE_DEFAULT
+from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_domain.intervals import Interval
 from tests.anchor_specifications import EXAM, INTERVIEW, LECTURE, NOTHING, STANDUP, with_areas
 from tests.live_tenants import delete_tenant, seed_owner
@@ -177,6 +180,24 @@ def a_read(*events: RawEvent) -> FetchOutcome:
     return FetchOutcome(events=events, events_read=len(events), placed=len(events), reparsed=True)
 
 
+def a_reconciler(session: AsyncSession, tenant_id: TenantId) -> AnchorReconciler:
+    """The reconciler as both of its compositions build it: the counter, and the home zone.
+
+    The real counter over the real rows rather than a recorder, so a pass here invalidates weeks
+    the way production does. Only a week with a version row is bumped and no test in this file
+    declares one, so nothing is bumped here; which weeks a pass invalidates is the subject of
+    ``test_anchor_sync_bumps_the_weeks.py`` and is asserted there.
+    """
+    return AnchorReconciler(
+        AnchorRepository(session, tenant_id),
+        AnchorTypeRepository(session, tenant_id),
+        versions=TrackedWeekInputVersions(
+            WeekInputVersionRepository(session, tenant_id), clock=lambda: NOW
+        ),
+        home_zone=HOME_ZONE_DEFAULT,
+    )
+
+
 async def reconcile(
     sessions: async_sessionmaker[AsyncSession],
     tenant_id: TenantId,
@@ -184,10 +205,7 @@ async def reconcile(
     outcome: FetchOutcome,
 ) -> AnchorDelta:
     async with sessions() as session, session.begin():
-        reconciler = AnchorReconciler(
-            AnchorRepository(session, tenant_id), AnchorTypeRepository(session, tenant_id)
-        )
-        return await reconciler.reconcile(source, outcome)
+        return await a_reconciler(session, tenant_id).reconcile(source, outcome)
 
 
 async def held(
@@ -335,10 +353,7 @@ async def test_a_failed_attempt_retains_every_anchor_and_marks_it_possibly_stale
     await reconcile(sessions, tenant_id, source, a_read(an_event("lecture@example.ac.uk")))
 
     async with sessions() as session, session.begin():
-        reconciler = AnchorReconciler(
-            AnchorRepository(session, tenant_id), AnchorTypeRepository(session, tenant_id)
-        )
-        delta = await reconciler.mark_possibly_stale(source)
+        delta = await a_reconciler(session, tenant_id).mark_possibly_stale(source)
 
     anchors = await held(sessions, tenant_id, source.id)
     assert len(anchors) == 1
@@ -372,10 +387,7 @@ async def test_an_unchanged_feed_confirms_its_anchors_without_removing_one(
         await AnchorRepository(session, tenant_id).set_possibly_stale(source.id, stale=True)
 
     async with sessions() as session, session.begin():
-        reconciler = AnchorReconciler(
-            AnchorRepository(session, tenant_id), AnchorTypeRepository(session, tenant_id)
-        )
-        delta = await reconciler.confirm(source)
+        delta = await a_reconciler(session, tenant_id).confirm(source)
 
     anchors = await held(sessions, tenant_id, source.id)
     assert len(anchors) == 1

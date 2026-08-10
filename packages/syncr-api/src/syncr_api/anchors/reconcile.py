@@ -21,6 +21,13 @@ those occurrences still exist. ``remove_absent`` is what destroys them: as the h
 forward, every old occurrence of a daily standup drops out of the feed and new ones arrive, and
 reading before the removal is what carries the override across that turnover. Re-reading mid-loop
 would also work; reading after the removal would not.
+
+**A pass that moved occupancy invalidates the weeks it moved it in.** A week's inputs include every
+commitment that can cast a product inside it, so creating, moving or removing one changes what a
+solve of that week read, and the week input version is the counter such a solve is guarded on. The
+read that carries an override forward is what makes a REMOVED anchor's week available too: the
+removal answers with a count, so a week not taken off the prior state before the delete cannot be
+recovered after it.
 """
 
 from __future__ import annotations
@@ -36,7 +43,9 @@ from syncr_api.anchors.identity import (
     stored_title,
 )
 from syncr_api.anchors.matching import first_match, series_overrides
+from syncr_api.anchors.reach import widest_reach
 from syncr_api.calendars.anchor_writing import AnchorDelta
+from syncr_api.user_settings.solve_inputs import WeekRange, weeks_occupied
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
@@ -44,11 +53,16 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from syncr_api.anchors.matching import SeriesOverrides
+    from syncr_api.anchors.reach import ShadowReach
     from syncr_api.anchors.records import AnchorRecord, AnchorTypeId, AnchorTypeRecord
     from syncr_api.anchors.repository import AnchorRepository
     from syncr_api.anchors.type_repository import AnchorTypeRepository
     from syncr_api.calendars.events import FetchOutcome, RawEvent
     from syncr_api.calendars.records import CalendarSourceId, CalendarSourceRecord
+    from syncr_api.user_settings.solve_inputs import WeekInputVersions
+    from syncr_domain.intervals import Interval
+    from syncr_domain.weeks import IsoWeek
+    from syncr_domain.zones import ZoneId
 
 _log = get_logger("syncr.anchors")
 
@@ -64,9 +78,18 @@ class _Assignment:
 class AnchorReconciler:
     """One tenant's anchors, made to agree with what their sources publish."""
 
-    def __init__(self, anchors: AnchorRepository, types: AnchorTypeRepository) -> None:
+    def __init__(
+        self,
+        anchors: AnchorRepository,
+        types: AnchorTypeRepository,
+        *,
+        versions: WeekInputVersions,
+        home_zone: ZoneId,
+    ) -> None:
         self._anchors = anchors
         self._types = types
+        self._versions = versions
+        self._home_zone = home_zone
 
     @measured("anchors")
     async def reconcile(self, source: CalendarSourceRecord, outcome: FetchOutcome) -> AnchorDelta:
@@ -74,17 +97,24 @@ class AnchorReconciler:
 
         Creates what is new, replaces the fact of what moved or was renamed, and removes what the
         feed no longer publishes. Every anchor it touches stops being possibly stale, because the
-        source just confirmed it.
+        source just confirmed it. The weeks whose occupancy moved are invalidated in this
+        transaction, so a solve that read one of them fails its own conditional write.
         """
         held = await self._anchors.list_for_source(source.id)
         by_key = {anchor.external_uid: anchor for anchor in held}
         overrides = series_overrides(held)
         types = await self._types.list_all()
         incoming = _keyed(outcome.events)
+        # One reach for the tenant rather than one per anchor, because a week reads every
+        # commitment that can cast a product inside it and `casting_span` widens that read by the
+        # same two maxima over this same set. Read off the types this tenant holds, so a
+        # declaration edited to a 14-hour lead moves this with it.
+        reach = widest_reach(one.specification for one in types)
 
         created = 0
         updated = 0
         scrubbed = 0
+        occupied: set[IsoWeek] = set()
         for key, event in incoming.items():
             existing = by_key.get(key)
             assignment = self._assign(source.id, event, types=types, overrides=overrides)
@@ -92,9 +122,21 @@ class AnchorReconciler:
             if existing is None:
                 await self._create(source.id, key, event, assignment)
                 created += 1
+                occupied.update(self._weeks_reached(event.interval, reach))
                 continue
             if await self._update(existing, event, assignment):
                 updated += 1
+                # Both spans, so a commitment moved across a week boundary invalidates the week it
+                # left as well as the one it arrived in: the week it left now holds free time that
+                # its solve read as occupied.
+                occupied.update(self._weeks_reached(existing.interval, reach))
+                occupied.update(self._weeks_reached(event.interval, reach))
+
+        # Taken off the prior state, BEFORE the delete: `remove_absent` answers with a count, so a
+        # removed commitment's occupancy is unreadable once it has run.
+        for key, anchor in by_key.items():
+            if key not in incoming:
+                occupied.update(self._weeks_reached(anchor.interval, reach))
 
         removed = await self._anchors.remove_absent(source.id, keeping=set(incoming))
         delta = AnchorDelta(
@@ -103,7 +145,9 @@ class AnchorReconciler:
             removed=removed,
             scrubbed=scrubbed,
             current=await self._anchors.count_for_source(source.id),
+            occupied_weeks=frozenset(occupied),
         )
+        await self._invalidate(delta.occupied_weeks)
         _log.info(
             "anchors.reconciled",
             tenant_id=str(source.tenant_id),
@@ -157,6 +201,35 @@ class AnchorReconciler:
             return _Assignment(anchor_type_id=overrides[series], overridden=True)
         matched = first_match(types, title=stored_title(event.title), source_id=source_id)
         return _Assignment(anchor_type_id=matched, overridden=False)
+
+    def _weeks_reached(self, anchor: Interval, reach: ShadowReach) -> tuple[IsoWeek, ...]:
+        """Every ISO week a commitment at ``anchor`` is an input of.
+
+        Its own span widened by ``reach``, which is the envelope every product of it falls inside.
+        A week reads the commitments that can cast a product into it rather than only the ones
+        inside it, so an exam on Monday morning is an input of the week before it as well: that is
+        where its prep lands.
+        """
+        return weeks_occupied(reach.envelope(anchor), home_zone=self._home_zone)
+
+    async def _invalidate(self, weeks: frozenset[IsoWeek]) -> None:
+        """Bump each of these weeks, one range closed at both ends.
+
+        **Closed at both ends, and one range per week rather than one range spanning them.** A poll
+        runs every fifteen minutes, and a bump with no end date invalidates every tracked week from
+        its first week onwards: each pass that moved one commitment would then supersede the solve
+        of every week the user has not yet lived, each supersession enqueues a follow-up, and the
+        next pass supersedes those. The single-flight invariant holds throughout -- one solve per
+        week -- while no week ever reaches a write, which is a worse failure than a missing bump
+        because it looks like work. A range spanning the weeks a feed touches has the same shape in
+        miniature: two commitments a term apart would invalidate the weeks between them, which
+        nothing changed.
+
+        The open-ended shape exists and is reserved for a mutation that genuinely has no end date,
+        which a poll is not.
+        """
+        for week in sorted(weeks):
+            await self._versions.bump(WeekRange(first=week, last=week))
 
     async def _create(
         self,

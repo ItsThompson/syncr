@@ -52,6 +52,8 @@ from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import Conflict, NotFound, ValidationFailed
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.user_settings.config import HOME_ZONE_DEFAULT
+from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_domain.intervals import Interval
 from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
@@ -180,7 +182,12 @@ def seed_anchors(
         try:
             async with database.sessionmaker() as session, session.begin():
                 reconciler = AnchorReconciler(
-                    AnchorRepository(session, tenant_id), AnchorTypeRepository(session, tenant_id)
+                    AnchorRepository(session, tenant_id),
+                    AnchorTypeRepository(session, tenant_id),
+                    versions=TrackedWeekInputVersions(
+                        WeekInputVersionRepository(session, tenant_id), clock=lambda: NOW
+                    ),
+                    home_zone=HOME_ZONE_DEFAULT,
                 )
                 await reconciler.reconcile(
                     _a_source(source_id, tenant_id),

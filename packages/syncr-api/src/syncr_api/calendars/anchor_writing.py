@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from syncr_api.calendars.events import FetchOutcome
     from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
+    from syncr_domain.weeks import IsoWeek
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,11 @@ class AnchorDelta:
     ``current`` is the count AFTER the attempt and is read from the rows rather than derived
     from the other three, so the number the panel reports is the number the table holds even if
     a previous attempt recorded a count that has since become wrong.
+
+    ``occupied_weeks`` is what the attempt INVALIDATED: the ISO weeks the anchors it created,
+    moved or removed occupied, widened by the reach the tenant's anchor types declare. Empty for
+    an attempt that changed nothing, so a poll of a steady feed carries no week here and
+    invalidates none.
     """
 
     created: int = 0
@@ -52,6 +58,7 @@ class AnchorDelta:
     # a badly encoded feed would make thousands of.
     scrubbed: int = 0
     current: int = 0
+    occupied_weeks: frozenset[IsoWeek] = frozenset()
 
     def recorded_on(self, state: SyncStateRecord) -> SyncStateRecord:
         """``state`` with this pass's own count of the rows the source contributes.
@@ -83,6 +90,7 @@ class AnchorDelta:
             "anchors_marked_stale": self.marked_stale,
             "anchors_scrubbed": self.scrubbed,
             "anchors_current": self.current,
+            "anchors_weeks_occupied": len(self.occupied_weeks),
         }
 
 

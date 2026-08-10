@@ -24,8 +24,8 @@ calendar that is fine.
 
 **One transaction per tenant.** A publisher that hangs must not hold every other tenant's sync
 state uncommitted behind it, and a tenant whose feed failed still has its attempt recorded. The
-anchor reconciliation a pass performs is inside that same transaction, so a tenant's anchors and
-its sync state either both land or neither does.
+anchor reconciliation a pass performs is inside that same transaction, so a tenant's anchors, its
+sync state, and the input versions its moved commitments invalidated either all land or none do.
 """
 
 from __future__ import annotations
@@ -45,9 +45,11 @@ from syncr_api.calendars.injection import build_adapters
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.calendars.sync import SourceSyncer, SyncPass
 from syncr_api.conflicts.ingest import IngestConflicts
+from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
+from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_api.user_settings.zone_reading import as_domain, zone_profile
 from syncr_common.logging import get_logger
 from syncr_common.metrics import REGISTRY, measured
@@ -184,7 +186,12 @@ class CalendarSyncRunner:
             operations=OperationLifecycle(OperationRepository(session, tenant_id), self._clock),
             adapters=adapters,
             anchors=AnchorReconciler(
-                AnchorRepository(session, tenant_id), AnchorTypeRepository(session, tenant_id)
+                AnchorRepository(session, tenant_id),
+                AnchorTypeRepository(session, tenant_id),
+                versions=TrackedWeekInputVersions(
+                    WeekInputVersionRepository(session, tenant_id), clock=self._clock
+                ),
+                home_zone=settings.home_zone,
             ),
             collisions=IngestConflicts(session, tenant_id),
             clock=self._clock,
