@@ -71,6 +71,13 @@ REMOTE_CALENDAR = RemoteCalendar(
     primary=True,
 )
 PLAN = "https://example.ac.uk/plan.ics"
+GOOGLE_PLAN = "plan@group.calendar.google.com"
+
+# The providers the plan cannot be written to, derived from the closed set rather than named, so a
+# provider added to it is a decision the refusal below has to make. Held as a constant because an
+# empty parameter list is a skip rather than a failure, and the test that asserts it is non-empty is
+# what keeps the refusal from vanishing silently.
+UNWRITABLE_PROVIDERS = tuple(one for one in CALENDAR_PROVIDERS if one != GOOGLE)
 
 TENANT = uuid4()
 OWNER = Principal(tenant_id=TENANT, user_id=uuid4(), scopes=ALL_SCOPES)
@@ -442,7 +449,7 @@ async def test_a_never_synced_google_source_becomes_the_write_target_with_the_de
     assert designated.horizon_days == HORIZON_DAYS_DEFAULT
 
 
-@pytest.mark.parametrize("provider", [one for one in CALENDAR_PROVIDERS if one != GOOGLE])
+@pytest.mark.parametrize("provider", UNWRITABLE_PROVIDERS)
 async def test_a_source_syncr_cannot_write_to_is_refused_naming_the_provider(
     wiring: Wiring, provider: CalendarProvider
 ) -> None:
@@ -459,6 +466,37 @@ async def test_a_source_syncr_cannot_write_to_is_refused_naming_the_provider(
     assert "still contributes its anchors" in raised.value.detail
     assert wiring.sources.rows[held.id].role == ANCHOR_SOURCE
     assert wiring.sources.rows[held.id].horizon_days is None
+
+
+def test_the_unwritable_providers_are_a_non_empty_set() -> None:
+    # The control for the parametrized refusal above. An empty parameter list collects as a skip, so
+    # a provider set that ever held Google alone would retire that test without failing anything.
+    assert UNWRITABLE_PROVIDERS
+    assert GOOGLE not in UNWRITABLE_PROVIDERS
+
+
+async def test_a_feed_is_refused_on_its_provider_even_when_another_source_holds_the_role(
+    wiring: Wiring,
+) -> None:
+    # Two rules hold at once here, and only one of their remedies works: removing the other source's
+    # role would leave this one still unwritable, so the provider refusal is the answer and the rule
+    # that states it is applied first.
+    wiring.sources.hold(
+        record(
+            provider=GOOGLE,
+            external_id=GOOGLE_PLAN,
+            role=WRITE_TARGET,
+            horizon_days=14,
+            display_name="syncr plan",
+        )
+    )
+    feed = wiring.sources.hold(record(provider=ICS, external_id=PLAN))
+
+    with pytest.raises(ValidationFailed) as raised:
+        await wiring.service.designate_write_target(OWNER, feed.id)
+
+    assert f"is a {ICS} source" in raised.value.detail
+    assert wiring.sources.rows[feed.id].role == ANCHOR_SOURCE
 
 
 async def test_re_asserting_a_stored_unwritable_target_is_not_refused(wiring: Wiring) -> None:
@@ -501,7 +539,7 @@ async def test_a_second_write_target_is_refused_naming_the_one_that_holds_the_ro
     wiring.sources.hold(
         record(
             provider=GOOGLE,
-            external_id="plan@group.calendar.google.com",
+            external_id=GOOGLE_PLAN,
             role=WRITE_TARGET,
             horizon_days=14,
             display_name="syncr plan",

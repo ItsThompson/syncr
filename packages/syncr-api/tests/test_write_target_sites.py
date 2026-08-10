@@ -15,8 +15,11 @@ Two readings, because a bypass has two shapes:
 
 What neither reading covers, stated so the gap is not mistaken for a guarantee: the value spelled
 inside a longer SQL string, as ``op.execute("UPDATE ... SET role='write-target'")`` would. These
-scans read code, not SQL. A migration that backfilled the column that way would pass here, and what
-would catch it is a reading of the migration chain, which no test does yet.
+scans read code, not SQL. Two such spellings exist today, both in ``alembic/versions``'s
+``0007_calendar_sources``: the partial unique index's predicate and the role check constraint. Both
+are DDL and neither writes a row, so the one-write answer below holds. A migration that backfilled
+the column that way would pass here, and what would catch it is a reading of the migration chain,
+which no test does yet.
 
 Every helper returns data rather than asserting, so each rule is checked against the real tree AND
 against synthetic source. A scan that has quietly stopped finding anything otherwise passes forever.
@@ -51,6 +54,17 @@ SHIPPED_ROOTS: Final = (
 # Below this, the walk has stopped measuring the repository and every set derived from it is empty
 # by construction rather than by fact.
 MODULES_FLOOR: Final = 300
+
+# The trees the walk must reach, declared as literal prefixes rather than read back out of
+# SHIPPED_ROOTS, because a guard derived from the thing it guards cannot fail when that thing
+# narrows. Two packages rather than one, so a glob that stopped expanding is visible.
+COVERED_TREES: Final = (
+    "packages/syncr-api/src/",
+    "packages/syncr-domain/src/",
+    "cli/src/",
+    "packages/syncr-api/alembic/",
+    "deployments/ops/",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +181,21 @@ def test_the_walk_finds_the_shipped_tree_and_excludes_the_tests() -> None:
     assert len(found) > MODULES_FLOOR
     assert "packages/syncr-api/src/syncr_api/calendars/repository.py" in found
     assert not [module for module in found if "/tests/" in module]
+
+
+def test_the_walk_reaches_every_tree_the_role_could_be_stored_from() -> None:
+    # The floor above is a total-collapse control and nothing more: every declared site lives under
+    # one of these trees, so dropping any of the others leaves all four exact sets intact and the
+    # count still far above the floor. This is what makes a NARROWED walk visible.
+    found = shipped_modules(repository_root())
+
+    reached = {
+        tree: [module for module in found if module.startswith(tree)] for tree in COVERED_TREES
+    }
+
+    assert {tree: bool(modules) for tree, modules in reached.items()} == dict.fromkeys(
+        COVERED_TREES, True
+    )
 
 
 def test_a_role_write_is_found_wherever_it_sits() -> None:
