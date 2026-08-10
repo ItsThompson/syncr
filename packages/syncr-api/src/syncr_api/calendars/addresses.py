@@ -5,12 +5,12 @@ not a publisher: it is this deployment's own network, where Postgres, the api, t
 the host's own metadata service answer. Fetching one would make a user-supplied address a
 request syncr issues from inside its own perimeter.
 
-The ranges are stated here and nowhere else, because the question is asked twice and the two
-answers must be one answer. The normalizer asks it of a literal a user pasted, before storing
-anything. The fetch path asks it of the address a socket will connect to, which is what a host
-name resolving inward, or a redirect pointing inward, produces from an address that looked
-public when it was stored. An accept-list and a redirect check stated separately are how the
-two come to disagree.
+The ranges are stated here and nowhere else, and the rule is stated over callers rather than over a
+roster of them: any caller that decides whether syncr may fetch an address reads this module, and
+none restates the ranges. The normalizer is one such caller, and it asks of a literal a user pasted,
+before storing anything. A caller reading the address a socket will connect to would ask the same
+question of a resolved address, and must read the same rows: an accept-list and a redirect check
+stated separately are how the two come to disagree, while both stay green.
 
 Two limits of a literal check, both closed by asking the same question of a resolved address:
 ``ipaddress`` reads only the dotted and colon spellings, so the decimal and hexadecimal forms
