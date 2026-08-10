@@ -13,6 +13,8 @@ in any one of them silently moves the recovery point.
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -75,6 +77,18 @@ SECTION_21_RUNBOOKS: Final = (
 )
 
 SYSTEMD: Final = Path("deployments/systemd")
+
+# The refusal `just drill-local` and `just drill-seed` both carry, spelled once because the rule in
+# `TestEveryRecipeThatSeedsRefusesADeployedHost` is stated over a derived set of recipes.
+DEPLOYED_HOST_REFUSAL: Final = "_refuse-a-local-drill-on-a-deployed-host"
+
+# Where the stub `docker` below records having been reached, relative to the tree a case builds.
+DOCKER_LOG: Final = "docker-was-reached"
+
+# A `docker` that records being called and can reach nothing, so "started nothing" is an OBSERVATION
+# rather than an inference from an exit status: a tree with no compose file fails either way, so a
+# returncode alone would stay green with the refusal deleted.
+RECORDING_DOCKER: Final = '#!/bin/sh\nprintf "%s\\n" "$*" >> "$SYNCR_DOCKER_LOG"\n'
 
 
 def _claims() -> int:
@@ -768,9 +782,26 @@ class TestTheShellVariablesTheRunbooksUse:
         )
 
 
-def _recipe_body(name: str) -> str:
-    """One `just` recipe's body, from its opening line to the next unindented one."""
-    lines = read(Path("justfile")).splitlines()
+def _files_git_has() -> tuple[str, ...]:
+    """Every path in the index, which is the repository as it is about to be committed."""
+    listed = subprocess.run(
+        # `git` from the PATH the developer and CI both have, like every other call here.
+        ["git", "ls-files", "--cached", "-z"],  # noqa: S607
+        cwd=repo_root(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return tuple(name for name in listed.stdout.split("\0") if name)
+
+
+def _recipe_body(name: str, *, text: str | None = None) -> str:
+    """One `just` recipe's body, from its opening line to the next unindented one.
+
+    ``text`` is for the synthetic controls, which drive the derivation below over a justfile they
+    wrote rather than over this one.
+    """
+    lines = (read(Path("justfile")) if text is None else text).splitlines()
     opener = next(
         index
         for index, line in enumerate(lines)
@@ -784,30 +815,168 @@ def _recipe_body(name: str) -> str:
     return "\n".join(body)
 
 
-def _dependencies_of(name: str) -> list[str]:
-    """The recipes `just` runs before ``name``, in the order it runs them."""
-    for line in read(Path("justfile")).splitlines():
-        if line.startswith(f"{name}:"):
-            return line.partition(":")[2].split()
+def _dependencies_of(name: str, *, text: str | None = None) -> list[str]:
+    """The recipes `just` runs before ``name``, in the order it runs them.
+
+    THE OPENER MAY CARRY PARAMETERS BEFORE THE COLON. The first version matched `f"{name}:"` and
+    so RAISED for `e2e-only pattern:` rather than answering `[]`, which is fine while every caller
+    names a recipe by hand and wrong the moment a caller asks this of every recipe declared.
+    """
+    import re
+
+    opener = re.compile(rf"^{re.escape(name)}(?:\s+[^:]*)?:(.*)$")
+    for line in (read(Path("justfile")) if text is None else text).splitlines():
+        found = opener.match(line)
+        if found is not None:
+            return found.group(1).split()
     raise AssertionError(f"the justfile declares no recipe named {name}")
 
 
-def _recipe_names() -> frozenset[str]:
+def _recipe_names(*, text: str | None = None) -> frozenset[str]:
     """Every recipe the justfile declares, read from its own declarations.
 
-    A recipe opens at column zero and its name is followed by `:` or a parameter. Read rather than
-    listed, because the point of crossing a unit's `ExecStart` against this is that a second copy of
-    the recipe name is what would rot.
+    A recipe opens at column zero, may carry parameters, and ends its opener with `:`. Read rather
+    than listed, because the point of crossing a unit's `ExecStart` against this is that a second
+    copy of the recipe name is what would rot.
+
+    TWO CORRECTIONS, both of which a caller asking this for EVERY recipe needs and a caller
+    checking one name did not. A `[private]` recipe is still a recipe and `just` still runs it: the
+    leading underscore was excluded, so the deployed-host refusal was not in this set. And
+    `members := "..."` was IN it, because the name is followed by a space, so a variable
+    declaration was answered as a recipe by every reader that took its word for it.
     """
     import re
 
     found = {
         match.group(1)
-        for line in read(Path("justfile")).splitlines()
-        if (match := re.match(r"^([a-z][a-z0-9-]*)(?:\s|:)", line))
+        for line in (read(Path("justfile")) if text is None else text).splitlines()
+        if (match := re.match(r"^(_?[a-z][a-z0-9-]*)(?:\s+[^:]*)?:(?!=)", line))
     }
     assert found, "no recipe was read out of the justfile, so this crossing is vacuous"
     return frozenset(found)
+
+
+def _statements_of(body: str) -> str:
+    """A recipe body with its comment lines and its shebang removed.
+
+    A comment inside a body NAMES the recipes and the files it is explaining rather than reaching
+    them, and the readings below are about what a recipe reaches.
+    """
+    return "\n".join(line for line in body.splitlines() if not line.strip().startswith("#"))
+
+
+def _seed_artifacts() -> frozenset[str]:
+    """Every file in the repository that IS seed data, which is every tracked SQL file.
+
+    The schema is Alembic's, so SQL in this tree means hand-written rows rather than a migration.
+    Read from the index rather than listed, because the defect a list cannot catch is a SECOND seed
+    file arriving with a recipe of its own and no refusal.
+    """
+    return frozenset(name for name in _files_git_has() if name.endswith(".sql"))
+
+
+def _recipes_invoked_in(body: str) -> frozenset[str]:
+    """Every recipe a body runs as a nested `just` invocation.
+
+    A QUOTED SPAN IS DATA RATHER THAN A COMMAND, and here that distinction decides the answer: the
+    deployed-host refusal NAMES three recipes in the message it prints, so a reading over the whole
+    line made the refusal a caller of the recipe that carries it.
+    """
+    import re
+
+    commands = "\n".join(
+        re.sub(r"\"[^\"]*\"|'[^']*'", "", line) for line in _statements_of(body).splitlines()
+    )
+    return frozenset(re.findall(r"(?<![\w-])just\s+([a-z][a-z0-9-]*)", commands))
+
+
+def _recipes_reaching_seed_data(*, text: str | None = None) -> frozenset[str]:
+    """Every recipe that can put seed data in a database, DERIVED rather than listed.
+
+    Two ways to reach it, and both are members: a body that names seed data, and a recipe that runs
+    one that does, whether as a nested `just` invocation or as a dependency.
+
+    The second is not a courtesy. `just` runs a recipe's dependencies and then its body, so a
+    refusal carried only by the inner recipe fires AFTER the outer one has started Postgres and run
+    migrations. That is the ordering that once wrote a throwaway keypair onto a host and refused
+    afterwards.
+    """
+    justfile = read(Path("justfile")) if text is None else text
+    artifacts = _seed_artifacts()
+    names = _recipe_names(text=justfile)
+    statements = {name: _statements_of(_recipe_body(name, text=justfile)) for name in names}
+    reaching = {
+        name for name, body in statements.items() if any(artifact in body for artifact in artifacts)
+    }
+    while True:
+        grown = reaching | {
+            name
+            for name in names
+            if reaching
+            & (
+                frozenset(_dependencies_of(name, text=justfile))
+                | _recipes_invoked_in(statements[name])
+            )
+        }
+        if grown == reaching:
+            return frozenset(reaching)
+        reaching = grown
+
+
+def _facts_the_refusal_reads() -> tuple[str, ...]:
+    """The evidence paths the refusal iterates, read from the recipe rather than restated.
+
+    Derived so there is one runtime case per fact. A derived parametrization SHRINKS silently when a
+    member is deleted, which is why the set is also asserted whole.
+    """
+    import re
+
+    stated = re.search(r"for evidence in (.+?); do", _recipe_body(DEPLOYED_HOST_REFUSAL))
+    assert stated is not None, "the refusal no longer iterates a list of facts"
+    return tuple(stated.group(1).split())
+
+
+def _drill_seed_in_a_tree_of_its_own(
+    root: Path, *, evidence: Sequence[str]
+) -> subprocess.CompletedProcess[str]:
+    """Run `just drill-seed` against a copy of the justfile, in a tree that holds nothing.
+
+    NOT IN THE CHECKOUT, and not as caution for its own sake: `docker-compose.yml` declares the
+    project `syncr`, so a run here reaches whichever `syncr` Postgres is up on the machine and
+    writes the seed into it. That is the defect, executed.
+
+    The tree gets the justfile, the seed file the recipe redirects, the evidence files the case is
+    about, and a `docker` that records being reached.
+    """
+    assert shutil.which("just") is not None, (
+        "`just` is not on PATH, and it is what CI and the hooks run every gate through"
+    )
+    (root / "justfile").write_bytes((repo_root() / "justfile").read_bytes())
+    seed = root / "deployments" / "drill" / "seed-local.sql"
+    seed.parent.mkdir(parents=True)
+    seed.write_bytes((repo_root() / "deployments" / "drill" / "seed-local.sql").read_bytes())
+    for fact in evidence:
+        (root / fact).parent.mkdir(parents=True, exist_ok=True)
+        (root / fact).write_text("", encoding="utf-8")
+
+    stub = root / "bin" / "docker"
+    stub.parent.mkdir()
+    stub.write_text(RECORDING_DOCKER, encoding="utf-8")
+    stub.chmod(0o755)
+
+    return subprocess.run(
+        # `just` from the PATH the developer and CI both have, like every other call here.
+        ["just", "drill-seed"],  # noqa: S607
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={
+            **os.environ,
+            "PATH": f"{stub.parent}:{os.environ['PATH']}",
+            "SYNCR_DOCKER_LOG": str(root / DOCKER_LOG),
+        },
+    )
 
 
 class TheDestructiveTeardown:
@@ -1382,19 +1551,6 @@ def _lines_mentioning(fragment: str, *, root: Path | None = None) -> list[tuple[
     return found
 
 
-def _files_git_has() -> tuple[str, ...]:
-    """Every path in the index, which is the repository as it is about to be committed."""
-    listed = subprocess.run(
-        # `git` from the PATH the developer and CI both have, like every other call here.
-        ["git", "ls-files", "--cached", "-z"],  # noqa: S607
-        cwd=repo_root(),
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return tuple(name for name in listed.stdout.split("\0") if name)
-
-
 def _inside_dev_reset(path: str, number: int) -> bool:
     """Whether this line is inside the one recipe allowed to destroy a project someone holds."""
     return _recipe_holding(path, number) == TheDestructiveTeardown.ALLOWED_RECIPE
@@ -1663,3 +1819,166 @@ def _first_definition(document: str, variable: str) -> int:
         if variable in documented and sourcing.search(line):
             return number
     return len(document.splitlines()) + 1
+
+
+class TestEveryRecipeThatSeedsRefusesADeployedHost:
+    """A recipe that writes seed data refuses a deployed host, and the SET of them is derived.
+
+    `drill-seed` composes `docker-compose.yml` alone, that file declares the project `syncr`, and on
+    a deployed host `syncr` is the live stack. So the recipe whose own comment calls a compose route
+    reaching the wrong database "the most expensive hazard in this repository" WAS that route, and
+    nothing refused: `just drill-seed` on a host writes invented tenants, weeks and outcomes into
+    real plan history, and `just drill-local` step 3 calls it.
+
+    THE RULE IS STATED OVER A DERIVED SET RATHER THAN OVER A LIST, because the defect a list cannot
+    catch is a forgotten member: a second seeding recipe added beside the two that exist.
+
+    The nine `seed-*` fixtures are not in the set and must not be. They declare fixtures over the
+    HTTP API of a stack that `e2e/docker-compose.e2e.yml` gives a project and a published port of
+    its own, and the deployed stack publishes no host port at all, which `just ports-check` asserts.
+
+    THIS CLASS SITS BELOW THE READERS IT USES rather than beside its siblings, because two of its
+    parametrizations are derived and a decorator is evaluated when the class is created.
+    """
+
+    def test_the_seed_data_the_repository_holds(self) -> None:
+        """The positive control: an empty artifact set makes every reading below vacuous."""
+        assert _seed_artifacts() == {"deployments/drill/seed-local.sql"}, (
+            "a second hand-written seed arrived, so whichever recipe loads it is a member of the "
+            "rule below and this figure is where that is acknowledged"
+        )
+
+    def test_the_recipes_that_reach_it(self) -> None:
+        """The derived set, stated whole so a member that stops being derived is visible.
+
+        A parametrization derived from this set SHRINKS silently: removing `just drill-seed` from
+        `drill-local`'s body would drop that recipe's case rather than redden it.
+        """
+        assert _recipes_reaching_seed_data() == {"drill-seed", "drill-local"}
+
+    @pytest.mark.parametrize("recipe", sorted(_recipes_reaching_seed_data()))
+    def test_it_refuses_before_any_other_dependency(self, recipe: str) -> None:
+        """A DEPENDENCY, AND THE FIRST ONE. Two claims, and the second is the one that was learned.
+
+        `just` runs dependencies left to right, and the refusal was once the first STATEMENT of
+        `drill-local`'s body: a run on a host wrote a throwaway keypair into `deployments/secrets`
+        and only then refused.
+        """
+        dependencies = _dependencies_of(recipe)
+
+        assert DEPLOYED_HOST_REFUSAL in dependencies, (
+            f"`just {recipe}` reaches seed data and nothing stops it writing that seed into a "
+            "deployment's own database"
+        )
+        assert dependencies.index(DEPLOYED_HOST_REFUSAL) == 0, (
+            f"`just` runs dependencies left to right, so {dependencies} lets {dependencies[0]} run "
+            "on the host this recipe is about to refuse"
+        )
+
+    def test_the_project_the_seeder_writes_into_is_one_that_holds_something(self) -> None:
+        """THE PREMISE THE WHOLE RULE RESTS ON, resolved from the recipe rather than argued.
+
+        If this ever resolves to a project holding nothing anyone keeps, the refusal is unnecessary
+        and the rule above wants re-deriving rather than keeping.
+        """
+        project = _project_named_by(
+            _compose_files_in(_statements_of(_recipe_body("drill-seed")), _justfile_variables())
+        )
+
+        assert project in _protected_projects(), (
+            f"`just drill-seed` writes into the project {project}, and the refusal it carries is "
+            "justified by that project being a deployment's own"
+        )
+
+    def test_the_refusal_reads_both_facts_a_workstation_does_not_have(self) -> None:
+        """The list the runtime cases are derived from, asserted whole for the same reason."""
+        assert _facts_the_refusal_reads() == (
+            "deployments/digests.env",
+            "deployments/secrets/backup-recipient.asc",
+        )
+
+    def test_the_shared_refusal_states_the_hazard_of_each_caller(self) -> None:
+        """One message, two callers, two different things that would happen on the host.
+
+        A reason stated for the drill alone would leave an operator reading about a dump they never
+        asked for while the thing they ran writes rows.
+        """
+        refusal = _recipe_body(DEPLOYED_HOST_REFUSAL)
+
+        assert "dump the live database under a throwaway" in refusal
+        assert "invented rows into that same live database" in refusal
+
+    @pytest.mark.parametrize("fact", _facts_the_refusal_reads())
+    def test_it_refuses_at_runtime_and_reaches_no_container(
+        self, fact: str, tmp_path: Path
+    ) -> None:
+        """THE DELETION PROOF, run rather than read: `just drill-seed` on a simulated host.
+
+        The exit status alone proves nothing here, because the recipe fails in a tree with no
+        compose file whether or not it refuses. What proves it is that `docker` was never reached,
+        which is the acceptance in its own words: before writing anything and before starting
+        anything.
+        """
+        done = _drill_seed_in_a_tree_of_its_own(tmp_path, evidence=(fact,))
+        reached = tmp_path / DOCKER_LOG
+
+        assert done.returncode != 0, done.stdout
+        assert f"this host is a deployment ({fact} exists)" in done.stderr
+        assert not reached.exists(), (
+            f"the recipe reached docker before refusing: {reached.read_text(encoding='utf-8')}"
+        )
+
+    def test_it_does_not_refuse_a_workstation(self, tmp_path: Path) -> None:
+        """THE OTHER DIRECTION, and the only case that can see a refusal that always fires.
+
+        A guard neutralized by making its condition true refuses everything and passes every case
+        above. The two facts are what a workstation does not have, so a tree without them runs.
+        """
+        done = _drill_seed_in_a_tree_of_its_own(tmp_path, evidence=())
+
+        assert done.returncode == 0, done.stderr
+        assert "this host is a deployment" not in done.stderr
+        assert "compose" in (tmp_path / DOCKER_LOG).read_text(encoding="utf-8"), (
+            "the recipe refused a tree holding neither fact, so it refuses a workstation too"
+        )
+
+    def test_the_reading_follows_a_recipe_that_only_calls_the_seeder(self) -> None:
+        """The derivation's own controls, over a justfile the case wrote.
+
+        Four recipes and three arms: naming the seed, invoking a recipe that does, depending on one,
+        and MENTIONING one in a comment, which reaches nothing and must not be a member.
+
+        The fifth prints a recipe name in a message, which is what the deployed-host refusal itself
+        does three times over: a reading that took the whole line made the refusal a caller of the
+        recipe that carries it, so the derived set held it and its own case then failed.
+        """
+        justfile = (
+            "loads:\n"
+            "    psql -f deployments/drill/seed-local.sql\n"
+            "calls-it:\n"
+            "    just loads\n"
+            "depends-on-it: loads\n"
+            "    echo hello\n"
+            "mentions-it:\n"
+            "    # just loads, one day\n"
+            "    echo hello\n"
+            "prints-it:\n"
+            '    echo "run `just loads` instead" >&2\n'
+        )
+
+        assert _recipes_reaching_seed_data(text=justfile) == {
+            "loads",
+            "calls-it",
+            "depends-on-it",
+        }
+
+    def test_the_recipe_reading_sees_a_private_recipe_and_not_a_variable(self) -> None:
+        """Both corrections a rule over EVERY recipe needed, and neither was visible before."""
+        names = _recipe_names()
+
+        assert DEPLOYED_HOST_REFUSAL in names, "a `[private]` recipe is one `just` still runs"
+        assert "members" not in names, "a `name := value` declaration is not a recipe"
+
+    def test_the_dependency_reading_answers_for_a_recipe_with_a_parameter(self) -> None:
+        """`e2e-only pattern:` raised rather than answering, and the set covers every recipe."""
+        assert _dependencies_of("e2e-only") == []
