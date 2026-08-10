@@ -385,6 +385,7 @@ def test_a_feed_cannot_become_the_write_target_and_the_422_names_the_provider(
     detail = response.json()["detail"]
     assert f"is a {ICS} source" in detail
     assert "no API to write through" in detail
+    assert "still contributes its anchors" in detail
     # And the source is untouched: it still contributes its anchors, with no projection bound.
     still = http.get(f"{SOURCES}/{created['id']}", headers=signed_in).json()
     assert still["role"] == ANCHOR_SOURCE
