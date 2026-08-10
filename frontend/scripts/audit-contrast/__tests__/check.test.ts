@@ -406,6 +406,25 @@ describe("an excuse on an ink-filled surface", () => {
     ).not.toContain("text-below-the-floor-on-an-ink-fill");
   });
 
+  /* AN EXCUSED CELL LEAVES THE ENFORCED SET, so the two printed cell figures move with it. Without this the
+   * exclusion could be dropped and both figures would overstate what the gate enforces, with nothing red. */
+  it("leaves the enforced set, so the cell figures the gate prints move with it", async () => {
+    const ledger = stating();
+    const excuse = { [SUB_FLOOR.ink]: "a structural guard stronger than a ratio covers it" };
+    const before = await checkContrast({ ledger, ledgerFile: await committed(ledger) });
+    const after = await checkContrast({
+      ledger,
+      ledgerFile: await committed(ledger),
+      excusedOnAnInkFill: excuse,
+    });
+
+    expect(before.notes.find((one) => one.includes("covering"))).toContain("covering 1 of");
+    expect(after.notes.find((one) => one.includes("covering"))).toContain("covering 0 of");
+    expect(figureIn(after.notes, "recorded and not enforced")).toBe(
+      figureIn(before.notes, "recorded and not enforced") + 1,
+    );
+  });
+
   it("is reported when no rule states it any more, so it cannot outlive its case", async () => {
     const checks = await checksOf(healthy(), undefined, {
       excusedOnAnInkFill: { "--gone": "a reason for a pairing no rule states" },
@@ -471,6 +490,42 @@ describe("the stated pairings that fall below their own floor", () => {
     expect(note).toContain("--rule-strong");
     expect(note).toContain("2.65");
     expect(note).toContain(border.where);
+  });
+
+  /* TWO SUB-FLOOR PAIRINGS, because one cannot tell a generated count from the literal `1`. The shipped tree has
+   * exactly one, and a fixture that also carries exactly one leaves the count and the constant indistinguishable
+   * in the suite and at the gate alike. Any figure the gate prints needs a fixture with at least two members. */
+  it("counts both when two stated pairings fall below their own floor, and names both rules", async () => {
+    const border: Composed = {
+      where: "probe.css .divider { border-top-color }",
+      ink: "--rule-strong",
+      surface: INK_FILLED[0],
+      floor: INDICATOR_FLOOR,
+    };
+    const track: Composed = {
+      where: "probe.css .track { border-left-color }",
+      ink: "--rule-control",
+      surface: INK_FILLED[1],
+      floor: TEXT_FLOOR,
+    };
+    const ledger = healthy([], [STATED, border, track]);
+    const outcome = await checkContrast({ ledger, ledgerFile: await committed(ledger) });
+    const note = outcome.notes.find((one) => one.includes("fall below their own floor")) ?? "";
+
+    expect(figureIn(outcome.notes, "fall below their own floor")).toBe(2);
+    expect(note).toContain(border.where);
+    expect(note).toContain(track.where);
+  });
+
+  /* The empty branch has wording of its own, so it is asserted rather than inferred from a leading zero: both
+   * branches lead with the count, which leaves the figure alone unable to tell them apart. */
+  it("says so in its own words when there is nothing to report", async () => {
+    const ledger = healthy();
+    const { notes } = await checkContrast({ ledger, ledgerFile: await committed(ledger) });
+    const note = notes.find((one) => one.includes("fall below their own floor")) ?? "";
+
+    expect(note).toContain("over every floor and not only the text one");
+    expect(note).not.toContain(":");
   });
 });
 
