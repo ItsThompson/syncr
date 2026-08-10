@@ -3,8 +3,8 @@
 The unit suites prove the parser and the sync-state arithmetic. This proves what only a real
 request and a real database can:
 
-- that the two role rules reach the wire as the right statuses, 409 for a second write target
-  and 422 for a horizon on an anchor source;
+- that the role rules reach the wire as the right statuses, 409 for a second write target, 422 for
+  a horizon on an anchor source, and 422 for a calendar the plan can never be written to;
 - that designating an active anchor source as the write target is refused with a reason, which
   is the rule that keeps syncr from reading back its own projection;
 - that a `webcal` address is normalized on the way in and read back as what syncr fetches;
@@ -353,14 +353,16 @@ def test_an_excluded_source_reports_zero_anchors_and_an_excluded_state(
 
 
 # --------------------------------------------------------------------------------
-# The two role rules
+# The role rules
 # --------------------------------------------------------------------------------
 
 
-def test_a_never_synced_source_can_become_the_write_target(
+def test_a_never_synced_google_source_can_become_the_write_target(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
-    created = add_source(http, signed_in, external_id="https://example.ac.uk/plan.ics")
+    created = add_source(
+        http, signed_in, external_id="plan@group.calendar.google.com", provider=GOOGLE
+    )
 
     designated = http.put(f"{SOURCES}/{created['id']}/role", headers=signed_in)
 
@@ -368,6 +370,25 @@ def test_a_never_synced_source_can_become_the_write_target(
     assert designated.json()["role"] == WRITE_TARGET
     # A write target always carries a projection bound, defaulted here.
     assert designated.json()["horizonDays"] == HORIZON_DAYS_DEFAULT
+
+
+def test_a_feed_cannot_become_the_write_target_and_the_422_names_the_provider(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    # The plan is written through a calendar API and a feed has none, so this is refused where the
+    # role is assigned rather than discovered by a projection that can never write.
+    created = add_source(http, signed_in, external_id="https://example.ac.uk/plan.ics")
+
+    response = http.put(f"{SOURCES}/{created['id']}/role", headers=signed_in)
+
+    assert response.status_code == ValidationFailed.status, response.text
+    detail = response.json()["detail"]
+    assert f"is a {ICS} source" in detail
+    assert "no API to write through" in detail
+    # And the source is untouched: it still contributes its anchors, with no projection bound.
+    still = http.get(f"{SOURCES}/{created['id']}", headers=signed_in).json()
+    assert still["role"] == ANCHOR_SOURCE
+    assert still["horizonDays"] is None
 
 
 def test_an_active_anchor_source_cannot_become_the_write_target(
@@ -394,9 +415,13 @@ def test_a_second_write_target_is_a_409_naming_the_one_that_holds_the_role(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
     first = add_source(
-        http, signed_in, external_id="https://example.ac.uk/plan.ics", display_name="syncr plan"
+        http,
+        signed_in,
+        external_id="plan@group.calendar.google.com",
+        display_name="syncr plan",
+        provider=GOOGLE,
     )
-    second = add_source(http, signed_in, external_id="https://example.ac.uk/other.ics")
+    second = add_source(http, signed_in, external_id="other@example.org", provider=GOOGLE)
     assert http.put(f"{SOURCES}/{first['id']}/role", headers=signed_in).status_code == 200
 
     response = http.put(f"{SOURCES}/{second['id']}/role", headers=signed_in)
@@ -410,7 +435,9 @@ def test_designating_the_source_that_already_holds_the_role_changes_nothing(
 ) -> None:
     # Idempotent by identity rather than by an idempotency key: PUT names a state, so
     # re-asserting it must not be the 409 a SECOND target is.
-    created = add_source(http, signed_in, external_id="https://example.ac.uk/plan.ics")
+    created = add_source(
+        http, signed_in, external_id="plan@group.calendar.google.com", provider=GOOGLE
+    )
     assert http.put(f"{SOURCES}/{created['id']}/role", headers=signed_in).status_code == 200
 
     again = http.put(f"{SOURCES}/{created['id']}/role", headers=signed_in)
@@ -427,7 +454,9 @@ def test_designating_the_source_that_already_holds_the_role_changes_nothing(
 def test_the_horizon_is_set_on_the_write_target(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
-    created = add_source(http, signed_in, external_id="https://example.ac.uk/plan.ics")
+    created = add_source(
+        http, signed_in, external_id="plan@group.calendar.google.com", provider=GOOGLE
+    )
     assert http.put(f"{SOURCES}/{created['id']}/role", headers=signed_in).status_code == 200
 
     changed = http.patch(
@@ -455,7 +484,9 @@ def test_a_horizon_on_an_anchor_source_is_a_422(
 def test_a_horizon_outside_the_projection_range_is_a_422(
     http: TestClient, signed_in: dict[str, str], horizon_days: int
 ) -> None:
-    created = add_source(http, signed_in, external_id="https://example.ac.uk/plan.ics")
+    created = add_source(
+        http, signed_in, external_id="plan@group.calendar.google.com", provider=GOOGLE
+    )
     assert http.put(f"{SOURCES}/{created['id']}/role", headers=signed_in).status_code == 200
 
     response = http.patch(
