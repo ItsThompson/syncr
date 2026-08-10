@@ -92,17 +92,25 @@ def test_the_walk_finds_a_construction_call_and_ignores_other_calls(source_root:
 
 def test_every_declared_site_states_a_guard() -> None:
     # A row whose guard is blank would satisfy both directions above while saying nothing, which is
-    # the failure mode of a table that is only ever read by people.
-    assert all(site.guard for site in SITES)
-    assert all(site.reads for site in SITES)
+    # the failure mode of a table that is only ever read by people. Named rather than counted: a
+    # bare `all(...)` reddens without telling a reader which row went quiet.
+    silent = [(site.module, site.function, site.constructor) for site in SITES if not site.guard]
+    unread = [(site.module, site.function, site.constructor) for site in SITES if not site.reads]
+
+    assert silent == [], f"{silent} state no guard, so the row answers nothing."
+    assert unread == [], f"{unread} state nothing they read, so there is no value to answer for."
 
 
 def test_every_guard_is_one_of_the_named_mechanisms() -> None:
     # Non-blank is not enough: prose passes that. A guard has to name a mechanism from the closed
     # vocabulary, or a row can answer "looks fine" and read as though it answered something.
-    stated = {site.guard for site in SITES}
+    unknown = {
+        (site.module, site.function, site.constructor): site.guard
+        for site in SITES
+        if site.guard not in GUARDS
+    }
 
-    assert stated <= GUARDS, f"{sorted(stated - GUARDS)} are not terms this table defines."
+    assert unknown == {}, f"{unknown} name no mechanism this table defines."
 
 
 # --------------------------------------------------------------------------------
