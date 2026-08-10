@@ -18,6 +18,7 @@ import {
   INK_FILLED,
   ratioOf,
   TEXT_FLOOR,
+  textInks,
   textOnAnInkFill,
   type Composed,
   type Ledger,
@@ -113,6 +114,13 @@ async function checksOf(ledger: Ledger, text?: string): Promise<string[]> {
   return outcome.findings.map((finding) => finding.check);
 }
 
+/** The number a note leads with, so a printed figure can be crossed against the ledger it came from. */
+function figureIn(notes: readonly string[], phrase: string): number {
+  const note = notes.find((one) => one.includes(phrase));
+  if (note === undefined) throw new Error(`no note mentions ${phrase}`);
+  return Number.parseInt(note, 10);
+}
+
 describe("the contrast audit", () => {
   it("passes a ledger where every rule it states is satisfied", async () => {
     expect(await checksOf(healthy())).toEqual([]);
@@ -163,7 +171,35 @@ describe("the contrast audit", () => {
     const file = await committed(missing);
     const outcome = await checkContrast({ ledger: missing, ledgerFile: file });
 
-    expect(outcome.findings.map((one) => one.message).join(" ")).toContain("--ink");
+    /* The list, not merely a mention of the ink: a finding that named every ink would contain this one too
+     * and would point at nothing. */
+    expect(outcome.findings.find((one) => one.check === "incomplete-matrix")?.message).toMatch(
+      /Short rows: --ink$/,
+    );
+  });
+
+  it("refuses a ledger that has not been written yet, so a missing document is not a clean run", async () => {
+    const ledger = healthy();
+    const absent = path.join(tmpdir(), "syncr-contrast-absent", "contrast-ledger.md");
+    const outcome = await checkContrast({ ledger, ledgerFile: absent });
+
+    expect(outcome.findings.map((one) => one.check)).toEqual(["ledger-missing"]);
+  });
+
+  /* THE NOTES ARE DERIVED, AND THAT IS ASSERTED. Every figure the gate prints is computed from the ledger it
+   * just read, so a count restated by hand would drift from the thing it describes. A printed figure nothing
+   * crosses is exactly the shape this repository has shipped wrong before. */
+  it("prints figures computed from the ledger it read, so a count cannot drift from its own subject", async () => {
+    const ledger = healthy();
+    const { notes } = await checkContrast({ ledger, ledgerFile: await committed(ledger) });
+
+    expect(figureIn(notes, "stated pairing(s) held to")).toBe(textOnAnInkFill(ledger).length);
+    expect(figureIn(notes, "recorded and not enforced")).toBe(
+      textInks(ledger).length * INK_FILLED.length - textOnAnInkFill(ledger).length,
+    );
+    expect(figureIn(notes, "do not clear the ink's floor")).toBe(
+      ledger.pairs.filter((one) => !one.clears).length,
+    );
   });
 
   /* THE ENFORCEMENT SET IS DERIVED, and this is the plant the review used to show a list of three could not hold
@@ -230,6 +266,24 @@ describe("the text floor on an ink-filled surface", () => {
     });
 
     expect(outcome.findings[0]?.message).toContain(STATED.where);
+  });
+
+  /* A stated pairing with no cell in the matrix is a pairing nobody has measured, and the finding says so in
+   * those words rather than printing a ratio it does not have. */
+  it("says a stated pairing measures nothing when the matrix carries no cell for it", async () => {
+    const ledger = healthy();
+    const withoutTheCell: Ledger = {
+      ...ledger,
+      pairs: ledger.pairs.filter((one) => !(one.ink === INVERSE && one.surface === STATED.surface)),
+    };
+    const outcome = await checkContrast({
+      ledger: withoutTheCell,
+      ledgerFile: await committed(withoutTheCell),
+    });
+
+    expect(
+      outcome.findings.find((one) => one.check === "text-below-the-floor-on-an-ink-fill")?.message,
+    ).toContain(`${INVERSE} measures nothing`);
   });
 
   /* THE BOUNDARY, ASSERTED RATHER THAN LEFT IMPLICIT. An ink that fails on an ink fill and that no rule puts
