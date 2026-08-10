@@ -243,8 +243,8 @@ describe("the contrast audit", () => {
     expect(figureIn(notes, "recorded and not enforced")).toBe(cells - 1);
   });
 
-  /* THE ENFORCEMENT SET IS DERIVED, and this is the plant the review used to show a list of three could not hold
-   * the criterion: a new ink written as text, failing on both paper surfaces, shipped green over 506 pairs. */
+  /* THE ENFORCEMENT SET IS DERIVED, and this is what that buys: an ink nothing in the gate names, written as text
+   * and failing on both paper surfaces, is still held to the floor. A hand-written list cannot do this. */
   it("enforces the text floor on an ink it was never told about", async () => {
     const ledger = healthy([
       pair("--planted-label-ink", "--paper", 2.45, TEXT_FLOOR),

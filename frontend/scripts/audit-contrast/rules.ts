@@ -10,11 +10,11 @@
  * actually checks is that the construction happened: that the palette was read, that every token in it resolved to
  * a colour, and that the committed document is the one this run produces.
  *
- * TEXT CLEARS ITS FLOOR ON EVERY PAPER SURFACE, over a set DERIVED FROM THE LEDGER rather than named here. An
- * earlier version enforced this for three inks it listed, on two surfaces, and a planted label ink measuring
- * 2.45:1 on `--paper` passed over 506 pairs: the rule is "every surface it can appear on", and a list of three is
- * not every ink. The set is every ink the ledger holds to the TEXT floor, which is every ink a `color` declaration
- * writes, so an ink the product starts writing is enforced the day it is written.
+ * TEXT CLEARS ITS FLOOR ON EVERY PAPER SURFACE, over a set DERIVED FROM THE LEDGER rather than named here. The
+ * design language's rule is "every surface it can appear on", and a hand-written list of inks cannot express it: an
+ * ink the product starts writing would be enforced only once somebody remembered to add it. The set is every ink
+ * the ledger holds to the TEXT floor, which is every ink a `color` declaration writes, so an ink is enforced the
+ * day it is written.
  *
  * TEXT CLEARS ITS FLOOR ON AN INK-FILLED SURFACE TOO, over the pairings the SHEETS STATE rather than over the
  * whole column. Paper needs no reachability argument, because every label can land on it. An ink fill does: the
