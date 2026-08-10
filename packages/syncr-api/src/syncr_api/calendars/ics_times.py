@@ -45,7 +45,10 @@ if TYPE_CHECKING:
 
 ONE_DAY = timedelta(days=1)
 
-_UTC_ZONE: Final[ZoneId] = "UTC"
+# The zone identifier a value with a ``Z`` suffix resolves against. Public because a second reader
+# of the same mapping lives in this package: ``ics_recurrence`` rewrites a UTC ``UNTIL`` into the
+# series' clock and needs the same spelling.
+UTC_ZONE: Final[ZoneId] = "UTC"
 
 
 def zone_for(moment: IcsTime, on: date, profile: ZoneProfile) -> ZoneId:
@@ -59,7 +62,7 @@ def zone_for(moment: IcsTime, on: date, profile: ZoneProfile) -> ZoneId:
     resolves each occurrence against the zone active on that occurrence's own date.
     """
     if moment.kind is ZoneKind.UTC:
-        return _UTC_ZONE
+        return UTC_ZONE
     if moment.kind is ZoneKind.NAMED and moment.zone is not None:
         return moment.zone
     return active_zone(profile, on)

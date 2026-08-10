@@ -34,7 +34,7 @@ from zoneinfo import ZoneInfo
 from dateutil.rrule import rruleset, rrulestr
 
 from syncr_api.calendars.ics_errors import IcsRejection, UnparseableRecurrence
-from syncr_api.calendars.ics_times import as_wall, resolve
+from syncr_api.calendars.ics_times import UTC_ZONE, as_wall, resolve
 from syncr_api.calendars.ics_values import MAX_MAGNITUDE_DIGITS, ZoneKind
 
 if TYPE_CHECKING:
@@ -153,8 +153,8 @@ def occurrences(
     kept: list[datetime] = []
     candidates = _candidates(
         start,
-        recurrence.rule_text,
-        _additions(recurrence.extra_dates, start, window=window, profile=profile),
+        rule_text=recurrence.rule_text,
+        additions=_additions(recurrence.extra_dates, start, window=window, profile=profile),
     )
     for _step in range(limit):
         # `next` is called under the bound rather than the loop being driven by the iterator,
@@ -194,7 +194,7 @@ def occurrences(
 
 
 def _candidates(
-    start: IcsTime, rule_text: str | None, additions: tuple[datetime, ...]
+    start: IcsTime, *, rule_text: str | None, additions: tuple[datetime, ...]
 ) -> Iterator[datetime]:
     """Every wall datetime the rule and the extra dates produce, in order.
 
@@ -217,9 +217,8 @@ def _additions(
 
     An ``RDATE`` carrying a ``TZID`` or a ``Z`` suffix states an INSTANT, and expansion runs in the
     series' own wall clock, so each one is resolved in the zone it names and then restated in the
-    series'. Merging its wall time as it stands reads a New York value on a London series as a
-    London value: measured five hours out. The sibling ``EXDATE`` path resolves each value in its
-    own zone already, which is why this is a gap rather than a design.
+    series'. Merging its wall time as it stands would read a New York value on a London series as a
+    London value. The sibling ``EXDATE`` path resolves each value in its own zone already.
 
     A floating ``RDATE`` names no zone of its own, so it is already on the clock that resolves the
     series and is merged unchanged rather than sent through the profile and back.
@@ -589,10 +588,10 @@ def _wall_until(rule_text: str, start: IcsTime) -> str:
 
 def _as_series_wall(until: str, start: IcsTime) -> str:
     """A UTC ``UNTIL`` value, read as wall time in the zone the series recurs in."""
-    stamped = datetime.strptime(until, f"{_WALL_FORMAT}Z").replace(tzinfo=ZoneInfo("UTC"))
+    stamped = datetime.strptime(until, f"{_WALL_FORMAT}Z").replace(tzinfo=ZoneInfo(UTC_ZONE))
     if start.kind is ZoneKind.UTC:
         return stamped.strftime(_WALL_FORMAT)
-    zone = start.zone or "UTC"
+    zone = start.zone or UTC_ZONE
     return stamped.astimezone(ZoneInfo(zone)).strftime(_WALL_FORMAT)
 
 
