@@ -45,12 +45,16 @@ FEED_STALE: Final = "calendar.feed-stale"
 
 SETTINGS_SCREEN: Final = "settings"
 
-# What survives a feed that cannot be read. Both are true and both bear on what a reader does next:
-# the occupancy already read is still in the plan, and the plan still reaches the calendar.
+# What survives a feed that cannot be read. Both are unconditionally true, which is the property
+# that matters: this module reads the failing feed and its anchors and nothing else, so a sentence
+# whose truth depended on the write target's health would be a promise it cannot check. The plan
+# reaching the calendar is deliberately NOT claimed here for that reason.
 ANCHORS_RETAINED: Final = (
     "The commitments this feed already contributed, which are retained and marked possibly stale"
 )
-SOLVING_STILL_WORKS: Final = "Solving the week, and writing the plan to your calendar"
+SOLVING_STILL_WORKS: Final = (
+    "Solving the week, which still plans around every commitment already read"
+)
 FEED_STILL_WORKS: Final = (ANCHORS_RETAINED, SOLVING_STILL_WORKS)
 
 # One day, which is how many days a notice naming exactly one of them names.

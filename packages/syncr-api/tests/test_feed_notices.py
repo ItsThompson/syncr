@@ -33,6 +33,7 @@ from syncr_api.calendars.config import (
     SOURCE_STATES,
     STALE_AFTER,
     SYNC_INTERVAL,
+    WRITE_TARGET,
 )
 from syncr_api.calendars.feed_notices import (
     ANCHORS_RETAINED,
@@ -268,6 +269,30 @@ def test_the_panel_is_amber_because_nothing_is_broken() -> None:
     # Amber rather than oxide: the day is complete as far as syncr knew, and what has stopped is
     # learning about changes to it. Oxide is for the plan not reaching the calendar at all.
     assert only(stale_feed_notices([source()], {}, now=NOW)).pigment == AMBER
+
+
+def test_the_panel_offers_no_action_because_a_publishers_outage_has_no_repair() -> None:
+    # A feed that stopped answering is the publisher's to fix, so there is nothing for this reader
+    # to press. A notice must not offer a repair the product cannot perform.
+    assert only(stale_feed_notices([source()], {}, now=NOW)).action is None
+
+
+def test_the_surviving_capabilities_do_not_depend_on_the_write_targets_health() -> None:
+    # This module reads the failing feed and its anchors, and nothing about the calendar the plan is
+    # written to. A stored write target that cannot be written to has no demotion path in this
+    # product, so a sentence claiming the plan still reaches the calendar would promise both a
+    # capability that may not hold and a remedy that answers 409. What it says has to be true
+    # whatever the write target is doing, which is what composing it twice asserts.
+    stale = source()
+    failing_target = source(
+        role=WRITE_TARGET, display_name="syncr plan", sync_state=failed(since=WELL_PAST)
+    )
+
+    alone = only(stale_feed_notices([stale], {}, now=NOW))
+    beside = only(stale_feed_notices([stale, failing_target], {}, now=NOW))
+
+    assert alone.still_works == beside.still_works
+    assert alone.detail == beside.detail
 
 
 def test_the_notice_names_what_survives_from_the_one_list_that_declares_it() -> None:
