@@ -30,6 +30,7 @@ from syncr_api.calendars.schemas import SyncStateResponse
 from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
 from syncr_api.google_account.config import (
     AUTHORIZATION_ENDPOINT,
+    CALLBACK_ROUTE,
     FORCE_CONSENT,
     OFFLINE_ACCESS,
     REQUESTED_SCOPES,
@@ -71,6 +72,7 @@ SOLVE_FAILING = RUNBOOKS / "solve-failing.md"
 DEBOUNCE_TUNING = RUNBOOKS / "debounce-tuning.md"
 GOOGLE_TOKEN_EXPIRED = RUNBOOKS / "google-token-expired.md"
 GOOGLE_OAUTH_VERIFICATION = RUNBOOKS / "google-oauth-verification.md"
+ENV_EXAMPLE = RUNBOOKS.parents[1] / ".env.example"
 SOURCE_STALE = RUNBOOKS / "ics-feed-broken.md"
 HORIZON_NOT_MAINTAINED = RUNBOOKS / "horizon-not-maintained.md"
 
@@ -499,3 +501,18 @@ class TestTheLiveGoogleSuiteProcedure:
 
         assert AUTHORIZATION_ENDPOINT in text
         assert TOKEN_ENDPOINT in text
+
+    def test_it_names_the_callback_route_the_app_actually_serves(self) -> None:
+        """The redirect URI Google matches character for character, taken from the route constant.
+
+        Stated against the route rather than against whatever a machine's own `.env` holds, because
+        an operator following this on another machine has a different `.env`.
+        """
+        assert CALLBACK_ROUTE in read(GOOGLE_OAUTH_VERIFICATION)
+
+    def test_it_tells_the_redirect_uri_apart_from_the_browser_applications_origin(self) -> None:
+        """Two settings, two different origins, and mistaking one for the other wastes a consent."""
+        assert "is not `APP_BASE_URL`" in read(GOOGLE_OAUTH_VERIFICATION)
+        # The assignment rather than the bare name: a name is a substring of every longer name, and
+        # what has to survive is that the example file SETS this one.
+        assert "\nAPP_BASE_URL=" in read(ENV_EXAMPLE), "the example file has to ship the setting"

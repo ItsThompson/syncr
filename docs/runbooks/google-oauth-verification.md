@@ -156,15 +156,22 @@ All four come from the process environment, and nothing loads a dotenv for this 
 
 | Variable | Where it comes from |
 |---|---|
-| `GOOGLE_OAUTH_CLIENT_ID` | the OAuth client in *Credentials* above, already in the repository-root `.env` |
+| `GOOGLE_OAUTH_CLIENT_ID` | the OAuth client in *Credentials* above. Shipped empty in `.env.example`; the real value lives in the repository-root `.env`, which is the layer that supplies it |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | the same |
-| `GOOGLE_OAUTH_REDIRECT_URI` | the same, and one of the three registered strings verbatim |
-| `SYNCR_GOOGLE_LIVE_REFRESH_TOKEN` | the procedure below. Never committed, never a fixture, never printed |
+| `GOOGLE_OAUTH_REDIRECT_URI` | `.env.example` ships the default, `/api/v1/calendar-sources/google/callback` on `localhost:8000`, and the root `.env` may override it. Whatever the layer, the value must appear verbatim in the console's registered list |
+| `SYNCR_GOOGLE_LIVE_REFRESH_TOKEN` | the procedure below. Shipped nowhere, never committed, never a fixture, never printed |
+
+Read the three from the file rather than sourcing it: an env file is data, and `.` would execute it.
 
 ```bash
-set -a; . ../../.env; set +a     # the three client values, from the repository-root secret file
+cd packages/syncr-api
+for v in GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REDIRECT_URI; do
+  export "$v=$(grep -m1 "^$v=" ../../.env | cut -d= -f2-)"
+done
 export SYNCR_GOOGLE_LIVE_REFRESH_TOKEN=     # then paste the value from step 7
 ```
+
+**`GOOGLE_OAUTH_REDIRECT_URI` is not `APP_BASE_URL`, and confusing them wastes a consent.** The redirect URI is the string Google matches character for character and sends the browser back to. `APP_BASE_URL` is where the callback sends the *user* afterwards, the browser application's own origin, and it is read only to build that final redirect. `.env.example` ships them as different origins for that reason. No compose file names `APP_BASE_URL`; it reaches a container through `env_file`, and an empty or whitespace value falls back to `PUBLIC_BASE_URL`.
 
 The token has to be minted against that same client id, by the account that owns `syncr (dev)`, carrying all three scopes. A grant narrower than the three does not skip: it fails, on whichever call it cannot make.
 
