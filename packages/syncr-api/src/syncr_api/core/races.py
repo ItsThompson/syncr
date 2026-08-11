@@ -67,6 +67,11 @@ async def answered_once[ResultT](
 
 
 def refused_index(error: IntegrityError) -> str | None:
-    """The constraint the database blamed for this refusal, or ``None`` if it named none."""
+    """The constraint the database blamed for this refusal, or ``None`` if it named none.
+
+    Public because it is read directly by a test, which is the only thing that can notice the day
+    the driver stops carrying the name: the caller below would just re-raise and every race would
+    answer 500 again, silently. Keep it reachable.
+    """
     named = getattr(getattr(error.orig, "__cause__", None), "constraint_name", None)
     return named if isinstance(named, str) else None
