@@ -354,10 +354,10 @@ class TestContextSwitchCost:
     ) -> None:
         # Clamping the difference of the means leaves each pair's own difference outside the range's
         # reach, so the credibility bound has to be re-driven for this parameter rather than read
-        # off the formula. What holds it is the OTHER bound: a gap at or above the ceiling absorbs
-        # any price, so it is not evidence about one and never reaches here, which leaves a pair's
-        # difference inside the width in both directions. Driven at the gate, from a settled corpus
-        # of the smallest admissible gap, which is where the movement is largest.
+        # off the formula. What holds it is the OTHER bound: the extraction drops a gap above the
+        # ceiling, because a gap that long absorbs any price, so every gap that arrives is inside
+        # the range and a pair's difference cannot exceed its width in either direction. Driven at
+        # the gate, from a settled corpus of the smallest admissible gap, where movement is largest.
         at_the_gate = [0] * THRESHOLD_CONTEXT_SWITCH_COST
         before = fit_context_switch_cost(switch_corpus(across=at_the_gate, baseline=0))
         after = fit_context_switch_cost(switch_corpus(across=[*at_the_gate, outlier], baseline=0))

@@ -33,11 +33,12 @@ from the spread of the per-pair differences with no clamp on them, because the d
 those pairs is what the interval reports and the clamped figure alone has none.
 
 The cost of clamping once is that the range no longer bounds each pair's difference, only their
-mean. That costs nothing while a pair's gap is itself bounded, and it is: a gap at or above the same
-ceiling absorbs any price, so it is not evidence about one and the extraction drops it. A pair's
-difference therefore cannot exceed the width of the range in either direction, and one further pair
-moves a displayed price by no more than the bound in :mod:`syncr_learning.shrinkage`. Handed a gap
-the extraction never yields, this arithmetic would move much further than that bound.
+mean. That costs nothing while a pair's gap is itself bounded, and it is: the extraction drops a gap
+above the same ceiling, because a gap that long absorbs any price and so carries no information
+about one. Every gap that arrives is therefore inside the range, a pair's difference cannot exceed
+its width in either direction, and one further pair moves a displayed price by no more than the
+bound in :mod:`syncr_learning.shrinkage`. Handed a gap the extraction never yields, this arithmetic
+would move much further than that bound.
 
 ## One thing about this parameter is not settled, and here is what would settle it
 
