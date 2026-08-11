@@ -59,8 +59,10 @@ class StoredAreas(AreaRepository):
 
     def __init__(self, rows: list[AreaRecord]) -> None:
         self.rows = list(rows)
+        self.reads = 0
 
     async def list_all(self) -> tuple[AreaRecord, ...]:
+        self.reads += 1
         return tuple(self.rows)
 
 
@@ -115,12 +117,13 @@ def an_area(
     percent: str | None = None,
     floor_hours: str | None = None,
     parent_id: AreaId | None = None,
+    name: str | None = None,
 ) -> AreaRecord:
     return AreaRecord(
         id=area_id,
         tenant_id=uuid4(),
         parent_id=parent_id,
-        name=f"Area {area_id}",
+        name=name if name is not None else f"Area {area_id}",
         pigment_index=0,
         budget_percent=None if percent is None else Decimal(percent),
         floor_hours=None if floor_hours is None else Decimal(floor_hours),
@@ -435,6 +438,41 @@ async def test_an_unreadable_home_zone_is_a_stated_rejection(principal: Principa
 
     with pytest.raises(ValidationFailed, match="IANA"):
         await service.read(principal, ORDINARY_WEEK)
+
+
+# --------------------------------------------------------------------------------
+# The Areas' names
+# --------------------------------------------------------------------------------
+
+
+async def test_the_view_names_every_declared_area_from_the_read_that_divides_them(
+    principal: Principal,
+) -> None:
+    """The allocations carry identifiers and a person reads words, so the words travel too.
+
+    Counted as well as compared: a surface naming an Area pays no read of its own, so a week's gaps
+    and its wedges cannot disagree about which Areas this tenant has.
+    """
+    declared = StoredAreas([an_area(FITNESS, percent="40", name="Fitness"), an_area(CAREER)])
+    service = BudgetService(
+        areas=declared,
+        settings=StoredSettings(principal.tenant_id),
+        overrides=NoTravel(),
+        occupancy=UnplannedWeek(),
+    )
+
+    view = await service.read(principal, ORDINARY_WEEK)
+
+    assert declared.reads == 1
+    assert view.area_names == {FITNESS: "Fitness", CAREER: f"Area {CAREER}"}
+    assert [allocation.area_id for allocation in view.report.allocations] == [FITNESS, CAREER]
+
+
+async def test_a_tenant_who_has_declared_no_area_names_none(principal: Principal) -> None:
+    """An empty mapping rather than an absent one: nothing about the week is unresolved."""
+    view = await build_service(principal).read(principal, ORDINARY_WEEK)
+
+    assert view.area_names == {}
 
 
 # --------------------------------------------------------------------------------

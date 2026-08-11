@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     from syncr_api.offplan.reading import OffPlanReading
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
     from syncr_domain.budgets import BudgetReport
+    from syncr_domain.identifiers import AreaId
     from syncr_domain.intervals import Interval
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import Date, ZoneId, ZoneProfile
@@ -73,6 +74,11 @@ class BudgetView:
     application is answered in. The report needs none of the three beyond the span, and a second
     caller needs all of them: the week view renders the zones and resolves the horizon's local date,
     and a profile read twice in one request is two answers to how long that week was.
+
+    ``area_names`` is the same arrangement over the Areas the report divides. The allocations carry
+    identifiers, because the arithmetic needs nothing else; a caller naming an Area to a person
+    needs the word they declared. Both come off the one read of the rows, so a surface naming an
+    Area and a wedge measuring it cannot disagree about which Areas this tenant has.
     """
 
     period: IsoWeek
@@ -80,6 +86,7 @@ class BudgetView:
     zone_by_date: Mapping[Date, ZoneId]
     home_zone: ZoneId
     report: BudgetReport
+    area_names: Mapping[AreaId, str]
     off_plan: OffPlanReading
 
 
@@ -122,6 +129,7 @@ class BudgetService:
             zone_by_date=active_zone_by_date(iso_week, profile),
             home_zone=profile.home_zone,
             report=report,
+            area_names={area.id: area.name for area in declared},
             off_plan=off_plan_reading(span, held.off_plan),
         )
 
