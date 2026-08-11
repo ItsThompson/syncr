@@ -69,6 +69,11 @@ STAGING_DIR: Final = "/var/backups/syncr"
 # by a file the dump step left behind.
 SCRATCH_DIR: Final = "/var/backups/restore"
 
+# Where a fetched WAL segment waits for a recovery's `restore_command` to copy it. INSIDE the
+# scratch directory, so the clean-out at the start of a drill empties this too and no segment an
+# earlier run staged can satisfy a later one. `ops.fetch` is what empties it.
+WAL_RESTORE_DIR: Final = f"{SCRATCH_DIR}/wal"
+
 # Postgres writes archived segments here through its `archive_command`, and the shipper drains it.
 WAL_STAGING_DIR: Final = "/wal-archive"
 
@@ -100,6 +105,11 @@ WAL_METRIC: Final = "syncr_wal_archive_last_success_timestamp_seconds"
 MANIFEST_SUFFIX: Final = ".manifest.json"
 DUMP_SUFFIX: Final = ".dump"
 ENCRYPTED_SUFFIX: Final = ".gpg"
+
+# What the WAL shipper compresses a segment with before encrypting it. Both suffixes are part of the
+# object name in the bucket, and `ops.naming` is where they are joined: a recovery that guessed
+# either of them would find nothing.
+COMPRESSED_SUFFIX: Final = ".gz"
 
 # How stale a fingerprint may be when the dump step picks it up. Long enough for a slow read on a
 # loaded host, short enough that yesterday's file cannot be uploaded beside today's dump.

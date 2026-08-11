@@ -15,7 +15,7 @@ import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
-from ops.config import DUMP_SUFFIX, ENCRYPTED_SUFFIX, MANIFEST_SUFFIX
+from ops.config import COMPRESSED_SUFFIX, DUMP_SUFFIX, ENCRYPTED_SUFFIX, MANIFEST_SUFFIX
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -45,6 +45,16 @@ def dump_object(name: str) -> str:
 def manifest_object(name: str) -> str:
     """The encrypted fingerprint's object name for this backup."""
     return f"{name}{MANIFEST_SUFFIX}{ENCRYPTED_SUFFIX}"
+
+
+def segment_object(segment: str) -> str:
+    """The object name one archived WAL segment is uploaded and fetched under.
+
+    A segment's own name is Postgres's and carries an LSN rather than an instant, so nothing is read
+    back out of it here. What this says is which suffixes it wears in the bucket, in ONE place: the
+    shipper compresses and then encrypts, and a recovery asking for either half alone finds nothing.
+    """
+    return f"{segment}{COMPRESSED_SUFFIX}{ENCRYPTED_SUFFIX}"
 
 
 def objects_for(name: str) -> tuple[str, ...]:

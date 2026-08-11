@@ -31,8 +31,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ops import crypto, environment, postgres
-from ops.config import ENCRYPTED_SUFFIX, WAL_METRIC, WAL_STAGING_DIR
+from ops import crypto, environment, naming, postgres
+from ops.config import COMPRESSED_SUFFIX, ENCRYPTED_SUFFIX, WAL_METRIC, WAL_STAGING_DIR
 from ops.exposition import write_gauge
 from ops.prepare import writable_by_postgres
 from ops.process import run as run_command
@@ -76,7 +76,7 @@ _ARCHIVER_FIELDS = 7
 # point-in-time recovery reads to follow a timeline switch, `archive_command` copies it into the
 # staging volume like anything else, and excluding it both left it out of the bucket and left it on
 # the volume forever. It is a few hundred bytes and it ships like a segment.
-_NOT_A_SEGMENT = (".gz", ENCRYPTED_SUFFIX, ".tmp", ".partial")
+_NOT_A_SEGMENT = (COMPRESSED_SUFFIX, ENCRYPTED_SUFFIX, ".tmp", ".partial")
 
 
 class ArchivingFailing(Exception):
@@ -186,12 +186,12 @@ def staged_segments(staging: Path) -> tuple[Path, ...]:
 
 def _ship_one(segment: Path, *, remote: Remote, public_key: Path, run: Run) -> None:
     """Compress, encrypt, upload, and only then remove the local segment."""
-    compressed = Path(f"{segment}.gz")
+    compressed = Path(f"{segment}{COMPRESSED_SUFFIX}")
     encrypted = Path(f"{compressed}{ENCRYPTED_SUFFIX}")
     try:
         run(["gzip", "--keep", "--force", "--best", str(segment)])
         crypto.encrypt(compressed, into=encrypted, public_key=public_key, run=run)
-        remote.upload(encrypted, encrypted.name)
+        remote.upload(encrypted, naming.segment_object(segment.name))
         segment.unlink(missing_ok=True)
     finally:
         compressed.unlink(missing_ok=True)
