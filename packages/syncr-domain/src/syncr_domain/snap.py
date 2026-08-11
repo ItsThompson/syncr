@@ -18,21 +18,28 @@ legal, and a producer that owes the grid applies :func:`snap_to_grid` itself.
 
 The last two predicates take no instant, because a DECLARATION carries none: a wall time and
 a duration in minutes, with no date and no zone.
-:class:`syncr_domain.templates.EntrySpan` reads both, so a template entry that would
-materialize a block starting or ending between two of the grid's lines is refused where the
-user can still fix it rather than at solve time, where the entry is already fixed by
-derivation. :class:`syncr_domain.routines.RoutineSpan` declares the same pair and reads
-neither. The two are checked differently today.
 
-**A declared duration owes the grid, and so does a wall time the user chose.** That is the side
-this product implements, and it is settled in five places rather than assumed here: a habit's both
-duration bounds, a template entry's target time and duration, a preferred window's bounds, a
-preference's ideal session length, and the week assembler snapping an elastic duration back onto
-the grid after the learned multiplier scales it. The reason is that every placement lands on the
-grid, so a declaration off it names a time or a length no block can hold. Tickets 1142, 1151, and
-1161 carry the question for the shapes that do not enforce it yet: a routine's target time and
-duration, and a task's minimum chunk. Nothing in this module snaps on its own, so an unsnapped
-interval stays legal and a producer that owes the grid applies it to its own output.
+**A declared duration owes the grid, and so does a wall time the user chose.** An anchor and the
+buffers derived from it are the only exemption: nothing else is excused, and a shape that declares
+a wall time or a duration and reads neither declaration predicate is unenforced rather than exempt.
+Every placement lands on the grid, so a declaration off it names a time or a length no block can
+hold.
+
+The declaration predicates are read at these sites, and this list is the whole of them:
+
+* ``syncr_domain.habits`` reads both bounds of a habit's duration.
+* ``syncr_domain.preferences`` reads a preferred window's bounds, and a preference's ideal
+  session length.
+* ``syncr_domain.templates`` reads a day-shape entry's target time and its duration, so an entry
+  that would materialize a block starting or ending between two of the grid's lines is refused
+  where the user can still fix it rather than at solve time, where the entry is already fixed by
+  derivation.
+* ``syncr_api.promotions.service`` reads the wall time a promoted pattern names, and refuses it
+  as a conflict rather than as a field error, because that request carries no body.
+
+Refusing a declaration is not snapping one: nothing here moves a value a person authored. A
+duration a computation produced is the other case, and :func:`nearest_snap_multiple` is where
+that one moves back onto the grid.
 """
 
 from __future__ import annotations
