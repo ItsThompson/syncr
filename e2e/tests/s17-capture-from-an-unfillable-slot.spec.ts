@@ -62,13 +62,19 @@ const TITLE = "Ride the turbo trainer";
 
 /* Every gutter label the grid drew, with the pointer policy computed for it and for the band holding it. A STRING
  * because the harness's tsconfig carries no DOM lib, which is why the readers in `s21-keyboard-and-focus.spec.ts`
- * are strings too. */
-const LABELS_AND_THEIR_POINTER_POLICY = `[...document.querySelectorAll('.week-band__label')].map((label) => ({
-  isControl: label.tagName.toLowerCase() === 'button',
-  wording: label.textContent,
-  onTheLabel: getComputedStyle(label).pointerEvents,
-  onTheBand: label.parentElement === null ? 'no band' : getComputedStyle(label.parentElement).pointerEvents,
-}))`;
+ * are strings too.
+ *
+ * THE BAND IS FOUND BY ITS CLASS RATHER THAN BY BEING THE PARENT, so this reads what the assertion's name says: a
+ * wrapper element between the two would otherwise make the pair pass while measuring the wrapper. */
+const LABELS_AND_THEIR_POINTER_POLICY = `[...document.querySelectorAll('.week-band__label')].map((label) => {
+  const band = label.closest('.week-band');
+  return {
+    isControl: label.tagName.toLowerCase() === 'button',
+    wording: label.textContent,
+    onTheLabel: getComputedStyle(label).pointerEvents,
+    onTheBand: band === null ? 'no band' : getComputedStyle(band).pointerEvents,
+  };
+})`;
 
 interface PointerPolicy {
   readonly isControl: boolean;
