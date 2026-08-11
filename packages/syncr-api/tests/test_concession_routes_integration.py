@@ -11,6 +11,12 @@ from the request to the worker.
 caller naming a target syncr offered nothing for gets a 422 rather than a concession nobody
 computed.
 
+*A week holding nothing a solve placed is refused before a solve is asked for.* A concession is an
+agreement to give something up, and such a week holds nothing the product chose to give up, so the
+candidate would fill empty space and be adopted as the plan of record with no row recording that
+anything had been conceded. Every request case therefore drives a week whose plan of record holds
+one block a solve placed: the state the route exists to serve.
+
 *A request never joins a pending solve.* A pin made two seconds earlier would absorb it and the
 proposal would look as though syncr ignored the user, so the pending operation is superseded and the
 replacement carries the candidate. The single-flight invariant still holds afterwards: exactly one
@@ -47,20 +53,27 @@ from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.offplan.config import OFF_PLAN_PREFIX
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.candidates import KIND, REDUCTIONS, TARGET_ID
+from syncr_api.plans.proposals import PendingProposalRepository
+from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.stored_documents import stored_document
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import PENDING, SOLVE, SUPERSEDED
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
+from syncr_domain.identity import Origin, is_placed_by_the_solver
+from syncr_domain.intervals import Interval
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
+from tests.live_weeks import produce_a_plan, seed_a_weight_set
+from tests.plan_documents import a_block, a_document
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from syncr_api.accounts.records import UserRecord
     from syncr_api.core.settings import ServiceSettings
-    from syncr_api.plans.records import WeekAdjustmentRecord
+    from syncr_api.plans.records import PlanRevisionRecord, WeekAdjustmentRecord
     from syncr_api.solving.records import OperationRecord
     from syncr_domain.identifiers import TenantId
 
@@ -82,6 +95,14 @@ GAP_MINUTES = 60
 
 TRADEOFFS = f"{WEEKS_PREFIX}/{WEEK}/tradeoffs"
 ADJUSTMENTS = f"{WEEKS_PREFIX}/{WEEK}/adjustments"
+
+# Where the block a solve placed sits in the week the request cases drive. Thursday morning, which
+# this fixture has declared off plan, so the block takes no capacity the Fitness floor competes for
+# and the offer states the same figures with it as without it. Its Area is a second declared one
+# with no floor of its own, for the same reason: attributing it to Fitness would net 60 minutes off
+# that floor's reservation and close the very gap these cases request a concession for.
+PLACED_DAY = 3
+PLACED_FROM_HOUR = 10
 
 
 def instant(*, days: int = 0, hours: int = 0) -> str:
@@ -149,6 +170,94 @@ def a_short_week(http: TestClient, owner: UserRecord) -> tuple[dict[str, str], s
     )
     assert area.status_code == HTTPStatus.CREATED, area.text
     return headers, area.json()["area"]["id"]
+
+
+@pytest.fixture
+def a_short_solved_week(
+    http: TestClient,
+    owner: UserRecord,
+    live_database_url: str,
+    a_short_week: tuple[dict[str, str], str],
+) -> tuple[dict[str, str], str]:
+    """The same short week, with a plan of record holding one block a solve placed.
+
+    Every request case needs one, because a week whose plan holds nothing a solve placed is refused
+    before the offer is read: there is nothing the product chose that a concession could give up.
+    The block is placed where it changes no figure the offer states, which the candidate's own
+    ``deltaMinutes`` assertion below is the measurement of.
+    """
+    headers, area_id = a_short_week
+    append_a_solved_revision(http, headers, live_database_url, owner.tenant_id)
+    return headers, area_id
+
+
+def append_a_solved_revision(
+    http: TestClient, headers: dict[str, str], database_url: str, tenant_id: TenantId
+) -> None:
+    """One applied revision holding a single block a solve chose the placement of.
+
+    Appended through the repository a solve appends through, because no route produces a plan: the
+    horizon maintainer and the solve worker are the two writers and neither is reachable from a
+    request.
+    """
+    elsewhere = http.post(AREAS_PREFIX, json={"name": "Career"}, headers=headers)
+    assert elsewhere.status_code == HTTPStatus.CREATED, elsewhere.text
+    placed = a_block(
+        Origin.HABIT,
+        week=WEEK,
+        interval=Interval(
+            datetime.fromisoformat(instant(days=PLACED_DAY, hours=PLACED_FROM_HOUR)),
+            datetime.fromisoformat(instant(days=PLACED_DAY, hours=PLACED_FROM_HOUR + 1)),
+        ),
+        area_id=UUID(elsewhere.json()["area"]["id"]),
+    )
+    assert is_placed_by_the_solver(placed.origin), "the block has to be one a solve placed"
+
+    async def append() -> None:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                await PlanRepository(session, tenant_id).append(
+                    document=stored_document(a_document(week=WEEK, blocks=(placed,))),
+                    objective_breakdown={},
+                    status="applied",
+                    reason="auto_applied_fill",
+                    weight_set_version=1,
+                    input_version=1,
+                    created_at=datetime.now(UTC),
+                )
+        finally:
+            await database.engine.dispose()
+
+    run(append())
+
+
+def revisions(database_url: str, tenant_id: TenantId) -> list[PlanRevisionRecord]:
+    """Every revision the tenant holds for the week, newest first."""
+
+    async def read() -> list[PlanRevisionRecord]:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session:
+                return await PlanRepository(session, tenant_id).history(WEEK)
+        finally:
+            await database.engine.dispose()
+
+    return run(read())
+
+
+def pending_proposal(database_url: str, tenant_id: TenantId) -> object | None:
+    """What the week's pending slot holds, which a refused request must leave empty."""
+
+    async def read() -> object | None:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session:
+                return await PendingProposalRepository(session, tenant_id).find(WEEK)
+        finally:
+            await database.engine.dispose()
+
+    return run(read())
 
 
 def request_tradeoff(
@@ -256,11 +365,11 @@ def test_requesting_a_tradeoff_writes_no_concession_and_answers_with_an_operatio
     http: TestClient,
     owner: UserRecord,
     live_database_url: str,
-    a_short_week: tuple[dict[str, str], str],
+    a_short_solved_week: tuple[dict[str, str], str],
 ) -> None:
     # WA2, read from the table rather than described: an adjustment is created only by APPROVING a
     # tradeoff. Requesting one asks for a proposal, and the plan is untouched until assent.
-    headers, area_id = a_short_week
+    headers, area_id = a_short_solved_week
 
     status, body = request_tradeoff(
         http, headers, kind=AdjustmentKind.BREACH_FLOOR.value, target_id=area_id
@@ -277,11 +386,11 @@ def test_the_operation_carries_the_candidate_the_worker_folds(
     http: TestClient,
     owner: UserRecord,
     live_database_url: str,
-    a_short_week: tuple[dict[str, str], str],
+    a_short_solved_week: tuple[dict[str, str], str],
 ) -> None:
     # The candidate's whole path: the assembler takes it as an argument, so it needs a channel from
     # the request to the worker and the operation is the only object that already crosses.
-    headers, area_id = a_short_week
+    headers, area_id = a_short_solved_week
 
     status, _ = request_tradeoff(
         http, headers, kind=AdjustmentKind.BREACH_FLOOR.value, target_id=area_id
@@ -304,11 +413,11 @@ def test_a_concession_the_week_does_not_offer_is_refused_and_writes_nothing(
     http: TestClient,
     owner: UserRecord,
     live_database_url: str,
-    a_short_week: tuple[dict[str, str], str],
+    a_short_solved_week: tuple[dict[str, str], str],
 ) -> None:
     # The figures are the enumeration's, so a target syncr offered nothing for cannot be conceded:
     # a caller could otherwise reduce a routine below the minimum the user set.
-    headers, _ = a_short_week
+    headers, _ = a_short_solved_week
 
     status, body = request_tradeoff(
         http, headers, kind=AdjustmentKind.REDUCE_ROUTINE.value, target_id=str(uuid4())
@@ -339,12 +448,12 @@ def test_a_request_supersedes_a_pending_solve_rather_than_joining_it(
     http: TestClient,
     owner: UserRecord,
     live_database_url: str,
-    a_short_week: tuple[dict[str, str], str],
+    a_short_solved_week: tuple[dict[str, str], str],
 ) -> None:
     # A pin made two seconds earlier would otherwise absorb the concession, and the user would be
     # shown a proposal that does not contain it. Superseded is not a failure: it is the expected
     # outcome of editing quickly.
-    headers, area_id = a_short_week
+    headers, area_id = a_short_solved_week
     pending = seeded_solve(live_database_url, owner.tenant_id, running=False)
 
     status, body = request_tradeoff(
@@ -366,12 +475,12 @@ def test_a_request_while_a_solve_is_running_is_refused_rather_than_absorbed(
     http: TestClient,
     owner: UserRecord,
     live_database_url: str,
-    a_short_week: tuple[dict[str, str], str],
+    a_short_solved_week: tuple[dict[str, str], str],
 ) -> None:
     # There is no second non-terminal solve to create while one runs, and joining the one that runs
     # is the one thing this route may not do. So it refuses, names what still works, and leaves the
     # running solve alone: the coordinator owns the queued alternative.
-    headers, area_id = a_short_week
+    headers, area_id = a_short_solved_week
     running = seeded_solve(live_database_url, owner.tenant_id, running=True)
 
     status, body = request_tradeoff(
@@ -394,6 +503,150 @@ def test_a_signed_out_caller_cannot_request_a_tradeoff(http: TestClient) -> None
     )
 
     assert answered.status_code == HTTPStatus.UNAUTHORIZED, answered.text
+
+
+# --------------------------------------------------------------------------------
+# A week with no solve to concede against
+# --------------------------------------------------------------------------------
+
+
+def test_a_tradeoff_on_a_week_with_no_plan_at_all_is_refused_and_creates_no_operation(
+    http: TestClient,
+    owner: UserRecord,
+    live_database_url: str,
+    a_short_week: tuple[dict[str, str], str],
+) -> None:
+    # The week this fixture builds holds a real gap and offers two real concessions, so what is
+    # refused here is a request the enumeration would have honoured. The refusal is about the state
+    # of the week: there is no plan, so nothing was chosen that conceding could give up.
+    headers, area_id = a_short_week
+
+    status, body = request_tradeoff(
+        http, headers, kind=AdjustmentKind.BREACH_FLOOR.value, target_id=area_id
+    )
+
+    assert status == HTTPStatus.CONFLICT, body
+    assert "no solve to concede against" in body["detail"]
+    assert "Nothing was changed" in body["detail"]
+    assert "solve the week first" in body["detail"]
+    assert operations(live_database_url, owner.tenant_id) == []
+
+
+def test_a_tradeoff_on_a_materialized_week_is_refused_because_a_solve_chose_none_of_it(
+    http: TestClient,
+    owner: UserRecord,
+    live_database_url: str,
+    a_short_week: tuple[dict[str, str], str],
+) -> None:
+    # The state the refusal is really about, and the one a reader of the week screen is in: the
+    # horizon maintainer has produced a plan, so the week HOLDS one, and every block in it restates
+    # something its own source fixed. A guard keyed to the absence of a revision would permit here.
+    headers, area_id = a_short_week
+    seed_a_weight_set(live_database_url, owner.tenant_id)
+    produce_a_plan(live_database_url, owner.tenant_id, WEEK)
+    materialized = revisions(live_database_url, owner.tenant_id)
+    assert [one.reason for one in materialized] == ["horizon_advanced"]
+
+    status, body = request_tradeoff(
+        http, headers, kind=AdjustmentKind.BREACH_FLOOR.value, target_id=area_id
+    )
+
+    assert status == HTTPStatus.CONFLICT, body
+    assert "no solve to concede against" in body["detail"]
+    # The wire vocabulary a caller that has to exit with a number keys on. `syncr:conflict` is the
+    # type `cli/src/syncr_cli/problems.py` maps to `ExitCode.CONFLICT`, code 6, and it maps by TYPE
+    # before it falls back to the status, so a refusal minting a type of its own would reach an
+    # agent as whatever 409 alone justifies.
+    assert body["type"] == "syncr:conflict"
+    assert body["status"] == HTTPStatus.CONFLICT
+    assert [one.id for one in revisions(live_database_url, owner.tenant_id)] == [materialized[0].id]
+    assert stored_concessions(live_database_url, owner.tenant_id) == []
+    assert pending_proposal(live_database_url, owner.tenant_id) is None
+    # No solve, which is what makes this a refusal rather than a solve nobody asked for: the guard
+    # is raised before the coordinator is reached, so there is no row for a caller to follow and
+    # none for the worker to claim and adopt. The two rows the materialization left are its own.
+    created = operations(live_database_url, owner.tenant_id)
+    assert [one.id for one in created if one.kind == SOLVE] == []
+    assert [one.id for one in created if one.candidate_adjustment is not None] == []
+
+
+def test_the_same_request_is_honoured_once_the_week_holds_a_block_a_solve_placed(
+    http: TestClient,
+    owner: UserRecord,
+    live_database_url: str,
+    a_short_solved_week: tuple[dict[str, str], str],
+) -> None:
+    # The other side of the guard, on one week and one request: what decides the answer is whether
+    # the plan of record holds a placement the product chose, and nothing else about the week moved
+    # between this case and the two above.
+    headers, area_id = a_short_solved_week
+
+    status, body = request_tradeoff(
+        http, headers, kind=AdjustmentKind.BREACH_FLOOR.value, target_id=area_id
+    )
+
+    assert status == HTTPStatus.ACCEPTED, body
+    assert body["kind"] == SOLVE
+    carried = [
+        one.candidate_adjustment
+        for one in operations(live_database_url, owner.tenant_id)
+        if one.candidate_adjustment is not None
+    ]
+    assert len(carried) == 1
+
+
+def test_a_plan_holding_only_blocks_their_own_sources_placed_is_refused(
+    http: TestClient,
+    owner: UserRecord,
+    live_database_url: str,
+    a_short_week: tuple[dict[str, str], str],
+) -> None:
+    # The permit above is not simply always-on once a revision exists. This week holds an applied
+    # revision of its own, and every block in it is a restatement of a fact outside the solve, which
+    # is what a materialization produces. Parametrized over the whole half of the origin vocabulary
+    # the domain marks that way, so an origin moving between the halves is caught here.
+    headers, area_id = a_short_week
+    restated = tuple(
+        a_block(
+            origin,
+            week=WEEK,
+            interval=Interval(
+                datetime.fromisoformat(instant(days=PLACED_DAY, hours=PLACED_FROM_HOUR + offset)),
+                datetime.fromisoformat(
+                    instant(days=PLACED_DAY, hours=PLACED_FROM_HOUR + offset + 1)
+                ),
+            ),
+        )
+        for offset, origin in enumerate(sorted(Origin, key=str))
+        if not is_placed_by_the_solver(origin)
+    )
+    assert len(restated) == 5, "every origin a source places, so the permit cannot be assumed"
+
+    async def append() -> None:
+        database = create_database(live_database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                await PlanRepository(session, owner.tenant_id).append(
+                    document=stored_document(a_document(week=WEEK, blocks=restated)),
+                    objective_breakdown={},
+                    status="applied",
+                    reason="materialized",
+                    weight_set_version=1,
+                    input_version=1,
+                    created_at=datetime.now(UTC),
+                )
+        finally:
+            await database.engine.dispose()
+
+    run(append())
+
+    status, body = request_tradeoff(
+        http, headers, kind=AdjustmentKind.BREACH_FLOOR.value, target_id=area_id
+    )
+
+    assert status == HTTPStatus.CONFLICT, body
+    assert "no solve to concede against" in body["detail"]
+    assert operations(live_database_url, owner.tenant_id) == []
 
 
 # --------------------------------------------------------------------------------
