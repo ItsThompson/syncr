@@ -45,6 +45,7 @@ syncr-worker = "syncr_api.worker.main:main"
 syncr-bootstrap-user = "syncr_api.accounts.bootstrap:main"
 syncr-rotate-oauth-key = "syncr_api.oauth.rotation:main"
 syncr-plan-fingerprint = "syncr_api.recovery.main:main"
+syncr-drill-seed = "syncr_api.recovery.drill_seed:main"
 
 [dependency-groups]
 dev = [
