@@ -9,6 +9,7 @@ same reason.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -127,8 +128,25 @@ def test_an_unconfirmed_row_is_neither_a_completion_nor_a_miss(state: OutcomeSta
     assert not unconfirmed.is_confirmed_miss
 
 
+def test_the_mark_s_default_is_declared_on_the_field() -> None:
+    """Read off the field's own declaration, so no construction anywhere can stand in for it.
+
+    The case below reads the default through a construction, which is what a stored row omitting the
+    mark does. That reading is only an assertion about the default while the construction omits the
+    field, and a helper supplying it would silently take the assertion away. This one cannot be
+    routed through a helper: there is no construction in it.
+    """
+    declared = {field.name: field.default for field in dataclasses.fields(HabitOutcome)}
+
+    assert declared["is_make_up"] is False
+
+
 def test_an_occurrence_is_a_fresh_one_unless_the_row_says_otherwise() -> None:
-    """Built without the field, because that is the row a reader of stored data constructs."""
+    """Built without the field, because that is the row a reader of stored data constructs.
+
+    The omission IS the assertion. Passing the field here, through a helper or otherwise, would
+    leave the case green against any default.
+    """
     unmarked = HabitOutcome(
         habit_id=HABIT,
         occurrence_key="00",
