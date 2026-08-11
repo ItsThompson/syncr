@@ -182,6 +182,33 @@ describe("a week with no plan", () => {
     expect(screen.queryByRole("link", { name: "Extend the horizon" })).toBeNull();
   });
 
+  it("says why a week inside the horizon holds no plan yet, and offers the solve", async () => {
+    installWeekReads(
+      buildWeekView({
+        live: null,
+        readings: null,
+        emptyReason: "awaiting_maintainer",
+        emptyWeek: {
+          ...EMPTY_WEEK_FACTS,
+          coversThisWeek: true,
+          statement:
+            "2026-W07 is inside your 14-day planning horizon and its plan has not been produced yet.",
+        },
+      }),
+    );
+    const { container } = renderAt(WEEK_PATH);
+
+    expect(
+      await screen.findByText(
+        "2026-W07 is inside your 14-day planning horizon and its plan has not been produced yet.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Solve this week now" })).toBeInTheDocument();
+    // An empty state names itself, whichever of the three words arrived: a reason the screen has no
+    // title for renders a blank heading over the server's sentence.
+    expect(container.querySelector(".status__title")?.textContent).toBeTruthy();
+  });
+
   it("asks for a solve at the week's own path, bypassing the debounce", async () => {
     const solve = recordingHandler("post", `/api/v1/weeks/${ISO_WEEK}/solve`, {
       status: 202,
