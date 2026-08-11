@@ -21,7 +21,7 @@ from syncr_domain.budgets import AreaShare, floor_minutes
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from syncr_domain.identifiers import AreaId, PreferenceId, ProjectId, TenantId
+    from syncr_domain.identifiers import AreaId, ProjectId, TenantId
     from syncr_domain.pigments import PigmentIndex
     from syncr_domain.projects import ProjectStatus
 
@@ -40,7 +40,6 @@ class AreaRecord:
     pigment_index: PigmentIndex
     budget_percent: Decimal | None
     floor_hours: Decimal | None
-    default_preference_id: PreferenceId | None
     created_at: datetime
 
     def as_share(self) -> AreaShare:

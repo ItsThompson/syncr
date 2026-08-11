@@ -206,7 +206,6 @@ class FakeAreaRepository(AreaRepository):
             pigment_index=0,
             budget_percent=_no_decimal(),
             floor_hours=_no_decimal(),
-            default_preference_id=None,
             created_at=NOW,
         )
 

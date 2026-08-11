@@ -82,13 +82,6 @@ class AreaResponse(WireModel):
     pigment_index: int = Field(description=_PIGMENT_DESCRIPTION)
     budget_percent: WireDecimal | None = Field(description=_BUDGET_PERCENT_DESCRIPTION)
     floor_hours: WireDecimal | None = Field(description=_FLOOR_HOURS_DESCRIPTION)
-    default_preference_id: UUID | None = Field(
-        description=(
-            "Always null. Nothing writes this column: an Area's placement preference is read "
-            "through GET /api/v1/areas/{id}/preference, which is addressed by the Area and holds "
-            "no identifier a caller needs. Read the preference there rather than this field."
-        )
-    )
 
 
 class RampReading(WireModel):

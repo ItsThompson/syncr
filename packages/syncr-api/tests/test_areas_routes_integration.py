@@ -146,7 +146,9 @@ def test_declaring_an_area_assigns_a_pigment_and_commits_it(
     assert area["floorHours"] == 4.5
     assert area["budgetPercent"] == 25
     assert area["parentId"] is None
-    assert area["defaultPreferenceId"] is None
+    # No preference identifier: a preference names its own owner, and this response states the
+    # budget an Area declares rather than the relations that name it.
+    assert "defaultPreferenceId" not in area, area
 
     rows = area_rows(live_database_url, owner.tenant_id)
     assert [(row.name, row.pigment_index) for row in rows] == [("Fitness", PIGMENT_DEAL_ORDER[0])]

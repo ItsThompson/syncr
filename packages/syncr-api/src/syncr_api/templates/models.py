@@ -23,11 +23,10 @@ conflict for the user to resolve, and the user may still move one by editing thi
 pinning that single occurrence. The two senses of the word have to stay apart, because a pin is
 a training label and this is not.
 
-``binding_ref`` carries no foreign key, for the same reason ``areas.default_preference_id``
-does not: it points at a routine or at a habit, which are separate tables, so no single
-reference could name both. ``binding_target`` is what says which table to read. Without it a
-reader would have to probe both, and two rows sharing an identifier would resolve to whichever
-was probed first.
+``binding_ref`` carries no foreign key: it points at a routine or at a habit, which are separate
+tables, so no single reference could name both. ``binding_target`` is what says which table to
+read. Without it a reader would have to probe both, and two rows sharing an identifier would
+resolve to whichever was probed first.
 
 The grid checks are here as well as in the domain shape, because a value reaching this table
 from a later migration or a ``psql`` session is not type-checked at all, and a start or end

@@ -60,7 +60,6 @@ def _as_area(record: AreaRecord) -> AreaResponse:
         pigment_index=record.pigment_index,
         budget_percent=record.budget_percent,
         floor_hours=record.floor_hours,
-        default_preference_id=record.default_preference_id,
     )
 
 

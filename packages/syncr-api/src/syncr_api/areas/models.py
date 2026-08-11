@@ -16,10 +16,9 @@ The unique index on ``(tenant_id, name)`` is load-bearing rather than tidy. Past
 the pigment ramp repeats and identity rests on the hatch and the Area's name, so two Areas
 holding one name would leave nothing to tell them apart.
 
-``default_preference_id`` carries no foreign key and nothing writes it. A preference names its
-own owner, so the ``preferences`` table is where the relation lives and this column is a second
-home for it that no reader needs: an Area's preference is addressed by the Area itself, under
-``/areas/{id}/preference``. Whether the column is filled or dropped is ticket 1210.
+An Area holds no preference identifier. A preference names its own owner, so the ``preferences``
+table is where that relation lives, and an Area's preference is addressed by the Area itself
+under ``/areas/{id}/preference``.
 """
 
 from __future__ import annotations
@@ -117,7 +116,6 @@ class AreaRow(Base, TenantScoped):
     budget_percent: Mapped[Decimal | None] = mapped_column(_BUDGET_NUMERIC, nullable=True)
     # The absolute weekly minimum, in hours as the user authors it. A hard solver constraint.
     floor_hours: Mapped[Decimal | None] = mapped_column(_BUDGET_NUMERIC, nullable=True)
-    default_preference_id: Mapped[UUID | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

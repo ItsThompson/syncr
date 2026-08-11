@@ -207,7 +207,6 @@ def area(tenant_id: TenantId) -> AreaRecord:
         pigment_index=0,
         budget_percent=None,
         floor_hours=None,
-        default_preference_id=None,
         created_at=NOW,
     )
 

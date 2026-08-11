@@ -86,7 +86,6 @@ class AreaRepository(TenantScopedRepository):
             pigment_index=pigment_index,
             budget_percent=budget_percent,
             floor_hours=floor_hours,
-            default_preference_id=None,
             created_at=created_at,
         )
         self._session.add(row)
@@ -197,7 +196,6 @@ def _as_area_record(row: AreaRow) -> AreaRecord:
         pigment_index=row.pigment_index,
         budget_percent=row.budget_percent,
         floor_hours=row.floor_hours,
-        default_preference_id=row.default_preference_id,
         created_at=row.created_at,
     )
 

@@ -54,8 +54,8 @@ _INSERT = text(
 
 _INSERT_AREA = text(
     "INSERT INTO areas (id, tenant_id, parent_id, name, pigment_index, budget_percent,"
-    " floor_hours, default_preference_id, created_at)"
-    " VALUES (:id, :tenant_id, NULL, :name, 0, NULL, NULL, NULL, :created_at)"
+    " floor_hours, created_at)"
+    " VALUES (:id, :tenant_id, NULL, :name, 0, NULL, NULL, :created_at)"
 )
 
 _INSERT_HABIT = text(

@@ -124,7 +124,6 @@ def an_area(
         pigment_index=0,
         budget_percent=None if percent is None else Decimal(percent),
         floor_hours=None if floor_hours is None else Decimal(floor_hours),
-        default_preference_id=None,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
 

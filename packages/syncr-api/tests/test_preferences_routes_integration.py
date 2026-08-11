@@ -356,18 +356,29 @@ def test_windows_come_back_earliest_first_whatever_order_they_were_sent(
     ]
 
 
-def test_the_areas_default_preference_id_stays_null_after_a_preference_is_set(
+def test_the_area_read_carries_no_preference_identifier_after_a_preference_is_set(
     http: TestClient, signed_in: dict[str, str], owned: Owned
 ) -> None:
-    # The Area response's own field says "always null, nothing writes this column", and this is what
-    # keeps that claim true. A preference names its own owner, so the relation lives on the
-    # preference and a second home for it on the Area would be a value that can disagree.
+    # A preference names its own owner, so the relation lives on the preference, and an Area
+    # response carrying an identifier for it would be a second statement of the same relation
+    # that nothing keeps in step. Both reads are asserted because an agent reads the collection
+    # first and the addressed Area second.
     put(http, signed_in, owned.area, **GYM_WINDOWS)
 
     area = http.get(f"{AREAS_PREFIX}/{owned.area_id}", headers=signed_in)
+    listed = http.get(AREAS_PREFIX, headers=signed_in)
 
     assert area.status_code == HTTPStatus.OK, area.text
-    assert area.json()["defaultPreferenceId"] is None
+    assert listed.status_code == HTTPStatus.OK, listed.text
+    # Both spellings, so a field renamed rather than removed cannot satisfy this.
+    for shape in (area.json(), *listed.json()["areas"]):
+        assert "defaultPreferenceId" not in shape, shape
+        assert "default_preference_id" not in shape, shape
+    # The control: these are real Areas rather than empty bodies, so the absence above is a
+    # statement about the shape rather than about nothing.
+    assert area.json()["id"] == owned.area_id
+    assert [shape["id"] for shape in listed.json()["areas"]] == [owned.area_id]
+    assert "floorHours" in area.json()
 
 
 # --------------------------------------------------------------------------------

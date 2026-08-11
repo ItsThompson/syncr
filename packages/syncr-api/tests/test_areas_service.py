@@ -89,7 +89,6 @@ class FakeAreaRepository(AreaRepository):
             pigment_index=pigment_index,
             budget_percent=budget_percent,
             floor_hours=floor_hours,
-            default_preference_id=None,
             created_at=created_at,
         )
         self.rows.append(created)
@@ -113,7 +112,6 @@ class FakeAreaRepository(AreaRepository):
                 pigment_index=pigment_index,
                 budget_percent=budget_percent,
                 floor_hours=floor_hours,
-                default_preference_id=row.default_preference_id,
                 created_at=row.created_at,
             )
             if row.id == area_id

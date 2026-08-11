@@ -126,7 +126,6 @@ def an_area(
         pigment_index=1,
         budget_percent=budget_percent,
         floor_hours=floor_hours,
-        default_preference_id=None,
         created_at=MONDAY_MIDNIGHT,
     )
 
