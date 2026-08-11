@@ -18,6 +18,20 @@ if TYPE_CHECKING:
 
 _COLLECTING_SUFFIX = "Still collecting, which is normal."
 
+UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED = (
+    "An edit that carries no measured difference between the two placements cannot rank one "
+    "against the other, so it is left out of the fit and does not count toward the threshold "
+    "either."
+)
+"""Both halves, because the count the reader compares against the threshold is taken after the
+exclusion.
+
+Without the second half the two figures a reader meets disagree: a non-zero
+``syncr_learning_edits_without_measurement`` beside a sample count that never moves is only
+consistent under this rule. Stated with the row rather than in a client's own copy, so every surface
+that draws the row draws the reason.
+"""
+
 
 def duration_statement(
     area_name: str,
@@ -108,7 +122,22 @@ def churn_statement(*, moves: float | None, samples: int, threshold: int) -> str
 def weights_statement(
     *, samples: int, threshold: int, rejection: str | None, ranked: float | None
 ) -> str:
-    """What the seven objective weights were fitted from, or why they were not."""
+    """What the weights were fitted from, or why they were not, and what was left out of both.
+
+    The exclusion is appended in every branch rather than only below the gate. A corpus whose rows
+    all predate the measurement reaches the fit as no pairs at all, and no pairs is a REFUSAL rather
+    than a collecting row, so the reader with the smallest sample count reads the refusal's words.
+    """
+    outcome = _weights_outcome(
+        samples=samples, threshold=threshold, rejection=rejection, ranked=ranked
+    )
+    return f"{outcome} {UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED}"
+
+
+def _weights_outcome(
+    *, samples: int, threshold: int, rejection: str | None, ranked: float | None
+) -> str:
+    """The branch that says what happened to the vector: refitted, refused, or still collecting."""
     if ranked is not None:
         return (
             f"The seven weights were refitted from {samples} of your edits and now agree with "

@@ -30,6 +30,7 @@ from syncr_learning.fitting import fit_everything
 from syncr_learning.fixtures import AREA, at_the_gate, below_the_gate
 from syncr_learning.gates import parameter_of
 from syncr_learning.statements import (
+    UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED,
     churn_statement,
     duration_statement,
     fitness_statement,
@@ -138,6 +139,48 @@ class TestTheObjectiveWeightsSentenceIsGatedWithTheVector:
 
         assert "were not changed" in said
         assert "collecting" not in said
+
+
+class TestTheWeightsSentenceSaysWhatAnUnmeasuredEditCountsToward:
+    """Both halves of the exclusion, in the sentence the row is served with.
+
+    A row carrying no measured difference is dropped before the count the gate compares against the
+    threshold is taken, so a corpus of them reads zero against a threshold it has more rows than.
+    That exclusion was stated in the module that applies it and in the gauge's own help; the
+    sentence the reader meets said neither half of it.
+    """
+
+    def test_the_reason_states_both_halves(self) -> None:
+        assert "left out of the fit" in UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED
+        assert (
+            "does not count toward the threshold" in UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED
+        )
+
+    @pytest.mark.parametrize(
+        ("rejection", "ranked"),
+        [
+            pytest.param(None, None, id="collecting"),
+            pytest.param("no pair in 0 carries a preference", None, id="refused"),
+            pytest.param(None, 0.8, id="refitted"),
+        ],
+    )
+    def test_every_branch_carries_the_reason(
+        self, rejection: str | None, ranked: float | None
+    ) -> None:
+        # All three, because the corpus that produces the smallest count produces a REFUSAL: a
+        # reason appended below the gate alone would miss the reader it exists for.
+        said = weights_statement(
+            samples=0, threshold=WEIGHTS_THRESHOLD, rejection=rejection, ranked=ranked
+        )
+
+        assert UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED in said
+
+    def test_the_row_is_served_the_reason_rather_than_a_client_holding_it(self) -> None:
+        # Taken off the artefact the job appends, which is what the api reads and serves, so the
+        # sentence is not one a client can render without.
+        assert UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED in sentence_for(
+            OBJECTIVE_WEIGHTS, below_the_gate()
+        )
 
 
 class TestEveryOtherSentenceHasBothBranches:
