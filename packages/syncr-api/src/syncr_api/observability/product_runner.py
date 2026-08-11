@@ -36,7 +36,12 @@ from typing import TYPE_CHECKING
 from prometheus_client import Counter
 
 from syncr_api.accounts.repository import TenantRepository
-from syncr_api.observability.churn import acceptance_ratio, changed_block_count, repin_count
+from syncr_api.observability.churn import (
+    acceptance_ratio,
+    changed_block_count,
+    overridden_count,
+    repin_count,
+)
 from syncr_api.observability.early_catch import caught_early_over
 from syncr_api.observability.engagement import streak_weeks
 from syncr_api.observability.estimate import median_ape_by_area
@@ -151,7 +156,10 @@ def publish(tenant_id: TenantId, reading: ProductReading) -> None:
     accepted = sum(
         changed_block_count(live, candidate) for live, candidate in reading.approved_diffs
     )
-    acceptance = acceptance_ratio(accepted=accepted, overridden=len(reading.edits))
+    acceptance = acceptance_ratio(
+        accepted=accepted,
+        overridden=overridden_count(edit.binding.origin for edit in reading.edits),
+    )
     if acceptance is not None:
         PROPOSAL_ACCEPTANCE_RATIO.labels(tenant=tenant).set(acceptance)
 
