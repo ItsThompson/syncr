@@ -300,17 +300,25 @@ describe("the column policy", () => {
 
   it("nets the surplus of the standing column's reserved width only when one is drawn", () => {
     const { container } = renderTable({ columns: WIDE });
+    const widths = widthsIn(container);
 
-    expect(container.innerHTML).not.toContain("--table-mark-w");
+    expect(widths).toHaveLength(WIDE.length);
+    expect(widths.join(" ")).not.toContain("--table-mark-w");
   });
 
-  it("holds a column at the length it declared while the cell beside it carries a name at the cap", () => {
-    const { container } = renderTable({
+  /* A declaration is not measured against anything: `columnWidthsOf` is handed the widths and never the rows. What
+   * this pins is that the component keeps it that way -- that no row content reaches the expression a `<col>`
+   * carries. The RENDERED consequence, that the column beside a long cell holds its width, is a browser's and
+   * `probe/table.probe.test.tsx` measures it. */
+  it("emits the same widths whatever the rows hold, because a declaration is not measured against content", () => {
+    const short = renderTable({ columns: WIDE });
+    const long = renderTable({
       columns: WIDE,
       rows: [{ id: "1", title: NAME_AT_THE_CAP, minutes: 90 }],
     });
 
-    expect(widthsIn(container)).toEqual(["width: calc(100% - (88px));", "width: 88px;"]);
+    expect(widthsIn(long.container)).toEqual(widthsIn(short.container));
+    expect(widthsIn(long.container)).toEqual(["width: calc(100% - (88px));", "width: 88px;"]);
   });
 });
 
@@ -342,6 +350,13 @@ describe("a cell wraps and never truncates", () => {
 
   it("breaks a word longer than its column rather than drawing it over the column beside it", async () => {
     expect(await declaredValue(".table__cell", "overflow-wrap")).toBe("anywhere");
+  });
+
+  /* A `<th>` is a cell and overflows its column the same way, so the same break is declared on it. Measured in a
+   * browser: without this, an unbroken 36-character header in a 60px column draws 267px of content over the
+   * column beside it and its own row stays at the pitch. */
+  it("breaks one in a header too, which is a cell and overflows its column the same way", async () => {
+    expect(await declaredValue(".table__header", "overflow-wrap")).toBe("anywhere");
   });
 
   it("renders a name at the api's cap in full, in a column narrower than the name", () => {

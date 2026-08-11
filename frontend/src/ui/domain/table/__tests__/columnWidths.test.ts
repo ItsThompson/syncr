@@ -55,6 +55,29 @@ describe("a length a column declares", () => {
   });
 });
 
+/* WHAT A LENGTH IS EXACT IN, WHICH IS A TABLE WHERE SOME COLUMN CLAIMS A SHARE.
+ *
+ * The lengths are subtracted and the shares divide what is left, so a length is exact while one column absorbs the
+ * difference between the lengths and the table. Declare a length on every column and nothing claims a share:
+ * these cases pin what this function emits then, which is the lengths and no expression at all. What the browser
+ * does with them is the constraint a caller meets here rather than in a review -- a fixed layout has nothing to
+ * take the difference from, so it scales every column, the reserved gutter with them, and lengths adding up past
+ * the container overflow it. `probe/table.probe.test.tsx` measures that. */
+describe("a table whose every column declares a length", () => {
+  it("is given those lengths and no share, so nothing is left to absorb what they do not fill", () => {
+    const widths = columnWidthsOf(["236px", "88px"], NOTHING);
+
+    expect(widths).toEqual(["236px", "88px"]);
+    expect(widths?.some((width) => width.includes("calc"))).toBe(false);
+  });
+
+  it("leaves a reserved length unabsorbed too, which is why the gutter is scaled with the rest", () => {
+    const widths = columnWidthsOf(["236px", "88px"], [MARK]);
+
+    expect(widths).toEqual(["236px", "88px"]);
+  });
+});
+
 describe("a weight a column declares", () => {
   it("takes the whole surplus when it is the only share claimed", () => {
     const widths = columnWidthsOf([{ weight: 3 }, "88px"], NOTHING);
@@ -112,6 +135,12 @@ describe("a length the table spends outside the caller's columns", () => {
     const widths = columnWidthsOf(["236px", { weight: 1 }], [MARK]);
 
     expect(widths).toEqual(["236px", "calc(100% - (var(--table-mark-w) + 236px))"]);
+  });
+
+  it("is named beside every other one, so a table spending two lengths outside its columns names both", () => {
+    const widths = columnWidthsOf([{ weight: 1 }], [MARK, "24px"]);
+
+    expect(widths).toEqual(["calc(100% - (var(--table-mark-w) + 24px))"]);
   });
 
   it("is absent from the expression when the table spends nothing outside its columns", () => {
