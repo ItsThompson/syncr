@@ -91,6 +91,14 @@ const RENDERED_ROWS = `[...document.querySelectorAll('table tbody tr.table__row'
 
 const ROWS = "table tbody tr.table__row";
 
+/* Resolved once the backlog has either drawn a row or sent the reader to sign-in.
+ *
+ * THE REDIRECT IS THE CLIENT'S, which is why the URL cannot simply be asserted after the navigation: nothing
+ * is at `/sign-in` when `goto` resolves, and the app decides a moment later. Measured, with an invalid
+ * session planted in the harness: both cases failed on the row count and the sign-in assertion above it read
+ * `/backlog` and passed. So the assertion needs the race resolved first, and this is what resolves it. */
+const DREW_OR_REDIRECTED = `document.querySelector('${ROWS}') !== null || location.pathname === '/sign-in'`;
+
 const titlesOf = (rows: readonly RenderedRow[]): readonly (string | null)[] =>
   rows.map((row) => row.title).toSorted();
 
@@ -164,8 +172,9 @@ test("the backlog marks exactly the tasks the verdict names, says so in words, a
   assertTheMarkingDiscriminates(read.marked, read.unmarked);
 
   await page.goto("/backlog");
-  // BEFORE the wait, not after it. A backlog that redirected would time the row wait out ten seconds earlier,
-  // and the run would report a missing locator rather than the reason it was missing.
+  // BEFORE the count wait, not after it: a redirected backlog would time that wait out ten seconds later and
+  // the run would report a missing locator rather than the reason it was missing.
+  await page.waitForFunction(DREW_OR_REDIRECTED);
   expect(page.url(), "the backlog redirected to sign-in").not.toContain("/sign-in");
   await expect(page.locator(ROWS)).toHaveCount(read.all.length);
 
@@ -213,6 +222,7 @@ test("choosing the at-risk standing narrows the table to those rows, and the ban
   assertTheMarkingDiscriminates(read.marked, read.unmarked);
 
   await page.goto("/backlog");
+  await page.waitForFunction(DREW_OR_REDIRECTED);
   expect(page.url(), "the backlog redirected to sign-in").not.toContain("/sign-in");
   await expect(page.locator(ROWS)).toHaveCount(read.all.length);
 
