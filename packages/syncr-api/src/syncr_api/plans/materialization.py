@@ -52,10 +52,12 @@ rather than joined out of the snapshot later, because no join inside the snapsho
 habit's occurrences are cadence-filtered, so an entry naming a habit that is not due this week
 would find no name at all.
 
-An entry nothing can name or charge is DROPPED and counted, which is the degradation an anchor
-carrying an unread type already takes: the rest of the week assembles, and refusing would fail
-every solve, pin and live verdict for the week over one malformed row. Which states are dropped
-and which are refused outright is that module's own statement.
+An entry nothing can name is DROPPED and counted, which is the degradation an anchor carrying an
+unread type already takes: the rest of the week assembles, and refusing would fail every solve, pin
+and live verdict for the week over one malformed row. An entry naming a ROUTINE is neither dropped
+nor placed: the frame is the authority for a routine's placement, so it materializes nothing and
+nothing is counted. Which states are dropped, which are refused outright and which the frame answers
+is that module's own statement.
 """
 
 from __future__ import annotations
@@ -63,7 +65,14 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from syncr_api.plans.entry_content import Charged, DropCause, charged, content_by_binding, report
+from syncr_api.plans.entry_content import (
+    Charged,
+    DropCause,
+    PlacedByTheFrame,
+    charged,
+    content_by_binding,
+    report,
+)
 from syncr_domain.identity import date_occurrence_key
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.off_plan import OffPlanPeriod
@@ -252,14 +261,18 @@ def _entry_on(
 ) -> MaterializedEntry | DropCause | None:
     """One stored entry as this date's occurrence, the cause it is not one, or nothing.
 
-    Nothing means a declared off-plan span covers it, which is the week behaving as the user asked
-    rather than a loss. A cause means the row cannot become a block, and the caller counts it.
+    Nothing means no block, for either of two reasons that are not defects: a declared off-plan
+    span covers the occurrence, which is the week behaving as the user asked, or the entry names a
+    routine and the frame is the authority for a routine's placement. A cause means the row cannot
+    become a block, and the caller counts it.
     """
     interval = _occurrence(stored.span.target_time, on, zone, stored.span.duration_minutes)
     if off_plan.suppresses_content(interval):
         return None
     binding = _content_of(stored)
     resolved = charged(stored, binding, content)
+    if isinstance(resolved, PlacedByTheFrame):
+        return None
     if not isinstance(resolved, Charged):
         return resolved
     return MaterializedEntry(

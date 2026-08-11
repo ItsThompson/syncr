@@ -6,16 +6,26 @@ parent. This module resolves that pair against those rows, so the snapshot carri
 when a block can be built from it.
 
 **The resolution happens here rather than in the snapshot** because no join inside the snapshot is
-total: a habit's occurrences are cadence-filtered and a routine's occurrences can be suppressed by
-an off-plan period, so an entry naming either could find no name at all.
+total: a habit's occurrences are cadence-filtered, so an entry naming a habit that is not due this
+week would find no name at all.
 
-## Two states are dropped and three are refused, and the difference is what the table allows
+## The frame is the authority for a routine's placement
 
-:class:`DropCause` names the two states a stored row can really hold, both of them producer defects
-the template boundary does not yet refuse: a binding naming no row this tenant has, and a concrete
-entry naming a routine while declaring no Area, which no block can carry because a routine has none.
-Dropping is the degradation an anchor carrying an unread type already takes: the rest of the week
-assembles, and refusing would fail every solve, pin and live verdict for the week over one row.
+A routine is already placed on every date at its own target time, so an entry naming one restates
+a fact the frame has already answered. It is not charged and it produces no block:
+:data:`PLACED_BY_THE_FRAME` is what the resolution answers, the routine's minutes stay the frame's,
+and an Area the entry declares is a label rather than a charge. A second block would put the same
+content on one date twice and subtract one routine's minutes from the week twice, which contradicts
+the frame defining how much time exists. The boundary states this to the author when the entry is
+written, in :data:`THE_FRAME_PLACES_A_ROUTINE`, so a declaration nothing places is not silently
+ignored.
+
+## One state is dropped and three are refused, and the difference is what the table allows
+
+:class:`DropCause` names a binding naming no row this tenant has, which is a producer defect the
+template boundary does not yet refuse. Dropping is the degradation an anchor carrying an unread
+type already takes: the rest of the week assembles, and refusing would fail every solve, pin and
+live verdict for the week over one row.
 
 Three states are refused instead, because the tables forbid them: a slot with no Area, a concrete
 entry with no binding, and content with an empty title. The check constraint
@@ -29,7 +39,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from syncr_common.logging import get_logger
 from syncr_domain.templates import BindingTarget, TemplateEntryKind
@@ -52,10 +62,17 @@ class EntryPairingRejected(ValueError):
 
 
 class DropCause(StrEnum):
-    """Why an entry a week holds cannot become a block. One member per reachable cause.
+    """Why an entry a week holds cannot become a block, counted per cause in the log line.
 
-    Closed, and counted per cause in the log line, so an operator reading a dropped entry can tell a
-    dangling binding from an entry nothing can charge.
+    ``CONTENT_THIS_TENANT_DOES_NOT_HAVE`` is the reachable one: a binding naming no row, in either
+    table.
+
+    ``CONTENT_WITH_NO_AREA_AND_NONE_DECLARED`` is a net rather than a live cause. It answers content
+    that resolves with no Area of its own beside an entry that declares none, and no table can hold
+    that pair today: a habit's Area column is ``NOT NULL``, and a routine has no Area but is placed
+    by the frame before an Area is read for it at all. It stays because it costs no migration and
+    because a widened content mapping would reach it before anyone rediscovered the state, so a
+    check keyed on it is checking a state nothing currently produces.
     """
 
     CONTENT_THIS_TENANT_DOES_NOT_HAVE = "content_this_tenant_does_not_have"
@@ -66,12 +83,31 @@ class DropCause(StrEnum):
 class EntryContent:
     """What a concrete entry's binding names: the title a block carries, and its Area.
 
-    A routine has no Area, because the frame is not a category competing with Fitness. An entry
-    naming one therefore has to declare an Area of its own, and the block it becomes carries that.
+    A routine has no Area, because the frame is not a category competing with Fitness, and nothing
+    supplies one on its behalf: the frame places the routine and no Area is charged for it.
     """
 
     title: str
     area_id: AreaId | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PlacedByTheFrame:
+    """The frame is the authority for this entry's placement, so the entry places nothing.
+
+    A distinct answer from a drop and from an off-plan suppression: nothing is wrong with the row,
+    nothing is lost, and no count of producer defects should move because of it.
+    """
+
+
+PLACED_BY_THE_FRAME: Final = PlacedByTheFrame()
+
+THE_FRAME_PLACES_A_ROUTINE: Final = (
+    "The frame is the authority for a routine's placement. This routine is already placed on every "
+    "date at its own target time, so the time named here places nothing and no second block "
+    "appears. An Area named here is a label rather than a charge: the routine's minutes belong to "
+    "the frame and no Area is charged for them. Change the routine itself to move it."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,12 +142,17 @@ def charged(
     stored: TemplateEntryRecord,
     binding: EntryBinding | None,
     content: Mapping[tuple[BindingTarget, UUID], EntryContent],
-) -> Charged | DropCause:
-    """The title and the Area the block this entry becomes carries, or the cause it cannot.
+) -> Charged | PlacedByTheFrame | DropCause:
+    """The title and the Area the block this entry becomes carries, or why it becomes none.
 
     A slot carries its declared Area and no title, because nothing has been chosen to name yet. A
-    concrete entry carries its content's name, and its content's Area unless the content has none,
-    in which case its own declaration is what the minutes are charged to.
+    concrete entry carries its content's name and its content's Area, falling back to its own
+    declaration.
+
+    **The frame is the authority for a routine's placement**, so an entry naming a routine this
+    tenant holds is answered by :data:`PLACED_BY_THE_FRAME` before an Area or a title is resolved
+    for it: neither is read, because no block is built. A binding naming a routine the tenant does
+    not hold is still a drop, because a dangling binding is a defect whichever table it names.
     """
     if stored.kind is not TemplateEntryKind.CONCRETE:
         return Charged(area_id=_an_area_a_slot_declares(stored))
@@ -124,6 +165,8 @@ def charged(
     found = content.get((binding.target, binding.entity_id))
     if found is None:
         return DropCause.CONTENT_THIS_TENANT_DOES_NOT_HAVE
+    if binding.target is BindingTarget.ROUTINE:
+        return PLACED_BY_THE_FRAME
     area_id = found.area_id or stored.area_id
     if area_id is None:
         return DropCause.CONTENT_WITH_NO_AREA_AND_NONE_DECLARED

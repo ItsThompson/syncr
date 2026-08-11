@@ -8,6 +8,10 @@ Three of them are refusals rather than drops, and the distinction is what the ta
 with no Area and a concrete entry with no binding are forbidden by ``kind_states_its_binding``, and
 an empty content title is forbidden by the routine and habit boundaries. A drop cause an operator
 can never see would be worse than no cause, so those raise where they can name the row instead.
+
+One answer is neither: an entry naming a routine this tenant holds is placed by the frame, so the
+resolution answers with that rather than with a charge or a cause. What the rule costs a whole week
+is in ``test_routine_bound_entries.py``.
 """
 
 from __future__ import annotations
@@ -20,8 +24,10 @@ from uuid import UUID, uuid4
 import pytest
 
 from syncr_api.plans.entry_content import (
+    PLACED_BY_THE_FRAME,
     Charged,
     DropCause,
+    EntryContent,
     EntryPairingRejected,
     charged,
     content_by_binding,
@@ -49,20 +55,24 @@ def test_a_habit_backed_entry_is_charged_to_the_habit_s_area_and_named_by_the_ha
     assert resolved == Charged(area_id=area.id, title="Shower")
 
 
-def test_a_routine_backed_entry_is_charged_to_the_area_the_entry_declares() -> None:
+@pytest.mark.parametrize("declares_an_area", [True, False], ids=["an Area", "no Area"])
+def test_a_routine_backed_entry_is_placed_by_the_frame_whatever_it_declares(
+    declares_an_area: bool,
+) -> None:
+    # The frame is the authority for a routine's placement: the routine is already placed on every
+    # date at its own target time, so this entry becomes no block and charges nothing. An Area on
+    # the row is a label, and the answer is the same with and without one.
     area = an_area()
     routine = a_routine(title="Wake")
     entry = a_concrete_entry(
         template_id=uuid4(),
         target=BindingTarget.ROUTINE,
         entity_id=routine.id,
-        area_id=area.id,
+        area_id=area.id if declares_an_area else None,
     )
     binding = EntryBinding(target=BindingTarget.ROUTINE, entity_id=routine.id)
 
-    resolved = charged(entry, binding, content_by_binding([routine], []))
-
-    assert resolved == Charged(area_id=area.id, title="Wake")
+    assert charged(entry, binding, content_by_binding([routine], [])) is PLACED_BY_THE_FRAME
 
 
 def test_a_slot_carries_its_declared_area_and_no_name() -> None:
@@ -82,18 +92,16 @@ def test_content_this_tenant_does_not_have_is_a_drop_rather_than_a_refusal() -> 
     )
 
 
-def test_a_routine_backed_entry_declaring_no_area_is_a_drop_rather_than_a_refusal() -> None:
-    # Neither side can name an Area: a routine has none, because the frame is not a category
-    # competing with Fitness, and the entry declared none of its own.
-    routine = a_routine()
+def test_a_binding_naming_a_routine_this_tenant_does_not_have_is_still_a_drop() -> None:
+    # The frame answers for a routine the tenant HOLDS. A dangling binding names no routine, so
+    # nothing is placed by anything and the producer defect is still reported.
     entry = a_concrete_entry(
-        template_id=uuid4(), target=BindingTarget.ROUTINE, entity_id=routine.id
+        template_id=uuid4(), target=BindingTarget.ROUTINE, entity_id=uuid4(), area_id=uuid4()
     )
-    binding = EntryBinding(target=BindingTarget.ROUTINE, entity_id=routine.id)
 
-    assert charged(entry, binding, content_by_binding([routine], [])) is (
-        DropCause.CONTENT_WITH_NO_AREA_AND_NONE_DECLARED
-    )
+    assert charged(
+        entry, a_binding(BindingTarget.ROUTINE), content_by_binding([a_routine()], [])
+    ) is (DropCause.CONTENT_THIS_TENANT_DOES_NOT_HAVE)
 
 
 def test_a_binding_resolves_only_in_the_table_its_target_names() -> None:
@@ -136,22 +144,58 @@ def test_content_carrying_an_empty_title_is_refused_where_the_row_can_be_named()
         charged(entry, binding, content_by_binding([], [habit]))
 
 
-def test_every_drop_cause_is_a_state_a_stored_row_can_hold() -> None:
-    # The vocabulary bounded by the inventory of what may exist. Each member is produced by one of
-    # the cases above, so a cause with no reachable state cannot be added without a test for it.
+def test_no_state_a_routine_binding_can_be_in_produces_the_area_cause() -> None:
+    # The three states a routine binding can hold, enumerated: the routine exists and the entry
+    # declares an Area, it exists and declares none, and it names no routine at all. The Area cause
+    # is unreachable from every one of them, because the frame answers before an Area is read.
     routine = a_routine()
-    reachable = {
+    held = content_by_binding([routine], [])
+    answers = {
         charged(
-            a_concrete_entry(template_id=uuid4(), target=BindingTarget.HABIT, entity_id=uuid4()),
-            a_binding(BindingTarget.HABIT),
-            {},
+            a_concrete_entry(
+                template_id=uuid4(),
+                target=BindingTarget.ROUTINE,
+                entity_id=routine.id,
+                area_id=an_area().id,
+            ),
+            EntryBinding(target=BindingTarget.ROUTINE, entity_id=routine.id),
+            held,
         ),
         charged(
             a_concrete_entry(
                 template_id=uuid4(), target=BindingTarget.ROUTINE, entity_id=routine.id
             ),
             EntryBinding(target=BindingTarget.ROUTINE, entity_id=routine.id),
-            content_by_binding([routine], []),
+            held,
+        ),
+        charged(
+            a_concrete_entry(template_id=uuid4(), target=BindingTarget.ROUTINE, entity_id=uuid4()),
+            a_binding(BindingTarget.ROUTINE),
+            held,
+        ),
+    }
+
+    assert answers == {PLACED_BY_THE_FRAME, DropCause.CONTENT_THIS_TENANT_DOES_NOT_HAVE}
+    assert DropCause.CONTENT_WITH_NO_AREA_AND_NONE_DECLARED not in answers
+
+
+def test_every_drop_cause_is_a_state_the_resolution_can_answer_with() -> None:
+    # The vocabulary bounded by the inventory of what the resolution can produce, so a cause nothing
+    # answers with cannot be added without a test for it.
+    #
+    # The two members are not equally live. A dangling binding is a row a tenant really holds. The
+    # Area cause is a NET: it answers content that resolved with no Area beside an entry declaring
+    # none, and no table can hold that pair, because a habit's Area column is NOT NULL and a routine
+    # is answered by the frame before an Area is read. It is driven here from a content mapping
+    # rather than from a habit row, which is what a widened content source would produce.
+    entry = a_concrete_entry(template_id=uuid4(), target=BindingTarget.HABIT, entity_id=uuid4())
+    unowned = a_binding(BindingTarget.HABIT)
+    reachable = {
+        charged(entry, unowned, {}),
+        charged(
+            entry,
+            unowned,
+            {(unowned.target, unowned.entity_id): EntryContent(title="Shower", area_id=None)},
         ),
     }
 

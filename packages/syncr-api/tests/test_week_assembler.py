@@ -411,9 +411,15 @@ async def test_a_concrete_entry_carries_its_content_name_and_the_area_it_charges
     }
 
 
-async def test_a_concrete_entry_naming_a_routine_charges_the_area_it_declares() -> None:
-    # A routine carries no Area, because the frame defines how much time exists rather than
-    # competing for it. So an entry naming one has to declare the Area its block is charged to.
+@pytest.mark.parametrize("declares_an_area", [True, False], ids=["an Area", "no Area"])
+async def test_a_concrete_entry_naming_a_routine_materializes_nothing(
+    declares_an_area: bool,
+) -> None:
+    # The frame is the authority for a routine's placement: the routine is already placed on every
+    # date at its own target time, so an entry naming one carries no occurrence and charges
+    # nothing, with or without an Area of its own. The slot beside it still materializes, so this is
+    # the entry's binding rather than the whole day shape. What the rule costs a week -- the block
+    # count, the denominator, the charge and the log -- is in test_routine_bound_entries.py.
     area = an_area()
     routine = a_routine(title="Wake", target_time=time(5, 0), duration_minutes=30)
     day_type = uuid4()
@@ -424,35 +430,7 @@ async def test_a_concrete_entry_naming_a_routine_charges_the_area_it_declares() 
                 template_id=uuid4(),
                 target=BindingTarget.ROUTINE,
                 entity_id=routine.id,
-                area_id=area.id,
-            )
-        ],
-    )
-
-    inputs = await an_assembler(
-        areas=FakeAreas([area]),
-        routines=FakeRoutines([routine]),
-        week_pattern=FakeWeekPattern(every_day(day_type)),
-        templates=FakeTemplates([template]),
-    ).assemble(WEEK, NOW)
-
-    assert {(entry.title, entry.area_id) for entry in inputs.template_entries} == {
-        ("Wake", area.id)
-    }
-
-
-async def test_a_concrete_entry_naming_a_routine_and_declaring_no_area_is_dropped() -> None:
-    # Neither side can name an Area, and every block but the frame and an anchor carries one, so
-    # the entry cannot become a block at all. Dropped rather than refused: the rest of the day
-    # shape is assemblable, and refusing would fail every solve of the week over one row.
-    area = an_area()
-    routine = a_routine()
-    day_type = uuid4()
-    template = a_template(
-        day_type_id=day_type,
-        entries=[
-            a_concrete_entry(
-                template_id=uuid4(), target=BindingTarget.ROUTINE, entity_id=routine.id
+                area_id=area.id if declares_an_area else None,
             ),
             a_slot_entry(template_id=uuid4(), area_id=area.id),
         ],
@@ -522,11 +500,12 @@ async def test_a_binding_does_not_resolve_against_the_table_its_target_does_not_
     assert inputs.template_entries == ()
 
 
-async def test_a_routine_suppressed_every_night_still_names_the_entry_that_binds_it() -> None:
-    # Why the name is resolved from the ROW rather than joined out of the assembled snapshot. An
-    # off-plan period suppresses the frame occurrence and not an entry outside it, so the frame is
-    # empty while the entry that names that routine is not. A join against the frame would leave
-    # the block with no name at all.
+async def test_a_suppressed_frame_does_not_hand_the_placement_back_to_the_entry() -> None:
+    # The frame's authority does not depend on the frame placing anything. An off-plan period
+    # suppresses the frame occurrence and not an entry outside it, so a week can end up holding
+    # neither: the routine's own occurrence is suppressed and the entry naming it still materializes
+    # nothing. Nothing states a minimum, and honouring the entry here would be honouring its
+    # declared wall time on exactly the nights the user declared off.
     area = an_area()
     routine = a_routine(title="Sleep", target_time=time(23, 0))
     day_type = uuid4()
@@ -555,7 +534,7 @@ async def test_a_routine_suppressed_every_night_still_names_the_entry_that_binds
     ).assemble(WEEK, NOW)
 
     assert inputs.frame == ()
-    assert {entry.title for entry in inputs.template_entries} == {"Sleep"}
+    assert inputs.template_entries == ()
 
 
 async def test_a_tenant_with_no_week_pattern_materializes_no_entries() -> None:
