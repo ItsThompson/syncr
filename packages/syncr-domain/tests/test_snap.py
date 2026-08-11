@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import time, timedelta
+from datetime import UTC, time, timedelta
 
 import pytest
 from hypothesis import given
@@ -12,10 +12,12 @@ from syncr_domain.intervals import Instant, Interval
 from syncr_domain.snap import (
     SNAP,
     SNAP_MINUTES,
+    NotAWallTime,
     is_a_snap_multiple,
     is_on_snap_grid,
     is_wall_time_on_snap_grid,
     nearest_snap_multiple,
+    not_a_wall_time,
     snap_to_grid,
 )
 from tests.instants import MONDAY, at
@@ -127,6 +129,56 @@ def test_a_declared_wall_time_on_a_quarter_hour_is_on_the_grid(minute: int) -> N
 )
 def test_a_declared_wall_time_off_the_quarter_hour_is_not(at_time: time) -> None:
     assert not is_wall_time_on_snap_grid(at_time)
+
+
+# --------------------------------------------------------------------------------
+# Whether a value is a wall time at all, which is the other question a declared time of
+# day raises and the one a shape can owe without owing the grid
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "declared",
+    [time(0, 0), time(5, 7), time(23, 59)],
+    ids=["midnight", "off the quarter hour", "the last minute of the day"],
+)
+def test_a_time_of_day_on_a_whole_minute_is_a_wall_time(declared: time) -> None:
+    assert not_a_wall_time(declared) is None
+
+
+def test_a_time_of_day_carrying_a_zone_is_not_a_wall_time() -> None:
+    assert not_a_wall_time(time(5, 0, tzinfo=UTC)) is NotAWallTime.CARRIES_A_ZONE
+
+
+@pytest.mark.parametrize(
+    "declared",
+    [time(5, 0, 30), time(5, 0, 0, 250000), time(5, 0, 30, 1)],
+    ids=["a second", "a microsecond", "both"],
+)
+def test_a_time_of_day_below_minute_resolution_is_not_a_wall_time(declared: time) -> None:
+    assert not_a_wall_time(declared) is NotAWallTime.BELOW_MINUTE_RESOLUTION
+
+
+def test_a_value_breaking_both_halves_is_named_by_the_zone() -> None:
+    # The precedence belongs to the statement rather than to each shape that reads it: every
+    # shape refusing this rule answered the zone first, so a reader answering the other half
+    # would change which refusal a value carrying both gets.
+    assert not_a_wall_time(time(5, 0, 30, tzinfo=UTC)) is NotAWallTime.CARRIES_A_ZONE
+
+
+def test_the_wall_time_question_and_the_grid_question_disagree_in_both_directions() -> None:
+    # What keeps the two separable, asserted over the values where they answer differently
+    # rather than over values both answer the same way. Folding either predicate into the
+    # other moves one of these four answers.
+    off_the_grid = time(7, 5)
+
+    assert not_a_wall_time(off_the_grid) is None
+    assert not is_wall_time_on_snap_grid(off_the_grid)
+
+    zoned_on_a_quarter_hour = time(7, 0, tzinfo=UTC)
+
+    assert not_a_wall_time(zoned_on_a_quarter_hour) is NotAWallTime.CARRIES_A_ZONE
+    assert is_wall_time_on_snap_grid(zoned_on_a_quarter_hour)
 
 
 @pytest.mark.parametrize("minutes", [0, 15, 45, 1440])

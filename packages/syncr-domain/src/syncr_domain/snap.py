@@ -19,6 +19,13 @@ legal, and a producer that owes the grid applies :func:`snap_to_grid` itself.
 Neither :func:`is_wall_time_on_snap_grid` nor :func:`is_a_snap_multiple` takes an instant, because a
 DECLARATION carries none: a wall time and a duration in minutes, with no date and no zone.
 
+**Whether a value is a wall time at all is a different question from whether it is on the grid, and
+:func:`not_a_wall_time` is the whole of the first one.** A wall time carries no zone and nothing
+below a minute; ``07:05`` breaks neither of those and is off the grid, so the two questions answer
+differently and a shape that owes one without the other reads only the one it owes. It is not a
+declaration predicate and the crossing below does not include it: it refuses a value that could not
+be a time of day at all, before any question about where that time of day falls.
+
 **A declared duration owes the grid, and so does a wall time the user chose.** An anchor and the
 buffers derived from it are the only exemption: nothing else is excused, and a shape that declares
 a wall time or a duration and reads neither declaration predicate is unenforced rather than exempt.
@@ -45,6 +52,7 @@ that one moves back onto the grid.
 from __future__ import annotations
 
 from datetime import timedelta
+from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.intervals import as_instant
@@ -91,6 +99,37 @@ def is_wall_time_on_snap_grid(at: time) -> bool:
     time: ``Wake 05:00`` means 05:00 wherever the user is.
     """
     return at.minute % SNAP_MINUTES == 0 and at.second == 0 and at.microsecond == 0
+
+
+class NotAWallTime(StrEnum):
+    """The two shapes a time of day cannot take and still be wall time.
+
+    Carried on the answer rather than resolved to a message here, because the message belongs to
+    the shape that was refused: a target time, a preferred window bound and a day bound each name
+    their own field and their own reason for owing the rule.
+    """
+
+    CARRIES_A_ZONE = "carries_a_zone"
+    BELOW_MINUTE_RESOLUTION = "below_minute_resolution"
+
+
+def not_a_wall_time(at: time) -> NotAWallTime | None:
+    """Which half of the wall-time rule ``at`` breaks, or ``None`` when it breaks neither.
+
+    A wall time names a time of day and nothing else. An offset would be dropped by any column
+    that stores one, leaving the value an hour or more out with nothing to say so, and every
+    duration this product declares is a count of minutes, so a value below minute resolution names
+    a start no declared span could run from.
+
+    A value carrying both is named by the zone. The precedence is stated once here because it
+    decides which refusal a caller reports, and every shape that reads this rule answered the zone
+    first before the rule was stated in one place.
+    """
+    if at.tzinfo is not None:
+        return NotAWallTime.CARRIES_A_ZONE
+    if at.second or at.microsecond:
+        return NotAWallTime.BELOW_MINUTE_RESOLUTION
+    return None
 
 
 def is_a_snap_multiple(minutes: int) -> bool:
