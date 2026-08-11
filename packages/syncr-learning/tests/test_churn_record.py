@@ -126,7 +126,10 @@ class TestEveryConsecutivePairIsInTheCorpus:
 
         assert [one.moves for one in observed] == [1, 1, 1, 1]
 
-    def test_the_gate_counts_the_pairs_the_week_produced(self) -> None:
+    def test_a_week_whose_every_pair_moved_opens_the_gate_at_twenty_one_revisions(self) -> None:
+        # The fixture's own property, which is why this is not "the gate counts the pairs the week
+        # produced": the two counts coincide only because every pair here moved. The sibling below
+        # is the week where they come apart.
         history = _history(THRESHOLD_CHURN_TOLERANCE + 1)
 
         opened = fit_churn_tolerance(_observations(history))
