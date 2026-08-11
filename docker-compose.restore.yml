@@ -43,10 +43,37 @@ services:
     image: postgres@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74
     # No tuning and no archiving: this instance exists for one restore and is dropped.
     # Archiving here would ship a drill's WAL into the bucket beside production's.
+    #
+    # `max_connections` MATCHES THE LIVE DATABASE'S rather than being small, and that is a
+    # requirement rather than a preference: Postgres refuses to replay WAL on an instance configured
+    # below the server that wrote it, and aborts at startup naming the setting. Measured with 20
+    # here against the live 50: `FATAL: recovery aborted because of insufficient parameter settings`.
+    # `test_wal_recovery.py` crosses the two declarations so the pair cannot drift.
     command:
       - "postgres"
       - "-c"
-      - "max_connections=20"
+      - "max_connections=50"
+      # HOW AN ARCHIVED SEGMENT REACHES THIS CONTAINER, and the rule it keeps.
+      #
+      # `archive_command` on the live database copies a completed segment into a volume and never
+      # talks to a network, so the database container holds no bucket credential and no upload can
+      # block a commit. This is the same rule in the other direction: `python3 -m ops.fetch_segment`
+      # fetches ONE segment from the bucket, decrypts it with the private key a person brought to
+      # the drill, and leaves it in the volume mounted read-only below. This copies it and does
+      # nothing else.
+      #
+      # NOT BUILT FROM THE OPS IMAGE, which is the alternative and is the decision this line
+      # records. That image is the one carrying rclone and python3, so a `restore_command` that
+      # fetched and decrypted for itself would have to run in it -- and then the recovery would be
+      # proven against an image the deployment does not run, which is the defect the pinning at the
+      # top of this file exists to prevent. Two further reasons, in the order they bite: the bucket
+      # credential and the PRIVATE half of the backup key would have to be inside a database
+      # container, which is what keeps whoever reaches the host from reading the copies; and
+      # `data-net` is `internal: true`, so this container has no route off the host to a bucket at
+      # all. (gpg IS in the Postgres image, as Debian's own keyring dependency. It is the fetch that
+      # cannot run there, not the decryption.)
+      - "-c"
+      - "restore_command=cp /var/backups/restore/wal/%f %p"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-syncr}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-syncr}
@@ -55,15 +82,21 @@ services:
       POSTGRES_DB: syncr_restore
     expose:
       - "5432"
-    # NO VOLUME, AND THAT IS THE DESIGN. The scratch database lives in the container's own writable
-    # layer, so `docker compose rm -fsv postgres-restore` removes it and every drill starts on a
-    # database that has never held anything.
+    # NO VOLUME HOLDS THE DATABASE, AND THAT IS THE DESIGN. The scratch database lives in the
+    # container's own writable layer, so `docker compose rm -fsv postgres-restore` removes it and every
+    # drill starts on a database that has never held anything. The one mount below is read-only and
+    # holds no database state: it is where the staging one-shot leaves a decrypted segment.
     #
     # A NAMED VOLUME WAS THE FIRST VERSION AND IT WAS DANGEROUS: dropping one needs a `down -v`, never
     # safe against this project, because it is scoped to the PROJECT rather than to a service.
     # Measured, in a local run: the drill's own teardown deleted `pgdata`, the staging volume and the
     # bucket, which on the deployed host would have destroyed the live database while proving the
     # backup could be restored.
+    volumes:
+      # The volume `python3 -m ops.fetch` empties at the start of a drill and `python3 -m
+      # ops.fetch_segment` stages into. READ-ONLY here, so the one container that replays a segment
+      # cannot alter the copy it replays.
+      - restore_scratch:/var/backups/restore:ro
     networks:
       - data-net
     healthcheck:
