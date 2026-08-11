@@ -39,10 +39,12 @@ fifteen-minute grid is an open product question, held from opposite sides by tic
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import time
 from enum import StrEnum
 from itertools import pairwise
 from typing import TYPE_CHECKING, Final
 
+from syncr_domain.budgets import MINUTES_PER_HOUR
 from syncr_domain.errors import DomainError
 from syncr_domain.snap import SNAP_MINUTES, is_a_snap_multiple, is_wall_time_on_snap_grid
 
@@ -54,16 +56,28 @@ if TYPE_CHECKING:
 # "anytime" is expressed by declaring no preference at all rather than by naming every hour.
 MAX_WINDOWS: Final = 6
 
+MINUTES_IN_A_DAY: Final = 24 * MINUTES_PER_HOUR
+
+# The wall time a window's end names when the window runs to the end of the day.
+# :class:`LocalTimeWindow` states what that means and why it is the one bound that may be earlier
+# than the start it belongs to.
+END_OF_DAY: Final = time(0, 0)
+
 # A session shorter than one grid step cannot be a block at all.
 MIN_PREFERRED_DURATION_MINUTES: Final = SNAP_MINUTES
 # Longer than a day, an ideal session length stops describing a session.
-MAX_PREFERRED_DURATION_MINUTES: Final = 24 * 60
+MAX_PREFERRED_DURATION_MINUTES: Final = MINUTES_IN_A_DAY
 
 # A cap below one grid step admits no block whatsoever, which says "never" rather than "at
 # most this much". Never is a forbidden Area, not a cap.
 MIN_MAX_PER_DAY_MINUTES: Final = SNAP_MINUTES
 # A cap of a whole day is the widest one that still caps anything.
-MAX_MAX_PER_DAY_MINUTES: Final = 24 * 60
+MAX_MAX_PER_DAY_MINUTES: Final = MINUTES_IN_A_DAY
+
+
+def _minutes_from_midnight(bound: LocalTime) -> int:
+    """``bound`` as a count of minutes, which is the coordinate two bounds are compared in."""
+    return bound.hour * MINUTES_PER_HOUR + bound.minute
 
 
 class PreferenceStrength(StrEnum):
@@ -119,10 +133,34 @@ class LocalTimeWindow:
 
     ``05:30`` means 05:30 wherever the user is, resolved against the zone active on the date
     the window is read for. That resolution is the week assembler's; nothing here holds a date.
+
+    **An end of ``00:00`` means the END of the day, and that is the only relaxation of the rule
+    that a window runs forward.** ``time`` cannot spell 24:00 and a bound is a ``time``, so the
+    day's last instant is spelled as its first, and every comparison of two bounds reads
+    :attr:`opens_at_minute` and :attr:`closes_at_minute` rather than the ``time`` values: ``00:00``
+    compares as the day's first minute and means its last.
+
+    A window itself still never wraps. A stretch a user authors across midnight becomes the two
+    windows :func:`authored_windows` splits it into, so nothing downstream holds a pair of bounds
+    that run backwards. A window whose start equals its end stays refused, which is why ``00:00``
+    to ``00:00`` names neither the whole day nor none of it and nothing has to decide which:
+    "anytime" is said by declaring no preference at all.
     """
 
     start: LocalTime
     end: LocalTime
+
+    @property
+    def opens_at_minute(self) -> int:
+        """Minutes from midnight at the start."""
+        return _minutes_from_midnight(self.start)
+
+    @property
+    def closes_at_minute(self) -> int:
+        """Minutes from midnight at the end, which is :data:`MINUTES_IN_A_DAY` at the day's end."""
+        if self.end == END_OF_DAY:
+            return MINUTES_IN_A_DAY
+        return _minutes_from_midnight(self.end)
 
     def __post_init__(self) -> None:
         for bound in (self.start, self.end):
@@ -156,14 +194,15 @@ class LocalTimeWindow:
                     f"block would name no legal placement at all. Round it to the quarter hour "
                     f"the placement would take anyway",
                 )
-        if self.start >= self.end:
+        if self.start == self.end or self.opens_at_minute >= self.closes_at_minute:
             raise PreferenceError(
                 PreferenceField.WINDOWS,
-                f"a preferred window runs forward inside one day, got {self.start.isoformat()} "
-                f"to {self.end.isoformat()}. A window that ends where it starts can contain no "
-                "placement, so every placement would violate it; one that ends before it starts "
-                "names two stretches on two dates, and which date each half belongs to is not "
-                "decidable from a declaration",
+                f"a preferred window runs forward, got {self.start.isoformat()} to "
+                f"{self.end.isoformat()}. A window that ends where it starts names no stretch of "
+                "the day, or at 00:00 the whole of it, and neither is a preferred time: no "
+                "preference at all is how anytime is said. One whose end is earlier still names "
+                "two stretches, which is what a stretch across midnight is split into before "
+                "either becomes a window; only an end of 00:00 runs to the end of the day",
             )
 
     def __str__(self) -> str:
@@ -222,9 +261,13 @@ class Preference:
         # Canonical order, so the times of day a preference names are a set rather than a list
         # whose order a caller could change without changing the preference. It is also the
         # order the read model renders them in: earliest first.
-        ordered = tuple(sorted(self.windows, key=lambda window: (window.start, window.end)))
+        ordered = tuple(
+            sorted(
+                self.windows, key=lambda window: (window.opens_at_minute, window.closes_at_minute)
+            )
+        )
         for earlier, later in pairwise(ordered):
-            if later.start < earlier.end:
+            if later.opens_at_minute < earlier.closes_at_minute:
                 raise PreferenceError(
                     PreferenceField.WINDOWS,
                     f"two preferred windows overlap, {earlier} and {later}. Their union is one "
@@ -272,6 +315,27 @@ class Preference:
                 f"minutes, got {self.max_per_day_minutes}. A cap admitting no block at all says "
                 "never rather than at most, and never is a forbidden Area",
             )
+
+
+def authored_windows(*, start: LocalTime, end: LocalTime) -> tuple[LocalTimeWindow, ...]:
+    """The windows one authored stretch of the day names: two where it wraps midnight, else one.
+
+    ``23:00`` to ``01:00`` is two windows, ``23:00`` to the end of the day and midnight to
+    ``01:00``, and this is where that split happens. Carrying the stretch as one window whose end
+    is earlier than its start would leave every reader of a bound pair answering wrongly rather
+    than refusing: the canonical order, the overlap rule, and the length a pair names all read the
+    two bounds directly, and none of them can see a wrap.
+
+    A stretch whose end is already ``00:00`` runs to the end of the day and is therefore one
+    window, so no split can produce an empty second half. Every other refusal a bound carries is
+    :class:`LocalTimeWindow`'s, raised on whichever half holds the offending bound.
+    """
+    if end != END_OF_DAY and _minutes_from_midnight(start) > _minutes_from_midnight(end):
+        return (
+            LocalTimeWindow(start=start, end=END_OF_DAY),
+            LocalTimeWindow(start=END_OF_DAY, end=end),
+        )
+    return (LocalTimeWindow(start=start, end=end),)
 
 
 def captured_from_slot(
