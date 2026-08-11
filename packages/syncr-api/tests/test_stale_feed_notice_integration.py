@@ -3,9 +3,9 @@
 The unit suite proves what the composer decides. This proves the two things only a real database and
 a real request can:
 
-- that the days the panel names come back from the anchor table, resolved to local dates, through
-  the ``DISTINCT`` read the composer asks for rather than through a fake that already answered in
-  dates;
+- that the days the panel names come back from the anchor table, resolved to local dates, through a
+  read that keeps repeats and leaves the composer to collapse them, rather than through a fake that
+  already answered in dates;
 - and that the notice reaches the wire on the source list, under the names the frontend reads, with
   no staleness threshold anywhere on the document.
 
@@ -296,8 +296,8 @@ def test_a_stale_feed_raises_one_amber_panel_naming_its_source_and_its_days(
         created["id"],
         [
             an_event("tomorrow", start=midday_in(1)),
-            # A second commitment on the same day, so the DISTINCT in the read is exercised by two
-            # rows rather than asserted about one.
+            # A second commitment on the same day, so the composer's own dedupe is exercised by two
+            # rows arriving from the read rather than asserted about one.
             an_event("tomorrow-again", start=midday_in(1) + timedelta(hours=2)),
             an_event("later", start=midday_in(3)),
         ],

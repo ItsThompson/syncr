@@ -57,8 +57,20 @@ SOLVING_STILL_WORKS: Final = (
 )
 FEED_STILL_WORKS: Final = (ANCHORS_RETAINED, SOLVING_STILL_WORKS)
 
-# One day, which is how many days a notice naming exactly one of them names.
-_ONE = 1
+# A single day, which is the count the notice words differently from several.
+A_SINGLE_DAY = 1
+
+# How the panel opens, per case, so the branch a notice took is nameable rather than inferable from
+# the sentence it produced. A feed that has never answered and one that answered days ago are two
+# different facts, and stating the wrong one is the panel asserting a read that never happened.
+NEVER_ANSWERED: Final = "This feed has never been read successfully, and was added"
+LAST_ANSWERED: Final = "It last answered"
+
+# How it names the days, per case, for the same reason: a notice about three days must not word
+# itself as a notice about one.
+NO_DAY_IN_DOUBT: Final = "It has contributed nothing to the days ahead, so no day is in doubt."
+ONE_DAY_HOLDS: Final = "holds commitments it contributed."
+SEVERAL_DAYS_HOLD: Final = "hold commitments it contributed."
 
 
 def is_feed_stale(source: CalendarSourceRecord, *, now: datetime) -> bool:
@@ -154,22 +166,26 @@ def _how_long(source: CalendarSourceRecord, *, now: datetime) -> str:
 
     A duration is what makes a reader act; a timestamp makes them do arithmetic. The instant is on
     the notice as ``since`` for a surface that wants to render it its own way.
+
+    Which of the two openings is used is the load-bearing part: a feed that has never answered must
+    not be described as one that answered a while ago, because the duration reads identically either
+    way and only the opening says which happened.
     """
     for_how_long = stated_duration(now - failing_since(source))
     if source.sync_state.last_success_at is None:
-        return f"This feed has never been read successfully, and was added {for_how_long} ago."
-    return f"It last answered {for_how_long} ago."
+        return f"{NEVER_ANSWERED} {for_how_long} ago."
+    return f"{LAST_ANSWERED} {for_how_long} ago."
 
 
 def _affected(days: tuple[date, ...]) -> str:
     """Which days hold what the feed already contributed, so the panel says what is in doubt."""
     if not days:
-        return "It has contributed nothing to the days ahead, so no day is in doubt."
-    if len(days) == _ONE:
-        return f"{days[0].isoformat()} holds commitments it contributed."
+        return NO_DAY_IN_DOUBT
+    if len(days) == A_SINGLE_DAY:
+        return f"{days[0].isoformat()} {ONE_DAY_HOLDS}"
     return (
-        f"{len(days)} days between {days[0].isoformat()} and {days[-1].isoformat()} hold "
-        f"commitments it contributed."
+        f"{len(days)} days between {days[0].isoformat()} and {days[-1].isoformat()} "
+        f"{SEVERAL_DAYS_HOLD}"
     )
 
 
@@ -201,6 +217,10 @@ class StaleFeedReading:
 
         A healthy tenant costs no anchor read at all, which is why the threshold is applied before
         the read rather than after it.
+
+        One read per stale feed, awaited in turn rather than gathered. The repository shares the
+        request's session, and a session may not be used concurrently, so the sequence is a
+        constraint rather than a missed optimization.
         """
         stale = [source for source in sources if is_feed_stale(source, now=now)]
         if not stale:

@@ -9,13 +9,22 @@ found wrong every time it was checked.
 
 Notice identity is asserted by full equality, never by containment. One identifier is a prefix of
 another, and a containment check then rests on a delimiter nothing documents.
+
+Which assertions pin words, and which do not, is a deliberate split. A sentence stating a CAPABILITY
+or selecting a BRANCH is asserted against the constant that owns it, so the copy stays free to
+improve: ``still_works``, the retained-anchors sentence, the two openings of ``_how_long`` and the
+three day-count sentences all work that way, and the capability this panel must not claim is
+asserted against the constant in the module that owns it. Two fields are pinned as literals
+instead, ``title`` and ``unavailable``, because what those arm is the interpolation of the SOURCE'S
+OWN NAME rather than the surrounding words: a panel naming the wrong feed is the failure they exist
+to catch.
 """
 
 from __future__ import annotations
 
 import inspect
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, get_args
 from uuid import uuid4
 
 import pytest
@@ -39,7 +48,12 @@ from syncr_api.calendars.feed_notices import (
     ANCHORS_RETAINED,
     FEED_STALE,
     FEED_STILL_WORKS,
+    LAST_ANSWERED,
+    NEVER_ANSWERED,
+    NO_DAY_IN_DOUBT,
+    ONE_DAY_HOLDS,
     SETTINGS_SCREEN,
+    SEVERAL_DAYS_HOLD,
     SOLVING_STILL_WORKS,
     StaleFeedReading,
     failing_since,
@@ -47,6 +61,7 @@ from syncr_api.calendars.feed_notices import (
     markable_span,
     stale_feed_notices,
 )
+from syncr_api.calendars.projection_notices import OPERATION as WRITING_THE_PLAN
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 from syncr_api.calendars.sync_state import RETAINED_NOTICE, recorded_failure
 from syncr_api.core.notices import AMBER, PANEL
@@ -259,6 +274,43 @@ def test_the_age_of_a_feed_that_has_succeeded_is_measured_from_that_success() ->
 # --------------------------------------------------------------------------------
 
 
+def test_a_feed_that_never_answered_is_not_described_as_one_that_answered() -> None:
+    # The two openings embed the same duration, so `stated_duration(...) in detail` cannot tell them
+    # apart: only the opening says which of the two facts happened. Asserted per case against the
+    # constants the composer selects between, so swapping the branches reddens while the wording of
+    # either sentence stays free to change.
+    never = source(created_at=NOW - timedelta(days=3), sync_state=failed(since=None))
+    answered = source(sync_state=failed(since=NOW - timedelta(days=2)))
+
+    about_never = only(stale_feed_notices([never], {}, now=NOW)).detail
+    about_answered = only(stale_feed_notices([answered], {}, now=NOW)).detail
+
+    assert NEVER_ANSWERED in about_never
+    assert LAST_ANSWERED not in about_never
+    assert LAST_ANSWERED in about_answered
+    assert NEVER_ANSWERED not in about_answered
+
+
+@pytest.mark.parametrize(
+    ("how_many", "expected"),
+    [(0, NO_DAY_IN_DOUBT), (1, ONE_DAY_HOLDS), (2, SEVERAL_DAYS_HOLD), (3, SEVERAL_DAYS_HOLD)],
+)
+def test_the_notice_words_the_days_for_the_number_it_actually_names(
+    how_many: int, expected: str
+) -> None:
+    # A notice about three days must not word itself as a notice about one, and the singular and
+    # plural sentences differ by one character in the middle of a phrase. Each arm is selected by
+    # the count, so widening the single-day branch to `>=` reddens on the two- and three-day cases.
+    stale = source()
+    days = tuple(date(2026, 2, 10) + timedelta(days=offset) for offset in range(how_many))
+
+    raised = only(stale_feed_notices([stale], {stale.id: days}, now=NOW))
+
+    assert expected in raised.detail
+    if how_many == 1:
+        assert SEVERAL_DAYS_HOLD not in raised.detail
+
+
 def test_the_panel_is_raised_at_panel_volume() -> None:
     # Volume and pigment are asserted separately, because one assertion over both cannot say which
     # of them moved: volume is WHERE it renders and pigment is WHAT KIND it is.
@@ -304,7 +356,31 @@ def test_the_notice_names_what_survives_from_the_one_list_that_declares_it() -> 
     assert ANCHORS_RETAINED in raised.still_works
     assert SOLVING_STILL_WORKS in raised.still_works
     assert raised.still_works == list(FEED_STILL_WORKS)
+
+
+def test_the_notice_names_the_one_capability_the_outage_removed() -> None:
+    # Its own case rather than a clause of the surviving-capability test, so a change to what the
+    # outage removes and a change to what survives it are two different reds. The sentence is pinned
+    # as a literal deliberately: what it arms is that the SOURCE'S OWN NAME is interpolated into it,
+    # which is data rather than copy, and a panel naming the wrong feed is the failure that matters.
+    raised = only(stale_feed_notices([source(display_name="University timetable")], {}, now=NOW))
+
     assert raised.unavailable == ["Reading new commitments from University timetable"]
+
+
+def test_the_feed_panel_never_claims_the_capability_the_projection_owns() -> None:
+    # This module reads the failing feed and its anchors, and nothing about the calendar the plan is
+    # written to, so it must not claim that writing works. The capability is asserted against the
+    # constant in the module that OWNS it rather than against a sentence typed here, so the copy at
+    # either end stays free to improve while the claim stays forbidden.
+    for capability in FEED_STILL_WORKS:
+        assert WRITING_THE_PLAN.lower() not in capability.lower()
+
+
+def test_the_reading_that_forbids_it_can_see_the_capability_it_forbids() -> None:
+    # The positive control. Without it the rule above passes on a reading that matches nothing,
+    # which is how a guard against one sentence becomes a guard against none.
+    assert WRITING_THE_PLAN.lower() in f"Solving the week, and {WRITING_THE_PLAN.lower()}"
 
 
 def test_the_notice_carries_the_retained_and_possibly_stale_sentence_the_failure_wrote() -> None:
@@ -531,16 +607,33 @@ def test_a_span_whose_local_midnight_falls_after_the_horizon_ends_still_resolves
 
 # What a threshold field would be called. A name rather than a value, because the defect the ticket
 # forbids is a figure a client can read and apply, whatever number it happens to hold.
+# What a threshold field would be called, and the kind of value it would have to hold. A name alone
+# is not enough: `possiblyStale` is a real domain word on the anchors document, so a name-only
+# reading would report a legitimate field as this defect the moment one reached a calendar shape. A
+# threshold is a figure a client can apply, so it is a NUMBER under one of these names.
 THRESHOLD_SHAPED = ("stale", "threshold")
+APPLICABLE_FIGURE = (int, float)
 
 
 def threshold_shaped_fields(shape: type[WireModel]) -> list[str]:
-    """Every field of ``shape`` whose name reads as a staleness threshold a client could apply."""
+    """Every field of ``shape`` that reads as a staleness threshold a client could apply.
+
+    A threshold-shaped NAME holding a figure. `possiblyStale` is threshold-shaped and holds a
+    boolean, which no surface can apply as a threshold, so the value's kind is half the reading.
+    """
     return [
         name
-        for name in shape.model_fields
+        for name, field in shape.model_fields.items()
         if any(word in name.lower() for word in THRESHOLD_SHAPED)
+        and _permits_a_figure(field.annotation)
     ]
+
+
+def _permits_a_figure(annotation: object) -> bool:
+    """Whether the declared type can carry a number, through an optional or a union."""
+    if annotation in APPLICABLE_FIGURE:
+        return True
+    return any(arg in APPLICABLE_FIGURE for arg in get_args(annotation))
 
 
 def calendar_wire_shapes() -> list[type[WireModel]]:
@@ -583,3 +676,14 @@ def test_the_reading_reports_a_threshold_field_that_is_planted() -> None:
         stale_after_hours: int
 
     assert threshold_shaped_fields(PlantedResponse) == ["stale_after_hours"]
+
+
+def test_the_reading_passes_a_threshold_shaped_name_that_no_client_could_apply() -> None:
+    # The negative control, and it is the reason the value's kind is read at all: `possiblyStale` is
+    # a real field on the anchors document. A name-only reading would call it a threshold and refuse
+    # a legitimate shape the day one reaches a calendar response.
+    class PossiblyStaleResponse(WireModel):
+        possibly_stale: bool
+        stale_after_hours: int | None = None
+
+    assert threshold_shaped_fields(PossiblyStaleResponse) == ["stale_after_hours"]
