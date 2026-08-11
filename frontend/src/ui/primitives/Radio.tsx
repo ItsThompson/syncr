@@ -8,7 +8,7 @@
  * is what a keyboard-first product needs from a set of exclusive choices.
  *
  * THE GROUP CANNOT BE POINTED AT BY A LABEL, because its tab stop is a descendant Radix owns, so it is named
- * either by a string of its own or by an element a screen has already drawn the question in. */
+ * either by a string of its own or by an element a screen has already drawn the question in. See `naming.ts`. */
 
 import { useId, type Ref } from "react";
 import * as RadixRadioGroup from "@radix-ui/react-radio-group";
@@ -29,6 +29,8 @@ export type RadioProps = GroupNaming & {
   readonly name?: string | undefined;
   readonly isDisabled?: boolean | undefined;
   readonly isRequired?: boolean | undefined;
+  /** The id of the hint or error text under the group, which the form row owns. */
+  readonly describedBy?: string | undefined;
   /**
    * The group, because one radio on its own means nothing and the group is what a form points at.
    *
@@ -44,6 +46,7 @@ export function Radio({
   options,
   label,
   labelledBy,
+  describedBy,
   name,
   isDisabled,
   isRequired,
@@ -62,6 +65,7 @@ export function Radio({
       name={name}
       aria-label={label}
       aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
     >
       {options.map((option) => {
         const optionId = `${groupId}-${option.value}`;

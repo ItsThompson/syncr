@@ -11,6 +11,7 @@
 import path from "node:path";
 
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
+import { asKb } from "../lib/bytes.ts";
 import { frontendRoot, relativeToRepo } from "../lib/paths.ts";
 
 function kitModule(...segments: readonly string[]): string {
@@ -48,12 +49,6 @@ export interface BarrelPayload {
   readonly onItsOwnBytes: number;
 }
 
-// Vite reports a kB as 1000 bytes, and these figures are read beside vite's own. One convention, so
-// two numbers for one artifact cannot disagree.
-function asKb(bytes: number): string {
-  return (bytes / 1000).toFixed(2);
-}
-
 export function checkBarrelPayloads(payloads: readonly BarrelPayload[]): CheckOutcome {
   const findings: Finding[] = [];
   const notes: string[] = [
@@ -63,8 +58,8 @@ export function checkBarrelPayloads(payloads: readonly BarrelPayload[]): CheckOu
   for (const { probe, throughBarrelBytes, onItsOwnBytes } of payloads) {
     notes.push(
       `  ${relativeToRepo(probe.barrel)}: ${probe.component} through the barrel emits ` +
-        `${asKb(throughBarrelBytes)} kB of CSS, against ${asKb(onItsOwnBytes)} kB from ` +
-        `${relativeToRepo(probe.module)}, so the barrel loads ${asKb(throughBarrelBytes - onItsOwnBytes)} kB ` +
+        `${asKb(throughBarrelBytes)} of CSS, against ${asKb(onItsOwnBytes)} from ` +
+        `${relativeToRepo(probe.module)}, so the barrel loads ${asKb(throughBarrelBytes - onItsOwnBytes)} ` +
         "the component's own module does not",
     );
 
@@ -85,8 +80,8 @@ export function checkBarrelPayloads(payloads: readonly BarrelPayload[]): CheckOu
         file: probe.barrel,
         check: "barrel-loads-no-more-than-the-component",
         message:
-          `${probe.component} through the barrel emits ${asKb(throughBarrelBytes)} kB of CSS and ` +
-          `${asKb(onItsOwnBytes)} kB from its own module, so the barrel loads nothing extra. This barrel ` +
+          `${probe.component} through the barrel emits ${asKb(throughBarrelBytes)} of CSS and ` +
+          `${asKb(onItsOwnBytes)} from its own module, so the barrel loads nothing extra. This barrel ` +
           "states that importing one component may load another's stylesheet, and the artifact no longer " +
           "agrees: the statement is what has to change.",
       });

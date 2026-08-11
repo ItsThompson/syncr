@@ -25,6 +25,7 @@
 import { parse, type AtRule, type Declaration, type Node, type Rule } from "postcss";
 
 import { checkBarrelPayloads, type BarrelPayload } from "./barrels.ts";
+import { asKb } from "../lib/bytes.ts";
 import { refusalFor } from "../lib/declarations.ts";
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
 
@@ -70,8 +71,6 @@ export function checkBundle(input: CheckBundleInput): CheckOutcome {
   const findings: Finding[] = [];
   let declarations = 0;
   let atRules = 0;
-  // Vite reports a kB as 1000 bytes, and this check's figure is read beside vite's constantly. One
-  // convention, so two numbers for one artifact cannot disagree.
   let bytes = 0;
 
   for (const stylesheet of input.stylesheets) {
@@ -117,7 +116,7 @@ export function checkBundle(input: CheckBundleInput): CheckOutcome {
   return {
     findings: [...findings, ...barrels.findings],
     notes: [
-      `${input.stylesheets.length} built stylesheet(s), ${(bytes / 1000).toFixed(2)} kB`,
+      `${input.stylesheets.length} built stylesheet(s), ${asKb(bytes)}`,
       `${declarations} declaration(s) read by postcss, not by a pattern`,
       `${atRules} at-rule(s) read, and a keyframe list is refused whatever it declares`,
       ...input.stylesheets.map((stylesheet) => `  ${stylesheet.name}`),

@@ -122,20 +122,28 @@ const OPTIONS = [
 
 const BOUNDS = { start: "07:00", end: "22:00" };
 
-function renderGroups(hint?: string) {
+/* One hint per row, and the cases below give them different words, so a row whose message answered another
+ * row's control fails rather than passing on a string that happens to match. */
+interface GroupHints {
+  readonly kind?: string | undefined;
+  readonly bounds?: string | undefined;
+}
+
+function renderGroups(hints: GroupHints = {}) {
   return render(
     <>
-      <FormRow label="Kind" isGroup>
+      <FormRow label="Kind" hint={hints.kind} isGroup>
         {(field) => (
           <Radio
             labelledBy={field.labelledBy}
+            describedBy={field.describedBy}
             value="slot"
             onValueChange={vi.fn<(next: string) => void>()}
             options={OPTIONS}
           />
         )}
       </FormRow>
-      <FormRow label="Day bounds" hint={hint} isGroup>
+      <FormRow label="Day bounds" hint={hints.bounds} isGroup>
         {(field) => (
           <TimeRangeInput
             labelledBy={field.labelledBy}
@@ -182,8 +190,8 @@ describe("the group form", () => {
   });
 
   /* The row cannot point a label at a radio group's tab stop or at a fieldset, and a label aimed at either
-   * renders correctly while naming nothing: Chrome computes an empty name for the group and reports no name
-   * source. So the group form draws a span, and the labels left in the render are the options' own. */
+   * renders correctly while naming nothing, per `ui/primitives/naming.ts`. So the group form draws a span, and
+   * the labels left in the render are the options' own. */
   it("leaves no label pointing at nothing, in either form", () => {
     const groups = renderGroups();
     expect(danglingLabels(groups.container)).toEqual([]);
@@ -192,12 +200,44 @@ describe("the group form", () => {
     expect(danglingLabels(single.container)).toEqual([]);
   });
 
-  it("describes the group by the same message slot the single control gets", () => {
-    renderGroups("Wall time, in whichever zone is active on the day.");
+  /* The row hands its child a `describedBy` whichever control the child is, so BOTH supported controls take
+   * it: a group form whose message slot reached one of the two would render a message nothing references, and
+   * the type cannot see an ignored field. Each row's words differ, so a control describing itself by another
+   * row's message fails here. */
+  it("describes each group by its own row's message slot", () => {
+    renderGroups({
+      kind: "A concrete entry keeps its hour; a slot leaves the hour to the solver.",
+      bounds: "Wall time, in whichever zone is active on the day.",
+    });
 
+    expect(screen.getByRole("radiogroup", { name: "Kind" })).toHaveAccessibleDescription(
+      "A concrete entry keeps its hour; a slot leaves the hour to the solver.",
+    );
     expect(screen.getByLabelText("from")).toHaveAccessibleDescription(
       "Wall time, in whichever zone is active on the day.",
     );
+  });
+
+  /* A required row draws the marker as a child of the label element, so the words and the marker are two nodes
+   * in one span. The census reads the span's OWN text, which is why the row is still one authoring rather than
+   * none, and the group's name carries the marker because the marker sits inside the element it points at. */
+  it("authors a required group row's words once, marker and all", () => {
+    const { container } = render(
+      <FormRow label="Day bounds" isRequired isGroup>
+        {(field) => (
+          <TimeRangeInput
+            labelledBy={field.labelledBy}
+            value={BOUNDS}
+            onValueChange={vi.fn<(next: typeof BOUNDS) => void>()}
+          />
+        )}
+      </FormRow>,
+    );
+
+    expect(authoredNames(container, "Day bounds")).toEqual([
+      { source: "drawn text", by: "span.form-row__label" },
+    ]);
+    expect(screen.getByRole("group", { name: "Day bounds*" })).toBeInTheDocument();
   });
 });
 
