@@ -119,8 +119,16 @@ def _lived_blocks(
 ) -> Iterable[LivedBlock]:
     """Every block of every week's plan of record that a fitter may count, in span order per week.
 
-    The plan of record is the LATEST revision of each week, because that is the arrangement the user
-    lived: an earlier revision is a proposal the week moved past.
+    The plan of record is the LATEST revision of each week, whatever produced it, because that is
+    the arrangement the user lived: an earlier revision is a proposal the week moved past.
+
+    **A week whose latest revision was materialized is therefore in the corpus on the same footing
+    as an approved one, and nobody chose its arrangement.** A materialization places what the
+    declarations determine and leaves every Area slot unfilled: no objective was weighed and no
+    user assented. What such a week contributes is the user's confirmation of where a template put
+    a block, which is weaker evidence about what they prefer than a plan they approved. It is kept
+    rather than filtered, and this function could not filter it in any case: what produced a
+    revision is a column on the row and is not in the projection this reads.
 
     A block with no outcome row is dropped rather than read as ``presumed``. The absence of a row is
     presumed-AND-unconfirmed, and an unconfirmed block is excluded by the first rule, so reading the
