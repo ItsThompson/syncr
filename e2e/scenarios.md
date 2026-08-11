@@ -2,12 +2,17 @@
 
 One row per `*.spec.ts` in `tests/`, and the numbered smoke scenarios that file's cases name.
 
-**The file name is not the statement, which is why this table exists.** Three of the files below drive
-scenarios their own names do not carry: `s01-materialization.spec.ts` drives S17's and S24's slot
-renderings as well as S1's, `paths.spec.ts` names no number at all, and two files carry an observation
-that has no number to name. A reader looking for where a scenario is driven can follow
-`docs/smoke-scenarios.md`, which maps each of the 37 to the file that drives it; what that table cannot
-say anything about is a spec file driving none of them, because it has no row to hang it on.
+**The file name is not the statement, which is why this table exists.** Two of the files below drive
+scenarios their own names do not carry, and the table names both: `s01-materialization.spec.ts` drives
+S17's and S24's slot renderings as well as S1's, and `paths.spec.ts` carries no number in its name at all.
+Several files also hold cases that name no number, and one drives no numbered scenario at all. A reader
+looking for where a scenario is driven can follow `docs/smoke-scenarios.md`, which maps each of the 37 to
+the file that drives it; what that table cannot say anything about is a spec file driving none of them,
+because it has no row to hang it on.
+
+No count in this paragraph is checked by anything, which is why it holds as few as it can. The two files it
+names are named rather than counted, so a reader can cross them against the rows below, and the rows are
+checked. A figure nothing reads is a liability in a document whose whole purpose is to be read by a gate.
 
 **The first two columns are checked against the suite rather than trusted.** `npm run lint:spec-scenarios`
 crosses them in both directions: every spec file on disk has exactly one row here, every row names a file
@@ -17,7 +22,7 @@ than from a regex over the source, so a commented-out case counts as nothing and
 what it is. The third column is prose and nothing reads it.
 
 `none` is a legitimate entry. A case that drives an observation outside the 37 is still a case, and a
-statement that could only describe numbered work would leave the two files below unaccounted for.
+statement that could only describe numbered work would leave such a file unaccounted for.
 
 | Spec                                          | Scenarios    | What it drives                                                                                                                                                                                                                  |
 | --------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
