@@ -378,15 +378,17 @@ class TestWhatTheRunReports:
         assert line["ready"] == report.tenants[0].fitted.ready
 
     def test_the_module_defines_the_run_and_no_reporter_of_a_candidate(self) -> None:
-        # Read off the module rather than trusted, in the shape the port tests above use. A helper
-        # whose only caller was a log line is a figure nobody reads.
+        # Read off the module rather than trusted, in the shape the port tests above use. The public
+        # surface is an equality and the private one a property, so extracting a helper is free and
+        # a helper whose only caller could be a log line is not.
         defined = {
             name
             for name, value in vars(job_module).items()
             if isinstance(value, FunctionType) and value.__module__ == job_module.__name__
         }
 
-        assert defined == {"run", "run_for_tenant", "_record", "_reason_for"}
+        assert {name for name in defined if not name.startswith("_")} == {"run", "run_for_tenant"}
+        assert [name for name in defined if "candidate" in name or "promotion" in name] == []
 
     def test_the_module_says_where_a_promotion_candidate_is_derived(self) -> None:
         stated = " ".join((job_module.__doc__ or "").split())
