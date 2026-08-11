@@ -101,9 +101,21 @@ class UnreadableSnapshot(Exception):
     """A field of the inputs this module holds no stored form for, so a read would default it."""
 
 
+# What a refusal calls the whole document, which no key names because it is the column itself.
+SNAPSHOT = "the snapshot"
+
+
 def inputs_of(snapshot: JsonDocument) -> SolveInputs:
-    """The inputs the solve that wrote ``snapshot`` read, or a stated refusal."""
-    form = read_whole_number(snapshot.get(FORM), field=FORM)
+    """The inputs the solve that wrote ``snapshot`` read, or a stated refusal.
+
+    The document is read as an object before anything is read out of it, so the envelope refuses
+    the way every level below it does. The annotation is not what makes that safe: the column is
+    nullable ``JSONB`` and no constraint on it says the value is an object, so what arrives is
+    whatever was stored, and a reader that indexed it first would answer a corrupt row with an
+    ``AttributeError`` naming a Python type instead of a refusal naming the document.
+    """
+    stored_snapshot = read_mapping(snapshot, field=SNAPSHOT)
+    form = read_whole_number(stored_snapshot.get(FORM), field=FORM)
     if form != SNAPSHOT_FORM:
         raise StoredDocumentCorrupt(
             f"{FORM} names {form} and this reader rebuilds {SNAPSHOT_FORM}: the figure is bumped "
@@ -111,7 +123,7 @@ def inputs_of(snapshot: JsonDocument) -> SolveInputs:
             "no solve ever held"
         )
     require_a_reader_for_every_field([named for named, _ in FORMS])
-    stored = read_mapping(snapshot.get(INPUTS), field=INPUTS)
+    stored = read_mapping(stored_snapshot.get(INPUTS), field=INPUTS)
     return rebuilt(
         lambda: SolveInputs(
             **{named: read(stored.get(named), field=named) for named, read in FORMS}
