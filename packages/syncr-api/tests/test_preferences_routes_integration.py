@@ -522,7 +522,11 @@ def test_a_window_that_ends_where_it_starts_is_refused(
 
 
 def test_midnight_to_midnight_is_refused_rather_than_read_as_the_whole_day(
-    http: TestClient, signed_in: dict[str, str], owned: Owned
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
 ) -> None:
     # The bound pair the end-of-day reading nearly swallowed: 00:00 in the end position is the
     # day's end, so this one would have been accepted as a window naming every hour.
@@ -534,6 +538,7 @@ def test_midnight_to_midnight_is_refused_rather_than_read_as_the_whole_day(
 
     assert refused.status_code == ValidationFailed.status, refused.text
     assert [error["field"] for error in refused.json()["errors"]] == ["windows"]
+    assert preference_rows(live_database_url, owner.tenant_id) == []
 
 
 # --------------------------------------------------------------------------------
