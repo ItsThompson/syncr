@@ -6628,7 +6628,9 @@ export interface operations {
     declare_anchor_type_api_v1_anchor_types_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7766,7 +7768,9 @@ export interface operations {
     record_outcome_api_v1_blocks__block_id__outcome_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 /** @description The block's derived identity. */
                 block_id: string;
@@ -7962,7 +7966,9 @@ export interface operations {
     add_calendar_source_api_v1_calendar_sources_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8636,7 +8642,9 @@ export interface operations {
     sync_calendar_source_api_v1_calendar_sources__source_id__sync_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 source_id: string;
             };
@@ -8780,7 +8788,9 @@ export interface operations {
     resolve_conflict_api_v1_conflicts__conflict_id__resolve_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 /** @description The conflict being answered. */
                 conflict_id: string;
@@ -9013,7 +9023,9 @@ export interface operations {
     confirm_range_api_v1_days_confirm_range_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -9150,7 +9162,9 @@ export interface operations {
     confirm_day_api_v1_days__date__confirm_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 /** @description The local date, as `2026-02-09`. */
                 date: string;
@@ -9348,7 +9362,9 @@ export interface operations {
     declare_habit_api_v1_habits_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -9502,7 +9518,9 @@ export interface operations {
     remove_habit_api_v1_habits__habit_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 habit_id: string;
             };
@@ -9576,7 +9594,9 @@ export interface operations {
     change_habit_api_v1_habits__habit_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 habit_id: string;
             };
@@ -10000,7 +10020,9 @@ export interface operations {
     declare_off_plan_period_api_v1_off_plan_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -11821,7 +11843,9 @@ export interface operations {
     capture_task_api_v1_tasks_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -11975,7 +11999,9 @@ export interface operations {
     drop_task_api_v1_tasks__task_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 task_id: string;
             };
@@ -12051,7 +12077,9 @@ export interface operations {
     update_task_api_v1_tasks__task_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 task_id: string;
             };
@@ -12131,7 +12159,9 @@ export interface operations {
     complete_task_api_v1_tasks__task_id__complete_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 task_id: string;
             };
@@ -13400,7 +13430,9 @@ export interface operations {
     approve_week_api_v1_weeks__iso_week__approve_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 iso_week: string;
             };
@@ -13467,7 +13499,9 @@ export interface operations {
     create_pin_api_v1_weeks__iso_week__pins_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 iso_week: string;
             };
@@ -13547,7 +13581,9 @@ export interface operations {
     remove_pin_api_v1_weeks__iso_week__pins__pin_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 iso_week: string;
                 pin_id: string;
@@ -13689,7 +13725,9 @@ export interface operations {
     reject_block_api_v1_weeks__iso_week__reject_block_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 iso_week: string;
             };
@@ -14118,7 +14156,9 @@ export interface operations {
     activate_weight_set_api_v1_weight_sets__version__activate_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 /** @description The version to put in force. */
                 version: number;

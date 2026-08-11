@@ -47,7 +47,7 @@ from syncr_api.idempotency.repository import IdempotencyKeyRepository
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Mapping
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -431,8 +431,14 @@ async def test_the_sweep_removes_expired_keys_and_leaves_live_ones(
 # --------------------------------------------------------------------------------
 
 
-def post_request(*, headers: dict[str, str], body: bytes, path: str = PATH) -> Request:
-    """A POST as the framework hands one to a dependency."""
+def post_request(
+    *, body: bytes, path: str = PATH, headers: Mapping[str, str] | None = None
+) -> Request:
+    """A POST as the framework hands one to a dependency.
+
+    The key is not among the headers unless a test states one: the framework extracts it into a
+    parameter, so a header on the request reaches the dependency only through that parameter.
+    """
 
     async def receive() -> dict[str, object]:
         return {"type": "http.request", "body": body, "more_body": False}
@@ -441,40 +447,60 @@ def post_request(*, headers: dict[str, str], body: bytes, path: str = PATH) -> R
         "type": "http",
         "method": "POST",
         "path": path,
-        "headers": [(name.lower().encode(), value.encode()) for name, value in headers.items()],
+        "headers": [
+            (name.lower().encode(), value.encode()) for name, value in (headers or {}).items()
+        ],
     }
     return Request(scope, receive)
 
 
-async def test_the_dependency_reads_the_key_and_hashes_the_body(
+async def test_the_dependency_takes_the_key_and_hashes_the_body(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
-    # The wiring a route inherits: it declares the dependency and never touches the header or the
+    # The wiring a route inherits: it declares the dependency and never touches the key or the
     # body's bytes. Asserted through behavior, because the hash is what decides the branch.
     principal = Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset())
     stored = CountingWork(Created(block_id="abc", minutes=45))
 
     async with sessions() as session, session.begin():
-        guard = await get_idempotency_guard(
-            post_request(headers={IDEMPOTENCY_KEY_HEADER: KEY}, body=BODY), session, principal
-        )
+        guard = await get_idempotency_guard(post_request(body=BODY), session, principal, KEY)
         await guard.once(ROUTE, Created, stored)
 
     async with sessions() as session, session.begin():
-        replaying = await get_idempotency_guard(
-            post_request(headers={IDEMPOTENCY_KEY_HEADER: KEY}, body=BODY), session, principal
-        )
+        replaying = await get_idempotency_guard(post_request(body=BODY), session, principal, KEY)
         replayed = await replaying.once(
             ROUTE, Created, CountingWork(Created(block_id="", minutes=0))
         )
 
         reusing = await get_idempotency_guard(
-            post_request(headers={IDEMPOTENCY_KEY_HEADER: KEY}, body=OTHER_BODY), session, principal
+            post_request(body=OTHER_BODY), session, principal, KEY
         )
         with pytest.raises(ValidationFailed):
             await reusing.once(ROUTE, Created, CountingWork(Created(block_id="", minutes=0)))
 
     assert replayed == stored.response
+
+
+async def test_the_key_the_guard_claims_is_the_parameter_and_never_the_raw_header(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # The declaration in the document and the value the guard uses are the same thing, which is
+    # what makes the parameter more than documentation: the request still carries a header, and
+    # a dependency that read it off the request would claim the wrong key.
+    principal = Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset())
+    work = CountingWork(Created(block_id="abc", minutes=45))
+
+    async with sessions() as session, session.begin():
+        guard = await get_idempotency_guard(
+            post_request(body=BODY, headers={IDEMPOTENCY_KEY_HEADER: "read-off-the-request"}),
+            session,
+            principal,
+            KEY,
+        )
+        await guard.once(ROUTE, Created, work)
+
+    assert work.calls == 1
+    assert [row.idempotency_key for row in await stored_keys(sessions, owner.tenant_id)] == [KEY]
 
 
 async def test_the_dependency_hashes_the_path_the_request_addressed(
@@ -488,12 +514,14 @@ async def test_the_dependency_hashes_the_path_the_request_addressed(
     elsewhere = CountingWork(Created(block_id="def", minutes=45))
 
     async with sessions() as session, session.begin():
-        first = post_request(headers={IDEMPOTENCY_KEY_HEADER: KEY}, body=BODY, path=PATH)
-        await (await get_idempotency_guard(first, session, principal)).once(ROUTE, Created, stored)
+        first = post_request(body=BODY, path=PATH)
+        await (await get_idempotency_guard(first, session, principal, KEY)).once(
+            ROUTE, Created, stored
+        )
 
     async with sessions() as session, session.begin():
-        second = post_request(headers={IDEMPOTENCY_KEY_HEADER: KEY}, body=BODY, path=OTHER_PATH)
-        guard = await get_idempotency_guard(second, session, principal)
+        second = post_request(body=BODY, path=OTHER_PATH)
+        guard = await get_idempotency_guard(second, session, principal, KEY)
         with pytest.raises(ValidationFailed):
             await guard.once(ROUTE, Created, elsewhere)
 
@@ -509,15 +537,14 @@ async def test_a_route_that_demands_a_key_refuses_a_request_without_one(
     principal = Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset())
 
     async with sessions() as session, session.begin():
-        without = post_request(headers={}, body=BODY)
-        guard = await get_idempotency_guard(without, session, principal)
+        without = post_request(body=BODY)
+        guard = await get_idempotency_guard(without, session, principal, None)
         with pytest.raises(MalformedRequest, match=IDEMPOTENCY_KEY_HEADER):
-            await require_idempotency_key(without, guard)
+            await require_idempotency_key(guard, None)
 
-        withheader = post_request(headers={IDEMPOTENCY_KEY_HEADER: KEY}, body=BODY)
-        keyed = await get_idempotency_guard(withheader, session, principal)
+        keyed = await get_idempotency_guard(post_request(body=BODY), session, principal, KEY)
 
-        assert await require_idempotency_key(withheader, keyed) is keyed
+        assert await require_idempotency_key(keyed, KEY) is keyed
     assert IDEMPOTENCY_KEY_HEADER in MISSING_KEY_DETAIL
 
 
@@ -526,41 +553,35 @@ async def test_a_key_outside_the_bound_is_refused_before_it_reaches_the_column(
 ) -> None:
     # A caller-supplied value out of bounds is a 400 naming the bound, not a driver failure on
     # the way to storing it, and not a key nobody chose. Both ends are refused and both have a
-    # control beside them: a key AT the bound is accepted, and a request with no header at all
-    # still runs, because the header is offered rather than demanded.
+    # control beside them: a key AT the bound is accepted, and a request with no key at all
+    # still runs, because the key is offered rather than demanded.
     principal = Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset())
     at_the_bound_work = CountingWork(Created(block_id="abc", minutes=45))
-    no_header_work = CountingWork(Created(block_id="def", minutes=30))
+    no_key_work = CountingWork(Created(block_id="def", minutes=30))
 
     async with sessions() as session, session.begin():
-        oversize = post_request(
-            headers={IDEMPOTENCY_KEY_HEADER: "k" * (KEY_MAX_LENGTH + 1)}, body=BODY
-        )
         with pytest.raises(MalformedRequest, match=str(KEY_MAX_LENGTH)):
-            await get_idempotency_guard(oversize, session, principal)
+            await get_idempotency_guard(
+                post_request(body=BODY), session, principal, "k" * (KEY_MAX_LENGTH + 1)
+            )
 
         for blank in ("", " ", "\t"):
-            empty = post_request(headers={IDEMPOTENCY_KEY_HEADER: blank}, body=BODY)
             with pytest.raises(MalformedRequest, match="carries no value"):
-                await get_idempotency_guard(empty, session, principal)
+                await get_idempotency_guard(post_request(body=BODY), session, principal, blank)
 
-        at_the_bound = post_request(
-            headers={IDEMPOTENCY_KEY_HEADER: "k" * KEY_MAX_LENGTH}, body=BODY
+        at_the_bound = await get_idempotency_guard(
+            post_request(body=BODY), session, principal, "k" * KEY_MAX_LENGTH
         )
-        answered = await (await get_idempotency_guard(at_the_bound, session, principal)).once(
-            ROUTE, Created, at_the_bound_work
-        )
+        answered = await at_the_bound.once(ROUTE, Created, at_the_bound_work)
 
-        absent = post_request(headers={}, body=BODY)
-        await (await get_idempotency_guard(absent, session, principal)).once(
-            OTHER_ROUTE, Created, no_header_work
-        )
+        absent = await get_idempotency_guard(post_request(body=BODY), session, principal, None)
+        await absent.once(OTHER_ROUTE, Created, no_key_work)
 
     assert (at_the_bound_work.calls, answered) == (1, at_the_bound_work.response)
-    assert no_header_work.calls == 1
+    assert no_key_work.calls == 1
     assert str(KEY_MAX_LENGTH) in OVERSIZE_KEY_DETAIL
     assert IDEMPOTENCY_KEY_HEADER in BLANK_KEY_DETAIL
-    # The empty header was refused rather than stored, and the absent one stored nothing.
+    # The blank key was refused rather than stored, and the absent one stored nothing.
     assert [row.idempotency_key for row in await stored_keys(sessions, owner.tenant_id)] == [
         "k" * KEY_MAX_LENGTH
     ]

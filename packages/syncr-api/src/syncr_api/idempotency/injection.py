@@ -6,6 +6,11 @@ unsafe method rather than demanded, and a caller that wants the guarantee sends 
 where a repeat would be unrecoverable: approving a proposal twice would append two revisions,
 and there is no unapprove.
 
+The key is an annotated ``Header`` parameter rather than a value read off the raw request,
+because FastAPI can introspect a parameter and cannot introspect a header read behind its
+back: the parameter is what puts ``Idempotency-Key`` in the OpenAPI document, so a generated
+client can type the header instead of remembering it.
+
 The body is read here, once, before the framework parses it. Starlette caches it on the
 request, so the handler's own parsed body costs nothing extra and the hash is taken over
 exactly the bytes the client sent, together with the path they were sent to.
@@ -15,7 +20,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Header
 
 # FastAPI resolves these annotations at RUNTIME to build the dependency graph, so the
 # framework types and the dependency aliases stay runtime imports.
@@ -45,29 +50,39 @@ BLANK_KEY_DETAIL = (
     "that identifies this request, such as a UUID or a ULID, or omit the header entirely."
 )
 
+# The alias is the header's own spelling, so the document names it exactly as a client sends it:
+# without one, FastAPI derives the parameter name from the argument and declares `idempotency-key`.
+#
+# Optional with both bounds checked below rather than declared in the annotation. A `max_length`
+# here would hand the refusal to the framework, which answers 422 for a parameter, and a required
+# parameter would do the same for the absent key. Both of those are 400s naming their remedy.
+type IdempotencyKeyHeader = Annotated[str | None, Header(alias=IDEMPOTENCY_KEY_HEADER)]
+
 
 async def get_idempotency_guard(
-    request: Request, transaction: TransactionDep, principal: ClientPrincipalDep
+    request: Request,
+    transaction: TransactionDep,
+    principal: ClientPrincipalDep,
+    idempotency_key: IdempotencyKeyHeader = None,
 ) -> IdempotencyGuard:
     """The guard for this request, scoped to the caller's tenant.
 
-    Both ends of the key's bound are checked here, where the header is read, so the two
-    dependencies below inherit them. A key wider than the primary key holds would fail in the
-    driver on the way to storing it. An empty header is worse than that, because it succeeds:
-    ``""`` is not absent, so it would become a real key that every request with the same bug
-    shares, and the second such request would either be refused as a key the client does not
-    believe it sent, or silently replay the first one's response. Both are a caller error, so
-    both are a 400 naming the remedy.
+    Both ends of the key's bound are checked here, where the key arrives, so the dependency
+    below inherits them. A key wider than the primary key holds would fail in the driver on the
+    way to storing it. An empty header is worse than that, because it succeeds: ``""`` is not
+    absent, so it would become a real key that every request with the same bug shares, and the
+    second such request would either be refused as a key the client does not believe it sent, or
+    silently replay the first one's response. Both are a caller error, so both are a 400 naming
+    the remedy.
     """
-    key = request.headers.get(IDEMPOTENCY_KEY_HEADER)
-    if key is not None:
-        if not key.strip():
+    if idempotency_key is not None:
+        if not idempotency_key.strip():
             raise MalformedRequest(BLANK_KEY_DETAIL)
-        if len(key) > KEY_MAX_LENGTH:
+        if len(idempotency_key) > KEY_MAX_LENGTH:
             raise MalformedRequest(OVERSIZE_KEY_DETAIL)
     return IdempotencyGuard(
         IdempotencyKeyRepository(transaction, principal.tenant_id),
-        key=key,
+        key=idempotency_key,
         request_hash=request_fingerprint(request.url.path, await request.body()),
         clock=utc_now,
     )
@@ -76,9 +91,11 @@ async def get_idempotency_guard(
 type IdempotencyGuardDep = Annotated[IdempotencyGuard, Depends(get_idempotency_guard)]
 
 
-async def require_idempotency_key(request: Request, guard: IdempotencyGuardDep) -> IdempotencyGuard:
+async def require_idempotency_key(
+    guard: IdempotencyGuardDep, idempotency_key: IdempotencyKeyHeader = None
+) -> IdempotencyGuard:
     """The guard, for a route where a request without a key must not be applied at all."""
-    if request.headers.get(IDEMPOTENCY_KEY_HEADER) is None:
+    if idempotency_key is None:
         raise MalformedRequest(MISSING_KEY_DETAIL)
     return guard
 
