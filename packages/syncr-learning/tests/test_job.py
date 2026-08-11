@@ -6,21 +6,28 @@ The storage adapter has its own suite against a real database; what is tested he
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import io
+import json
+from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
+from types import FunctionType
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import pytest
+import structlog
 
+from syncr_common.logging import configure_logging
 from syncr_common.metrics import REGISTRY
+from syncr_domain.promotion import detect_repeated_pins
+from syncr_learning import job as job_module
 from syncr_learning.config import THRESHOLD_DURATION_MULTIPLIER
-from syncr_learning.job import NoWeightsInForce, promotion_candidates, run, run_for_tenant
+from syncr_learning.job import NoWeightsInForce, TenantRun, run, run_for_tenant
 from tests.builders import AREA, TENANT, a_week_of, corpus, outcome, pin
 from tests.test_rank import IN_FORCE
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from syncr_domain.identifiers import TenantId
     from syncr_learning.artifact import FittedWeightSet
@@ -73,6 +80,37 @@ def a_reader(**overrides: object) -> InMemoryReader:
         "weights": IN_FORCE_WITH_SCALARS,
     }
     return InMemoryReader(**{**defaults, **overrides})  # type: ignore[arg-type]
+
+
+@pytest.fixture
+def rendered_log() -> Iterator[io.StringIO]:
+    """Every line the run emits, rendered as the container writes it.
+
+    Logging configuration is process-global and nothing else in this suite configures it, so the
+    fixture hands back the default rather than leaving a second opinion in place.
+    """
+    stream = io.StringIO()
+    configure_logging(environment="test", log_level="info", stream=stream)
+    yield stream
+    structlog.reset_defaults()
+
+
+def lines_of(stream: io.StringIO) -> list[dict[str, object]]:
+    return [json.loads(line) for line in stream.getvalue().splitlines() if line.strip()]
+
+
+def the_line(stream: io.StringIO, event: str) -> dict[str, object]:
+    """The one line named ``event``, or a failure naming what was emitted instead.
+
+    Every assertion below about a field the line does NOT carry is stated over this, so a run that
+    logged nothing fails here rather than passing an absence nobody produced.
+    """
+    emitted = lines_of(stream)
+    named = [line for line in emitted if line.get("event") == event]
+    assert len(named) == 1, (
+        f"expected one {event}, emitted {[line.get('event') for line in emitted]}"
+    )
+    return named[0]
 
 
 class TestTheRunAppendsAndNeverActivates:
@@ -273,7 +311,12 @@ class TestWhatTheRunReports:
         assert ready == report.tenants[0].fitted.ready
         assert version == report.tenants[0].version
 
-    async def test_the_repeated_pins_are_returned_rather_than_written(self) -> None:
+    async def test_the_repeated_pins_this_run_reads_produce_no_figure_of_their_own(
+        self, rendered_log: io.StringIO
+    ) -> None:
+        # The corpus a promotion IS raised from, so the absence below is measured over an input that
+        # could produce a candidate rather than over an empty pin list. The api derives its own
+        # candidates at read time from its own pin rows; this run reports none.
         from syncr_domain.weeks import IsoWeek
 
         pins = [pin(iso_week=IsoWeek(year=2026, week=number), hour=13) for number in (7, 8, 9)]
@@ -281,5 +324,52 @@ class TestWhatTheRunReports:
 
         report = await run(reader, RecordingWriter(), at=AT)
 
-        assert len(promotion_candidates(report)) == 1
-        assert promotion_candidates(report)[0].ref.local_time == "13:00"
+        line = the_line(rendered_log, "learning.tenant.fitted")
+
+        assert len(detect_repeated_pins(pins)) == 1, "the fixture must be detectable"
+        assert len(report.tenants) == 1
+        assert [one.name for one in fields(TenantRun)] == ["tenant_id", "version", "fitted"]
+        assert [key for key in line if "candidate" in key or "promotion" in key] == []
+
+    async def test_the_fitted_line_carries_this_tenant_s_figures_and_nothing_else(
+        self, rendered_log: io.StringIO
+    ) -> None:
+        # An exact key set rather than a membership test: a field added to the line a runbook reads
+        # is as much a change as a field removed from it, and only one of the two has a home here.
+        report = await run(a_reader(), RecordingWriter(), at=AT)
+
+        line = the_line(rendered_log, "learning.tenant.fitted")
+
+        assert set(line) == {
+            "event",
+            "level",
+            "timestamp",
+            "service",
+            "tenant_id",
+            "version",
+            "ready",
+            "collecting",
+            "weight_fit_rejected",
+        }
+        assert line["tenant_id"] == str(TENANT)
+        assert line["version"] == report.tenants[0].version
+        assert line["ready"] == report.tenants[0].fitted.ready
+
+    def test_the_module_defines_the_run_and_no_reporter_of_a_candidate(self) -> None:
+        # Read off the module rather than trusted, in the shape the port tests above use. A helper
+        # whose only caller was a log line is a figure nobody reads.
+        defined = {
+            name
+            for name, value in vars(job_module).items()
+            if isinstance(value, FunctionType) and value.__module__ == job_module.__name__
+        }
+
+        assert defined == {"run", "run_for_tenant", "_record", "_reason_for"}
+
+    def test_the_module_says_where_a_promotion_candidate_is_derived(self) -> None:
+        stated = " ".join((job_module.__doc__ or "").split())
+
+        assert (
+            "the api derives repeated-pin promotion candidates at read time from its own pin rows"
+            in stated
+        )

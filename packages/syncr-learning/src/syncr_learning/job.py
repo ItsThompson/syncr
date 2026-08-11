@@ -1,4 +1,4 @@
-"""The nightly run: load, extract, fit, gate, append, detect. One pass per tenant, then a verdict.
+"""The nightly run: load, extract, fit, gate, append. One pass per tenant, then a verdict.
 
 ## What the run does and does not do
 
@@ -8,6 +8,9 @@ user overnight.
 
 It writes nothing else. There is no path from here to ``plan_revisions``, ``pins`` or
 ``block_outcomes``: the writer port has one method, so a module here has no call to make.
+
+It detects nothing else either: the api derives repeated-pin promotion candidates at read time from
+its own pin rows, so the raise does not wait for a nightly run.
 
 ## Idempotence, and where it comes from
 
@@ -39,7 +42,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_common.logging import get_logger
-from syncr_domain.promotion import detect_repeated_pins
 from syncr_learning import metrics
 from syncr_learning.config import OBJECTIVE_TERMS, OBJECTIVE_WEIGHTS
 from syncr_learning.features import extract
@@ -48,11 +50,9 @@ from syncr_learning.gates import parameter_of
 from syncr_learning.preferences import unmeasured
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from datetime import datetime
 
     from syncr_domain.identifiers import TenantId
-    from syncr_domain.promotion import PromotionCandidate
     from syncr_learning.fitting import FittedParameters
     from syncr_learning.ports import CorpusReader, ParameterWriter
 
@@ -66,7 +66,6 @@ class TenantRun:
     tenant_id: TenantId
     version: int
     fitted: FittedParameters
-    candidates: tuple[PromotionCandidate, ...]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -122,7 +121,7 @@ async def run_for_tenant(
     tenant_id: TenantId,
     at: datetime,
 ) -> TenantRun:
-    """One tenant's pass: read, fit, append one version, and find the repeated pins.
+    """One tenant's pass: read, fit, and append one version.
 
     Refuses a tenant with no active weight set rather than inventing an incumbent. Every scalar's
     fallback and the weight fit's own comparison are stated against the figures in force, so without
@@ -146,7 +145,6 @@ async def run_for_tenant(
         at=at,
     )
     version = await writer.append_version(tenant_id, fitted.artifact)
-    candidates = tuple(detect_repeated_pins(corpus.pins))
     _record(
         tenant_id,
         fitted,
@@ -160,9 +158,8 @@ async def run_for_tenant(
         ready=fitted.ready,
         collecting=fitted.collecting,
         weight_fit_rejected=fitted.rank.rejection,
-        promotion_candidates=len(candidates),
     )
-    return TenantRun(tenant_id=tenant_id, version=version, fitted=fitted, candidates=candidates)
+    return TenantRun(tenant_id=tenant_id, version=version, fitted=fitted)
 
 
 class NoWeightsInForce(Exception):
@@ -200,14 +197,3 @@ def _reason_for(parameter: str, fitted: FittedParameters) -> str:
     if parameter == OBJECTIVE_WEIGHTS and fitted.rank.rejection is not None:
         return "refused"
     return "below_threshold"
-
-
-def promotion_candidates(report: RunReport) -> Sequence[PromotionCandidate]:
-    """Every repeated-pin candidate the run found, across every tenant.
-
-    Returned rather than written. The rows the weekly session reads and the accept and decline
-    routes over them belong to the promotion surface; a table this job wrote and nothing read would
-    be a number nobody reads. The weekly session computes its own candidates through the same domain
-    rule, over the pins it already reads, so the raise does not wait for a nightly run.
-    """
-    return [candidate for one in report.tenants for candidate in one.candidates]

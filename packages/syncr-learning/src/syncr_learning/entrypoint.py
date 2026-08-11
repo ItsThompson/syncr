@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 from syncr_common.logging import configure_logging, get_logger
 from syncr_common.metrics import render
-from syncr_learning.job import promotion_candidates, run
+from syncr_learning.job import run
 from syncr_learning.storage.engine import LearningSettings, create_database
 from syncr_learning.storage.reader import PostgresCorpusReader
 from syncr_learning.storage.writer import PostgresParameterWriter
@@ -54,16 +54,6 @@ def main() -> int:
     configure_logging(environment=settings.environment, log_level=settings.log_level)
     at = datetime.now(UTC)
     report = asyncio.run(run_once(settings, at=at))
-    for candidate in promotion_candidates(report):
-        _log.info(
-            "learning.promotion.candidate",
-            promotion_id=candidate.ref.id,
-            kind=candidate.ref.kind.value,
-            entity_id=str(candidate.ref.entity_id),
-            weekday=candidate.ref.weekday,
-            local_time=candidate.ref.local_time,
-            consecutive_weeks=candidate.consecutive_weeks,
-        )
     _write_exposition(settings)
     if report.failed:
         for failure in report.failures:
