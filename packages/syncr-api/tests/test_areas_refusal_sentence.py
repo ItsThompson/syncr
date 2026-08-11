@@ -53,6 +53,10 @@ def literal_runs(source: str) -> list[str]:
     The parts of one expression are joined, so an implicit concatenation and an f-string read as
     the sentence they build rather than as the lines they were typed on. An interpolation
     contributes nothing to the run, so a run reads across one.
+
+    The walk reaches a joined string's own parts again, so such a run appears both whole and in
+    pieces. No search over these runs changes: a piece is a substring of the run it belongs to,
+    and a clause written entirely inside an interpolation is found in the piece.
     """
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
