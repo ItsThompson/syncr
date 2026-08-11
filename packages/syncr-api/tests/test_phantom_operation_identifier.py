@@ -298,8 +298,7 @@ async def test_a_solve_request_names_a_row_no_other_connection_can_yet_read(
     """The identifier is unreadable at the response and readable once the request has finished.
 
     Both halves in one case on purpose: the first alone cannot tell a commit that has not happened
-    yet from one that failed, and telling those two apart is the whole question this ticket asks of
-    the ordering.
+    yet from one that failed, and those two are different defects with different fixes.
     """
     client, headers, seen = watched
 
@@ -466,8 +465,8 @@ async def test_a_solve_request_colliding_on_the_single_flight_index_is_refused(
     The rival is uncommitted while the request reads, so ``in_flight`` sees nothing and the insert
     is attempted rather than joined. It then blocks on the rival's index key, which is what the wait
     on ``pg_stat_activity`` observes, and it is refused once the rival commits. The answer names no
-    operation, so this shape cannot be mistaken for the one this ticket is about: there is no
-    identifier to read back.
+    operation, so this shape cannot be mistaken for an identifier that reads back absent: there is
+    no identifier at all.
     """
     client, headers, seen = watched
     inside, release = asyncio.Event(), asyncio.Event()
