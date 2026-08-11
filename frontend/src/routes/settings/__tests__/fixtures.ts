@@ -26,6 +26,7 @@ export const OVERRIDE_BARCELONA = "8a1d5f20-0004-4b7e-9c31-0000000000v1";
 export const PERIOD_LONG_WEEKEND = "8a1d5f20-0005-4b7e-9c31-0000000000p1";
 export const ROUTINE_SLEEP = "8a1d5f20-0006-4b7e-9c31-0000000000r1";
 export const ROUTINE_LUNCH = "8a1d5f20-0007-4b7e-9c31-0000000000r2";
+export const ROUTINE_NAP = "8a1d5f20-0008-4b7e-9c31-0000000000r3";
 
 /** The instant every relative reading in these tests is taken against. */
 export const NOW = Date.parse("2026-08-05T09:00:00Z");
@@ -204,6 +205,21 @@ export function buildLunch(overrides: Partial<Routine> = {}): Routine {
     targetTime: "13:00:00",
     durationMinutes: 45,
     minDurationMinutes: 45,
+    ...overrides,
+  });
+}
+
+/**
+ * A second routine sharing the first's title, which the contract states is legitimate: a morning and an evening
+ * `Shower` are both real. It differs from the first by its target time, which is what a reader tells them apart by.
+ */
+export function buildNap(overrides: Partial<Routine> = {}): Routine {
+  return buildRoutine({
+    id: ROUTINE_NAP,
+    title: "Sleep",
+    targetTime: "14:00:00",
+    durationMinutes: 30,
+    minDurationMinutes: 30,
     ...overrides,
   });
 }

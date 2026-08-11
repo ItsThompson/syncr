@@ -41,7 +41,7 @@ import {
   useOffPlanPeriods,
   useOffPlanRemoval,
 } from "../../api/hooks/useOffPlan";
-import { useRoutineEdit, useRoutines } from "../../api/hooks/useRoutines";
+import { useRoutines } from "../../api/hooks/useRoutines";
 import { useReadiness } from "../../api/hooks/useReadiness";
 import {
   useSettings,
@@ -60,14 +60,13 @@ import { GeometryPanel } from "./components/GeometryPanel";
 import { GoogleConsentPanel } from "./components/GoogleConsentPanel";
 import { OffPlanPanel } from "./components/OffPlanPanel";
 import { ReadingSection } from "./components/ReadingSection";
-import { SleepFloorPanel } from "./components/SleepFloorPanel";
+import { RoutineFloorsPanel } from "./components/RoutineFloorsPanel";
 import { SourceAddition } from "./components/SourceAddition";
 import { SourcesPanel } from "./components/SourcesPanel";
 import { WriteTargetPanel } from "./components/WriteTargetPanel";
 import { ZonePanel } from "./components/ZonePanel";
 import { statedInstant } from "./format";
 import { gridHeightFor } from "./geometry";
-import { sleepRoutineOf } from "./sleepFloor";
 import { sourcePanelNotices } from "./sourceNotices";
 
 /** The zone every instant renders in until the settings read lands. One zone, and never a second one. */
@@ -104,9 +103,6 @@ export function SettingsRoute() {
   const offPlanDeclaration = useOffPlanDeclaration();
   const offPlanEdit = useOffPlanEdit();
   const offPlanRemoval = useOffPlanRemoval();
-
-  const sleepRoutine = routines.status === "ready" ? sleepRoutineOf(routines.data) : null;
-  const sleepFloor = useRoutineEdit(sleepRoutine?.id ?? null);
 
   const activeZone = settings.status === "ready" ? settings.data.activeZone : ZONE_BEFORE_THE_READ;
   const today = todayIn(activeZone, now);
@@ -178,9 +174,9 @@ export function SettingsRoute() {
         <ReadingSection
           reading={readingOf({ routines })}
           title="Reading your routines"
-          detail="The circadian frame, and the sleep routine whose minimum is the sleep floor."
+          detail="The circadian frame, and the floor each routine may be compressed to."
         >
-          {() => <SleepFloorPanel routine={sleepRoutine} write={sleepFloor} />}
+          {(read) => <RoutineFloorsPanel routines={read.routines} />}
         </ReadingSection>
 
         <ReadingSection

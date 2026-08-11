@@ -13,6 +13,9 @@ import { wallOf } from "../../lib/zonedInstant";
 
 const MINUTES_IN_HOUR = 60;
 
+/** `HH:MM`, which is how long a wall time reads once the seconds the api sends are off it. */
+const CLOCK_LENGTH = 5;
+
 /** What a value reads as when the api has nothing to report. One spelling, so a column of them lines up. */
 export const NOT_YET = "never";
 
@@ -34,4 +37,9 @@ export function statedDuration(minutes: number): string {
   const rest = minutes % MINUTES_IN_HOUR;
   if (hours === 0) return `${rest}m`;
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
+
+/** `23:00` from the api's `23:00:00`. A wall time names no zone: the zone comes from the day it resolves on. */
+export function statedClock(wallTime: string): string {
+  return wallTime.slice(0, CLOCK_LENGTH);
 }

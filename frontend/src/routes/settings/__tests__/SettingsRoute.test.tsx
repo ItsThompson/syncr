@@ -1,9 +1,9 @@
 /* `/settings` as a reader meets it.
  *
- * FOUR CLAIMS THE TICKET NAMES ARE ASSERTED HERE and each is a rule rather than a rendering detail: the sleep-floor
- * shortcut writes to the routine and never to the settings endpoint, the clamped zoom control offers its unavailable
- * levels rather than hiding them, every error panel names what still works, and no spinner or progress bar appears
- * anywhere on the screen.
+ * FOUR CLAIMS ARE ASSERTED HERE and each is a rule rather than a rendering detail: a floor writes to the routine it
+ * belongs to and never to the settings endpoint, the clamped zoom control offers its unavailable levels rather than
+ * hiding them, every error panel names what still works, and no spinner or progress bar appears anywhere on the
+ * screen.
  *
  * THE WRITE ASSERTIONS ARE ABOUT THE REQUEST, not about a mocked hook. The recording handlers answer for a path, so
  * what is asserted is the path the client went to and the members it carried, which is the whole contract of a write.
@@ -19,11 +19,13 @@ import { jsonHandler, recordingHandler } from "../../../testing/apiStub";
 import { renderAt } from "../../../testing/renderRoute";
 import {
   NOW,
+  ROUTINE_NAP,
   ROUTINE_SLEEP,
   SOURCE_PLAN,
   buildConnection,
   buildExpiryNotices,
   buildLunch,
+  buildNap,
   buildOffPlanPeriod,
   buildRoutine,
   buildSettings,
@@ -37,7 +39,8 @@ import { settingsHandlers } from "./handlers";
 const SETTINGS = "/api/v1/settings";
 const TRAVEL = "/api/v1/settings/travel-overrides";
 const OFF_PLAN = "/api/v1/off-plan";
-const SLEEP = `/api/v1/routines/${ROUTINE_SLEEP}`;
+const FIRST_ROUTINE = `/api/v1/routines/${ROUTINE_SLEEP}`;
+const SECOND_ROUTINE = `/api/v1/routines/${ROUTINE_NAP}`;
 const HORIZON = `/api/v1/calendar-sources/${SOURCE_PLAN}/horizon`;
 
 const HOUR = 60 * 60 * 1000;
@@ -472,62 +475,92 @@ describe("the grid geometry panel", () => {
   });
 });
 
-/* ONE HOME FOR THE VALUE. The floor is `minDurationMinutes` on the sleep routine and the settings endpoint does not
- * carry it, so the assertion is about WHICH path the write went to. */
-describe("the sleep-floor shortcut", () => {
-  it("patches the sleep routine, and posts nothing to the settings endpoint", async () => {
-    const routine = recordingHandler("patch", SLEEP, {
+/* ONE HOME FOR THE VALUE, AND ONE CONTROL PER ROUTINE. A floor is `minDurationMinutes` on the routine it belongs to
+ * and the settings endpoint does not carry it, so the assertions are about WHICH path a write went to and which
+ * routine it addressed. No case here reaches a control by a routine's title, because a title identifies nothing:
+ * the first case titles the only routine something else entirely and still expects a floor. */
+describe("the routine floors", () => {
+  it("offers a floor whatever the routine is titled, and patches that routine", async () => {
+    const routine = recordingHandler("patch", FIRST_ROUTINE, {
       status: 200,
-      body: buildRoutine({ minDurationMinutes: 465 }),
+      body: buildRoutine({ title: "Kip", minDurationMinutes: 465 }),
     });
     const settings = recordingHandler("patch", SETTINGS, { status: 200, body: buildSettings() });
-    apiServer.use(routine.handler, settings.handler, ...settingsHandlers());
+    apiServer.use(
+      routine.handler,
+      settings.handler,
+      ...settingsHandlers({ routines: [buildRoutine({ title: "Kip" })] }),
+    );
     renderAt("/settings");
     await settled();
 
+    expect(screen.getByLabelText("Kip · 23:00")).toBeVisible();
+
     await userEvent.click(
-      within(panelNamed("Sleep floor")).getByRole("button", { name: "decrease 15 minutes" }),
+      within(panelNamed("Routine floors")).getByRole("button", { name: "decrease 15 minutes" }),
     );
 
     await waitFor(() => expect(routine.bodies).toEqual([{ minDurationMinutes: 465 }]));
     expect(settings.bodies).toEqual([]);
   });
 
-  it("states the target, the floor and whether sleep is negotiable", async () => {
-    apiServer.use(...settingsHandlers());
+  /* Two routines may share a title, so a reader has to be able to reach both, and each control has to write to its
+     own routine rather than to whichever one the screen found first. */
+  it("reaches both routines where two share a title", async () => {
+    const first = recordingHandler("patch", FIRST_ROUTINE, { status: 200, body: buildRoutine() });
+    const second = recordingHandler("patch", SECOND_ROUTINE, { status: 200, body: buildNap() });
+    apiServer.use(
+      first.handler,
+      second.handler,
+      ...settingsHandlers({ routines: [buildRoutine(), buildNap()] }),
+    );
     renderAt("/settings");
     await settled();
 
-    const panel = panelNamed("Sleep floor");
-    expect(panel).toHaveTextContent("8h");
-    expect(panel).toHaveTextContent("no, the floor equals the target");
+    expect(screen.getByLabelText("Sleep · 23:00")).toBeVisible();
+    expect(screen.getByLabelText("Sleep · 14:00")).toBeVisible();
+
+    await userEvent.click(
+      within(panelNamed("Routine floors")).getAllByRole("button", {
+        name: "decrease 15 minutes",
+      })[1] as HTMLElement,
+    );
+
+    await waitFor(() => expect(second.bodies).toEqual([{ minDurationMinutes: 15 }]));
+    expect(first.bodies).toEqual([]);
   });
 
-  it("says sleep is negotiable once the floor is below the target", async () => {
-    apiServer.use(...settingsHandlers({ routines: [buildRoutine({ minDurationMinutes: 390 })] }));
+  it("marks the routines the solver may propose shortening, from the floor and the target", async () => {
+    apiServer.use(
+      ...settingsHandlers({ routines: [buildRoutine({ minDurationMinutes: 390 }), buildLunch()] }),
+    );
     renderAt("/settings");
     await settled();
 
-    expect(panelNamed("Sleep floor")).toHaveTextContent("yes, between the floor and the target");
+    expect(screen.getByText(/Negotiable: the floor is below the target of 8h/)).toBeVisible();
+    expect(screen.getByText(/Not negotiable: the floor equals the target of 45m/)).toBeVisible();
   });
 
-  it("says there is nothing to set where no routine is titled Sleep, and what still works", async () => {
-    apiServer.use(...settingsHandlers({ routines: [buildLunch()] }));
+  it("says there is nothing to set where no routine is declared, and what still works", async () => {
+    apiServer.use(...settingsHandlers({ routines: [] }));
     renderAt("/settings");
     await settled();
 
-    const panel = panelNamed("Sleep floor");
-    expect(panel).toHaveTextContent("No routine named Sleep is declared");
+    expect(screen.getByText("No routines are declared")).toBeVisible();
+    const panel = panelNamed("Routine floors");
     expect(panel).toHaveTextContent("a week still solves");
     expect(within(panel).queryByRole("spinbutton")).not.toBeInTheDocument();
   });
 
-  it("caps the control at the routine's own target duration", async () => {
-    apiServer.use(...settingsHandlers());
+  it("bounds each control by its own routine's target duration", async () => {
+    apiServer.use(...settingsHandlers({ routines: [buildRoutine(), buildLunch()] }));
     renderAt("/settings");
     await settled();
 
-    expect(within(panelNamed("Sleep floor")).getByRole("spinbutton")).toHaveAttribute("max", "480");
+    const panel = panelNamed("Routine floors");
+    expect(within(panel).getByLabelText("Sleep · 23:00")).toHaveAttribute("max", "480");
+    expect(within(panel).getByLabelText("Lunch · 13:00")).toHaveAttribute("max", "45");
+    expect(within(panel).getByLabelText("Lunch · 13:00")).toHaveAttribute("min", "1");
   });
 });
 
