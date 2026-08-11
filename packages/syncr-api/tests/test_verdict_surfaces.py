@@ -69,6 +69,7 @@ import ast
 import inspect
 import re
 import textwrap
+from datetime import timedelta
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, NamedTuple, get_type_hints
 from uuid import uuid4
@@ -80,6 +81,7 @@ from sqlalchemy import select
 from starlette.requests import Request
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
+from syncr_api.areas.repository import AreaRepository
 from syncr_api.concessions.config import WEEKS_PREFIX
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import (
@@ -102,11 +104,14 @@ from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.facts import VerdictEvent
 from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.recording import NO_SESSION_IS_OPEN, VerdictRecorder
+from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.stored_documents import stored_document
 from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.verdicts import ProbeCaller, WeekProbe
 from syncr_api.reviews.config import REVIEWS_PREFIX, SESSION_PATH
 from syncr_api.worker.main import WorkerContext
 from syncr_domain.feasibility import Provenance
+from syncr_domain.identity import Origin, is_placed_by_the_solver
 from tests.boundaries import (
     METHODS_WITHOUT_A_BODY,
     RouteView,
@@ -119,6 +124,7 @@ from tests.boundaries import (
 from tests.conftest import TEST_SERVICE
 from tests.live_horizons import LATE_IN_THE_WEEK, THIS_WEEK, Ticking, declare_the_minimum
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
+from tests.plan_documents import a_block, a_document, between
 from tests.test_authorization_boundary import accepts_a_cli_credential
 from tests.test_solve_triggers import REQUESTS_A_SOLVE, TRIGGER_TABLE, mutating_routes
 
@@ -1138,6 +1144,52 @@ async def a_planned_week(
     await PlanHorizonRunner(clock=clock).plan(context, now=LATE_IN_THE_WEEK)
 
 
+async def a_solved_week(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord, context: WorkerContext
+) -> None:
+    """The planned week, plus one block a solve chose the placement of.
+
+    The tradeoff request needs one: a week whose plan of record holds nothing a solve placed has no
+    solve to concede against and the route refuses it before it computes anything, so a case about
+    what the RECORD does would be a case about a refusal instead.
+
+    The block is placed in the part of the week that has already elapsed, and in a second Area with
+    no floor, so it moves neither the capacity the probe reads from ``now`` nor the reservation the
+    week's only floor is short of. What the week offers is therefore what it offered without it,
+    which is what ``_a_breach_the_week_offers`` reads back out of the enumerator.
+
+    Appended a second AFTER the maintainer's own instant, because the live plan is the newest
+    revision and two revisions sharing an instant are ordered by a random identifier: at the same
+    instant, which of the two is the plan of record is decided by a uuid.
+    """
+    await a_planned_week(sessions, owner, context)
+    async with sessions() as session, session.begin():
+        elsewhere = await AreaRepository(session, owner.tenant_id).create(
+            parent_id=None,
+            name="Unfloored",
+            pigment_index=2,
+            budget_percent=None,
+            floor_hours=None,
+            created_at=LATE_IN_THE_WEEK,
+        )
+        placed = a_block(
+            Origin.HABIT,
+            week=THIS_WEEK,
+            interval=between(10, 11, day=2, week=THIS_WEEK),
+            area_id=elsewhere.id,
+        )
+        assert is_placed_by_the_solver(placed.origin), "the block has to be one a solve placed"
+        await PlanRepository(session, owner.tenant_id).append(
+            document=stored_document(a_document(week=THIS_WEEK, blocks=(placed,))),
+            objective_breakdown={},
+            status="applied",
+            reason="auto_applied_fill",
+            weight_set_version=1,
+            input_version=1,
+            created_at=LATE_IN_THE_WEEK + timedelta(seconds=1),
+        )
+
+
 async def transitions(sessions: async_sessionmaker[AsyncSession], owner: UserRecord) -> list[Any]:
     async with sessions() as session:
         found = await session.scalars(
@@ -1223,7 +1275,7 @@ async def test_the_same_week_records_a_row_when_a_mutation_asks_the_same_questio
     states that the weekly session is open, and the row carries that answer from the header rather
     than from anything this application knows.
     """
-    await a_planned_week(sessions, owner, context)
+    await a_solved_week(sessions, owner, context)
     headers = sign_in(http, owner.email)
     breach = await _a_breach_the_week_offers(sessions, owner)
 
@@ -1252,7 +1304,7 @@ async def test_a_mutation_that_states_no_session_records_that_it_was_not_open(
     The pair with the test above is the whole of ``VE3`` on this surface: the row carries what the
     caller stated, and neither answer is the one this application chose.
     """
-    await a_planned_week(sessions, owner, context)
+    await a_solved_week(sessions, owner, context)
     headers = sign_in(http, owner.email)
     breach = await _a_breach_the_week_offers(sessions, owner)
 
@@ -1329,7 +1381,7 @@ async def test_a_tradeoff_refused_after_the_record_leaves_no_row(
     answering 202 for the concession it does offer and keeping exactly one row: without it, a guard
     counting zero rows could be measuring a path that never records at all.
     """
-    await a_planned_week(sessions, owner, context)
+    await a_solved_week(sessions, owner, context)
     headers = sign_in(http, owner.email)
     offered = await _a_breach_the_week_offers(sessions, owner)
     not_offered = {**offered, "targetId": str(uuid4())}
