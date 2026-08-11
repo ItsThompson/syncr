@@ -303,11 +303,12 @@ export const pendingReads = (): RequestHandler =>
 export const refusedReads = (problem: Problem = readUnavailable): RequestHandler =>
   http.get(url(API_READS), () => HttpResponse.json(problem, { status: problem.status }));
 
-/* The api's own shape for a read it cannot serve, which is what `/readyz` failing produces: a 503 naming what is
- * unavailable and what still works. Written as a problem document because that is what the client narrows, and a
- * failure surface renders `problem.detail` verbatim. */
+/* The api's own shape for a read it cannot serve: a 503 naming what is unavailable and what still works.
+ * Written as a problem document because that is what the client narrows, and a failure surface renders
+ * `problem.detail` verbatim. The type is the one the api's 503 actually carries: a double that answers a
+ * type the published vocabulary has never held is a double of nothing. */
 export const readUnavailable: Problem = {
-  type: "syncr:service-unavailable",
+  type: "syncr:dependency-unavailable",
   title: "The api is not ready",
   status: 503,
   detail:

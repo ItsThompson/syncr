@@ -10,6 +10,7 @@
  * and switches on `resource.status`. Nothing here fetches. */
 
 export {
+  NOTHING_SELECTED_PROBLEM_TYPE,
   UNEXPECTED_PROBLEM_TYPE,
   UNREACHABLE_PROBLEM_TYPE,
   toProblem,

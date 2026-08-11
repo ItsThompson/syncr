@@ -15,7 +15,7 @@
 
 import { useState } from "react";
 
-import type { Problem } from "../../contract";
+import { NOTHING_SELECTED_PROBLEM_TYPE, type Problem } from "../../contract";
 export interface Write<Body> {
   /** True when the change was applied. False leaves `problem` naming what refused it. */
   readonly submit: (body: Body) => Promise<boolean>;
@@ -64,7 +64,7 @@ export function useWrite<Body>(perform: (body: Body) => Promise<Problem | null>)
  */
 export function nothingSelectedProblem(subject: string, chooseFrom: string): Problem {
   return {
-    type: "syncr:nothing-selected",
+    type: NOTHING_SELECTED_PROBLEM_TYPE,
     title: `No ${subject} is selected`,
     status: 0,
     detail:
