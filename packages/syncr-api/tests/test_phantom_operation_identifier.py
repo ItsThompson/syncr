@@ -385,8 +385,9 @@ async def test_a_solve_request_racing_a_maintainer_tick_names_a_row_nobody_can_y
     finally:
         release.set()
         await tick
+    assert seen.identifier is not None
     assert await a_plan_of_record_exists(onlooker, owner.tenant_id) is True
-    assert await visibility_of(onlooker, owner.tenant_id)(UUID(str(seen.identifier))) is True
+    assert await visibility_of(onlooker, owner.tenant_id)(UUID(seen.identifier)) is True
 
 
 # ---------------------------------------------------------------------------
@@ -473,17 +474,24 @@ async def test_a_solve_request_colliding_on_the_single_flight_index_is_refused(
     rival = asyncio.create_task(
         a_rival_solve_held_uncommitted(sessions, owner.tenant_id, inside=inside, release=release)
     )
+    requesting: asyncio.Task[httpx.Response] | None = None
     try:
         await asyncio.wait_for(inside.wait(), timeout=WINDOW)
         requesting = asyncio.create_task(
             client.post(solve_route(WEEK, immediate=True), headers=headers)
         )
         await a_backend_blocked_on_a_lock(onlooker)
+        # The request is inside the index's lock wait, so releasing the rival is what turns that
+        # wait into a refusal rather than a timeout.
         release.set()
-        await rival
         answered = await requesting
     finally:
+        # Released and awaited here as well, so a wait that raises leaves neither transaction open
+        # while the tenant's rows are deleted around it. Awaiting a finished task is a no-op.
         release.set()
+        await rival
+        if requesting is not None:
+            await requesting
 
     assert answered.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, answered.text
     assert "id" not in answered.json(), "a refused write must not answer an operation identifier"
