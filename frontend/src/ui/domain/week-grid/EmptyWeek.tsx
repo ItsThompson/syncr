@@ -20,7 +20,7 @@ import { Link } from "react-router";
 import { Button } from "../../primitives";
 import { EmptyState } from "../status";
 
-/** Why a week holds no plan. The wire's own two words, and the vocabulary is closed at them. */
+/** Why a week holds no plan, in the words this screen has a title and an action for. */
 export type EmptyWeekReason = "outside_horizon" | "setup_incomplete";
 
 export interface EmptyWeekProps {

@@ -6,7 +6,7 @@
  *
  * `live` IS NULLABLE, and that is what makes the planning horizon a visible product concept rather than an invisible
  * assumption. A read never triggers work, so a week beyond the horizon has no plan by design, and `emptyReason` says
- * which of the two reasons it is while `emptyWeek` carries the facts the screen's actions need.
+ * which of the reasons it is while `emptyWeek` carries the facts the screen's actions need.
  *
  * A SOLVE IS A REQUEST RATHER THAN A RESULT. It answers with the operation it created or found, and it is idempotent
  * per week without a key, so a second press hands back the same operation rather than queueing a second one. The
