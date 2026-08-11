@@ -43,11 +43,10 @@ then agree by construction: a candidate is judged against the plan it was built 
 again in the write transaction, the pair could differ by anything that landed in between, and every
 such difference would report as the solver having dropped or moved a block it never saw.
 
-**What that costs today is disclosed rather than hidden.** The assembler's placement seam answers
-with no live plan in this deployment, so every candidate classifies as a first plan for its week and
-the authority rule has nothing to hold back. The suite supplies a real reader and drives both sides.
-Whoever supplies the production reader changes one line of ``plans/injection.py``, and this path
-starts holding moves back with no change here.
+**The plan both of them read is the one the week holds.** The assembler's placement seam is wired
+to ``StoredPlacements``, which reads the newest revision, so a candidate that moves a block the live
+plan already placed is held back to the pending slot rather than auto-applied. A week that holds no
+plan classifies as a first plan for its week, and the authority rule has nothing to hold back.
 
 ## A version mismatch discards BEFORE anything is written
 
