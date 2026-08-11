@@ -74,8 +74,9 @@ def edit_context(
     **Pre-edit (the state the proposal was made in):** ``document``, ``breakdown``,
     ``measurement_delta``, ``task_deadline``, ``area_floor_declared``, ``pinned_blocks_before``.
     Each describes the moment before the user acted, which is the circumstance the preference was
-    expressed inside, and each arrives as its own parameter the caller resolved from an entity or a
-    document rather than from ``inputs``.
+    expressed inside. Four arrive as parameters the caller resolved from an entity or a document;
+    ``breakdown`` and ``measurement_delta`` it measures in the same pre-pin assembly it passes here
+    as ``inputs``.
 
     **Post-edit (the accepted placement and the week around it):** ``inputs``. This supplies the
     local day and its zone, the Area's placed and target minutes, the anchor and forbidden-window
