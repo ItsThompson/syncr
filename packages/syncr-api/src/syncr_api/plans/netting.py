@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_domain.identity import BindingKind
-from syncr_domain.intervals import Interval, IntervalSet
+from syncr_domain.intervals import Interval, IntervalSet, has_started
 from syncr_domain.outcomes import attributed_span
 
 if TYPE_CHECKING:
@@ -119,7 +119,7 @@ def placements(
             binding=block.binding,
             interval=block.interval,
             area_id=block.area_id,
-            immovable=_has_started(block.interval, now),
+            immovable=has_started(block.interval, now),
             outcome=recorded.get(block.binding),
         )
     for pin in pins:
@@ -223,11 +223,6 @@ def _own_span(placed: Placement) -> Interval | None:
 def _attributed_span(placed: Placement) -> Interval | None:
     """The time this placement counts toward its content, which an outcome decides."""
     return placed.attributed
-
-
-def _has_started(interval: Interval, now: Instant) -> bool:
-    """Whether the solver may no longer move this block, which H10 decides against ``now``."""
-    return interval.start <= now
 
 
 def _placement_order(placed: Placement) -> tuple[Instant, Instant, str, str]:

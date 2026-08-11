@@ -65,9 +65,9 @@ from typing import TYPE_CHECKING
 from syncr_api.anchors.shadow_products import DERIVED_ORIGINS
 from syncr_api.plans.errors import ClassificationRejected
 from syncr_api.plans.overlaps import detected_conflicts
-from syncr_api.plans.settled import has_started, require_an_unchanged_past
+from syncr_api.plans.settled import require_an_unchanged_past
 from syncr_domain.identity import Origin
-from syncr_domain.intervals import IntervalSet
+from syncr_domain.intervals import IntervalSet, has_started
 from syncr_domain.proposals import BlockChange, ProposalDiff
 from syncr_solver.inputs import Anchor, ShadowBlock
 

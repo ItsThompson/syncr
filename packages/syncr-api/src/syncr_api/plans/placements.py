@@ -47,9 +47,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from syncr_api.plans.settled import has_started
 from syncr_api.plans.stored_documents import plan_document
 from syncr_api.user_settings.zone_reading import local_date
+from syncr_domain.intervals import has_started
 from syncr_solver.inputs import Pin
 
 if TYPE_CHECKING:
