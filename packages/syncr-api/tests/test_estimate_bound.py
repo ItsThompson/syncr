@@ -47,11 +47,11 @@ NOMINAL_WEEK = Interval(datetime(2026, 2, 9, tzinfo=UTC), datetime(2026, 2, 16, 
 A_TITLE = "Rewrite the thesis"
 
 
-def a_task_owing(minutes: int, *, due: datetime) -> TaskRecord:
-    """One open task owing ``minutes`` by ``due``.
+def a_task_owing(minutes: int, *, due: datetime | None) -> TaskRecord:
+    """One open task owing ``minutes`` by ``due``, or by nothing at all.
 
-    Every case passes the instant its own week ends, because a deadline inside the week clips the
-    capacity before it and a deadline behind the week has none at all: both are a second reason
+    Every dated case passes the instant its own week ends, because a deadline inside the week clips
+    the capacity before it and a deadline behind the week has none at all: both are a second reason
     for a figure to be small, and these cases are about the whole week's capacity.
     """
     return a_task(
@@ -130,6 +130,22 @@ def test_the_hour_a_fall_back_week_gains_is_the_one_span_that_holds_the_minute_a
         ESTIMATE_MINUTES_MAX + 1
     ]
     assert verdict.discretionary_minutes == ESTIMATE_MINUTES_MAX + MINUTES_IN_AN_HOUR
+    assert verdict.shortfalls == ()
+    assert tasks_at_risk(verdict, [task]) == frozenset()
+
+
+def test_a_task_above_the_bound_with_no_deadline_owes_nothing_and_is_never_at_risk() -> None:
+    """The clause the recorded reason carries, driven: the reading needs a deadline to exist.
+
+    Nothing has to fit before anything, so such a task raises no demand and no gap names it. It is
+    the input class the at-risk half of the reason says nothing about.
+    """
+    task = a_task_owing(ESTIMATE_MINUTES_MAX + 1, due=None)
+    inputs = a_week_owing(task, span=NOMINAL_WEEK)
+
+    verdict = probe(inputs)
+
+    assert inputs.deadline_demands == ()
     assert verdict.shortfalls == ()
     assert tasks_at_risk(verdict, [task]) == frozenset()
 
