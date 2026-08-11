@@ -13,8 +13,15 @@
  *
  * A COLUMN'S WIDTH IS THE CALLER'S, AND `table-layout: fixed` ARRIVES WITH IT. A table laid out from its content
  * gives the widest cell in a column the width it asks for and takes it from the columns beside it, so a reader's
- * columns move as the rows change and one long name reshapes the whole table. Under a fixed layout the columns
- * hold the widths they declare and the long cell spends its own row's height instead.
+ * columns move as the rows change and one long name reshapes the whole table. Under a fixed layout no cell moves
+ * a column: the columns hold still whatever the rows say, and the long cell spends its own row's height instead.
+ *
+ * A DECLARED LENGTH IS EXACT ONLY WHERE SOME COLUMN ABSORBS THE DIFFERENCE. Every length is subtracted from the
+ * table's width and the columns claiming a share divide what is left, so each length renders at the figure it
+ * declares, the gutter below included. Declare a length on EVERY column and nothing absorbs: a fixed layout
+ * scales all of them by however much the container is out by, the gutter with them, and lengths adding up past
+ * the container overflow it instead of shrinking. A share beside such lengths resolves to nothing at all. Leave
+ * one column weighted or undeclared and the others are exact. `probe/table.probe.test.tsx` measures both.
  *
  * TABULAR FIGURES ARE NOT A PREFERENCE. A column of durations set in proportional digits does not line up, and
  * the whole point of the column is that a reader compares its values without reading them one at a time.

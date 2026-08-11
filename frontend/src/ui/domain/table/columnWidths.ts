@@ -12,12 +12,18 @@
  *
  * A COLUMN THAT DECLARES NOTHING, IN A TABLE WHERE SOMETHING DOES, claims one share. That is the equal division
  * the browser would have made of the same space, so a caller can adopt the policy one column at a time and the
- * columns it has said nothing about do not move. */
+ * columns it has said nothing about do not move.
+ *
+ * A LENGTH IS EXACT ONLY WHERE SOME COLUMN CLAIMS A SHARE. Every length is subtracted from the table's width and
+ * the shares divide what is left, so a length renders at its own figure while one column absorbs the difference.
+ * Give every column a length and no share is claimed: nothing absorbs, a fixed layout scales all of them to the
+ * container, and lengths adding up past it overflow. This function emits what the caller declared either way. A
+ * length a browser then scales is still the caller's declaration, and refusing it here would mean owning the unit
+ * parser this module exists to avoid. `probe/table.probe.test.tsx` measures what the browser does with both. */
 
 /** How wide a column is: a CSS length it takes, or a weight, which is its share of what the lengths leave over. */
 export type TableColumnWidth = string | { readonly weight: number };
 
-/** What a column claims of the surplus when it declares no width at all. */
 const ONE_SHARE = 1;
 
 function isLength(width: TableColumnWidth | undefined): width is string {
@@ -36,7 +42,12 @@ function weightOf(width: TableColumnWidth | undefined): number {
   return Math.max(width.weight, 0);
 }
 
-/** One column's slice of the surplus, as an expression a browser resolves rather than this module. */
+/**
+ * One column's slice of the surplus, as an expression a browser resolves rather than this module.
+ *
+ * A sole claimant takes the surplus whole. `* 1 / 1` resolves to the same width, so that branch is for whoever
+ * reads the expression in devtools and nothing turns on which shape it gets.
+ */
 function shareOf(surplus: string, weight: number, total: number): string {
   if (weight === 0) return "0px";
   if (weight === total) return `calc(${surplus})`;
