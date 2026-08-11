@@ -81,6 +81,10 @@ describe("useAnchorTypeEdit", () => {
 
     expect(write.bodies).toEqual([]);
     await waitFor(() => expect(result.current.problem?.title).toBe("No anchor type is selected"));
+    // The type as well as the sentence, because the type is what a notice keys on and nothing else
+    // in the suite reads it. Spelled as the literal rather than as the constant the factory reads:
+    // the constant on both sides is an assertion that cannot fail.
+    expect(result.current.problem?.type).toBe("syncr:nothing-selected");
   });
 });
 
