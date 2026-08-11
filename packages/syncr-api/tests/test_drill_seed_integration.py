@@ -371,9 +371,9 @@ class TestTheEvidenceTheFingerprintReads:
         second = await write_the_evidence(context, principal, now=NOW)
         after_two = await _a_fingerprint(sessions, engine)
 
-        assert first.materialized and first.solved and first.pinned and first.conceded
-        assert not second.materialized and not second.solved
-        assert not second.pinned and not second.conceded
+        # The database first and the report afterwards, so a member that moves both names the
+        # database: a claim about what the run said is worth less than a claim about what it wrote.
+        #
         # Every table rather than the five, and derived from the reading rather than listed: a
         # convergence read that went missing would grow whatever table it guards, and a claim over
         # the five could not see a second Area slot or a second habit.
@@ -382,6 +382,9 @@ class TestTheEvidenceTheFingerprintReads:
         # moves no count, and the drill's own verdict compares a table's bytes rather than its size:
         # `seed-local.sql` states its property as "running it twice is running it once".
         assert after_two.content_digests == after_one.content_digests
+        assert first.materialized and first.solved and first.pinned and first.conceded
+        assert not second.materialized and not second.solved
+        assert not second.pinned and not second.conceded
 
     async def test_a_second_run_writes_nothing_with_the_current_week_tracked_too(
         self,
@@ -414,9 +417,9 @@ class TestTheEvidenceTheFingerprintReads:
         second = await write_the_evidence(context, principal, now=NOW)
 
         after = await _a_fingerprint(sessions, engine)
-        assert second.recorded == 0 and second.confirmed == 0
         assert after.row_counts == before.row_counts
         assert after.content_digests == before.content_digests
+        assert second.recorded == 0 and second.confirmed == 0
 
 
 class TestTheConsoleScriptsComposition:
