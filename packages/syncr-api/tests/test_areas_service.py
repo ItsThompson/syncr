@@ -380,8 +380,12 @@ async def test_the_bound_counts_every_area_the_deal_deals_a_step_to(
     ]
 
     assert nested[-1].pigment_index == PIGMENT_DEAL_ORDER[-1]
-    with pytest.raises(ValidationFailed):
+    with pytest.raises(ValidationFailed) as refused:
         await service.create(principal, a_declaration("Thirteenth", parent_id=parent.id))
+
+    # The detail, not the class: an unknown parent raises the same class from this method, so the
+    # class alone would not say which rule answered.
+    assert refused.value.detail == FULL_RAMP_REFUSAL
 
 
 async def test_a_full_ramp_is_refused_whatever_the_declaration_is_named(
