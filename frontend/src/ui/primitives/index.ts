@@ -16,7 +16,7 @@
  * `ui/primitives` is one thing.
  *
  * WHAT IS DELIBERATELY ABSENT, and why. These are not omissions and a later ticket should not add one
- * without reopening the decision in `14-ui-kit.md`:
+ * without reopening the decision each entry records:
  *
  *   Tooltip      No value in this product is reachable only by hovering. A readout row does the work, and
  *                a tooltip would put a fact behind a pointer where a keyboard cannot reach it.
@@ -33,9 +33,8 @@
  *                separated only by dash pattern is unreadable.
  *
  * `Icon` is here rather than in the inventory because the icon policy needs a home: three sizes read from
- * --icon-sm, --icon and --icon-lg, with the stroke, caps and joins read from tokens. Ticket 3 deferred the
- * sidebar's icons to this ticket for exactly that reason, since half-building them would hard-code the
- * values the tokens already state.
+ * --icon-sm, --icon and --icon-lg, with the stroke, caps and joins read from tokens. Drawing an icon anywhere
+ * else hard-codes the values the tokens already state.
  *
  * REFS AND `asChild`, WHICH ARE NOT THE SAME DECISION.
  *
