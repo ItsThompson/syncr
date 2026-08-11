@@ -23,9 +23,9 @@
  *
  * IT SPAWNS CHROME ITSELF RATHER THAN THROUGH `scripts/check-render/browser.ts`, for one reason: it gives Chrome a
  * `--user-data-dir` of its own, made fresh per run, so two runs can never contend for a profile and no wedged
- * browser can hold one open for the next. That costs one thing, stated at `dumpDom`: a Chrome given its own
- * profile does not exit after `--dump-dom`, so the dump itself is the signal to stop waiting. Where the browser IS
- * is the part worth sharing, and `findBrowser` is imported for it.
+ * browser can hold one open for the next. That costs one thing, stated at `dumpDom`: a fresh profile directory is
+ * an UNINITIALISED one, and that, rather than the flag, is what stops Chrome exiting after `--dump-dom`. Where the
+ * browser IS is the part worth sharing, and `findBrowser` is imported for it.
  *
  * THE PAGE, THE STYLESHEET AND THE READINGS ARE WRITTEN INTO THAT RUN DIRECTORY and its path is printed, so a
  * reader can open the exact document that was measured. Nothing is written inside the repository.
@@ -286,29 +286,83 @@ async function bundleCss(): Promise<string> {
     throw new Error(`no built stylesheet in ${assets}: run \`npx vite build\``);
   const built = path.join(assets, sheet);
   await refuseAStaleBundle(built);
-  return readFile(built, "utf8");
+  const css = await readFile(built, "utf8");
+  await refuseRetunedTokens(css);
+  return css;
+}
+
+/** Every stylesheet the bundle is built from, however deep. A list of directories would be a memory. */
+async function sheetsUnder(root: string): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true });
+  const found = await Promise.all(
+    entries.map(async (entry) => {
+      const full = path.join(root, entry.name);
+      if (entry.isDirectory()) return sheetsUnder(full);
+      return entry.name.endsWith(".css") ? [full] : [];
+    }),
+  );
+  return found.flat();
 }
 
 /**
- * Refuses a bundle older than the sheets it should have been built from.
+ * Refuses a bundle older than any stylesheet it should have been built from.
  *
  * This file measures an ARTIFACT, so a build left over from an earlier state of the source measures that earlier
- * state and reports it as the tree's. It has already happened once: a bundle built while a mutation was applied
- * reported the mutation's geometry after the mutation had been reverted.
+ * state and reports it as the tree's. It has already happened twice: a bundle built while a mutation was applied
+ * reported the mutation's geometry after the mutation had been reverted, and a reviewer's run of this file did the
+ * same to them.
  *
- * Only the family's stylesheets are compared. The markup comes from the component through the transform, which is
- * always current; the bundle is the one input that can be out of date.
+ * EVERY SHEET UNDER `src`, rather than the table's own directory. The first version of this guard read one of the
+ * 47 and was blind to the two sheets the constants above are copied out of. The markup comes from the component
+ * through the transform, which is always current; the bundle is the one input that can be out of date.
  */
 async function refuseAStaleBundle(built: string): Promise<void> {
-  const family = path.resolve(import.meta.dirname, "..", "src", "ui", "domain", "table");
   const bundledAt = (await stat(built)).mtimeMs;
-  const sheets = (await readdir(family)).filter((name) => name.endsWith(".css"));
+  const sheets = await sheetsUnder(path.resolve(import.meta.dirname, "..", "src"));
   const written = await Promise.all(
-    sheets.map(async (name) => (await stat(path.join(family, name))).mtimeMs),
+    sheets.map(async (sheet) => ({ name: path.basename(sheet), at: (await stat(sheet)).mtimeMs })),
   );
-  const newer = sheets.filter((_, index) => written[index] > bundledAt);
+  const newer = written.filter((each) => each.at > bundledAt).map((each) => each.name);
   if (newer.length > 0) {
     throw new Error(`${newer.join(", ")} newer than the built stylesheet: run \`npx vite build\``);
+  }
+}
+
+/**
+ * Refuses an artifact whose tokens are not the ones the figures here are written against.
+ *
+ * `PITCH_PX` and `ROW_RULE_PX` are two numbers copied out of `src/tokens/layout.css`, and every case compares a
+ * rendered box against them. Retune either token and every reading is wrong by the same amount with nothing to say
+ * why: the failure arrives as `expected 40 to be 28` in three unrelated cases. This names the token instead.
+ *
+ * It reads the source AND the artifact, because they answer different questions. The source says whether these
+ * constants are still the product's. The artifact says whether the bundle in front of this file was built from that
+ * source rather than arriving from somewhere else at a plausible time, which no mtime can tell.
+ */
+async function refuseRetunedTokens(css: string): Promise<void> {
+  const layout = path.resolve(import.meta.dirname, "..", "src", "tokens", "layout.css");
+  const source = await readFile(layout, "utf8");
+  /* `.state-row` draws the border and `border-collapse: collapse` puts half of it inside the table, which is the
+   * 1.5px every case here is net of. */
+  const expected = [
+    { token: "--h-row", value: `${String(PITCH_PX)}px` },
+    { token: "--state-selected-border", value: `${String(ROW_RULE_PX * 2)}px` },
+  ];
+  const reads = [
+    { where: "tokens/layout.css", text: source },
+    { where: "the built stylesheet", text: css },
+  ];
+  for (const { token, value } of expected) {
+    for (const read of reads) {
+      /* The colon is part of the pattern: `--h-row-dense` is a different token and must not answer for this one. */
+      const found = new RegExp(`${token}:\\s*([^;}]+)`).exec(read.text);
+      if (found === null) throw new Error(`${read.where} declares no ${token}`);
+      if (found[1].trim() !== value) {
+        throw new Error(
+          `${read.where} declares ${token}: ${found[1].trim()}, and these figures assume ${value}`,
+        );
+      }
+    }
   }
 }
 
@@ -316,9 +370,12 @@ async function refuseAStaleBundle(built: string): Promise<void> {
  * The page's DOM after it has settled, read from a Chrome that keeps a profile directory of its own.
  *
  * IT RESOLVES ON THE COMPLETED DUMP RATHER THAN ON THE PROCESS EXITING, because Chrome 151 does not exit after
- * `--dump-dom` when it is given an explicit `--user-data-dir`: it writes the whole document, then holds the profile
- * open indefinitely. Waiting for the exit is what wedges a run. The dump ends at `</html>`, so that is the signal,
- * and the browser is killed once it has said everything it was asked for.
+ * `--dump-dom` when the profile directory it is pointed at has never been initialised: it writes the whole
+ * document, then holds the profile open indefinitely. A fresh `--user-data-dir` is always uninitialised, which is
+ * why passing one always hangs, but the flag is not the cause: the same Chrome hangs with no flag at all when the
+ * default profile path is empty, as it is in a fresh container or on a CI runner. Waiting for the exit is what
+ * wedges a run. The dump ends at `</html>`, so that is the signal, and the browser is killed once it has said
+ * everything it was asked for.
  */
 function dumpDom(browser: string, run: string, page: string): Promise<string> {
   return new Promise((resolve, reject) => {
