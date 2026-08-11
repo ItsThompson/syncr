@@ -21,9 +21,10 @@ from syncr_common.logging import configure_logging
 from syncr_common.metrics import REGISTRY
 from syncr_domain.promotion import detect_repeated_pins
 from syncr_learning import job as job_module
-from syncr_learning.config import THRESHOLD_DURATION_MULTIPLIER
+from syncr_learning.config import OBJECTIVE_WEIGHTS, THRESHOLD_DURATION_MULTIPLIER, THRESHOLDS
 from syncr_learning.job import NoWeightsInForce, TenantRun, run, run_for_tenant
-from tests.builders import AREA, TENANT, a_week_of, corpus, outcome, pin
+from syncr_learning.statements import UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED
+from tests.builders import AREA, TENANT, a_week_of, corpus, edit, outcome, pin
 from tests.test_rank import IN_FORCE
 
 if TYPE_CHECKING:
@@ -310,6 +311,27 @@ class TestWhatTheRunReports:
 
         assert ready == report.tenants[0].fitted.ready
         assert version == report.tenants[0].version
+
+    async def test_the_corpus_that_predates_the_measurement_reports_both_figures(self) -> None:
+        # The reader's own situation, in one run: a gauge counting every row that was left out,
+        # beside a row saying none of them counted, and a sentence saying why both are true.
+        unmeasured_edits = THRESHOLDS[OBJECTIVE_WEIGHTS] + 10
+        reader = a_reader(
+            corpora={TENANT: corpus(edits=[edit(difference=None) for _ in range(unmeasured_edits)])}
+        )
+        writer = RecordingWriter()
+
+        await run(reader, writer, at=AT)
+        _, fitted = writer.appended[0]
+        row = next(one for one in fitted.maturity if one.parameter == OBJECTIVE_WEIGHTS)
+
+        left_out = REGISTRY.get_sample_value(
+            "syncr_learning_edits_without_measurement", {"tenant": str(TENANT)}
+        )
+
+        assert left_out == unmeasured_edits
+        assert (row.samples, row.threshold) == (0, THRESHOLDS[OBJECTIVE_WEIGHTS])
+        assert UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED in row.plain_language
 
     async def test_the_repeated_pins_this_run_reads_produce_no_figure_of_their_own(
         self, rendered_log: io.StringIO

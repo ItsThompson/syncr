@@ -18,6 +18,7 @@ from syncr_learning.config import (
     CONTEXT_SWITCH_COST,
     DURATION_MULTIPLIER,
     FITTED_PARAMETERS,
+    OBJECTIVE_TERMS,
     OBJECTIVE_WEIGHTS,
     SKIP_PROBABILITY,
     THRESHOLD_DURATION_MULTIPLIER,
@@ -45,12 +46,19 @@ from syncr_learning.observations import (
     SwitchObservation,
     TimeOfDayObservation,
 )
+from syncr_learning.preferences import unmeasured
 from syncr_learning.results import FitResult
-from tests.builders import AREA, a_week_of
+from tests.builders import AREA, a_week_of, corpus, edit
 from tests.test_rank import IN_FORCE, rotating
 
 AT = datetime(2026, 2, 16, 3, 0, tzinfo=UTC)
 AREA_NAMES = {str(AREA): "Fitness"}
+
+# Edit rows that predate the measurement, more of them than the gate needs, so a count that
+# included them would clear a gate no fit reached.
+UNMEASURED_EDITS = THRESHOLDS[OBJECTIVE_WEIGHTS] + 10
+MEASURED_EDITS = 5
+A_MEASURED_DIFFERENCE = dict.fromkeys(OBJECTIVE_TERMS, -1.0)
 
 
 def fitted_from(observations: Observations) -> FittedParameters:
@@ -137,6 +145,35 @@ class TestBelowTheThresholdNothingIsApplied:
     def test_an_unfittable_result_is_not_let_through_however_many_samples_it_has(self) -> None:
         # The switch price over one population: plenty of observations and no defined figure.
         assert gated(CONTEXT_SWITCH_COST, FitResult.unfittable(500)) is None
+
+
+class TestWhatAnUnmeasuredEditCountsToward:
+    """The weights gate's denominator: a row carrying no measured difference is not in it.
+
+    The exclusion is applied where the corpus is built, so the count the gate compares against the
+    threshold is taken after it and the excluded rows are in neither. Both figures a reader meets
+    come from the one corpus here: the count the row reports, and the figure the gauge is set from.
+    """
+
+    def test_an_unmeasured_edit_reaches_neither_the_fit_nor_the_count(self) -> None:
+        built = corpus(
+            edits=[
+                *(edit(difference=None) for _ in range(UNMEASURED_EDITS)),
+                *(edit(difference=A_MEASURED_DIFFERENCE) for _ in range(MEASURED_EDITS)),
+            ]
+        )
+        observed = extract(built)
+        row = next(
+            one
+            for one in fitted_from(observed).artifact.maturity
+            if one.parameter == OBJECTIVE_WEIGHTS
+        )
+
+        assert unmeasured(built.edits, built.off_plan) == UNMEASURED_EDITS
+        assert len(observed.ranking) == MEASURED_EDITS
+        assert row.samples == MEASURED_EDITS
+        assert row.threshold == THRESHOLDS[OBJECTIVE_WEIGHTS]
+        assert row.state == COLLECTING
 
 
 class TestTheTwoScalarsComeUnderTheGateToo:
