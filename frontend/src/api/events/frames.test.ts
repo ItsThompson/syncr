@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { buildOperation } from "../../routes/week/__tests__/fixtures";
 import { eventOfFrame, isTerminal, parseFrames } from "./frames";
 
 const HEARTBEAT = ": heartbeat\n\n";
@@ -14,15 +15,12 @@ function frame(type: string, data: unknown): string {
   return `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-const OPERATION = {
-  id: "0f9b2c1e-0000-4000-8000-000000000001",
-  kind: "solve",
+/* Built by the shape's own factory rather than spelled here, so a key added to the wire arrives in this frame
+ * instead of leaving it a smaller operation than any the api sends. */
+const OPERATION = buildOperation({
   status: "succeeded",
-  target: { isoWeek: "2026-W07", sourceId: null },
-  scheduledFor: "2026-02-09T09:00:00Z",
-  attempt: 1,
   statement: "This week's plan is current.",
-};
+});
 
 describe("eventOfFrame", () => {
   it("reads the type and the payload of a real frame", () => {

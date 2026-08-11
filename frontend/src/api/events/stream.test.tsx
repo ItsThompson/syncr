@@ -13,19 +13,14 @@ import { describe, expect, it } from "vitest";
 
 import { apiServer } from "../../testing/apiServer";
 import { eventStream } from "../../testing/apiStub";
+import { buildOperation } from "../../routes/week/__tests__/fixtures";
 import { EventStreamProvider } from "./EventStreamProvider";
 import { useEventStream, useServerEvents } from "./useEventStream";
 import type { ServerEvent } from "./frames";
 
-const OPERATION = {
-  id: "0f9b2c1e-0000-4000-8000-000000000001",
-  kind: "solve",
-  status: "running",
-  target: { isoWeek: "2026-W07", sourceId: null },
-  scheduledFor: "2026-02-09T09:00:00Z",
-  attempt: 1,
-  statement: "A solve is running.",
-};
+/* The shape's own factory, so this frame carries every key the api sends rather than the six a reader here
+ * happens to assert on. */
+const OPERATION = buildOperation({ status: "running", statement: "A solve is running." });
 
 function Reader({ seen }: { readonly seen: ServerEvent[] }) {
   const { isConnected } = useEventStream();
