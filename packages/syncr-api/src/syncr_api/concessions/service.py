@@ -135,7 +135,7 @@ class ConcessionService:
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
         inputs = await self._assembler.assemble(week, self._clock())
         _require_a_solve_to_concede_against(week, inputs.live_plan)
-        offer = await self._offered(inputs, week, requested)
+        offer = await self._offered(inputs, requested)
 
         try:
             operation = await self._coordinator.request_solve(
@@ -201,26 +201,28 @@ class ConcessionService:
         """
         return await self._current.tracked_version(week)
 
-    async def _offered(
-        self, inputs: SolveInputs, week: IsoWeek, requested: RequestedConcession
-    ) -> Offer:
+    async def _offered(self, inputs: SolveInputs, requested: RequestedConcession) -> Offer:
         """The offer the enumerator made for what was requested, or a 422 naming what it can be.
 
         A request for a concession syncr did not offer is refused rather than honoured, because the
         offer is where the figures come from: the nights a reduction may touch, and how much of a
         floor is left to breach.
+
+        The week is the assembly's own rather than a second argument, because these inputs were
+        assembled for it and two arguments no type can hold together would let a caller pass one
+        week's figures under another week's name.
         """
         offered = self._probe.offered_verdict_for(inputs)
         # Recorded beside the probe that found it, in the request's own transaction. A request that
         # is then refused rolls the row back with everything else, and the transition it saw is
         # written by the next mutation or by the maintainer's next tick, at most fifteen minutes
         # later: the same answer the design gives for a transition a read observes.
-        await self._verdicts.record(week, offered.verdict)
+        await self._verdicts.record(inputs.iso_week, offered.verdict)
         offer = offered.offered((requested.kind, requested.target_id))
         if offer is None:
             raise ValidationFailed(
-                f"That concession is not one {week} is offered. Nothing was changed, and the "
-                "week still holds whatever concessions it held.",
+                f"That concession is not one {inputs.iso_week} is offered. Nothing was changed, "
+                "and the week still holds whatever concessions it held.",
                 errors=[
                     WireFieldError(
                         field="targetId",
