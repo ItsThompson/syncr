@@ -8,7 +8,14 @@ from datetime import UTC, date, datetime, time, timedelta, timezone
 
 import pytest
 
-from syncr_domain.intervals import Interval, IntervalError, IntervalSet, as_instant
+from syncr_domain.intervals import (
+    Interval,
+    IntervalError,
+    IntervalSet,
+    as_instant,
+    has_elapsed,
+    has_started,
+)
 from syncr_domain.zones import to_instant
 from tests.instants import at, between
 
@@ -269,6 +276,48 @@ class TestBeforeAndAfterAnInstant:
     def test_an_instant_before_the_whole_set_leaves_nothing_before_it(self) -> None:
         assert self.OCCUPIED.before(at(7)) == IntervalSet()
         assert self.OCCUPIED.after(at(7)) == self.OCCUPIED
+
+
+class TestTheBoundaryPredicates:
+    """``has_started`` and ``has_elapsed``, and the one instant that keeps both of them."""
+
+    SPAN = between(9, 10)
+
+    def test_only_at_its_own_start_is_a_span_started_without_having_elapsed(self) -> None:
+        # Why both predicates exist, and the reason neither may be deleted as a duplicate of the
+        # other. At this instant a rule about what a record may state and a rule about what may
+        # still be decided need opposite answers, so one predicate serving both is wrong here.
+        assert has_started(self.SPAN, at(9)) is True
+        assert has_elapsed(self.SPAN, at(9)) is False
+
+    def test_the_pair_disagrees_at_that_instant_and_agrees_at_every_other(self) -> None:
+        # `exactly one instant` made falsifiable. A reading collapsed onto either predicate
+        # empties this set, and a boundary that moved by a minute moves the member.
+        swept = [at(8) + timedelta(minutes=one) for one in range(180 + 1)]
+
+        disagreeing = [
+            moment
+            for moment in swept
+            if has_started(self.SPAN, moment) != has_elapsed(self.SPAN, moment)
+        ]
+
+        # The sweep's own reach: it must cross the boundary rather than stop short of it.
+        assert swept[0] < self.SPAN.start < swept[-1]
+        assert disagreeing == [self.SPAN.start]
+
+    def test_a_span_wholly_ahead_has_neither_started_nor_elapsed(self) -> None:
+        assert has_started(self.SPAN, at(8)) is False
+        assert has_elapsed(self.SPAN, at(8)) is False
+
+    def test_a_span_the_instant_sits_inside_has_both_started_and_elapsed(self) -> None:
+        assert has_started(self.SPAN, at(9, 30)) is True
+        assert has_elapsed(self.SPAN, at(9, 30)) is True
+
+    def test_neither_reads_the_end_bound_so_a_finished_span_answers_as_a_running_one(self) -> None:
+        # Both are about the start alone. A caller that wants "finished" has to say so, and
+        # nothing here answers it.
+        assert has_started(self.SPAN, at(23)) is True
+        assert has_elapsed(self.SPAN, at(23)) is True
 
 
 class TestGaps:
