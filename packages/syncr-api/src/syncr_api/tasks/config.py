@@ -6,7 +6,7 @@ Three bounds are worth a word.
 places: a block label on the week grid, a ledger row, and a backlog table cell. An Area's name
 is shorter because it is also a legend entry beside a pie wedge.
 
-**An estimate is bounded at one week's minutes.** That rejects a value no week could ever hold,
+**An estimate is bounded at one week's minutes.** That rejects a value no nominal week could hold,
 which is what a non-splittable task needs: an atomic task larger than a week can never be
 placed at all, so accepting one would store a task that is silently unschedulable forever. A
 splittable task genuinely larger than a week is a Project's worth of work and is expressed as

@@ -165,8 +165,8 @@ def test_the_fall_back_week_refuses_the_minute_above_the_hour_it_gains() -> None
 def test_a_task_above_the_bound_with_no_deadline_owes_nothing_and_is_never_at_risk() -> None:
     """The clause the recorded reason carries, driven: the reading needs a deadline to exist.
 
-    Nothing has to fit before anything, so such a task raises no demand and no gap names it. It is
-    the input class the at-risk half of the reason says nothing about.
+    Nothing has to fit before anything, so such a task raises no demand and no gap names it. That is
+    the whole of what "while it carries a deadline" buys the sentence.
     """
     task = a_task_owing(ESTIMATE_MINUTES_MAX + 1, due=None)
     inputs = a_week_owing(task, span=NOMINAL_WEEK)
