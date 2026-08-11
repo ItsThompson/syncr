@@ -20,6 +20,7 @@ credit arrives before the charge it would otherwise settle.
 from __future__ import annotations
 
 from datetime import UTC, datetime, time, timedelta
+from enum import StrEnum
 from itertools import pairwise, permutations
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -59,9 +60,19 @@ LATER = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
 
 COMPLETED = OutcomeState.COMPLETED
 
-# The two events a log's order can matter for, for the cases that build one event at a time.
-A_MISS = "a confirmed skip"
-A_MAKE_UP_DONE = "a confirmed completion of a made-up occurrence"
+# Days in a week, for keying a multi-week log the way a real occurrence key is keyed.
+DAYS_IN_A_WEEK = 7
+
+
+class Event(StrEnum):
+    """What one row of a log says, for the cases that build a log one event at a time.
+
+    An enum rather than two strings, because ``a_log`` branches on the value and a mistyped string
+    would silently build a miss.
+    """
+
+    MISS = "a confirmed skip"
+    MAKE_UP_DONE = "a confirmed completion of a made-up occurrence"
 
 
 def habit(**overrides: object) -> Habit:
@@ -84,14 +95,21 @@ def outcome(
     index: int = 0,
     at: Instant = MONDAY,
     confirmed: bool = True,
+    confirmed_at: Instant | None = None,
     make_up: bool = False,
 ) -> HabitOutcome:
+    """One row. ``confirmed_at`` defaults to twelve hours after the occurrence came due.
+
+    A caller states it outright when the two instants have to differ: a day confirmed weeks late is
+    a first-class case, and a fixture that always derives one from the other cannot express it.
+    """
+    settled = confirmed_at if confirmed_at is not None else at + timedelta(hours=12)
     return HabitOutcome(
         habit_id=habit_id,
         occurrence_key=index_occurrence_key(index),
         state=state,
         occurred_at=at,
-        confirmed_at=at + timedelta(hours=12) if confirmed else None,
+        confirmed_at=settled if confirmed else None,
         is_make_up=make_up,
     )
 
@@ -137,8 +155,8 @@ def made_up(
     ]
 
 
-def a_log(target: Habit, events: Sequence[str]) -> list[HabitOutcome]:
-    """One row per event, in the order given, one day and one key apart.
+def a_log(target: Habit, events: Sequence[Event]) -> list[HabitOutcome]:
+    """One row per event, in the order given, one day apart and keyed within its own week.
 
     For the cases where the ORDER is the subject: a make-up settles a charge the log holds when it
     arrives, so a credit before its charge and a credit after it are different logs.
@@ -146,10 +164,10 @@ def a_log(target: Habit, events: Sequence[str]) -> list[HabitOutcome]:
     return [
         outcome(
             target.id,
-            COMPLETED if event == A_MAKE_UP_DONE else MISS_STATE,
-            index=index,
+            COMPLETED if event is Event.MAKE_UP_DONE else MISS_STATE,
+            index=index % DAYS_IN_A_WEEK,
             at=MONDAY + timedelta(days=index),
-            make_up=event == A_MAKE_UP_DONE,
+            make_up=event is Event.MAKE_UP_DONE,
         )
         for index, event in enumerate(events)
     ]
@@ -448,8 +466,8 @@ def test_a_make_up_settles_a_charge_the_log_holds_when_it_arrives_and_carries_no
     """
     target = habit()
 
-    assert reading(target, a_log(target, [A_MISS, A_MAKE_UP_DONE])).misses == 0
-    assert reading(target, a_log(target, [A_MAKE_UP_DONE, A_MISS])).misses == 1
+    assert reading(target, a_log(target, [Event.MISS, Event.MAKE_UP_DONE])).misses == 0
+    assert reading(target, a_log(target, [Event.MAKE_UP_DONE, Event.MISS])).misses == 1
 
 
 def test_a_correction_leaves_no_credit_behind_for_a_later_unrelated_miss() -> None:
@@ -483,7 +501,9 @@ def test_the_order_the_walk_reads_is_the_log_s_own_and_not_the_sequence_it_arriv
     credit read before the charge it would settle is spent on nothing.
     """
     target = habit()
-    rows = a_log(target, [A_MAKE_UP_DONE, A_MISS, A_MAKE_UP_DONE, A_MISS, A_MISS])
+    rows = a_log(
+        target, [Event.MAKE_UP_DONE, Event.MISS, Event.MAKE_UP_DONE, Event.MISS, Event.MISS]
+    )
 
     assert reading(target, rows).misses == 2
     assert {reading(target, list(order)).misses for order in permutations(rows)} == {2}
@@ -505,6 +525,37 @@ def test_a_charge_and_a_credit_that_came_due_at_one_instant_settle_each_other() 
     assert reading(target, list(reversed(both_at_once))).misses == 0
 
 
+def test_the_walk_reads_when_an_occurrence_came_due_and_not_when_the_day_was_confirmed() -> None:
+    """A day confirmed weeks after it came due still charges where it came due.
+
+    Confirming late is a first-class case: an unconfirmed day settles in whichever direction the
+    user later chooses, and a miss settled weeks afterwards is still a miss of the day it was due.
+    So the make-up placed for it finds the charge standing, whichever day the user got around to
+    confirming. Ordering by the confirmation instead would put the credit first and spend it on
+    nothing.
+
+    Every other case in this file confirms a day twelve hours after it came due, which is what makes
+    the two instants agree everywhere else and this case the only one that separates them.
+    """
+    target = habit()
+    settled_much_later = outcome(
+        target.id,
+        MISS_STATE,
+        index=0,
+        at=MONDAY,
+        confirmed_at=MONDAY + timedelta(days=60),
+    )
+    made_it_up = outcome(target.id, COMPLETED, index=4, at=MONDAY + timedelta(days=7), make_up=True)
+
+    assert settled_much_later.confirmed_at is not None
+    assert settled_much_later.confirmed_at > made_it_up.occurred_at, (
+        "the miss must be confirmed after the make-up came due, or the two instants agree"
+    )
+    assert reading(target, [settled_much_later]).misses == 1
+    assert reading(target, [settled_much_later, made_it_up]).misses == 0
+    assert reading(target, [made_it_up, settled_much_later]).misses == 0
+
+
 def test_the_netting_is_stated_over_the_log_rather_than_over_the_policy() -> None:
     """``misses`` is one figure whatever the policy, so the discharge is not a fourth policy.
 
@@ -522,11 +573,11 @@ def test_the_netting_is_stated_over_the_log_rather_than_over_the_policy() -> Non
 
 
 @given(
-    events=st.lists(st.sampled_from((A_MISS, A_MAKE_UP_DONE)), max_size=24),
+    events=st.lists(st.sampled_from(Event), max_size=24),
     periods=st.integers(min_value=1, max_value=8),
 )
 def test_the_figure_holds_every_miss_that_arrived_after_the_last_make_up_was_done(
-    events: list[str], periods: int
+    events: list[Event], periods: int
 ) -> None:
     """Over any interleaving, not only over misses-then-make-ups.
 
@@ -536,21 +587,23 @@ def test_the_figure_holds_every_miss_that_arrived_after_the_last_make_up_was_don
     """
     target = habit(debt_cap_periods=periods)
     owed = reading(target, a_log(target, events))
-    charged = events.count(A_MISS)
+    charged = events.count(Event.MISS)
     since_the_last_credit = (
-        len(events) - 1 - events[::-1].index(A_MAKE_UP_DONE) if A_MAKE_UP_DONE in events else -1
+        len(events) - 1 - events[::-1].index(Event.MAKE_UP_DONE)
+        if Event.MAKE_UP_DONE in events
+        else -1
     )
 
-    assert owed.misses >= events[since_the_last_credit + 1 :].count(A_MISS)
+    assert owed.misses >= events[since_the_last_credit + 1 :].count(Event.MISS)
     assert 0 <= owed.misses <= charged
     assert owed.outstanding + owed.forgiven_at_cap == owed.misses
 
 
 @given(
-    events=st.lists(st.sampled_from((A_MISS, A_MAKE_UP_DONE)), max_size=16),
+    events=st.lists(st.sampled_from(Event), max_size=16),
 )
 def test_one_more_miss_charges_one_and_one_more_make_up_settles_at_most_one(
-    events: list[str],
+    events: list[Event],
 ) -> None:
     """The step either event takes, from wherever the log already stands.
 
@@ -559,8 +612,8 @@ def test_one_more_miss_charges_one_and_one_more_make_up_settles_at_most_one(
     """
     target = habit()
     standing = reading(target, a_log(target, events)).misses
-    then_a_miss = reading(target, a_log(target, [*events, A_MISS])).misses
-    then_a_make_up = reading(target, a_log(target, [*events, A_MAKE_UP_DONE])).misses
+    then_a_miss = reading(target, a_log(target, [*events, Event.MISS])).misses
+    then_a_make_up = reading(target, a_log(target, [*events, Event.MAKE_UP_DONE])).misses
 
     assert then_a_miss == standing + 1
     assert max(standing - 1, 0) == then_a_make_up

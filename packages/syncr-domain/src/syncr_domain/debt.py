@@ -144,9 +144,9 @@ def debt_reading(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant)
 def _misses(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant) -> int:
     """What this habit's log still charges by ``as_of``: confirmed skips, less the make-ups done.
 
-    Walked in the log's own order rather than counted, because a completed make-up settles a charge
-    the log holds **when it arrives**. Differencing two totals would let a make-up whose own charge
-    has since been corrected away carry its credit forward and settle an unrelated miss years later,
+    Walked oldest-due first rather than counted, because a completed make-up settles a charge the
+    log holds **when it arrives**. Differencing two totals would let a make-up whose own charge has
+    since been corrected away carry its credit forward and settle an unrelated miss years later,
     which is a charge nothing in the log has made good.
 
     The clip is what ``as_of`` is for. A week's plan can already hold outcome rows for occurrences
@@ -177,6 +177,10 @@ def _due_oldest_first(
     no order: a reader keyed by entity returns rows in whatever order its index holds them, and two
     readers of one log may differ. Sorting on the instant each occurrence came due is the same
     absolute-instant comparison the clip makes, so no zone and no date arithmetic enter with it.
+
+    It is the instant the occurrence came DUE and not the instant the day was confirmed. A day
+    confirmed weeks late is a miss of the day it was due, so the make-up placed for it arrives after
+    that charge; ordering by the confirmation would put the credit first and spend it on nothing.
 
     Two occurrences of one habit can come due at the same instant. The tie reads the charge as
     standing when the credit arrives, which is the direction that never leaves work the user did
