@@ -12,8 +12,8 @@
  * is a measured pixel; every one is interpolated text.
  *
  * THE LAST TEST IS THE MUTATION. A count hard-coded at nought satisfies every case above it, so the fixture is given
- * two proposal targets and the printed figures must follow AND stay at one. A figure that cannot move is decoration,
- * and a figure that counts targets is the same defect in a second spelling.
+ * two proposal targets and the printed figures must follow AND stay at one, while the grid draws one block per target.
+ * Two blocks and one figure is the distinction the whole fix rests on: targets are many, the slot is one.
  *
  * THE APPROVE CONTROL IS READ AS WELL AS THE FIGURES. `WeekActions` disables it on an empty slot and nothing else, so a
  * band drawing an enabled approve beside a count of nought depicts a state the product cannot produce. */
@@ -62,6 +62,8 @@ interface Rendered {
   readonly approveDisabled: ReadonlyMap<string, readonly boolean[]>;
   /** The count on the sidebar's own "This week · Proposals" row, which every view is rendered beside. */
   readonly sidebarProposals: string | undefined;
+  /** How many blocks the Week view draws the proposal channel on, which is the grid's own answer. */
+  readonly proposalBlocks: number;
 }
 
 function render(sheet: string): Rendered {
@@ -90,10 +92,13 @@ function render(sheet: string): Rendered {
 
   const rows = [...document.querySelectorAll(".side nav a")];
   const proposals = rows.find((row) => row.textContent?.startsWith("Proposals"));
+  const weekButton = document.querySelector(`.doc button[data-v="v-week"]`);
+  (weekButton as HTMLButtonElement).click();
   return {
     views,
     approveDisabled,
     sidebarProposals: proposals?.querySelector("b")?.textContent ?? undefined,
+    proposalBlocks: document.querySelectorAll("#main .blk[data-proposal]").length,
   };
 }
 
@@ -120,12 +125,14 @@ describe("the pending-proposal count the Week mock prints", () => {
    * api cannot answer with: one was updated and the other was not. */
   it("collapses the fixture's proposal targets the way the slot does, everywhere it prints them", async () => {
     const sheet = await sheetText();
-    const expected = proposalTargetsIn(sheet).length === 0 ? 0 : 1;
-    const { views, sidebarProposals } = render(sheet);
+    const targets = proposalTargetsIn(sheet).length;
+    const expected = targets === 0 ? 0 : 1;
+    const { views, sidebarProposals, proposalBlocks } = render(sheet);
 
     expect(figuresIn(views.get("v-week") ?? "")).toEqual([expected]);
     expect(figuresIn(views.get("v-conflict") ?? "")).toEqual([expected]);
     expect(sidebarProposals).toBe(String(expected));
+    expect(proposalBlocks, "the grid draws one block per target, not one per slot").toBe(targets);
   });
 
   /* THE OTHER FIGURE ON THAT LINE IS DERIVED TOO, so it is pinned to the same fixture. It happened to be right when the
@@ -135,6 +142,20 @@ describe("the pending-proposal count the Week mock prints", () => {
     const { views } = render(sheet);
 
     expect(views.get("v-week")).toContain(`${unconfirmedDaysIn(sheet)} days unconfirmed`);
+  });
+
+  /* AND IT MOVES WITH THE FIXTURE, which the case above cannot show: a literal matching today's marker count would
+   * satisfy it. Marking one more day must move the band. */
+  it("follows the fixture when another day goes unconfirmed", async () => {
+    const sheet = await sheetText();
+    const marked = sheet.replace("', rows:[", "', unconf:1, rows:[");
+    expect(unconfirmedDaysIn(marked), "no unmarked day left to mark").toBe(
+      unconfirmedDaysIn(sheet) + 1,
+    );
+
+    const { views } = render(marked);
+
+    expect(views.get("v-week")).toContain(`${unconfirmedDaysIn(marked)} days unconfirmed`);
   });
 
   /* APPROVE IS DISABLED BY AN EMPTY SLOT AND BY NOTHING ELSE, which `WeekActions` derives from the same field. The
@@ -165,12 +186,13 @@ describe("the pending-proposal count the Week mock prints", () => {
       "the fixture's rows no longer end in an Area field",
     ).toHaveLength(2);
 
-    const { views, approveDisabled, sidebarProposals } = render(flagged);
+    const { views, approveDisabled, sidebarProposals, proposalBlocks } = render(flagged);
 
     expect(views.get("v-week")).toContain("1 proposal pending");
     expect(views.get("v-conflict")).toContain("1 proposal waiting quietly");
     expect(sidebarProposals).toBe("1");
     expect(approveDisabled.get("v-week")).toEqual([false]);
     expect(approveDisabled.get("v-session")).toEqual([false]);
+    expect(proposalBlocks, "two targets are two blocks and still one slot").toBe(2);
   });
 });
