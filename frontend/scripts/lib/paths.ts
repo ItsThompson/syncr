@@ -30,6 +30,15 @@ export const appSourceDir = path.join(frontendRoot, "src");
 /** The kit. A state channel may be assigned in exactly one file under here. */
 export const kitDir = path.join(appSourceDir, "ui");
 
+/** The committed OpenAPI document, generated from the api by `just contract`. */
+export const openapiDocument = path.join(frontendRoot, "openapi.json");
+
+/** The committed types, generated from the document by the same recipe. */
+export const generatedSchema = path.join(appSourceDir, "api", "schema.d.ts");
+
+/** The options the application itself is compiled with. */
+export const tsconfig = path.join(frontendRoot, "tsconfig.json");
+
 /** A path relative to the repository root, for messages a reader can paste into an editor. */
 export function relativeToRepo(absolutePath: string): string {
   return path.relative(repoRoot, absolutePath);

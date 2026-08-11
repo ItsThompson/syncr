@@ -1,0 +1,73 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "planted", "version": "0.1.0" },
+  "paths": {
+    "/planted": {
+      "get": {
+        "operationId": "read_planted",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlantedResponse" } }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "write_planted",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PlantedRequest" } }
+          }
+        },
+        "responses": { "204": { "description": "no content" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PlantedResponse": {
+        "title": "PlantedResponse",
+        "type": "object",
+        "properties": {
+          "kept": { "title": "Kept", "type": "string" },
+          "placeholder": { "title": "Placeholder", "type": "null" },
+          "enumeratedNull": { "title": "Enumeratednull", "enum": [null] },
+          "arrayOfNull": { "title": "Arrayofnull", "type": "array", "items": { "type": "null" } },
+          "nullableObject": {
+            "anyOf": [{ "$ref": "#/components/schemas/NestedResponse" }, { "type": "null" }]
+          },
+          "nested": { "$ref": "#/components/schemas/NestedResponse" }
+        },
+        "required": [
+          "kept",
+          "placeholder",
+          "enumeratedNull",
+          "arrayOfNull",
+          "nullableObject",
+          "nested"
+        ]
+      },
+      "NestedResponse": {
+        "title": "NestedResponse",
+        "type": "object",
+        "properties": {
+          "held": { "title": "Held", "type": "integer" },
+          "buried": { "title": "Buried", "type": "null" }
+        },
+        "required": ["held", "buried"]
+      },
+      "PlantedRequest": {
+        "title": "PlantedRequest",
+        "type": "object",
+        "properties": {
+          "sent": { "title": "Sent", "type": "string" },
+          "unsendable": { "title": "Unsendable", "type": "null" }
+        },
+        "required": ["sent", "unsendable"]
+      }
+    }
+  }
+}
