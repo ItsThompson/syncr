@@ -14,10 +14,10 @@
  * AN ERROR REPLACES THE HINT rather than stacking under it. Two messages in one slot would change the row's
  * height as a value became invalid, and the words that matter while a field is wrong are the error's.
  *
- * A GROUP IS NAMED BY THE WORDS THE ROW DREW rather than pointed at by them. A radio group's tab stop is a
- * descendant Radix owns and an interval is a fieldset with two fields, so neither is a labelable element: a
- * `<label htmlFor>` aimed at one names nothing, which is worse than no label because the markup looks right.
- * So the group form draws the words in an element of its own and hands the child that element's id:
+ * A GROUP IS NAMED BY THE WORDS THE ROW DREW rather than pointed at by them, because neither a radio group
+ * nor an interval is a labelable element and a `<label htmlFor>` aimed at one names nothing:
+ * `ui/primitives/naming.ts` carries that measurement. So the group form draws the words in an element of its
+ * own and hands the child that element's id:
  *
  *   <FormRow label="Day bounds" hint="wall time" isGroup>
  *     {(field) => <TimeRangeInput labelledBy={field.labelledBy} describedBy={field.describedBy} ... />}

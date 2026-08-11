@@ -1,14 +1,11 @@
 /* NAMING A CONTROL NO `<label>` CAN POINT AT.
  *
- * A radio group's tab stop is a descendant Radix owns, and an interval is a fieldset with two fields of its
- * own. So a screen that needs the question VISIBLE cannot draw it in a `<label htmlFor>` and be done: read
- * out of Chrome's accessibility tree, a group a label points at has an empty name and no name source at all.
- *
- * Each control therefore takes either the words or the id of an element the screen drew them in, and the two
- * are not interchangeable. Both name the control, and a rendering looks identical either way; what differs is
- * how many times the words were WRITTEN, which is what `authoredNames` reads and what the last case here
- * pins. Chrome reports the same distinction as a name source: `attribute[aria-label]` against
- * `relatedElement[aria-labelledby]`.
+ * `../naming.ts` carries the reason neither control is labelable and what a browser computes for a group a
+ * label aims at. What is asserted here is the consequence: each control takes either the words or the id of
+ * an element the screen drew them in, and the two are not interchangeable. Both name the control, and a
+ * rendering looks identical either way; what differs is how many times the words were WRITTEN, which is what
+ * `authoredNames` reads and what the last case here pins. Chrome reports the same distinction as a name
+ * source: `attribute[aria-label]` against `relatedElement[aria-labelledby]`.
  *
  * THE COMPILER CARRIES THE OTHER HALF. A control with no name is announced by its role alone, and a control
  * with two names has two strings to keep in step, so neither is representable: the cases below are

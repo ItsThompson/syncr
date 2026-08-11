@@ -1,8 +1,10 @@
-/* HOW A CONTROL IS NAMED WHEN NO `<label>` CAN POINT AT IT.
+/* HOW A CONTROL IS NAMED WHEN NO `<label>` CAN POINT AT IT. This file is where that argument lives; the
+ * controls and the form row point here rather than restating it.
  *
  * A radio group's tab stop is a descendant Radix owns, and an interval is a fieldset with two fields of its
  * own. Neither is a labelable element, so a `<label htmlFor>` aimed at one names nothing at all: read out of
- * Chrome's accessibility tree, such a group has an empty name and no name source.
+ * Chrome's accessibility tree, such a group has an empty name and NO NAME SOURCE, from markup that looks
+ * right.
  *
  * That leaves two ways to name one, and a control takes exactly one of them:
  *

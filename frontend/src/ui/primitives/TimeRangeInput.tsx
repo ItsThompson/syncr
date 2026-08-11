@@ -9,7 +9,7 @@
  * belongs to is the one that can judge it.
  *
  * THE FIELDSET CANNOT BE POINTED AT BY A LABEL, because it holds two fields rather than one, so it is named
- * either by a string of its own or by an element a screen has already drawn the question in. */
+ * either by a string of its own or by an element a screen has already drawn the question in. See `naming.ts`. */
 
 import type { Ref } from "react";
 
