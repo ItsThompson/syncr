@@ -46,9 +46,10 @@ if TYPE_CHECKING:
 # adjustments it was solved under by identifier, and a replacement that minted a new one would
 # leave every earlier document naming a row that no longer exists. What it costs is the other end
 # of that pair: the document written beside a REPLACEMENT names the new candidate's identifier and
-# this row keeps the replaced one's, so the history counts that concession as one it cannot name.
-# Ticket 1422 owns the choice; the state is unreachable through the shipped routes, because a
-# concession the week already holds is not re-offered.
+# this row keeps the replaced one's, so the history cannot name that concession. The answer taken
+# there is to report the cause rather than the bare count: such a revision reports a REPLACED
+# concession, which is still in force under this row's name, and a revision whose concession was
+# deleted reports a REVOKED one, which applies to nothing.
 _RETAINED_COLUMNS = frozenset({"id", TENANT_ID_COLUMN, "iso_week", "kind", "target_id"})
 
 
