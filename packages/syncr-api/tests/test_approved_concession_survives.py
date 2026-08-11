@@ -22,8 +22,9 @@ one week later resolves the floor it was never conceded.
 **Approving the same tradeoff twice does not double its effect**, and the unique index on
 ``(week, kind, target)`` is what makes that true rather than the upsert having been written
 correctly. The second approval REPLACES the first, and the replaced row keeps its own identifier,
-which is the decision the concession table states and the reason the history counts a concession it
-cannot name rather than claiming it was revoked.
+which is the decision the concession table states and the reason the history reports that concession
+as REPLACED rather than as revoked: it is still in force, under a name the second revision does not
+use. So the pairing is asserted through the history read as well as the figure.
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import Scope
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.candidates import as_document
+from syncr_api.plans.injection import build_week_service
 from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_domain.feasibility import ShortfallKind, probe
@@ -52,11 +54,13 @@ from tests.tradeoff_weeks import a_week_every_kind_can_be_offered_in, an_offered
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
+    from uuid import UUID
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
     from syncr_api.accounts.records import UserRecord
     from syncr_api.plans.records import WeekAdjustmentRecord
+    from syncr_api.plans.week_views import WeekRevisions
     from syncr_domain.identifiers import TenantId
     from syncr_solver.inputs import SolveInputs, WeekAdjustment
 
@@ -102,17 +106,25 @@ async def approve_the_offer(
     candidate: WeekAdjustment,
     *,
     at: Any = NOW,
+    solved_under: tuple[UUID, ...] | None = None,
 ) -> None:
     """Put a proposal carrying ``candidate`` in the week's slot, then approve it for real.
 
     The document is empty of blocks and names the concession the solve was run under, which is the
     pair the worker writes: what this suite measures is the concession's effect on the NEXT
     assembly, and a fabricated plan would put the authority rule between the two.
+
+    ``solved_under`` states the whole list of identifiers the document names, for a solve that read
+    stored concessions as well as its own candidate. It defaults to the candidate alone.
     """
     async with sessions() as session, session.begin():
         await PendingProposalRepository(session, tenant_id).replace(
             document=stored_document(
-                a_document(week=WEEK, blocks=(), adjustments=(candidate.adjustment_id,))
+                a_document(
+                    week=WEEK,
+                    blocks=(),
+                    adjustments=solved_under or (candidate.adjustment_id,),
+                )
             ),
             proposal_diff={"added": [], "removed": [], "moved": []},
             objective_breakdown=BREAKDOWN,
@@ -150,6 +162,21 @@ async def concessions_held(
 ) -> Sequence[WeekAdjustmentRecord]:
     async with sessions() as session:
         return await WeekAdjustmentRepository(session, tenant_id).for_week(week)
+
+
+async def the_history(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, owner: UserRecord
+) -> WeekRevisions:
+    """The week's revision history as the route answers with it, newest first.
+
+    Read through the week service rather than composed here, so what is asserted is the answer a
+    client gets: the rows an approval wrote, paired against the concessions the week holds now.
+    """
+    async with sessions() as session:
+        service = build_week_service(session, tenant_id, clock=lambda: NOW)
+        return await service.revisions(
+            Principal(tenant_id=tenant_id, user_id=owner.id, scopes=frozenset(Scope)), str(WEEK)
+        )
 
 
 class TestTheGapAnApprovedTradeoffQuoted:
@@ -236,6 +263,11 @@ class TestApprovingTheSameTradeoffTwice:
         rather than by the sum. The replaced row keeps its own identifier, which is the concession
         table's stated choice: every earlier document names it, and a fresh identifier would leave
         those documents naming a row nothing holds.
+
+        **The history is asserted as a pairing rather than as a figure.** The second revision names
+        an identifier nothing holds, and what it reports is that the concession was REPLACED: still
+        in force, under the name the first revision uses. The first revision names the row and
+        reports nothing missing. A count alone could not tell that state from a revocation.
         """
         _, before, offer = await an_offered(AdjustmentKind.BREACH_FLOOR)
         first = offer.as_candidate(adjustment_id=uuid4())
@@ -243,13 +275,24 @@ class TestApprovingTheSameTradeoffTwice:
 
         await approve_the_offer(sessions, owner.tenant_id, owner, first)
         await approve_the_offer(
-            sessions, owner.tenant_id, owner, second, at=NOW + timedelta(minutes=5)
+            sessions,
+            owner.tenant_id,
+            owner,
+            second,
+            at=NOW + timedelta(minutes=5),
+            # The second solve read the stored concession and folded its own candidate on top, so
+            # its document names both. That is the shape the worker writes for this interleaving.
+            solved_under=(first.adjustment_id, second.adjustment_id),
         )
 
         held = await concessions_held(sessions, owner.tenant_id)
         assert len(held) == 1
         assert held[0].id == first.adjustment_id
         assert held[0].delta_minutes == second.delta_minutes
+        replacing, granting = (await the_history(sessions, owner.tenant_id, owner)).revisions
+        assert [one.id for one in replacing.adjustments] == [first.adjustment_id]
+        assert (replacing.unnamed.revoked, replacing.unnamed.replaced) == (0, 1)
+        assert (granting.unnamed.revoked, granting.unnamed.replaced) == (0, 0)
         after = await assembled_reading_the_stored_concessions(sessions, owner.tenant_id)
         conceded = (
             _floors(before)[offer.tradeoff.target_id] - _floors(after)[offer.tradeoff.target_id]
