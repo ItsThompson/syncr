@@ -10,6 +10,10 @@ convenient. The Areas repository is read because a slot names an Area and the Ar
 tenant's. ``BacklogWideBump`` carries plan storage's version counter and the settings read the home
 zone: a day shape is a solve input with no end date, so it needs the same four steps every such
 mutation needs, and there is one implementation of them.
+
+The two services that declare a row behind a unique index are handed the request transaction's
+savepoint, which is what lets a write refused by that index be answered by the read it passed
+rather than abandoning the transaction.
 """
 
 from __future__ import annotations
@@ -53,7 +57,9 @@ def _future_weeks(principal: PrincipalDep, transaction: TransactionDep) -> Futur
 def get_day_type_service(principal: PrincipalDep, transaction: TransactionDep) -> DayTypeService:
     """The day-type service. It bumps no input version: a new day type is mapped by nothing."""
     return DayTypeService(
-        day_types=DayTypeRepository(transaction, principal.tenant_id), clock=utc_now
+        day_types=DayTypeRepository(transaction, principal.tenant_id),
+        clock=utc_now,
+        savepoint=transaction.begin_nested,
     )
 
 
@@ -65,6 +71,7 @@ def get_template_service(principal: PrincipalDep, transaction: TransactionDep) -
         areas=AreaRepository(transaction, principal.tenant_id),
         weeks=_future_weeks(principal, transaction),
         clock=utc_now,
+        savepoint=transaction.begin_nested,
     )
 
 

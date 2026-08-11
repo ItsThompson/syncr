@@ -12,6 +12,11 @@ is a 404 rather than an edit through the wrong path.
 pattern's own ``covers`` is what decides, so nothing here compares a day type against a mapping.
 Every mutation states in its log line whether it reached a week.
 
+**Two of those reads refuse what a unique index also refuses.** A day type's name and a day
+type's one shape are each read before the write and guaranteed by an index, so both writes go
+through :func:`syncr_api.core.races.answered_once` and a caller that passed the read at the same
+moment as another is answered by that read rather than by a fault.
+
 ``authorize_tenant`` is called on the one row a caller addresses by identifier. Every row these
 methods touch came from a repository scoped to the principal's own tenant, so the scoped
 ``SELECT`` is what turns another tenant's identifier into a 404; the explicit call is defense in
@@ -25,8 +30,11 @@ from typing import TYPE_CHECKING
 
 from syncr_api.core.errors import NotFound
 from syncr_api.core.principal import authorize_tenant, require_scope
+from syncr_api.core.races import answered_once
 from syncr_api.core.scopes import Scope
 from syncr_api.templates.config import (
+    ONE_DAY_TYPE_PER_NAME_INDEX,
+    ONE_SHAPE_PER_DAY_TYPE_INDEX,
     TEMPLATE_ENTRY_RESOURCE,
     TEMPLATE_RESOURCE,
     WEEK_PATTERN_RESOURCE,
@@ -46,6 +54,7 @@ if TYPE_CHECKING:
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
+    from syncr_api.core.races import Savepoint
     from syncr_api.templates.declarations import (
         DayTypeDeclaration,
         EntryChange,
@@ -73,9 +82,10 @@ class DayTypeService:
     change what a week materializes.
     """
 
-    def __init__(self, day_types: DayTypeRepository, clock: Clock) -> None:
+    def __init__(self, day_types: DayTypeRepository, clock: Clock, savepoint: Savepoint) -> None:
         self._day_types = day_types
         self._clock = clock
+        self._savepoint = savepoint
 
     @measured("templates")
     async def list_all(self, principal: Principal) -> tuple[DayTypeRecord, ...]:
@@ -85,10 +95,24 @@ class DayTypeService:
 
     @measured("templates")
     async def create(self, principal: Principal, declaration: DayTypeDeclaration) -> DayTypeRecord:
-        """Declare a day type, refusing a name another already holds."""
+        """Declare a day type, refusing a name another already holds.
+
+        The name check is a courtesy that produces a stated 409 and the unique index is the
+        guarantee, which is why the read holds no lock and the write carries the same check
+        for the caller that passed it at the same moment as another.
+        """
         require_scope(principal, Scope.ADMIN)
-        require_an_unused_day_type_name(declaration.name, await self._day_types.list_all())
-        created = await self._day_types.create(name=declaration.name, created_at=self._clock())
+
+        async def require_a_free_name() -> None:
+            require_an_unused_day_type_name(declaration.name, await self._day_types.list_all())
+
+        await require_a_free_name()
+        created = await answered_once(
+            savepoint=self._savepoint,
+            index=ONE_DAY_TYPE_PER_NAME_INDEX,
+            write=lambda: self._day_types.create(name=declaration.name, created_at=self._clock()),
+            refusal=require_a_free_name,
+        )
         # The NAME is deliberately absent from this line. It is user-authored content, and a day
         # type named after a job discloses as much as a block title does.
         _log.info(
@@ -109,12 +133,14 @@ class TemplateService:
         areas: AreaRepository,
         weeks: FutureWeeks,
         clock: Clock,
+        savepoint: Savepoint,
     ) -> None:
         self._templates = templates
         self._day_types = day_types
         self._areas = areas
         self._weeks = weeks
         self._clock = clock
+        self._savepoint = savepoint
 
     @measured("templates")
     async def list_all(self, principal: Principal) -> tuple[TemplateRecord, ...]:
@@ -134,16 +160,28 @@ class TemplateService:
     ) -> TemplateRecord:
         """Declare the shape of a day type that has none yet.
 
-        The one-shape check is a courtesy that produces a stated 409; the unique index is the
-        guarantee, which is why the read holds no lock.
+        The one-shape check is a courtesy that produces a stated 409 and the unique index is the
+        guarantee, which is why the read holds no lock and the write carries the same check for
+        the caller that passed it at the same moment as another.
         """
         require_scope(principal, Scope.ADMIN)
         require_a_declared_day_type(declaration.day_type_id, await self._day_types.list_all())
-        require_an_unshaped_day_type(
-            await self._templates.find_by_day_type(declaration.day_type_id)
-        )
-        created = await self._templates.create(
-            day_type_id=declaration.day_type_id, name=declaration.name, created_at=self._clock()
+
+        async def require_an_unshaped_target() -> None:
+            require_an_unshaped_day_type(
+                await self._templates.find_by_day_type(declaration.day_type_id)
+            )
+
+        await require_an_unshaped_target()
+        created = await answered_once(
+            savepoint=self._savepoint,
+            index=ONE_SHAPE_PER_DAY_TYPE_INDEX,
+            write=lambda: self._templates.create(
+                day_type_id=declaration.day_type_id,
+                name=declaration.name,
+                created_at=self._clock(),
+            ),
+            refusal=require_an_unshaped_target,
         )
         invalidated = await self._weeks.invalidate_if_mapped(created.day_type_id)
         _log.info(

@@ -13,6 +13,7 @@ that pair is what makes "bump when the pattern covers it" a different rule from 
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import UTC, datetime, time
 from typing import TYPE_CHECKING
@@ -303,13 +304,19 @@ class Wiring:
             ),
             clock=lambda: NOW,
         )
-        self.day_type_service = DayTypeService(day_types=self.day_types, clock=lambda: NOW)
+        # The real refusal wrapper over an inert savepoint: these fakes never reach a database,
+        # so there is no transaction to roll back and no index to lose to. The races the wrapper
+        # exists for need two real connections and are driven in the integration tier.
+        self.day_type_service = DayTypeService(
+            day_types=self.day_types, clock=lambda: NOW, savepoint=nullcontext
+        )
         self.template_service = TemplateService(
             templates=self.templates,
             day_types=self.day_types,
             areas=self.areas,
             weeks=weeks,
             clock=lambda: NOW,
+            savepoint=nullcontext,
         )
         self.pattern_service = WeekPatternService(
             patterns=self.patterns, day_types=self.day_types, weeks=weeks
