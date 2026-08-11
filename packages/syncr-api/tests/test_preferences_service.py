@@ -55,6 +55,7 @@ from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
 from syncr_domain.preferences import (
+    MAX_WINDOWS,
     LocalTimeWindow,
     Preference,
     PreferenceError,
@@ -260,6 +261,21 @@ def declaration(
         strength=strength,
         preferred_duration_minutes=preferred_duration_minutes,
         max_per_day_minutes=max_per_day_minutes,
+    )
+
+
+def stretches(*bounds: tuple[time, time]) -> PreferenceDeclaration:
+    """A declaration stating each stretch as a request states it: two wall times, unsplit.
+
+    Separate from ``declaration`` rather than a mode of it, because a stretch that wraps past
+    midnight is not a domain window and cannot be built as one: the split is what this shape is
+    handed to the service to perform.
+    """
+    return PreferenceDeclaration(
+        windows=tuple(DeclaredWindow(start=start, end=end) for start, end in bounds),
+        strength=PreferenceStrength.STRONG,
+        preferred_duration_minutes=None,
+        max_per_day_minutes=None,
     )
 
 
@@ -491,6 +507,148 @@ class TestReplacingWholly:
             )
 
         assert len(world.preferences.rows) == 1
+
+
+class TestAStretchAcrossMidnightIsSplitWhereItIsAuthored:
+    """The wrap, driven through the service that stores it rather than through the entity.
+
+    Every case here reaches the split through ``PreferenceService.replace``, which is the only
+    caller that turns a request's two wall times into stored windows, and reads the stored ROWS
+    rather than the returned entity: the halves have to survive the JSON mapping to be a
+    declaration the user can read back.
+    """
+
+    async def test_a_wrap_is_stored_as_two_windows_split_at_midnight(self) -> None:
+        world = World()
+
+        read = await world.service.replace(
+            world.principal,
+            PreferenceOwnerKind.AREA,
+            world.area.id,
+            stretches((time(23, 0), time(1, 0))),
+        )
+
+        assert read.declared is not None
+        assert [str(window) for window in read.declared.windows] == ["00:00-01:00", "23:00-00:00"]
+        assert [dict(window) for window in world.preferences.rows[0].windows] == [
+            {"start": "00:00:00", "end": "01:00:00"},
+            {"start": "23:00:00", "end": "00:00:00"},
+        ]
+
+    async def test_a_stored_wrap_reads_back_as_the_two_windows_it_was_split_into(self) -> None:
+        # The row is mapped back through the entity on the way out, so an end of 00:00 has to be
+        # readable as well as writable: a reader that refused it would make the wrap unreadable.
+        world = World()
+        await world.service.replace(
+            world.principal,
+            PreferenceOwnerKind.AREA,
+            world.area.id,
+            stretches((time(23, 0), time(1, 0))),
+        )
+
+        read = await world.service.read(world.principal, PreferenceOwnerKind.AREA, world.area.id)
+
+        assert read.in_effect is not None
+        assert [str(window) for window in read.in_effect.windows] == ["00:00-01:00", "23:00-00:00"]
+
+    async def test_a_stretch_inside_one_day_is_stored_as_one_window(self) -> None:
+        # The control. A split on every declaration would store two windows here.
+        world = World()
+
+        read = await world.service.replace(
+            world.principal,
+            PreferenceOwnerKind.AREA,
+            world.area.id,
+            stretches((time(5, 30), time(7, 0))),
+        )
+
+        assert read.declared is not None
+        assert [str(window) for window in read.declared.windows] == ["05:30-07:00"]
+
+    async def test_a_stretch_that_ends_at_midnight_is_stored_as_one_window(self) -> None:
+        world = World()
+
+        read = await world.service.replace(
+            world.principal,
+            PreferenceOwnerKind.AREA,
+            world.area.id,
+            stretches((time(23, 0), time(0, 0))),
+        )
+
+        assert read.declared is not None
+        assert [str(window) for window in read.declared.windows] == ["23:00-00:00"]
+
+    @pytest.mark.parametrize("bound", [time(23, 0), time(0, 0)], ids=["a time of day", "midnight"])
+    async def test_a_stretch_that_ends_where_it_starts_is_refused_and_stores_nothing(
+        self, bound: time
+    ) -> None:
+        world = World()
+
+        with pytest.raises(ValidationFailed) as refused:
+            await world.service.replace(
+                world.principal, PreferenceOwnerKind.AREA, world.area.id, stretches((bound, bound))
+            )
+
+        assert refused.value.errors is not None
+        assert [error.field for error in refused.value.errors] == ["windows"]
+        assert world.preferences.rows == []
+
+    async def test_a_wrap_whose_union_with_another_stretch_is_one_window_is_refused(self) -> None:
+        world = World()
+
+        with pytest.raises(ValidationFailed) as refused:
+            await world.service.replace(
+                world.principal,
+                PreferenceOwnerKind.AREA,
+                world.area.id,
+                stretches((time(22, 0), time(23, 30)), (time(23, 0), time(1, 0))),
+            )
+
+        assert "overlap" in str(refused.value)
+        assert world.preferences.rows == []
+
+    async def test_a_wrap_consumes_two_of_the_permitted_windows(self) -> None:
+        world = World()
+        room = tuple((time(2 + index, 0), time(2 + index, 30)) for index in range(MAX_WINDOWS - 2))
+
+        read = await world.service.replace(
+            world.principal,
+            PreferenceOwnerKind.AREA,
+            world.area.id,
+            stretches((time(23, 0), time(1, 0)), *room),
+        )
+
+        assert read.declared is not None
+        assert len(read.declared.windows) == MAX_WINDOWS
+
+    async def test_one_window_past_the_bound_is_refused_when_a_wrap_is_among_them(self) -> None:
+        # The declaration names six stretches, which the request shape permits; the wrap makes
+        # them seven windows, which is what the user is told they have.
+        world = World()
+        room = tuple((time(2 + index, 0), time(2 + index, 30)) for index in range(MAX_WINDOWS - 1))
+
+        with pytest.raises(ValidationFailed) as refused:
+            await world.service.replace(
+                world.principal,
+                PreferenceOwnerKind.AREA,
+                world.area.id,
+                stretches((time(23, 0), time(1, 0)), *room),
+            )
+
+        assert str(MAX_WINDOWS) in str(refused.value)
+        assert world.preferences.rows == []
+
+    async def test_an_empty_declaration_still_names_no_window_at_all(self) -> None:
+        # The split runs over each declared stretch, so a declaration of none flattens to none
+        # rather than to one window nobody asked for.
+        world = World()
+
+        read = await world.service.replace(
+            world.principal, PreferenceOwnerKind.AREA, world.area.id, stretches()
+        )
+
+        assert read.declared is not None
+        assert read.declared.windows == ()
 
 
 class TestTheCapIsAnAreasAlone:

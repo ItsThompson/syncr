@@ -46,6 +46,7 @@ from syncr_api.habits.config import HABITS_PREFIX
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.preferences.models import PreferenceRow
 from syncr_api.tasks.config import TASKS_PREFIX
+from syncr_domain.preferences import MAX_WINDOWS
 from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 
@@ -504,12 +505,12 @@ def test_a_window_bound_that_is_not_wall_time_on_the_grid_is_refused(
     assert preference_rows(live_database_url, owner.tenant_id) == []
 
 
-def test_a_window_that_does_not_run_forward_is_refused(
+def test_a_window_that_ends_where_it_starts_is_refused(
     http: TestClient, signed_in: dict[str, str], owned: Owned
 ) -> None:
     refused = http.put(
         owned.area,
-        json={"windows": [{"start": "23:00", "end": "01:00"}], "strength": "soft"},
+        json={"windows": [{"start": "23:00", "end": "23:00"}], "strength": "soft"},
         headers=signed_in,
     )
 
@@ -517,7 +518,148 @@ def test_a_window_that_does_not_run_forward_is_refused(
     # The FIELD rather than a substring of the whole body, so a different refusal that happened to
     # contain the word cannot pass for this one.
     assert [error["field"] for error in refused.json()["errors"]] == ["windows"]
-    assert "two stretches" in refused.json()["detail"]
+    assert "runs forward" in refused.json()["detail"]
+
+
+def test_midnight_to_midnight_is_refused_rather_than_read_as_the_whole_day(
+    http: TestClient, signed_in: dict[str, str], owned: Owned
+) -> None:
+    # The bound pair the end-of-day reading nearly swallowed: 00:00 in the end position is the
+    # day's end, so this one would have been accepted as a window naming every hour.
+    refused = http.put(
+        owned.area,
+        json={"windows": [{"start": "00:00", "end": "00:00"}], "strength": "soft"},
+        headers=signed_in,
+    )
+
+    assert refused.status_code == ValidationFailed.status, refused.text
+    assert [error["field"] for error in refused.json()["errors"]] == ["windows"]
+
+
+# --------------------------------------------------------------------------------
+# A stretch across midnight, split where it is authored
+# --------------------------------------------------------------------------------
+
+
+WRAP = {"start": "23:00", "end": "01:00"}
+
+
+def test_a_stretch_across_midnight_is_accepted_and_read_back_as_its_two_halves(
+    http: TestClient, signed_in: dict[str, str], owned: Owned
+) -> None:
+    body = put(http, signed_in, owned.area, windows=[WRAP], strength="strong")
+
+    assert body["declared"]["windows"] == [
+        {"start": "00:00:00", "end": "01:00:00"},
+        {"start": "23:00:00", "end": "00:00:00"},
+    ]
+    # The same two on a fresh read, so the halves survive the row rather than only the response
+    # the replacement built.
+    assert http.get(owned.area, headers=signed_in).json() == body
+
+
+def test_the_stored_halves_of_a_wrap_are_the_wall_times_the_split_produced(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+) -> None:
+    # Read out of Postgres. An end of 00:00 is a wall time like any other in the column, which is
+    # what lets one `time` spell the end of the day.
+    put(http, signed_in, owned.area, windows=[WRAP], strength="strong")
+
+    rows = preference_rows(live_database_url, owner.tenant_id)
+
+    assert len(rows) == 1
+    assert rows[0].windows == [
+        {"start": "00:00:00", "end": "01:00:00"},
+        {"start": "23:00:00", "end": "00:00:00"},
+    ]
+
+
+def test_a_wrap_reads_as_both_halves_in_the_statement_a_client_renders(
+    http: TestClient, signed_in: dict[str, str], owned: Owned
+) -> None:
+    body = put(http, signed_in, owned.area, windows=[WRAP], strength="strong")
+
+    assert body["effective"]["statement"] == "Set on this area: 00:00-01:00 or 23:00-00:00, strong."
+
+
+def test_a_stretch_that_ends_at_midnight_stays_one_window(
+    http: TestClient, signed_in: dict[str, str], owned: Owned
+) -> None:
+    # The control for the split: the end of the day is already spelled, so splitting here would
+    # produce a second half from midnight to midnight and refuse a stretch that is legal.
+    body = put(
+        http, signed_in, owned.area, windows=[{"start": "23:00", "end": "00:00"}], strength="soft"
+    )
+
+    assert body["declared"]["windows"] == [{"start": "23:00:00", "end": "00:00:00"}]
+
+
+def test_a_wrap_whose_union_with_a_late_evening_window_is_one_window_is_refused(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+) -> None:
+    refused = http.put(
+        owned.area,
+        json={"windows": [{"start": "22:00", "end": "23:30"}, WRAP], "strength": "soft"},
+        headers=signed_in,
+    )
+
+    assert refused.status_code == ValidationFailed.status, refused.text
+    assert [error["field"] for error in refused.json()["errors"]] == ["windows"]
+    assert "overlap" in refused.json()["detail"]
+    assert preference_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_a_wrap_consumes_two_of_the_permitted_windows(
+    http: TestClient, signed_in: dict[str, str], owned: Owned
+) -> None:
+    room = [{"start": f"{2 + index:02d}:00", "end": f"{2 + index:02d}:30"} for index in range(4)]
+
+    body = put(http, signed_in, owned.area, windows=[WRAP, *room], strength="soft")
+
+    assert len(body["declared"]["windows"]) == MAX_WINDOWS
+
+
+def test_one_window_past_the_bound_is_refused_when_a_wrap_is_among_them(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+) -> None:
+    # Six stretches, which the request shape permits, and seven windows once the wrap is split.
+    # The count the bound is stated over is the one the user reads back.
+    room = [{"start": f"{2 + index:02d}:00", "end": f"{2 + index:02d}:30"} for index in range(5)]
+
+    refused = http.put(
+        owned.area, json={"windows": [WRAP, *room], "strength": "soft"}, headers=signed_in
+    )
+
+    assert refused.status_code == ValidationFailed.status, refused.text
+    assert [error["field"] for error in refused.json()["errors"]] == ["windows"]
+    assert str(MAX_WINDOWS) in refused.json()["detail"]
+    assert preference_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_the_document_states_the_wrap_rather_than_refusing_a_stretch_across_midnight(
+    http: TestClient,
+) -> None:
+    # The contract is what a client is written against, so a description saying the opposite of
+    # what the route does is the defect rather than a comment about one.
+    document = http.get("/openapi.json").json()
+    described = document["components"]["schemas"]["AreaPreferenceRequest"]["properties"]["windows"][
+        "description"
+    ]
+
+    assert "wraps past midnight is accepted" in described
+    assert "across midnight is refused" not in described
 
 
 def test_two_overlapping_windows_are_refused(
