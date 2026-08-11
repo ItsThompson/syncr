@@ -124,14 +124,24 @@ def weights_statement(
 ) -> str:
     """What the weights were fitted from, or why they were not, and what was left out of both.
 
-    The exclusion is appended in every branch rather than only below the gate. A corpus whose rows
-    all predate the measurement reaches the fit as no pairs at all, and no pairs is a REFUSAL rather
-    than a collecting row, so the reader with the smallest sample count reads the refusal's words.
+    The collecting branch is reachable only when the fit SUCCEEDS and the gate then withholds the
+    vector. A corpus dominated by rows that predate the measurement fails the fit outright, so the
+    reader with the smallest sample count reads a refusal, and the exclusion is therefore appended
+    after the branch rather than inside one.
     """
     outcome = _weights_outcome(
         samples=samples, threshold=threshold, rejection=rejection, ranked=ranked
     )
-    return f"{outcome} {UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED}"
+    return f"{_stopped(outcome)} {UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED}"
+
+
+def _stopped(sentence: str) -> str:
+    """``sentence`` ending in exactly one full stop, so a second sentence can follow it.
+
+    A refusal is composed from :mod:`syncr_learning.rank`'s own message, and those end without
+    punctuation because they are also logged and read as fields.
+    """
+    return sentence if sentence.endswith(".") else f"{sentence}."
 
 
 def _weights_outcome(
@@ -144,5 +154,5 @@ def _weights_outcome(
             f"{ranked * 100:.0f}% of them, which is better than the weights they replace."
         )
     if rejection is not None:
-        return f"The seven weights were not changed: {rejection}."
+        return f"The seven weights were not changed: {rejection}"
     return f"Your edits: {samples} of {threshold}. {_COLLECTING_SUFFIX}"

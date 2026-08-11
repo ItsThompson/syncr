@@ -1,8 +1,8 @@
 """The sentences a maturity row states, and the one claiming a vector shipped when it had not.
 
-The Learned screen is the trust surface: section 11 says the plain-language line is what builds
-trust, more than the number beside it. So a sentence that says the opposite of what the artefact did
-is worse than a missing one, and each of the six has both branches driven here.
+The Learned screen is the trust surface: the plain-language line is what builds trust, more than the
+number beside it. So a sentence that says the opposite of what the artefact did is worse than a
+missing one, and each of the six has both branches driven here.
 
 The objective-weights sentence had **no coverage at all** and was false below the gate. It read "The
 seven weights were refitted from 49 of your edits" on a row whose state was `collecting`, whose
@@ -175,6 +175,26 @@ class TestTheWeightsSentenceSaysWhatAnUnmeasuredEditCountsToward:
         )
 
         assert f". {UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED}" in said
+
+    def test_a_refusal_that_already_ends_in_a_stop_does_not_gain_a_second(self) -> None:
+        # The reason follows a full stop, and a refusal is composed from `rank`'s own message. Those
+        # end without punctuation today, so the stop is supplied here; a sixth refusal written with
+        # one would otherwise render `..` on the screen.
+        with_a_stop = weights_statement(
+            samples=0,
+            threshold=WEIGHTS_THRESHOLD,
+            rejection="no pair carries a preference.",
+            ranked=None,
+        )
+        without_one = weights_statement(
+            samples=0,
+            threshold=WEIGHTS_THRESHOLD,
+            rejection="no pair carries a preference",
+            ranked=None,
+        )
+
+        assert ".." not in with_a_stop
+        assert with_a_stop == without_one
 
     def test_the_row_is_served_the_reason_rather_than_a_client_holding_it(self) -> None:
         # Taken off the artefact the job appends, which is what the api reads and serves, so the

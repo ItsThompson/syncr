@@ -56,7 +56,7 @@ AREA_NAMES = {str(AREA): "Fitness"}
 
 # Edit rows that predate the measurement, more of them than the gate needs, so a count that
 # included them would clear a gate no fit reached.
-UNMEASURED_EDITS = THRESHOLDS[OBJECTIVE_WEIGHTS] + 10
+ROWS_PREDATING_THE_MEASUREMENT = THRESHOLDS[OBJECTIVE_WEIGHTS] + 10
 MEASURED_EDITS = 5
 A_MEASURED_DIFFERENCE = dict.fromkeys(OBJECTIVE_TERMS, -1.0)
 
@@ -158,7 +158,7 @@ class TestWhatAnUnmeasuredEditCountsToward:
     def test_an_unmeasured_edit_reaches_neither_the_fit_nor_the_count(self) -> None:
         built = corpus(
             edits=[
-                *(edit(difference=None) for _ in range(UNMEASURED_EDITS)),
+                *(edit(difference=None) for _ in range(ROWS_PREDATING_THE_MEASUREMENT)),
                 *(edit(difference=A_MEASURED_DIFFERENCE) for _ in range(MEASURED_EDITS)),
             ]
         )
@@ -169,7 +169,7 @@ class TestWhatAnUnmeasuredEditCountsToward:
             if one.parameter == OBJECTIVE_WEIGHTS
         )
 
-        assert unmeasured(built.edits, built.off_plan) == UNMEASURED_EDITS
+        assert unmeasured(built.edits, built.off_plan) == ROWS_PREDATING_THE_MEASUREMENT
         assert len(observed.ranking) == MEASURED_EDITS
         assert row.samples == MEASURED_EDITS
         assert row.threshold == THRESHOLDS[OBJECTIVE_WEIGHTS]

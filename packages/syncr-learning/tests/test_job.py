@@ -315,9 +315,13 @@ class TestWhatTheRunReports:
     async def test_the_corpus_that_predates_the_measurement_reports_both_figures(self) -> None:
         # The reader's own situation, in one run: a gauge counting every row that was left out,
         # beside a row saying none of them counted, and a sentence saying why both are true.
-        unmeasured_edits = THRESHOLDS[OBJECTIVE_WEIGHTS] + 10
+        rows_predating_the_measurement = THRESHOLDS[OBJECTIVE_WEIGHTS] + 10
         reader = a_reader(
-            corpora={TENANT: corpus(edits=[edit(difference=None) for _ in range(unmeasured_edits)])}
+            corpora={
+                TENANT: corpus(
+                    edits=[edit(difference=None) for _ in range(rows_predating_the_measurement)]
+                )
+            }
         )
         writer = RecordingWriter()
 
@@ -329,7 +333,7 @@ class TestWhatTheRunReports:
             "syncr_learning_edits_without_measurement", {"tenant": str(TENANT)}
         )
 
-        assert left_out == unmeasured_edits
+        assert left_out == rows_predating_the_measurement
         assert (row.samples, row.threshold) == (0, THRESHOLDS[OBJECTIVE_WEIGHTS])
         assert UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED in row.plain_language
 
