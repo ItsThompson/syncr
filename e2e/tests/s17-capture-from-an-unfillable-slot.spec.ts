@@ -148,7 +148,9 @@ test("S17 an unfillable slot's label opens capture prefilled, and one confirm pr
     "the flow behind the label does not exist yet, in three places and on one defect: an empty slot's band " +
       "carries no label to activate (ticket 1350); nothing reads the capture URL the week screen writes and " +
       "nothing writes a task's own preference (ticket 1490); and the grid's canvas is sized from the height of " +
-      "the element that contains it, so it grows until layout stops and no pointer can act on it",
+      "the element that contains it, so it grows until layout stops and a press on a label drawn low in it is " +
+      "refused, which was measured on a supplied slot label and does not affect the window label the case " +
+      "above presses",
   );
 
   const week = planWeek();
