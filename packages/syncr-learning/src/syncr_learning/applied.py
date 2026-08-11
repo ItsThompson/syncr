@@ -36,6 +36,7 @@ from syncr_learning.fitters import (
     fit_time_of_day_fitness,
 )
 from syncr_learning.fitters.duration import median_actual_minutes, median_planned_minutes
+from syncr_learning.fitters.switching import gaps_across_areas
 from syncr_learning.gates import gated, maturity, threshold_for
 from syncr_learning.results import FitResult
 
@@ -141,19 +142,23 @@ def switch_cost(
 ) -> float:
     """The fitted price of an Area change, or the price in force because the gate did not pass.
 
-    The gate counts the CROSS-AREA pairs, which is what the fitter reports as its sample count: the
-    within-Area pairs are the baseline the price is measured against, and counting them would let a
-    corpus of one switch and forty same-Area pairs clear a gate about switches.
+    The gate counts the CROSS-AREA pairs and is told the count explicitly, because the fit shrinks
+    one figure -- the clamped difference of the two populations' means -- over a population of many,
+    so the count cannot be taken from what was shrunk. The within-Area pairs are the baseline the
+    price is measured against, and counting them would let a corpus of one switch and forty
+    same-Area pairs clear a gate about switches.
     """
     result = fit_context_switch_cost(observations.switches)
-    value = gated(CONTEXT_SWITCH_COST, result)
+    pairs = len(gaps_across_areas(observations.switches))
+    value = gated(CONTEXT_SWITCH_COST, result, samples=pairs)
     rows.append(
         maturity(
             CONTEXT_SWITCH_COST,
             result,
+            samples=pairs,
             statement=statements.switch_statement(
                 minutes=value,
-                samples=result.samples,
+                samples=pairs,
                 threshold=threshold_for(CONTEXT_SWITCH_COST),
             ),
         )

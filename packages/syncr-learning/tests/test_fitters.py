@@ -13,7 +13,9 @@ import pytest
 from syncr_learning.config import (
     MAX_CHURN_TOLERANCE,
     MAX_DURATION_RATIO,
+    MAX_SWITCH_COST_MINUTES,
     MIN_CHURN_TOLERANCE,
+    MIN_SWITCH_COST_MINUTES,
     PRIOR_CHURN_TOLERANCE,
     PRIOR_CONTEXT_SWITCH_COST,
     PRIOR_DURATION_MULTIPLIER,
@@ -31,6 +33,7 @@ from syncr_learning.fitters import (
     fit_time_of_day_fitness,
 )
 from syncr_learning.fitters.duration import median_actual_minutes, median_planned_minutes
+from syncr_learning.fitters.switching import gaps_across_areas
 from syncr_learning.observations import (
     ChurnObservation,
     DurationObservation,
@@ -38,7 +41,10 @@ from syncr_learning.observations import (
     SwitchObservation,
     TimeOfDayObservation,
 )
+from syncr_learning.shrinkage import shrunk
 from tests.builders import AREA
+
+BASELINE_GAP = 30
 
 
 def durations(count: int, *, planned: int = 60, actual: int = 82) -> list[DurationObservation]:
@@ -46,6 +52,25 @@ def durations(count: int, *, planned: int = 60, actual: int = 82) -> list[Durati
         DurationObservation(area_id=AREA, planned_minutes=planned, actual_minutes=actual)
         for _ in range(count)
     ]
+
+
+def spread_around_a_baseline(*, far: int, near: int = 5) -> list[SwitchObservation]:
+    """Forty cross-Area pairs alternating two gaps, against a within-Area baseline between them.
+
+    The shape a per-observation floor mishandles: half the differences are negative, so truncating
+    each one keeps the positive half whole and discards the size of the negative half.
+    """
+    return [
+        *(
+            SwitchObservation(gap_minutes=near if index % 2 == 0 else far, changed_area=True)
+            for index in range(40)
+        ),
+        *(SwitchObservation(gap_minutes=BASELINE_GAP, changed_area=False) for _ in range(10)),
+    ]
+
+
+def width(interval: tuple[float, float]) -> float:
+    return interval[1] - interval[0]
 
 
 class TestDurationMultiplier:
@@ -267,6 +292,61 @@ class TestContextSwitchCost:
     def test_a_negative_gap_is_refused_at_the_observation(self) -> None:
         with pytest.raises(ValueError, match="room the week left"):
             SwitchObservation(gap_minutes=-30, changed_area=True)
+
+    def test_a_population_spread_around_the_baseline_fits_the_difference_of_the_means(self) -> None:
+        # The clamp is applied ONCE, to the difference of the two means. Applied to each pair's
+        # difference instead it keeps this population's positive half at full size and truncates its
+        # negative half, and a user whose true extra room is zero fits 10.2 rather than 0.2.
+        result = fit_context_switch_cost(spread_around_a_baseline(far=55))
+
+        assert result.value == pytest.approx(0.2)
+        assert result.value != pytest.approx(10.2)
+        assert result.value == pytest.approx(
+            (40 * 0.0 + PRIOR_WEIGHT * PRIOR_CONTEXT_SWITCH_COST) / (40 + PRIOR_WEIGHT)
+        )
+
+    def test_the_count_is_the_cross_area_pairs_not_the_one_figure_that_was_shrunk(self) -> None:
+        # One clamped figure is shrunk, over forty pairs. Counting the figure would leave 91% of a
+        # value the user has forty observations of standing at the prior.
+        observed = spread_around_a_baseline(far=55)
+        result = fit_context_switch_cost(observed)
+
+        assert len(gaps_across_areas(observed)) == 40
+        assert result.samples == 40
+        assert result.shrinkage_weight == pytest.approx(PRIOR_WEIGHT / (40 + PRIOR_WEIGHT))
+
+    def test_the_interval_is_the_spread_of_the_unclamped_differences(self) -> None:
+        # The one clamped figure has no spread, so an interval read off it would report forty
+        # disagreeing pairs as a point. The pairs' own differences carry the disagreement and the
+        # floor is not applied to them, so the interval is as wide as their population's while the
+        # value it is centred on is the clamped one.
+        observed = spread_around_a_baseline(far=45)
+        differences = [gap - BASELINE_GAP for gap in gaps_across_areas(observed)]
+        result = fit_context_switch_cost(observed)
+        over_the_population = shrunk(differences, prior=PRIOR_CONTEXT_SWITCH_COST)
+
+        assert result.value == pytest.approx(0.2)
+        assert result.value is not None
+        assert result.confidence is not None
+        assert over_the_population.confidence is not None
+        assert over_the_population.value != pytest.approx(result.value)
+        assert result.confidence[0] < result.value < result.confidence[1]
+        assert width(result.confidence) == pytest.approx(width(over_the_population.confidence))
+
+    @pytest.mark.parametrize("gap", [0, 5, 600, 100_000])
+    def test_the_fitted_price_never_leaves_the_clamp_range(self, gap: int) -> None:
+        # Clamping the difference of the means bounds the figure a solver reads but no longer bounds
+        # one pair's contribution to it, so this is the half of the credibility rule that survives
+        # and the absurd row is what drives it.
+        observed = [
+            SwitchObservation(gap_minutes=gap, changed_area=True),
+            *(SwitchObservation(gap_minutes=30, changed_area=True) for _ in range(39)),
+            *(SwitchObservation(gap_minutes=30, changed_area=False) for _ in range(10)),
+        ]
+        value = fit_context_switch_cost(observed).value
+
+        assert value is not None
+        assert MIN_SWITCH_COST_MINUTES <= value <= MAX_SWITCH_COST_MINUTES
 
 
 class TestChurnTolerance:
