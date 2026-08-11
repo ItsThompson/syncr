@@ -28,6 +28,12 @@ pending solve for the week is superseded first, which is the state machine's own
 ``pending``-to-``superseded`` edge, and the replacement is created after the row it replaces is
 closed.
 
+**A week holding nothing a solve placed is refused, before a solve is asked for.** A concession is
+an agreement to give something up, and on such a week there is nothing the product chose to give up:
+the candidate would fill empty space, so the authority rule would auto-apply it and the concession
+would become the plan of record with no row saying it had been conceded. The refusal is here rather
+than in the classifier, which knows nothing about concessions and must not learn.
+
 **A solve already RUNNING is refused rather than displaced.** The single-flight invariant is the
 database's: at most one non-terminal solve per week exists, so there is no second row to create
 while one runs. Waiting for it inside the request would hold a connection for up to two seconds,
@@ -54,6 +60,7 @@ from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.plans.candidates import as_document
+from syncr_api.plans.solved import holds_a_solver_placed_block
 from syncr_api.solving.errors import SolveIsRunning
 from syncr_api.user_settings.solve_inputs import WeekRange
 from syncr_common.logging import get_logger
@@ -75,7 +82,9 @@ if TYPE_CHECKING:
     from syncr_api.solving.coordinator import SolveCoordinator
     from syncr_api.solving.records import OperationRecord
     from syncr_api.user_settings.solve_inputs import WeekInputVersions
+    from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
+    from syncr_solver.inputs import SolveInputs
 
 _log = get_logger("syncr.concessions")
 
@@ -118,10 +127,15 @@ class ConcessionService:
         as though syncr had ignored the concession. A solve already RUNNING cannot be displaced
         either, so this is refused rather than queued, and the refusal says the request can be made
         again once that solve lands.
+
+        A week whose plan holds nothing a solve placed is refused before the solve is asked for, so
+        no operation exists for a request that could not have been honoured.
         """
         require_scope(principal, Scope.PLAN_WRITE)
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
-        offer = await self._offered(week, requested)
+        inputs = await self._assembler.assemble(week, self._clock())
+        _require_a_solve_to_concede_against(week, inputs.live_plan)
+        offer = await self._offered(inputs, week, requested)
 
         try:
             operation = await self._coordinator.request_solve(
@@ -187,14 +201,15 @@ class ConcessionService:
         """
         return await self._current.tracked_version(week)
 
-    async def _offered(self, week: IsoWeek, requested: RequestedConcession) -> Offer:
+    async def _offered(
+        self, inputs: SolveInputs, week: IsoWeek, requested: RequestedConcession
+    ) -> Offer:
         """The offer the enumerator made for what was requested, or a 422 naming what it can be.
 
         A request for a concession syncr did not offer is refused rather than honoured, because the
         offer is where the figures come from: the nights a reduction may touch, and how much of a
         floor is left to breach.
         """
-        inputs = await self._assembler.assemble(week, self._clock())
         offered = self._probe.offered_verdict_for(inputs)
         # Recorded beside the probe that found it, in the request's own transaction. A request that
         # is then refused rolls the row back with everything else, and the transition it saw is
@@ -217,3 +232,19 @@ class ConcessionService:
                 ],
             )
         return offer
+
+
+def _require_a_solve_to_concede_against(week: IsoWeek, live: PlanDocument | None) -> None:
+    """A week holding nothing a solve placed has nothing to concede against, so this refuses.
+
+    Raised before the solve is requested, so a request that cannot be honoured leaves no operation
+    for a caller to follow and nothing for the worker to adopt. The statement names solving the week
+    rather than the classification the refusal is derived from: what the reader has to do is get a
+    plan that chose something, and the vocabulary the product decides that with is not theirs.
+    """
+    if holds_a_solver_placed_block(live):
+        return
+    raise Conflict(
+        f"{week} holds no block a solve placed, so there is no solve to concede against. Nothing "
+        "was changed: solve the week first, and concede against the plan it produces."
+    )

@@ -27,9 +27,10 @@ if TYPE_CHECKING:
 CONCESSIONS_TAG = "concessions"
 
 # The statuses these routes raise beyond the set every route answers, so the generated document
-# describes them and the frontend has types for them. 409 is the one conflict this module can
-# produce: a solve of that week is already RUNNING, so there is no second non-terminal solve to
-# create and a tradeoff request may not join the one that exists.
+# describes them and the frontend has types for them. Two conditions produce the 409, and both are
+# states of the week rather than faults in the request: a solve of it is already RUNNING, so there
+# is no second non-terminal solve to create and a tradeoff request may not join the one that
+# exists; or its plan holds nothing a solve placed, so there is no solve to concede against.
 _CONCESSION_RESPONSES: Mapping[int | str, dict[str, Any]] = {
     Unauthorized.status: {"model": Problem, "description": Unauthorized.title},
     Forbidden.status: {"model": Problem, "description": Forbidden.title},
