@@ -231,3 +231,6 @@ def test_the_recorded_reason_names_the_reading_it_claims() -> None:
     assert f"{tasks_at_risk.__module__}.{tasks_at_risk.__qualname__}" in stated
     assert ShortfallKind.DEADLINE_CAPACITY.name in stated
     assert "at risk" in stated
+    # The claim is about a nominal week, and the fall-back case above is the counter-example that
+    # makes the wider one false. The narrower spelling can be reworded; the universal cannot return.
+    assert "every verdict" not in stated
