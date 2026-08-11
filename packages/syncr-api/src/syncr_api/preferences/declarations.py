@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from syncr_domain.preferences import LocalTimeWindow, Preference
+from syncr_domain.preferences import LocalTimeWindow, Preference, authored_windows
 
 if TYPE_CHECKING:
     from datetime import time
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class DeclaredWindow:
-    """A window as a request states it: two wall times that are not yet a domain window.
+    """A window as a request states it: two wall times that are not yet domain windows.
 
     Kept as the request's own shape rather than converted at the route, because every refusal a
     window carries is the domain's, and the domain is only entered where a rejection is mapped to a
@@ -43,9 +43,13 @@ class DeclaredWindow:
     start: time
     end: time
 
-    def as_window(self) -> LocalTimeWindow:
-        """The domain window this pair names, or a domain rejection saying why it names none."""
-        return LocalTimeWindow(start=self.start, end=self.end)
+    def as_windows(self) -> tuple[LocalTimeWindow, ...]:
+        """The domain windows this pair names, or a domain rejection saying why it names none.
+
+        Two of them where the stretch wraps past midnight, and this is the authoring boundary that
+        split is stated to happen at: one stretch arrives and the halves are what gets stored.
+        """
+        return authored_windows(start=self.start, end=self.end)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +73,7 @@ class PreferenceDeclaration:
         """
         return Preference(
             owner=owner,
-            windows=tuple(window.as_window() for window in self.windows),
+            windows=tuple(window for declared in self.windows for window in declared.as_windows()),
             strength=self.strength,
             preferred_duration_minutes=self.preferred_duration_minutes,
             max_per_day_minutes=self.max_per_day_minutes,

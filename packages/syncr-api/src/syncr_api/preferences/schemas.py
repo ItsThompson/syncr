@@ -64,8 +64,11 @@ _BOUND_DESCRIPTION = (
 )
 _WINDOWS_DESCRIPTION = (
     f"The times of day this owner's work should happen, at most {MAX_WINDOWS} of them, returned "
-    "earliest first. Each sits inside one local day, so its end is later than its start and a "
-    "stretch across midnight is refused. They may not overlap: two that do describe one window. "
+    "earliest first. A stretch that wraps past midnight is accepted and stored as the two windows "
+    "it splits into at midnight, so 23:00 to 01:00 reads back as 23:00 to 00:00 and 00:00 to 01:00 "
+    "and counts as two of them. An end of 00:00 therefore means the end of the day, which is the "
+    "one bound that may read earlier than the start it belongs to; a stretch whose end equals its "
+    "start is refused. They may not overlap: two that do describe one window. "
     "An empty list means this owner names no time of day, and on a habit's or a task's preference "
     "that is a statement rather than an omission, because a preference replaces its Area's windows "
     "wholly: it means this one thing has no preferred time even though the rest of its Area does."
