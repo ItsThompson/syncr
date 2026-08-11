@@ -1,11 +1,21 @@
 """Where an interval's start is compared against a reference instant, derived from the tree.
 
 One question is asked all over this product: has the week reached this span? It was answered in
-five places, two of them across a package boundary from the other three, and two of those five
+several places, some of them across a package boundary from the others, and two of those answers
 disagreed about the boundary instant on purpose while nothing said so. `syncr_domain.intervals`
 now answers it once, for both readings, and this walk is what keeps that true: every comparison
-of an interval's start against an instant in every shipped source root is enumerated and held
-against the set of places allowed to hold one.
+of an interval's start against something that is not another bound, in every shipped source root,
+is enumerated and held against the set of places allowed to hold one.
+
+No count of sites appears here. Two were published in this module's first version and both were
+wrong, because a count in a comment is a measurement that has stopped being taken. The census
+belongs in the changeset, where it is dated.
+
+The reading is symmetric: either side may carry the `.start`, and all four ordering operators
+count. A rule stated over a pair of predicates has to be enforced over both, and a rule about a
+comparison has to be enforced in both directions, or the direction left out is where the next copy
+lands. It did: two copies lived in the uncovered directions for as long as this walk read only
+forward.
 
 An equality rather than an emptiness assertion, in both directions. A new copy anywhere fails it,
 and so does a walk that has gone blind: an assertion that "no second definition exists" is
@@ -13,13 +23,20 @@ equally true when the reading matches nothing at all.
 
 WHAT THIS WALK CANNOT SEE, stated so a green result is not read as more than it is:
 
-* a reversed spelling, `now >= interval.start`. Adding that direction to the reading was tried and
-  reverted: a stored column compared against a span's start is the same shape, so six SQLAlchemy
-  `where` clauses matched, in files this rule has nothing to do with. Forward-only is what keeps
-  the allowed set below down to the module that owns the question.
 * the comparison written through a local name. `start = interval.start` and then `start <= now`
-  carries no attribute named `start` on the left, so it reads here as no comparison at all.
-* the negated form, `not interval.start > now`, for the same reason as the reversed one.
+  carries no attribute named `start` on either side, so it reads here as no comparison at all.
+  Measured empty in every shipped root, and unenforced.
+* a comparison passed directly to `.where`, `.filter` or `.having`. Those are excluded on purpose,
+  because a stored column compared against a span's bound is the same shape as this predicate and
+  no property of the syntax separates them. The exclusion is structural rather than a list of
+  names, and it is what keeps the allowed set below to the module that owns the question plus two
+  stated exceptions. A copy hidden inside a query call escapes.
+* a reader that takes the predicate through a module import. The second reading below reads
+  `from ... import` only, so `import syncr_api.plans.settled` followed by `settled.has_started(...)`
+  is invisible to both readings.
+* two qualifying comparisons inside one scope. Sites are keyed on `(module, scope)`, so a second
+  one in a scope that already holds one changes nothing. Small in practice, because every allowed
+  scope is named below, but real.
 * a root outside `packages/*/src`. Measured rather than assumed: `cli/src` holds two containment
   comparisons and no copy of this predicate, and `tools/`, `e2e/`, `deployments/` and the
   migration chain hold none. The suites are outside deliberately, because a test comparing bounds
@@ -60,6 +77,8 @@ COVERED_TREES: Final = (
 )
 
 ALGEBRA: Final = "packages/syncr-domain/src/syncr_domain/intervals.py"
+NETTING: Final = "packages/syncr-api/src/syncr_api/plans/netting.py"
+ICS: Final = "packages/syncr-api/src/syncr_api/calendars/ics_recurrence.py"
 
 # The predicates by name, and the one module a reader may take them from.
 PREDICATES: Final = frozenset({"has_started", "has_elapsed"})
@@ -73,20 +92,34 @@ KNOWN_READERS: Final = (
     "packages/syncr-api/src/syncr_api/plans/netting.py",
     "packages/syncr-api/src/syncr_api/plans/authority.py",
     "packages/syncr-api/src/syncr_api/plans/placements.py",
+    "packages/syncr-api/src/syncr_api/plans/overlaps.py",
+    "packages/syncr-api/src/syncr_api/plans/tradeoff_nights.py",
     "packages/syncr-solver/src/syncr_solver/binding.py",
     "packages/syncr-solver/src/syncr_solver/inheritance.py",
     "packages/syncr-solver/src/syncr_solver/state.py",
 )
 
-# The only places a comparison of an interval's start against an instant may live. The two
-# predicates are the answer this product gives to the question; `IntervalSet.before` compares the
-# same pair of values to a different end, cutting a set at an instant rather than deciding
-# anything about one member, and it is listed because it sits in the module that owns the shape.
+# The only places a comparison of an interval's start against something that is not a bound may
+# live. Five are the algebra's own: the two predicates, which are this product's answer to the
+# question, and three set operations that compare the same pair of values to a different end,
+# cutting or walking a set at an instant rather than deciding anything about one member.
+#
+# Two sit outside it and each asks a different question, which is why each is named here rather
+# than excluded by widening the reading:
+#
+#   _clipped_before  a local variant of `IntervalSet.before`, guarding the empty case before it
+#                    builds a bound. The set-clip family, not a decision about a placement.
+#   occurrences      an expansion filtered against the window it was expanded for. That bound is a
+#                    sync window rather than a reference instant, and no placement is decided.
 CANONICAL_SITES: Final = frozenset(
     {
         (ALGEBRA, "has_started"),
         (ALGEBRA, "has_elapsed"),
         (ALGEBRA, "IntervalSet.before"),
+        (ALGEBRA, "IntervalSet.after"),
+        (ALGEBRA, "_without"),
+        (NETTING, "_clipped_before"),
+        (ICS, "occurrences"),
     }
 )
 
@@ -95,6 +128,11 @@ CANONICAL_SITES: Final = frozenset(
 # in the tree take that shape.
 _BOUNDS: Final = frozenset({"start", "end"})
 
+# Where a comparison is a stored-column predicate rather than a decision made in Python. A column
+# compared against a span's bound is the same shape as this predicate and nothing in the syntax
+# separates them, so the query call it is handed to is what separates them.
+_QUERY_CALLS: Final = frozenset({"where", "filter", "having"})
+
 FINDS_A_SITE: Final = (
     "interval.start <= now",
     "interval.start < now",
@@ -102,6 +140,10 @@ FINDS_A_SITE: Final = (
     "entry.interval.start < attempt.inputs.now",
     "held = [one for one in rows if one.interval.start <= reference]",
     "def reached(span, stamp):\n    return span.start <= stamp\n",
+    "entry.interval.start >= after",
+    "now < block.interval.start",
+    "now >= interval.start",
+    "not interval.start > now",
 )
 
 FINDS_NO_SITE: Final = (
@@ -111,6 +153,10 @@ FINDS_NO_SITE: Final = (
     "OffPlanPeriodRow.start < span.end",
     "earliest_collision - block.interval.start < SNAP",
     "day.interval.end <= now",
+    "one.interval.start >= accepted.end",
+    "rows.where(BlockOutcome.occurred_at >= span.start)",
+    "select(A).where(Anchor.starts_at < span.end, Anchor.ends_at > span.start)",
+    "query.filter(EditEvent.created_at >= span.start)",
 )
 
 FINDS_AN_IMPORT: Final = (
@@ -146,31 +192,65 @@ def shipped_modules(root: Path) -> dict[str, Path]:
 def compares_a_start_against_an_instant(node: ast.Compare) -> bool:
     """Whether this comparison asks where an interval's start falls relative to one instant.
 
-    One operator, so a chained containment test is a different question and reads as one. The
-    left side names an interval's start, and the right side names something that is not another
-    interval's bound.
+    One operator, so a chained containment test is a different question and reads as one.
+    Symmetric in the two operands: either side may carry the start, because the direction a copy
+    happens to be written in is not a property of the question it asks.
     """
-    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.Lt | ast.LtE):
+    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.Lt | ast.LtE | ast.Gt | ast.GtE):
         return False
-    if not (isinstance(node.left, ast.Attribute) and node.left.attr == "start"):
-        return False
-    upper = node.comparators[0]
-    return not (isinstance(upper, ast.Attribute) and upper.attr in _BOUNDS)
+    left, right = node.left, node.comparators[0]
+    if _is_a_start(left):
+        return not _is_a_bound(right)
+    return _is_a_start(right) and not _is_a_bound(left)
 
 
-def sites_in(node: ast.AST, scope: tuple[str, ...] = ()) -> Iterator[str]:
-    """The dotted name of every scope holding such a comparison, once per comparison.
+def _is_a_start(node: ast.expr) -> bool:
+    return isinstance(node, ast.Attribute) and node.attr == "start"
 
-    The scope is tracked on the way down rather than recovered from a parent map, so a comparison
-    inside a comprehension inside a method is attributed to the method that holds it.
+
+def _is_a_bound(node: ast.expr) -> bool:
+    return isinstance(node, ast.Attribute) and node.attr in _BOUNDS
+
+
+def query_predicates(tree: ast.Module) -> set[int]:
+    """Every comparison handed straight to a query call, by node identity.
+
+    Collected once per module and then excluded by identity rather than re-derived per comparison,
+    so the walk stays one pass over the tree.
+    """
+    return {
+        id(argument)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in _QUERY_CALLS
+        for argument in node.args
+        if isinstance(argument, ast.Compare)
+    }
+
+
+def sites_in(tree: ast.Module) -> Iterator[str]:
+    """The dotted name of every scope holding such a comparison, once per comparison."""
+    yield from _scoped(tree, (), query_predicates(tree))
+
+
+def _scoped(node: ast.AST, scope: tuple[str, ...], in_a_query: set[int]) -> Iterator[str]:
+    """The scopes below ``node``, tracked on the way down rather than from a parent map.
+
+    Tracking downward is what attributes a comparison inside a comprehension inside a method to the
+    method that holds it.
     """
     for child in ast.iter_child_nodes(node):
         if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            yield from sites_in(child, (*scope, child.name))
+            yield from _scoped(child, (*scope, child.name), in_a_query)
             continue
-        if isinstance(child, ast.Compare) and compares_a_start_against_an_instant(child):
+        if (
+            isinstance(child, ast.Compare)
+            and id(child) not in in_a_query
+            and compares_a_start_against_an_instant(child)
+        ):
             yield ".".join(scope) or "<module>"
-        yield from sites_in(child, scope)
+        yield from _scoped(child, scope, in_a_query)
 
 
 def found_sites(root: Path) -> set[tuple[str, str]]:
@@ -226,13 +306,15 @@ def test_the_walk_reaches_every_shipped_package_tree() -> None:
 
 def test_the_walk_recurses_and_reaches_the_modules_this_rule_is_about() -> None:
     # The reach control above is satisfied by one file per tree, so a walk that stopped recursing
-    # would pass it. All four of these sit at least two directories inside a package and all four
-    # held a copy of the predicate before it was moved.
+    # would pass it. Each of these sits at least two directories inside a package and each held a
+    # copy of the predicate before it was moved.
     found = shipped_modules(repository_root())
 
     assert ALGEBRA in found
     assert "packages/syncr-api/src/syncr_api/plans/settled.py" in found
     assert "packages/syncr-api/src/syncr_api/plans/netting.py" in found
+    assert "packages/syncr-api/src/syncr_api/plans/overlaps.py" in found
+    assert "packages/syncr-api/src/syncr_api/plans/tradeoff_nights.py" in found
     assert "packages/syncr-solver/src/syncr_solver/binding.py" in found
 
 
@@ -246,6 +328,36 @@ def test_the_reading_does_not_read_an_ordinary_bound_comparison_as_one(spelling:
     # The half that catches a reading widened to everything. An always-true reading satisfies
     # every case above and turns the equality below into a guard that cannot fail.
     assert not list(sites_in(ast.parse(spelling))), spelling
+
+
+@pytest.mark.parametrize(
+    ("direction", "spelling"),
+    [
+        ("start first, strict", "interval.start < now"),
+        ("start first, inclusive", "interval.start <= now"),
+        ("start second, strict", "now < interval.start"),
+        ("start second, inclusive", "now <= interval.start"),
+        ("start first, reversed", "interval.start >= now"),
+        ("start second, reversed", "now >= interval.start"),
+    ],
+)
+def test_the_reading_covers_every_direction_the_question_can_be_written_in(
+    direction: str, spelling: str
+) -> None:
+    # The control this module did not have when it read forward only, and the two copies that
+    # survived that version were both written in a direction nothing here asserted. Enumerated by
+    # direction rather than by example, so a reading narrowed to one side fails by name.
+    assert list(sites_in(ast.parse(spelling))), direction
+
+
+def test_the_reading_leaves_a_stored_column_predicate_to_the_database() -> None:
+    # The exclusion that keeps the allowed set small. Same comparison, twice: handed to a query
+    # call it is a stored-column predicate, and standing alone it is a decision in Python.
+    handed_to_a_query = "rows.where(Anchor.ends_at > span.start)"
+    standing_alone = "kept = Anchor.ends_at > span.start"
+
+    assert not list(sites_in(ast.parse(handed_to_a_query)))
+    assert list(sites_in(ast.parse(standing_alone)))
 
 
 def test_the_reading_attributes_a_comparison_to_the_scope_that_holds_it() -> None:
@@ -281,6 +393,9 @@ def test_the_import_reading_reaches_the_readers_the_tree_holds() -> None:
 
 
 def test_the_interval_algebra_is_the_only_place_a_start_is_compared_to_an_instant() -> None:
+    # Seven scopes: the algebra's five, and two elsewhere that ask a different question and are
+    # named where the set is defined. An eighth anywhere fails, in either direction, and so does
+    # any of the seven going missing.
     assert found_sites(repository_root()) == CANONICAL_SITES
 
 
