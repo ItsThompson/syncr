@@ -52,7 +52,7 @@ from syncr_api.anchors import shadow_collisions
 from syncr_api.anchors.config import FORBIDS_EVERYTHING
 from syncr_api.anchors.shadow_products import DERIVED_ORIGINS
 from syncr_api.anchors.shadows import TypedAnchor, generate, regenerate
-from syncr_domain.identity import NO_OCCURRENCE, Origin
+from syncr_domain.identity import NO_OCCURRENCE, Origin, TransitLeg
 from syncr_domain.snap import SNAP, SNAP_MINUTES
 from tests.anchor_specifications import (
     ATTRIBUTED_INTERVIEW,
@@ -94,6 +94,11 @@ def a_quiet_type() -> AnchorTypeRecord:
     )
 
 
+def a_journey_home_only_type(*, minutes: int) -> AnchorTypeRecord:
+    """A declaration that casts one journey home and nothing else."""
+    return a_type(replace(NOTHING, return_transit_minutes=minutes, transit_area_id=TRANSIT))
+
+
 # --------------------------------------------------------------------------------
 # Which block gives way.
 # --------------------------------------------------------------------------------
@@ -125,13 +130,20 @@ def test_the_later_cast_journey_is_dropped_rather_than_truncated_to_the_earlier_
     later = a_journey_only_type(lead=210, duration=120)
     # Supplied later-first, so the order the caller read them in is not what decides.
     pair = [
-        TypedAnchor(an_anchor(later, start=at(INTERVIEW_DAY, 13), minutes=60), later),
-        TypedAnchor(an_anchor(earlier, start=at(INTERVIEW_DAY, 12), minutes=60), earlier),
+        TypedAnchor(
+            an_anchor(later, start=at(INTERVIEW_DAY, 13), minutes=60, title="Later"), later
+        ),
+        TypedAnchor(
+            an_anchor(earlier, start=at(INTERVIEW_DAY, 12), minutes=60, title="Earlier"), earlier
+        ),
     ]
 
     shadows = regenerate(pair)
 
     assert spans(shadows) == (("transit", "out", "Tue 2026-02-10 10:00", "Tue 2026-02-10 11:00"),)
+    # The title as well, for the same reason as the abutting case: an inventory of one leg cannot
+    # say which commitment kept its journey, because both legs carry one origin and one key.
+    assert [block.title for block in shadows.blocks] == ["Leave for Earlier"]
 
 
 def test_two_blocks_beginning_at_the_same_instant_drop_one_and_raise_nothing() -> None:
@@ -367,6 +379,31 @@ def test_a_prep_truncates_in_the_same_pass_that_drops_a_leg() -> None:
     )
 
 
+def test_a_journey_home_that_gives_way_is_dropped_like_the_outbound_leg() -> None:
+    # The rule is keyed to the origin, which both legs carry, so the journey home has to be asserted
+    # separately: a rule keyed to the occurrence key instead would truncate this one to 11:00-13:00
+    # and leave the user travelling home for two hours they cannot travel in.
+    #
+    # A four-hour commitment is cast first and keeps its 13:00 journey home. A shorter commitment
+    # inside it declares a three-hour one from 11:00, which reaches into the survivor.
+    long_commitment = a_journey_home_only_type(minutes=60)
+    inner = a_journey_home_only_type(minutes=180)
+    keeps_its_journey_home = an_anchor(
+        long_commitment, start=at(INTERVIEW_DAY, 9), minutes=240, title="All Day"
+    )
+    gives_way = an_anchor(inner, start=at(INTERVIEW_DAY, 10), minutes=60, title="Inner")
+    pair = [
+        TypedAnchor(keeps_its_journey_home, long_commitment),
+        TypedAnchor(gives_way, inner),
+    ]
+
+    shadows = regenerate(pair)
+
+    assert spans(shadows) == (("transit", "back", "Tue 2026-02-10 13:00", "Tue 2026-02-10 14:00"),)
+    # Both journeys home are titled "Go Home", so the commitment is what tells them apart.
+    assert [block.anchor_id for block in shadows.blocks] == [keeps_its_journey_home.id]
+
+
 def test_every_origin_a_shadow_block_can_carry_has_a_precedence() -> None:
     # The table is bounded by what a block may BE rather than by a list of what it may not, so a
     # block whose origin has no precedence cannot reach the collision rule at all.
@@ -454,18 +491,22 @@ BUFFER_MINUTES: Final = (15, 30, 60, 120)
 LEAD_SLACK_MINUTES: Final = (0, 15, 60)
 
 A_DROPPED_LEG: Final = "a leg dropped whole"
+A_DROPPED_JOURNEY_HOME: Final = "a journey home dropped whole"
 A_TRUNCATED_PREP: Final = "a prep truncated to a survivor's start"
 A_DROPPED_PREP: Final = "a prep dropped for want of one grid step"
-A_LEG_OVER_TWO_SURVIVORS: Final = "a dropped leg reaching over two survivors"
+A_LEG_OVER_TWO_KEPT_LEGS: Final = "a dropped leg reaching over two surviving legs"
+A_LEG_DROPPED_WHERE_ONE_BEGINS: Final = "a leg dropped where a surviving leg begins"
 TWO_BLOCKS_SHARING_A_START: Final = "two cast blocks beginning at the same instant"
 # What the draw has to produce for the properties above it to mean anything. Every member is a shape
 # some other reading of the rule would answer differently, so a draw that reaches none of them
 # certifies nothing and this run says so rather than passing.
 SHAPES_THE_DRAW_MUST_REACH: Final = (
     A_DROPPED_LEG,
+    A_DROPPED_JOURNEY_HOME,
     A_TRUNCATED_PREP,
     A_DROPPED_PREP,
-    A_LEG_OVER_TWO_SURVIVORS,
+    A_LEG_OVER_TWO_KEPT_LEGS,
+    A_LEG_DROPPED_WHERE_ONE_BEGINS,
     TWO_BLOCKS_SHARING_A_START,
 )
 
@@ -476,11 +517,14 @@ def test_five_thousand_randomized_arrangements_hold_the_rule_and_reach_every_sha
 
     for case in range(CASES):
         anchors = _an_arrangement(draw, case)
-        cast = {
-            block.binding: block
-            for pair in anchors
-            for block in generate(pair.anchor, pair.anchor_type).blocks
-        }
+        generated = [
+            block for pair in anchors for block in generate(pair.anchor, pair.anchor_type).blocks
+        ]
+        cast = {block.binding: block for block in generated}
+        # Keyed by binding, so two blocks sharing one would collapse into a single entry and the
+        # absence checks below would never see the second. One binding per cast block is what the
+        # occurrence key exists to give, and it is asserted rather than assumed.
+        assert len(cast) == len(generated)
 
         survivors = regenerate(anchors).blocks
 
@@ -532,17 +576,45 @@ def _shapes_reached(
     absent = [block for binding, block in cast.items() if binding not in surviving]
     shapes = {
         A_DROPPED_LEG: [one for one in absent if one.origin is Origin.TRANSIT],
+        A_DROPPED_JOURNEY_HOME: [
+            one for one in absent if one.occurrence_key == TransitLeg.BACK.value
+        ],
         A_DROPPED_PREP: [one for one in absent if one.origin is Origin.PREP],
         A_TRUNCATED_PREP: [
             binding
             for binding, block in surviving.items()
             if block.interval != cast[binding].interval
         ],
-        A_LEG_OVER_TWO_SURVIVORS: [
+        # Surviving LEGS rather than survivors: a prep is fitted after every leg, so counting any
+        # survivor lets a leg that met one obstacle satisfy a row about meeting two. Two obstacles
+        # is the shape that tells the partial readings apart from each other.
+        A_LEG_OVER_TWO_KEPT_LEGS: [
             one
             for one in absent
             if one.origin is Origin.TRANSIT
-            and len([kept for kept in survivors if kept.interval.overlaps(one.interval)]) > 1
+            and len(
+                [
+                    kept
+                    for kept in survivors
+                    if kept.origin is Origin.TRANSIT and kept.interval.overlaps(one.interval)
+                ]
+            )
+            > 1
+        ],
+        # The exact-collision shape on the transit side, where the old truncation would have asked
+        # for a zero-length span. Kept apart from the cast-side row below, which counts any two
+        # blocks at one instant whether or not either gave way.
+        A_LEG_DROPPED_WHERE_ONE_BEGINS: [
+            one
+            for one in absent
+            if one.origin is Origin.TRANSIT
+            and [
+                kept
+                for kept in survivors
+                if kept.origin is Origin.TRANSIT
+                and kept.interval.start == one.interval.start
+                and kept.interval.overlaps(one.interval)
+            ]
         ],
         TWO_BLOCKS_SHARING_A_START: [
             (one, other)
