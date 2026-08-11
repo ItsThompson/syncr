@@ -8,7 +8,7 @@ and there is no unapprove.
 
 The body is read here, once, before the framework parses it. Starlette caches it on the
 request, so the handler's own parsed body costs nothing extra and the hash is taken over
-exactly the bytes the client sent.
+exactly the bytes the client sent, together with the path they were sent to.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ async def get_idempotency_guard(
     return IdempotencyGuard(
         IdempotencyKeyRepository(transaction, principal.tenant_id),
         key=key,
-        request_hash=request_fingerprint(await request.body()),
+        request_hash=request_fingerprint(request.url.path, await request.body()),
         clock=utc_now,
     )
 

@@ -58,6 +58,10 @@ pytestmark = pytest.mark.integration
 
 ROUTE = "/api/v1/pins"
 OTHER_ROUTE = "/api/v1/tasks"
+# The path the request addressed. The claim's route key names the handler, so two resources on
+# one route differ here and nowhere else.
+PATH = "/api/v1/weeks/2026-W07/pins"
+OTHER_PATH = "/api/v1/weeks/2026-W08/pins"
 # Client-chosen and opaque to the product. A readable value rather than a realistic ULID: the
 # branch depends on the key matching, never on its shape.
 KEY = "pin-the-gym-block"
@@ -133,13 +137,14 @@ def guard_for(
     tenant_id: TenantId,
     *,
     key: str | None = KEY,
+    path: str = PATH,
     body: bytes = BODY,
     at: datetime = NOW,
 ) -> IdempotencyGuard:
     return IdempotencyGuard(
         IdempotencyKeyRepository(session, tenant_id),
         key=key,
-        request_hash=request_fingerprint(body),
+        request_hash=request_fingerprint(path, body),
         clock=lambda: at,
     )
 
@@ -264,7 +269,7 @@ async def test_a_committed_in_flight_row_is_answered_the_same_way(
         claimed = await IdempotencyKeyRepository(session, owner.tenant_id).claim(
             route=ROUTE,
             key=KEY,
-            request_hash=request_fingerprint(BODY),
+            request_hash=request_fingerprint(PATH, BODY),
             at=NOW,
             expires_at=NOW + RETENTION,
         )
@@ -321,6 +326,27 @@ async def test_one_key_on_two_routes_is_two_keys(
     assert len(await stored_keys(sessions, owner.tenant_id)) == 2
 
 
+async def test_one_key_on_two_resources_of_one_route_is_refused(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # 422, and the second resource is untouched. The route key is the same handler and the body is
+    # the same bytes, so the addressed path is the only thing left to tell the two apart, and
+    # replaying the first resource's response would be a write the caller believes landed.
+    first = CountingWork(Created(block_id="abc", minutes=45))
+    second = CountingWork(Created(block_id="def", minutes=45))
+
+    async with sessions() as session, session.begin():
+        await guard_for(session, owner.tenant_id).once(ROUTE, Created, first)
+
+    async with sessions() as session, session.begin():
+        guard = guard_for(session, owner.tenant_id, path=OTHER_PATH)
+        with pytest.raises(ValidationFailed, match="already used for a different request"):
+            await guard.once(ROUTE, Created, second)
+
+    assert second.calls == 0
+    assert len(await stored_keys(sessions, owner.tenant_id)) == 1
+
+
 async def test_two_tenants_cannot_collide_on_one_key(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, other_owner: UserRecord
 ) -> None:
@@ -371,21 +397,21 @@ async def test_the_sweep_removes_expired_keys_and_leaves_live_ones(
         await keys.claim(
             route=ROUTE,
             key="expired",
-            request_hash=request_fingerprint(BODY),
+            request_hash=request_fingerprint(PATH, BODY),
             at=NOW - RETENTION,
             expires_at=NOW - timedelta(minutes=1),
         )
         await keys.claim(
             route=ROUTE,
             key="live",
-            request_hash=request_fingerprint(BODY),
+            request_hash=request_fingerprint(PATH, BODY),
             at=NOW,
             expires_at=NOW + RETENTION,
         )
         await IdempotencyKeyRepository(session, other_owner.tenant_id).claim(
             route=ROUTE,
             key="expired",
-            request_hash=request_fingerprint(BODY),
+            request_hash=request_fingerprint(PATH, BODY),
             at=NOW - RETENTION,
             expires_at=NOW - timedelta(minutes=1),
         )
@@ -405,7 +431,7 @@ async def test_the_sweep_removes_expired_keys_and_leaves_live_ones(
 # --------------------------------------------------------------------------------
 
 
-def post_request(*, headers: dict[str, str], body: bytes) -> Request:
+def post_request(*, headers: dict[str, str], body: bytes, path: str = PATH) -> Request:
     """A POST as the framework hands one to a dependency."""
 
     async def receive() -> dict[str, object]:
@@ -414,7 +440,7 @@ def post_request(*, headers: dict[str, str], body: bytes) -> Request:
     scope = {
         "type": "http",
         "method": "POST",
-        "path": ROUTE,
+        "path": path,
         "headers": [(name.lower().encode(), value.encode()) for name, value in headers.items()],
     }
     return Request(scope, receive)
@@ -449,6 +475,30 @@ async def test_the_dependency_reads_the_key_and_hashes_the_body(
             await reusing.once(ROUTE, Created, CountingWork(Created(block_id="", minutes=0)))
 
     assert replayed == stored.response
+
+
+async def test_the_dependency_hashes_the_path_the_request_addressed(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    # The route never names the resource it addressed, so the dependency has to read it off the
+    # request. Asserted through behavior: two paths under one key and one body are a reused key,
+    # and the same path twice still replays.
+    principal = Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset())
+    stored = CountingWork(Created(block_id="abc", minutes=45))
+    elsewhere = CountingWork(Created(block_id="def", minutes=45))
+
+    async with sessions() as session, session.begin():
+        first = post_request(headers={IDEMPOTENCY_KEY_HEADER: KEY}, body=BODY, path=PATH)
+        await (await get_idempotency_guard(first, session, principal)).once(ROUTE, Created, stored)
+
+    async with sessions() as session, session.begin():
+        second = post_request(headers={IDEMPOTENCY_KEY_HEADER: KEY}, body=BODY, path=OTHER_PATH)
+        guard = await get_idempotency_guard(second, session, principal)
+        with pytest.raises(ValidationFailed):
+            await guard.once(ROUTE, Created, elsewhere)
+
+    assert stored.calls == 1
+    assert elsewhere.calls == 0, "the second resource was written under the first one's claim"
 
 
 async def test_a_route_that_demands_a_key_refuses_a_request_without_one(
