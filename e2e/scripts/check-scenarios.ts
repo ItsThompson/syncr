@@ -29,13 +29,16 @@
  * `test("S...` textually, which counted a COMMENTED-OUT case as coverage: the exact defect this file
  * exists to catch, re-admitted through the back door. `--list` reports the tests that would run, so a
  * commented-out case is invisible and a `test.skip` or `test.only` is reported as what it is. It runs no
- * test and needs no stack.
+ * test and needs no stack. That reading lives in `suite.ts`, because `check-spec-scenarios.ts` crosses a
+ * second statement against the same listing and two readings of it would be two things to keep in step.
  */
 
 import { execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+
+import { listedTests, scenariosNamed } from "./suite.ts";
 
 const run = promisify(execFile);
 
@@ -59,8 +62,6 @@ const NAMED_PATH = /`([\w./-]*\/[\w./-]+)`/g;
 
 /* A `just` recipe named in the Where column. */
 const NAMED_RECIPE = /`just ([\w-]+)`/g;
-
-const NUMBER = /\bS\d{1,2}\b/g;
 
 const AUTOMATED = "automated";
 const PARTLY = "partly automated";
@@ -97,32 +98,6 @@ const tableRows = async (): Promise<Map<string, Row>> => {
   return rows;
 };
 
-type Listed = { readonly title: string; readonly file: string };
-
-type PlaywrightSuite = {
-  readonly file?: string;
-  readonly specs?: readonly { readonly title?: string; readonly file?: string }[];
-  readonly suites?: readonly PlaywrightSuite[];
-};
-
-const flatten = (suite: PlaywrightSuite): readonly Listed[] => [
-  ...(suite.specs ?? []).map((spec) => ({
-    title: spec.title ?? "",
-    file: spec.file ?? suite.file ?? "",
-  })),
-  ...(suite.suites ?? []).flatMap(flatten),
-];
-
-/** Every test Playwright would run, as a title and the file it lives in. */
-const listedTests = async (): Promise<readonly Listed[]> => {
-  const { stdout } = await run("npx", ["playwright", "test", "--list", "--reporter=json"], {
-    cwd: e2eDir,
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  const report = JSON.parse(stdout) as { readonly suites?: readonly PlaywrightSuite[] };
-  return (report.suites ?? []).flatMap(flatten);
-};
-
 const exists = async (file: string): Promise<boolean> => {
   try {
     await access(path.join(testsDir, file));
@@ -154,10 +129,10 @@ const recipes = await knownRecipes();
 /* Which files hold a test naming each scenario. */
 const namedBy = new Map<string, Set<string>>();
 for (const test of listed) {
-  for (const number of test.title.matchAll(NUMBER)) {
-    const files = namedBy.get(number[0]) ?? new Set<string>();
+  for (const number of scenariosNamed(test.title)) {
+    const files = namedBy.get(number) ?? new Set<string>();
     files.add(test.file);
-    namedBy.set(number[0], files);
+    namedBy.set(number, files);
   }
 }
 
