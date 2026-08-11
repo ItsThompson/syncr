@@ -29,13 +29,22 @@ exempt from the grid.
 **Windows are not contested.** Nothing is scheduled in a forbidden window, so two commitments
 reserving the same time is a union rather than a collision. The union is asserted where a reader
 takes it, because subtracting both windows whole would take the shared minutes out twice.
+
+The last section drives five thousand randomized arrangements through the same entry point, for
+the claims an example cannot hold: survivors disjoint, one binding per survivor, every absence
+paid for by a collision, and every leg either whole or gone. It counts the shapes the draw reached
+and refuses a run whose reach collapsed, because a property over arrangements that never collide
+passes for the wrong reason.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import replace
+from datetime import timedelta
 from itertools import combinations
-from typing import TYPE_CHECKING
+from random import Random
+from typing import TYPE_CHECKING, Final
 
 import pytest
 
@@ -43,9 +52,16 @@ from syncr_api.anchors import shadow_collisions
 from syncr_api.anchors.config import FORBIDS_EVERYTHING
 from syncr_api.anchors.shadow_products import DERIVED_ORIGINS
 from syncr_api.anchors.shadows import TypedAnchor, generate, regenerate
-from syncr_domain.identity import NO_OCCURRENCE
-from syncr_domain.snap import SNAP_MINUTES
-from tests.anchor_specifications import ATTRIBUTED_INTERVIEW, INTERVIEW, NOTHING, STUDY
+from syncr_domain.identity import NO_OCCURRENCE, Origin
+from syncr_domain.snap import SNAP, SNAP_MINUTES
+from tests.anchor_specifications import (
+    ATTRIBUTED_INTERVIEW,
+    CAREER,
+    INTERVIEW,
+    NOTHING,
+    STUDY,
+    TRANSIT,
+)
 from tests.shadow_scenes import (
     INTERVIEW_DAY,
     a_journey_only_type,
@@ -58,7 +74,11 @@ from tests.shadow_scenes import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from syncr_api.anchors.records import AnchorTypeRecord
+    from syncr_api.anchors.shadow_products import ShadowBlock
+    from syncr_domain.identity import BindingRef
 
 MINUTES_IN_AN_HOUR = 60
 
@@ -246,10 +266,117 @@ def test_a_leg_that_can_no_longer_meet_its_commitment_is_absent_rather_than_earl
     assert [block.title for block in shadows.blocks] == ["Leave for Earlier"]
 
 
+def test_a_leg_reaching_over_two_kept_legs_leaves_no_fragment_between_them() -> None:
+    # The arrangement that tells whole from partial. The spanning leg covers two kept legs and the
+    # gap between them, so each shape leaves a different survivor: truncated at its end,
+    # 09:00-10:00; divided at each obstacle, three pieces; dropped only as far as the first
+    # obstacle, 10:30-11:30. An inventory of the two kept legs excludes all three at once.
+    early = a_journey_only_type(lead=30, duration=30)
+    middle = a_journey_only_type(lead=30, duration=30)
+    spanning = a_journey_only_type(lead=300, duration=240)
+    anchors = [
+        TypedAnchor(
+            an_anchor(early, start=at(INTERVIEW_DAY, 10, 30), minutes=30, title="Early"), early
+        ),
+        TypedAnchor(
+            an_anchor(middle, start=at(INTERVIEW_DAY, 12), minutes=30, title="Middle"), middle
+        ),
+        TypedAnchor(
+            an_anchor(spanning, start=at(INTERVIEW_DAY, 14), minutes=60, title="Spanning"), spanning
+        ),
+    ]
+
+    shadows = regenerate(anchors)
+
+    assert spans(shadows) == (
+        ("transit", "out", "Tue 2026-02-10 10:00", "Tue 2026-02-10 10:30"),
+        ("transit", "out", "Tue 2026-02-10 11:30", "Tue 2026-02-10 12:00"),
+    )
+    assert [block.title for block in shadows.blocks] == ["Leave for Early", "Leave for Middle"]
+
+
+def test_the_drop_takes_the_leg_and_leaves_the_rest_of_what_that_commitment_cast() -> None:
+    # Whole cuts both ways: the leg goes entirely, and nothing else of that commitment goes with it.
+    # The 12:00 commitment's prep and its journey home are cast by the same anchor as the leg that
+    # collided, and one of them is a leg too, so a drop keyed on the commitment or on the origin
+    # rather than on the block would take all three.
+    travelling = a_type(
+        replace(
+            NOTHING,
+            prep_lead_minutes=240,
+            prep_duration_minutes=60,
+            prep_area_id=CAREER,
+            transit_lead_minutes=120,
+            transit_duration_minutes=120,
+            return_transit_minutes=30,
+            transit_area_id=TRANSIT,
+        )
+    )
+    earlier = a_journey_only_type(lead=30, duration=30)
+    pair = [
+        TypedAnchor(
+            an_anchor(travelling, start=at(INTERVIEW_DAY, 12), minutes=60, title="Travelling"),
+            travelling,
+        ),
+        TypedAnchor(
+            an_anchor(earlier, start=at(INTERVIEW_DAY, 11), minutes=30, title="Earlier"), earlier
+        ),
+    ]
+
+    shadows = regenerate(pair)
+
+    assert spans(shadows) == (
+        ("prep", NO_OCCURRENCE, "Tue 2026-02-10 08:00", "Tue 2026-02-10 09:00"),
+        ("transit", "out", "Tue 2026-02-10 10:30", "Tue 2026-02-10 11:00"),
+        ("transit", "back", "Tue 2026-02-10 13:00", "Tue 2026-02-10 13:30"),
+    )
+    assert [block.title for block in shadows.blocks] == [
+        "Prep for Travelling",
+        "Leave for Earlier",
+        "Go Home",
+    ]
+
+
+def test_a_prep_truncates_in_the_same_pass_that_drops_a_leg() -> None:
+    # The direction is per origin rather than per collision, so one arrangement has to make the two
+    # readings disagree: the leg and the prep reach over the same kept leg, and only the prep
+    # survives as a shorter block. Truncating both, or dropping both, reds here.
+    #
+    # The prep ends at 10:30 rather than at 10:00 because the dropped leg reserves nothing for the
+    # prep to give way to, which is the one pass reading what the pass before it decided.
+    kept = a_journey_only_type(lead=30, duration=30)
+    colliding_leg = a_journey_only_type(lead=120, duration=120)
+    colliding_prep = a_prep_only_type(lead=420, duration=180)
+    anchors = [
+        TypedAnchor(an_anchor(kept, start=at(INTERVIEW_DAY, 11), minutes=30, title="Kept"), kept),
+        TypedAnchor(
+            an_anchor(colliding_leg, start=at(INTERVIEW_DAY, 12), minutes=60, title="Leg"),
+            colliding_leg,
+        ),
+        TypedAnchor(
+            an_anchor(colliding_prep, start=at(INTERVIEW_DAY, 16), minutes=60, title="Prep"),
+            colliding_prep,
+        ),
+    ]
+
+    shadows = regenerate(anchors)
+
+    assert spans(shadows) == (
+        ("prep", NO_OCCURRENCE, "Tue 2026-02-10 09:00", "Tue 2026-02-10 10:30"),
+        ("transit", "out", "Tue 2026-02-10 10:30", "Tue 2026-02-10 11:00"),
+    )
+
+
 def test_every_origin_a_shadow_block_can_carry_has_a_precedence() -> None:
     # The table is bounded by what a block may BE rather than by a list of what it may not, so a
     # block whose origin has no precedence cannot reach the collision rule at all.
     assert set(shadow_collisions.PRECEDENCE_BY_ORIGIN) == DERIVED_ORIGINS
+
+
+def test_every_origin_a_shadow_block_can_carry_states_how_it_gives_way() -> None:
+    # The second table is bounded the same way and for the same reason: an origin missing from it
+    # would give way by whatever the lookup fell back to, which is a rule nobody wrote down.
+    assert set(shadow_collisions.GIVES_WAY_BY_ORIGIN) == DERIVED_ORIGINS
 
 
 # --------------------------------------------------------------------------------
@@ -304,3 +431,171 @@ def test_an_unattributed_buffer_is_subtracted_like_a_window_that_forbids_everyth
     # Prep and the leg have no Area to charge their minutes to, so no Area can claim those spans:
     # 30 minutes each, and the areas-scoped recovery window is not among them.
     assert shadows.absolute_forbidden().total_minutes() == 60
+
+
+# --------------------------------------------------------------------------------
+# The same rule over five thousand randomized arrangements.
+# --------------------------------------------------------------------------------
+
+CASES: Final = 5000
+# Fixed, so a failure is reproducible and today's green run is the one that runs tomorrow.
+DRAW_SEED: Final = 20260210
+
+# The quarter hours a commitment can begin on, from 08:00, and how long it runs. Coarse on purpose:
+# a draw over every minute would almost never place two blocks at one instant, which is the shape
+# the exact-collision case is about.
+STARTING_SLOTS: Final = 32
+MINUTES_A_COMMITMENT_RUNS: Final = (15, 30, 45, 60)
+# How many commitments one arrangement holds. Two is the fewest that can collide at all.
+COMMITMENTS_AT_LEAST: Final = 2
+COMMITMENTS_AT_MOST: Final = 4
+# A buffer's length, and the slack a lead carries over the duration it has to clear.
+BUFFER_MINUTES: Final = (15, 30, 60, 120)
+LEAD_SLACK_MINUTES: Final = (0, 15, 60)
+
+A_DROPPED_LEG: Final = "a leg dropped whole"
+A_TRUNCATED_PREP: Final = "a prep truncated to a survivor's start"
+A_DROPPED_PREP: Final = "a prep dropped for want of one grid step"
+A_LEG_OVER_TWO_SURVIVORS: Final = "a dropped leg reaching over two survivors"
+TWO_BLOCKS_SHARING_A_START: Final = "two cast blocks beginning at the same instant"
+# What the draw has to produce for the properties above it to mean anything. Every member is a shape
+# some other reading of the rule would answer differently, so a draw that reaches none of them
+# certifies nothing and this run says so rather than passing.
+SHAPES_THE_DRAW_MUST_REACH: Final = (
+    A_DROPPED_LEG,
+    A_TRUNCATED_PREP,
+    A_DROPPED_PREP,
+    A_LEG_OVER_TWO_SURVIVORS,
+    TWO_BLOCKS_SHARING_A_START,
+)
+
+
+def test_five_thousand_randomized_arrangements_hold_the_rule_and_reach_every_shape() -> None:
+    draw = Random(DRAW_SEED)  # noqa: S311 - a fixed draw of arrangements, not a secret
+    reached: Counter[str] = Counter()
+
+    for case in range(CASES):
+        anchors = _an_arrangement(draw, case)
+        cast = {
+            block.binding: block
+            for pair in anchors
+            for block in generate(pair.anchor, pair.anchor_type).blocks
+        }
+
+        survivors = regenerate(anchors).blocks
+
+        _assert_the_rule_holds(cast, survivors)
+        reached.update(_shapes_reached(cast, survivors))
+
+    unreached = [shape for shape in SHAPES_THE_DRAW_MUST_REACH if not reached[shape]]
+    assert not unreached, f"{CASES} arrangements produced none of: {unreached}"
+
+
+def _assert_the_rule_holds(
+    cast: Mapping[BindingRef, ShadowBlock], survivors: tuple[ShadowBlock, ...]
+) -> None:
+    """Every claim the rule makes, over one arrangement."""
+    assert not [
+        (one, other)
+        for one, other in combinations(survivors, 2)
+        if one.interval.overlaps(other.interval)
+    ]
+    # Two pieces of one buffer would take one BlockId, so a division reads as a repeated binding.
+    assert len({block.binding for block in survivors}) == len(survivors)
+    for block in survivors:
+        as_cast = cast[block.binding]
+        assert block.interval.start == as_cast.interval.start
+        assert block.interval.end <= as_cast.interval.end
+        # A leg is whole or it is gone, and anything shorter than it was cast is a prep with at
+        # least one grid step of it left.
+        assert block.origin is not Origin.TRANSIT or block.interval == as_cast.interval
+        whole = block.interval == as_cast.interval
+        assert whole or block.interval.end - block.interval.start >= SNAP
+    surviving = {block.binding for block in survivors}
+    for binding, absent in cast.items():
+        if binding in surviving:
+            continue
+        # Nothing gives way to nothing: an absence is only ever the price of a collision, and the
+        # collision a leg pays is always with another leg, because every leg is fitted first.
+        obstacles = [one for one in survivors if one.interval.overlaps(absent.interval)]
+        assert obstacles
+        assert absent.origin is not Origin.TRANSIT or [
+            one for one in obstacles if one.origin is Origin.TRANSIT
+        ]
+
+
+def _shapes_reached(
+    cast: Mapping[BindingRef, ShadowBlock], survivors: tuple[ShadowBlock, ...]
+) -> set[str]:
+    """Which of the shapes worth reaching this one arrangement produced."""
+    surviving = {block.binding: block for block in survivors}
+    absent = [block for binding, block in cast.items() if binding not in surviving]
+    shapes = {
+        A_DROPPED_LEG: [one for one in absent if one.origin is Origin.TRANSIT],
+        A_DROPPED_PREP: [one for one in absent if one.origin is Origin.PREP],
+        A_TRUNCATED_PREP: [
+            binding
+            for binding, block in surviving.items()
+            if block.interval != cast[binding].interval
+        ],
+        A_LEG_OVER_TWO_SURVIVORS: [
+            one
+            for one in absent
+            if one.origin is Origin.TRANSIT
+            and len([kept for kept in survivors if kept.interval.overlaps(one.interval)]) > 1
+        ],
+        TWO_BLOCKS_SHARING_A_START: [
+            (one, other)
+            for one, other in combinations(cast.values(), 2)
+            if one.interval.start == other.interval.start
+        ],
+    }
+    return {shape for shape, found in shapes.items() if found}
+
+
+def _an_arrangement(draw: Random, case: int) -> list[TypedAnchor]:
+    """The commitments of one arrangement, each carrying a declaration of its own.
+
+    Named rather than inlined into the loop because it is what the draw REACHES, and a reader
+    measuring that reach has to be able to run this and not a copy of it.
+    """
+    return [
+        _a_typed_anchor(draw, f"case {case} commitment {member}")
+        for member in range(draw.randint(COMMITMENTS_AT_LEAST, COMMITMENTS_AT_MOST))
+    ]
+
+
+def _a_typed_anchor(draw: Random, title: str) -> TypedAnchor:
+    """One commitment on the reference day, carrying a declaration of a random kind."""
+    declared = _a_declaration(draw)
+    start = at(INTERVIEW_DAY, 8) + timedelta(minutes=SNAP_MINUTES * draw.randrange(STARTING_SLOTS))
+    minutes = draw.choice(MINUTES_A_COMMITMENT_RUNS)
+    return TypedAnchor(an_anchor(declared, start=start, minutes=minutes, title=title), declared)
+
+
+def _a_declaration(draw: Random) -> AnchorTypeRecord:
+    """A leg, a prep, or a commitment declaring prep and both legs, as a stored row.
+
+    Every lead is derived from the durations it has to clear rather than drawn beside them, so the
+    draw spends none of its cases on declarations the boundary rules would refuse.
+    """
+    journey = draw.choice(BUFFER_MINUTES)
+    prep = draw.choice(BUFFER_MINUTES)
+    slack = draw.choice(LEAD_SLACK_MINUTES)
+    kind = draw.choice(("a leg", "a prep", "both and a journey home"))
+    if kind == "a leg":
+        return a_journey_only_type(lead=journey + slack, duration=journey)
+    if kind == "a prep":
+        return a_prep_only_type(lead=prep + slack, duration=prep)
+    return a_type(
+        replace(
+            NOTHING,
+            prep_lead_minutes=prep + journey + slack + slack,
+            prep_duration_minutes=prep,
+            prep_area_id=CAREER,
+            transit_lead_minutes=journey + slack,
+            transit_duration_minutes=journey,
+            return_transit_minutes=draw.choice(BUFFER_MINUTES),
+            transit_area_id=TRANSIT,
+        )
+    )
