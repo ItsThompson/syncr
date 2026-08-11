@@ -10,19 +10,24 @@ Three claims, each stated once here and checked against every field the walk fin
 The population comes from ``tests/wire_census.py``, which discovers it. What is asserted here is
 therefore a property of whatever surface exists when the suite runs, and the landmarks below are
 what keeps that honest: a walk narrowed to one module, or to one of its two sources, drops a
-shape this file names and goes red rather than passing over less.
+shape this file names.
 
 The document is crossed against the walk as well, in both directions. It is a second population,
 produced by the framework rather than by this walk, so it can see a field in a shape the walk's two
-sources both missed AND it bounds the walk from above: a lower bound plus a non-empty complement is
-satisfied by any narrowing that keeps the landmarks, and one was measured dropping 35 of 56 fields
-with every reach control still green.
+sources both missed AND it bounds the walk from above, which the landmarks cannot: a lower bound
+plus a non-empty complement is satisfied by any narrowing that keeps the landmarks.
 
-What this file cannot see is an instant that reaches a client without passing through a field:
-a handler that renders its own mapping through a bare ``Response`` renders whatever it holds.
-Every route in this application answers with a declared model or with no body at all, and the
-event stream serialises the same models, so there is no such site today; there is also no check
-here that would notice a new one.
+**The size crossing is not the whole upper bound.** Both sides of it descend from one predicate, so
+a predicate that went blind would move them together. What covers that is the predicate's own
+breadth control below and the crossing that no schema declares an instant inline; neither may be
+deleted on the grounds that the size crossing exists.
+
+What this file cannot see is an instant that reaches a client without passing through a declared
+field: a handler that renders its own mapping, or a model of its own, through a bare ``Response``
+renders whatever it holds. Most routes answer with a declared model, the rest answer with no body,
+and three answer with something else: two mappings and the token endpoint's hand-serialised
+``TokenResponse``, which neither source of the walk reaches. None of the three carries a moment
+today, and there is no check here that would notice one arriving.
 """
 
 from __future__ import annotations
@@ -241,26 +246,31 @@ class TestEveryInstantIsSpelledOnce:
     def test_the_document_carries_one_property_for_every_instant_the_walk_found(
         self, app: FastAPI
     ) -> None:
-        # THE UPPER BOUND. Everything else here is a lower bound on the population -- the landmarks
-        # are reached, the surplus is non-empty -- and a narrowing that keeps the landmarks meets
-        # every one of them: measured, dropping 35 of the fields left the whole suite green. The
-        # document is a second population, rendered by the framework from the same models, so
-        # crossing the two sizes bounds the walk from ABOVE without anyone hard-coding a figure.
+        # THE UPPER BOUND. Everything else here bounds the population from below: the landmarks are
+        # reached and the surplus is non-empty, and a narrowing that keeps the landmarks satisfies
+        # all of those. The document is a second population, rendered by the framework from the same
+        # models, so crossing the two sizes bounds the walk from above without anyone hard-coding a
+        # figure.
+        #
+        # ONE REFERENCE PER FIELD is the assumption, and it holds for a scalar, a nullable union, a
+        # list and a mapping. A tuple of instants would render two references for one field; none
+        # exists, and the shared span is a model for exactly that reason.
         referencing = _paths_referencing(app.openapi(), SHARED_COMPONENT)
 
         assert len(referencing) == len(DOCUMENT_FIELDS), (
             f"the document carries {len(referencing)} instant properties and the walk found "
-            f"{len(DOCUMENT_FIELDS)} instant fields to enforce over. One of them is narrower than "
-            "the wire."
+            f"{len(DOCUMENT_FIELDS)} instant fields to enforce over. Whichever is smaller is "
+            "narrower than the wire: a walk that dropped a field, or a document that stopped "
+            "describing one."
         )
         assert set(where(DOCUMENT_FIELDS)) <= set(where(INSTANT_FIELDS))
 
     def test_no_model_renders_an_instant_through_a_serializer_of_its_own(self) -> None:
         # The rendering claim is asserted per field through a validator built from that field's
-        # annotation, and no reading of an annotation can see a `field_serializer` on the model: a
-        # planted one rendered an offset-less value on the wire with all 430 cases still green. So
+        # annotation, and no reading of an annotation can see a `field_serializer` on the model. So
         # the declaration is what is checked, and the rendering stays in the shared type where the
-        # instrument can see it.
+        # instrument can see it. A declaration on a parent counts: pydantic collects it onto the
+        # subclass, and two of the fields this walks are inherited.
         assert instant_fields_rendered_by_a_serializer(INSTANT_FIELDS) == ()
 
 

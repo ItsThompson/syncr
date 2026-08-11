@@ -13,13 +13,15 @@ grew from one feature module to twenty-five.
 
 ``models_extending_the_wire_base`` walks every module of the package for subclasses of the base
 every wire shape extends. It reaches a shape no route mounts yet, which is where a new field is
-written. A walk keyed on the module NAME ``schemas`` would miss ``core/notices.py`` and three of
+written, and it is the only source that would reach a shape the event stream serialises without a
+route. A walk keyed on the module NAME ``schemas`` would miss ``core/notices.py`` and three of
 the plan package's four schema modules, so this one is keyed on the base class instead.
 
 ``models_the_contract_is_generated_from`` asks the framework for the fields it renders the
 OpenAPI document from, and follows each into its nested shapes. That reaches a shape that does
 NOT extend the wire base -- the learning routes declare their own camel-casing base -- which the
-first source cannot see. It is also, by construction, the set the committed contract describes.
+first source cannot see. It is also, by construction, the population the committed document
+describes, which is what lets a caller bound this walk from above by crossing the two sizes.
 
 Every helper returns data rather than asserting, so a claim can be checked against the real
 application AND against an input built to break it. A walk with no positive control passes
@@ -49,7 +51,7 @@ if TYPE_CHECKING:
 # What pydantic calls a moment in the schema it builds, whichever reading a field was declared with:
 # the lax ``datetime``, the aware and naive markers, and the two that bound a moment against now all
 # answer to this. Asking the framework rather than matching a list of names keeps a marker it adds
-# later in scope; a list was tried first and was blind to three of the four that exist.
+# later in scope.
 _A_MOMENT = "datetime"
 
 
@@ -130,9 +132,14 @@ def instant_fields_rendered_by_a_serializer(
     A validator built from a field's annotation renders what the ANNOTATION says. A
     ``field_serializer`` or a ``model_serializer`` on the model renders what the MODEL says, and no
     reading of the annotation can see one, so a serializer that dropped an offset would leave the
-    per-field instrument green while the socket carried an offset-less value: measured, on a planted
-    one. So this checks the DECLARATION rather than the rendering, and the rendering stays where the
-    instrument can see it, in the shared type.
+    per-field instrument green while the socket carried an offset-less value. So this reads the
+    DECLARATION rather than the rendering, and the rendering stays where the instrument can see it,
+    in the shared type.
+
+    ``__pydantic_decorators__`` is private and there is no public accessor for a model's declared
+    serializers. The failure mode is loud rather than silent: a rename raises ``AttributeError`` and
+    this reading errors instead of answering that nothing was found. It also carries a parent's
+    decorators onto a subclass, which is what covers an inherited field.
     """
     found: list[str] = []
     for field in fields:
