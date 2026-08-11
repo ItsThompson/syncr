@@ -10,7 +10,8 @@ the real tree AND against a deliberately planted second reader. A census with no
 control passes forever once it has gone blind, which is worse than having no census at all,
 and both readings here have gone blind twice and been widened twice.
 
-THE ALIAS MECHANISM IS ONE FUNCTION, USED FOUR TIMES. :func:`imported_as` returns the local
+THE ALIAS MECHANISM IS ONE FUNCTION, USED BY FOUR READINGS HERE. :func:`imported_as` returns the
+local
 names a source binds one imported object to, and the caller decides whether the object's own
 name counts as well. That decision is the difference between finding `os.environ` however
 `os` was imported, and mistaking `from datetime import time` for the wall clock: the first

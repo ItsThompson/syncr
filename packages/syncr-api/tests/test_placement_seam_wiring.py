@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from syncr_api.plans import injection
 from syncr_api.plans.assembler import WeekAssembler
 from syncr_api.plans.placements import StoredPlacements
-from tests.source_census import imported_as
+from tests.source_census import imported_as, named
 from tests.test_habit_outcome_reader_seam import member_suite_roots
 
 if TYPE_CHECKING:
@@ -99,12 +99,12 @@ def seam_wirings(source_root: Path) -> list[Wiring]:
     found: list[Wiring] = []
     for module in sorted(source_root.rglob("*.py")):
         tree = ast.parse(module.read_text(encoding="utf-8"))
-        named = str(module.relative_to(source_root))
+        relative = str(module.relative_to(source_root))
         composing = frozenset({ASSEMBLER}) | imported_as(
             tree, module=ASSEMBLER_MODULE, names=(ASSEMBLER,)
         )
         found.extend(
-            Wiring(named, reader, _imported_from(tree, reader))
+            Wiring(relative, reader, _imported_from(tree, reader))
             for node in ast.walk(tree)
             if (reader := _seam_of(node, composing)) is not None
         )
@@ -118,22 +118,13 @@ def _seam_of(node: ast.AST, composing: frozenset[str]) -> str | None:
     module-qualified call and an ``as`` alias are read as compositions rather than passed over. A
     keyword bound to anything but a call has no class to name.
     """
-    if not isinstance(node, ast.Call) or _named(node.func) not in composing:
+    if not isinstance(node, ast.Call) or named(node.func) not in composing:
         return None
     bound = {keyword.arg: keyword.value for keyword in node.keywords}
     seam = bound.get(SEAM_KEYWORD)
     if not isinstance(seam, ast.Call):
         return None
-    return _named(seam.func)
-
-
-def _named(node: ast.expr) -> str | None:
-    """The trailing name of a bare name or an attribute, and nothing for anything else."""
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
+    return named(seam.func)
 
 
 def _imported_from(tree: ast.Module, name: str) -> str | None:
@@ -162,10 +153,28 @@ def denying_the_wiring(files: Iterable[Path]) -> dict[Path, list[str]]:
     found: dict[Path, list[str]] = {}
     for path in files:
         source = path.read_text(encoding="utf-8")
-        stated = [one for one in DENIALS_OF_THE_WIRING if one in source]
+        stated = [one for one in denials() if one in source]
         if stated:
             found[path] = stated
     return found
+
+
+def describing_the_seam() -> tuple[Path, ...]:
+    """The modules whose prose rests on the seam's answer, with their number asserted.
+
+    A rule driven by a hand-written tuple is only as wide as the tuple, and its control iterates the
+    same tuple, so dropping an entry narrows the rule and its control together and nothing reddens.
+    """
+    assert len(DESCRIBING_THE_SEAM) == 2, (
+        "a module that describes the seam was dropped from the rule"
+    )
+    return DESCRIBING_THE_SEAM
+
+
+def denials() -> tuple[str, ...]:
+    """The statements a wired seam makes false, with their number asserted, for the same reason."""
+    assert len(DENIALS_OF_THE_WIRING) == 4, "a denial was dropped from the scan"
+    return DENIALS_OF_THE_WIRING
 
 
 def suite_roots() -> tuple[Path, ...]:
@@ -176,6 +185,10 @@ def suite_roots() -> tuple[Path, ...]:
     """
     roots = tuple(member_suite_roots())
     assert len(roots) > 1, f"the member list resolved to {roots}, so these rules cover one member"
+    missing = [str(root) for root in roots if not root.is_dir()]
+    assert missing == [], (
+        f"a member's suite directory is missing, so nothing was read there: {missing}"
+    )
     return roots
 
 
@@ -356,7 +369,7 @@ def test_every_module_that_describes_the_seam_names_the_reader() -> None:
     """
     silent = [
         str(path.relative_to(MEMBER))
-        for path in DESCRIBING_THE_SEAM
+        for path in describing_the_seam()
         if PRODUCTION_READER
         not in (ast.get_docstring(ast.parse(path.read_text(encoding="utf-8"))) or "")
     ]
@@ -367,7 +380,7 @@ def test_every_module_that_describes_the_seam_names_the_reader() -> None:
 def test_the_scan_finds_every_denial_it_names(tmp_path: Path) -> None:
     """The control on the crossing. A scan blind to the sentences it lists refuses nothing."""
     written = {}
-    for index, denial in enumerate(DENIALS_OF_THE_WIRING):
+    for index, denial in enumerate(denials()):
         path = tmp_path / f"stated_{index}.py"
         path.write_text(f'"""A docstring that says the {denial} today."""\n', encoding="utf-8")
         written[path] = [denial]
@@ -459,7 +472,7 @@ def test_both_rules_over_the_suites_take_the_same_roots() -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef)
         and any(
-            isinstance(call, ast.Call) and _named(call.func) == suite_roots.__name__
+            isinstance(call, ast.Call) and named(call.func) == suite_roots.__name__
             for call in ast.walk(node)
         )
     }
