@@ -89,8 +89,8 @@ def test_a_task_the_size_of_the_bound_fits_the_week_the_bound_is_the_length_of()
     verdict = probe(inputs)
 
     # What the probe was asked, before what it answered. A case that reports no gap because its
-    # demand never reached the probe passes for the wrong reason, and the two cases here that
-    # assert an absence are the two that reading cannot tell apart.
+    # demand never reached the probe passes for the wrong reason, so a case asserting an absence
+    # states the demand that produced it.
     assert [demand.remaining_minutes for demand in inputs.deadline_demands] == [
         ESTIMATE_MINUTES_MAX
     ]
