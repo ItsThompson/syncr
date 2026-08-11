@@ -55,9 +55,9 @@ EXIT_ABSENT = 2
 # backup leaves behind, or a timeline history file. Upper-case hex because that is what Postgres
 # writes.
 #
-# Anchored at both ends, which is what makes a name safe to join to a path: `%f` reaching this as
-# `../../etc/passwd` or as `wal/000...` would otherwise stage a file outside the one directory the
-# database container can read.
+# Matched against the WHOLE name, which is what makes one safe to join to a path: a `%f` arriving
+# here as `../../etc/passwd` or as `wal/000...` is refused rather than staged somewhere other than
+# the one directory the database container can read.
 SEGMENT_NAME: Final = re.compile(
     r"^(?:[0-9A-F]{24}(?:\.[0-9A-F]{8}\.backup)?|[0-9A-F]{8}\.history)$"
 )
