@@ -111,8 +111,9 @@ class UnnamedConcessions:
     Separate because the two are different facts about the week. A revoked concession no longer
     applies to anything; a replaced one applies under a name this revision does not use.
 
-    Every identifier a document names that the week does not hold is one or the other, so the pair
-    sums to how many of them there are.
+    The pair is built to sum to how many identifiers a document names that the week does not hold.
+    That is established where the pair is computed, in :mod:`syncr_api.plans.history`, rather than
+    here: this type holds two counts and enforces nothing about them.
     """
 
     revoked: int
