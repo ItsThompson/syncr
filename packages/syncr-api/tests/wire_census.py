@@ -31,15 +31,14 @@ from __future__ import annotations
 import importlib
 import pkgutil
 from dataclasses import dataclass
-from datetime import datetime
 from typing import TYPE_CHECKING, TypeAliasType, get_args
 
 from fastapi.openapi.utils import get_fields_from_routes
-from pydantic import AwareDatetime, BaseModel, TypeAdapter
+from pydantic import BaseModel, TypeAdapter
+from pydantic.errors import PydanticSchemaGenerationError
 
 import syncr_api
 from syncr_api.core.schemas import WireInstant, WireModel
-from tests.boundaries import api_routes
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -47,16 +46,11 @@ if TYPE_CHECKING:
 
     from fastapi import FastAPI
 
-# What a body param is called when a route declares one model for the whole body, which is the
-# shape every route in this application uses. FastAPI reports a field's failure under this
-# prefix, so a driver naming a field has to agree with it.
-BODY = "body"
-
-# The two readings of a moment a field can be built on. ``datetime`` is the lax one, which takes a
-# wall clock and calls it a moment; ``AwareDatetime`` is pydantic's aware one, and at runtime it is
-# a marker class rather than an annotated ``datetime``, so a structural walk has to know both names
-# or it finds only half of the surface it is meant to bound.
-_INSTANT_READINGS = (datetime, AwareDatetime)
+# What pydantic calls a moment in the schema it builds, whichever reading a field was declared with:
+# the lax ``datetime``, the aware and naive markers, and the two that bound a moment against now all
+# answer to this. Asking the framework rather than matching a list of names keeps a marker it adds
+# later in scope; a list was tried first and was blind to three of the four that exist.
+_A_MOMENT = "datetime"
 
 
 def api_modules() -> Iterator[ModuleType]:
@@ -128,126 +122,65 @@ def instant_fields(models: tuple[type[BaseModel], ...]) -> tuple[InstantField, .
     )
 
 
-@dataclass(frozen=True, slots=True)
-class InstantParameter:
-    """One query, path, or header parameter whose value is an instant."""
+def instant_fields_rendered_by_a_serializer(
+    fields: tuple[InstantField, ...],
+) -> tuple[str, ...]:
+    """Every instant field whose own model declares a serializer that renders it.
 
-    method: str
-    path: str
-    alias: str
-    annotation: object
-    # Which of its route's instant parameters this is, in the order the route declares them. A
-    # driver needs it: the two bounds of a span are declared in order and a request carrying one
-    # value twice is refused for the ordering rather than for the reading under test.
-    position: int
-
-    @property
-    def where(self) -> str:
-        return f"{self.method} {self.path} ?{self.alias}"
-
-    @property
-    def adapter(self) -> TypeAdapter[object]:
-        return TypeAdapter(self.annotation)
-
-
-def instant_parameters(app: FastAPI) -> tuple[InstantParameter, ...]:
-    """Every parameter of every route whose value is an instant."""
-    found: list[InstantParameter] = []
-    for route in api_routes(app):
-        for method in sorted(route.methods):
-            declared = [
-                parameter
-                for parameter in (
-                    *route.dependant.query_params,
-                    *route.dependant.path_params,
-                    *route.dependant.header_params,
-                )
-                if carries_an_instant(parameter.field_info.annotation)
-            ]
-            found.extend(
-                InstantParameter(
-                    method=method,
-                    path=route.path,
-                    alias=parameter.alias,
-                    annotation=parameter.field_info.annotation,
-                    position=position,
-                )
-                for position, parameter in enumerate(declared)
-            )
-    return tuple(sorted(found, key=lambda one: one.where))
-
-
-@dataclass(frozen=True, slots=True)
-class InstantBodySite:
-    """One request body field whose value is an instant, addressed as a caller sends it."""
-
-    method: str
-    path: str
-    keys: tuple[str, ...]
-
-    @property
-    def field(self) -> str:
-        """The field path a failure is reported under, which is what a 422 names."""
-        return ".".join((BODY, *self.keys))
-
-    @property
-    def where(self) -> str:
-        return f"{self.method} {self.path} {self.field}"
-
-    def body(self, value: object) -> dict[str, object]:
-        """A request body carrying ``value`` at this site and nothing else.
-
-        Nothing else, deliberately: a body missing a required field is refused for that too, and
-        an assertion about THIS field's failure is one the other failures cannot satisfy.
-        """
-        nested: dict[str, object] = {}
-        holder = nested
-        for key in self.keys[:-1]:
-            branch: dict[str, object] = {}
-            holder[key] = branch
-            holder = branch
-        holder[self.keys[-1]] = value
-        return nested
-
-
-def instant_body_sites(app: FastAPI) -> tuple[InstantBodySite, ...]:
-    """Every request body field, on every route, whose value is an instant."""
-    found = [
-        InstantBodySite(method=method, path=route.path, keys=keys)
-        for route in api_routes(app)
-        for method in sorted(route.methods)
-        for parameter in route.dependant.body_params
-        for keys in _instant_keys(parameter.field_info.annotation, prefix=(), seen=frozenset())
-    ]
-    return tuple(sorted(found, key=lambda one: one.where))
+    A validator built from a field's annotation renders what the ANNOTATION says. A
+    ``field_serializer`` or a ``model_serializer`` on the model renders what the MODEL says, and no
+    reading of the annotation can see one, so a serializer that dropped an offset would leave the
+    per-field instrument green while the socket carried an offset-less value: measured, on a planted
+    one. So this checks the DECLARATION rather than the rendering, and the rendering stays where the
+    instrument can see it, in the shared type.
+    """
+    found: list[str] = []
+    for field in fields:
+        decorators = field.model.__pydantic_decorators__
+        covered = {
+            name
+            for name, decorator in decorators.field_serializers.items()
+            if field.name in decorator.info.fields or "*" in decorator.info.fields
+        }
+        covered |= set(decorators.model_serializers)
+        found.extend(f"{field.where} rendered by {name}" for name in sorted(covered))
+    return tuple(sorted(found))
 
 
 def carries_an_instant(annotation: object) -> bool:
-    """Whether ``annotation`` holds an instant, however it is spelled.
+    """Whether ``annotation`` holds a moment, however it was spelled.
 
-    Aliases are resolved, so a field spelled with the shared type and a field spelled with a bare
-    ``datetime`` both answer true. That is what lets one walk find the fields to enforce over AND
-    the fields that have not adopted the shared spelling.
+    Aliases are resolved and every reading pydantic has counts, so a field spelled with the shared
+    type, one spelled with a bare ``datetime``, and one spelled with the naive marker all answer
+    true. That is what lets one walk find the fields to enforce over AND the fields that have not
+    adopted the shared spelling, including the laxer spellings that would reintroduce what this
+    surface exists to refuse.
     """
-    return any(part in _INSTANT_READINGS for part in _parts(annotation))
+    return any(_is_a_moment(part) for part in _parts(annotation))
+
+
+def _is_a_moment(part: object) -> bool:
+    """Whether ``part`` is one of pydantic's readings of a moment, asked of pydantic.
+
+    A leaf, never a model: a shape that HOLDS an instant is not one, and descending into its fields
+    here would make every response carrying a span an instant field of its own.
+    """
+    if not isinstance(part, type) or issubclass(part, BaseModel):
+        return False
+    try:
+        schema = TypeAdapter(part).core_schema
+    except PydanticSchemaGenerationError:
+        return False
+    return schema.get("type") == _A_MOMENT
 
 
 def names_the_shared_instant(annotation: object) -> bool:
-    """Whether ``annotation`` reaches its instant through the shared type, by name."""
-    return any(part is WireInstant for part in _parts(annotation, resolve_aliases=False))
+    """Whether ``annotation`` reaches its instant through the shared type, by name.
 
-
-def takes_the_shared_reading(annotation: object) -> bool:
-    """Whether ``annotation``'s instant is the reading the shared type resolves to.
-
-    A weaker claim than :func:`names_the_shared_instant`, and it exists for parameters. The
-    framework resolves an alias while it builds a parameter's field, so the alias is not there to
-    be found afterwards and only the reading it resolved to is. A field spelled with an alias of
-    its own would satisfy this and not the stricter claim, which is why bodies are held to that
-    one.
+    By name rather than by reading, so a field that reached the same aware reading through a second
+    alias of its own does NOT satisfy it: one spelling is the claim.
     """
-    resolved = set(_parts(WireInstant))
-    return any(part in resolved for part in _parts(annotation) if part in _INSTANT_READINGS)
+    return any(part is WireInstant for part in _parts(annotation, resolve_aliases=False))
 
 
 def _parts(annotation: object, *, resolve_aliases: bool = True) -> Iterator[object]:
@@ -261,21 +194,8 @@ def _parts(annotation: object, *, resolve_aliases: bool = True) -> Iterator[obje
         yield from _parts(argument, resolve_aliases=resolve_aliases)
 
 
-def _instant_keys(
-    annotation: object, *, prefix: tuple[str, ...], seen: frozenset[type[BaseModel]]
-) -> Iterator[tuple[str, ...]]:
-    """Every path of wire keys under ``annotation`` that lands on an instant."""
-    for model in _models_in(annotation):
-        if model in seen:
-            continue
-        for name, field in model.model_fields.items():
-            here = (*prefix, field.alias or name)
-            if carries_an_instant(field.rebuild_annotation()):
-                yield here
-            yield from _instant_keys(field.annotation, prefix=here, seen=seen | {model})
-
-
-def _models_in(annotation: object) -> tuple[type[BaseModel], ...]:
+def models_in(annotation: object) -> tuple[type[BaseModel], ...]:
+    """Every model ``annotation`` names, without descending into their fields."""
     return tuple(
         part
         for part in _parts(annotation)
@@ -284,7 +204,7 @@ def _models_in(annotation: object) -> tuple[type[BaseModel], ...]:
 
 
 def _collect_models(annotation: object, found: set[type[BaseModel]]) -> None:
-    for model in _models_in(annotation):
+    for model in models_in(annotation):
         if model in found:
             continue
         found.add(model)

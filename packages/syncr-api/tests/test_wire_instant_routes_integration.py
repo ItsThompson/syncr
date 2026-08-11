@@ -37,7 +37,7 @@ from syncr_api.tasks.config import TASKS_PREFIX
 from syncr_api.tasks.models import TaskRow
 from tests.live_tenants import provision_owner, remove_tenant, run
 from tests.live_weeks import sign_in, this_week
-from tests.wire_census import (
+from tests.wire_sites import (
     InstantBodySite,
     InstantParameter,
     instant_body_sites,

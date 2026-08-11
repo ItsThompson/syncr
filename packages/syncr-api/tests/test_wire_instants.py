@@ -12,9 +12,11 @@ therefore a property of whatever surface exists when the suite runs, and the lan
 what keeps that honest: a walk narrowed to one module, or to one of its two sources, drops a
 shape this file names and goes red rather than passing over less.
 
-The document is crossed against the walk as well. It is a different reading of the same claim,
-taken from what a client is generated from, and it can see a field in a shape the walk's two
-sources both missed.
+The document is crossed against the walk as well, in both directions. It is a second population,
+produced by the framework rather than by this walk, so it can see a field in a shape the walk's two
+sources both missed AND it bounds the walk from above: a lower bound plus a non-empty complement is
+satisfied by any narrowing that keeps the landmarks, and one was measured dropping 35 of 56 fields
+with every reach control still green.
 
 What this file cannot see is an instant that reaches a client without passing through a field:
 a handler that renders its own mapping through a bare ``Response`` renders whatever it holds.
@@ -26,29 +28,30 @@ here that would notice a new one.
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 from zoneinfo import ZoneInfo
 
 import pytest
-from pydantic import ValidationError
+from pydantic import NaiveDatetime, ValidationError
 
+import syncr_api
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.schemas import WireInstant
 from syncr_api.core.settings import EnvSettings, build_service_settings
 from tests.wire_census import (
     InstantField,
-    InstantParameter,
     carries_an_instant,
     instant_fields,
-    instant_parameters,
+    instant_fields_rendered_by_a_serializer,
     models_extending_the_wire_base,
     models_the_contract_is_generated_from,
     names_the_shared_instant,
     qualified,
-    takes_the_shared_reading,
     wire_models,
 )
+from tests.wire_sites import InstantParameter, instant_parameters
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -107,6 +110,11 @@ _COLLECTED = create_app(
 INSTANT_FIELDS: Final = instant_fields(wire_models(_COLLECTED))
 INSTANT_PARAMETERS: Final = instant_parameters(_COLLECTED)
 
+# The document's own population, which is what its properties are rendered from. Held apart from the
+# union because the union may reach a shape no route mounts, and the document cannot describe one of
+# those: crossing the union against the document would then redden for a field that is correct.
+DOCUMENT_FIELDS: Final = instant_fields(models_the_contract_is_generated_from(_COLLECTED))
+
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """One case per field and per parameter, named after the field it is about."""
@@ -128,6 +136,19 @@ def _refusal_of(error: ValidationError) -> set[str]:
 
 class TestTheWalkReachesTheWholeSurface:
     """The census's own reach, before anything is asserted through it."""
+
+    def test_it_measures_the_checkout_whose_behaviour_this_file_asserts(self) -> None:
+        # The control for every figure here. `pyproject.toml` puts this member's own `src` on the
+        # path while the venv holds an editable pointer to whichever tree was last synced, so a run
+        # can walk one checkout and assert about another. Every claim below is about the package the
+        # walk imported, so which package that is has to be an assertion rather than an assumption.
+        root = Path(__file__).resolve().parents[3]
+        imported = Path(syncr_api.__file__ or "").resolve()
+
+        assert imported.is_relative_to(root), (
+            f"{imported} is imported from outside {root}, so the walk and the behaviour asserted "
+            "here are answers about two different checkouts"
+        )
 
     def test_it_reaches_every_shape_named_here(self, app: FastAPI) -> None:
         assert where(instant_fields(wire_models(app))) >= LANDMARKS
@@ -154,15 +175,19 @@ class TestTheWalkReachesTheWholeSurface:
 
         assert MOUNTED_BY_NO_ROUTE in declared - mounted
 
-    def test_the_predicate_reads_the_lax_spelling_as_an_instant_too(self) -> None:
+    def test_the_predicate_reads_every_lax_spelling_as_an_instant_too(self) -> None:
         # What lets one walk find both the fields to enforce over and the fields that have not
-        # adopted the shared spelling. A predicate blind to `datetime` would report a surface
-        # that had already drifted as clean.
+        # adopted the shared spelling. A predicate blind to a spelling reports a surface that has
+        # already drifted as clean, and the naive marker is the one that would reintroduce exactly
+        # what this surface refuses.
         assert carries_an_instant(datetime)
         assert carries_an_instant(datetime | None)
         assert carries_an_instant(WireInstant)
+        assert carries_an_instant(NaiveDatetime)
         assert not carries_an_instant(str)
+        assert not carries_an_instant(date)
         assert not names_the_shared_instant(datetime | None)
+        assert not names_the_shared_instant(NaiveDatetime)
 
 
 class TestEveryInstantFieldRefusesAValueThatNamesNoInstant:
@@ -213,6 +238,31 @@ class TestEveryInstantIsSpelledOnce:
         assert declaring == in_a_schema | in_a_parameter
         assert len(in_a_parameter) == len(INSTANT_PARAMETERS)
 
+    def test_the_document_carries_one_property_for_every_instant_the_walk_found(
+        self, app: FastAPI
+    ) -> None:
+        # THE UPPER BOUND. Everything else here is a lower bound on the population -- the landmarks
+        # are reached, the surplus is non-empty -- and a narrowing that keeps the landmarks meets
+        # every one of them: measured, dropping 35 of the fields left the whole suite green. The
+        # document is a second population, rendered by the framework from the same models, so
+        # crossing the two sizes bounds the walk from ABOVE without anyone hard-coding a figure.
+        referencing = _paths_referencing(app.openapi(), SHARED_COMPONENT)
+
+        assert len(referencing) == len(DOCUMENT_FIELDS), (
+            f"the document carries {len(referencing)} instant properties and the walk found "
+            f"{len(DOCUMENT_FIELDS)} instant fields to enforce over. One of them is narrower than "
+            "the wire."
+        )
+        assert set(where(DOCUMENT_FIELDS)) <= set(where(INSTANT_FIELDS))
+
+    def test_no_model_renders_an_instant_through_a_serializer_of_its_own(self) -> None:
+        # The rendering claim is asserted per field through a validator built from that field's
+        # annotation, and no reading of an annotation can see a `field_serializer` on the model: a
+        # planted one rendered an offset-less value on the wire with all 430 cases still green. So
+        # the declaration is what is checked, and the rendering stays in the shared type where the
+        # instrument can see it.
+        assert instant_fields_rendered_by_a_serializer(INSTANT_FIELDS) == ()
+
 
 class TestEveryInstantParameterIsTheSameReading:
     """A parameter is on the wire as much as a body field, and takes the same type."""
@@ -230,7 +280,29 @@ class TestEveryInstantParameterIsTheSameReading:
         assert REFUSED in _refusal_of(refusal.value), parameter.where
 
     def test_it_is_spelled_with_the_shared_type(self, parameter: InstantParameter) -> None:
-        assert takes_the_shared_reading(parameter.annotation), parameter.where
+        # The endpoint's own hint, not the built field's: the framework resolves the alias while it
+        # builds a parameter, so the field answers with the reading and the function answers with
+        # the spelling. Held to the same strict claim a body field is, which both parameters pass.
+        assert names_the_shared_instant(parameter.declared), parameter.where
+
+
+def _paths_referencing(
+    document: Any, component: str, path: tuple[str, ...] = ()
+) -> set[tuple[str, ...]]:
+    """Every place in ``document`` that references ``component``, by its path."""
+    target = f"#/components/schemas/{component}"
+    found: set[tuple[str, ...]] = set()
+    if isinstance(document, dict):
+        for key, value in document.items():
+            here = (*path, str(key))
+            if key == "$ref" and value == target:
+                found.add(here)
+            else:
+                found |= _paths_referencing(value, component, here)
+    elif isinstance(document, list):
+        for index, value in enumerate(document):
+            found |= _paths_referencing(value, component, (*path, str(index)))
+    return found
 
 
 def _paths_declaring_an_instant(document: Any, path: tuple[str, ...] = ()) -> set[tuple[str, ...]]:
