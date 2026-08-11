@@ -52,6 +52,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_domain.identity import Origin, block_id
+from syncr_domain.intervals import has_started
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -128,7 +129,7 @@ def _overlaps(
     now: Instant,
 ) -> Iterator[DetectedConflict]:
     """Both classes of overlap, over the blocks the week may still be asked about."""
-    revisable = tuple(block for block in live.blocks if now < block.interval.start)
+    revisable = tuple(block for block in live.blocks if not has_started(block.interval, now))
     for anchor in anchors:
         for block in revisable:
             if block.origin is Origin.ANCHOR:

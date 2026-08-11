@@ -34,6 +34,7 @@ from math import ceil
 from typing import TYPE_CHECKING
 
 from syncr_domain.identity import date_occurrence_key
+from syncr_domain.intervals import has_elapsed
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -74,7 +75,7 @@ def reducible(
             (
                 entry
                 for entry in occurrences
-                if entry.interval.start >= after
+                if not has_elapsed(entry.interval, after)
                 and (before is None or entry.interval.end <= before)
             ),
             key=lambda entry: entry.interval.start,
