@@ -53,10 +53,12 @@ from syncr_api.core.db import create_database
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.horizon.maintainer import PlanHorizonMaintainer
 from syncr_api.learned.repository import WeightSetRepository
+from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.week_config import SOLVE_PATH
 from syncr_api.routines.config import ROUTINES_PREFIX
 from syncr_api.solving.config import SOLVE
 from syncr_api.solving.lifecycle import OperationLifecycle
+from syncr_api.solving.queue import OperationQueue
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.templates.config import DAY_TYPES_PREFIX, WEEK_PATTERN_PREFIX
 from syncr_domain.weeks import IsoWeek, Weekday
@@ -341,6 +343,14 @@ async def a_maintainer_pass_held_open(
         await asyncio.wait_for(release.wait(), timeout=WINDOW)
 
 
+async def a_plan_of_record_exists(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> bool:
+    """Whether the week holds a live revision, read in a transaction of its own."""
+    async with sessions() as session:
+        return await PlanRepository(session, tenant_id).latest(WEEK) is not None
+
+
 async def test_a_solve_request_racing_a_maintainer_tick_names_a_row_nobody_can_yet_read(
     watched: tuple[httpx.AsyncClient, dict[str, str], ResponseInstant],
     sessions: async_sessionmaker[AsyncSession],
@@ -351,6 +361,11 @@ async def test_a_solve_request_racing_a_maintainer_tick_names_a_row_nobody_can_y
 
     Which is the measurement: the window is the route's own ordering, so contention on the week the
     tick is planning neither opens it nor widens it.
+
+    The tick's own invisibility is asserted rather than described. Without it this case would pass
+    whether or not a transaction was ever open, because the answer it makes is the answer the
+    uncontended case makes: the assertion that the maintainer's revision cannot be read while the
+    request runs is what makes this a race rather than a second copy of case 1.
     """
     client, headers, seen = watched
     inside, release = asyncio.Event(), asyncio.Event()
@@ -359,6 +374,10 @@ async def test_a_solve_request_racing_a_maintainer_tick_names_a_row_nobody_can_y
     )
     try:
         await asyncio.wait_for(inside.wait(), timeout=WINDOW)
+        assert await a_plan_of_record_exists(onlooker, owner.tenant_id) is False, (
+            "the maintainer's revision was already readable, so its transaction had committed and "
+            "nothing was raced"
+        )
 
         answered = await client.post(solve_route(WEEK, immediate=True), headers=headers)
 
@@ -367,6 +386,7 @@ async def test_a_solve_request_racing_a_maintainer_tick_names_a_row_nobody_can_y
     finally:
         release.set()
         await tick
+    assert await a_plan_of_record_exists(onlooker, owner.tenant_id) is True
     assert await visibility_of(onlooker, owner.tenant_id)(UUID(str(seen.identifier))) is True
 
 
@@ -427,6 +447,14 @@ async def a_backend_blocked_on_a_lock(sessions: async_sessionmaker[AsyncSession]
         raise AssertionError(message) from ran_out
 
 
+async def non_terminal_solves(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> int:
+    """How many of this tenant's solves are pending or running, which the index bounds to one."""
+    async with sessions() as session:
+        return (await OperationQueue(session, tenant_id).non_terminal_counts())[SOLVE]
+
+
 async def test_a_solve_request_colliding_on_the_single_flight_index_is_refused(
     watched: tuple[httpx.AsyncClient, dict[str, str], ResponseInstant],
     sessions: async_sessionmaker[AsyncSession],
@@ -459,4 +487,9 @@ async def test_a_solve_request_colliding_on_the_single_flight_index_is_refused(
         release.set()
 
     assert answered.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, answered.text
-    assert seen.identifier is None, "a refused write must not answer an operation identifier"
+    assert "id" not in answered.json(), "a refused write must not answer an operation identifier"
+    assert seen.identifier is None
+    assert await non_terminal_solves(onlooker, owner.tenant_id) == 1, (
+        "the refused write left a second non-terminal solve behind, which is what the index exists "
+        "to make impossible"
+    )
