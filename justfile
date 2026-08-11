@@ -643,6 +643,8 @@ fmt:
 #   lint-markup     the design rules that reach the DOM as a class name or a data attribute
 #   check-channels  each state channel assigned in exactly one file under the kit
 #   check-imports   the kit's import zones again, by RESOLVED DIRECTORY rather than by specifier
+#   check-contract  every field the document declares on a response, against what the generated
+#                   client hands back
 #   check-bundle    the built stylesheet, declaration by declaration, read with postcss
 #   audit-contrast  every ink against every surface, computed, against the committed ledger
 #   check-render    a RENDERED PIXEL, in a headless browser, over the built stylesheet
