@@ -4,17 +4,23 @@ Every span is measured from one commitment's own time, so two commitments close 
 blocks over the same minutes. A person cannot be in both, so one gives way, and which one is a
 rule rather than an accident of the order the anchors were read in.
 
-Four claims carry the file.
+Five claims carry the file.
 
 **Transit gives way last, even to prep that was cast first.** A journey's adjacency to its
 commitment is what makes it a journey to it, where a prep lead is a preference about how far
 ahead to prepare. So the case that matters is the one where cast order alone would decide the
 other way.
 
-**A block gives way by ending where the other begins.** The earlier-cast commitment keeps what it
-cast; the later-cast block is truncated to the survivor's start, and dropped when what is left
-would be shorter than the grid's own step or nothing at all. The exact-collision case answers
+**A prep block that gives way ends where the other begins.** The earlier-cast commitment keeps
+what it cast; the later-cast prep is truncated to the survivor's start, and dropped when what is
+left would be shorter than the grid's own step or nothing at all. The exact-collision case answers
 rather than raises, which is the one the interval algebra would otherwise refuse.
+
+**A leg that gives way is dropped whole**, because a journey that stops short of what it is a
+journey to reaches nothing. Whole is the load-bearing word, so every assertion here is on the
+surviving inventory: a truncation, a division into the pieces either side of an obstacle, and a
+fragment left between two obstacles are three different survivors, and only an inventory tells
+them apart from an absence.
 
 **A short buffer that collided with nothing is kept whole.** The grid step is a floor on a
 truncation, not a minimum length for a buffer: a commitment and everything derived from it are
@@ -28,6 +34,7 @@ takes it, because subtracting both windows whole would take the shared minutes o
 from __future__ import annotations
 
 from dataclasses import replace
+from itertools import combinations
 from typing import TYPE_CHECKING
 
 import pytest
@@ -35,7 +42,7 @@ import pytest
 from syncr_api.anchors import shadow_collisions
 from syncr_api.anchors.config import FORBIDS_EVERYTHING
 from syncr_api.anchors.shadow_products import DERIVED_ORIGINS
-from syncr_api.anchors.shadows import TypedAnchor, regenerate
+from syncr_api.anchors.shadows import TypedAnchor, generate, regenerate
 from syncr_domain.identity import NO_OCCURRENCE
 from syncr_domain.snap import SNAP_MINUTES
 from tests.anchor_specifications import ATTRIBUTED_INTERVIEW, INTERVIEW, NOTHING, STUDY
@@ -91,7 +98,9 @@ def test_prep_gives_way_to_a_journey_even_when_prep_was_cast_first() -> None:
     )
 
 
-def test_the_later_cast_journey_is_truncated_to_the_earlier_one() -> None:
+def test_the_later_cast_journey_is_dropped_rather_than_truncated_to_the_earlier_one() -> None:
+    # A truncation would leave the later-cast leg as 09:30-10:00: half an hour of reserved travel
+    # that ends 90 minutes before the 13:00 commitment it is a journey to.
     earlier = a_journey_only_type(lead=120, duration=60)
     later = a_journey_only_type(lead=210, duration=120)
     # Supplied later-first, so the order the caller read them in is not what decides.
@@ -102,10 +111,7 @@ def test_the_later_cast_journey_is_truncated_to_the_earlier_one() -> None:
 
     shadows = regenerate(pair)
 
-    assert spans(shadows) == (
-        ("transit", "out", "Tue 2026-02-10 09:30", "Tue 2026-02-10 10:00"),
-        ("transit", "out", "Tue 2026-02-10 10:00", "Tue 2026-02-10 11:00"),
-    )
+    assert spans(shadows) == (("transit", "out", "Tue 2026-02-10 10:00", "Tue 2026-02-10 11:00"),)
 
 
 def test_two_blocks_beginning_at_the_same_instant_drop_one_and_raise_nothing() -> None:
@@ -186,39 +192,40 @@ def test_a_block_gives_way_to_the_earliest_collision_rather_than_the_first_one_f
 
 
 def test_no_two_surviving_blocks_cover_the_same_minute() -> None:
-    # The property the truncation exists to hold, over four commitments whose leads deliberately
-    # reach across one another.
-    declarations = [
-        a_journey_only_type(lead=120, duration=60),
-        a_journey_only_type(lead=210, duration=120),
-        a_prep_only_type(lead=360, duration=180),
-        a_prep_only_type(lead=300, duration=90),
-    ]
-    hours = (12, 13, 16, 15)
+    # The property the rule exists to hold, over four commitments whose leads deliberately reach
+    # across one another: one leg is dropped whole, one prep is truncated, and two survivors abut.
+    #
+    # The arrangement is chosen so that several blocks survive AND something was contested. An
+    # arrangement that leaves one survivor holds this property with nothing to compare, which is the
+    # way a disjointness test passes for the wrong reason.
+    kept_leg = a_journey_only_type(lead=30, duration=30)
+    colliding_leg = a_journey_only_type(lead=120, duration=120)
+    reaching_prep = a_prep_only_type(lead=480, duration=240)
+    clear_prep = a_prep_only_type(lead=300, duration=60)
+    declarations = [kept_leg, colliding_leg, reaching_prep, clear_prep]
+    hours = (11, 12, 15, 16)
     anchors = [
-        TypedAnchor(an_anchor(declared, start=at(INTERVIEW_DAY, hour), minutes=60), declared)
+        TypedAnchor(an_anchor(declared, start=at(INTERVIEW_DAY, hour), minutes=30), declared)
         for declared, hour in zip(declarations, hours, strict=True)
     ]
 
     blocks = regenerate(anchors).blocks
 
-    assert blocks
-    assert not [
-        (one, other)
-        for index, one in enumerate(blocks)
-        for other in blocks[index + 1 :]
-        if one.interval.overlaps(other.interval)
-    ]
+    pairs = list(combinations(blocks, 2))
+    assert pairs
+    assert not [(one, other) for one, other in pairs if one.interval.overlaps(other.interval)]
+    cast = sum(len(generate(pair.anchor, pair.anchor_type).blocks) for pair in anchors)
+    assert len(blocks) < cast
 
 
-def test_a_leg_that_gives_way_no_longer_meets_its_commitment() -> None:
-    # What end-truncation costs, pinned rather than only described. The 11:00 commitment declares a
-    # two-hour abutting journey; an earlier commitment at 10:30 declares a half-hour one and keeps
-    # it. So the journey to the 11:00 commitment now ends at 10:00: the hour before that commitment
-    # is uncovered, and what survives arrives an hour early.
+def test_a_leg_that_can_no_longer_meet_its_commitment_is_absent_rather_than_early() -> None:
+    # The abutting case, which is the only one that can show the fault: a leg with slack loses only
+    # its slack. The 11:00 commitment declares a two-hour abutting journey; an earlier commitment at
+    # 10:30 declares a half-hour one and keeps it.
     #
-    # This is the rule the settled records state, and it is asserted here so that changing which end
-    # a leg gives way at reds a test that says what the change costs, rather than nothing.
+    # Truncating at the end would leave "Leave for Later" at 09:00-10:00, which reserves an hour of
+    # travel, covers none of the hour before the commitment, and arrives an hour early. The whole
+    # leg goes instead, so the inventory is the earlier commitment's leg and nothing else.
     later = a_journey_only_type(lead=120, duration=120)
     earlier = a_journey_only_type(lead=30, duration=30)
     pair = [
@@ -233,14 +240,10 @@ def test_a_leg_that_gives_way_no_longer_meets_its_commitment() -> None:
 
     shadows = regenerate(pair)
 
-    assert spans(shadows) == (
-        ("transit", "out", "Tue 2026-02-10 09:00", "Tue 2026-02-10 10:00"),
-        ("transit", "out", "Tue 2026-02-10 10:00", "Tue 2026-02-10 10:30"),
-    )
-    # The abutting leg no longer abuts: it ends an hour before the commitment it is a journey to.
-    later_leg = shadows.blocks[0]
-    assert later_leg.title == "Leave for Later"
-    assert later_leg.interval.end == at(INTERVIEW_DAY, 10)
+    assert spans(shadows) == (("transit", "out", "Tue 2026-02-10 10:00", "Tue 2026-02-10 10:30"),)
+    # Titles as well as spans, because the two legs are the same origin and the same key: without
+    # them an inventory of one leg cannot say WHICH commitment kept its journey.
+    assert [block.title for block in shadows.blocks] == ["Leave for Earlier"]
 
 
 def test_every_origin_a_shadow_block_can_carry_has_a_precedence() -> None:
