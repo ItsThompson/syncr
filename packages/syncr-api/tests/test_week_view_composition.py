@@ -691,16 +691,11 @@ def test_the_readings_block_matches_section_13_field_for_field() -> None:
 # modules and could not see the concession, pin, conflict, off-plan or operation shapes the composed
 # read nests, four of which arrived on it in one commit.
 
-# The one MODULE exempted from the optionality rule below, and the reason it is a module rather than
-# a field list: eight of its fields carry a default and the solve lifecycle owns every one of them.
-# Ticket 1442 holds converging them; until it lands, exempting the module is the honest statement,
-# and the assertion beside the guard is what stops the exemption from covering anything else.
-OPTIONALITY_EXEMPT_MODULE = "syncr_api.solving.schemas"
-
-# The one FIELD exemption, and it is not a field a client narrows: each clause shape's ``kind``
-# carries the union's discriminator and is set by the class. openapi-typescript emits a
-# discriminated union's discriminator as required whatever its default, and the shapes are asserted
-# below to declare one. Applied to the clause shapes alone, so a ``kind`` elsewhere is not swept up.
+# The one exemption, and it is a field rather than a module: each clause shape's ``kind`` carries
+# the union's discriminator and is set by the class, so it is not a field a client narrows.
+# openapi-typescript emits a discriminated union's discriminator as required whatever its default,
+# and the shapes are asserted below to declare one. Applied to the clause shapes alone, so a
+# ``kind`` elsewhere is not swept up.
 DISCRIMINATOR = "kind"
 
 
@@ -766,7 +761,6 @@ def test_no_field_of_a_week_response_is_optional_in_the_generated_contract(
             optional_fields(model) - _exempt_fields(model)
         )
         for model in models
-        if model.__module__ != OPTIONALITY_EXEMPT_MODULE
     }
 
     assert {name: fields for name, fields in optional.items() if fields} == {}
@@ -780,6 +774,10 @@ def test_the_route_walk_reaches_the_shapes_another_package_declares(
     Five of the composed read's sixteen fields carry a shape from another feature package, and each
     is what the rule above exists to measure. A walk that reached only the plan package's own
     modules would pass while four of the five drifted.
+
+    ``OperationTarget`` is named for a second reason: it is reached only through another response
+    shape's field, so a walk that stopped one nesting short would leave its two members unmeasured
+    while every other assertion in this module stayed green.
     """
     reached = {f"{model.__module__}.{model.__name__}" for model in response_models(settings)}
 
@@ -789,25 +787,11 @@ def test_the_route_walk_reaches_the_shapes_another_package_declares(
         "syncr_api.pins.schemas.PinResponse",
         "syncr_api.offplan.schemas.OffPlanPeriodResponse",
         "syncr_api.solving.schemas.OperationResponse",
+        "syncr_api.solving.schemas.OperationTarget",
         "syncr_api.plans.proposal_schemas.ProposalDiffResponse",
         "syncr_api.plans.verdict_schemas.VerdictResponse",
         "syncr_api.plans.verdict_schemas.ShortfallResponse",
     } <= reached
-
-
-def test_the_one_exempt_module_is_the_only_one_that_would_fail(settings: ServiceSettings) -> None:
-    """So the exemption is measured rather than assumed, and shrinks visibly when it is closed.
-
-    An exemption nobody checks is indistinguishable from a rule nobody enforces. This asserts both
-    directions: the exempt module really does carry optional fields, and no other module does.
-    """
-    drifting = {
-        model.__module__
-        for model in response_models(settings)
-        if optional_fields(model) - _exempt_fields(model)
-    }
-
-    assert drifting == {OPTIONALITY_EXEMPT_MODULE}
 
 
 def test_the_optionality_check_reports_a_field_that_gained_a_default() -> None:
