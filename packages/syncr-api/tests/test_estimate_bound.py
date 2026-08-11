@@ -341,6 +341,10 @@ def test_the_recorded_reason_names_the_reading_it_claims() -> None:
 # week, which is why the scope word has to be inside the same window rather than somewhere in the
 # paragraph. `never` and its relatives carry the same claim with no noun to scope, so they have no
 # place in a statement about one week's length.
+#
+# The reading is a proximity test rather than a parse: it asks whether the scope word occurs near
+# the quantifier, not whether it attaches to the noun. "No week, nominal or otherwise" satisfies it
+# and is false, so what it catches is drift rather than a determined author.
 _A_QUANTIFIER = re.compile(r"\b(?:every|no|any|each|all)\b", re.IGNORECASE)
 _QUANTIFIED = ("week", "verdict")
 _UNSCOPED_WORDS = ("never", "forever", "always")
@@ -348,13 +352,14 @@ _WINDOW = 6
 
 
 def _unscoped_claims(stated: str) -> list[str]:
-    """Each quantified claim about a week or a verdict that does not name the nominal one."""
-    words = stated.split()
+    """Each quantified claim about a week or a verdict that does not name the nominal one.
+
+    Quantifiers are found in the text rather than among its whitespace-split words, so one arriving
+    inside a bracket or a quotation is still a quantifier.
+    """
     found: list[str] = []
-    for index, word in enumerate(words):
-        if not _A_QUANTIFIER.fullmatch(word.strip("*,.:`'")):
-            continue
-        window = " ".join(words[index : index + _WINDOW + 1])
+    for match in _A_QUANTIFIER.finditer(stated):
+        window = " ".join(stated[match.start() :].split()[: _WINDOW + 1])
         spelled = window.lower()
         if any(noun in spelled for noun in _QUANTIFIED) and "nominal" not in spelled:
             found.append(window)
@@ -371,5 +376,7 @@ def test_no_claim_in_the_recorded_reason_is_a_universal_the_fall_back_week_falsi
     """
     stated = _stated()
 
+    # Every absence below is true of an empty docstring, so the statement has to be there first.
+    assert "nominal week" in stated
     assert _unscoped_claims(stated) == []
     assert [word for word in _UNSCOPED_WORDS if re.search(rf"\b{word}\b", stated, re.I)] == []
