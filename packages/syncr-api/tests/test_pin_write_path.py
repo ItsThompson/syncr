@@ -109,8 +109,9 @@ THE_PRICE = 4.375
 THE_DEADLINE_MEASUREMENT = 0.4375
 DEADLINE_RISK = "deadline_risk"
 
-# The version the bump answers with, distinct from the version the assembler's own fake reports, so
-# a response reporting the wrong one is visible.
+# What the bump answers with. One above what the version row reads before it, so the version the
+# response reports and the version the assemblies were taken against are different numbers and the
+# solve cannot be requested at the wrong one unnoticed.
 BUMPED_TO = 4
 
 WEIGHTS_READ = "weights.active"
@@ -413,6 +414,7 @@ class Driven:
         probe: RecordingProbe,
         pins: RecordingPins,
         edits: RecordingEdits,
+        coordinator: RecordingCoordinator,
         priced_in: Sequence[SolveInputs],
         snapshotted_in: Sequence[SolveInputs],
     ) -> None:
@@ -421,6 +423,7 @@ class Driven:
         self.probe = probe
         self.pins = pins
         self.edits = edits
+        self.coordinator = coordinator
         self.priced_in = tuple(priced_in)
         self.snapshotted_in = tuple(snapshotted_in)
 
@@ -451,6 +454,7 @@ async def drive_one_pin() -> Driven:
     )
     probe = RecordingProbe(log)
     edits = RecordingEdits(log)
+    coordinator = RecordingCoordinator(log)
     service = PinService(
         assembler=assembler,
         probe=probe,
@@ -461,7 +465,7 @@ async def drive_one_pin() -> Driven:
         verdicts=RecordingVerdicts(log),
         versions=versions,
         weights=RecordingWeights(log),
-        coordinator=RecordingCoordinator(log),
+        coordinator=coordinator,
         tasks=RecordingTasks(task, log),
         areas=RecordingAreas(area, log),
         clock=lambda: NOW,
@@ -489,6 +493,7 @@ async def drive_one_pin() -> Driven:
         probe=probe,
         pins=pins,
         edits=edits,
+        coordinator=coordinator,
         priced_in=priced_in,
         snapshotted_in=snapshotted_in,
     )
@@ -517,6 +522,9 @@ async def test_one_pin_request_holds_the_row_and_prices_it_at_the_figure_the_fra
     assert recorded.context.measurement_delta is not None
     assert recorded.context.measurement_delta[DEADLINE_RISK] == THE_DEADLINE_MEASUREMENT
     assert recorded.context.was_deadline_constrained is True
+    assert driven.coordinator.requested == [BUMPED_TO], (
+        "the solve was not requested at the version this edit produced"
+    )
 
 
 async def test_one_pin_request_takes_two_assembly_observations_and_one_probe_observation() -> None:
