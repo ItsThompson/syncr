@@ -3945,8 +3945,8 @@ export interface components {
              * @description One-based, so a retrying job reads as 'try 2 of N'.
              */
             attempt: number;
-            error?: components["schemas"]["OperationError"] | null;
-            finishedAt?: components["schemas"]["WireInstant"] | null;
+            error: components["schemas"]["OperationError"] | null;
+            finishedAt: components["schemas"]["WireInstant"] | null;
             /**
              * Id
              * Format: uuid
@@ -3956,13 +3956,13 @@ export interface components {
              * Inputversion
              * @description The input snapshot this solve read. Null until the worker loads inputs.
              */
-            inputVersion?: number | null;
+            inputVersion: number | null;
             kind: components["schemas"]["OperationKind"];
             /** Resultrevisionid */
-            resultRevisionId?: string | null;
+            resultRevisionId: string | null;
             /** @description When this operation became due. */
             scheduledFor: components["schemas"]["WireInstant"];
-            startedAt?: components["schemas"]["WireInstant"] | null;
+            startedAt: components["schemas"]["WireInstant"] | null;
             /**
              * Statement
              * @description One sentence naming what this status means and what still works. A superseded operation states that a later change of your own displaced it and that a follow-up is running, which is not a failure.
@@ -3970,7 +3970,7 @@ export interface components {
             statement: string;
             status: components["schemas"]["OperationStatus"];
             /** Supersededby */
-            supersededBy?: string | null;
+            supersededBy: string | null;
             target: components["schemas"]["OperationTarget"];
         };
         /** @enum {string} */
@@ -3978,18 +3978,26 @@ export interface components {
         /**
          * OperationTarget
          * @description What an operation acts on. Exactly one member is set.
+         *
+         *     Both members are required and nullable rather than defaulted, so a client narrows ``null``
+         *     alone on keys the server always sends.
+         *
+         *     A discriminated union would state "exactly one member is set" in the type rather than in this
+         *     sentence, and it is declined rather than pending: it changes the wire of every route that
+         *     nests an operation and the reader in each client, and what it buys is one null test at one
+         *     call site. The invariant is held by the row's own check constraint.
          */
         OperationTarget: {
             /**
              * Isoweek
              * @description The week a solve, a materialize, or a projection is for.
              */
-            isoWeek?: string | null;
+            isoWeek: string | null;
             /**
              * Sourceid
              * @description The calendar source a sync is for.
              */
-            sourceId?: string | null;
+            sourceId: string | null;
         };
         /**
          * OperationsResponse

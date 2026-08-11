@@ -4255,8 +4255,14 @@
           "kind",
           "status",
           "target",
+          "inputVersion",
           "scheduledFor",
+          "startedAt",
+          "finishedAt",
+          "resultRevisionId",
+          "supersededBy",
           "attempt",
+          "error",
           "statement"
         ],
         "title": "OperationResponse",
@@ -4273,7 +4279,7 @@
         "type": "string"
       },
       "OperationTarget": {
-        "description": "What an operation acts on. Exactly one member is set.",
+        "description": "What an operation acts on. Exactly one member is set.\n\nBoth members are required and nullable rather than defaulted, so a client narrows ``null``\nalone on keys the server always sends.\n\nA discriminated union would state \"exactly one member is set\" in the type rather than in this\nsentence, and it is declined rather than pending: it changes the wire of every route that\nnests an operation and the reader in each client, and what it buys is one null test at one\ncall site. The invariant is held by the row's own check constraint.",
         "properties": {
           "isoWeek": {
             "anyOf": [
@@ -4301,6 +4307,10 @@
             "title": "Sourceid"
           }
         },
+        "required": [
+          "isoWeek",
+          "sourceId"
+        ],
         "title": "OperationTarget",
         "type": "object"
       },
