@@ -239,11 +239,10 @@ class PinService:
 
         TWO assemblies, deliberately, and the module docstring states which consumer each serves.
 
-        The first assembly runs BEFORE `pins.hold`; the second runs AFTER. Measured end to end
-        at 18.6 ms (1-block week), 27.4 ms (24-block week) and 39.1 ms (84-block week), all
-        comfortably inside AC 12's 150 ms p95 budget. The assembly histogram now takes TWO
-        observations per pin request, so its p95 is no longer a single request's assembly cost;
-        ticket 1253 owns recalibrating the budget figures against the measured statement count.
+        The first assembly runs BEFORE `pins.hold`; the second runs AFTER. End to end this path
+        measured 18.6 ms on a 1-block week, 27.4 ms on a 24-block week and 39.1 ms on an 84-block
+        week, warm, against a local database on one developer machine. That is a shape rather than a
+        p95: nothing here measures a production pool, and no reading of it has been taken since.
         """
         stored = await self._weights.active()
         if stored is None:
