@@ -79,6 +79,7 @@ from typing import TYPE_CHECKING, Final
 
 from syncr_api.plans.errors import ClassificationRejected
 from syncr_domain.identity import is_placed_by_the_solver
+from syncr_domain.intervals import has_elapsed, has_started
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -90,23 +91,6 @@ if TYPE_CHECKING:
 # How many block ids a refusal names before it counts the rest. A week holds hundreds of blocks and
 # a message that listed every disagreeing one would be a log line nobody reads.
 IDS_IN_A_REFUSAL: Final = 3
-
-
-def has_started(interval: Interval, now: Instant) -> bool:
-    """Whether the week has already reached this placement. The past is not classified."""
-    return interval.start <= now
-
-
-def has_elapsed(interval: Interval, now: Instant) -> bool:
-    """Whether the week has spent any of this placement, which is a narrower question.
-
-    The two differ at exactly one instant. A block beginning AT the reference instant has consumed
-    none of the week, so there is nothing recorded for a candidate to rewrite; but it is also not a
-    change the product may still make, so the classifier reports it in no class.
-
-    Read by one of the three directions below, which states why.
-    """
-    return interval.start < now
 
 
 def require_an_unchanged_past(

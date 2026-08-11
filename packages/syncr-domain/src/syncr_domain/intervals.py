@@ -23,6 +23,12 @@ An instant is a UTC datetime. Wall time is not an instant: it becomes one only
 through :func:`syncr_domain.zones.to_instant`, which is where a daylight-saving
 transition is resolved. Minute counts here are therefore elapsed minutes, so a
 transition inside a set is counted correctly with no special case.
+
+The two boundary predicates, :func:`has_started` and :func:`has_elapsed`, live here for
+the same reason the arithmetic does. Both answer whether a reference instant has reached
+an interval, they disagree at exactly one instant, and the api and the solver both ask
+the question: a second spelling of either inside a caller is how the two packages come to
+answer it differently.
 """
 
 from __future__ import annotations
@@ -107,6 +113,28 @@ class Interval:
         start = max(self.start, bound.start)
         end = min(self.end, bound.end)
         return Interval(start, end) if start < end else None
+
+
+def has_started(interval: Interval, now: Instant) -> bool:
+    """Whether ``now`` has reached this interval's start.
+
+    Inclusive, so an interval opening exactly at ``now`` has started.
+    """
+    return interval.start <= now
+
+
+def has_elapsed(interval: Interval, now: Instant) -> bool:
+    """Whether any of this interval has been spent by ``now``.
+
+    Exclusive, so an interval opening exactly at ``now`` has spent none of itself.
+
+    **The pair disagrees at exactly one instant, and both readings are load-bearing there.**
+    At an interval's own start there is nothing spent for a record to account for, and there
+    is also nothing left for a decision to change. A rule about what a record may state takes
+    this reading; a rule about what may still be decided takes :func:`has_started`. One
+    predicate serving both makes one of the two rules wrong at that instant.
+    """
+    return interval.start < now
 
 
 def _merge(ordered: Sequence[Interval]) -> tuple[Interval, ...]:
