@@ -32,6 +32,31 @@
 # =============================================================================
 name: syncr
 
+# THE CONTAINER LOG BOUND. Docker's `json-file` driver keeps a container's log until the disk is
+# full, and `docs/runbooks/disk-pressure.md` names an unrotated log as the first thing to look for
+# when the root filesystem fills. The driver is named rather than left to the daemon's default,
+# because `max-size` and `max-file` are options OF that driver: a host configured for `journald`
+# accepts the same two keys and bounds nothing.
+#
+# THE BOUND IS A DECISION AGAINST THE DISK BUDGET RATHER THAN A MEASUREMENT OF A REAL HOST. No log
+# here has been watched growing. The arithmetic is written down once, and this is the place:
+#
+#   one service   10m x 3 rotations = 30 MB
+#   the stack     14 services x 30 MB = 420 MB, about 0.5% of the 80 GB disk
+#
+# What the bound costs is a shorter look backwards during an incident: an operator reading a
+# container's log reaches at most 30 MB into its past.
+#
+# Anchors do not cross files, so `docker-compose.monitoring.yml` and `docker-compose.tunnel.yml`
+# declare their own copy of these two values. `packages/syncr-api/tests/test_compose_logging.py`
+# crosses the three declarations against each other and the figures above against the services the
+# three files declare, so neither the bound nor the arithmetic can drift alone.
+x-log-bound: &log-bound
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   api:
     image: syncr-api:${SYNCR_IMAGE_TAG:-latest}
@@ -96,6 +121,7 @@ services:
       resources:
         limits:
           memory: 768M
+    logging: *log-bound
     restart: unless-stopped
 
   worker:
@@ -131,6 +157,7 @@ services:
       resources:
         limits:
           memory: 768M
+    logging: *log-bound
     restart: unless-stopped
 
   postgres:
@@ -198,6 +225,7 @@ services:
       resources:
         limits:
           memory: 2048M
+    logging: *log-bound
     restart: unless-stopped
 
   # The static application, and the ONE ORIGIN the browser talks to. Caddy serves the Vite build and
@@ -225,6 +253,7 @@ services:
       resources:
         limits:
           memory: 128M
+    logging: *log-bound
     restart: unless-stopped
 
   # The nightly fitter. A ONE-SHOT, NOT A SERVICE: scipy plus scikit-learn resident is ~800 MB for a
@@ -261,6 +290,7 @@ services:
       resources:
         limits:
           memory: 1536M
+    logging: *log-bound
     restart: "no"
 
   # The reading a restore is checked against, taken by the API IMAGE because the rotation cursor is a
@@ -292,6 +322,7 @@ services:
       resources:
         limits:
           memory: 768M
+    logging: *log-bound
     restart: "no"
 
   # The backup path itself: dump, verify, encrypt, upload, prune, publish. Built FROM the pinned
@@ -355,6 +386,7 @@ services:
       resources:
         limits:
           memory: 512M
+    logging: *log-bound
     restart: "no"
 
 networks:

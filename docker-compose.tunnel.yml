@@ -26,6 +26,15 @@
 # =============================================================================
 name: syncr
 
+# The container log bound, declared again because a YAML anchor does not cross files. The same two
+# values `docker-compose.yml` carries, where the arithmetic behind them is written down; a test
+# crosses the three declarations, so a bound changed in one file fails rather than diverging.
+x-log-bound: &log-bound
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   cloudflared:
     # cloudflare/cloudflared:2026.7.3
@@ -57,4 +66,5 @@ services:
       resources:
         limits:
           memory: 128M
+    logging: *log-bound
     restart: unless-stopped

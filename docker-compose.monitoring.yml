@@ -45,6 +45,15 @@
 
 name: syncr
 
+# The container log bound, declared again because a YAML anchor does not cross files. The same two
+# values `docker-compose.yml` carries, where the arithmetic behind them is written down; a test
+# crosses the three declarations, so a bound changed in one file fails rather than diverging.
+x-log-bound: &log-bound
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   prometheus:
     # Pinned by tag here and repinned by digest in the deploy overlay, like every third-party image
@@ -77,6 +86,7 @@ services:
       resources:
         limits:
           memory: 768M
+    logging: *log-bound
     restart: unless-stopped
 
   alertmanager:
@@ -101,6 +111,7 @@ services:
       resources:
         limits:
           memory: 128M
+    logging: *log-bound
     restart: unless-stopped
 
   grafana:
@@ -130,6 +141,7 @@ services:
       resources:
         limits:
           memory: 512M
+    logging: *log-bound
     restart: unless-stopped
 
   node_exporter:
@@ -157,6 +169,7 @@ services:
       resources:
         limits:
           memory: 128M
+    logging: *log-bound
     restart: unless-stopped
 
   cadvisor:
@@ -194,6 +207,7 @@ services:
       resources:
         limits:
           memory: 256M
+    logging: *log-bound
     restart: unless-stopped
 
   postgres_exporter:
@@ -214,6 +228,7 @@ services:
       resources:
         limits:
           memory: 128M
+    logging: *log-bound
     restart: unless-stopped
 
   # `worker` gains an exposed metrics port here rather than in the base file, because the port exists
@@ -223,6 +238,9 @@ services:
   worker:
     expose:
       - "9100"
+    # The bound this file states for a service the base file also declares. Both spell the same two
+    # values, so the merge is identical whichever files are composed.
+    logging: *log-bound
 
 volumes:
   prometheus_data:
