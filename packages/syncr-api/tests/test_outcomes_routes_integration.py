@@ -613,14 +613,6 @@ def test_one_idempotency_key_replaying_a_confirmation_answers_the_stored_body(
     assert once == twice
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "ticket 1134: the request fingerprint hashes body bytes only and the route key is the "
-        "handler's name, so a bodyless route addressed by a path parameter collides across "
-        "resources. Delete this marker when the claim is scoped to the resource it addresses."
-    ),
-)
 def test_one_key_across_two_days_does_not_silently_skip_the_second(
     http: TestClient,
     signed_in: dict[str, str],
@@ -628,36 +620,21 @@ def test_one_key_across_two_days_does_not_silently_skip_the_second(
     owner: UserRecord,
     live_database_url: str,
 ) -> None:
-    # The exposure this route's shape carries, pinned rather than patched locally. Confirming is
-    # bodyless and names its day in the path, so two dates under one key hash identically: the
-    # second request is answered with the FIRST day's body and its own day is never settled.
-    #
-    # Fixing it in this module would close the hole for one route out of the five that share the
-    # shape and trade a visible defect for an invisible inconsistency, which is what ticket 13's
-    # review declined. Either fix satisfies this test: folding the path into the fingerprint makes
-    # the second request a 422 for a key reused differently, and namespacing the route key gives it
-    # its own claim and a 200 on the right day.
+    # Confirming is bodyless and names its day in the path, so the day is carried by the request
+    # hash alone: a claim is keyed by the tenant, the handler and the key. Two days under one key
+    # are one key used for two different requests, which is a 422, and the second day stays
+    # unconfirmed for the caller to settle under a key of its own.
     other_day = YESTERDAY - timedelta(days=1)
     key = uuid4().hex
 
     _, first_answer = confirm(http, signed_in, YESTERDAY, key=key)
-    status, second_answer = confirm(http, signed_in, other_day, key=key)
+    status, _ = confirm(http, signed_in, other_day, key=key)
 
     assert first_answer["date"] == YESTERDAY.isoformat()
-    if status == HTTPStatus.OK:
-        assert second_answer["date"] == other_day.isoformat()
-    else:
-        assert status == ValidationFailed.status
+    assert status == ValidationFailed.status
+    assert read_day(http, signed_in, other_day)["confirmedAt"] is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "ticket 1134: the request fingerprint hashes body bytes only and the route key is the "
-        "handler's name, so two blocks recorded with the same state and the same isoWeek hash "
-        "identically. Delete this marker when the claim is scoped to the resource it addresses."
-    ),
-)
 def test_one_key_across_two_blocks_with_one_body_does_not_silently_skip_the_second(
     http: TestClient,
     signed_in: dict[str, str],
@@ -666,7 +643,7 @@ def test_one_key_across_two_blocks_with_one_body_does_not_silently_skip_the_seco
     live_database_url: str,
 ) -> None:
     # The CONDITIONAL half of the same exposure, on this ticket's primary route. The confirm route's
-    # marker does not stand proxy for it: a fix scoped to bodyless routes would close that one and
+    # case does not stand proxy for it: a fix scoped to bodyless routes would close that one and
     # leave this open with nothing failing, and an evening pass marking two blocks of one day
     # `completed` sends two requests whose bodies are byte-identical.
     first, second = planned
@@ -675,11 +652,9 @@ def test_one_key_across_two_blocks_with_one_body_does_not_silently_skip_the_seco
     record(http, signed_in, first.id, {"state": "completed"}, key=key)
     status, _ = record(http, signed_in, second.id, {"state": "completed"}, key=key)
 
+    assert status == ValidationFailed.status
     stored = {row.block_id: row.state for row in outcome_rows(live_database_url, owner.tenant_id)}
-    if status == HTTPStatus.OK:
-        assert stored == {first.id: "completed", second.id: "completed"}
-    else:
-        assert status == ValidationFailed.status
+    assert stored == {first.id: "completed"}
 
 
 def test_a_day_that_has_not_begun_cannot_be_confirmed(

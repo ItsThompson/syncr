@@ -15,10 +15,9 @@ approved plan was solved against.
 **The 409 a client renders as "this proposal has been replaced"**, with the refresh action beside
 it.
 
-The last test in this module is an ``xfail`` pinning ticket 1134's collision, which this route's
-shape inherits: bodyless, addressed by a path parameter. It is pinned rather than patched here, for
-the reason ticket 13's review gave: a local fix would close the hole for one route out of the six
-that share it and trade a visible defect for an invisible inconsistency.
+The last test in this module covers the collision this route's shape is exposed to: bodyless,
+addressed by a path parameter, so the week it names reaches the guard through the request hash and
+nothing else.
 """
 
 from __future__ import annotations
@@ -305,38 +304,21 @@ class TestTheApproveRoute:
         assert history.json()["truncated"] is False
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "ticket 1134: the request fingerprint hashes body bytes only and the route key is the "
-        "handler's name, so a bodyless route addressed by a path parameter collides across "
-        "resources. Delete this marker when the claim is scoped to the resource it addresses."
-    ),
-)
 def test_one_key_across_two_weeks_does_not_silently_skip_the_second(
     http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
 ) -> None:
-    # The sixth route of ticket 1134's shape, added knowingly rather than by mirroring: approving is
-    # bodyless and names its week in the path, so two weeks under one key hash identically and the
-    # second approval is answered with the FIRST week's body while its own proposal stays pending.
-    #
-    # Either fix satisfies this test. Folding the request path into the fingerprint makes the second
-    # request a key reused for a different request, which is a 422; namespacing the route key gives
-    # it its own claim and approves the week the caller named.
+    # Approving is bodyless and names its week in the path, so the week is carried by the request
+    # hash alone: a claim is keyed by the tenant, the handler and the key. Two weeks under one key
+    # are one key used for two different requests, which is a 422, and the second week's proposal
+    # stays pending for the caller to approve under a key of its own.
     seed_slot(live_database_url, owner.tenant_id, WEEK)
     seed_slot(live_database_url, owner.tenant_id, NEXT_WEEK)
     key = uuid4().hex
 
     first_status, first = post_approval(http, signed_in, WEEK, key=key)
-    second_status, second = post_approval(http, signed_in, NEXT_WEEK, key=key)
+    second_status, _ = post_approval(http, signed_in, NEXT_WEEK, key=key)
 
     assert first_status == HTTPStatus.CREATED, first
     assert first["isoWeek"] == str(WEEK)
-    if second_status == HTTPStatus.CREATED:
-        assert second["isoWeek"] == str(NEXT_WEEK)
-        assert approved_revisions(live_database_url, owner.tenant_id) == [
-            f"{WEEK}/approved",
-            f"{NEXT_WEEK}/approved",
-        ]
-    else:
-        assert second_status == ValidationFailed.status
+    assert second_status == ValidationFailed.status
+    assert approved_revisions(live_database_url, owner.tenant_id) == [f"{WEEK}/approved"]

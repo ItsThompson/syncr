@@ -863,14 +863,6 @@ def test_every_unsafe_method_accepts_an_idempotency_key(
     assert requests[method]().json() == response.json()
 
 
-@pytest.mark.xfail(
-    reason="the fingerprint hashes body bytes only and keys the route by handler name, so two "
-    "tasks addressed by path under one key collide and the second request replays the first "
-    "task's response without touching the task it named. A silent lost write, shared by every "
-    "path-addressed unsafe route in the application. Tracked as ticket 1134, which removes this "
-    "marker.",
-    strict=True,
-)
 @pytest.mark.parametrize("method", ["delete", "complete", "patch"])
 def test_one_key_across_two_tasks_does_not_silently_skip_the_second(
     http: TestClient,
@@ -880,21 +872,16 @@ def test_one_key_across_two_tasks_does_not_silently_skip_the_second(
     live_database_url: str,
     method: str,
 ) -> None:
-    """One key, two tasks: the second request must not be answered from the first task's row.
+    """One key, two tasks: the second request is refused rather than answered from the first's row.
 
-    Asserts the CORRECT behavior and is expected to fail, rather than pinning the defect as though
-    it were the contract. Under ``strict=True`` an xfail that starts passing is itself a failure, so
-    fixing the fingerprint forces this marker to be deleted rather than leaving a test that quietly
-    agrees with whatever the code does.
+    A claim is keyed by the tenant, the handler and the key, so the task the request named is
+    carried by the request hash alone. Two tasks under one key are therefore one key used for two
+    different requests, which is the 422 the guard already documents, and the second task is left
+    exactly as it was for the caller to retry under a key of its own.
 
-    Two fixes are legitimate and they are observably different, so both branches are accepted: one
-    that folds the request path into the fingerprint makes the second request a reused key, which is
-    the 422 the guard already documents, and one that gives each addressed resource its own key
-    namespace applies it. What must not happen either way is a 200 carrying the FIRST task's row.
-
-    ``DELETE`` and ``complete`` carry no body at all, so their fingerprints collide unconditionally.
-    ``PATCH`` collides whenever two requests carry the same body, which a batch of identical edits
-    does.
+    ``DELETE`` and ``complete`` carry no body at all, so nothing but the path distinguishes them.
+    ``PATCH`` is the conditional half: it collides whenever two requests carry the same body, which
+    a batch of identical edits does.
     """
     first = capture(http, signed_in, areaId=area, title="first")
     second = capture(http, signed_in, areaId=area, title="second")
@@ -915,13 +902,10 @@ def test_one_key_across_two_tasks_does_not_silently_skip_the_second(
     send[method](first)
     answered = send[method](second)
 
+    assert answered.status_code == ValidationFailed.status, answered.text
     stored = {row.title: row for row in task_rows(live_database_url, owner.tenant_id)}
-    if answered.status_code == HTTPStatus.OK:
-        assert answered.json()["id"] == second["id"]
-        assert landed[method](stored["second"])
-    else:
-        assert answered.status_code == ValidationFailed.status, answered.text
-        assert not landed[method](stored["second"])
+    assert not landed[method](stored["second"])
+    assert landed[method](stored["first"]), "the first request is the one that owns the key"
 
 
 def test_the_week_input_version_is_bumped_by_every_mutating_route(
