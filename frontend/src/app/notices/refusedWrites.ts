@@ -18,8 +18,8 @@
  * reads every notice out of this tree's own source, `src/testing/noticeLiterals.ts`, follows an identifier to an
  * array in the same module and reports anything else as a list nobody has read. */
 
-import type { BannerNotice } from "./clientNotices";
 import type { Problem } from "../../contract";
+import type { BannerNotice } from "./clientNotices";
 
 /** What survives a capture the api refused: the reader's own list, and the gesture that failed. */
 const CAPTURE_STILL_WORKS = [
