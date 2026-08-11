@@ -37,7 +37,7 @@ import { scanHtml, type HtmlScan } from "../lib/html-scan.ts";
 import type { Exists } from "../lib/module-graph.ts";
 import { relativeToRepo } from "../lib/paths.ts";
 import { stylesheetClosures } from "../lib/stylesheet-closure.ts";
-import { callerProvidedContracts } from "./caller-provided.ts";
+import { callerProvidedContracts, type CallerProvidedContracts } from "./caller-provided.ts";
 import { checkAreaHues, pigmentFile } from "./hues.ts";
 
 export interface ValidateInput {
@@ -78,7 +78,7 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
   const declared = collectDeclaredNames(scanned);
   const contracts = callerProvidedContracts(scanned);
   findings.push(...contracts.refusals);
-  findings.push(...checkTokenReferences(scanned, declared, contracts.honored));
+  findings.push(...checkTokenReferences(scanned, declared, contracts));
 
   /* The theme is the bridge that turns a token into a utility, so a dangling reference there
    * compiles to an invalid declaration and produces exactly the plausible-looking page this whole
@@ -113,7 +113,7 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
         visible.add(declaration.name);
       }
     }
-    findings.push(...checkTokenReferences([{ file, scan }], visible, contracts.honored));
+    findings.push(...checkTokenReferences([{ file, scan }], visible, contracts));
   }
 
   let dynamicInSheets = 0;
@@ -225,24 +225,39 @@ async function checkImports(file: string, scan: CssScan): Promise<Finding[]> {
 function checkTokenReferences(
   scanned: readonly ScannedStylesheet[],
   declared: ReadonlySet<string>,
-  callerProvided: ReadonlySet<string>,
+  contracts: CallerProvidedContracts,
 ): Finding[] {
   const findings: Finding[] = [];
   for (const { file, scan } of scanned) {
     for (const reference of scan.varReferences) {
-      if (declared.has(reference.name) || callerProvided.has(reference.name)) continue;
+      if (declared.has(reference.name) || contracts.honored.has(reference.name)) continue;
       findings.push({
         file,
         line: reference.line,
         column: reference.column,
         check: "dangling-reference",
         message:
-          `var(${reference.name}) resolves to nothing. Declare it, or annotate the contract ` +
-          `with "@caller-provided ${reference.name}" in a comment where the caller's formula is stated.`,
+          `var(${reference.name}) resolves to nothing. ` +
+          remedyFor(reference.name, contracts.refused.has(reference.name)),
       });
     }
   }
   return findings;
+}
+
+/* A name whose annotation was refused in this same run must not be sent back to the annotation: the
+ * advice would re-create the defect the refusal just reported. */
+function remedyFor(name: string, wasRefused: boolean): string {
+  if (wasRefused) {
+    return (
+      `Declare it, or move the reference onto the rule that paints. The "@caller-provided ${name}" ` +
+      "annotation cannot excuse it here."
+    );
+  }
+  return (
+    `Declare it, or annotate the contract with "@caller-provided ${name}" in a comment where the ` +
+    "caller's formula is stated."
+  );
 }
 
 /* THE PROPERTIES A SHEET REACHES THROUGH ITS OWN `<link>` TAGS, following each linked sheet's `@import` chain.

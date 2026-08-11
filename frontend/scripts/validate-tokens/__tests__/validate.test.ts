@@ -98,10 +98,13 @@ describe("a duplicate property", () => {
 });
 
 describe("a dangling var() reference", () => {
-  it("is reported in a token file", async () => {
+  it("is reported in a token file, and offers the annotation as one of the two remedies", async () => {
     const outcome = await validate([fixture("dangling-var.css")]);
     expect(checksOf(outcome.findings)).toEqual(["dangling-reference"]);
-    expect(outcome.findings[0].message).toContain("var(--ink-deepest)");
+    expect(outcome.findings[0].message).toBe(
+      "var(--ink-deepest) resolves to nothing. Declare it, or annotate the contract with " +
+        '"@caller-provided --ink-deepest" in a comment where the caller\'s formula is stated.',
+    );
   });
 
   it("resolves across files, because the layer is one cascade", async () => {
@@ -186,27 +189,29 @@ describe("a @caller-provided contract the layer resolves itself", () => {
     ).toEqual([
       {
         file: atRoot,
-        line: 5,
+        line: 10,
         column: 4,
         check: "caller-provided-refused",
         message:
           "@caller-provided --hatch-ink is refused. The token layer resolves var(--hatch-ink) " +
           "itself at frontend/scripts/validate-tokens/__fixtures__/" +
-          "caller-provided-at-root.css:10:49, inside a :root block, where CSS substitutes it " +
-          "against the root element, so no element a caller styles can supply it. Declare " +
-          "--hatch-ink, or move the reference onto the rule that paints.",
+          "caller-provided-at-root.css:15:49, inside a :root block, where CSS substitutes it " +
+          "against the root element, so no element below the root can supply it and the root is " +
+          "not the element that draws. Declare --hatch-ink, or move the reference onto the rule " +
+          "that paints.",
       },
       {
         file: atRoot,
-        line: 6,
+        line: 11,
         column: 4,
         check: "caller-provided-refused",
         message:
           "@caller-provided --band-ink is refused. The token layer resolves var(--band-ink) " +
           "itself at frontend/scripts/validate-tokens/__fixtures__/" +
-          "caller-provided-at-root.css:11:26, inside a :root block, where CSS substitutes it " +
-          "against the root element, so no element a caller styles can supply it. Declare " +
-          "--band-ink, or move the reference onto the rule that paints.",
+          "caller-provided-at-root.css:16:26, inside a :root block, where CSS substitutes it " +
+          "against the root element, so no element below the root can supply it and the root is " +
+          "not the element that draws. Declare --band-ink, or move the reference onto the rule " +
+          "that paints.",
       },
     ]);
   });
@@ -218,13 +223,23 @@ describe("a @caller-provided contract the layer resolves itself", () => {
     const dangling = outcome.findings.filter((finding) => finding.check === "dangling-reference");
 
     expect(dangling.map((finding) => `${finding.line}:${finding.column}`)).toEqual([
-      "10:49",
-      "11:26",
-      "12:51",
+      "15:49",
+      "16:26",
+      "17:51",
     ]);
     expect(dangling[0].message).toContain("var(--hatch-ink) resolves to nothing");
     expect(dangling[1].message).toContain("var(--band-ink) resolves to nothing");
     expect(dangling[2].message).toContain("var(--hatch-ink) resolves to nothing");
+  });
+
+  it("does not send the reader back to the annotation it just refused", async () => {
+    const outcome = await validate([atRoot]);
+    const dangling = outcome.findings.find((finding) => finding.check === "dangling-reference");
+
+    expect(dangling?.message).toBe(
+      "var(--hatch-ink) resolves to nothing. Declare it, or move the reference onto the rule that " +
+        'paints. The "@caller-provided --hatch-ink" annotation cannot excuse it here.',
+    );
   });
 
   it("stops naming it in the notes as a contract the layer keeps", async () => {
