@@ -7639,14 +7639,19 @@
             "$ref": "#/components/schemas/RevisionReason",
             "description": "What caused this revision to exist."
           },
+          "replacedAdjustments": {
+            "description": "How many it was solved under that a later approval replaced for the same kind and target. A replacement keeps the replaced row's identifier, so the concession is still in force under a name this revision does not use.",
+            "title": "Replacedadjustments",
+            "type": "integer"
+          },
+          "revokedAdjustments": {
+            "description": "How many concessions this plan was solved under the week has since revoked, so they apply to nothing and cannot be named.",
+            "title": "Revokedadjustments",
+            "type": "integer"
+          },
           "status": {
             "$ref": "#/components/schemas/RevisionStatus",
             "description": "Whether the authority rule applied it or the user assented to it."
-          },
-          "unnamedAdjustments": {
-            "description": "How many concessions this plan was solved under the week no longer holds under that identifier, and so cannot be named: revoked, or replaced by a later concession of the same kind and target. Zero when the week still holds all of them.",
-            "title": "Unnamedadjustments",
-            "type": "integer"
           }
         },
         "required": [
@@ -7658,7 +7663,8 @@
           "inputVersion",
           "autoApplied",
           "adjustments",
-          "unnamedAdjustments"
+          "revokedAdjustments",
+          "replacedAdjustments"
         ],
         "title": "WeekRevisionResponse",
         "type": "object"

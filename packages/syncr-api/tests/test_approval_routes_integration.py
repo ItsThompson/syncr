@@ -299,7 +299,8 @@ class TestTheApproveRoute:
         assert [one["id"] for one in listed[0]["adjustments"]] == [str(conceded)]
         assert listed[0]["adjustments"][0]["kind"] == "breach_floor"
         assert listed[0]["adjustments"][0]["deltaMinutes"] == BREACH_MINUTES
-        assert listed[0]["unnamedAdjustments"] == 0
+        assert listed[0]["revokedAdjustments"] == 0
+        assert listed[0]["replacedAdjustments"] == 0
         assert listed[0]["autoApplied"] == []
         assert history.json()["truncated"] is False
 

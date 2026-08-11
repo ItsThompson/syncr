@@ -5999,13 +5999,18 @@ export interface components {
             inputVersion: number;
             /** @description What caused this revision to exist. */
             reason: components["schemas"]["RevisionReason"];
+            /**
+             * Replacedadjustments
+             * @description How many it was solved under that a later approval replaced for the same kind and target. A replacement keeps the replaced row's identifier, so the concession is still in force under a name this revision does not use.
+             */
+            replacedAdjustments: number;
+            /**
+             * Revokedadjustments
+             * @description How many concessions this plan was solved under the week has since revoked, so they apply to nothing and cannot be named.
+             */
+            revokedAdjustments: number;
             /** @description Whether the authority rule applied it or the user assented to it. */
             status: components["schemas"]["RevisionStatus"];
-            /**
-             * Unnamedadjustments
-             * @description How many concessions this plan was solved under the week no longer holds under that identifier, and so cannot be named: revoked, or replaced by a later concession of the same kind and target. Zero when the week still holds all of them.
-             */
-            unnamedAdjustments: number;
         };
         /**
          * WeekRevisionsResponse

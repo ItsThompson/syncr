@@ -101,19 +101,38 @@ class PendingProposal:
 
 
 @dataclass(frozen=True, slots=True)
+class UnnamedConcessions:
+    """How many concessions a revision cannot name, split by what the week did to each.
+
+    ``revoked`` is one whose row is gone. ``replaced`` is one a later approval for the same kind and
+    target took over: that write keeps the replaced row's identifier, so the document beside it
+    names an identifier no row carries, while the concession itself is still in force.
+
+    Separate because the two are different facts about the week. A revoked concession no longer
+    applies to anything; a replaced one applies under a name this revision does not use.
+
+    Every identifier a document names that the week does not hold is one or the other, so the pair
+    sums to how many of them there are.
+    """
+
+    revoked: int
+    replaced: int
+
+
+@dataclass(frozen=True, slots=True)
 class WeekRevision:
     """One revision as the history lists it, and the two things its own row cannot say.
 
     ``auto_applied`` names what this revision added without asking, which is a difference between
     two revisions rather than a column. ``adjustments`` names the concessions the plan was solved
-    under, which the document holds by identifier, and ``unnamed_adjustments`` counts the ones the
-    week no longer holds, so a plan is never reported as conceded less than it was.
+    under, which the document holds by identifier, and ``unnamed`` counts the ones the week no
+    longer holds under that identifier, so a plan is never reported as conceded less than it was.
     """
 
     record: PlanRevisionRecord
     auto_applied: tuple[str, ...]
     adjustments: tuple[WeekAdjustmentRecord, ...]
-    unnamed_adjustments: int
+    unnamed: UnnamedConcessions
 
 
 @dataclass(frozen=True, slots=True)

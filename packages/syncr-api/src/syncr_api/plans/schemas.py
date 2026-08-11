@@ -273,10 +273,14 @@ class WeekRevisionResponse(WireModel):
         description="The approved concessions this plan was solved under, so a week never reads as "
         "feasible for a reason the user cannot see."
     )
-    unnamed_adjustments: int = Field(
-        description="How many concessions this plan was solved under the week no longer holds "
-        "under that identifier, and so cannot be named: revoked, or replaced by a later "
-        "concession of the same kind and target. Zero when the week still holds all of them."
+    revoked_adjustments: int = Field(
+        description="How many concessions this plan was solved under the week has since revoked, "
+        "so they apply to nothing and cannot be named."
+    )
+    replaced_adjustments: int = Field(
+        description="How many it was solved under that a later approval replaced for the same kind "
+        "and target. A replacement keeps the replaced row's identifier, so the concession is still "
+        "in force under a name this revision does not use."
     )
 
     @classmethod
@@ -291,7 +295,8 @@ class WeekRevisionResponse(WireModel):
             input_version=record.input_version,
             auto_applied=list(revision.auto_applied),
             adjustments=[AdjustmentResponse.of(one) for one in revision.adjustments],
-            unnamed_adjustments=revision.unnamed_adjustments,
+            revoked_adjustments=revision.unnamed.revoked,
+            replaced_adjustments=revision.unnamed.replaced,
         )
 
 
