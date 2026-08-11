@@ -6,8 +6,8 @@ module that needed one would have to be moved by the second.
 
 ``target`` is one of two things and never both, exactly as the table's check constraint says: a
 week for a solve, a materialize, or a projection, and a calendar source for a sync. It is nested
-rather than flattened into two nullable fields, so a client reads which kind of target it has
-rather than testing two columns for null.
+rather than spread across two of this shape's own fields, so the pair reads as one thing a client
+tests rather than as two more columns beside the status.
 
 ``error`` is nested for the same reason: a code without a message and a message without a code
 are both meaningless, and the row's own constraint already says the two arrive together.
@@ -39,12 +39,21 @@ if TYPE_CHECKING:
 
 
 class OperationTarget(WireModel):
-    """What an operation acts on. Exactly one member is set."""
+    """What an operation acts on. Exactly one member is set.
+
+    Both members are required and nullable rather than defaulted, so a client narrows ``null``
+    alone on keys the server always sends.
+
+    A discriminated union would state "exactly one member is set" in the type rather than in this
+    sentence, and it is declined rather than pending: it changes the wire of every route that
+    nests an operation and the reader in each client, and what it buys is one null test at one
+    call site. The invariant is held by the row's own check constraint.
+    """
 
     iso_week: str | None = Field(
-        default=None, description="The week a solve, a materialize, or a projection is for."
+        description="The week a solve, a materialize, or a projection is for."
     )
-    source_id: UUID | None = Field(default=None, description="The calendar source a sync is for.")
+    source_id: UUID | None = Field(description="The calendar source a sync is for.")
 
 
 class OperationError(WireModel):
@@ -66,16 +75,15 @@ class OperationResponse(WireModel):
     status: OperationStatus
     target: OperationTarget
     input_version: int | None = Field(
-        default=None,
         description="The input snapshot this solve read. Null until the worker loads inputs.",
     )
     scheduled_for: WireInstant = Field(description="When this operation became due.")
-    started_at: WireInstant | None = None
-    finished_at: WireInstant | None = None
-    result_revision_id: UUID | None = None
-    superseded_by: UUID | None = None
+    started_at: WireInstant | None
+    finished_at: WireInstant | None
+    result_revision_id: UUID | None
+    superseded_by: UUID | None
     attempt: int = Field(description="One-based, so a retrying job reads as 'try 2 of N'.")
-    error: OperationError | None = None
+    error: OperationError | None
     statement: str = Field(
         description=(
             "One sentence naming what this status means and what still works. A superseded "
