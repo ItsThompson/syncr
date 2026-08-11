@@ -42,6 +42,7 @@ from syncr_domain.routines import (
     MAX_FLEX_BAND_MINUTES,
     MIN_DURATION_MINUTES,
 )
+from syncr_domain.snap import NotAWallTime, not_a_wall_time
 
 _TITLE_DESCRIPTION = (
     "What the routine is called, as it reads in a block label on the Week grid. Two routines "
@@ -91,18 +92,20 @@ _NOT_NULLABLE_MESSAGE = (
 def _refuse_a_time_that_is_not_wall_time(value: time) -> time:
     """Refuse a target time that names a zone or a second, at the boundary.
 
-    ``RoutineSpan`` refuses the same two shapes, so this is not the only line: what it adds is
-    a 422 naming the request's own field, where the span's refusal would arrive as one naming
-    the entity's. An offset would otherwise be dropped by the column and the frame would sit in
-    the wrong hour with nothing to say so.
+    Which values those are is the domain's statement of the rule, which ``RoutineSpan`` reads as
+    well, so this is not a second reading of what a wall time is: what it adds is a 422 naming the
+    request's own field, where the span's refusal would arrive as one naming the entity's. An offset
+    would otherwise be dropped by the column and the frame would sit in the wrong hour with nothing
+    to say so.
     """
-    if value.tzinfo is not None:
+    broken = not_a_wall_time(value)
+    if broken is NotAWallTime.CARRIES_A_ZONE:
         raise ValueError(
             "a target time is wall time and names no zone, so an offset is refused. "
             "Send '05:00' rather than '05:00+01:00': the zone comes from the day it "
             "materializes on."
         )
-    if value.second or value.microsecond:
+    if broken is NotAWallTime.BELOW_MINUTE_RESOLUTION:
         raise ValueError(
             "a target time is minute-resolution, so seconds are refused. The frame's "
             "durations are counted in minutes, and a span starting mid-minute could not be "
