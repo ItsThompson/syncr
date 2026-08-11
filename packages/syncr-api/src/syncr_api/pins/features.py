@@ -82,10 +82,10 @@ def edit_context(
     local day and its zone, the Area's placed and target minutes, the anchor and forbidden-window
     offsets, and whether the placement falls inside an off-plan period.
 
-    **Both groups read a frame the pin has not entered**, because ``inputs`` is the PRE-pin
-    assembly: the caller prices the edit in it, writes the pin row after it, and computes the
-    verdict in a second assembly this function never sees. So no field here can carry a reading
-    taken after the pin, and a "proposal time" field cannot read one either.
+    **Both groups, where they read a frame at all, read one the pin has not entered**, because
+    ``inputs`` is the PRE-pin assembly: the caller prices the edit in it, writes the pin row after
+    it, and computes the verdict in a second assembly this function never sees. So no field here can
+    carry a reading taken after the pin, and a "proposal time" field cannot read one either.
     """
     days = local_days(inputs.iso_week, inputs.zone_by_date, inputs.span)
     day = _day_holding(accepted.start, days)
