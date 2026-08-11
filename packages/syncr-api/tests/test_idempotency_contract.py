@@ -11,7 +11,9 @@ without declaring, because the first types a header no route reads.
 
 **Asserted by walking each operation's own ``parameters`` list, never by searching the document's
 text.** One route's summary says it needs the header, so a text search answers true for a document
-in which nothing at all is declared, which is the state this crossing was written against.
+in which nothing at all is declared, which is the state this crossing was written against. The
+reader is controlled against that trap and against a header declared under another name, because
+each of its two predicates is the only thing in the tree that catches its own defect.
 
 What this file cannot do, stated beside what it can: it reads declarations, not behavior. An api
 that declared the header and then ignored it would pass here, which is why the dependency's own
@@ -24,7 +26,6 @@ from __future__ import annotations
 
 import json
 from http import HTTPStatus
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -38,15 +39,16 @@ from syncr_api.idempotency.injection import (
     require_idempotency_key,
 )
 from tests.boundaries import api_routes, resolved_dependencies, route_identity
+from tests.test_alert_rules import repo_root
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from fastapi.testclient import TestClient
 
-# The committed contract, resolved from this file rather than from the working directory, so the
-# crossing finds it whichever directory pytest was started from.
-CONTRACT = Path(__file__).resolve().parents[3] / "frontend" / "openapi.json"
+# The committed contract, resolved through the same anchor every figure about this ticket was
+# printed against: the installed package, not this file's own depth in the tree.
+CONTRACT = repo_root() / "frontend" / "openapi.json"
 
 # The two dependencies that read the key. Either one declares the header, so a route carrying
 # either is a route the document must describe.
@@ -61,6 +63,12 @@ class Answered(WireModel):
     """A response body, so the synthetic routes in the census control have a declared shape."""
 
     ok: bool
+
+
+# The three parameter declarations the reader must tell apart, and the one it must accept.
+THE_HEADER = {"in": "header", "name": IDEMPOTENCY_KEY_HEADER}
+HEADER_NAMED_OTHERWISE = {"in": "header", "name": "X-Other"}
+QUERY_OF_THAT_NAME = {"in": "query", "name": IDEMPOTENCY_KEY_HEADER}
 
 
 def carrying_operations(app: FastAPI) -> set[tuple[str, str]]:
@@ -148,7 +156,7 @@ def test_the_operations_declaring_the_key_are_exactly_the_ones_that_read_it(
     )
 
 
-def test_the_census_answers_from_the_dependency_tree_rather_than_from_the_route_table() -> None:
+def test_the_census_answers_from_the_dependency_tree_rather_than_from_a_list_of_paths() -> None:
     # The positive control for the census itself, and the one no mutation of this file can supply:
     # narrowing the census to nothing leaves the equality above green, because the real document
     # was generated from the same dependency tree the census reads. A synthetic app with one route
@@ -168,3 +176,21 @@ def test_the_census_answers_from_the_dependency_tree_rather_than_from_the_route_
 
     assert carrying_operations(synthetic) == {("POST", "/reads-the-key")}
     assert declaring_operations(synthetic.openapi()) == {("POST", "/reads-the-key")}
+
+
+def test_the_declaration_reader_answers_from_a_header_parameter_of_that_name_alone() -> None:
+    # The census above has controls; its counterpart, the reader of the document, needs its own,
+    # because each of its two predicates is the sole detector of a defect nothing else in the tree
+    # catches. Dropping the name check hides a header declared under another name, which is what a
+    # missing alias produces; dropping the location check counts a query parameter that merely
+    # shares the name. The last case is the positive control: without it a reader that answered
+    # nothing at all would pass every line above it.
+    text_only = {"paths": {"/says-it": {"post": {"summary": f"Needs an {IDEMPOTENCY_KEY_HEADER}"}}}}
+    wrong_name = {"paths": {"/other": {"post": {"parameters": [HEADER_NAMED_OTHERWISE]}}}}
+    wrong_place = {"paths": {"/query": {"post": {"parameters": [QUERY_OF_THAT_NAME]}}}}
+    declared = {"paths": {"/declares": {"post": {"parameters": [THE_HEADER]}}}}
+
+    assert declaring_operations(text_only) == set(), "a text search is not a parameter walk"
+    assert declaring_operations(wrong_name) == set(), "a header of another name is not this one"
+    assert declaring_operations(wrong_place) == set(), "a query parameter is not a header"
+    assert declaring_operations(declared) == {("POST", "/declares")}
