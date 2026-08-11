@@ -21,11 +21,17 @@ Not on cost. The two columns that carry assent sit on the revision row this corp
 the narrow reading would cost two more restated spellings and an agreement with their owner about
 what approval means. It was declined for the direction of its error and for the gate in front of it.
 
-**The direction.** Keeping only the pairs the user assented to drops the rearrangements nobody asked
-them about, and those are the pairs an objection can sit in, because assent and an override are the
-two answers to one proposal. So over one history the narrow reading fits a HIGHER tolerance: the
-knee sits late and the plan rearranges more than the user has shown they accept. The wider reading
-errs the other way, and low is the safer error, because a plan that keeps moving loses trust.
+**The direction, and the condition it holds under.** Keeping only the pairs the user assented to
+drops the rearrangements nobody asked them about, and those are the pairs an objection can sit in,
+because assent and an override are the two answers to one proposal. Dropping them pulls the fitted
+figure two ways at once: it raises the mean of what was absorbed, and it halves the corpus, which
+shrinks the figure harder toward the prior. Which of the two wins turns on how much less the dropped
+pairs absorbed. Where they absorbed much less, the narrow reading fits HIGHER, the knee sits late,
+and the plan rearranges more than the user has shown they accept. Where the two populations are
+alike it fits LOWER instead, and that lower figure is the prior showing through a smaller corpus
+rather than anything the user did. Between the two errors the product prefers the low one, because a
+plan that keeps moving loses trust; what is conditional is which reading commits which error. So
+this reason is conditional on a gap nothing here measures, and the gate below decides without it.
 
 **The gate.** ``THRESHOLD_CHURN_TOLERANCE = 20`` counts proposals, so it is stated at the rate
 revisions are produced rather than the rate a human approves them. A corpus narrowed to approvals
