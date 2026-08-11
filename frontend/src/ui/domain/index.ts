@@ -11,7 +11,7 @@
  *   charts    the five charts, the Area legend, and the two bounded-progress forms
  *   notices   the three volumes, which are position, and the four pigments, which are kind
  *   status    the three surfaces with nothing to show, none of which spins
- *   table     28px rows, data-sized cells, tabular figures, a sortable header and a footer count
+ *   table     --h-row rows, declared column widths, data-sized cells, tabular figures, a sortable header
  *   ledger    the Today register's row, with the outcome controls arriving as children
  *   wizard    first run's numbered steps, with a caret on the current one and no progress bar
  *   plate     the dithered illustration plates, which are never behind data
