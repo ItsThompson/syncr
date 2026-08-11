@@ -136,6 +136,10 @@ class Interleaving:
     def saw(self, statement: str | None) -> None:
         self.blocked.append(statement)
 
+    def finished(self, outcomes: Sequence[object]) -> None:
+        """Record what each connection raised, or that it raised nothing."""
+        self.raised = [named_cause(one) for one in outcomes if isinstance(one, BaseException)]
+
     def steps_of(self, who: str) -> list[str]:
         """One connection's own steps, in the order it made them."""
         return [what for one, what in self.order if one == who]
@@ -387,13 +391,17 @@ async def a_backend_blocked_on_a_lock(
     return None
 
 
-def raised_in(outcomes: Sequence[object]) -> list[str]:
-    """What each side raised, named rather than counted, so a red says which cause it was."""
-    return [
-        f"{type(one).__name__}: {str(one).splitlines()[0]}"
-        for one in outcomes
-        if isinstance(one, BaseException)
-    ]
+def named_cause(raised: BaseException) -> str:
+    """One exception as one line: its type, and its message when it has one.
+
+    A message may be empty, and the lost side of ``gather(return_exceptions=True)`` is the case that
+    matters rather than a hypothetical one: a ``CancelledError`` carries none. Indexing into its
+    lines would raise from inside the assertion this exists to make readable.
+    """
+    lines = str(raised).splitlines()
+    if not lines:
+        return type(raised).__name__
+    return f"{type(raised).__name__}: {lines[0]}"
 
 
 async def revoking(
@@ -450,7 +458,7 @@ async def the_revocation_first(
         approving(sessions, owner, watched, when=go),
         return_exceptions=True,
     )
-    watched.raised = raised_in(outcomes)
+    watched.finished(outcomes)
     return watched
 
 
@@ -470,7 +478,7 @@ async def the_approval_first(
         revoking(sessions, owner, watched, when=go),
         return_exceptions=True,
     )
-    watched.raised = raised_in(outcomes)
+    watched.finished(outcomes)
     return watched
 
 
@@ -600,3 +608,22 @@ class TestARevocationRacingAnApproval:
             "applied",
             "approved",
         ]
+
+
+class TestNamingWhatWasRaised:
+    """``named_cause`` is the whole diagnostic the two cases above have, so it may not raise itself.
+
+    Driven directly rather than through the interleaving, because the shape that breaks it is one no
+    ordering of the two transactions produces: an exception whose message is empty.
+    """
+
+    def test_a_cause_with_no_message_is_named_by_its_type(self) -> None:
+        # `CancelledError` rather than a bare `Exception`, because it is the one that actually
+        # arrives: `gather(return_exceptions=True)` hands back the cancellation of a side that lost.
+        assert named_cause(asyncio.CancelledError()) == "CancelledError"
+
+    def test_a_cause_with_a_message_is_named_by_both_and_bounded_to_one_line(self) -> None:
+        assert (
+            named_cause(RuntimeError("deadlock detected\nand a second line nobody needs"))
+            == "RuntimeError: deadlock detected"
+        )
