@@ -266,7 +266,7 @@ class PostgresCorpusReader:
         zone = await self._home_zone(session, tenant_id)
         if zone is None:
             # A tenant with no settings row has no home zone, so no wall time a template could hold.
-            # Promotion detection is the only reader of pins and it groups on that wall time.
+            # The promotion rule that reads a pin groups on that wall time.
             return ()
         rows = await session.execute(
             select(_PINS)

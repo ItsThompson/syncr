@@ -19,9 +19,9 @@ that is what :class:`PlannedBlock` and :class:`StoredRevision` carry. Rebuilding
 would mean restating the whole of the api's document spelling in a package that must not import it.
 
 **A pin is the one projection this module does not declare.** ``syncr_domain.promotion`` holds
-``PinPlacement``, the shape the rule that reads pins is stated over, and that rule has two readers:
-this job's run report and the weekly session's raised items. So the value belongs to the domain both
-read, and a second declaration here would be a second spelling of one fact.
+``PinPlacement``, the shape the rule that reads pins is stated over, and the api's weekly session is
+that rule's one reader. So the value belongs to the domain rather than here, and a second
+declaration would be a second spelling of one fact.
 """
 
 from __future__ import annotations
