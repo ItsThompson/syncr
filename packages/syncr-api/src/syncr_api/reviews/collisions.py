@@ -24,6 +24,26 @@ A one-off cannot recur, so a row carrying no ``series_uid`` is not part of any p
 covers a row raised before the series was recorded: it says the commitment is not comparable across
 weeks, which is exactly what such a row means.
 
+**Two ways of filling that gap in were weighed and both are declined**, so a raise that stays quiet
+about an old plan is this rule working rather than a defect.
+
+The first is a PARTIAL BACKFILL: join a row carrying no series to the anchor it names and copy the
+series and the title across, which only reaches the rows whose anchor still exists. Those are the
+recent ones by construction: recurrence is expanded from now forward, so an occurrence that has
+ended is no longer published, and reconciliation deletes it at the next successful read. A row whose
+anchor survives therefore names a commitment the feed is still publishing, and the live raise
+reaches that pair on its own once three of its weeks have collided: as many calendar weeks for a
+commitment that recurs weekly, and more for a sparser one. So the backfill buys one raise arriving
+earlier, once, by at most the weeks the projection horizon already covers. What would reopen it is
+the expansion reading backwards: a feed whose ended occurrences survive holds anchors a backfill
+could read and a live raise cannot wait for.
+
+The second is READING ``commitment_title``, which is the only other key such a row carries. A title
+cannot tell a one-off from a series: several unrelated appointments a publisher happened to name the
+same thing become a repetition, and one series renamed mid-run becomes two shorter runs that are
+each too short to raise. The skip states what the row means, and the title would state something the
+reader cannot check.
+
 ## The count is a count of WEEKS, and they need not be consecutive
 
 The story's words are "three or more weeks", which is deliberately weaker than the consecutive run
