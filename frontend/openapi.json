@@ -73,9 +73,7 @@
         "description": "One concession a week holds, as the verdict panel lists it.",
         "properties": {
           "createdAt": {
-            "format": "date-time",
-            "title": "Createdat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant"
           },
           "createdByOperationId": {
             "description": "The operation whose proposal this concession was approved with.",
@@ -182,9 +180,7 @@
             "$ref": "#/components/schemas/ShadowDeclarationResponse"
           },
           "endsAt": {
-            "format": "date-time",
-            "title": "Endsat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant"
           },
           "id": {
             "format": "uuid",
@@ -230,10 +226,8 @@
             "type": "string"
           },
           "startsAt": {
-            "description": "Absolute, and NOT snapped to the quarter hour: an imported commitment is a fact and keeps its real time, even at :07.",
-            "format": "date-time",
-            "title": "Startsat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "Absolute, and NOT snapped to the quarter hour: an imported commitment is a fact and keeps its real time, even at :07."
           },
           "title": {
             "title": "Title",
@@ -1135,28 +1129,24 @@
           "completedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read.",
-            "title": "Completedat"
+            "description": "When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read."
           },
           "deadline": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.",
-            "title": "Deadline"
+            "description": "When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused."
           },
           "eligibleForSolving": {
             "description": "Whether the next solve may place this task: open, with work left. A captured task is eligible immediately.",
@@ -1732,15 +1722,13 @@
           "changedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the change was applied, or null when nothing changed.",
-            "title": "Changedat"
+            "description": "When the change was applied, or null when nothing changed."
           },
           "declared": {
             "description": "The Areas whose share this call changed, so a caller can render exactly what moved.",
@@ -2295,15 +2283,13 @@
           "approvedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When it was approved, which the clause renders as a date.",
-            "title": "Approvedat"
+            "description": "When it was approved, which the clause renders as a date."
           },
           "revisionId": {
             "anyOf": [
@@ -2501,9 +2487,7 @@
             "type": "string"
           },
           "detectedAt": {
-            "format": "date-time",
-            "title": "Detectedat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant"
           },
           "id": {
             "format": "uuid",
@@ -2532,15 +2516,13 @@
           "resolvedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Null while the conflict is still waiting for an answer.",
-            "title": "Resolvedat"
+            "description": "Null while the conflict is still waiting for an answer."
           }
         },
         "required": [
@@ -2580,15 +2562,13 @@
           "advancedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the most recent confirmed completion was confirmed, or null.",
-            "title": "Advancedat"
+            "description": "When the most recent confirmed completion was confirmed, or null."
           },
           "confirmedCompletions": {
             "description": "How many confirmed completions the outcome log holds for this habit. The cursor is this count modulo the variant count, which is why a skip does not advance it.",
@@ -2660,15 +2640,13 @@
           "confirmedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the day was confirmed, or null when at least one of its blocks has not been answered for. A day holding no block is never confirmed and is never counted as unconfirmed: there is nothing to answer for.",
-            "title": "Confirmedat"
+            "description": "When the day was confirmed, or null when at least one of its blocks has not been answered for. A day holding no block is never confirmed and is never counted as unconfirmed: there is nothing to answer for."
           },
           "date": {
             "format": "date",
@@ -3240,14 +3218,12 @@
           "connectedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Connectedat"
+            ]
           },
           "grantedScopes": {
             "description": "What Google says it granted, which can be narrower than what syncr asked for.",
@@ -3260,14 +3236,12 @@
           "lastRefreshAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Lastrefreshat"
+            ]
           },
           "notices": {
             "description": "Every notice this connection's state raises. Write-target expiry raises two, a banner and a panel on Settings, because it is the loudest non-blocking condition in the product.",
@@ -3646,14 +3620,12 @@
           "fittedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Fittedat"
+            ]
           },
           "origin": {
             "title": "Origin",
@@ -3858,15 +3830,13 @@
           "since": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "How long the condition has held, as an instant. Null while it is not known. Typed as an instant rather than a string so it is serialized the way every other instant in this document is: one spelling per document, not two.",
-            "title": "Since"
+            "description": "How long the condition has held, as an instant. Null while it is not known. Typed as an instant rather than a string so it is serialized the way every other instant in this document is: one spelling per document, not two."
           },
           "stillWorks": {
             "description": "The capabilities that remain. Never empty unless the whole product is down, because a notice that says only what broke leaves the reader unable to act.",
@@ -4002,10 +3972,8 @@
         "description": "A span to declare off.",
         "properties": {
           "end": {
-            "description": "When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start.",
-            "format": "date-time",
-            "title": "End",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start."
           },
           "keepFrame": {
             "default": false,
@@ -4028,10 +3996,8 @@
             "title": "Label"
           },
           "start": {
-            "description": "When the period begins, as an instant. Inside the period, and on a 15-minute boundary.",
-            "format": "date-time",
-            "title": "Start",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When the period begins, as an instant. Inside the period, and on a 15-minute boundary."
           }
         },
         "required": [
@@ -4048,15 +4014,13 @@
           "end": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start.",
-            "title": "End"
+            "description": "When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start."
           },
           "keepFrame": {
             "anyOf": [
@@ -4087,15 +4051,13 @@
           "start": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the period begins, as an instant. Inside the period, and on a 15-minute boundary.",
-            "title": "Start"
+            "description": "When the period begins, as an instant. Inside the period, and on a 15-minute boundary."
           }
         },
         "title": "OffPlanPatchRequest",
@@ -4105,10 +4067,8 @@
         "description": "One declared span of time off.",
         "properties": {
           "end": {
-            "description": "When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start.",
-            "format": "date-time",
-            "title": "End",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start."
           },
           "id": {
             "format": "uuid",
@@ -4133,10 +4093,8 @@
             "title": "Label"
           },
           "start": {
-            "description": "When the period begins, as an instant. Inside the period, and on a 15-minute boundary.",
-            "format": "date-time",
-            "title": "Start",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When the period begins, as an instant. Inside the period, and on a 15-minute boundary."
           }
         },
         "required": [
@@ -4215,14 +4173,12 @@
           "finishedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Finishedat"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -4257,22 +4213,18 @@
             "title": "Resultrevisionid"
           },
           "scheduledFor": {
-            "description": "When this operation became due.",
-            "format": "date-time",
-            "title": "Scheduledfor",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When this operation became due."
           },
           "startedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Startedat"
+            ]
           },
           "statement": {
             "description": "One sentence naming what this status means and what still works. A superseded operation states that a later change of your own displaced it and that a follow-up is running, which is not a failure.",
@@ -4469,21 +4421,17 @@
           "confirmedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the day this block belongs to was confirmed. Null means the day is unconfirmed, which excludes it from reviews and from learning. Recording an outcome does not confirm a day, and correcting one does not move this instant.",
-            "title": "Confirmedat"
+            "description": "When the day this block belongs to was confirmed. Null means the day is unconfirmed, which excludes it from reviews and from learning. Recording an outcome does not confirm a day, and correcting one does not move this instant."
           },
           "occurredAt": {
-            "description": "When the block was scheduled.",
-            "format": "date-time",
-            "title": "Occurredat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When the block was scheduled."
           },
           "state": {
             "$ref": "#/components/schemas/OutcomeState"
@@ -4623,10 +4571,8 @@
             "description": "The concession this proposal was solved under, or null for an ordinary proposal. It is not persisted until the proposal is approved, and it carries the identifier the approval will persist it under."
           },
           "createdAt": {
-            "description": "When that solve landed.",
-            "format": "date-time",
-            "title": "Createdat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When that solve landed."
           },
           "inputVersion": {
             "description": "The input state this proposal was SOLVED against. Lower than the week's own when the week moved on while the proposal waited, which is permitted: approval is never blocked, and the solve that mutation enqueued proposes any correction.",
@@ -4674,14 +4620,10 @@
         "description": "The half-open interval the period covers, ``[start, end)``.\n\nPresent because it is what the denominator was derived from. It may be 167 or 169 hours\nacross a daylight-saving transition, and something else again in a zone whose transition is\nnot an hour, so a reader that needs the length reads these two instants rather than assuming\none.",
         "properties": {
           "end": {
-            "format": "date-time",
-            "title": "End",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant"
           },
           "start": {
-            "format": "date-time",
-            "title": "Start",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant"
           }
         },
         "required": [
@@ -4701,10 +4643,8 @@
             "type": "string"
           },
           "start": {
-            "description": "Where the block now begins. Its length is unchanged, because a drag moves and does not resize, so the pinned span is this instant plus the block's own duration.",
-            "format": "date-time",
-            "title": "Start",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "Where the block now begins. Its length is unchanged, because a drag moves and does not resize, so the pinned span is this instant plus the block's own duration."
           }
         },
         "required": [
@@ -4723,10 +4663,8 @@
             "type": "string"
           },
           "createdAt": {
-            "description": "When the user made this edit.",
-            "format": "date-time",
-            "title": "Createdat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When the user made this edit."
           },
           "id": {
             "format": "uuid",
@@ -5051,14 +4989,12 @@
           "deadline": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Deadline"
+            ]
           },
           "name": {
             "maxLength": 120,
@@ -5085,14 +5021,12 @@
           "deadline": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Deadline"
+            ]
           },
           "name": {
             "anyOf": [
@@ -5133,14 +5067,12 @@
           "deadline": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Deadline"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -5302,9 +5234,7 @@
         "description": "What a decline recorded: when it was answered, and until when it stays answered.",
         "properties": {
           "declinedAt": {
-            "format": "date-time",
-            "title": "Declinedat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant"
           },
           "promotionId": {
             "description": "The pattern that will not be raised again.",
@@ -5317,10 +5247,8 @@
             "type": "string"
           },
           "suppressedUntil": {
-            "description": "The instant the pattern may be raised again. Stored rather than derived, so the promise the reader was given is the fact that is kept.",
-            "format": "date-time",
-            "title": "Suppresseduntil",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "The instant the pattern may be raised again. Stored rather than derived, so the promise the reader was given is the fact that is kept."
           },
           "suppressionWeeks": {
             "description": "How many weeks that is, which is the interval the screen states.",
@@ -6094,9 +6022,7 @@
             "type": "string"
           },
           "expiresAt": {
-            "format": "date-time",
-            "title": "Expiresat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant"
           },
           "tenantId": {
             "format": "uuid",
@@ -6383,15 +6309,13 @@
           "deadline": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Present only for a gap measured against a deadline.",
-            "title": "Deadline"
+            "description": "Present only for a gap measured against a deadline."
           },
           "honoring": {
             "description": "The constraints respected while computing the gap, so a reader can see what the week was measured against rather than only the number.",
@@ -6493,14 +6417,12 @@
           "lastAttemptAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Lastattemptat"
+            ]
           },
           "lastError": {
             "anyOf": [
@@ -6517,14 +6439,12 @@
           "lastSuccessAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Lastsuccessat"
+            ]
           },
           "rejectedCount": {
             "title": "Rejectedcount",
@@ -6571,15 +6491,13 @@
           "deadline": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.",
-            "title": "Deadline"
+            "description": "When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused."
           },
           "estimateMinutes": {
             "default": 30,
@@ -6649,15 +6567,13 @@
           "deadline": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.",
-            "title": "Deadline"
+            "description": "When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused."
           },
           "estimateMinutes": {
             "anyOf": [
@@ -6753,28 +6669,24 @@
           "completedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read.",
-            "title": "Completedat"
+            "description": "When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read."
           },
           "deadline": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.",
-            "title": "Deadline"
+            "description": "When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused."
           },
           "eligibleForSolving": {
             "description": "Whether the next solve may place this task: open, with work left. A captured task is eligible immediately.",
@@ -7109,16 +7021,12 @@
         "description": "A half-open span of instants, as a request body carries one.",
         "properties": {
           "end": {
-            "description": "When it ended, excluded. Carries a UTC offset.",
-            "format": "date-time",
-            "title": "End",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When it ended, excluded. Carries a UTC offset."
           },
           "start": {
-            "description": "When it began. Carries a UTC offset.",
-            "format": "date-time",
-            "title": "Start",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When it began. Carries a UTC offset."
           }
         },
         "required": [
@@ -7132,14 +7040,10 @@
         "description": "A half-open span of instants, as a response carries one.",
         "properties": {
           "end": {
-            "format": "date-time",
-            "title": "End",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant"
           },
           "start": {
-            "format": "date-time",
-            "title": "Start",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant"
           }
         },
         "required": [
@@ -7370,10 +7274,8 @@
             "type": "boolean"
           },
           "computedAt": {
-            "description": "The instant the assembly this verdict was computed from was stamped with, so two verdicts over one assembly report one instant.",
-            "format": "date-time",
-            "title": "Computedat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "The instant the assembly this verdict was computed from was stamped with, so two verdicts over one assembly report one instant."
           },
           "discretionaryMinutes": {
             "description": "The week's denominator over its whole span, carried so a surface renders the figure the verdict was computed against rather than re-deriving it.",
@@ -7443,10 +7345,8 @@
             "description": "The concession this approval persisted, or null for an ordinary approval. The next solve of the week honors it without being asked again."
           },
           "approvedAt": {
-            "description": "When the user assented.",
-            "format": "date-time",
-            "title": "Approvedat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When the user assented."
           },
           "inputVersion": {
             "description": "The week's input version after this approval bumped it. A solve already running against the previous value fails its conditional write and is superseded.",
@@ -7677,15 +7577,13 @@
           "approvedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "When the user assented. Null for an applied revision.",
-            "title": "Approvedat"
+            "description": "When the user assented. Null for an applied revision."
           },
           "autoApplied": {
             "description": "What this revision added without asking, by block title. Empty for an approved revision, whose changes the user assented to, and empty for the first plan a week ever had, which added everything.",
@@ -7696,10 +7594,8 @@
             "type": "array"
           },
           "createdAt": {
-            "description": "When the revision was appended.",
-            "format": "date-time",
-            "title": "Createdat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When the revision was appended."
           },
           "id": {
             "format": "uuid",
@@ -8035,21 +7931,17 @@
             "type": "integer"
           },
           "createdAt": {
-            "format": "date-time",
-            "title": "Createdat",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant"
           },
           "fittedAt": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/WireInstant"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Fittedat"
+            ]
           },
           "origin": {
             "title": "Origin",
@@ -8096,20 +7988,20 @@
       "WireDecimal": {
         "type": "number"
       },
+      "WireInstant": {
+        "format": "date-time",
+        "type": "string"
+      },
       "WireSpan": {
         "description": "A half-open interval, ``[start, end)``, as every span on the wire is spelled.\n\nHalf-open in both directions of reading: a span ending at 09:00 does not include 09:00, and\nanother may begin exactly there. The length is not carried, because two instants already\nstate it and a third field could disagree with them: a span across a daylight-saving\ntransition is 23 or 25 hours long and a reader that needs the figure takes the difference.",
         "properties": {
           "end": {
-            "description": "When the span ends. NOT inside it.",
-            "format": "date-time",
-            "title": "End",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When the span ends. NOT inside it."
           },
           "start": {
-            "description": "When the span begins. Inside it.",
-            "format": "date-time",
-            "title": "Start",
-            "type": "string"
+            "$ref": "#/components/schemas/WireInstant",
+            "description": "When the span begins. Inside it."
           }
         },
         "required": [

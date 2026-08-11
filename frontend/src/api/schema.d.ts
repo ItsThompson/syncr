@@ -1848,11 +1848,7 @@ export interface components {
          * @description One concession a week holds, as the verdict panel lists it.
          */
         AdjustmentResponse: {
-            /**
-             * Createdat
-             * Format: date-time
-             */
-            createdAt: string;
+            createdAt: components["schemas"]["WireInstant"];
             /**
              * Createdbyoperationid
              * Format: uuid
@@ -1908,11 +1904,7 @@ export interface components {
              */
             anchorTypeName: string | null;
             casts: components["schemas"]["ShadowDeclarationResponse"];
-            /**
-             * Endsat
-             * Format: date-time
-             */
-            endsAt: string;
+            endsAt: components["schemas"]["WireInstant"];
             /**
              * Id
              * Format: uuid
@@ -1949,12 +1941,8 @@ export interface components {
              * @description That source's name, as the detail panel states it.
              */
             sourceName: string;
-            /**
-             * Startsat
-             * Format: date-time
-             * @description Absolute, and NOT snapped to the quarter hour: an imported commitment is a fact and keeps its real time, even at :07.
-             */
-            startsAt: string;
+            /** @description Absolute, and NOT snapped to the quarter hour: an imported commitment is a fact and keeps its real time, even at :07. */
+            startsAt: components["schemas"]["WireInstant"];
             /** Title */
             title: string;
             /** @description Where this commitment's type came from. `unmatched` means no rule matched it, so it is opaque busy time with no shadow of any kind. `rule` means a match rule chose it, and a rule change may replace it. `override` means you chose it, and no rule change will replace it. */
@@ -2385,16 +2373,10 @@ export interface components {
              * @description Whether the current week's verdict reports a deadlineCapacity shortfall naming this task. The server's determination, not a comparison a client makes: the same shortfall the verdict panel renders, so a task cannot be at risk on one screen and fine on another. False for a task with no deadline and for a week with no plan.
              */
             atRisk: boolean;
-            /**
-             * Completedat
-             * @description When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read.
-             */
-            completedAt: string | null;
-            /**
-             * Deadline
-             * @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.
-             */
-            deadline: string | null;
+            /** @description When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read. */
+            completedAt: components["schemas"]["WireInstant"] | null;
+            /** @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused. */
+            deadline: components["schemas"]["WireInstant"] | null;
             /**
              * Eligibleforsolving
              * @description Whether the next solve may place this task: open, with work left. A captured task is eligible immediately.
@@ -2695,11 +2677,8 @@ export interface components {
              * @description How many Areas' shares this call changed. A share replaced by the value it already held is not one of them, so nothing was written and no solve was invalidated.
              */
             applied: number;
-            /**
-             * Changedat
-             * @description When the change was applied, or null when nothing changed.
-             */
-            changedAt?: string | null;
+            /** @description When the change was applied, or null when nothing changed. */
+            changedAt?: components["schemas"]["WireInstant"] | null;
             /**
              * Declared
              * @description The Areas whose share this call changed, so a caller can render exactly what moved.
@@ -2983,11 +2962,8 @@ export interface components {
          *     rather than silently comparing against a proposal nobody agreed to.
          */
         ChurnBaselineResponse: {
-            /**
-             * Approvedat
-             * @description When it was approved, which the clause renders as a date.
-             */
-            approvedAt: string | null;
+            /** @description When it was approved, which the clause renders as a date. */
+            approvedAt: components["schemas"]["WireInstant"] | null;
             /**
              * Revisionid
              * @description The approved revision churn is the difference from.
@@ -3095,11 +3071,7 @@ export interface components {
              * @description The block the commitment landed on, as the grid keys it.
              */
             blockId: string;
-            /**
-             * Detectedat
-             * Format: date-time
-             */
-            detectedAt: string;
+            detectedAt: components["schemas"]["WireInstant"];
             /**
              * Id
              * Format: uuid
@@ -3113,11 +3085,8 @@ export interface components {
             overlap: components["schemas"]["WireSpan"];
             /** @description How it was answered: one of `moved`, `kept-both`, `retyped`. Null while it is unanswered. */
             resolution: components["schemas"]["ConflictResolution"] | null;
-            /**
-             * Resolvedat
-             * @description Null while the conflict is still waiting for an answer.
-             */
-            resolvedAt: string | null;
+            /** @description Null while the conflict is still waiting for an answer. */
+            resolvedAt: components["schemas"]["WireInstant"] | null;
         };
         /**
          * ConflictsResponse
@@ -3136,11 +3105,8 @@ export interface components {
          *     user fixes the day on Today and this re-derives with no further action.
          */
         CursorResponse: {
-            /**
-             * Advancedat
-             * @description When the most recent confirmed completion was confirmed, or null.
-             */
-            advancedAt: string | null;
+            /** @description When the most recent confirmed completion was confirmed, or null. */
+            advancedAt: components["schemas"]["WireInstant"] | null;
             /**
              * Confirmedcompletions
              * @description How many confirmed completions the outcome log holds for this habit. The cursor is this count modulo the variant count, which is why a skip does not advance it.
@@ -3184,11 +3150,8 @@ export interface components {
             behind: components["schemas"]["LedgerRowResponse"][];
             /** Blockcount */
             blockCount: number;
-            /**
-             * Confirmedat
-             * @description When the day was confirmed, or null when at least one of its blocks has not been answered for. A day holding no block is never confirmed and is never counted as unconfirmed: there is nothing to answer for.
-             */
-            confirmedAt: string | null;
+            /** @description When the day was confirmed, or null when at least one of its blocks has not been answered for. A day holding no block is never confirmed and is never counted as unconfirmed: there is nothing to answer for. */
+            confirmedAt: components["schemas"]["WireInstant"] | null;
             /**
              * Date
              * Format: date
@@ -3547,15 +3510,13 @@ export interface components {
             configured: boolean;
             /** Connected */
             connected: boolean;
-            /** Connectedat */
-            connectedAt?: string | null;
+            connectedAt?: components["schemas"]["WireInstant"] | null;
             /**
              * Grantedscopes
              * @description What Google says it granted, which can be narrower than what syncr asked for.
              */
             grantedScopes: string[];
-            /** Lastrefreshat */
-            lastRefreshAt?: string | null;
+            lastRefreshAt?: components["schemas"]["WireInstant"] | null;
             /**
              * Notices
              * @description Every notice this connection's state raises. Write-target expiry raises two, a banner and a panel on Settings, because it is the loudest non-blocking condition in the product.
@@ -3742,8 +3703,7 @@ export interface components {
             collecting: number;
             /** Collectingisnormal */
             collectingIsNormal: string;
-            /** Fittedat */
-            fittedAt: string | null;
+            fittedAt: components["schemas"]["WireInstant"] | null;
             /** Origin */
             origin: string;
             /** Parameters */
@@ -3828,11 +3788,8 @@ export interface components {
             isWholeProductDown: boolean;
             pigment: components["schemas"]["NoticePigment"];
             scope?: components["schemas"]["NoticeScope"] | null;
-            /**
-             * Since
-             * @description How long the condition has held, as an instant. Null while it is not known. Typed as an instant rather than a string so it is serialized the way every other instant in this document is: one spelling per document, not two.
-             */
-            since?: string | null;
+            /** @description How long the condition has held, as an instant. Null while it is not known. Typed as an instant rather than a string so it is serialized the way every other instant in this document is: one spelling per document, not two. */
+            since?: components["schemas"]["WireInstant"] | null;
             /**
              * Stillworks
              * @description The capabilities that remain. Never empty unless the whole product is down, because a notice that says only what broke leaves the reader unable to act.
@@ -3887,12 +3844,8 @@ export interface components {
          * @description A span to declare off.
          */
         OffPlanCreateRequest: {
-            /**
-             * End
-             * Format: date-time
-             * @description When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start.
-             */
-            end: string;
+            /** @description When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start. */
+            end: components["schemas"]["WireInstant"];
             /**
              * Keepframe
              * @description Whether routines still materialize inside the span. False, the default, means no routine materializes inside it: the frame goes with everything else, which is the holiday-abroad reading. True means routines materialize and nothing else does, which is the quiet-week-at-home reading. Editable after the period is declared.
@@ -3904,12 +3857,8 @@ export interface components {
              * @description What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said.
              */
             label?: string | null;
-            /**
-             * Start
-             * Format: date-time
-             * @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary.
-             */
-            start: string;
+            /** @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary. */
+            start: components["schemas"]["WireInstant"];
         };
         /**
          * OffPlanPatchRequest
@@ -3919,11 +3868,8 @@ export interface components {
          *     other, so shortening a holiday by a day is one field rather than a redeclaration.
          */
         OffPlanPatchRequest: {
-            /**
-             * End
-             * @description When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start.
-             */
-            end?: string | null;
+            /** @description When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start. */
+            end?: components["schemas"]["WireInstant"] | null;
             /**
              * Keepframe
              * @description Whether routines still materialize inside the span. False, the default, means no routine materializes inside it: the frame goes with everything else, which is the holiday-abroad reading. True means routines materialize and nothing else does, which is the quiet-week-at-home reading. Editable after the period is declared.
@@ -3934,23 +3880,16 @@ export interface components {
              * @description What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said.
              */
             label?: string | null;
-            /**
-             * Start
-             * @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary.
-             */
-            start?: string | null;
+            /** @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary. */
+            start?: components["schemas"]["WireInstant"] | null;
         };
         /**
          * OffPlanPeriodResponse
          * @description One declared span of time off.
          */
         OffPlanPeriodResponse: {
-            /**
-             * End
-             * Format: date-time
-             * @description When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start.
-             */
-            end: string;
+            /** @description When the period ends, as an instant. NOT inside the period: a period ending at 09:00 leaves 09:00 itself on plan, and another period may begin exactly there. On a 15-minute boundary, and after the start. */
+            end: components["schemas"]["WireInstant"];
             /**
              * Id
              * Format: uuid
@@ -3966,12 +3905,8 @@ export interface components {
              * @description What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said.
              */
             label: string | null;
-            /**
-             * Start
-             * Format: date-time
-             * @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary.
-             */
-            start: string;
+            /** @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary. */
+            start: components["schemas"]["WireInstant"];
         };
         /**
          * OffPlanPeriodsResponse
@@ -4011,8 +3946,7 @@ export interface components {
              */
             attempt: number;
             error?: components["schemas"]["OperationError"] | null;
-            /** Finishedat */
-            finishedAt?: string | null;
+            finishedAt?: components["schemas"]["WireInstant"] | null;
             /**
              * Id
              * Format: uuid
@@ -4026,14 +3960,9 @@ export interface components {
             kind: components["schemas"]["OperationKind"];
             /** Resultrevisionid */
             resultRevisionId?: string | null;
-            /**
-             * Scheduledfor
-             * Format: date-time
-             * @description When this operation became due.
-             */
-            scheduledFor: string;
-            /** Startedat */
-            startedAt?: string | null;
+            /** @description When this operation became due. */
+            scheduledFor: components["schemas"]["WireInstant"];
+            startedAt?: components["schemas"]["WireInstant"] | null;
             /**
              * Statement
              * @description One sentence naming what this status means and what still works. A superseded operation states that a later change of your own displaced it and that a follow-up is running, which is not a failure.
@@ -4115,17 +4044,10 @@ export interface components {
             actualMinutes: number | null;
             /** Blockid */
             blockId: string;
-            /**
-             * Confirmedat
-             * @description When the day this block belongs to was confirmed. Null means the day is unconfirmed, which excludes it from reviews and from learning. Recording an outcome does not confirm a day, and correcting one does not move this instant.
-             */
-            confirmedAt?: string | null;
-            /**
-             * Occurredat
-             * Format: date-time
-             * @description When the block was scheduled.
-             */
-            occurredAt: string;
+            /** @description When the day this block belongs to was confirmed. Null means the day is unconfirmed, which excludes it from reviews and from learning. Recording an outcome does not confirm a day, and correcting one does not move this instant. */
+            confirmedAt?: components["schemas"]["WireInstant"] | null;
+            /** @description When the block was scheduled. */
+            occurredAt: components["schemas"]["WireInstant"];
             state: components["schemas"]["OutcomeState"];
         };
         /**
@@ -4212,12 +4134,8 @@ export interface components {
         PendingProposalResponse: {
             /** @description The concession this proposal was solved under, or null for an ordinary proposal. It is not persisted until the proposal is approved, and it carries the identifier the approval will persist it under. */
             candidateAdjustment: components["schemas"]["AdjustmentResponse"] | null;
-            /**
-             * Createdat
-             * Format: date-time
-             * @description When that solve landed.
-             */
-            createdAt: string;
+            /** @description When that solve landed. */
+            createdAt: components["schemas"]["WireInstant"];
             /**
              * Inputversion
              * @description The input state this proposal was SOLVED against. Lower than the week's own when the week moved on while the proposal waited, which is permitted: approval is never blocked, and the solve that mutation enqueued proposes any correction.
@@ -4251,16 +4169,8 @@ export interface components {
          *     one.
          */
         PeriodSpan: {
-            /**
-             * End
-             * Format: date-time
-             */
-            end: string;
-            /**
-             * Start
-             * Format: date-time
-             */
-            start: string;
+            end: components["schemas"]["WireInstant"];
+            start: components["schemas"]["WireInstant"];
         };
         /**
          * PinCreateRequest
@@ -4272,12 +4182,8 @@ export interface components {
              * @description The block being pinned, as the week view spells its id.
              */
             blockId: string;
-            /**
-             * Start
-             * Format: date-time
-             * @description Where the block now begins. Its length is unchanged, because a drag moves and does not resize, so the pinned span is this instant plus the block's own duration.
-             */
-            start: string;
+            /** @description Where the block now begins. Its length is unchanged, because a drag moves and does not resize, so the pinned span is this instant plus the block's own duration. */
+            start: components["schemas"]["WireInstant"];
         };
         /**
          * PinResponse
@@ -4289,12 +4195,8 @@ export interface components {
              * @description The block this pin holds, as the week view spells its id.
              */
             blockId: string;
-            /**
-             * Createdat
-             * Format: date-time
-             * @description When the user made this edit.
-             */
-            createdAt: string;
+            /** @description When the user made this edit. */
+            createdAt: components["schemas"]["WireInstant"];
             /**
              * Id
              * Format: uuid
@@ -4464,8 +4366,7 @@ export interface components {
              * Format: uuid
              */
             areaId: string;
-            /** Deadline */
-            deadline?: string | null;
+            deadline?: components["schemas"]["WireInstant"] | null;
             /** Name */
             name: string;
             /** @default active */
@@ -4481,8 +4382,7 @@ export interface components {
          *     ``areaId`` is not a member of this shape and an unknown field is rejected.
          */
         ProjectPatchRequest: {
-            /** Deadline */
-            deadline?: string | null;
+            deadline?: components["schemas"]["WireInstant"] | null;
             /** Name */
             name?: string | null;
             status?: components["schemas"]["ProjectStatus"] | null;
@@ -4498,8 +4398,7 @@ export interface components {
              * @description The one Area this Project sits in. A Project never spans Areas, so time spent on it counts toward exactly this Area.
              */
             areaId: string;
-            /** Deadline */
-            deadline: string | null;
+            deadline: components["schemas"]["WireInstant"] | null;
             /**
              * Id
              * Format: uuid
@@ -4608,11 +4507,7 @@ export interface components {
          * @description What a decline recorded: when it was answered, and until when it stays answered.
          */
         PromotionDeclinedResponse: {
-            /**
-             * Declinedat
-             * Format: date-time
-             */
-            declinedAt: string;
+            declinedAt: components["schemas"]["WireInstant"];
             /**
              * Promotionid
              * @description The pattern that will not be raised again.
@@ -4623,12 +4518,8 @@ export interface components {
              * @description What was recorded, in the words a surface renders.
              */
             statement: string;
-            /**
-             * Suppresseduntil
-             * Format: date-time
-             * @description The instant the pattern may be raised again. Stored rather than derived, so the promise the reader was given is the fact that is kept.
-             */
-            suppressedUntil: string;
+            /** @description The instant the pattern may be raised again. Stored rather than derived, so the promise the reader was given is the fact that is kept. */
+            suppressedUntil: components["schemas"]["WireInstant"];
             /**
              * Suppressionweeks
              * @description How many weeks that is, which is the interval the screen states.
@@ -5108,11 +4999,7 @@ export interface components {
         SessionResponse: {
             /** Email */
             email: string;
-            /**
-             * Expiresat
-             * Format: date-time
-             */
-            expiresAt: string;
+            expiresAt: components["schemas"]["WireInstant"];
             /**
              * Tenantid
              * Format: uuid
@@ -5294,11 +5181,8 @@ export interface components {
              * @description Present only for a gap that belongs to one Area.
              */
             areaId: string | null;
-            /**
-             * Deadline
-             * @description Present only for a gap measured against a deadline.
-             */
-            deadline: string | null;
+            /** @description Present only for a gap measured against a deadline. */
+            deadline: components["schemas"]["WireInstant"] | null;
             /**
              * Honoring
              * @description The constraints respected while computing the gap, so a reader can see what the week was measured against rather than only the number.
@@ -5368,15 +5252,13 @@ export interface components {
             attempts: number;
             /** Eventsread */
             eventsRead: number;
-            /** Lastattemptat */
-            lastAttemptAt?: string | null;
+            lastAttemptAt?: components["schemas"]["WireInstant"] | null;
             /**
              * Lasterror
              * @description Why the last attempt failed, stated with what still works. Null when it succeeded.
              */
             lastError?: string | null;
-            /** Lastsuccessat */
-            lastSuccessAt?: string | null;
+            lastSuccessAt?: components["schemas"]["WireInstant"] | null;
             /** Rejectedcount */
             rejectedCount: number;
             /** Rejections */
@@ -5398,11 +5280,8 @@ export interface components {
              * @description The one Area this task's time counts toward. Required on capture, and declared once: the hours already recorded against a task were attributed to this Area, so moving it would rewrite reported history.
              */
             areaId: string;
-            /**
-             * Deadline
-             * @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.
-             */
-            deadline?: string | null;
+            /** @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused. */
+            deadline?: components["schemas"]["WireInstant"] | null;
             /**
              * Estimateminutes
              * @description Total work in minutes, 1 to 10080. Defaults to 30, which is two grid steps: the smallest estimate the default minimum chunk can divide. Never reduced by recording time against the task; remaining work is the difference.
@@ -5449,11 +5328,8 @@ export interface components {
          *     confirmed outcomes; and an Area is declared once.
          */
         TaskPatchRequest: {
-            /**
-             * Deadline
-             * @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.
-             */
-            deadline?: string | null;
+            /** @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused. */
+            deadline?: components["schemas"]["WireInstant"] | null;
             /**
              * Estimateminutes
              * @description Total work in minutes, 1 to 10080. Defaults to 30, which is two grid steps: the smallest estimate the default minimum chunk can divide. Never reduced by recording time against the task; remaining work is the difference.
@@ -5493,16 +5369,10 @@ export interface components {
              * @description The one Area this task's time counts toward. Required on capture, and declared once: the hours already recorded against a task were attributed to this Area, so moving it would rewrite reported history.
              */
             areaId: string;
-            /**
-             * Completedat
-             * @description When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read.
-             */
-            completedAt: string | null;
-            /**
-             * Deadline
-             * @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused.
-             */
-            deadline: string | null;
+            /** @description When this task was completed, null otherwise. A dropped task has no instant: nothing reports one, and a completion is what reports read. */
+            completedAt: components["schemas"]["WireInstant"] | null;
+            /** @description When the work is due, or null for no deadline, which is the default. A deadline is read by the feasibility probe rather than enforced here: a task with no capacity before it is reported, never refused. */
+            deadline: components["schemas"]["WireInstant"] | null;
             /**
              * Eligibleforsolving
              * @description Whether the next solve may place this task: open, with work left. A captured task is eligible immediately.
@@ -5711,34 +5581,18 @@ export interface components {
          * @description A half-open span of instants, as a request body carries one.
          */
         TimeRangeBody: {
-            /**
-             * End
-             * Format: date-time
-             * @description When it ended, excluded. Carries a UTC offset.
-             */
-            end: string;
-            /**
-             * Start
-             * Format: date-time
-             * @description When it began. Carries a UTC offset.
-             */
-            start: string;
+            /** @description When it ended, excluded. Carries a UTC offset. */
+            end: components["schemas"]["WireInstant"];
+            /** @description When it began. Carries a UTC offset. */
+            start: components["schemas"]["WireInstant"];
         };
         /**
          * TimeRangeResponse
          * @description A half-open span of instants, as a response carries one.
          */
         TimeRangeResponse: {
-            /**
-             * End
-             * Format: date-time
-             */
-            end: string;
-            /**
-             * Start
-             * Format: date-time
-             */
-            start: string;
+            end: components["schemas"]["WireInstant"];
+            start: components["schemas"]["WireInstant"];
         };
         /**
          * TimeWindowRequest
@@ -5896,12 +5750,8 @@ export interface components {
              * @description Whether this check found no gap. Weaker than feasible: it says the week could not be proven impossible.
              */
             capacityIsSufficient: boolean;
-            /**
-             * Computedat
-             * Format: date-time
-             * @description The instant the assembly this verdict was computed from was stamped with, so two verdicts over one assembly report one instant.
-             */
-            computedAt: string;
+            /** @description The instant the assembly this verdict was computed from was stamped with, so two verdicts over one assembly report one instant. */
+            computedAt: components["schemas"]["WireInstant"];
             /**
              * Discretionaryminutes
              * @description The week's denominator over its whole span, carried so a surface renders the figure the verdict was computed against rather than re-deriving it.
@@ -5939,12 +5789,8 @@ export interface components {
         WeekApprovedResponse: {
             /** @description The concession this approval persisted, or null for an ordinary approval. The next solve of the week honors it without being asked again. */
             adjustment: components["schemas"]["AdjustmentResponse"] | null;
-            /**
-             * Approvedat
-             * Format: date-time
-             * @description When the user assented.
-             */
-            approvedAt: string;
+            /** @description When the user assented. */
+            approvedAt: components["schemas"]["WireInstant"];
             /**
              * Inputversion
              * @description The week's input version after this approval bumped it. A solve already running against the previous value fails its conditional write and is superseded.
@@ -6121,22 +5967,15 @@ export interface components {
              * @description The approved concessions this plan was solved under, so a week never reads as feasible for a reason the user cannot see.
              */
             adjustments: components["schemas"]["AdjustmentResponse"][];
-            /**
-             * Approvedat
-             * @description When the user assented. Null for an applied revision.
-             */
-            approvedAt: string | null;
+            /** @description When the user assented. Null for an applied revision. */
+            approvedAt: components["schemas"]["WireInstant"] | null;
             /**
              * Autoapplied
              * @description What this revision added without asking, by block title. Empty for an approved revision, whose changes the user assented to, and empty for the first plan a week ever had, which added everything.
              */
             autoApplied: string[];
-            /**
-             * Createdat
-             * Format: date-time
-             * @description When the revision was appended.
-             */
-            createdAt: string;
+            /** @description When the revision was appended. */
+            createdAt: components["schemas"]["WireInstant"];
             /**
              * Id
              * Format: uuid
@@ -6307,13 +6146,8 @@ export interface components {
             active: boolean;
             /** Collecting */
             collecting: number;
-            /**
-             * Createdat
-             * Format: date-time
-             */
-            createdAt: string;
-            /** Fittedat */
-            fittedAt: string | null;
+            createdAt: components["schemas"]["WireInstant"];
+            fittedAt: components["schemas"]["WireInstant"] | null;
             /** Origin */
             origin: string;
             /** Ready */
@@ -6330,6 +6164,8 @@ export interface components {
             versions: components["schemas"]["WeightSetResponse"][];
         };
         WireDecimal: number;
+        /** Format: date-time */
+        WireInstant: string;
         /**
          * WireSpan
          * @description A half-open interval, ``[start, end)``, as every span on the wire is spelled.
@@ -6340,18 +6176,10 @@ export interface components {
          *     transition is 23 or 25 hours long and a reader that needs the figure takes the difference.
          */
         WireSpan: {
-            /**
-             * End
-             * Format: date-time
-             * @description When the span ends. NOT inside it.
-             */
-            end: string;
-            /**
-             * Start
-             * Format: date-time
-             * @description When the span begins. Inside it.
-             */
-            start: string;
+            /** @description When the span ends. NOT inside it. */
+            end: components["schemas"]["WireInstant"];
+            /** @description When the span begins. Inside it. */
+            start: components["schemas"]["WireInstant"];
         };
         /**
          * WriteTargetResponse
