@@ -533,6 +533,22 @@ class TestAStretchAcrossMidnightIsSplitWhereItIsAuthored:
 
         assert len(a_preference(windows=abutting).windows) == 4
 
+    @pytest.mark.parametrize(
+        "end", [time(23, 30), END_OF_DAY], ids=["a time of day", "the end of the day"]
+    )
+    def test_no_accepted_preference_holds_two_windows_with_one_start(self, end: time) -> None:
+        # Why the canonical order's tie-break on the end bound cannot be observed: two windows
+        # that share a start always overlap, whichever end each names, so the pair is refused
+        # before anything reads their order. The coordinate the key sorts in is a consistency
+        # choice rather than a rule, and this is the property that makes it one.
+        with pytest.raises(PreferenceError, match="overlap"):
+            a_preference(
+                windows=(
+                    LocalTimeWindow(start=time(23, 0), end=END_OF_DAY),
+                    LocalTimeWindow(start=time(23, 0), end=end),
+                )
+            )
+
     def test_the_halves_cover_the_authored_stretch_and_no_half_wraps(self) -> None:
         """Every pair of legal bounds, in both orders, including the pair that names nothing.
 
@@ -574,7 +590,7 @@ class TestAStretchAcrossMidnightIsSplitWhereItIsAuthored:
 
         bounds = len(GRID_TIMES)
         splitting = (bounds - 2) * (bounds - 1) // 2
-        assert all(count > 0 for count in reached.values())
+        assert set(reached) == {"one window", "two windows", "refused"}
         assert sum(reached.values()) == bounds * bounds
         assert reached == Counter(
             {
