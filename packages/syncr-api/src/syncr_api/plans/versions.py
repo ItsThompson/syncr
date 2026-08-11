@@ -102,8 +102,7 @@ class WeekInputVersionRepository(TenantScopedRepository):
 
         **Every caller that takes this row must take it FIRST.** The row is the one lock this api
         holds across several writes, so a caller that touches another table before it inverts the
-        order against every caller that does not, and two such transactions deadlock. Ticket 1423
-        carries the one inversion that exists today.
+        order against every caller that does not, and two such transactions deadlock.
 
         **A missing row is not locked and needs no lock**, which is the opposite of
         :meth:`holds_version`'s reading of the same absence and is right for the same reason. This
