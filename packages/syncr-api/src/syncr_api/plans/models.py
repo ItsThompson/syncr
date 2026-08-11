@@ -64,8 +64,14 @@ class PlanRevision(Base, TenantScoped):
     ``document`` holds the full week and is the authority. ``iso_week`` is re-derived from
     it on write, so a scalar cannot drift from the document it describes. The remaining
     columns are facts about the write rather than descriptions of the document: which
-    weights produced it, which input version it was solved against, what caused it, and
-    whether the user assented.
+    weight set was in force, which input version it was solved against, what caused it,
+    and whether the user assented.
+
+    ``weight_set_version`` is the set in force when the row was written rather than a
+    statement about what chose the arrangement. A write that evaluated no objective
+    records the active version too, and nothing weighed the week it describes.
+    ``objective_breakdown`` is what tells those apart: it is empty exactly when the write
+    evaluated no objective, and otherwise carries a cost for every objective term.
     """
 
     __tablename__ = PLAN_REVISIONS_TABLE
