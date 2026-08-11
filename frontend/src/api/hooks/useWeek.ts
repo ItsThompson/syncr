@@ -12,11 +12,11 @@
  * per week without a key, so a second press hands back the same operation rather than queueing a second one. The
  * week's own key is invalidated on the way out, because the operation the response carries is a field of the view.
  *
- * THE PAYLOAD'S TYPE IS THE ONE THE CLIENT HANDS BACK, not the schema's own name for it, and the two differ. A field
- * whose type is exactly `null` does not survive the generated client's response mapping: `proposal` and `verdict` are
- * declared on `WeekViewResponse` and are absent from what `client.GET` answers with, while `pins: null[]` and
- * `conflicts: null[]` survive because an array of nothing is still an array. Naming the schema would type the hook
- * against two fields no caller can read. They arrive the moment either stops being `null`. */
+ * THE PAYLOAD'S TYPE IS THE ONE THE CLIENT HANDS BACK rather than the schema's own name for it, because the two are
+ * not the same type in general. A field whose type is exactly `null` does not survive the generated client's response
+ * mapping, since an absent key is what `openapi-fetch` maps `null` to, so naming `WeekViewResponse` can type a hook
+ * against a field no caller can read. Deriving the type from the call is true whatever the document declares, and
+ * `lint:contract` is what holds the difference at zero rather than merely at zero today. */
 
 import useSWR, { useSWRConfig } from "swr";
 
