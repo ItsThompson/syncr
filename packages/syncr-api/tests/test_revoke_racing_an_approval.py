@@ -509,7 +509,7 @@ async def revisions_of(
         return list(found)
 
 
-def the_version_row_taken_for_update(statement: str | None) -> bool:
+def was_a_wait_for_the_version_row(statement: str | None) -> bool:
     """Whether the observed wait was for the version row rather than for a table's own write.
 
     This is what the ordering decides. With the version row taken first, the side that arrives
@@ -556,7 +556,7 @@ class TestARevocationRacingAnApproval:
         ]
         # The wait itself, read out of pg_stat_activity: the approval was held at the version row
         # and not at a write of its own.
-        assert [the_version_row_taken_for_update(one) for one in watched.blocked] == [True]
+        assert [was_a_wait_for_the_version_row(one) for one in watched.blocked] == [True]
 
         stored = await concessions_of(sessions, owner.tenant_id)
         assert [(one.id, one.delta_minutes) for one in stored] == [
@@ -600,7 +600,7 @@ class TestARevocationRacingAnApproval:
             "the revocation removed the concession",
             "the revocation committed",
         ]
-        assert [the_version_row_taken_for_update(one) for one in watched.blocked] == [True]
+        assert [was_a_wait_for_the_version_row(one) for one in watched.blocked] == [True]
 
         assert await concessions_of(sessions, owner.tenant_id) == []
         assert await version_of(sessions, owner.tenant_id) == 3
