@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 
 import { NARROWING_MODULE, shippedNotices, type NoticeLiteral } from "../../testing/noticeLiterals";
 import { captureRefusedNotice } from "../../app/capture/refusals";
+import { captureNotSavedNotice } from "../../app/notices/refusedWrites";
 import { completionRefusedNotice, taskCompletedNotice } from "../backlog/notices";
 import { rejectionNotice, staleFeedNotice } from "../settings/sourceNotices";
 import { staleFeedNotices } from "../today/staleFeeds";
@@ -98,6 +99,10 @@ const CASES: readonly { readonly case: string; readonly notice: Notice }[] = [
     notice: backfillSettledNotice("2026-02-09", "3 days confirmed.", 0),
   },
   { case: "a capture the api refused", notice: captureRefusedNotice(REFUSED) },
+  {
+    case: "a capture the api refused after the form that asked for it had gone",
+    notice: captureNotSavedNotice(REFUSED),
+  },
   { case: "a task completed elsewhere", notice: taskCompletedNotice("Past papers") },
   { case: "a completion the api refused", notice: completionRefusedNotice(REFUSED) },
   {
@@ -175,6 +180,15 @@ describe("every case the product raises", () => {
     expect([panel.volume, inline.volume]).toEqual(["panel", "inline"]);
   });
 
+  /* THE ONE THE CLIENT COMPOSES ITSELF. A write the reader's own surface did not survive to receive takes the
+   * loudest non-blocking volume, because it is the only one that outlives the screen they have moved on to, and
+   * oxide because a durable write did not happen: it is the assignment the write target's expiry already carries. */
+  it("states a write that did not happen in oxide, in the top bar, wherever the reader now is", () => {
+    const notice = captureNotSavedNotice(REFUSED);
+
+    expect([notice.volume, notice.pigment]).toEqual(["banner", "oxide"]);
+  });
+
   it("offers at most one repair per notice, so a reader is never asked to choose between two", () => {
     for (const { notice } of CASES)
       expect(notice.action === null || notice.action.href).toBeTruthy();
@@ -189,7 +203,7 @@ describe("every notice the application declares, found by parsing for the shape"
      * suffix case records why that matters -- ">= 2 passed with three suffixes, and would keep passing if the walk
      * narrowed to two, which is how the systemd units came to be invisible". A notice added or removed is a
      * deliberate change and reddens here with the figure. */
-    expect(declared).toHaveLength(18);
+    expect(declared).toHaveLength(19);
     expect(unreadable(declared, (one) => one.volume)).toEqual([]);
     for (const one of declared) expect(VOLUMES).toContain(one.volume);
   });
@@ -218,6 +232,7 @@ describe("every notice the application declares, found by parsing for the shape"
      * words this product wrote. */
     expect(files).toEqual([
       "app/capture/refusals.ts",
+      "app/notices/refusedWrites.ts",
       "routes/areas/components/ResidualNotices.tsx",
       "routes/backlog/notices.ts",
       "routes/settings/sourceNotices.ts",
