@@ -53,7 +53,11 @@ class Written:
 async def write_the_evidence(
     context: WorkerContext, principal: Principal, *, now: datetime
 ) -> Written:
-    """Declare, plan, solve, record, confirm, pin and concede, in that order."""
+    """Declare, plan, solve, pin, record, confirm and concede, in that order.
+
+    The pin is before the outcomes because that is the order a week is lived in: a placement is
+    agreed to while the day is still ahead, and what happened in it is answered for afterwards.
+    """
     database = context.database
     week = history.the_week_behind(now)
 
@@ -84,14 +88,14 @@ async def write_the_evidence(
             occurrences = await _occurrences(session, principal, week, declarations.habit_id)
 
     async with database.sessionmaker() as session, session.begin():
+        pinned = not await history.already_pinned(session, principal.tenant_id, week)
+        if pinned:
+            await history.hold_a_pin(session, principal, week, occurrences[0])
+
+    async with database.sessionmaker() as session, session.begin():
         recorded = await history.record_what_happened(session, principal, week, occurrences)
     async with database.sessionmaker() as session, session.begin():
         confirmed = await history.confirm_the_days(session, principal, occurrences[: len(recorded)])
-
-    async with database.sessionmaker() as session, session.begin():
-        pinned = not await history.already_pinned(session, principal.tenant_id, week)
-        if pinned:
-            await history.hold_a_pin(session, principal, week, occurrences[-1])
 
     async with database.sessionmaker() as session, session.begin():
         await history.concede_a_floor_breach(

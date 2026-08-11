@@ -230,9 +230,11 @@ class TestTheEvidenceTheFingerprintReads:
         assert not [one for one in before.cursors if one.key.startswith(key)]
         cursors = [one for one in after.cursors if one.key.startswith(key)]
         assert len(cursors) == 1, cursors
-        assert cursors[0].index != 0, cursors[0]
-        assert cursors[0].confirmed_completions > 0, cursors[0]
-        assert cursors[0].variant == VARIANTS[cursors[0].index]
+        # Exactly one, and the exact figures rather than "not zero": the seeder records an outcome
+        # for every occurrence the week holds, so a presumption it did not state cannot move this.
+        assert cursors[0].confirmed_completions == 1, cursors[0]
+        assert cursors[0].index == 1, cursors[0]
+        assert cursors[0].variant == VARIANTS[1], cursors[0]
         assert written.placed > 0 and written.recorded > 0 and written.confirmed > 0
 
         reading = _as_the_ops_package_reads_it(after, tmp_path / "fingerprint.json")

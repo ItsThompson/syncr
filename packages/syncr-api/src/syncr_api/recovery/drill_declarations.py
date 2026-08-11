@@ -66,9 +66,12 @@ VARIANTS: Final = ("Chest", "Back", "Legs", "Shoulders")
 SLOT_TIME: Final = time(12, 0)
 SLOT_MINUTES: Final = 60
 
-# One occurrence a day, so the solve places one in every slot the week holds and which day the
-# evidence is confirmed on is a choice rather than a lottery.
-OCCURRENCES_PER_WEEK: Final = 7
+# Two occurrences, which is what makes the cursor's arithmetic a property of this seeder rather
+# than of the solver's packing. Confirming a day settles every block in it, including one nobody
+# recorded, so a week holding more occurrences than the two this seeder states an outcome for would
+# put the cursor wherever the presumptions landed. With two, one completion is confirmed and one
+# skip is, whichever days they were placed on.
+OCCURRENCES_PER_WEEK: Final = 2
 
 # The slot's duration falls inside this range, which is what makes the occurrence eligible for it.
 HABIT_MIN_MINUTES: Final = 45
