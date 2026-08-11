@@ -176,18 +176,22 @@ def test_the_published_vocabulary_is_exactly_what_the_hierarchy_declares(
 
 
 def test_every_type_the_sources_declare_is_one_the_hierarchy_walk_reaches(app: FastAPI) -> None:
-    # The application is built rather than merely imported, because that is what the export script
-    # does and the walk only reaches a subclass whose module something imported. Without it, this
-    # crossing would report every type outside `core.errors` as unreachable.
-    assert app.routes, "no router is mounted, so the walk sees only the module this test imports"
+    # The application is built rather than merely imported, so the crossing does not depend on what
+    # `conftest.py` happens to import. The walk reaches a subclass only in a module something
+    # imported, and both published documents are generated from a built application, so this is the
+    # state the crossing has to be taken in.
+    assert app.routes, (
+        "no router is mounted, so the walk is taken over an application that is not one"
+    )
 
     walked = set(declared_problem_types())
     read = types_declared_in_the_sources()
 
     assert walked == read, (
         "declared in a source no module imports, so no document can carry it: "
-        f"{sorted(read - walked)}. Walked but declared in none of this package's sources: "
-        f"{sorted(walked - read)}."
+        f"{sorted(read - walked)}. Walked but declared in none of this package's sources, so "
+        "either the class is declared outside this package or its `type` is not the plain string "
+        f"literal this reading requires: {sorted(walked - read)}."
     )
 
 
