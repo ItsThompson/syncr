@@ -171,6 +171,22 @@ describe("a terminal status arriving over the stream", () => {
     expect(result.current.operation?.id).toBe(SUCCESSOR_ID);
   });
 
+  it("stops at a superseded operation that names no successor, rather than following nothing", async () => {
+    /* The status word and the successor are two separate columns, so the pair can arrive with the second one
+     * empty. There is nothing to follow, so the record IS the answer: the hook holds it and reads the server's
+     * own currency, rather than waiting on an operation nobody named. */
+    installWeek(buildWeekView({ operation: buildOperation({ status: "running" }) }));
+    const stream = installStream();
+    const { result } = await mountConnected(stream);
+    await waitFor(() => expect(result.current.operation?.id).toBe(OPERATION_ID));
+
+    stream.push("operation", buildOperation({ status: "superseded", supersededBy: null }));
+
+    await waitFor(() => expect(result.current.operation?.status).toBe("superseded"));
+    expect(result.current.planCurrency).toBe("current");
+    expect(result.current.failure).toBeNull();
+  });
+
   it("follows a chain two hops long, because a burst of edits produces one", async () => {
     installWeek(buildWeekView({ operation: buildOperation({ status: "running" }) }));
     const stream = installStream();
