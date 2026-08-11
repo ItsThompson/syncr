@@ -171,6 +171,12 @@ class ConcessionService:
         """Remove one concession, invalidate the week, and ask for a plan without it."""
         require_scope(principal, Scope.PLAN_WRITE)
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)
+        # Before either table is touched. `hold` states the rule: whoever takes this row takes it
+        # first, and a caller that writes another table before it deadlocks with one that does not.
+        # It orders the two transactions rather than merging them. An approval waiting here commits
+        # afterwards and re-creates the concession it was solved under, and a week with no version
+        # row is not locked at all.
+        await self._current.hold(week)
         found = await self._adjustments.find(adjustment_id)
         if found is None or found.iso_week != week:
             raise NotFound(f"No {CONCESSION_RESOURCE} of that week matches that identifier.")
