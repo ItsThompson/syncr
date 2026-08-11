@@ -53,7 +53,6 @@ from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.episodes import caught_early_ratio, episodes
 from syncr_api.plans.injection import build_verdict_recorder, build_week_assembler
 from syncr_api.plans.models import PlanRevision
-from syncr_api.plans.placements import WeekPlacements
 from syncr_api.plans.production import WeekProducer
 from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
@@ -105,7 +104,6 @@ if TYPE_CHECKING:
     from syncr_api.plans.records import VerdictEventRecord
     from syncr_api.solving.records import OperationRecord
     from syncr_domain.identifiers import TenantId
-    from syncr_domain.weeks import IsoWeek as IsoWeekType
 
 pytestmark = pytest.mark.integration
 
@@ -208,29 +206,15 @@ async def declare_the_minimum(
         await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
 
 
-class StoredPlacements:
-    """No longer needed: production wires the real reader.
-
-    Kept so the fixture below does not need to be removed from nine test signatures in this
-    commit. The fixture itself is a no-op now.
-    """
-
-    def __init__(self, revisions: PlanRepository) -> None:
-        self._revisions = revisions
-
-    async def read(self, iso_week: IsoWeekType, span: object = None) -> WeekPlacements:
-        latest = await self._revisions.latest(iso_week)
-        return WeekPlacements(live_plan=None if latest is None else plan_document(latest.document))
-
-
-def dispatch_reading_the_live_plan(
+def a_dispatch(
     context: WorkerContext, tenant_id: TenantId, clock: Ticking, **overrides: Any
 ) -> SolveDispatch:
-    """The dispatch as the runner composes it, with the live plan supplied.
+    """The dispatch as the runner composes it, with nothing of the pipeline replaced.
 
-    ``build_week_assembler`` is monkeypatched inside the dispatch's own module rather than a second
-    assembler being composed here, so the pipeline under test is the production one with one seam
-    changed.
+    The week is assembled through ``build_week_assembler``, so the live plan a candidate is
+    classified against is the one the placement seam reads back out of the revision table. A case
+    that needs the solver to answer with a stated document substitutes ``solve`` at the module
+    boundary and leaves the seam alone.
     """
     return SolveDispatch(
         context.database,
@@ -239,15 +223,6 @@ def dispatch_reading_the_live_plan(
         debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
         **overrides,
     )
-
-
-@pytest.fixture
-def live_plan_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No-op: the production injection now wires StoredPlacements.
-
-    Kept so the nine tests that declare this fixture in their signature do not need to be
-    edited in this commit. The fixture was a monkeypatch of the one seam production now holds.
-    """
 
 
 async def requested(
@@ -309,9 +284,7 @@ async def a_solve(
     """One request, claimed and dispatched, which is what one tick of the duty does."""
     await requested(sessions, owner, clock)
     claim = await claimed(sessions, owner, clock)
-    return await dispatch_reading_the_live_plan(context, owner.tenant_id, clock, **overrides).run(
-        claim, WEEK
-    )
+    return await a_dispatch(context, owner.tenant_id, clock, **overrides).run(claim, WEEK)
 
 
 class TestASolveOfAWeekWithNoPlan:
@@ -321,7 +294,6 @@ class TestASolveOfAWeekWithNoPlan:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
     ) -> None:
         """A missing version row is a MISMATCH, and this is what that costs and what it buys.
 
@@ -348,16 +320,13 @@ class TestASolveOfAWeekWithNoPlan:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
     ) -> None:
         """Which is what makes failing closed on a missing row cost one solve, not the week."""
         await declare_the_minimum(sessions, owner.tenant_id)
         await a_solve(sessions, context, owner, clock)
 
         claim = await claimed(sessions, owner, clock)
-        finished = await dispatch_reading_the_live_plan(context, owner.tenant_id, clock).run(
-            claim, WEEK
-        )
+        finished = await a_dispatch(context, owner.tenant_id, clock).run(claim, WEEK)
 
         assert finished.status == SUCCEEDED
         assert finished.input_version == await version_of(sessions, owner)
@@ -368,7 +337,6 @@ class TestASolveOfAWeekWithNoPlan:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
     ) -> None:
         """A coalesced burst must not waste a solve, and this is the mechanism that decides it.
 
@@ -384,9 +352,7 @@ class TestASolveOfAWeekWithNoPlan:
         at_load = await version_of(sessions, owner)
 
         claim = await claimed(sessions, owner, clock)
-        finished = await dispatch_reading_the_live_plan(context, owner.tenant_id, clock).run(
-            claim, WEEK
-        )
+        finished = await a_dispatch(context, owner.tenant_id, clock).run(claim, WEEK)
 
         assert finished.input_version == at_load
         assert finished.status == SUCCEEDED
@@ -397,7 +363,6 @@ class TestASolveOfAWeekWithNoPlan:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
     ) -> None:
         """The condition the projection and the version bump are both under, from its false side.
 
@@ -423,7 +388,6 @@ class TestAVersionMismatchDiscardsBeforeAnyWrite:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
     ) -> None:
         """The guard, driven at the only moment it can fire: after the load and before the write.
 
@@ -434,7 +398,7 @@ class TestAVersionMismatchDiscardsBeforeAnyWrite:
         await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         claim = await claimed(sessions, owner, clock)
-        dispatch = dispatch_reading_the_live_plan(context, owner.tenant_id, clock)
+        dispatch = a_dispatch(context, owner.tenant_id, clock)
         loaded = await dispatch._loaded(claim, WEEK)
         await bump(sessions, owner, clock)
         solved = await dispatch._solved(loaded, WEEK)
@@ -453,13 +417,12 @@ class TestAVersionMismatchDiscardsBeforeAnyWrite:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
     ) -> None:
         await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         claim = await claimed(sessions, owner, clock)
-        dispatch = dispatch_reading_the_live_plan(context, owner.tenant_id, clock)
+        dispatch = a_dispatch(context, owner.tenant_id, clock)
         loaded = await dispatch._loaded(claim, WEEK)
         await bump(sessions, owner, clock)
         solved = await dispatch._solved(loaded, WEEK)
@@ -484,7 +447,6 @@ class TestFailure:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         await declare_the_minimum(sessions, owner.tenant_id)
@@ -502,7 +464,6 @@ class TestFailure:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The producer ``failed_input_snapshot`` has been waiting for.
@@ -526,7 +487,6 @@ class TestFailure:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """So the horizon is never left with a hole, and the history says which path produced it."""
@@ -545,7 +505,6 @@ class TestFailure:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # The plan it has is better than a derived-only one, and it is still projected.
@@ -582,7 +541,6 @@ class TestTheTwoShapesThatUsedToWedgeTheWeek:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
     ) -> None:
         await declare_the_minimum(sessions, owner.tenant_id)
         await materialized(sessions, owner, clock)
@@ -625,9 +583,7 @@ async def spent(
     while finished.status == PENDING:
         clock.advance(timedelta(hours=1))
         claim = await claimed(sessions, owner, clock)
-        finished = await dispatch_reading_the_live_plan(context, owner.tenant_id, clock).run(
-            claim, WEEK
-        )
+        finished = await a_dispatch(context, owner.tenant_id, clock).run(claim, WEEK)
     return finished
 
 
@@ -684,7 +640,6 @@ class TestTheAdoptionBranch:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         await declare_the_minimum(sessions, owner.tenant_id)
@@ -705,7 +660,6 @@ class TestTheAdoptionBranch:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # V3 and V5: the live plan IS a solve input, so appending a revision has to move the counter
@@ -725,7 +679,6 @@ class TestTheAdoptionBranch:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # The true side of the condition whose false side the case above drives. Both are the same
@@ -746,7 +699,6 @@ class TestTheAdoptionBranch:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # What is stored is the plan of record, so a document that could be written and not read
@@ -768,7 +720,6 @@ class TestTheAdoptionBranch:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The authority rule, end to end, which is what the placement seam makes unreachable today.
@@ -891,7 +842,6 @@ class TestALeaseExpiringMidSolve:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         await declare_the_minimum(sessions, owner.tenant_id)
@@ -910,7 +860,6 @@ class TestALeaseExpiringMidSolve:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # The containment half, which is the important one: the guard is what stops the write, so a
@@ -931,7 +880,6 @@ class TestALeaseExpiringMidSolve:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The reporting half, which is what this pass fixed.
@@ -992,7 +940,7 @@ async def a_solve_whose_lease_expires(
     """
     await requested(sessions, owner, clock)
     claim = await claimed(sessions, owner, clock)
-    dispatch = dispatch_reading_the_live_plan(context, owner.tenant_id, clock)
+    dispatch = a_dispatch(context, owner.tenant_id, clock)
     loaded = await dispatch._loaded(claim, WEEK)
     solved = await dispatch._solved(loaded, WEEK)
 
@@ -1030,7 +978,6 @@ class TestTheVerdictTransition:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """One row, and it names the operation that produced it: the cause a reader can follow.
@@ -1059,7 +1006,6 @@ class TestTheVerdictTransition:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """``VE5`` at the boundary the guard draws: no revision, no proposal, and no transition.
@@ -1072,7 +1018,7 @@ class TestTheVerdictTransition:
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
         await requested(sessions, owner, clock)
         claim = await claimed(sessions, owner, clock)
-        dispatch = dispatch_reading_the_live_plan(context, owner.tenant_id, clock)
+        dispatch = a_dispatch(context, owner.tenant_id, clock)
         loaded = await dispatch._loaded(claim, WEEK)
         await bump(sessions, owner, clock)
         solved = await dispatch._solved(loaded, WEEK)
@@ -1090,7 +1036,6 @@ class TestTheVerdictTransition:
         context: WorkerContext,
         owner: UserRecord,
         clock: Ticking,
-        live_plan_is_read: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """``VE4`` and ``VE9`` together, which is the pair ``18``'s trace is drawn from.
