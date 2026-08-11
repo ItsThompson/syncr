@@ -90,6 +90,7 @@ from tests.plan_documents import (
 if TYPE_CHECKING:
     from syncr_api.core.settings import ServiceSettings
     from syncr_api.solving.config import OperationKind, OperationStatus
+    from syncr_domain.identifiers import AreaId
 
 # Monday of 2026-W07 in London, where local midnight and UTC midnight coincide.
 MONDAY = datetime(2026, 2, 9, tzinfo=UTC)
@@ -592,23 +593,37 @@ def test_a_slot_resolves_the_name_of_the_area_it_is_charged_to() -> None:
     assert slot_context(a_slot(area_id=FITNESS), AREA_NAMES) == SlotContext(area_name="Fitness")
 
 
-def test_the_document_resolves_every_one_of_its_slots_against_the_names_it_was_read_with() -> None:
-    """Two slots, two Areas, one mapping: the read that answers one gap answers all of them."""
+def test_the_document_renders_one_response_slot_per_document_slot_in_order() -> None:
+    """The pairing alone. Which name each slot resolved its own Area to is the case below."""
     rendered = PlanDocumentResponse.of(a_document_holding_two_slots(), area_names=AREA_NAMES)
 
     assert [one.area_id for one in rendered.empty_slots] == [CAREER, FITNESS]
 
 
-def test_a_slot_charged_to_an_area_the_read_did_not_name_is_refused_rather_than_answered() -> None:
-    """The Area nothing names is the SECOND slot's, so a resolution that stopped at the first passes
-    this only by resolving each one.
+@pytest.mark.parametrize(
+    ("named", "unnamed"),
+    [
+        pytest.param(FITNESS, CAREER, id="the-first-slots-area-is-the-unnamed-one"),
+        pytest.param(CAREER, FITNESS, id="the-second-slots-area-is-the-unnamed-one"),
+    ],
+)
+def test_a_slot_charged_to_an_area_the_read_did_not_name_is_refused_rather_than_answered(
+    named: AreaId, unnamed: AreaId
+) -> None:
+    """Driven at both slot positions, which is what establishes that every slot resolves its own.
+
+    A resolution that stopped after the first slot, or that reused the first slot's context for the
+    rest, passes one of these parameters and fails the other. Either case alone could not tell those
+    apart from a resolution that ran per slot.
 
     A refusal rather than a blank: a document and the Areas beside it come from one transaction over
     a table no route removes a row from, so the two failing to cover each other is a defect in what
     the response was composed from rather than a gap a person could read past.
     """
-    with pytest.raises(SlotContextRejected, match=str(FITNESS)):
-        PlanDocumentResponse.of(a_document_holding_two_slots(), area_names={CAREER: "Career"})
+    with pytest.raises(SlotContextRejected, match=str(unnamed)):
+        PlanDocumentResponse.of(
+            a_document_holding_two_slots(), area_names={named: AREA_NAMES[named]}
+        )
 
 
 # --------------------------------------------------------------------------------

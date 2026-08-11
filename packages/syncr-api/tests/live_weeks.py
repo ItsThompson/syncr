@@ -85,6 +85,9 @@ UNPLACEABLE = "F&F Past Papers"
 # Roughly the block count section 19's latency budget is stated over.
 BLOCKS_IN_A_FULL_WEEK = 210
 
+# One slot per evening is what `append_a_week_with_empty_slots` lays out, and a week has seven.
+DAYS_IN_A_WEEK = 7
+
 AN_HOUR = 60
 
 
@@ -528,7 +531,11 @@ def append_a_week_with_empty_slots(
     Appended rather than solved: which slots a solve leaves empty is the materializer's business,
     and what a suite reading a week back needs is a plan holding a stated number of them, charged to
     an Area the tenant really declared.
+
+    One slot per evening, so a week holds at most seven: an eighth would be dated past the week it
+    claims to be in, which reads as a stranger defect than the refusal here.
     """
+    assert 0 <= slots <= DAYS_IN_A_WEEK, f"a week has {DAYS_IN_A_WEEK} evenings, so {slots} is not"
 
     async def append() -> None:
         document = a_document(

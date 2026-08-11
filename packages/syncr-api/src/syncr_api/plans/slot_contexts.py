@@ -13,7 +13,9 @@ A slot whose Area the mapping does not name is refused rather than resolved to a
 :class:`syncr_domain.gaps.SlotContext` holds a name rather than an optional one, so there is nothing
 truthful to put in its place, and the two sides come from one transaction over a table no route
 removes a row from: a slot the names do not cover means the plan and the Areas disagree about which
-Areas this tenant has.
+Areas this tenant has. That last premise is held by
+``tests/test_areas_refusal_sentence.py``, which reads the route table off the built app, so the
+engineer who adds a route removing an Area is told that this resolution rests on there being none.
 """
 
 from __future__ import annotations
