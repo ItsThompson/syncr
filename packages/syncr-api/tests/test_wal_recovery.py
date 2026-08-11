@@ -18,7 +18,7 @@ replay:
 The two external tools are behind :class:`ops.process.Run`. The fake here LEAVES THE FILES the real
 ones would leave, because what this path is about is which file exists under which name: a fake that
 only recorded argv would pass over a chain that wrote nothing. The whole path with real gpg, real
-rclone, a real bucket and a real recovery is driven by hand; ``changesets/`` carries that run.
+rclone, a real bucket and a real recovery is driven by hand, outside this suite.
 """
 
 from __future__ import annotations
@@ -34,7 +34,8 @@ import pytest
 from ops import fetch_segment as staging
 from ops import naming, ship
 from ops.config import SCRATCH_DIR, WAL_RESTORE_DIR
-from ops.prepare import FILE_MODE
+from ops.fetch import GNUPG_HOME
+from ops.prepare import DIRECTORY_MODE, FILE_MODE
 from ops.process import CommandFailed, Result
 
 from tests.test_deploy_topology import resolved, services
@@ -66,6 +67,10 @@ LIVE_SERVICE: Final = "postgres"
 # The settings Postgres compares between the server that WROTE the WAL and the instance replaying
 # it. An instance configured below any of them aborts at startup rather than replaying, naming the
 # setting: measured, with the drill's own `max_connections` at 20 against the live database's 50.
+#
+# The crossing iterates the ones the LIVE service declares, which today is `max_connections` alone,
+# so four of these five are unexercised until that file declares one. That is the construction
+# rather than an omission: a fifth declared there is picked up with no edit here.
 COMPARED_SETTINGS: Final = (
     "max_connections",
     "max_worker_processes",
@@ -106,6 +111,8 @@ class FakeTools:
     ) -> Result:
         self.calls.append(tuple(argv))
         step = _step(argv)
+        # `half_written` is a failure of the decompression step and carries its own raise below, so
+        # it wins over `fails_at`: setting both would otherwise fail twice over.
         if step is not None and step == self.fails_at and not self.half_written:
             raise CommandFailed(f"{argv[0]} exited 1: driven to fail at {step}")
         if step == "listing":
@@ -149,6 +156,16 @@ def _step(argv: Sequence[str]) -> str | None:
         # directions of `copyto` are told apart.
         return "upload" if _names_a_remote(argv[3]) else "download"
     return None
+
+
+def _reached(run: FakeTools) -> list[str]:
+    """Which steps of the path one run actually got to, in order.
+
+    Read in the failure cases as well as the happy one, because what a failure case has to establish
+    is that it failed at the step it names: a fake that failed earlier would leave the same tree
+    behind for a different reason and the case would pass over a run that had fetched nothing.
+    """
+    return [found for found in (_step(call) for call in run.calls) if found is not None]
 
 
 def _names_a_remote(argument: str) -> bool:
@@ -220,13 +237,19 @@ class TestOneSegmentPerInvocation:
             "wal/000000010000000000000003",
             "000000010000000000000003.gz.gpg",
             "000000010000000000000003 ",
+            "000000010000000000000003\n",
             "00000001000000000000000g",
             "000000010000000000000003.backup",
             "",
         ],
     )
     def test_it_refuses_a_name_it_would_have_to_join_to_a_path(self, name: str) -> None:
-        """Including the OBJECT name, which is the plausible mistake: this step adds the suffix."""
+        """Including the OBJECT name, which is the plausible mistake: this step adds the suffix.
+
+        The trailing NEWLINE row is the one an anchored pattern admitted: `$` matches before one, so
+        a 25-character name matched over 24 characters and was staged under a name
+        `restore_command` can never ask for. A name read from a file or from a listing carries one.
+        """
         with pytest.raises(staging.SegmentRefused, match="not a name Postgres asks"):
             staging.requested_segment((name,))
 
@@ -246,8 +269,8 @@ class TestWhatReachesTheVolume:
     def test_the_staged_file_is_owned_by_the_user_that_copies_it_out(self, tmp_path: Path) -> None:
         """gpg and gzip write 0600 as the user running them, which in the ops image is root.
 
-        The chown needs root and is skipped in a test; the mode is the half a test can read, and the
-        drill in `changesets/` is where a real recovery's own user reads the file.
+        The chown needs root, so it is skipped here: the mode is the half a test can read, and the
+        owner is established only under root.
         """
         staged = staging.fetch_segment(
             SEGMENT, environ=_drill_environment(tmp_path), run=FakeTools()
@@ -266,10 +289,12 @@ class TestWhatReachesTheVolume:
         under a working name, and only a complete file is moved to the name Postgres asks for.
         """
         environ = _drill_environment(tmp_path)
+        run = FakeTools(half_written=True)
 
         with pytest.raises(CommandFailed):
-            staging.fetch_segment(SEGMENT, environ=environ, run=FakeTools(half_written=True))
+            staging.fetch_segment(SEGMENT, environ=environ, run=run)
 
+        assert _reached(run) == ["listing", "import", "download", "decrypt", "decompress"]
         assert not (tmp_path / "scratch" / "wal" / SEGMENT).exists()
         assert list((tmp_path / "scratch" / "wal").iterdir()) == []
 
@@ -282,21 +307,45 @@ class TestWhatReachesTheVolume:
         fetched itself, and a directory listing is what the next reader trusts.
         """
         environ = _drill_environment(tmp_path)
+        run = FakeTools(fails_at="decrypt")
 
         with pytest.raises(CommandFailed):
-            staging.fetch_segment(SEGMENT, environ=environ, run=FakeTools(fails_at="decrypt"))
+            staging.fetch_segment(SEGMENT, environ=environ, run=run)
 
+        assert _reached(run) == ["listing", "import", "download", "decrypt"]
         assert list((tmp_path / "scratch" / "wal").iterdir()) == []
 
-    def test_the_download_happens_before_anything_is_decrypted(self, tmp_path: Path) -> None:
-        """The order the two cases above depend on: a fake that failed the key import instead would
-        make both of them pass over a run that had fetched nothing."""
+    def test_the_private_key_goes_into_the_home_the_dumps_fetch_already_uses(
+        self, tmp_path: Path
+    ) -> None:
+        """ONE THROWAWAY KEYRING PER DRILL, in the directory the next drill's clean-out removes.
+
+        A home of its own would leave a SECOND copy of the off-host private half inside the volume
+        the recovery instance mounts, and one the fetch step's clean-out would not find. Its
+        protection is the mode plus root ownership, so the mode is read here rather than assumed:
+        nothing else in the suite asserts it, and two helpers in this same tree deliberately loosen
+        modes on neighbouring paths.
+        """
         run = FakeTools()
 
         staging.fetch_segment(SEGMENT, environ=_drill_environment(tmp_path), run=run)
 
-        steps = [found for found in (_step(call) for call in run.calls) if found is not None]
-        assert steps == ["listing", "import", "download", "decrypt", "decompress"]
+        home = tmp_path / "scratch" / GNUPG_HOME
+        imported = [call for call in run.argv_for("gpg") if "--import" in call]
+        assert [call[call.index("--homedir") + 1] for call in imported] == [str(home)]
+        assert home.stat().st_mode & 0o777 == 0o700
+        assert home.stat().st_mode & 0o777 != DIRECTORY_MODE, (
+            "0700 is the keyring's own mode, not the mode this path gives its directories"
+        )
+
+    def test_the_download_happens_before_anything_is_decrypted(self, tmp_path: Path) -> None:
+        """The order the two failure cases above depend on: a fake that failed the key import
+        instead would make both of them pass over a run that had fetched nothing."""
+        run = FakeTools()
+
+        staging.fetch_segment(SEGMENT, environ=_drill_environment(tmp_path), run=run)
+
+        assert _reached(run) == ["listing", "import", "download", "decrypt", "decompress"]
 
     def test_a_second_invocation_replaces_the_segment_rather_than_refusing(
         self, tmp_path: Path
