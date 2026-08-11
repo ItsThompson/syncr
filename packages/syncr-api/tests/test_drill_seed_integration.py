@@ -47,6 +47,11 @@ from syncr_api.core.settings import WORKER_SERVICE, build_service_settings
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.recovery.drill_declarations import VARIANTS
 from syncr_api.recovery.drill_evidence import write_the_evidence
+from syncr_api.recovery.drill_history import (
+    NothingWasPlaced,
+    record_what_happened,
+    the_week_behind,
+)
 from syncr_api.recovery.drill_seed import DRILL_EMAIL, EXIT_OK, EXIT_REFUSED
 from syncr_api.recovery.drill_seed import run as run_the_console_script
 from syncr_api.recovery.drill_target import NotTheDrillsDatabase, require_the_drills_own_database
@@ -240,6 +245,21 @@ class TestTheEvidenceTheFingerprintReads:
         reading = _as_the_ops_package_reads_it(after, tmp_path / "fingerprint.json")
         verdict = compare(reading, reading, elapsed_seconds=0.0)
         assert verdict.held, [str(finding) for finding in verdict.failures]
+
+    async def test_it_refuses_to_record_an_outcome_against_nothing(
+        self, sessions: async_sessionmaker[AsyncSession], drill_tenant: UserRecord
+    ) -> None:
+        """A week the solve left empty holds no confirmed completion and no cursor to re-derive.
+
+        The refusal rather than a report, because a seeder that produced four evidence tables and no
+        cursor would leave a drill that refuses to report a pass, having said nothing was wrong.
+        """
+        principal = Principal(
+            tenant_id=drill_tenant.tenant_id, user_id=drill_tenant.id, scopes=ALL_SCOPES
+        )
+        with pytest.raises(NothingWasPlaced):
+            async with sessions() as session:
+                await record_what_happened(session, principal, the_week_behind(NOW), ())
 
     async def test_a_second_run_writes_nothing_more(
         self,
