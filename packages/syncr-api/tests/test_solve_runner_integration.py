@@ -26,9 +26,10 @@ and both are adopted rather than refused. The pair that must still be refused, a
 drops or moves a started habit or task block, is driven in ``test_authority_classifier.py``, where
 comparison is a pure function of two documents.
 
-The live plan reaches the assembler through the placement seam, which answers with nothing in this
-deployment. A reader over the revision table is substituted here, because otherwise every candidate
-would classify as a first plan for its week and the whole authority path would be unreachable.
+The live plan reaches the assembler through the placement seam, and this deployment wires it to
+``StoredPlacements``, which reads the newest revision. So a week that holds a plan is classified
+against it here through the production reader, and the authority path is reachable with nothing
+substituted for the seam.
 """
 
 from __future__ import annotations
@@ -621,17 +622,17 @@ def _raising(*_args: Any, **_asked: Any) -> Any:
 
 
 class TestTheAdoptionBranch:
-    """The branch production always takes, driven by a solver that answers with a plan.
+    """The branch a week with no plan of its own takes, driven by a solver that answers with a plan.
 
     Every other case in this file produces a solve that changes nothing, because a week declared
     with an Area and one task solves to an empty document: what a solve places into a week is the
     solver suite's subject and it is not reachable from this fixture. So the branch that appends a
-    revision, bumps the version and enqueues the projection was executed by no test at all, and it
-    is the ONLY branch this deployment takes: the placement seam answers with no live plan, so every
-    candidate classifies as a first plan for its week and auto-applies.
+    revision, bumps the version and enqueues the projection was executed by no test at all. A first
+    candidate for a week that holds nothing classifies as a first plan and auto-applies, and the
+    last case here drives the second solve, which the authority rule holds back.
 
-    Substituted at the module boundary, exactly as the raising solver is, so the phases either side
-    of it are the production ones and the whole of `run()` is exercised.
+    The SOLVER is substituted at the module boundary, exactly as the raising solver is, so the
+    phases either side of it are the production ones and the whole of `run()` is exercised.
     """
 
     async def test_a_candidate_that_fills_empty_space_appends_a_revision(
@@ -722,7 +723,7 @@ class TestTheAdoptionBranch:
         clock: Ticking,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """The authority rule, end to end, which is what the placement seam makes unreachable today.
+        """The authority rule, end to end, over the live plan the placement seam reads back.
 
         The first solve appends. The second answers with the SAME block moved, which is a change the
         product may not make on its own, so it lands in the pending slot and the live plan is left
