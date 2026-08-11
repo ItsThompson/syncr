@@ -15,6 +15,7 @@ from cryptography.fernet import Fernet
 from pydantic import BaseModel, SecretStr, field_validator, model_validator
 from pydantic_settings import NoDecode
 
+from syncr_api.core.clock import CLOCK_OFFSET_ENV_VAR, clock_offset
 from syncr_common.config import SyncrSettings
 
 API_SERVICE = "syncr-api"
@@ -235,6 +236,30 @@ class EnvSettings(SyncrSettings):
                 f"environment={self.environment!r}. {_GENERATE_HINT}"
             )
             raise ValueError(still_the_default)
+        return self
+
+    @model_validator(mode="after")
+    def _refuse_a_shifted_clock_outside_development(self) -> EnvSettings:
+        """Fail construction rather than run a deployment on a clock a test moved.
+
+        Same shape of rule as the session secret above. The offset moves every reader in
+        this process at once, which is what makes it useful to a scenario and what makes it
+        intolerable in a deployment: expiries, horizons, and every instant this process
+        stores follow it, while Postgres's own clock does not.
+
+        KEYED ON THE OFFSET, not on the variable being present. Compose interpolation of an
+        unset variable produces an empty value, and a zero offset shifts nothing, so
+        neither is refused. A value no reader can read raises here in every environment,
+        so a misspelled duration fails the boot rather than the first request.
+        """
+        offset = clock_offset()
+        if offset and not self.is_dev:
+            message = (
+                f"{CLOCK_OFFSET_ENV_VAR} shifts this process's clock by {offset} in "
+                f"environment={self.environment!r}, and it is a development-only test "
+                "seam. Unset it, or set ENVIRONMENT=development."
+            )
+            raise ValueError(message)
         return self
 
     @model_validator(mode="after")
