@@ -28,7 +28,7 @@ export const NOTHING_SELECTED_PROBLEM_TYPE = "syncr:nothing-selected";
  * `Problem` if its type is declared: collecting them here is what keeps the two vocabularies
  * legible as two.
  */
-export type ClientProblemType =
+type ClientProblemType =
   | typeof UNEXPECTED_PROBLEM_TYPE
   | typeof UNREACHABLE_PROBLEM_TYPE
   | typeof NOTHING_SELECTED_PROBLEM_TYPE;
