@@ -54,13 +54,14 @@ def recorded(
     )
 
 
-def outcome(state: OutcomeState, *, confirmed: bool = True) -> HabitOutcome:
+def outcome(state: OutcomeState, *, confirmed: bool = True, make_up: bool = False) -> HabitOutcome:
     return HabitOutcome(
         habit_id=uuid4(),
         occurrence_key="00",
         state=state,
         occurred_at=AT,
         confirmed_at=AT + timedelta(hours=12) if confirmed else None,
+        is_make_up=make_up,
     )
 
 
@@ -124,6 +125,51 @@ def test_an_unconfirmed_row_is_neither_a_completion_nor_a_miss(state: OutcomeSta
     assert not unconfirmed.is_confirmed
     assert not unconfirmed.is_confirmed_completion
     assert not unconfirmed.is_confirmed_miss
+
+
+def test_an_occurrence_is_a_fresh_one_unless_the_row_says_otherwise() -> None:
+    """The honest default for every row written before the mark existed."""
+    assert not outcome(OutcomeState.COMPLETED).is_make_up
+    assert outcome(OutcomeState.COMPLETED, make_up=True).is_make_up
+
+
+def test_two_rows_differing_only_in_the_mark_are_not_the_same_row() -> None:
+    """The mark is a field of the projection rather than a fact about it, so a log holds both."""
+    fresh = outcome(OutcomeState.COMPLETED)
+    made_up = HabitOutcome(
+        habit_id=fresh.habit_id,
+        occurrence_key=fresh.occurrence_key,
+        state=fresh.state,
+        occurred_at=fresh.occurred_at,
+        confirmed_at=fresh.confirmed_at,
+        is_make_up=True,
+    )
+
+    assert made_up != fresh
+
+
+@pytest.mark.parametrize("state", sorted(COMPLETION_STATES))
+def test_every_completion_state_settles_a_make_up_when_the_day_is_confirmed(
+    state: OutcomeState,
+) -> None:
+    """Four of the five states mean the content was done, and doing it is what settles a make-up."""
+    assert outcome(state, make_up=True).is_confirmed_make_up_completion
+
+
+def test_a_skipped_make_up_settles_nothing() -> None:
+    """The occurrence was placed to make an earlier miss good and the user did not do it."""
+    assert not outcome(MISS_STATE, make_up=True).is_confirmed_make_up_completion
+
+
+def test_a_completed_fresh_occurrence_settles_no_make_up() -> None:
+    assert not outcome(OutcomeState.COMPLETED).is_confirmed_make_up_completion
+
+
+@pytest.mark.parametrize("state", sorted(OutcomeState))
+def test_an_unconfirmed_make_up_settles_nothing_until_the_day_is_confirmed(
+    state: OutcomeState,
+) -> None:
+    assert not outcome(state, confirmed=False, make_up=True).is_confirmed_make_up_completion
 
 
 def test_a_presumed_row_reads_as_a_completion_only_once_the_day_is_confirmed() -> None:

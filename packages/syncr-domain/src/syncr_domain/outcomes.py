@@ -2,9 +2,10 @@
 
 The rotation cursor and outstanding debt are both projections of the append-only outcome log.
 Neither needs a whole ``BlockOutcome``: they need to know which occurrence of which habit a
-row is about, what the user said happened, and whether the day was confirmed. That is what
-:class:`HabitOutcome` holds, so the two derivations stay testable with literals and the plan
-document's interior stays out of the pure package.
+row is about, what the user said happened, whether the day was confirmed, and whether the
+occurrence was placed to make an earlier miss good. That is what :class:`HabitOutcome` holds,
+so the two derivations stay testable with literals and the plan document's interior stays out
+of the pure package.
 
 :class:`RecordedOutcome` is the other projection: what the user said happened to one block,
 plus the data two of the five states carry. It is what :func:`attributed_span` reads, and it
@@ -104,6 +105,10 @@ class HabitOutcome:
     Both instants are normalized on construction, so a naive datetime is refused rather than
     compared against a wall clock later. Two of those comparing without error is how a
     transition-week defect becomes invisible, which is the reason ``as_instant`` exists.
+
+    ``is_make_up`` is the week assembler's mark on the occurrence, carried onto the outcome so a
+    later reading can tell a made-up occurrence from a fresh one. It defaults to a fresh
+    occurrence, so a stored row carrying no mark reads as one rather than as a discharge.
     """
 
     habit_id: HabitId
@@ -111,6 +116,7 @@ class HabitOutcome:
     state: OutcomeState
     occurred_at: Instant
     confirmed_at: Instant | None
+    is_make_up: bool = False
 
     def __post_init__(self) -> None:
         _require_an_occurrence_key(self.occurrence_key)
@@ -132,6 +138,11 @@ class HabitOutcome:
     def is_confirmed_miss(self) -> bool:
         """Whether this row says the content was not done, on a day the user confirmed."""
         return self.is_confirmed and self.state is MISS_STATE
+
+    @property
+    def is_confirmed_make_up_completion(self) -> bool:
+        """Whether this row is the work that settles the miss its occurrence was placed for."""
+        return self.is_make_up and self.is_confirmed_completion
 
 
 class OutcomeError(DomainError):
