@@ -43,11 +43,11 @@ interval plus the two leads and four durations its type declares. ``shadow_colli
 a prep span an earlier-kept block already covers and drops a leg that collides with one,
 ``shadow_products.py`` UNIONS them into the interval sets a reader subtracts, and ``reach.py``
 WIDENS a caller's own span into the one holding every commitment that can cast a product inside
-it. **Those four are the only modules here that
-compute time nobody stored.** The two others that name an interval at all merely rebuild one they
-were handed: ``queries.py`` from the bounds a request asked to read, and ``repository.py`` from the
-two columns a row holds. A test enumerates the six against the source, because the claim is about
-every other module in the package and a negative one is not worth stating unless it is checked.
+it. **Those four are the only modules here that compute time nobody stored.** The two others that
+name an interval at all merely rebuild one they were handed: ``queries.py`` from the bounds a
+request asked to read, and ``repository.py`` from the two columns a row holds. A test enumerates the
+six against the source, because the claim is about every other module in the package and a negative
+one is not worth stating unless it is checked.
 What the rest own is the declaration, the boundary rules the declaration has to satisfy, and the
 reconciliation that decides which anchors exist and which type each one carries. Every span the
 three shadow modules produce is unclipped, because which of them fall inside a week is a question
