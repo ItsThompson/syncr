@@ -13,7 +13,10 @@
  *
  * THE LAST TEST IS THE MUTATION. A count hard-coded at nought satisfies every case above it, so the fixture is given
  * two proposal targets and the printed figures must follow AND stay at one. A figure that cannot move is decoration,
- * and a figure that counts targets is the same defect in a second spelling. */
+ * and a figure that counts targets is the same defect in a second spelling.
+ *
+ * THE APPROVE CONTROL IS READ AS WELL AS THE FIGURES. `WeekActions` disables it on an empty slot and nothing else, so a
+ * band drawing an enabled approve beside a count of nought depicts a state the product cannot produce. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -31,19 +34,32 @@ async function sheetText(): Promise<string> {
   return readFile(path.join(designSheetDir, "screens.html"), "utf8");
 }
 
-/** The fixture's proposal targets, read from the sheet's text by a route the sheet itself does not use. */
-function proposalTargetsIn(sheet: string): readonly string[] {
+/** The fixture the grid draws, sliced out of the sheet's text so every reading below crosses the same source. */
+function fixtureOf(sheet: string): string {
   const opening = sheet.indexOf("const WEEK = [");
   expect(opening, "the sheet no longer holds a `const WEEK` fixture").toBeGreaterThan(0);
-  const fixture = sheet.slice(opening, sheet.indexOf("\n];", opening));
-  return [...fixture.matchAll(/'(\d\d:\d\d-\d\d:\d\d\|[^']*)'/g)]
+  return sheet.slice(opening, sheet.indexOf("\n];", opening));
+}
+
+/** The fixture's proposal targets, read by a route the sheet itself does not use. */
+function proposalTargetsIn(sheet: string): readonly string[] {
+  return [...fixtureOf(sheet).matchAll(/'(\d\d:\d\d-\d\d:\d\d\|[^']*)'/g)]
     .map((match) => match[1])
     .filter((row) => (row.split("|")[3] ?? "").includes("?"));
+}
+
+/** The fixture's unconfirmed days, counted from the marker each one carries. */
+function unconfirmedDaysIn(sheet: string): number {
+  const marked = [...fixtureOf(sheet).matchAll(/\bunconf:\s*(?:true|[1-9])/g)];
+  expect(marked.length, "the fixture no longer marks an unconfirmed day").toBeGreaterThan(0);
+  return marked.length;
 }
 
 interface Rendered {
   /** What each Week view prints, keyed by view id. */
   readonly views: ReadonlyMap<string, string>;
+  /** Whether each Week view's approve controls are disabled, in the order the view draws them. */
+  readonly approveDisabled: ReadonlyMap<string, readonly boolean[]>;
   /** The count on the sidebar's own "This week · Proposals" row, which every view is rendered beside. */
   readonly sidebarProposals: string | undefined;
 }
@@ -53,21 +69,32 @@ function render(sheet: string): Rendered {
   document.documentElement.innerHTML = parsed.documentElement.innerHTML;
   const script = [...parsed.querySelectorAll("script")]
     .map((element) => element.textContent)
-    .join();
+    .join("\n");
   expect(script, "the sheet no longer carries its own script").not.toBe("");
   new Function(script)();
 
   const views = new Map<string, string>();
+  const approveDisabled = new Map<string, readonly boolean[]>();
   for (const view of WEEK_VIEWS) {
     const button = document.querySelector(`.doc button[data-v="${view}"]`);
     expect(button, `the sheet no longer renders ${view}`).not.toBeNull();
     (button as HTMLButtonElement).click();
     views.set(view, document.querySelector("#main")?.textContent ?? "");
+    approveDisabled.set(
+      view,
+      [...document.querySelectorAll<HTMLButtonElement>("#main button")]
+        .filter((control) => control.textContent?.startsWith("Approve") === true)
+        .map((control) => control.disabled),
+    );
   }
 
   const rows = [...document.querySelectorAll(".side nav a")];
   const proposals = rows.find((row) => row.textContent?.startsWith("Proposals"));
-  return { views, sidebarProposals: proposals?.querySelector("b")?.textContent ?? undefined };
+  return {
+    views,
+    approveDisabled,
+    sidebarProposals: proposals?.querySelector("b")?.textContent ?? undefined,
+  };
 }
 
 function figuresIn(text: string): readonly number[] {
@@ -101,6 +128,27 @@ describe("the pending-proposal count the Week mock prints", () => {
     expect(sidebarProposals).toBe(String(expected));
   });
 
+  /* THE OTHER FIGURE ON THAT LINE IS DERIVED TOO, so it is pinned to the same fixture. It happened to be right when the
+   * proposal count beside it was wrong, which is what an unpinned derivation buys. */
+  it("counts the unconfirmed days the fixture marks", async () => {
+    const sheet = await sheetText();
+    const { views } = render(sheet);
+
+    expect(views.get("v-week")).toContain(`${unconfirmedDaysIn(sheet)} days unconfirmed`);
+  });
+
+  /* APPROVE IS DISABLED BY AN EMPTY SLOT AND BY NOTHING ELSE, which `WeekActions` derives from the same field. The
+   * conflict view offers no approve at all: it answers with `Resolve`, and an empty list here says so. */
+  it("draws the approve control the way the slot leaves it", async () => {
+    const sheet = await sheetText();
+    const empty = proposalTargetsIn(sheet).length === 0;
+    const { approveDisabled } = render(sheet);
+
+    expect(approveDisabled.get("v-week")).toEqual([empty]);
+    expect(approveDisabled.get("v-session")).toEqual([empty]);
+    expect(approveDisabled.get("v-conflict")).toEqual([]);
+  });
+
   it("keeps the band's second line two figures", async () => {
     const { views } = render(await sheetText());
 
@@ -117,10 +165,12 @@ describe("the pending-proposal count the Week mock prints", () => {
       "the fixture's rows no longer end in an Area field",
     ).toHaveLength(2);
 
-    const { views, sidebarProposals } = render(flagged);
+    const { views, approveDisabled, sidebarProposals } = render(flagged);
 
     expect(views.get("v-week")).toContain("1 proposal pending");
     expect(views.get("v-conflict")).toContain("1 proposal waiting quietly");
     expect(sidebarProposals).toBe("1");
+    expect(approveDisabled.get("v-week")).toEqual([false]);
+    expect(approveDisabled.get("v-session")).toEqual([false]);
   });
 });
