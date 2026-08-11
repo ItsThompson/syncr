@@ -5,7 +5,7 @@
  * be folded into the markup scan: every extraction question the other checks have to answer is one
  * this check does not have to ask. */
 
-import { buildStylesheets } from "./build.ts";
+import { buildBarrelPayloads, buildStylesheets } from "./build.ts";
 import { checkBundle } from "./check.ts";
 import { reportOutcome } from "../lib/report.ts";
 
@@ -18,4 +18,6 @@ if (stylesheets.length === 0) {
   process.exit(1);
 }
 
-process.exit(reportOutcome("built bundle", checkBundle({ stylesheets })));
+const barrels = await buildBarrelPayloads();
+
+process.exit(reportOutcome("built bundle", checkBundle({ stylesheets, barrels })));

@@ -13,6 +13,9 @@
  * compiled into the bundle with all seven checks green. `backdrop-filter` was in the stylesheet a
  * browser downloaded, from the comment documenting the incident.
  *
+ * The same artifact answers what a barrel's stylesheet side effect costs, which is why the two barrel
+ * payloads are judged here rather than described in a comment somewhere: see `barrels.ts`.
+ *
  * So the oracle is the artifact, and the declarations are parsed by postcss rather than by a pattern
  * written here. That matters more than it sounds: the previous survey of this same stylesheet with a
  * regex reported `rotate:`, `scale:` and `filter:` from inside `--tw-backdrop-hue-rotate`,
@@ -21,6 +24,7 @@
 
 import { parse, type AtRule, type Declaration, type Node, type Rule } from "postcss";
 
+import { checkBarrelPayloads, type BarrelPayload } from "./barrels.ts";
 import { refusalFor } from "../lib/declarations.ts";
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
 
@@ -34,6 +38,8 @@ export interface BuiltStylesheet {
 
 export interface CheckBundleInput {
   readonly stylesheets: readonly BuiltStylesheet[];
+  /** What each barrel's side effect built to. Declared rather than optional, so a run that measured none says so. */
+  readonly barrels: readonly BarrelPayload[];
 }
 
 /** The selector chain a declaration sits under, so a finding names something a reader can grep for. */
@@ -106,13 +112,16 @@ export function checkBundle(input: CheckBundleInput): CheckOutcome {
     });
   }
 
+  const barrels = checkBarrelPayloads(input.barrels);
+
   return {
-    findings,
+    findings: [...findings, ...barrels.findings],
     notes: [
       `${input.stylesheets.length} built stylesheet(s), ${(bytes / 1000).toFixed(2)} kB`,
       `${declarations} declaration(s) read by postcss, not by a pattern`,
       `${atRules} at-rule(s) read, and a keyframe list is refused whatever it declares`,
       ...input.stylesheets.map((stylesheet) => `  ${stylesheet.name}`),
+      ...barrels.notes,
     ],
   };
 }

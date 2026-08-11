@@ -9,9 +9,13 @@
 import { describe, expect, it } from "vitest";
 
 import { checkBundle } from "../check.ts";
+import { BARREL_PROBES } from "../barrels.ts";
 
 function verdictFor(css: string) {
-  return checkBundle({ stylesheets: [{ file: "/dist/assets/probe.css", name: "probe.css", css }] });
+  return checkBundle({
+    stylesheets: [{ file: "/dist/assets/probe.css", name: "probe.css", css }],
+    barrels: [],
+  });
 }
 
 function reasons(css: string): string[] {
@@ -155,5 +159,19 @@ describe("what the check reports about itself", () => {
 
   it("states the size of what it examined", () => {
     expect(verdictFor(".a{color:var(--ink)}").notes.join("\n")).toMatch(/kB/);
+  });
+
+  /* The barrel figures are the other half of this gate's report, and a composed outcome that dropped them
+   * would still pass every assertion above. */
+  it("carries the barrel figure and its verdict into the same report", () => {
+    const outcome = checkBundle({
+      stylesheets: [{ file: "/dist/assets/probe.css", name: "probe.css", css: ".a{color:red}" }],
+      barrels: [{ probe: BARREL_PROBES[0], throughBarrelBytes: 3_686, onItsOwnBytes: 3_686 }],
+    });
+
+    expect(outcome.notes.join("\n")).toContain("1 barrel(s)");
+    expect(outcome.findings.map((finding) => finding.check)).toEqual([
+      "barrel-loads-no-more-than-the-component",
+    ]);
   });
 });
