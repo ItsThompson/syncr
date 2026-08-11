@@ -32,7 +32,13 @@
  *
  * THE WORDS ARE THE API'S. The same condition is composed once and raised at two volumes with a shared identity
  * root: the banner here, and the panel on Settings. Neither surface writes the sentence, so the two cannot state
- * the outage differently. */
+ * the outage differently.
+ *
+ * THE SLOT HAS A SECOND SOURCE, AND ONLY THE CLIENT'S OWN NOTICES CARRY A DISMISS CONTROL. A write this client
+ * sent can fail with no surface left to receive the answer, and no read of the api can carry that sentence, so
+ * `app/notices/` composes it. The api's banners stay until their condition clears, because a reader who could
+ * wave one away would be waving away something nobody fixed. A write that did not happen cannot be repaired at
+ * all, so acknowledging it is the only resolution it has. */
 
 import { useCallback } from "react";
 import { useSWRConfig } from "swr";
@@ -42,6 +48,7 @@ import { useSession } from "../api/hooks/useSession";
 import { EventStreamProvider, useServerEvents } from "../api/events";
 import { googleConnectionKey } from "../api/keys";
 import { CaptureHost } from "./capture";
+import { ClientNoticeHost, useClientNotices } from "./notices";
 import { NoticeStrip, noticesAt, ShellLayout } from "../ui/domain";
 import { AuthGate } from "./AuthGate";
 
@@ -51,9 +58,11 @@ export function GatedShell() {
   return (
     <AuthGate session={session}>
       <EventStreamProvider>
-        <CaptureHost>
-          <ShellBanners />
-        </CaptureHost>
+        <ClientNoticeHost>
+          <CaptureHost>
+            <ShellBanners />
+          </CaptureHost>
+        </ClientNoticeHost>
       </EventStreamProvider>
     </AuthGate>
   );
@@ -67,6 +76,7 @@ export function GatedShell() {
  */
 function ShellBanners() {
   const connection = useGoogleConnection();
+  const { raised, dismiss } = useClientNotices();
   const { mutate } = useSWRConfig();
 
   useServerEvents(
@@ -83,9 +93,18 @@ function ShellBanners() {
 
   return (
     <ShellLayout
-      notices={banners.map((notice) => (
-        <NoticeStrip key={notice.id} notice={notice} />
-      ))}
+      notices={[
+        ...banners.map((notice) => <NoticeStrip key={notice.id} notice={notice} />),
+        ...raised.map((notice) => (
+          <NoticeStrip
+            key={notice.id}
+            notice={notice}
+            onDismiss={() => {
+              dismiss(notice.id);
+            }}
+          />
+        )),
+      ]}
     />
   );
 }
