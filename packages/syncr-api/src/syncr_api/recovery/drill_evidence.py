@@ -36,8 +36,8 @@ class Written:
     """What one run did, in the terms the next reader of the database asks about.
 
     A run that found everything already in place reports the same week with nothing planned, nothing
-    solved and nothing pinned, which is what makes a repeat visible as a repeat rather than as a
-    second seed.
+    solved, nothing pinned and nothing conceded, which is what makes a repeat visible as a repeat
+    rather than as a second seed.
     """
 
     iso_week: IsoWeek
@@ -48,6 +48,7 @@ class Written:
     recorded: int
     confirmed: int
     pinned: bool
+    conceded: bool
 
 
 async def write_the_evidence(
@@ -87,6 +88,10 @@ async def write_the_evidence(
         async with database.sessionmaker() as session:
             occurrences = await _occurrences(session, principal, week, declarations.habit_id)
 
+    # Where the sequence first knows, and before the steps that index them: a week the solve left
+    # empty has no confirmed completion in it, so it is not a drill and nothing further is written.
+    occurrences = history.require_occurrences(occurrences, week)
+
     async with database.sessionmaker() as session, session.begin():
         pinned = not await history.already_pinned(session, principal.tenant_id, week)
         if pinned:
@@ -98,13 +103,17 @@ async def write_the_evidence(
         confirmed = await history.confirm_the_days(session, principal, occurrences[: len(recorded)])
 
     async with database.sessionmaker() as session, session.begin():
-        await history.concede_a_floor_breach(
-            session,
-            principal.tenant_id,
-            week,
-            area_id=declarations.area_id,
-            operation_id=solve.id,
+        conceded = not await history.already_conceded(
+            session, principal.tenant_id, week, area_id=declarations.area_id
         )
+        if conceded:
+            await history.concede_a_floor_breach(
+                session,
+                principal.tenant_id,
+                week,
+                area_id=declarations.area_id,
+                operation_id=solve.id,
+            )
 
     return Written(
         iso_week=week.iso_week,
@@ -115,6 +124,7 @@ async def write_the_evidence(
         recorded=len(recorded),
         confirmed=confirmed,
         pinned=pinned,
+        conceded=conceded,
     )
 
 

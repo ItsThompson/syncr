@@ -179,6 +179,24 @@ def occurrences_of(document: PlanDocument, habit_id: HabitId) -> tuple[Block, ..
     )
 
 
+def require_occurrences(occurrences: tuple[Block, ...], week: DrillWeek) -> tuple[Block, ...]:
+    """The occurrences, or the refusal a week the solve left empty has to produce.
+
+    One raiser rather than a check per caller, and it is called twice on purpose: once by the
+    sequence, as soon as the solve's answer has been read, and once by the recording, which is the
+    step whose meaning depends on it. The first is what a composed run refuses on, because the steps
+    between the two index the occurrences and would raise something else first; the second is what
+    keeps the function answerable for its own argument.
+    """
+    if occurrences:
+        return occurrences
+    raise NothingWasPlaced(
+        f"{week.iso_week} holds no occurrence of the drill's rotation habit, so no confirmed "
+        "completion can be recorded and a restore would have no cursor to re-derive. The solve "
+        "placed nothing: read the week's own verdict before seeding again"
+    )
+
+
 async def record_what_happened(
     session: AsyncSession, principal: Principal, week: DrillWeek, occurrences: tuple[Block, ...]
 ) -> tuple[BlockOutcomeRecord, ...]:
@@ -188,12 +206,7 @@ async def record_what_happened(
     does not advance it, so a restore that lost the completion and kept the skip would come back
     with the same row count and a different variant.
     """
-    if not occurrences:
-        raise NothingWasPlaced(
-            f"{week.iso_week} holds no occurrence of the drill's rotation habit, so no confirmed "
-            "completion can be recorded and a restore would have no cursor to re-derive. The solve "
-            "placed nothing: read the week's own verdict before seeding again"
-        )
+    require_occurrences(occurrences, week)
     service = get_outcome_service(principal, session)
     states = (OutcomeState.COMPLETED, OutcomeState.SKIPPED)
     return tuple(
@@ -265,8 +278,10 @@ async def concede_a_floor_breach(
 ) -> WeekAdjustmentRecord:
     """Record the concession an approval records: this Area's floor, breached by agreement.
 
-    An upsert on the week, the kind and the target, so a repeated drill re-states one row rather
-    than accumulating them.
+    An upsert on the week, the kind and the target, so a first run cannot accumulate rows. What
+    keeps a REPEAT run from writing is the read beside this one: the upsert converges the row's
+    identity and not its contents, because `created_by_operation_id` is whichever solve the run had
+    in hand.
     """
     return await WeekAdjustmentRepository(session, tenant_id).upsert(
         iso_week=week.iso_week,
@@ -275,4 +290,19 @@ async def concede_a_floor_breach(
         created_at=week.lived_at,
         created_by_operation_id=operation_id,
         delta_minutes=FLOOR_BREACH_MINUTES,
+    )
+
+
+async def already_conceded(
+    session: AsyncSession, tenant_id: TenantId, week: DrillWeek, *, area_id: AreaId
+) -> bool:
+    """Whether the week already holds this concession, over the kind and target that key it.
+
+    The read every sibling step has, and it is what makes a repeat run write no byte rather than the
+    same row again: an upsert would rewrite the cause with whichever solve the second run resolved,
+    and the drill's own verdict compares a table's contents rather than its count.
+    """
+    held = await WeekAdjustmentRepository(session, tenant_id).for_week(week.iso_week)
+    return any(
+        one.kind == AdjustmentKind.BREACH_FLOOR.value and one.target_id == area_id for one in held
     )

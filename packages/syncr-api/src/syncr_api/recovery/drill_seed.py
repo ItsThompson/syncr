@@ -12,16 +12,19 @@ paths.
 so a row it produces satisfies the invariants that path enforces, and a column that moves moves for
 this seeder too rather than leaving it writing a shape the product can no longer read.
 
-**It converges rather than accumulating.** Every step reads before it writes and the concession is
-an upsert, so a second run against a seeded database writes nothing new and a drill can be repeated.
-No reset is needed and none is shipped: nothing here removes a row.
+**It converges rather than accumulating.** Every step reads before it writes, including the
+concession, so a second run against a seeded database writes nothing at all and a drill can be
+repeated: not one row, and not one byte, which is the property the hand-written seed it replaces
+states about itself. No reset is needed and none is shipped: nothing here removes a row.
 
 **It refuses a database that is not the drill's own before it writes anything.** The rule, and what
 it can and cannot see, are in :mod:`syncr_api.recovery.drill_target`.
 
 Exit codes: 0 when the evidence is in place, whether this run wrote it or found it; 1 when the
 target was refused, the bootstrap command failed, or the solve placed nothing to record an outcome
-against.
+against; 2 when the database could not be reached at all. Two non-zero codes rather than one,
+because "this is the wrong database, never retry" and "the database was not up yet" are opposite
+instructions to whatever runs this.
 The judgement of what it produced is `python3 -m ops.compare`'s and the fingerprint's, never this
 script's: it reports what it did and the drill reports whether that was enough.
 """
@@ -68,6 +71,7 @@ PASSWORD_BYTES: Final = 32
 
 EXIT_OK: Final = 0
 EXIT_REFUSED: Final = 1
+EXIT_UNREACHABLE: Final = 2
 
 # Runs the bootstrap console script for one address and answers with its exit status.
 type Bootstrap = Callable[[str, str], int]
@@ -96,7 +100,7 @@ async def run(context: WorkerContext, *, bootstrap: Bootstrap | None = None) -> 
     except (SQLAlchemyError, OSError) as unreachable:
         print(f"the database could not be reached: {unreachable}", file=sys.stderr)
         print("check DATABASE_URL and that migrations have been applied", file=sys.stderr)
-        return EXIT_REFUSED
+        return EXIT_UNREACHABLE
     finally:
         await context.database.engine.dispose()
     _report(written)
@@ -157,7 +161,8 @@ def _report(written: Written) -> None:
         f"{'a proposal adopted' if written.adopted else 'no proposal to adopt'}, "
         f"{written.placed} occurrences placed, {written.recorded} outcomes recorded, "
         f"{written.confirmed} days confirmed, "
-        f"{'pinned one block' if written.pinned else 'already pinned'}"
+        f"{'pinned one block' if written.pinned else 'already pinned'}, "
+        f"{'conceded a floor breach' if written.conceded else 'already conceded'}"
     )
     print(
         "the fingerprint is what judges this: `python3 -m ops.compare` states whether the five "

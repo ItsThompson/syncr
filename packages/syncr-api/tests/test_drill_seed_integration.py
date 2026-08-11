@@ -26,7 +26,7 @@ database and refused afterwards would already have written to it.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
 import pytest
@@ -45,19 +45,27 @@ from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES
 from syncr_api.core.settings import WORKER_SERVICE, build_service_settings
 from syncr_api.learned.repository import WeightSetRepository
-from syncr_api.recovery.drill_declarations import VARIANTS
+from syncr_api.offplan.declarations import OffPlanDeclaration
+from syncr_api.offplan.injection import get_off_plan_service
+from syncr_api.recovery.drill_declarations import VARIANTS, declare
 from syncr_api.recovery.drill_evidence import write_the_evidence
 from syncr_api.recovery.drill_history import (
     NothingWasPlaced,
     record_what_happened,
     the_week_behind,
 )
-from syncr_api.recovery.drill_seed import DRILL_EMAIL, EXIT_OK, EXIT_REFUSED
+from syncr_api.recovery.drill_seed import (
+    DRILL_EMAIL,
+    EXIT_OK,
+    EXIT_REFUSED,
+    EXIT_UNREACHABLE,
+)
 from syncr_api.recovery.drill_seed import run as run_the_console_script
 from syncr_api.recovery.drill_target import NotTheDrillsDatabase, require_the_drills_own_database
 from syncr_api.recovery.fingerprint import Fingerprint, read_fingerprint
 from syncr_api.recovery.main import write_document
 from syncr_api.worker.main import WorkerContext
+from tests.conftest import UNREACHABLE_DATABASE_URL
 from tests.live_tenants import delete_tenant
 
 if TYPE_CHECKING:
@@ -67,6 +75,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
     from syncr_api.accounts.records import UserRecord
+    from syncr_api.recovery.drill_history import DrillWeek
     from syncr_domain.identifiers import TenantId
 
 pytestmark = pytest.mark.integration
@@ -140,6 +149,32 @@ async def _provision(sessions: async_sessionmaker[AsyncSession], email: str) -> 
         )
         await WeightSetRepository(session, user.tenant_id).seed_hand_tuned(at=utc_now())
     return user
+
+
+def _found_it(email: str, password: str) -> int:
+    """The bootstrap command's answer for an account that already exists."""
+    return 0
+
+
+async def _declare_the_week_off_plan(
+    sessions: async_sessionmaker[AsyncSession], principal: Principal, week: DrillWeek
+) -> None:
+    """Declare the drill's whole week off, so the solve has nowhere to place an occurrence.
+
+    The product's own way of saying nothing may be placed in a span: every candidate is refused and
+    an empty slot states `off_plan` as its reason. Declared through the service its route resolves,
+    which accepts a past span because a period is a fact about time rather than a plan.
+    """
+    async with sessions() as session, session.begin():
+        await get_off_plan_service(principal, session).declare(
+            principal,
+            OffPlanDeclaration(
+                start=week.planned_at,
+                end=week.planned_at + timedelta(days=7),
+                keep_frame=False,
+                label=None,
+            ),
+        )
 
 
 async def _a_fingerprint(
@@ -243,16 +278,21 @@ class TestTheEvidenceTheFingerprintReads:
         assert written.placed > 0 and written.recorded > 0 and written.confirmed > 0
 
         reading = _as_the_ops_package_reads_it(after, tmp_path / "fingerprint.json")
+        # The two claims this reads are `_there_was_data_to_lose` and `_a_cursor_had_advanced`, both
+        # functions of ONE reading, which is why one reading is passed on both sides. The other six
+        # compare two databases and a self-comparison satisfies them for nothing: this asserts the
+        # conjunction because it is stricter than naming two, and it says nothing about a restore.
         verdict = compare(reading, reading, elapsed_seconds=0.0)
         assert verdict.held, [str(finding) for finding in verdict.failures]
 
     async def test_it_refuses_to_record_an_outcome_against_nothing(
         self, sessions: async_sessionmaker[AsyncSession], drill_tenant: UserRecord
     ) -> None:
-        """A week the solve left empty holds no confirmed completion and no cursor to re-derive.
+        """The recording answers for its own argument, whoever calls it.
 
-        The refusal rather than a report, because a seeder that produced four evidence tables and no
-        cursor would leave a drill that refuses to report a pass, having said nothing was wrong.
+        The composed run refuses earlier, which is what
+        `test_the_whole_sequence_refuses_a_week_the_solve_left_empty` drives: this one keeps the
+        function answerable for a caller that reaches it with nothing.
         """
         principal = Principal(
             tenant_id=drill_tenant.tenant_id, user_id=drill_tenant.id, scopes=ALL_SCOPES
@@ -260,6 +300,53 @@ class TestTheEvidenceTheFingerprintReads:
         with pytest.raises(NothingWasPlaced):
             async with sessions() as session:
                 await record_what_happened(session, principal, the_week_behind(NOW), ())
+
+    async def test_the_whole_sequence_refuses_a_week_the_solve_left_empty(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        engine: AsyncEngine,
+        context: WorkerContext,
+        drill_tenant: UserRecord,
+    ) -> None:
+        """The refusal through the composition, which is the only path a drill takes.
+
+        The week is emptied the way a real one would be: the whole of it is declared off, so the
+        solve places none of the habit's occurrences. Nothing about the seeder is substituted, and
+        the declarations are its own, reached through its own convergence read.
+        """
+        principal = Principal(
+            tenant_id=drill_tenant.tenant_id, user_id=drill_tenant.id, scopes=ALL_SCOPES
+        )
+        async with sessions() as session, session.begin():
+            await declare(session, principal)
+        await _declare_the_week_off_plan(sessions, principal, the_week_behind(NOW))
+        before = await _a_fingerprint(sessions, engine)
+
+        with pytest.raises(NothingWasPlaced):
+            await write_the_evidence(context, principal, now=NOW)
+
+        after = await _a_fingerprint(sessions, engine)
+        # No outcome, no pin and no concession: the refusal is before every step that writes one.
+        for table in ("public.block_outcomes", "public.pins", "public.week_adjustments"):
+            assert after.row_counts[table] == before.row_counts[table] == 0, table
+
+    async def test_the_console_script_reports_the_refusal_rather_than_a_traceback(
+        self, sessions: async_sessionmaker[AsyncSession], no_tenants: None, context: WorkerContext
+    ) -> None:
+        """The exit code the module documents for a week the solve left empty.
+
+        Through `run`, because what an operator gets is its answer: a status and a stated reason,
+        rather than whatever an unhandled exception exits with.
+        """
+        user = await _provision(sessions, DRILL_EMAIL)
+        principal = Principal(tenant_id=user.tenant_id, user_id=user.id, scopes=ALL_SCOPES)
+        try:
+            async with sessions() as session, session.begin():
+                await declare(session, principal)
+            await _declare_the_week_off_plan(sessions, principal, the_week_behind(NOW))
+            assert await run_the_console_script(context, bootstrap=_found_it) == EXIT_REFUSED
+        finally:
+            await delete_tenant(sessions, user.tenant_id)
 
     async def test_a_second_run_writes_nothing_more(
         self,
@@ -278,12 +365,17 @@ class TestTheEvidenceTheFingerprintReads:
         second = await write_the_evidence(context, principal, now=NOW)
         after_two = await _a_fingerprint(sessions, engine)
 
-        assert first.materialized and first.solved and first.pinned
-        assert not second.materialized and not second.solved and not second.pinned
+        assert first.materialized and first.solved and first.pinned and first.conceded
+        assert not second.materialized and not second.solved
+        assert not second.pinned and not second.conceded
         # Every table rather than the five, and derived from the reading rather than listed: a
         # convergence read that went missing would grow whatever table it guards, and a claim over
         # the five could not see a second Area slot or a second habit.
         assert after_two.row_counts == after_one.row_counts
+        # And the digests beside the counts, from the same reading. A row an upsert rewrote in place
+        # moves no count, and the drill's own verdict compares a table's bytes rather than its size:
+        # `seed-local.sql` states its property as "running it twice is running it once".
+        assert after_two.content_digests == after_one.content_digests
 
 
 class TestTheConsoleScriptsComposition:
@@ -333,6 +425,19 @@ class TestTheConsoleScriptsComposition:
         assert [email for email, _ in credentials] == [DRILL_EMAIL]
         after = await _a_fingerprint(sessions, engine)
         assert all(after.row_counts[table] > 0 for table in EVIDENCE_TABLES)
+
+    async def test_an_unreachable_database_is_not_a_refused_one(self) -> None:
+        """Two non-zero codes, because the two states are opposite instructions to a caller.
+
+        A refused target must never be retried and an absent one is worth waiting for, so a recipe
+        that reads the status can tell them apart. The URL names a closed port, so the failure is
+        the driver's own and no database is addressed.
+        """
+        unreachable = WorkerContext(
+            settings=build_service_settings(service=WORKER_SERVICE),
+            database=create_database(UNREACHABLE_DATABASE_URL),
+        )
+        assert await run_the_console_script(unreachable, bootstrap=_found_it) == EXIT_UNREACHABLE
 
 
 async def _delete_all_but(
