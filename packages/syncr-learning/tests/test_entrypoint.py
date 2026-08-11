@@ -109,14 +109,13 @@ def test_a_clean_run_exits_zero_and_names_no_promotion_candidate(
 
 
 def test_the_exposition_carries_the_run_s_own_family(
-    collected: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    collected: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The exposition is what a one-shot container is scraped through, so the file existing is not
     # enough: it has to hold the family the run observes.
     stub_the_run(monkeypatch)
 
     main()
-    capsys.readouterr()
 
     written = (collected / "syncr_learning.prom").read_text(encoding="utf-8")
     family = next(iter(metrics.RUN_DURATION.describe())).name
