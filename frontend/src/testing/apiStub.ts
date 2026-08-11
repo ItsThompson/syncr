@@ -305,11 +305,12 @@ export const refusedReads = (problem: Problem = readUnavailable): RequestHandler
 
 /* The api's own shape for a read it cannot serve: a 503 naming what is unavailable and what still works.
  * Written as a problem document because that is what the client narrows, and a failure surface renders
- * `problem.detail` verbatim. The type is the one the api's 503 actually carries: a double that answers a
- * type the published vocabulary has never held is a double of nothing. */
+ * `problem.detail` verbatim. The type AND the title are the ones the api's 503 actually carries, read off
+ * `DependencyUnavailable`: a double that answers a vocabulary the api has never held is a double of
+ * nothing. Only the sentence is this file's own, because only the sentence is what a screen renders. */
 export const readUnavailable: Problem = {
   type: "syncr:dependency-unavailable",
-  title: "The api is not ready",
+  title: "Dependency unavailable",
   status: 503,
   detail:
     "The api could not serve this read. Nothing was changed, and the plan already on screen is unaffected.",
