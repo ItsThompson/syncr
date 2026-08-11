@@ -545,6 +545,11 @@ seed-maturity-corpus:
 seed-tight-capacity:
     node e2e/src/seed/cli.ts tight_capacity
 
+# A week with no frame at all, owing more before one deadline than the longest week could hold, so the
+# span a verdict measures capacity over is readable as a figure at every instant of every week
+seed-owes-more-than-a-week:
+    node e2e/src/seed/cli.ts owes_more_than_a_week
+
 # Tick the plan-horizon maintainer once, now. S1's "or trigger it": the wait is fifteen minutes,
 # because the runner's first tick only sets its own due time
 e2e-tick:
