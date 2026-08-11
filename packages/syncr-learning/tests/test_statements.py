@@ -168,12 +168,13 @@ class TestTheWeightsSentenceSaysWhatAnUnmeasuredEditCountsToward:
         self, rejection: str | None, ranked: float | None
     ) -> None:
         # All three, because the corpus that produces the smallest count produces a REFUSAL: a
-        # reason appended below the gate alone would miss the reader it exists for.
+        # reason appended below the gate alone would miss the reader it exists for. Asserted with
+        # the stop in front of it, because a refusal's own text ends without one.
         said = weights_statement(
             samples=0, threshold=WEIGHTS_THRESHOLD, rejection=rejection, ranked=ranked
         )
 
-        assert UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED in said
+        assert f". {UNMEASURED_EDITS_ARE_NEITHER_FITTED_NOR_COUNTED}" in said
 
     def test_the_row_is_served_the_reason_rather_than_a_client_holding_it(self) -> None:
         # Taken off the artefact the job appends, which is what the api reads and serves, so the

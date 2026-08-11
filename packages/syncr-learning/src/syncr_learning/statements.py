@@ -144,5 +144,5 @@ def _weights_outcome(
             f"{ranked * 100:.0f}% of them, which is better than the weights they replace."
         )
     if rejection is not None:
-        return f"The seven weights were not changed: {rejection}"
+        return f"The seven weights were not changed: {rejection}."
     return f"Your edits: {samples} of {threshold}. {_COLLECTING_SUFFIX}"
