@@ -35,6 +35,7 @@ first. So a row invisible here is a lower bound on the defect and not an artefac
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from datetime import UTC, datetime
 from http import HTTPStatus
@@ -87,6 +88,10 @@ WEEK = IsoWeek.containing(datetime.now(UTC).date())
 # How long a racing transaction is given to reach the point it announces before a test gives up.
 # Only reached when something has gone wrong: every wait below is on an event another task sets in
 # the same loop, and the timeout is so a mistake fails with a name rather than hanging the suite.
+#
+# A racer's own wait for its release SUPPRESSES the timeout rather than raising it. The racers are
+# awaited in a `finally`, and an exception raised there replaces the one the case was reporting: a
+# case failing on "nothing was raced" would otherwise report a bare TimeoutError from the racer.
 WINDOW = 10.0
 
 # How often the wait below asks Postgres whether a backend has reached a lock.
@@ -339,7 +344,8 @@ async def a_maintainer_pass_held_open(
     async with sessions() as session, session.begin():
         await PlanHorizonMaintainer(session, tenant_id, lambda: now).plan(WEEK, now=now)
         inside.set()
-        await asyncio.wait_for(release.wait(), timeout=WINDOW)
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(release.wait(), timeout=WINDOW)
 
 
 async def a_plan_of_record_exists(
@@ -414,7 +420,8 @@ async def a_rival_solve_held_uncommitted(
             kind=SOLVE, iso_week=WEEK, due_at=now
         )
         inside.set()
-        await asyncio.wait_for(release.wait(), timeout=WINDOW)
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(release.wait(), timeout=WINDOW)
 
 
 async def backends_waiting_on_a_lock(sessions: async_sessionmaker[AsyncSession]) -> int:
