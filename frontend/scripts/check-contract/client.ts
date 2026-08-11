@@ -20,6 +20,7 @@ import ts from "typescript";
 
 const PROBE_BASENAME = "response-fields.probe.ts";
 const ALIAS_PREFIX = "Reaches_";
+const ALIAS = new RegExp(`^${ALIAS_PREFIX}(\\d+)$`);
 
 export interface ClientAnswerInput {
   /** Absolute path of the committed `schema.d.ts`. */
@@ -104,9 +105,10 @@ function propertyNames(checker: ts.TypeChecker, type: ts.Type): ReadonlySet<stri
 }
 
 function schemaOf(aliasName: string, schemas: readonly string[]): string | null {
-  if (!aliasName.startsWith(ALIAS_PREFIX)) return null;
-  const index = Number(aliasName.slice(ALIAS_PREFIX.length));
-  return Number.isInteger(index) && index in schemas ? schemas[index] : null;
+  const matched = ALIAS.exec(aliasName);
+  if (matched === null) return null;
+  const index = Number(matched[1]);
+  return index in schemas ? schemas[index] : null;
 }
 
 /* The application's own options, so the check reads the types the application reads rather than a

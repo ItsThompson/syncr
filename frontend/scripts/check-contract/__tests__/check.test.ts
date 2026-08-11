@@ -132,6 +132,46 @@ describe("a measurement that did not happen", () => {
     expect(outcome.findings[0]?.check).toBe("contract-not-measured");
   });
 
+  it("refuses a response body pointing at a schema the document does not define", () => {
+    const document = JSON.stringify({
+      paths: {
+        "/dangling": {
+          get: {
+            responses: {
+              "200": {
+                content: {
+                  "application/json": { schema: { $ref: "#/components/schemas/Absent" } },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: { schemas: {} },
+    });
+
+    expect(() => declaredResponseFields(document)).toThrow(/components\/schemas\/Absent/);
+  });
+
+  it("reports a schema the client answered with no type for once, not once per property", async () => {
+    const declared = declaredResponseFields(await readFile(plantedDocument, "utf8"));
+
+    const outcome = checkContract({
+      documentPath: plantedDocument,
+      generatedSchemaPath: plantedSchema,
+      declared,
+      answer: { reaching: new Map(), refusals: [] },
+    });
+
+    expect(declared.schemas).toEqual(["PlantedResponse", "NestedResponse"]);
+    expect(outcome.findings).toHaveLength(2);
+    expect(
+      outcome.findings.every(
+        (finding) => finding.check === "schema-absent-from-the-generated-client",
+      ),
+    ).toBe(true);
+  });
+
   it("refuses a document with no schemas object rather than reading it as empty", () => {
     expect(() => declaredResponseFields(JSON.stringify({ paths: {} }))).toThrow(/components/);
   });

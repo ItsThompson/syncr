@@ -47,16 +47,19 @@ export function checkContract(input: CheckContractInput): CheckOutcome {
   }
 
   let reachingCount = 0;
+  for (const schema of declared.schemas) {
+    if (answer.reaching.has(schema)) continue;
+    findings.push({
+      file: input.generatedSchemaPath,
+      check: "schema-absent-from-the-generated-client",
+      message: `${schema} is declared in the document and the client answers with no type for it at all.`,
+    });
+  }
+
   for (const field of declared.fields) {
     const reaching = answer.reaching.get(field.schema);
-    if (reaching === undefined) {
-      findings.push({
-        file: input.generatedSchemaPath,
-        check: "schema-absent-from-the-generated-client",
-        message: `${field.schema} is declared in the document and the client answers with no type for it at all.`,
-      });
-      continue;
-    }
+    // Its schema is already reported once above, which is one finding rather than one per property.
+    if (reaching === undefined) continue;
     if (reaching.has(field.property)) {
       reachingCount += 1;
       continue;

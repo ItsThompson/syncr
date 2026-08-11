@@ -35,23 +35,19 @@ export function declaredResponseFields(documentText: string): DeclaredResponseFi
     "components/schemas",
   );
 
-  const schemaNames = reachableFromAResponse(document, schemas);
+  const declaring = reachableFromAResponse(document, schemas);
   const fields: DeclaredField[] = [];
-  for (const name of schemaNames) {
-    const properties = requireRecord(
-      requireRecord(schemas[name], name).properties,
-      `${name}/properties`,
-    );
+  for (const [name, properties] of declaring) {
     for (const [property, subschema] of Object.entries(properties)) {
       fields.push({ schema: name, property, declaredAs: spellType(subschema) });
     }
   }
-  return { schemas: schemaNames, fields };
+  return { schemas: [...declaring.keys()], fields };
 }
 
 /**
  * Every schema a response can answer with, directly or through a `$ref` chain, that declares
- * properties.
+ * properties, with the properties it declares.
  *
  * The closure is what makes the check whole-document rather than top-level: a nested model is only
  * ever reached through the field that refers to it.
@@ -59,16 +55,22 @@ export function declaredResponseFields(documentText: string): DeclaredResponseFi
 function reachableFromAResponse(
   document: Record<string, unknown>,
   schemas: Record<string, unknown>,
-): string[] {
+): ReadonlyMap<string, Record<string, unknown>> {
   const pending = responseBodies(document).flatMap(refsIn);
+  const declaring = new Map<string, Record<string, unknown>>();
   const seen = new Set<string>();
   while (pending.length > 0) {
     const name = pending.pop();
     if (name === undefined || seen.has(name)) continue;
     seen.add(name);
-    pending.push(...refsIn(schemas[name]));
+    /* A schema that declares no properties is ordinary, and one a `$ref` names but the document does
+     * not define is malformed. Separating them is what keeps a dangling reference from shrinking the
+     * denominator instead of failing the check. */
+    const schema = requireRecord(schemas[name], `components/schemas/${name}`);
+    if (isRecord(schema.properties)) declaring.set(name, schema.properties);
+    pending.push(...refsIn(schema));
   }
-  return [...seen].filter((name) => isRecord(schemas[name]) && isRecord(schemas[name].properties));
+  return declaring;
 }
 
 function responseBodies(document: Record<string, unknown>): unknown[] {
