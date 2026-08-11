@@ -5,15 +5,24 @@ the document and call the solver. ``input_version`` cannot do that job -- it is 
 re-assembling against it yields current state rather than the state that failed.
 
 **The encoder is derived from the value rather than written per field, and that is the point.**
-``SolveInputs`` holds nineteen fields over fourteen member types, each with its own invariants, and
-a hand-written encoder would silently drop a field added later: the write would still succeed and
-the snapshot would still look complete. Walking the dataclass instead means a new field is in the
-document the day it is on the value.
+``SolveInputs`` holds a field per resolved quantity over member types that each carry their own
+invariants, and a hand-written encoder would silently drop a field added later: the write would
+still succeed and the snapshot would still look complete. Walking the dataclass instead means a new
+field is in the document the day it is on the value. The figures are deliberately absent: a count
+stated here is one nobody re-derives, and ``dataclasses.fields`` is what the reader inventories
+against.
 
 **So the only hand-written part is the leaf table, and an unknown leaf RAISES.** That is the whole
 guard: without it an unrecognised type would reach ``json`` as its ``repr``, which reproduces
 nothing and cannot be detected by reading the document. The refusal names the type, so the fix is
 to add a leaf rather than to discover a corrupt snapshot months later.
+
+**A plan is named before the walk, because it has a stored form of its own that the walk cannot
+produce.** A reason clause is a Python type in the domain and an object in a document, so a stored
+plan carries a discriminator saying which of the six kinds each clause is, and the value itself
+carries none: walked generically, a clause stores its fields with nothing to say what it is and no
+reader can rebuild it. So both plans a snapshot holds go through the document codec, which is the
+same direction ``plan_revisions.document`` is written in.
 
 **Written on failure only, and bounded to one week.** It is pruned with the operation at ninety
 days.
@@ -27,7 +36,9 @@ from enum import Enum
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
+from syncr_api.plans.stored_documents import stored_document
 from syncr_domain.intervals import Interval
+from syncr_domain.plan import PlanDocument
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
@@ -37,7 +48,7 @@ if TYPE_CHECKING:
 # What the document names the encoded value, so a reader knows what shape to expect before it
 # starts. Bumped when the walk changes shape rather than when a field is added, because a reader
 # that walks the same way needs no warning about a new key.
-SNAPSHOT_FORM: Final = 1
+SNAPSHOT_FORM: Final = 2
 FORM = "form"
 INPUTS = "inputs"
 
@@ -63,6 +74,11 @@ def _encoded(value: object) -> object:
         # Before the walk for the same reason: the week has one canonical spelling and its two
         # fields would otherwise be written as a pair nothing else in the tree reads.
         return str(value)
+    if isinstance(value, PlanDocument):
+        # Before the walk because a plan's stored form is not derivable from the value: the walk
+        # cannot write the clause discriminator a document carries, so a plan it walked would
+        # store reason clauses no reader can tell apart.
+        return stored_document(value)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {
             field.name: _encoded(getattr(value, field.name)) for field in dataclasses.fields(value)
