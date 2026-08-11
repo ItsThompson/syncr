@@ -52,7 +52,6 @@ function areaAt(index: number) {
     pigmentIndex: index,
     budgetPercent: null,
     floorHours: null,
-    defaultPreferenceId: null,
   };
 }
 

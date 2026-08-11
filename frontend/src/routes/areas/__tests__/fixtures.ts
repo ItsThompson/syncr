@@ -32,7 +32,6 @@ export function buildArea(overrides: Partial<Area> = {}): Area {
     pigmentIndex: 0,
     budgetPercent: 60,
     floorHours: null,
-    defaultPreferenceId: null,
     ...overrides,
   };
 }

@@ -108,7 +108,6 @@ export function buildAreas(): Areas {
         parentId: null,
         budgetPercent: 25,
         floorHours: null,
-        defaultPreferenceId: null,
       },
       {
         id: AREA_FITNESS,
@@ -117,7 +116,6 @@ export function buildAreas(): Areas {
         parentId: null,
         budgetPercent: 10,
         floorHours: 5,
-        defaultPreferenceId: null,
       },
     ],
     ramp: { pigmentCount: 12, pigmentsInUse: 2, areasSharingAPigment: 0, statement: null },

@@ -2303,11 +2303,6 @@ export interface components {
         AreaResponse: {
             /** @description The share of discretionary time REMAINING after every Area's floor is honored, as a percentage from 0 to 100. Null means the Area declares no share. Shares summing past 100 across Areas are accepted and reported as oversubscription, never rejected. */
             budgetPercent: components["schemas"]["WireDecimal"] | null;
-            /**
-             * Defaultpreferenceid
-             * @description Always null. Nothing writes this column: an Area's placement preference is read through GET /api/v1/areas/{id}/preference, which is addressed by the Area and holds no identifier a caller needs. Read the preference there rather than this field.
-             */
-            defaultPreferenceId: string | null;
             /** @description An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor. */
             floorHours: components["schemas"]["WireDecimal"] | null;
             /**
