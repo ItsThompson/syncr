@@ -57,10 +57,17 @@ MODULES_FLOOR: Final = 300
 
 # The trees the walk must reach, declared as literal prefixes rather than read back out of
 # SHIPPED_ROOTS, because a guard derived from the thing it guards cannot fail when that thing
-# narrows. Two packages rather than one, so a glob that stopped expanding is visible.
-COVERED_TREES: Final = (
+# narrows. Every package rather than a sample of them: a glob narrowed to a subset, and a filter
+# applied inside the walk, are two different collapses and neither is visible from the roots alone.
+PACKAGE_TREES: Final = (
     "packages/syncr-api/src/",
+    "packages/syncr-common/src/",
     "packages/syncr-domain/src/",
+    "packages/syncr-learning/src/",
+    "packages/syncr-solver/src/",
+)
+COVERED_TREES: Final = (
+    *PACKAGE_TREES,
     "cli/src/",
     "packages/syncr-api/alembic/",
     "deployments/ops/",
@@ -196,6 +203,22 @@ def test_the_walk_reaches_every_tree_the_role_could_be_stored_from() -> None:
     assert {tree: bool(modules) for tree, modules in reached.items()} == dict.fromkeys(
         COVERED_TREES, True
     )
+
+
+def test_the_walk_reaches_the_packages_the_repository_holds_and_no_others() -> None:
+    # Stated over the answer rather than over the roots, because a package can be lost two ways: a
+    # glob narrowed to a subset, and a filter inside the walk that the roots never see. Both change
+    # this set. A package ADDED to the repository also changes it, which is the adjudication a new
+    # tree owes: whether it can store the role is a question, not a default.
+    found = shipped_modules(repository_root())
+
+    reached = {
+        module.split("/src/")[0] + "/src/"
+        for module in found
+        if module.startswith("packages/") and "/src/" in module
+    }
+
+    assert reached == set(PACKAGE_TREES)
 
 
 def test_a_role_write_is_found_wherever_it_sits() -> None:

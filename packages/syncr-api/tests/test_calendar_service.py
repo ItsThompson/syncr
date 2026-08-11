@@ -561,6 +561,28 @@ async def test_a_feed_is_refused_on_its_provider_even_when_another_source_holds_
     assert wiring.sources.rows[feed.id].role == ANCHOR_SOURCE
 
 
+async def test_a_feed_syncr_has_read_is_refused_on_its_provider_not_on_its_history(
+    wiring: Wiring,
+) -> None:
+    # Both rules hold for this source, and the order between them decides which sentence the user
+    # reads. The anchor-history remedy is to add a new empty calendar, which for a feed earns the
+    # provider refusal on the second attempt, so the provider rule answers first.
+    feed = wiring.sources.hold(
+        record(
+            provider=ICS,
+            external_id=PLAN,
+            sync_state=SyncStateRecord(last_success_at=NOW, anchors_current=61),
+        )
+    )
+
+    with pytest.raises(ValidationFailed) as raised:
+        await wiring.service.designate_write_target(OWNER, feed.id)
+
+    assert f"is a {ICS} source" in raised.value.detail
+    assert "active anchor source" not in raised.value.detail
+    assert wiring.sources.rows[feed.id].role == ANCHOR_SOURCE
+
+
 async def test_re_asserting_a_stored_unwritable_target_is_not_refused(wiring: Wiring) -> None:
     # The rule is stated over the transition. A role already stored is state no rule over a request
     # reaches, and refusing to re-assert it would answer 422 to a request that changes nothing;
