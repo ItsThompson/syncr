@@ -92,6 +92,15 @@ export const instantAt = (date: CivilDate, wallTime: string, zone: string): stri
   return new Date(naive.getTime() + offsetMs).toISOString();
 };
 
+/**
+ * The instant a civil date begins in UTC.
+ *
+ * A day is not an instant, and the api takes instants: a deadline stated as a day has to name one
+ * of that day's moments. The fixtures that state a deadline mean the day's start, because what
+ * they measure is the capacity in front of it.
+ */
+export const utcMidnightOn = (date: CivilDate): string => asUtcMidnight(date).toISOString();
+
 /** `at` read as if its wall clock were `zone`'s, which is what makes the offset measurable. */
 const asZoned = (at: Date, zone: string): Date => {
   const parts = new Intl.DateTimeFormat("en-CA", {

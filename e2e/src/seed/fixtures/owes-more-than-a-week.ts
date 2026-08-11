@@ -33,7 +33,7 @@
  */
 
 import type { ApiClient } from "../../api/client.ts";
-import { dateIn, isoWeekShift, MONDAY } from "../../api/weeks.ts";
+import { dateIn, isoWeekShift, MONDAY, utcMidnightOn } from "../../api/weeks.ts";
 import { planWeek } from "../../harness/subject-weeks.ts";
 import { declareAreas, declareOneDayShape, declareSettings, declareTask } from "../declarations.ts";
 
@@ -68,7 +68,7 @@ export const seedOwesMoreThanAWeek = async (client: ApiClient): Promise<void> =>
   ]);
   const { templateId } = await declareOneDayShape(client, "Everyday");
 
-  const deadline = deadlineDate();
+  const deadline = utcMidnightOn(deadlineDate());
   for (const title of DEADLINE_TASKS) {
     await declareTask(client, {
       title,

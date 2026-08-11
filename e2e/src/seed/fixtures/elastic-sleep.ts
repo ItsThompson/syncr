@@ -17,7 +17,7 @@
  */
 
 import type { ApiClient } from "../../api/client.ts";
-import { dateIn, WEDNESDAY } from "../../api/weeks.ts";
+import { dateIn, utcMidnightOn, WEDNESDAY } from "../../api/weeks.ts";
 import { domainConstants } from "../../harness/compose.ts";
 import { planWeek } from "../../harness/subject-weeks.ts";
 import {
@@ -68,7 +68,7 @@ export const seedElasticSleep = async (client: ApiClient): Promise<void> => {
     title: "Dissertation chapter",
     areaId: areas.Career!,
     estimateMinutes: OVERSIZED_ESTIMATE_MINUTES,
-    deadline: dateIn(planWeek(), WEDNESDAY),
+    deadline: utcMidnightOn(dateIn(planWeek(), WEDNESDAY)),
     minChunkMinutes: 60,
     priority: "urgent",
   });

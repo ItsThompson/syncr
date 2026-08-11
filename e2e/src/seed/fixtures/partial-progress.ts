@@ -14,7 +14,7 @@
 
 import type { ApiClient } from "../../api/client.ts";
 import type { Block } from "../../api/schemas.ts";
-import { dateIn, FRIDAY } from "../../api/weeks.ts";
+import { dateIn, FRIDAY, utcMidnightOn } from "../../api/weeks.ts";
 import { domainConstants, tickHorizon } from "../../harness/compose.ts";
 import { planWeek } from "../../harness/subject-weeks.ts";
 import { awaitLivePlan, solveAndSettle, weekView } from "../../harness/week.ts";
@@ -53,7 +53,7 @@ export const seedPartialProgress = async (client: ApiClient): Promise<void> => {
     title: stated.title,
     areaId: areas.Career!,
     estimateMinutes: stated.estimateMinutes,
-    deadline: dateIn(subject, FRIDAY),
+    deadline: utcMidnightOn(dateIn(subject, FRIDAY)),
     minChunkMinutes: 60,
     priority: "high",
   });

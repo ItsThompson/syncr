@@ -43,7 +43,7 @@
  */
 
 import type { ApiClient } from "../../api/client.ts";
-import { dateIn, MONDAY, WEDNESDAY } from "../../api/weeks.ts";
+import { dateIn, MONDAY, utcMidnightOn, WEDNESDAY } from "../../api/weeks.ts";
 import { planWeek } from "../../harness/subject-weeks.ts";
 import {
   declareAreas,
@@ -154,7 +154,7 @@ export const seedTightCapacity = async (client: ApiClient): Promise<void> => {
     areaId: areas.Career!,
     estimateMinutes: DEADLINE_TASK_MINUTES,
     minChunkMinutes: CHUNK_MINUTES,
-    deadline: dateIn(planWeek(), DEADLINE_WEEKDAY),
+    deadline: utcMidnightOn(dateIn(planWeek(), DEADLINE_WEEKDAY)),
     priority: "high",
   });
 

@@ -170,6 +170,7 @@ export type TaskSpec = {
   readonly title: string;
   readonly areaId: string;
   readonly estimateMinutes: number;
+  /** An instant carrying an offset, or null for no deadline. A day is not one: see `utcMidnightOn`. */
   readonly deadline?: string | null;
   readonly minChunkMinutes?: number | null;
   readonly priority?: "low" | "normal" | "high" | "urgent";

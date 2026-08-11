@@ -21,7 +21,7 @@
  */
 
 import type { ApiClient } from "../../api/client.ts";
-import { dateIn, FRIDAY, THURSDAY } from "../../api/weeks.ts";
+import { dateIn, FRIDAY, THURSDAY, utcMidnightOn } from "../../api/weeks.ts";
 import { ICS_PROVIDER } from "../../config.ts";
 import { planWeek } from "../../harness/subject-weeks.ts";
 import {
@@ -119,7 +119,7 @@ export const seedReferenceWeek = async (client: ApiClient): Promise<void> => {
     title: "F&F Past Papers",
     areaId: areas.Career!,
     estimateMinutes: 240,
-    deadline: dateIn(subject, FRIDAY),
+    deadline: utcMidnightOn(dateIn(subject, FRIDAY)),
     minChunkMinutes: 50,
     priority: "high",
   });
@@ -127,7 +127,7 @@ export const seedReferenceWeek = async (client: ApiClient): Promise<void> => {
     title: "Write up the interview prep",
     areaId: areas.Career!,
     estimateMinutes: 120,
-    deadline: dateIn(subject, THURSDAY),
+    deadline: utcMidnightOn(dateIn(subject, THURSDAY)),
     minChunkMinutes: 30,
   });
   await declareTask(client, {
