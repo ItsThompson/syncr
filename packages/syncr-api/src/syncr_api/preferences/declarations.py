@@ -22,12 +22,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from syncr_domain.preferences import LocalTimeWindow, Preference, authored_windows
+from syncr_domain.preferences import Preference, authored_windows
 
 if TYPE_CHECKING:
     from datetime import time
 
-    from syncr_domain.preferences import PreferenceOwner, PreferenceStrength
+    from syncr_domain.preferences import LocalTimeWindow, PreferenceOwner, PreferenceStrength
 
 
 @dataclass(frozen=True, slots=True)
