@@ -67,7 +67,7 @@ const withOffers = (verdict: Verdict | null): string =>
 
 const FLOOR_KINDS: readonly string[] = ["floors_exceed_capacity", "area_floor_unreachable"];
 
-/** One interval in minutes. B1's own cases compute this inline and are left untouched. */
+/** One interval in minutes. B1's own cases compute this inline and are deliberately left untouched. */
 const spanMinutes = (span: { readonly start: string; readonly end: string }): number =>
   (Date.parse(span.end) - Date.parse(span.start)) / 60_000;
 
@@ -178,11 +178,7 @@ test("the tight-capacity week owes more before its deadline than it can hold, be
   // remainder, and this is where the figures to compare come from.
   const placed = solved
     .live!.blocks.filter((block) => block.origin !== "frame")
-    .reduce(
-      (total, block) =>
-        total + (Date.parse(block.interval.end) - Date.parse(block.interval.start)) / 60_000,
-      0,
-    );
+    .reduce((total, block) => total + spanMinutes(block.interval), 0);
   const areas = await api.get<{ areas: readonly { floorHours: number }[] }>("/api/v1/areas");
   const declaredFloorMinutes = areas.areas.reduce(
     (total, area) => total + Number(area.floorHours) * 60,
