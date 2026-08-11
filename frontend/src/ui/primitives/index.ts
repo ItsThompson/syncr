@@ -60,6 +60,7 @@ export { DatePicker, type DatePickerProps } from "./DatePicker";
 export { Dialog, type DialogProps } from "./Dialog";
 export { Icon, type IconProps } from "./Icon";
 export { Input, type InputProps } from "./Input";
+export type { GroupNaming } from "./naming";
 export { NumberStepper, type NumberStepperMeasure, type NumberStepperProps } from "./NumberStepper";
 export { Radio, type RadioOption, type RadioProps } from "./Radio";
 export { Select, type SelectOption, type SelectProps } from "./Select";

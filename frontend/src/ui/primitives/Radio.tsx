@@ -5,11 +5,15 @@
  * geometry: a glyph would be a character whose weight and baseline vary by font.
  *
  * Radix owns the roving tab order, so the group takes one tab stop and the arrow keys move within it, which
- * is what a keyboard-first product needs from a set of exclusive choices. */
+ * is what a keyboard-first product needs from a set of exclusive choices.
+ *
+ * THE GROUP CANNOT BE POINTED AT BY A LABEL, because its tab stop is a descendant Radix owns, so it is named
+ * either by a string of its own or by an element a screen has already drawn the question in. */
 
 import { useId, type Ref } from "react";
 import * as RadixRadioGroup from "@radix-ui/react-radio-group";
 
+import type { GroupNaming } from "./naming";
 import "./toggle.css";
 
 export interface RadioOption {
@@ -18,12 +22,10 @@ export interface RadioOption {
   readonly isDisabled?: boolean | undefined;
 }
 
-export interface RadioProps {
+export type RadioProps = GroupNaming & {
   readonly value: string;
   readonly onValueChange: (next: string) => void;
   readonly options: readonly RadioOption[];
-  /** Names the group, which is what a screen reader announces before the chosen option. */
-  readonly label: string;
   readonly name?: string | undefined;
   readonly isDisabled?: boolean | undefined;
   readonly isRequired?: boolean | undefined;
@@ -34,13 +36,14 @@ export interface RadioProps {
    * itself: a caller that means to focus the choice reads `[role="radio"][tabindex="0"]` off this node.
    */
   readonly ref?: Ref<HTMLDivElement> | undefined;
-}
+};
 
 export function Radio({
   value,
   onValueChange,
   options,
   label,
+  labelledBy,
   name,
   isDisabled,
   isRequired,
@@ -58,6 +61,7 @@ export function Radio({
       required={isRequired}
       name={name}
       aria-label={label}
+      aria-labelledby={labelledBy}
     >
       {options.map((option) => {
         const optionId = `${groupId}-${option.value}`;
