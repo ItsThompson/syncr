@@ -5,7 +5,7 @@
  * settle what a browser does with them. It is run explicitly:
  *
  *   npx vite build
- *   npx vitest run --config probe/vitest.config.mts
+ *   npx vitest run --config probe/vitest.config.ts
  *
  * The suite's own include is `src/**` and `scripts/**`, so nothing here joins it by accident.
  *
@@ -21,10 +21,14 @@
  * which is what a table without a policy renders as: it is here to show the defect the policy fixes rather than to
  * be compared figure for figure.
  *
- * IT SPAWNS CHROME ITSELF RATHER THAN THROUGH `scripts/check-render/browser.ts`, for one reason: it passes its own
- * `--user-data-dir`, so a run cannot contend for the developer's default Chrome profile. That costs one thing,
- * stated at `dumpDom`: a Chrome given its own profile does not exit after `--dump-dom`, so the dump itself is the
- * signal to stop waiting. Where the browser IS is the part worth sharing, and `findBrowser` is imported for it.
+ * IT SPAWNS CHROME ITSELF RATHER THAN THROUGH `scripts/check-render/browser.ts`, for one reason: it gives Chrome a
+ * `--user-data-dir` of its own, made fresh per run, so two runs can never contend for a profile and no wedged
+ * browser can hold one open for the next. That costs one thing, stated at `dumpDom`: a Chrome given its own
+ * profile does not exit after `--dump-dom`, so the dump itself is the signal to stop waiting. Where the browser IS
+ * is the part worth sharing, and `findBrowser` is imported for it.
+ *
+ * THE PAGE, THE STYLESHEET AND THE READINGS ARE WRITTEN INTO THAT RUN DIRECTORY and its path is printed, so a
+ * reader can open the exact document that was measured. Nothing is written inside the repository.
  *
  * The web font is not loaded offline, so a wrap lands on a different word than it does in production. Nothing here
  * turns on where the wrap lands: the claims are that a row grew, that its neighbours did not move, and that a
@@ -32,7 +36,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { renderToStaticMarkup } from "react-dom/server";
@@ -40,9 +45,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { BROWSER_ENV, findBrowser } from "../scripts/check-render/browser.ts";
 import { Table, type TableColumn } from "../src/ui/domain/table/Table";
-
-/** Beside the bundle it reads, so the page, the stylesheet and the readings are one artifact. */
-const OUT = path.resolve(import.meta.dirname, "..", "dist", "probe");
 
 const PITCH_PX = 28;
 const MARK_PX = 18;
@@ -273,13 +275,13 @@ async function bundleCss(): Promise<string> {
  * open indefinitely. Waiting for the exit is what wedges a run. The dump ends at `</html>`, so that is the signal,
  * and the browser is killed once it has said everything it was asked for.
  */
-function dumpDom(browser: string, page: string): Promise<string> {
+function dumpDom(browser: string, run: string, page: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       browser,
       [
         "--headless=new",
-        `--user-data-dir=${path.join(OUT, "chrome-profile")}`,
+        `--user-data-dir=${path.join(run, "chrome-profile")}`,
         "--disable-gpu",
         "--allow-file-access-from-files",
         "--hide-scrollbars",
@@ -322,17 +324,18 @@ async function measure(): Promise<Reading[]> {
     "</body></html>",
   ].join("\n");
 
-  await mkdir(OUT, { recursive: true });
-  await writeFile(path.join(OUT, "bundle.css"), await bundleCss(), "utf8");
-  await writeFile(path.join(OUT, "page.html"), page, "utf8");
+  const run = await mkdtemp(path.join(tmpdir(), "syncr-table-probe-"));
+  process.stdout.write(`the page, the stylesheet and the readings are in ${run}\n`);
+  await writeFile(path.join(run, "bundle.css"), await bundleCss(), "utf8");
+  await writeFile(path.join(run, "page.html"), page, "utf8");
 
-  const dom = await dumpDom(browser, path.join(OUT, "page.html"));
+  const dom = await dumpDom(browser, run, path.join(run, "page.html"));
   const found = /<pre id="readings">([\s\S]*?)<\/pre>/.exec(dom);
   if (found === null) throw new Error("the page reported no readings");
   const readings = JSON.parse(
     found[1].replaceAll("&quot;", '"').replaceAll("&amp;", "&"),
   ) as Reading[];
-  await writeFile(path.join(OUT, "readings.json"), JSON.stringify(readings, null, 2), "utf8");
+  await writeFile(path.join(run, "readings.json"), JSON.stringify(readings, null, 2), "utf8");
   return readings;
 }
 
