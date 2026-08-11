@@ -49,13 +49,20 @@
   table-layout: fixed;
 }
 
-/* A header is a cell, so a word longer than its column breaks here for the same reason it breaks in a body cell:
- * the neighbour keeps its declared width, so the overflow would be drawn on top of it. `overflow-wrap` inherits,
- * which is how it reaches the text inside the sort button without a second declaration. */
+/* A header is a cell, so a word longer than its column breaks rather than being drawn over the column beside it.
+ * SCOPED TO THE DECLARED LAYOUT, because that is the whole of the reason: only there does the neighbour keep a
+ * width of its own to be drawn over. A table laid out from its content builds its columns out of what their
+ * contents ask for, and `anywhere` is counted in that ask where `break-word` is not, so declaring it on every
+ * header would let each header's words stop claiming room -- an 8-character label rendering on three lines and
+ * taking its row with it. `overflow-wrap` inherits, which is how it reaches the text inside the sort button
+ * without a second declaration. */
+.table--fixed .table__header {
+  overflow-wrap: anywhere;
+}
+
 .table__header {
   height: var(--h-row);
   padding: 0 7px;
-  overflow-wrap: anywhere;
   border-bottom: var(--hairline) solid var(--rule-strong);
   color: var(--text-muted);
   font-size: var(--fs-label);
@@ -101,8 +108,11 @@
   border-bottom: var(--hairline) solid var(--rule);
 }
 
-/* A word longer than its column breaks rather than reaching over the column beside it: under a fixed layout the
- * neighbour keeps its width either way, so the overflow would be drawn on top of it. */
+/* A word longer than its column breaks rather than reaching over the column beside it. UNSCOPED, unlike the
+ * header's, and the asymmetry is the difference between what the two hold: a header is a short label the sheet
+ * can reason about, and a cell is whatever text a reader picked the row by. Under a declared layout the neighbour
+ * keeps its width, so an unbroken token would be drawn on top of it; under a content-driven one the same token
+ * widens the table past its container instead, and `anywhere` is the keyword that keeps it inside. */
 .table__cell {
   padding: 0 7px;
   overflow-wrap: anywhere;

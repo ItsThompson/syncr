@@ -348,15 +348,23 @@ describe("a cell wraps and never truncates", () => {
     expect((await familyDeclarations()).length).toBeGreaterThan(20);
   });
 
-  it("breaks a word longer than its column rather than drawing it over the column beside it", async () => {
-    expect(await declaredValue(".table__cell", "overflow-wrap")).toBe("anywhere");
-  });
+  /* THE FAMILY'S COMPLETE SET OF `overflow-wrap` DECLARATIONS, because where the break is declared matters as
+   * much as that it is. `anywhere` is counted when a browser works out a column's minimum content width and
+   * `break-word` is not, so a header declaring it outside the fixed layout stops that header's words claiming
+   * room in a table laid out from its content: measured, an 8-character label on three lines and a header row
+   * grown from 28px to 48.5px, on every screen that declares no width. The exact set is what refuses that by
+   * property name rather than by review, the same way the layout's own declaration is refused above.
+   *
+   * The cell keeps the unscoped one on purpose: under a content-driven layout an unbroken token widens the table
+   * past its container, and `anywhere` is what keeps it inside. `probe/table.probe.test.tsx` measures both. */
+  it("breaks a word longer than its column, in a header only where a column declares a width", async () => {
+    const sheet = path.join("table", "table.css");
+    const wraps = (await familyDeclarations()).filter((each) => each.includes("overflow-wrap"));
 
-  /* A `<th>` is a cell and overflows its column the same way, so the same break is declared on it. Measured in a
-   * browser: without this, an unbroken 36-character header in a 60px column draws 267px of content over the
-   * column beside it and its own row stays at the pitch. */
-  it("breaks one in a header too, which is a cell and overflows its column the same way", async () => {
-    expect(await declaredValue(".table__header", "overflow-wrap")).toBe("anywhere");
+    expect(wraps).toEqual([
+      `${sheet} .table--fixed .table__header overflow-wrap: anywhere`,
+      `${sheet} .table__cell overflow-wrap: anywhere`,
+    ]);
   });
 
   it("renders a name at the api's cap in full, in a column narrower than the name", () => {
