@@ -23,7 +23,7 @@ export interface DeclaredField {
 }
 
 export interface DeclaredResponseFields {
-  /** Every response-reachable schema that declares properties, sorted. */
+  /** Every response-reachable schema that declares properties, in the order the closure reaches them. */
   readonly schemas: readonly string[];
   readonly fields: readonly DeclaredField[];
 }
