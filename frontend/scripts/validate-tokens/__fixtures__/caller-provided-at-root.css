@@ -9,4 +9,5 @@
   --rule: #c8d0e8;
   --hatch-fwd: repeating-linear-gradient(45deg, var(--hatch-ink) 0 1px, transparent 1px 5px);
   --band-edge: 1px solid var(--band-ink);
+  --hatch-back: repeating-linear-gradient(135deg, var(--hatch-ink) 0 1px, transparent 1px 5px);
 }

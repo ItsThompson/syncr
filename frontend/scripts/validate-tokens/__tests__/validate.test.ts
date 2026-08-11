@@ -211,6 +211,8 @@ describe("a @caller-provided contract the layer resolves itself", () => {
     ]);
   });
 
+  /* Two references to one contract, so the refusal is per annotation rather than per site: the
+   * annotation is the defect and the dangling findings already point at every use. */
   it("reports the references the annotation had been suppressing", async () => {
     const outcome = await validate([atRoot]);
     const dangling = outcome.findings.filter((finding) => finding.check === "dangling-reference");
@@ -218,9 +220,11 @@ describe("a @caller-provided contract the layer resolves itself", () => {
     expect(dangling.map((finding) => `${finding.line}:${finding.column}`)).toEqual([
       "10:49",
       "11:26",
+      "12:51",
     ]);
     expect(dangling[0].message).toContain("var(--hatch-ink) resolves to nothing");
     expect(dangling[1].message).toContain("var(--band-ink) resolves to nothing");
+    expect(dangling[2].message).toContain("var(--hatch-ink) resolves to nothing");
   });
 
   it("stops naming it in the notes as a contract the layer keeps", async () => {
