@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, Final
 
 from syncr_domain.discretionary import absolute_forbidden, discretionary_intervals
 from syncr_domain.identity import BindingKind, BindingRef
-from syncr_domain.intervals import IntervalSet
+from syncr_domain.intervals import IntervalSet, has_started
 from syncr_domain.plan import PlanError
 from syncr_domain.templates import TemplateEntryKind
 from syncr_domain.weeks import local_days
@@ -342,7 +342,7 @@ def _started(inputs: SolveInputs) -> Mapping[BindingRef, Held]:
     return {
         block.binding: Held(interval=block.interval, detail=block.title)
         for block in _live(inputs)
-        if block.interval.start <= inputs.now
+        if has_started(block.interval, inputs.now)
     }
 
 

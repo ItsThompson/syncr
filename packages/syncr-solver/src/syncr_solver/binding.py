@@ -41,7 +41,9 @@ reads the same instant and hands out none of it.
 The boundary is the slot's START rather than its end, and a slot straddling the instant is left
 unbound whole. Shrinking it to the part still ahead is the refusal at the top of this file, so
 there is no half of it to fill. It is also strict: a slot beginning exactly at ``inputs.now`` has
-spent nothing and still binds, which is the boundary the packer's clip keeps as well.
+spent nothing and still binds, which is the boundary the packer's clip keeps as well. The instant
+is read from the assembled inputs rather than from a clock here, so one assembly cannot answer
+this two ways.
 
 **The guard sits before the bind, and that is what keeps the week's content for the days it can
 still be placed in.** Without it a task's remaining minutes go to a Monday nobody can reach, and a
@@ -67,6 +69,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from syncr_domain.gaps import EmptySlot, EmptySlotReason
+from syncr_domain.intervals import has_elapsed
 from syncr_domain.templates import TemplateEntryKind
 from syncr_solver.candidates import candidates_for
 from syncr_solver.constraints import ConstraintRule
@@ -76,7 +79,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from syncr_domain.identifiers import AreaId, TemplateEntryId
-    from syncr_domain.intervals import Instant, Interval
+    from syncr_domain.intervals import Instant
     from syncr_solver.attempt import Attempt
     from syncr_solver.candidates import Candidate
     from syncr_solver.constraints import BlockedCandidate
@@ -97,7 +100,7 @@ def bind_slots(attempt: Attempt) -> Attempt:
 
 def _bind_one(entry: MaterializedEntry, attempt: Attempt) -> Attempt:
     """One slot: the first eligible candidate the rules accept, or the slot with its reason."""
-    if _has_begun(entry.interval, attempt.inputs.now):
+    if has_elapsed(entry.interval, attempt.inputs.now):
         return attempt.with_slot(_slot(entry, EmptySlotReason.ELAPSED))
     eligible = _eligible_for(entry, attempt)
     if not eligible:
@@ -110,17 +113,6 @@ def _bind_one(entry: MaterializedEntry, attempt: Attempt) -> Attempt:
             return attempt.adding(offer.placed)
         refusals.append(refusal)
     return attempt.with_blocked(refusals).with_slot(_slot(entry, _reason_of(refusals)))
-
-
-def _has_begun(interval: Interval, now: Instant) -> bool:
-    """Whether the week has spent any of this span, which is what makes it unfillable.
-
-    Strict, so a slot beginning exactly at ``now`` still binds: it has spent nothing, and the
-    interval algebra keeps a span starting at that instant whole when it clips a set to what
-    follows. The instant comes from the assembled inputs rather than from a clock read here, so
-    one assembly cannot answer this two ways.
-    """
-    return interval.start < now
 
 
 def _eligible_for(entry: MaterializedEntry, attempt: Attempt) -> tuple[Candidate, ...]:

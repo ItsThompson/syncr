@@ -44,6 +44,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from syncr_domain.identity import BindingKind
+from syncr_domain.intervals import has_started
 from syncr_domain.plan import Block
 from syncr_domain.reasons import ReasonRecord
 from syncr_solver.attempt import Placed
@@ -133,7 +134,7 @@ def _is_immovable(block: Block, inputs: SolveInputs, pins: Mapping[BindingRef, P
     the same reading H10 takes: without that instant "has started or is in the past" is not
     decidable at all.
     """
-    return block.interval.start <= inputs.now or block.binding in pins
+    return has_started(block.interval, inputs.now) or block.binding in pins
 
 
 def _from_content(pin: Pin, inputs: SolveInputs) -> Placed:
