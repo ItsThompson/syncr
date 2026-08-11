@@ -588,9 +588,7 @@ const WEEK = [
 const flag = a => ({area:(a||'').replace(/[*!?]/g,'') || null,
                     pin:/\*/.test(a||''), sel:/!/.test(a||''), prop:/\?/.test(a||'')});
 
-/* THE FIGURES THIS WEEK'S HEADERS PRINT, DERIVED FROM THE FIXTURE ABOVE RATHER THAN STATED BESIDE IT.
-
-   A WEEK HOLDS NOUGHT OR ONE PENDING PROPOSAL. `WeekViewResponse.proposal` is one optional object and
+/* A WEEK HOLDS NOUGHT OR ONE PENDING PROPOSAL. `WeekViewResponse.proposal` is one optional object and
    a later proposal supersedes the one before it, so no figure here may print more than one. The
    targets are the blocks the proposal wants, which is what the grid draws the proposal channel on;
    the count is their presence collapsed, which is the quantity the api answers with. */
@@ -599,6 +597,10 @@ const PENDING_PROPOSALS = PROPOSAL_TARGETS.length === 0 ? 0 : 1;
 const UNCONFIRMED_DAYS = WEEK.filter(d => d.unconf).length;
 const THIS_WEEK = [['Proposals', PENDING_PROPOSALS], ['Unconfirmed', UNCONFIRMED_DAYS]];
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+/* An empty slot is the one thing that disables approve: never an infeasibility, which syncr reports
+   rather than governs. The band and the session share the control and both read this field. */
+const APPROVE_DISABLED = PENDING_PROPOSALS === 0 ? ' disabled' : '';
 
 /* Sweep and columns: cluster by a running maximum end, then give each block the leftmost
    column whose last block has already finished. No special case for any origin, so nothing
@@ -827,7 +829,7 @@ V['v-week'] = () => `
       <button type="button">16h</button>
       <button type="button" disabled title="Beyond the cap for this display">24h</button></span>
     <button type="button" class="btn sec">Re-solve</button>
-    <button type="button" class="btn">Approve all</button></div>
+    <button type="button" class="btn"${APPROVE_DISABLED}>Approve all</button></div>
 </div>
 ${STRIP}
 <div style="display:flex;flex:1;min-height:0">
@@ -842,7 +844,7 @@ V['v-session'] = () => `
   <span class="eyebrow">Planning and retrospective, in one pass</span>
   <span class="right" style="margin-left:auto;display:flex;gap:8px">
     <button type="button" class="btn sec">Skip retro</button>
-    <button type="button" class="btn">Approve the week</button></span>
+    <button type="button" class="btn"${APPROVE_DISABLED}>Approve the week</button></span>
 </div>
 <div class="scroll"><div class="pad gap">
   <div class="cols21">
