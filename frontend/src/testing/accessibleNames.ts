@@ -16,8 +16,8 @@
  * "one" cannot say whether the one it got is the element the screen drew or a control's own string.
  *
  * A LABEL THAT POINTS AT NOTHING is read here too, because it is the failure the group form exists to avoid
- * and it is invisible in a rendering: the markup looks right, and Chrome reports the group it aims at as
- * having an empty name and no name source at all. */
+ * and it is invisible in a rendering. See `ui/primitives/naming.ts` for what a browser computes for the group
+ * such a label aims at. */
 
 /** How a node came to carry the words. `aria-labelledby` is absent by design: it is a reference, not a copy. */
 export type AuthoredNameSource = "drawn text" | "aria-label";
@@ -47,15 +47,25 @@ export function danglingLabels(container: HTMLElement): string[] {
 }
 
 /**
- * Every place the words are authored in a render, in document order.
+ * The words an element authors ITSELF, which is its own text nodes and not its descendants'.
  *
- * Only an element with no element children counts as drawing them: an ancestor's `textContent` is its
- * descendants' text, so counting ancestors would report one drawn copy per level of the tree.
+ * `textContent` is an element's text plus every descendant's, so reading it would report one drawn copy per
+ * level of the tree. A leaf test would exclude the ancestors but also the required row, whose label element
+ * draws the words beside a marker element and so has an element child.
  */
+function ownText(element: Element): string {
+  let text = "";
+  for (const node of element.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) text += node.nodeValue ?? "";
+  }
+  return text.trim();
+}
+
+/** Every place the words are authored in a render, in document order. */
 export function authoredNames(container: HTMLElement, words: string): AuthoredName[] {
   const found: AuthoredName[] = [];
   for (const element of container.querySelectorAll("*")) {
-    if (element.children.length === 0 && element.textContent?.trim() === words) {
+    if (ownText(element) === words) {
       found.push({ source: "drawn text", by: shapeOf(element) });
     }
     if (element.getAttribute("aria-label") === words) {

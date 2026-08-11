@@ -63,6 +63,19 @@ describe("where the words are authored", () => {
     expect(authoredNames(container, "Day bounds")).toEqual([{ source: "drawn text", by: "span" }]);
   });
 
+  /* THE REQUIRED ROW IS WHY THE RULE IS OWN TEXT RATHER THAN LEAF. Its label element draws the words beside a
+   * marker element, so it has an element child and a leaf test skipped it: the census reported no authoring at
+   * all for a shape the row itself renders, which is a reader blind to the row it is used on. */
+  it("counts an element that draws them beside a marker element", () => {
+    const container = markup(
+      `<span class="form-row__label">Day bounds<span class="form-row__required"> *</span></span>`,
+    );
+
+    expect(authoredNames(container, "Day bounds")).toEqual([
+      { source: "drawn text", by: "span.form-row__label" },
+    ]);
+  });
+
   it("reports nothing for words the render does not carry", () => {
     const container = markup(`<span>Times</span>`);
 
