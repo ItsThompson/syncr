@@ -4,6 +4,16 @@
  * that. `scripts/check-imports` resolves every import here against the filesystem and refuses one that lands in
  * `api/`, `routes/` or `app/`, and oxlint refuses the same by specifier.
  *
+ * IMPORTING ONE COMPONENT LOADS EVERY FAMILY'S STYLESHEET, and that is accepted rather than overlooked. Each
+ * family imports its own sheet for the side effect and this barrel re-exports all of them, so a screen that
+ * takes `Table` from here is served the whole layer's CSS. Every family below is rendered by at least one
+ * route, so none of it is bytes a session never uses. The alternative is a barrel with no side effects, which
+ * costs a second import convention across the kit -- a component from one path, its stylesheet from another --
+ * for `scripts/check-imports` and oxlint to police, and it breaks the property both of them hold: that
+ * `ui/domain` is one thing. What the side effect costs is a figure rather than a sentence: `npm run
+ * lint:bundle` builds one import through this barrel and one from the component's own module, and prints the
+ * difference.
+ *
  * WHAT EACH FAMILY OWNS:
  *
  *   shell     the top bar, the paper sidebar, the keyboard map, the command palette and the help overlay

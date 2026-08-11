@@ -5,6 +5,16 @@
  * `app/`, and oxlint refuses the same by specifier. A control that needs to name a `Problem` is misfiled,
  * not under-permitted.
  *
+ * IMPORTING ONE CONTROL LOADS EVERY CONTROL'S STYLESHEET, and that is accepted rather than overlooked. Each
+ * control imports its own sheet for the side effect and this barrel re-exports all of them, so a screen that
+ * takes `Button` from here is served the whole layer's CSS. The screens render this layer, and a control none
+ * of them has adopted still ships its sheet, so what the side effect costs is measured rather than assumed:
+ * `npm run lint:bundle` builds one import through this barrel and one from the control's own module, and
+ * prints the difference. The alternative is a barrel with no side effects, which costs a second import
+ * convention across the kit -- a control from one path, its stylesheet from another -- for
+ * `scripts/check-imports` and oxlint to police, and it breaks the property both of them hold: that
+ * `ui/primitives` is one thing.
+ *
  * WHAT IS DELIBERATELY ABSENT, and why. These are not omissions and a later ticket should not add one
  * without reopening the decision in `14-ui-kit.md`:
  *
