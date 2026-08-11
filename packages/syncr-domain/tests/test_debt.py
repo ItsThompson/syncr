@@ -20,7 +20,7 @@ credit arrives before the charge it would otherwise settle.
 from __future__ import annotations
 
 from datetime import UTC, datetime, time, timedelta
-from itertools import pairwise
+from itertools import pairwise, permutations
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -474,16 +474,19 @@ def test_a_correction_leaves_no_credit_behind_for_a_later_unrelated_miss() -> No
 def test_the_order_the_walk_reads_is_the_log_s_own_and_not_the_sequence_it_arrives_in() -> None:
     """The reader states no order, so the derivation cannot take one from the sequence it is given.
 
-    Reversed and rotated, one set of rows is one figure. Both figures are asserted, because a
-    derivation that sorted its input and a derivation that ignored order entirely would agree on the
-    first and disagree on the second.
+    Every permutation of one set of rows is one figure. Asserted over all of them rather than over a
+    reversal, because a reversal of a sequence chosen for its content rather than for its order
+    happens to agree: the first version of this case reversed and rotated a log whose every
+    arrangement charged the same, so it could not fail on a derivation that read the sequence.
+
+    The log holds a credit before its first charge, which is what makes the arrangements differ: a
+    credit read before the charge it would settle is spent on nothing.
     """
     target = habit()
-    rows = a_log(target, [A_MISS, A_MAKE_UP_DONE, A_MISS, A_MISS])
+    rows = a_log(target, [A_MAKE_UP_DONE, A_MISS, A_MAKE_UP_DONE, A_MISS, A_MISS])
 
     assert reading(target, rows).misses == 2
-    assert reading(target, list(reversed(rows))).misses == 2
-    assert reading(target, [*rows[2:], *rows[:2]]).misses == 2
+    assert {reading(target, list(order)).misses for order in permutations(rows)} == {2}
 
 
 def test_a_charge_and_a_credit_that_came_due_at_one_instant_settle_each_other() -> None:
