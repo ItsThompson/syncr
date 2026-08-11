@@ -48,3 +48,7 @@ export const listedTests = async (): Promise<readonly Listed[]> => {
 /** The scenario numbers a title names, in the order it names them. */
 export const scenariosNamed = (title: string): readonly string[] =>
   [...title.matchAll(NUMBER)].map((match) => match[0]);
+
+/** Whether a token is a scenario number, by the same grammar `scenariosNamed` reads titles with. */
+export const isScenarioNumber = (token: string): boolean =>
+  new RegExp(`^${NUMBER.source}$`).test(token);

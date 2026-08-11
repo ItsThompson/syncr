@@ -27,7 +27,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { listedTests, scenariosNamed } from "./suite.ts";
+import { isScenarioNumber, listedTests, scenariosNamed } from "./suite.ts";
 
 const e2eDir = path.join(import.meta.dirname, "..");
 const testsDir = path.join(e2eDir, "tests");
@@ -40,15 +40,15 @@ const ROW = /^\|\s*`([\w./-]+\.spec\.ts)`\s*\|([^|]*)\|/;
 /** What a row says when the file it names drives none of the numbered scenarios. */
 const NONE = "none";
 
-const A_NUMBER = /^S\d{1,2}$/;
-
 type Stated = { readonly scenarios: readonly string[]; readonly line: number };
 
-const problems: string[] = [];
-
-/** Every row of the statement, keyed on the file it names. */
-const statedRows = async (): Promise<ReadonlyMap<string, Stated>> => {
+/** Every row of the statement, keyed on the file it names, beside the rows that could not be read. */
+const statedRows = async (): Promise<{
+  readonly rows: ReadonlyMap<string, Stated>;
+  readonly problems: readonly string[];
+}> => {
   const rows = new Map<string, Stated>();
+  const problems: string[] = [];
   const lines = (await readFile(statementFile, "utf8")).split("\n");
   for (const [index, line] of lines.entries()) {
     const match = ROW.exec(line);
@@ -64,7 +64,7 @@ const statedRows = async (): Promise<ReadonlyMap<string, Stated>> => {
     }
 
     const scenarios = cell.toLowerCase() === NONE ? [] : cell.split(",").map((part) => part.trim());
-    const unreadable = scenarios.filter((part) => !A_NUMBER.test(part));
+    const unreadable = scenarios.filter((part) => !isScenarioNumber(part));
     if (unreadable.length > 0) {
       problems.push(
         `line ${at}: ${file} states "${cell}", and ${unreadable.join(", ")} is not a scenario ` +
@@ -74,7 +74,7 @@ const statedRows = async (): Promise<ReadonlyMap<string, Stated>> => {
     }
     rows.set(file, { scenarios, line: at });
   }
-  return rows;
+  return { rows, problems };
 };
 
 /** Every spec file under `tests/`, as Playwright would name it. */
@@ -88,6 +88,11 @@ const stated = await statedRows();
 const onDisk = await specFiles();
 const listed = await listedTests();
 
+/* Every problem the run found, seeded with the rows that could not be read at all: a row whose scenario cell
+ * is not a reading is not recorded, so the file it names is reported unstated below as well. Two messages,
+ * one defect, and both are true. */
+const problems: string[] = [...stated.problems];
+
 /** Which scenario numbers each file's cases name, and which files hold a case at all. */
 const named = new Map<string, Set<string>>();
 for (const test of listed) {
@@ -97,7 +102,7 @@ for (const test of listed) {
 }
 
 for (const file of onDisk) {
-  const row = stated.get(file);
+  const row = stated.rows.get(file);
   if (row === undefined) {
     problems.push(`tests/${file} has no row in scenarios.md, so nothing states what it drives`);
     continue;
@@ -119,7 +124,7 @@ for (const file of onDisk) {
   }
 }
 
-for (const [file, row] of stated) {
+for (const [file, row] of stated.rows) {
   if (!onDisk.includes(file)) {
     problems.push(`line ${row.line}: ${file} does not exist under tests/`);
   }
