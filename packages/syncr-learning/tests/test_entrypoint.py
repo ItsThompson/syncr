@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import pytest
 import structlog
@@ -36,6 +37,9 @@ if TYPE_CHECKING:
     from syncr_learning.storage.engine import LearningSettings
 
 REPEATED = [pin(iso_week=IsoWeek(year=2026, week=number), hour=13) for number in (7, 8, 9)]
+
+# The tenant whose pass completes on the night the other one's raises.
+HEALTHY = UUID(int=7)
 
 
 @pytest.fixture
@@ -59,11 +63,15 @@ def stub_the_run(monkeypatch: pytest.MonkeyPatch, *, failing: bool = False) -> N
     The pass runs INSIDE ``main``, under the logging ``main`` itself configured, so every line the
     run emits is one this module can read. A report built beforehand would have logged its lines
     somewhere else, and the absence of a promotion line would then be the absence of any line.
+
+    A failing night carries a SECOND tenant whose pass completes. A report with no completed tenant
+    is one a per-candidate loop would walk zero times, so the absence of a promotion line would hold
+    on that night whether or not the loop existed.
     """
-    reader = a_reader(
-        corpora={TENANT: corpus(pins=REPEATED)},
-        fail_for=TENANT if failing else None,
-    )
+    corpora = {TENANT: corpus(pins=REPEATED)}
+    if failing:
+        corpora[HEALTHY] = corpus(pins=REPEATED)
+    reader = a_reader(corpora=corpora, fail_for=TENANT if failing else None)
 
     async def answered(_settings: LearningSettings, *, at: datetime) -> RunReport:
         return await run(reader, RecordingWriter(), at=at)
@@ -124,8 +132,10 @@ def test_a_failed_pass_exits_non_zero_and_reports_the_tenant(
 
     emitted = lines_of(capsys.readouterr().out)
     reported = [line for line in emitted if line["event"] == "learning.run.failed"]
+    events = [str(line["event"]) for line in emitted]
     assert code == EXIT_FAILED
     assert len(reported) == 1
     assert str(TENANT) in str(reported[0]["detail"])
-    assert [str(line["event"]) for line in emitted if "promotion" in str(line["event"])] == []
+    assert "learning.tenant.fitted" in events, "the healthy tenant's line has to be there to read"
+    assert [one for one in events if "promotion" in one or "candidate" in one] == []
     assert (collected / "syncr_learning.prom").is_file(), "a failed night is still exposed"
