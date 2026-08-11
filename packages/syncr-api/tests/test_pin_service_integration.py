@@ -10,8 +10,9 @@ drive the service directly and exercise the upsert behaviour without a key: two 
 produce one pin row (the upsert) and two edit events (two preferences).
 
 **The three Blocker-1 verdict properties.** Pinning time toward a task that is due leaves that
-task's shortfall unchanged. Pinning a Fitness block leaves the floor reservation equal. Pinning
-an already-placed block leaves the verdict unchanged.
+task's shortfall unchanged. Pinning a Fitness block leaves the floor reservation equal and lowers
+the floor the solver must still place, which is the whole of the two-quantity split read from one
+week. Pinning an already-placed block leaves the verdict unchanged.
 
 **The two settlements.** Ticket 1333: a pin on a block that has begun is refused with a stated
 reason. Ticket 1402: a pin whose interval elapses while its block lives only in a pending proposal
@@ -491,15 +492,41 @@ class TestVerdictProperties:
         after_total = sum(s.minutes for s in result.verdict.shortfalls)
         assert after_total == before_total
 
-    async def test_pinning_a_fitness_block_reduces_the_floor_reservation(
+    async def test_pinning_a_fitness_block_lowers_the_solvers_floor_and_not_the_reservation(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """The reservation is EQUAL before and after: the same hour is not charged twice."""
+        """All four of the Area's quantities, each in the direction its own comment states.
+
+        One week with a live plan and a pin is the state where the four disagree, and they must
+        disagree here or one of them is netting a set it does not claim. The reservation nets
+        every placement, so the hour is already out of it before the pin and the pin cannot lower
+        it further: that is what stops a drag improving a verdict. ``floor_minutes`` nets the
+        immovable ones only, so the same hour is IN it before the pin and out of it after, because
+        a pinned hour is one the solver no longer has to place. ``placed_minutes`` counts the pin
+        and the block it pins as one placement rather than two. ``target_minutes`` nets nothing at
+        all, so it reads the same across all three assemblies below.
+        """
         block = a_block(14, 15, day_offset=3)
+        placed_minutes = block.interval.total_minutes()
+        floor_minutes = placed_minutes
         plan = a_plan(blocks=(block,))
-        await _seed_plan(sessions, owner.tenant_id, plan)
-        await _seed_area(sessions, owner.tenant_id, floor=60)
+        await _seed_area(sessions, owner.tenant_id, floor=floor_minutes)
         await _seed_task(sessions, owner.tenant_id, estimate=60)
+
+        # Assemble with the Area declared and NOTHING placed in it, which is what makes the
+        # target's direction falsifiable: a target netting any placement drops below this figure
+        # at the next assembly, and one netting nothing does not.
+        async with sessions() as session, session.begin():
+            assembler = build_week_assembler(
+                session, owner.tenant_id, caller=AssemblyCaller.REQUEST
+            )
+            unplaced = await assembler.assemble(WEEK, NOW)
+        fitness_unplaced = next(a for a in unplaced.areas if a.area_id == AREA_ID)
+        assert fitness_unplaced.placed_minutes == 0
+        assert fitness_unplaced.floor_reservation_minutes == floor_minutes
+        assert fitness_unplaced.floor_minutes == floor_minutes
+
+        await _seed_plan(sessions, owner.tenant_id, plan)
 
         # Assemble BEFORE the pin
         async with sessions() as session, session.begin():
@@ -507,9 +534,15 @@ class TestVerdictProperties:
                 session, owner.tenant_id, caller=AssemblyCaller.REQUEST
             )
             before = await assembler.assemble(WEEK, NOW)
-        before_reservation = next(
-            a.floor_reservation_minutes for a in before.areas if a.area_id == AREA_ID
-        )
+        fitness_before = next(a for a in before.areas if a.area_id == AREA_ID)
+
+        # An unpinned future block is out of the reservation and still in the solver's floor.
+        assert fitness_before.placed_minutes == placed_minutes
+        assert fitness_before.floor_reservation_minutes == floor_minutes - placed_minutes
+        assert fitness_before.floor_minutes == floor_minutes
+        # Gross: the whole floor is placed and the target reports the figure it reported unplaced.
+        assert fitness_before.target_minutes == fitness_unplaced.target_minutes
+        assert fitness_before.target_minutes >= floor_minutes
 
         # Pin to a different time
         new_start = datetime(2026, 2, 12, 10, 0, tzinfo=UTC)
@@ -521,12 +554,15 @@ class TestVerdictProperties:
                 session, owner.tenant_id, caller=AssemblyCaller.REQUEST
             )
             after = await assembler.assemble(WEEK, NOW)
-        after_reservation = next(
-            a.floor_reservation_minutes for a in after.areas if a.area_id == AREA_ID
-        )
+        fitness_after = next(a for a in after.areas if a.area_id == AREA_ID)
 
         # Discriminating EQUALITY: the pinned block still satisfies the floor
-        assert after_reservation == before_reservation
+        assert fitness_after.floor_reservation_minutes == fitness_before.floor_reservation_minutes
+        # One placement, not two: the pin's hour replaces the block's rather than adding to it.
+        assert fitness_after.placed_minutes == placed_minutes
+        # The pin is immovable, so the hour leaves the quantity that nets only immovable ones.
+        assert fitness_after.floor_minutes == 0
+        assert fitness_after.target_minutes == fitness_before.target_minutes
 
     async def test_pinning_an_already_placed_block_leaves_the_verdict_unchanged(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
