@@ -22,9 +22,11 @@ That is the whole reason two alerts exist over one interaction.
 
 ## Why 150 ms
 
-**The figure is the rule's own, and it has one spelling.** `deployments/prometheus/alerts.yml` declares
-`> 0.15` on the `AssemblySlow` rule and `tests/test_alert_rules.py` asserts that literal, so the
-threshold cannot move in one file without the other.
+**The figure is the rule's own, and every copy of it here is crossed against the rule.**
+`deployments/prometheus/alerts.yml` declares the threshold and the wait on the `AssemblySlow` rule,
+`tests/test_alert_rules.py` asserts that literal, and `tests/test_assembly_runbook.py` asserts this
+file's title, trigger block, heading and prose against the rule's own expression. A retune moves every
+one of them or the suite fails.
 
 It bounds the **whole interaction** rather than the assembly alone. The assembly's own budget is p95
 under 100 ms on a warm cache: `plans/assembler.py` states it, and `core/db_metrics.py` cuts the read
