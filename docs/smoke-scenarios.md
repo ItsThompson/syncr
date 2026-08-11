@@ -17,7 +17,7 @@ just e2e-up               # the stack, migrated, on http://localhost:57080
 just seed-reference       # or any other seed-* recipe: each loads one fixture from nothing
 just e2e                  # the whole suite
 just e2e-only S10         # one scenario or one file, by title or path
-just lint-e2e             # prettier, and the check that this table matches the suite
+just lint-e2e             # prettier, and the two checks that a statement matches the suite
 just e2e-down             # the stack and its volumes
 ```
 
@@ -28,6 +28,12 @@ and must name the spec file that test lives in, every scenario a test names must
 and every repository path and `just` recipe cited in the Where column must resolve. The observation column
 is prose and is not bounded. Its first version read two columns and its first run found four disagreements,
 one of them a row claiming an assertion no file in the suite made.
+
+**A second statement, keyed on the file rather than on the scenario, lives at `e2e/scenarios.md`** and is
+checked by `e2e/scripts/check-spec-scenarios.ts` in the same run. This table cannot account for a spec file
+that drives none of the 37, because it has no row to hang one on, and nothing in it is keyed on the set of
+files, so it cannot notice a new spec at all. That one is: every `*.spec.ts` in `e2e/tests/` has a row
+there, and the numbers a row states are crossed against the numbers that file's case titles name.
 
 Every seed recipe is self-contained: it empties the database, provisions the tenant through the console
 script a first deployment runs, declares the fixture over the HTTP API, and ticks the plan-horizon
@@ -164,7 +170,7 @@ the `no_eligible_content` case above is S17's reason half.
 
 | Case | What it observes | Status | Where |
 |---|---|---|---|
-| B1 | A solved week whose floors are met by unpinned solver-placed blocks reports no `floors_exceed_capacity` and no inflated at-risk column; and pinning an already-placed block leaves the verdict unchanged | automated, and shown to fail | `b1-s34-floors-and-unallocated.spec.ts`, on the `tight_capacity` fixture. Reverting the probe's floor reservation to the pre-B1 immovable-only rule turns two of its three cases red |
+| B1 | A solved week whose floors are met by unpinned solver-placed blocks reports no `floors_exceed_capacity` and no inflated at-risk column; and pinning an already-placed block leaves the verdict unchanged | automated, and shown to fail | `b1-s34-floors-and-unallocated.spec.ts`, on the `tight_capacity` fixture. Reverting the probe's floor reservation to the pre-B1 immovable-only rule turns two of its three cases red. `b1-at-risk-in-the-browser.spec.ts` drives the at-risk half's rendering in a browser: the mark on the row, the words behind it, the band's figure, and the narrowing the screen's own filter select asks the api for |
 
 ## Two corrections to section 22's done-criteria table
 

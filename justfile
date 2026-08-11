@@ -446,11 +446,13 @@ e2e-setup:
 # frontend hook globs `frontend/**`, so without this recipe nothing but tsc reads 4000 lines of
 # TypeScript.
 #
-# The second check is the one worth having: `docs/smoke-scenarios.md` is the map from section 22's
-# done-criteria table to something that can fail, and a row claiming an assertion no file makes is a list
-# disagreeing with the fact it copies. It reads every column it is meant to bound, in both directions, and
-# takes its titles from `playwright test --list` rather than from a regex over the source, because a regex
-# counted a commented-out case as coverage.
+# The two statement checks are the ones worth having, and they are keyed on different things.
+# `docs/smoke-scenarios.md` is the map from section 22's done-criteria table to something that can fail,
+# and a row claiming an assertion no file makes is a list disagreeing with the fact it copies. It reads
+# every column it is meant to bound, in both directions, and takes its titles from `playwright test
+# --list` rather than from a regex over the source, because a regex counted a commented-out case as
+# coverage. `e2e/scenarios.md` is the same discipline keyed on the FILE rather than on the scenario, which
+# is the direction that can account for a spec driving none of the 37 and can notice a new spec at all.
 #
 # Every check runs even when an earlier one fails: one red linter must not hide the rest. Same shape as
 # `lint-style`, comment included, so the pattern is recognisable as the same one.
@@ -459,7 +461,7 @@ lint-e2e:
     set -uo pipefail
     cd e2e
     failed=0
-    for check in lint:format lint:scenarios; do
+    for check in lint:format lint:scenarios lint:spec-scenarios; do
       echo "--- $check"
       npm run --silent "$check" || failed=1
     done

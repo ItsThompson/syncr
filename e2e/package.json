@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "lint:format": "prettier --check .",
     "fmt": "prettier --write .",
-    "lint:scenarios": "node scripts/check-scenarios.ts"
+    "lint:scenarios": "node scripts/check-scenarios.ts",
+    "lint:spec-scenarios": "node scripts/check-spec-scenarios.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.1",
