@@ -72,8 +72,21 @@ class TestTheRecordStatesTheDeclinedAlternative:
         "clause",
         [
             pytest.param("considered and declined", id="the-alternative-was-weighed"),
-            pytest.param("fits a HIGHER tolerance", id="the-direction-of-the-error"),
-            pytest.param("low is the safer error", id="which-error-is-preferred"),
+            pytest.param(
+                "the narrow reading fits HIGHER", id="the-direction-where-the-gap-is-wide"
+            ),
+            pytest.param(
+                "Where the two populations are alike it fits LOWER",
+                id="the-direction-where-there-is-no-gap",
+            ),
+            pytest.param(
+                "halves the corpus, which shrinks the figure harder toward the prior",
+                id="the-mechanism-that-turns-the-sign",
+            ),
+            pytest.param(
+                "conditional on a gap nothing here measures", id="the-direction-is-conditional"
+            ),
+            pytest.param("the product prefers the low one", id="which-error-is-preferred"),
             pytest.param("THRESHOLD_CHURN_TOLERANCE = 20", id="the-gate-figure"),
             pytest.param(
                 "rate revisions are produced rather than the rate a human approves",
@@ -92,6 +105,12 @@ class TestTheRecordStatesTheDeclinedAlternative:
             pytest.param(r"\bSP1-[A-Z]+-\d+\b", "SP1-NONE-0", id="an-epic-id"),
             pytest.param(r"\bUS-[A-Z]+-\d+\b", "US-NONE-0", id="a-story-id"),
             pytest.param(r"\bsection \d+", "section 0", id="a-spec-section"),
+            pytest.param(r"§\s*\d+", "§0", id="a-spec-section-sign"),
+            pytest.param(r"\bAC\d+\b", "AC0", id="an-acceptance-criterion"),
+            pytest.param(r"\breview \d+", "review 0", id="a-review-round"),
+            pytest.param(
+                r"\b(?:milestone|slice|wave) \d+", "milestone 0", id="delivery-plan-language"
+            ),
         ],
     )
     def test_the_record_names_no_planning_artifact(self, pattern: str, shape: str) -> None:
@@ -118,6 +137,22 @@ class TestEveryConsecutivePairIsInTheCorpus:
         assert closed.samples == THRESHOLD_CHURN_TOLERANCE - 1
         assert gated(CHURN_TOLERANCE, closed) is None
 
+    def test_a_quiet_revision_is_in_the_corpus_and_not_in_the_gate_s_count(self) -> None:
+        # The two counts are not the same count. Every consecutive pair is an observation, and the
+        # fit then drops the pairs that moved nothing, so a week holding one repeated arrangement
+        # produces one more observation than the gate counts.
+        history = _history(THRESHOLD_CHURN_TOLERANCE + 2)
+        quiet = list(history)
+        quiet[11] = revision(blocks=history[10].blocks, created_at=at(hour=11))
+
+        observed = _observations(quiet)
+        fitted = fit_churn_tolerance(observed)
+
+        assert len(observed) == len(quiet) - 1
+        assert [one.moves for one in observed].count(0) == 1
+        assert fitted.samples == len(observed) - 1
+        assert fitted.samples == THRESHOLD_CHURN_TOLERANCE
+
 
 class TestTheProjectionCannotSeeAssent:
     def test_the_row_this_corpus_reads_is_the_row_that_carries_assent(self) -> None:
@@ -139,23 +174,54 @@ class TestTheProjectionCannotSeeAssent:
 
 
 class TestTheDirectionOfTheNarrowReadingsError:
-    def test_it_fits_the_higher_tolerance_over_one_history(self) -> None:
-        # Ten rearrangements the user let stand and ten they pinned nearly all of back. The narrow
-        # reading keeps the first ten, which is where the record's HIGHER comes from: 4.5 absorbed
-        # per rearrangement becomes 8, both shrunk toward a prior of 3 at a weight of 10.
-        assented = [ChurnObservation(moves=8, overridden=0) for _ in range(10)]
-        objected = [ChurnObservation(moves=8, overridden=7) for _ in range(10)]
+    """The sign of the difference, across the gap that decides it rather than at one point."""
 
-        wider = fit_churn_tolerance([*assented, *objected])
-        narrow = fit_churn_tolerance(assented)
+    @pytest.mark.parametrize(
+        ("pairs", "overridden", "wider", "narrow", "narrow_fits_higher"),
+        [
+            pytest.param(20, 0, 6.333333, 5.5, False, id="alike-populations-fit-lower"),
+            pytest.param(20, 1, 6.0, 5.5, False, id="a-gap-of-one-fits-lower"),
+            pytest.param(20, 2, 5.666667, 5.5, False, id="the-last-gap-that-fits-lower"),
+            pytest.param(20, 3, 5.333333, 5.5, True, id="the-first-gap-that-fits-higher"),
+            pytest.param(20, 7, 4.0, 5.5, True, id="the-gap-the-record-argues-from"),
+            pytest.param(60, 1, 6.857143, 6.75, False, id="past-the-gate-and-still-lower"),
+            pytest.param(60, 2, 6.428571, 6.75, True, id="past-the-gate-and-higher"),
+        ],
+    )
+    def test_the_sign_turns_on_the_size_of_the_gap(
+        self,
+        pairs: int,
+        overridden: int,
+        wider: float,
+        narrow: float,
+        narrow_fits_higher: bool,
+    ) -> None:
+        # Half the rearrangements were let stand and half had `overridden` of their eight moves
+        # pinned back. The narrow reading keeps the first half, which drops the objections AND
+        # halves the evidence: the mean of what was absorbed rises, and the shrinkage toward the
+        # prior rises with it. Which effect wins is what these rows measure, and it changes sign.
+        assented = [ChurnObservation(moves=8, overridden=0) for _ in range(pairs // 2)]
+        objected = [ChurnObservation(moves=8, overridden=overridden) for _ in range(pairs // 2)]
 
-        assert wider.value == pytest.approx(4.0)
-        assert narrow.value == pytest.approx(5.5)
-        assert narrow.value is not None
-        assert wider.value is not None
-        assert narrow.value > wider.value
+        wider_fit = fit_churn_tolerance([*assented, *objected])
+        narrow_fit = fit_churn_tolerance(assented)
 
-    def test_and_the_same_narrowing_takes_the_corpus_below_the_gate(self) -> None:
+        assert wider_fit.value is not None
+        assert narrow_fit.value is not None
+        assert wider_fit.value == pytest.approx(wider, abs=1e-6)
+        assert narrow_fit.value == pytest.approx(narrow, abs=1e-6)
+        assert (narrow_fit.value > wider_fit.value) is narrow_fits_higher
+
+    def test_the_sixty_pair_rows_compare_two_readings_the_gate_both_admits(self) -> None:
+        # Without this the sign at sixty pairs would compare a figure that is applied against one
+        # that is not, which is two questions at once.
+        assented = [ChurnObservation(moves=8, overridden=0) for _ in range(30)]
+        objected = [ChurnObservation(moves=8, overridden=2) for _ in range(30)]
+
+        assert gated(CHURN_TOLERANCE, fit_churn_tolerance([*assented, *objected])) is not None
+        assert gated(CHURN_TOLERANCE, fit_churn_tolerance(assented)) is not None
+
+    def test_at_twenty_pairs_the_narrowing_also_takes_the_corpus_below_the_gate(self) -> None:
         assented = [ChurnObservation(moves=8, overridden=0) for _ in range(10)]
         objected = [ChurnObservation(moves=8, overridden=7) for _ in range(10)]
 
@@ -216,18 +282,21 @@ def _approved_baseline_producers() -> dict[str, int]:
     """Each shipped call that builds an approved baseline, by site, and how many arguments it hands.
 
     The two trees walked are the solver's, which declares the value, and the api's, which builds it.
-    A producer written outside those two is not seen here.
+    A producer written outside those two is not seen here, and neither is one reached through an
+    alias of the class name: an aliased producer empties this walk, which the caller's non-empty
+    assertion then catches.
     """
     found: dict[str, int] = {}
-    reached = 0
     for root in (Path(syncr_solver.__file__).parent, Path(syncr_api.__file__).parent):
+        reached = 0
         for module in sorted(root.rglob("*.py")):
             reached += 1
             tree = ast.parse(module.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Call) and _builds_an_approved_baseline(node.func):
-                    found[f"{module.name}:{node.lineno}"] = len(node.args) + len(node.keywords)
-    assert reached > 1, "the walk read no module, so it can find no producer"
+                    site = f"{root.name}/{module.relative_to(root)}:{node.lineno}"
+                    found[site] = len(node.args) + len(node.keywords)
+        assert reached, f"the walk read no module under {root}, so it can find no producer there"
     return found
 
 
