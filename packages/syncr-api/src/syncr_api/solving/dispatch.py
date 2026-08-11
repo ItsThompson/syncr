@@ -309,7 +309,6 @@ class SolveDispatch:
             adopted = await self._adoption(session).adopt(
                 classification,
                 self._candidate(op, loaded, solved),
-                reason=RevisionReason.AUTO_APPLIED_FILL.value,
                 at=now,
             )
             # VE5, and it is the guard that makes it meaningful: a solve whose version moved returns
@@ -466,7 +465,11 @@ class SolveDispatch:
         return from_document(op.candidate_adjustment, dates=week.dates())
 
     def _candidate(self, op: OperationRecord, loaded: Loaded, solved: SolveResult) -> Candidate:
-        """What both possible writes need, held as one value."""
+        """What both possible writes need, held as one value.
+
+        Every solve claimed here was asked for by a mutation of this tenant's own inputs, so the
+        reason it names is a fill.
+        """
         return Candidate(
             document=solved.document,
             objective_breakdown=solved.objective_breakdown.costs(),
@@ -474,6 +477,7 @@ class SolveDispatch:
             weight_set_version=loaded.weight_set_version,
             input_version=loaded.input_version,
             operation_id=op.id,
+            reason=RevisionReason.AUTO_APPLIED_FILL.value,
             candidate_adjustment=op.candidate_adjustment,
         )
 

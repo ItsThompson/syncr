@@ -111,6 +111,7 @@ def a_candidate(document: PlanDocument, **overrides: Any) -> Candidate:
         "weight_set_version": WEIGHT_SET_VERSION,
         "input_version": 41,
         "operation_id": uuid4(),
+        "reason": A_FILL,
     }
     return Candidate(**(fields | overrides))
 
@@ -125,7 +126,6 @@ async def adopt(
     classification: Classification,
     plan: Candidate,
     *,
-    reason: StoredReason = A_FILL,
     at: datetime = NOW,
 ) -> Adopted:
     async with sessions() as session, session.begin():
@@ -138,7 +138,7 @@ async def adopt(
             # which is exactly the state an anchor deleted before the commit leaves.
             commitments=AnchorCommitments(session, tenant_id),
         )
-        return await adoption.adopt(classification, plan, reason=reason, at=at)
+        return await adoption.adopt(classification, plan, at=at)
 
 
 async def revisions_held(sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId) -> int:
@@ -282,8 +282,7 @@ class TestWhatEachClassificationWrites:
             sessions,
             owner.tenant_id,
             classified(live, candidate),
-            a_candidate(candidate),
-            reason="anchor_delta",
+            a_candidate(candidate, reason="anchor_delta"),
         )
 
         assert adopted.revision is not None
@@ -386,8 +385,7 @@ class TestWhatTheWriteRefuses:
                 sessions,
                 owner.tenant_id,
                 classified(live, candidate),
-                a_candidate(candidate),
-                reason=reason,  # type: ignore[arg-type]
+                a_candidate(candidate, reason=reason),
             )
 
         assert await revisions_held(sessions, owner.tenant_id) == 0
@@ -401,6 +399,19 @@ class TestWhatTheWriteRefuses:
             "materialized",
             "horizon_advanced",
         } == NOT_AN_AUTO_APPLICATION
+
+    def test_a_candidate_states_which_auto_application_it_is(self) -> None:
+        # No default, so a new write path decides which auto-application it is rather than
+        # inheriting a fill from this shape.
+        with pytest.raises(TypeError, match="reason"):
+            Candidate(  # type: ignore[call-arg]
+                document=a_week(),
+                objective_breakdown=BREAKDOWN,
+                verdict=A_VERDICT,
+                weight_set_version=WEIGHT_SET_VERSION,
+                input_version=41,
+                operation_id=uuid4(),
+            )
 
     async def test_a_classification_wanting_a_block_the_candidate_does_not_hold_is_refused(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord

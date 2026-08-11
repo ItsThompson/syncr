@@ -115,6 +115,11 @@ class Candidate:
     field is a value this package can write. Held together because the two writes need overlapping
     subsets of them, and a signature carrying nine arguments cannot say which combinations are
     legal.
+
+    ``reason`` is why this solve was asked for, and it arrives here rather than being worked out
+    from the classification: what a candidate does to the week says which class it falls in, and
+    never what put it in front of the week. It has no default, so a new write path states which
+    auto-application it is instead of inheriting a fill.
     """
 
     document: PlanDocument
@@ -123,6 +128,7 @@ class Candidate:
     weight_set_version: int
     input_version: int
     operation_id: OperationId
+    reason: RevisionReason
     candidate_adjustment: JsonDocument | None = None
 
 
@@ -166,29 +172,24 @@ class PlanAdoption:
 
     @measured("plan_adoption")
     async def adopt(
-        self,
-        classification: Classification,
-        candidate: Candidate,
-        *,
-        reason: RevisionReason,
-        at: datetime,
+        self, classification: Classification, candidate: Candidate, *, at: datetime
     ) -> Adopted:
         """Write what ``classification`` decided about ``candidate``, and answer with what landed.
 
-        ``reason`` says which auto-application this is: a fill, or a calendar sync that freed or
-        occupied space. It is refused for anything else, because the four remaining reasons name an
-        approval or the plan horizon maintainer and neither of those passes through here.
+        ``candidate.reason`` says which auto-application this is: a fill, or a calendar sync that
+        freed or occupied space. It is refused for anything else, because the four remaining reasons
+        name an approval or the plan horizon maintainer and neither of those passes through here.
 
         Raises :class:`~syncr_api.plans.errors.RevisionRejected` for such a reason, for a
         classification describing a different week than the candidate, and for one describing
         different blocks: in either case the diff would be stored under a document whose blocks its
         changes cannot be paired against.
         """
-        _require_an_auto_applied_reason(reason)
+        _require_an_auto_applied_reason(candidate.reason)
         _require_one_week(classification, candidate.document)
         _require_the_classification_to_describe(classification, candidate.document)
         adopted = Adopted(
-            revision=await self._appended(classification, candidate, reason=reason, at=at),
+            revision=await self._appended(classification, candidate, at=at),
             proposal=await self._replaced(classification, candidate, at=at),
             raised=await self._raised(classification, at=at),
         )
@@ -229,12 +230,7 @@ class PlanAdoption:
         )
 
     async def _appended(
-        self,
-        classification: Classification,
-        candidate: Candidate,
-        *,
-        reason: RevisionReason,
-        at: datetime,
+        self, classification: Classification, candidate: Candidate, *, at: datetime
     ) -> PlanRevisionRecord | None:
         """The revision this adoption appends, or ``None`` when the candidate asks for assent."""
         if not classification.applies_immediately():
@@ -243,7 +239,7 @@ class PlanAdoption:
             document=stored_document(candidate.document),
             objective_breakdown=dict(candidate.objective_breakdown),
             status=APPLIED,
-            reason=reason,
+            reason=candidate.reason,
             weight_set_version=candidate.weight_set_version,
             input_version=candidate.input_version,
             created_at=at,
