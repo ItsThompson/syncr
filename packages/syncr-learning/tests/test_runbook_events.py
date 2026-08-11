@@ -15,10 +15,14 @@ import re
 from pathlib import Path
 from typing import Final
 
-_ROOT: Final = Path(__file__).resolve().parents[3]
+import syncr_learning
 
-RUNBOOK: Final = _ROOT / "docs" / "runbooks" / "learning-job-failed.md"
-SOURCE: Final = Path(__file__).resolve().parents[1] / "src" / "syncr_learning"
+# Resolved from the imported package rather than from this file, in the shape
+# `test_package_boundary.py` resolves its own tree: a scan of another checkout answers a question
+# about a tree nobody is running.
+PACKAGE_FILE: Final = Path(syncr_learning.__file__).resolve()
+SOURCE: Final = PACKAGE_FILE.parent
+RUNBOOK: Final = PACKAGE_FILE.parents[4] / "docs" / "runbooks" / "learning-job-failed.md"
 
 # A whole backticked token, so `syncr_learning.prom` is a filename rather than a truncated event.
 _NAMED_EVENT = re.compile(r"`(learning\.[a-z_.]+)`")
@@ -31,6 +35,13 @@ def named_events() -> set[str]:
 def is_emitted(event: str) -> bool:
     """Whether any module of this package logs ``event`` as a literal."""
     return any(f'"{event}"' in path.read_text(encoding="utf-8") for path in SOURCE.rglob("*.py"))
+
+
+def test_the_scan_reads_the_package_this_suite_imported() -> None:
+    # The instrument's precondition, and the reason the paths resolve from the package rather than
+    # from this file: a scan over another checkout would answer about a tree nobody is running.
+    assert PACKAGE_FILE in set(SOURCE.rglob("*.py"))
+    assert RUNBOOK.is_file()
 
 
 def test_the_runbook_names_at_least_one_event_to_look_for() -> None:
