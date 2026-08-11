@@ -49,8 +49,9 @@ _log = get_logger("syncr.idempotency")
 class IdempotencyGuard:
     """Runs one unsafe request's work at most once per key.
 
-    The key and the request hash are read from the request when this is built, so a route
-    never touches the header and never hashes a body.
+    The key arrives as a declared header parameter and the request hash is taken from the
+    request, both when this is built, so a route never touches the header and never hashes
+    a body.
     """
 
     def __init__(
