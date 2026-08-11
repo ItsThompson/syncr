@@ -7,3 +7,4 @@ export {
   type TableRowStanding,
   type TableSort,
 } from "./Table";
+export { type TableColumnWidth } from "./columnWidths";

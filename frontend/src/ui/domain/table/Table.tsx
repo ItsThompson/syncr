@@ -1,4 +1,8 @@
-/* The table: 28px rows, --fs-data cells, tabular figures, a sortable header and a footer count.
+/* The table: a --h-row pitch, --fs-data cells, tabular figures, a sortable header and a footer count.
+ *
+ * A COLUMN'S WIDTH IS DECLARED RATHER THAN MEASURED, and the table draws the declarations as a `<colgroup>`.
+ * What each column takes is the caller's decision and the arithmetic is in `columnWidths.ts`; what is here is
+ * that a declaration fixes the layout, because a browser honours a column width in no other one.
  *
  * THE ROWS ARE THE CALLER'S, ALREADY IN ORDER. This component does not sort: which comparison is right for a
  * column of deadlines, of Areas or of confidence figures is a domain decision, and a table that sorted its own
@@ -22,9 +26,26 @@
 import type { ReactNode } from "react";
 import { cva } from "class-variance-authority";
 
+import { columnWidthsOf, type TableColumnWidth } from "./columnWidths";
 import "../../primitives/glyphs.css";
 import "../../primitives/states.css";
 import "./table.css";
+
+/* A declared width is only honoured under a fixed layout, so the two arrive together: a table whose columns
+ * declare nothing keeps the content-driven layout it has today. */
+const surface = cva("table", {
+  variants: {
+    columnWidths: {
+      content: "",
+      declared: "table--fixed",
+    },
+  },
+  defaultVariants: { columnWidths: "content" },
+});
+
+/* What the standing column reserves. Named rather than restated: the sheet declares the length against this name
+ * and the surplus the other columns divide is net of it, so the two cannot disagree. */
+const MARK_WIDTH = "var(--table-mark-w)";
 
 const headerCell = cva("table__header", {
   variants: {
@@ -96,6 +117,13 @@ export interface TableColumn<Row> {
   readonly measure?: TableMeasure | undefined;
   /** Absent means the column cannot be ordered by. */
   readonly isSortable?: boolean | undefined;
+  /**
+   * How wide this column is. Absent means it takes an equal share of what the declared widths leave over.
+   *
+   * A width on any column of a table fixes that table's layout, which is what keeps this column at the width it
+   * declares while a cell too wide for another one grows its own row.
+   */
+  readonly width?: TableColumnWidth | undefined;
   readonly cell: (row: Row) => ReactNode;
 }
 
@@ -138,9 +166,22 @@ export function Table<Row>({
   standing,
 }: TableProps<Row>) {
   const hasStanding = standing !== undefined;
+  const widths = columnWidthsOf(
+    columns.map((column) => column.width),
+    hasStanding ? [MARK_WIDTH] : [],
+  );
   return (
-    <table className="table">
+    <table className={surface({ columnWidths: widths === null ? "content" : "declared" })}>
       <caption className="sr-only">{caption}</caption>
+      {widths === null ? null : (
+        <colgroup>
+          {/* The standing column keeps the width its own cell reserves, which the surplus above is net of. */}
+          {hasStanding ? <col /> : null}
+          {columns.map((column, index) => (
+            <col key={column.key} style={{ width: widths[index] }} />
+          ))}
+        </colgroup>
+      )}
       <thead>
         <tr>
           {hasStanding ? (

@@ -1,9 +1,19 @@
-/* Layer 2: the table. 28px rows, data-sized cells, tabular figures, a sortable header and a footer count.
+/* Layer 2: the table. A --h-row pitch, data-sized cells, tabular figures, a sortable header and a footer count.
  *
- * THE ROW HEIGHT IS --h-row AND THE CELLS SET AT --fs-data, which is the one size in the scale for numbers a
- * reader compares down a column. Both are the reason a table is the right surface for the Backlog and the Today
- * ledger rather than a proportional grid: the question there is "did this happen", and a checklist earns the
- * density a table gives.
+ * THE PITCH IS A FLOOR AND NOT A CEILING, which is the whole of what --h-row guarantees here. `height` on a table
+ * row is a minimum: a row stays at the pitch for as long as its cells fit in it, and a cell that needs more than
+ * that -- a name over two lines, a control taller than a row -- makes ITS OWN row taller and leaves every other
+ * row at the pitch. Nothing in this sheet truncates to hold the figure, because the text in a cell is what a
+ * reader picks a row by, and an end-ellipsis discards exactly the tail that tells one name from its sibling.
+ *
+ * THE CELLS SET AT --fs-data, which is the one size in the scale for numbers a reader compares down a column.
+ * That and the pitch are the reason a table is the right surface for the Backlog and the Today ledger rather than
+ * a proportional grid: the question there is "did this happen", and a checklist earns the density a table gives.
+ *
+ * A COLUMN'S WIDTH IS THE CALLER'S, AND `table-layout: fixed` ARRIVES WITH IT. A table laid out from its content
+ * gives the widest cell in a column the width it asks for and takes it from the columns beside it, so a reader's
+ * columns move as the rows change and one long name reshapes the whole table. Under a fixed layout the columns
+ * hold the widths they declare and the long cell spends its own row's height instead.
  *
  * TABULAR FIGURES ARE NOT A PREFERENCE. A column of durations set in proportional digits does not line up, and
  * the whole point of the column is that a reader compares its values without reading them one at a time.
@@ -19,10 +29,16 @@
  * would shift every cell in the row. */
 
 .table {
+  --table-mark-w: 18px;
   width: 100%;
   border-collapse: collapse;
   font-size: var(--fs-data);
   font-variant-numeric: tabular-nums;
+}
+
+/* Only a fixed layout honours a declared column width, so the component sets this class from the columns. */
+.table--fixed {
+  table-layout: fixed;
 }
 
 .table__header {
@@ -73,8 +89,11 @@
   border-bottom: var(--hairline) solid var(--rule);
 }
 
+/* A word longer than its column breaks rather than reaching over the column beside it: under a fixed layout the
+ * neighbour keeps its width either way, so the overflow would be drawn on top of it. */
 .table__cell {
   padding: 0 7px;
+  overflow-wrap: anywhere;
   color: var(--ink);
 }
 
@@ -89,9 +108,11 @@
   text-align: left;
 }
 
-/* The standing column: reserved on every row, and narrow enough to read as a gutter rather than a column. */
+/* The standing column: reserved on every row, and narrow enough to read as a gutter rather than a column. The
+ * length is named because the column policy subtracts it: what the other columns divide is the table's width less
+ * this, and a second spelling of the figure would let the two drift. */
 .table__mark {
-  width: 18px;
+  width: var(--table-mark-w);
   padding-right: 0;
   text-align: center;
 }

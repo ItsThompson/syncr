@@ -1,14 +1,28 @@
-/* THE TABLE'S FOUR CLAIMS, AND WHERE EACH IS ASSERTED.
+/* THE TABLE'S CLAIMS, AND WHERE EACH IS ASSERTED.
  *
- * 28px rows and --fs-data cells are the stylesheet's, so they are read from it: jsdom applies no stylesheet, and a
- * rendered assertion about a row's height would pass whether the rule exists or not. The sortable header and the
- * footer count are behaviour, so they are exercised through the rendering. */
+ * The pitch and the cell size are the stylesheet's, so they are read from it: jsdom applies no stylesheet, and a
+ * rendered assertion about a row's height would pass whether the rule exists or not. The sortable header, the
+ * footer count and the column policy are behaviour, so they are exercised through the rendering.
+ *
+ * WHAT THE PITCH GUARANTEES IS A FLOOR, and no test in this file can measure a row: jsdom lays out nothing, so a
+ * height read here is zero whatever the sheet says. What is holdable is the DECLARATION -- that nothing in the
+ * family can truncate a cell instead of growing its row -- and the MARKUP the browser is handed. The sweep below
+ * is the first and the column policy's cases are the second.
+ *
+ * THE SWEEP IS BOUNDED BY THE FAMILY'S FILES RATHER THAN BY A LIST OF THEM, because a list is a memory: a second
+ * sheet added to this directory would be outside a list and is inside a read of the directory. */
+
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { parse } from "postcss";
 
+import { codeWithoutComments } from "../../../../../scripts/lib/css-scan.ts";
 import { domainDir, kitStylesheet } from "../../../../testing/kitStylesheets";
+import { layerStylesheets } from "../../../../testing/layerRules";
 import { Table, type TableColumn, type TableSort } from "../Table";
 
 interface Task {
@@ -34,6 +48,46 @@ const COLUMNS: readonly TableColumn<Task>[] = [
   },
 ];
 
+/* THE API'S CAP ON A NAME, READ OFF THE COMMITTED CONTRACT rather than written here, because a figure beside a
+ * test is a memory of the contract and the document is the contract. The three requests that carry a name a reader
+ * picks a row by are crossed against each other: a cap that moves on one of them is a finding here rather than a
+ * fixture that quietly stops standing at the cap. */
+const CONTRACT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..", "openapi.json");
+
+const NAME_REQUESTS = ["AreaCreateRequest", "DayTypeCreateRequest", "TemplateCreateRequest"];
+
+/** The half of the document this file reads. Narrow on purpose: nothing else here is crossed. */
+interface ContractDocument {
+  readonly components: {
+    readonly schemas: Readonly<
+      Record<
+        string,
+        | {
+            readonly properties?: Readonly<
+              Record<string, { readonly maxLength?: number } | undefined>
+            >;
+          }
+        | undefined
+      >
+    >;
+  };
+}
+
+function nameCapIn(file: string): number {
+  const document = JSON.parse(readFileSync(file, "utf8")) as ContractDocument;
+  const caps = NAME_REQUESTS.map(
+    (schema) => document.components.schemas[schema]?.properties?.["name"]?.maxLength,
+  );
+  const [first] = caps;
+  if (first === undefined || caps.some((cap) => cap !== first)) {
+    throw new Error(`the contract caps ${NAME_REQUESTS.join(", ")} at ${JSON.stringify(caps)}`);
+  }
+  return first;
+}
+
+/** A name at that cap, which is longer than any column the product gives one. */
+const NAME_AT_THE_CAP = "Weekday with lectures, a placement interview and a gym block";
+
 function renderTable(props: Partial<Parameters<typeof Table<Task>>[0]> = {}) {
   const onSortChange = vi.fn<(next: TableSort) => void>();
   const result = render(
@@ -51,6 +105,44 @@ function renderTable(props: Partial<Parameters<typeof Table<Task>>[0]> = {}) {
 }
 
 const stylesheet = () => kitStylesheet("table/table.css", domainDir);
+
+/** The family's own sheets, read from the directory rather than from a list of their names. */
+async function familySheets(): Promise<{ name: string; css: string }[]> {
+  const inLayer = await layerStylesheets(domainDir);
+  return inLayer
+    .filter(({ name }) => name.startsWith(`table${path.sep}`))
+    .map(({ name, css }) => ({ name, css: codeWithoutComments(css) }));
+}
+
+/** Every declaration the family's sheets make, with the sheet and the rule each sits in. */
+async function familyDeclarations(): Promise<string[]> {
+  const found: string[] = [];
+  for (const { name, css } of await familySheets()) {
+    parse(css).walkDecls((declaration) => {
+      const selector = declaration.parent?.toString().split("{")[0].trim() ?? "";
+      found.push(`${name} ${selector} ${declaration.prop}: ${declaration.value}`);
+    });
+  }
+  return found;
+}
+
+/** The declared value of one property of one rule, as the sheet writes it. */
+async function declaredValue(selector: string, property: string): Promise<string | null> {
+  let value: string | null = null;
+  parse(await stylesheet()).walkRules((rule) => {
+    if (rule.selector !== selector) return;
+    rule.walkDecls((each) => {
+      if (each.prop === property) value = each.value;
+    });
+  });
+  return value;
+}
+
+/* The widths are read from the style ATTRIBUTE. jsdom's style object drops a value its parser does not understand,
+ * and `calc()` over mixed units is exactly such a value, so reading `style.width` would report an empty string for
+ * a correct expression and pass a case that declared nothing at all. */
+const widthsIn = (container: HTMLElement): (string | null)[] =>
+  [...container.querySelectorAll("col")].map((col) => col.getAttribute("style"));
 
 describe("the table's rows", () => {
   it("are named by a caption a screen reader reads before them", () => {
@@ -153,5 +245,131 @@ describe("the footer count", () => {
     const { container } = renderTable({ countLabel: undefined });
 
     expect(container.querySelector("tfoot")).toBeNull();
+  });
+});
+
+/* THE COLUMN POLICY, THROUGH THE COMPONENT RATHER THAN THROUGH THE FUNCTION THAT COMPUTES IT.
+ *
+ * `columnWidths.test.ts` holds the arithmetic. What is here is the composition a browser is actually handed: which
+ * element carries the width, whether the class that fixes the layout arrives with it, and -- the position that can
+ * be off by one -- whether a `<col>` lands on the column that declared it when the standing column shifts every
+ * data column one place to the right. */
+describe("the column policy", () => {
+  const WIDE: readonly TableColumn<Task>[] = [
+    { key: "title", header: "Task", width: { weight: 1 }, cell: (task) => task.title },
+    { key: "minutes", header: "Estimate", width: "88px", cell: (task) => task.minutes },
+  ];
+
+  it("leaves a table whose columns declare nothing laid out from its content, as it is today", () => {
+    const { container } = renderTable();
+
+    expect(container.querySelector("colgroup")).toBeNull();
+    expect(screen.getByRole("table")).not.toHaveClass("table--fixed");
+  });
+
+  it("fixes the layout as soon as one column declares a width, because nothing else honours one", () => {
+    const { container } = renderTable({ columns: WIDE });
+
+    expect(container.querySelector("colgroup")).not.toBeNull();
+    expect(screen.getByRole("table")).toHaveClass("table--fixed");
+  });
+
+  it("gives each column its own col, in the order the caller declared them", () => {
+    const { container } = renderTable({ columns: WIDE });
+
+    expect(widthsIn(container)).toEqual(["width: calc(100% - (88px));", "width: 88px;"]);
+  });
+
+  /* The standing column is drawn first, so every data column sits one place to the right of the position its own
+   * declaration would suggest. A colgroup one entry short puts each width on its neighbour. */
+  it("draws a col for the standing column too, so a width lands on the column that declared it", () => {
+    const { container } = renderTable({
+      columns: WIDE,
+      standing: () => ({ isOverdue: true }),
+    });
+
+    expect(widthsIn(container)).toEqual([
+      null,
+      "width: calc(100% - (var(--table-mark-w) + 88px));",
+      "width: 88px;",
+    ]);
+    expect(container.querySelectorAll("col")).toHaveLength(
+      container.querySelectorAll("thead th").length,
+    );
+  });
+
+  it("nets the surplus of the standing column's reserved width only when one is drawn", () => {
+    const { container } = renderTable({ columns: WIDE });
+
+    expect(container.innerHTML).not.toContain("--table-mark-w");
+  });
+
+  it("holds a column at the length it declared while the cell beside it carries a name at the cap", () => {
+    const { container } = renderTable({
+      columns: WIDE,
+      rows: [{ id: "1", title: NAME_AT_THE_CAP, minutes: 90 }],
+    });
+
+    expect(widthsIn(container)).toEqual(["width: calc(100% - (88px));", "width: 88px;"]);
+  });
+});
+
+/* NOTHING IN THE FAMILY TRUNCATES A CELL, REFUSED BY PROPERTY NAME OVER EVERY SHEET IN THE DIRECTORY.
+ *
+ * The four properties are refused together because each draws the same thing by a different route:
+ * `text-overflow` needs `white-space: nowrap` to bite, `line-clamp` is `max-lines` plus `block-ellipsis` in one
+ * shorthand and neither of the first two governs it, and `block-ellipsis` is the shorthand's own half. Refusing
+ * one and reading the others as covered is how an end-ellipsis shipped on the week grid.
+ *
+ * READ OVER THE CODE WITH THE PROSE BLANKED, so a property named in a comment -- including in the comment above --
+ * cannot answer the question, and read over every sheet rather than one rule, because a clamp reaching a cell
+ * through a descendant selector draws the same ellipsis. */
+describe("a cell wraps and never truncates", () => {
+  const TRUNCATING = /line-clamp|block-ellipsis|text-overflow|white-space/;
+
+  it("names no clamp and no ellipsis anywhere in the family", async () => {
+    const truncating = (await familyDeclarations()).filter((each) => TRUNCATING.test(each));
+
+    expect(truncating).toEqual([]);
+  });
+
+  it("read a family that exists, so the sweep above cannot pass on an empty read", async () => {
+    const sheets = await familySheets();
+
+    expect(sheets.map(({ name }) => name)).toContain(path.join("table", "table.css"));
+    expect((await familyDeclarations()).length).toBeGreaterThan(20);
+  });
+
+  it("breaks a word longer than its column rather than drawing it over the column beside it", async () => {
+    expect(await declaredValue(".table__cell", "overflow-wrap")).toBe("anywhere");
+  });
+
+  it("renders a name at the api's cap in full, in a column narrower than the name", () => {
+    const { container } = renderTable({
+      columns: [
+        { key: "title", header: "Task", width: "88px", cell: (task) => task.title },
+        { key: "minutes", header: "Estimate", width: { weight: 1 }, cell: (task) => task.minutes },
+      ],
+      rows: [{ id: "1", title: NAME_AT_THE_CAP, minutes: 90 }],
+    });
+    const cell = container.querySelector("tbody td");
+
+    expect(NAME_AT_THE_CAP).toHaveLength(nameCapIn(CONTRACT));
+    expect(cell?.textContent).toBe(NAME_AT_THE_CAP);
+  });
+});
+
+describe("the sheet the policy is drawn by", () => {
+  it("fixes the layout on the class the component sets, and on no other selector", async () => {
+    const fixed = (await familyDeclarations()).filter((each) => each.includes("table-layout"));
+
+    expect(fixed).toEqual([`${path.join("table", "table.css")} .table--fixed table-layout: fixed`]);
+  });
+
+  /* The standing column's reserved width is the one length the policy subtracts, so it is declared against the name
+   * the component names and the figure stays in one place. */
+  it("reserves the standing column against the name the surplus subtracts", async () => {
+    expect(await declaredValue(".table__mark", "width")).toBe("var(--table-mark-w)");
+    expect(await declaredValue(".table", "--table-mark-w")).toBe("18px");
   });
 });
