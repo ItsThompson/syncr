@@ -434,7 +434,7 @@ def test_every_holder_of_the_clock_holds_the_one_that_moves() -> None:
 
     holders = clock_holders()
 
-    # The worker declares its duties at import and each takes the clock as an argument, so
+    # The worker declares its runners at import and each takes the clock as an argument, so
     # this module holding a rebound `utc_now` is the shape that would leave the worker on the
     # real clock while the api moved.
     assert "syncr_api.worker.main" in holders
@@ -455,7 +455,7 @@ ENTRYPOINT_BOOT = {
 }
 
 # Where each entrypoint's process holds the clock. The worker's own module is included
-# because it is the reference all nine of its duties were built with.
+# because it is the reference every runner in its loop was built with.
 ENTRYPOINT_READERS = {
     "api": ("syncr_api.core.clock",),
     "worker": ("syncr_api.core.clock", "syncr_api.worker.main"),
