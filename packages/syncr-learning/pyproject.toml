@@ -35,9 +35,9 @@ syncr-solver = { workspace = true }
 
 [dependency-groups]
 # `syncr-api` and `syncr-solver` are DEV-ONLY, and the boundary suite holds that: no module
-# of this package may import either. They are here so the two agreement tests can hold this
-# package's restated spellings against the packages that own them, in one process. The image
-# excludes them, because its export runs `--no-dev`.
+# of this package may import either. They are here so this member's crossing tests can hold
+# this package's restated spellings against the packages that own them, in one process. The
+# image excludes them, because its export runs `--no-dev`.
 dev = [
     "pytest>=8.3.0,<10",
     "pytest-asyncio>=0.24.0,<2",

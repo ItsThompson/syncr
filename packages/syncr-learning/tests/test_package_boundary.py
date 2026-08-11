@@ -19,11 +19,11 @@ is what makes the instruction impossible to drop silently. The environment carri
 nothing else, so a ``PYTHONPATH`` on the machine running the suite cannot redirect the
 child either, and that is the half of the instruction one checkout can watch fail.
 
-**Both forbidden workspace packages are DEV dependencies of this member**, because two
-agreement tests need this package's restated spellings and their owners in one process.
-That is why the runtime closure is asserted here as well as the imports: a dev dependency
-the image excludes and an import no module makes are different claims, and the second does
-not imply the first.
+**Both forbidden workspace packages are DEV dependencies of this member**, because
+this member's crossing tests need this package's restated spellings and their owners in
+one process. That is why the runtime closure is asserted here as well as the imports: a
+dev dependency the image excludes and an import no module makes are different claims, and
+the second does not imply the first.
 """
 
 from __future__ import annotations
@@ -170,14 +170,14 @@ def test_the_learning_image_carries_the_ml_libraries_this_member_alone_may_have(
 
 @pytest.mark.parametrize("forbidden", ["syncr-api", "syncr-solver"])
 def test_the_image_installs_neither_workspace_dev_dependency(forbidden: str) -> None:
-    # They exist so two agreement tests can hold this package's restated spellings against their
-    # owners in one process. A runtime dependency on either would put fastapi in a one-shot job and
-    # would make the import boundary above unenforceable.
+    # They exist so this member's crossing tests can hold this package's restated spellings against
+    # their owners in one process. A runtime dependency on either would put fastapi in a one-shot
+    # job and would make the import boundary above unenforceable.
     assert forbidden not in runtime_closure("syncr-learning")
 
 
 def test_the_two_dev_dependencies_are_declared_rather_than_borrowed() -> None:
-    # The agreement tests import them, so they are a real dependency of this member's suite. Left
+    # The crossing tests import them, so they are a real dependency of this member's suite. Left
     # undeclared they would work only because the workspace resolves one shared venv, and a member
     # installed alone would fail to collect.
     manifest = tomllib.loads(
