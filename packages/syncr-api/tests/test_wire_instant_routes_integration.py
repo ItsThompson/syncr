@@ -53,13 +53,14 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-# The three readings that name no instant, as a caller sends them.
+# The two readings that name no instant, as a caller sends them.
 NAIVE_TEXT: Final = "2026-03-08T09:00"
 BARE_DATE: Final = "2026-03-08"
 
-# An instant that does, for the field not under test and for the control.
-AWARE_TEXT: Final = "2026-03-08T09:00:00Z"
-AN_HOUR: Final = datetime(2026, 3, 8, 9, 0, tzinfo=UTC)
+# One that does, for a parameter the case under test is not about. Each parameter of a route gets a
+# later instant than the one before it, because a span whose bounds are equal is refused for the
+# ordering instead, which is the same false red one value would have produced.
+FIRST_AWARE: Final = datetime(2026, 3, 8, 9, 0, tzinfo=UTC)
 
 # What pydantic says when the value names no instant. Asserted because the STATUS alone does not
 # distinguish this refusal from a missing field, and a test that accepted any 422 would pass on a
@@ -209,9 +210,7 @@ def _aware_query(parameter: InstantParameter) -> dict[str, str]:
     """An aware value for every instant parameter of the route under test.
 
     Every one of them, because a route may require both bounds of a span: sending only the one
-    under test would be refused for the other's absence and prove nothing about this one. Each gets
-    a LATER instant than the one declared before it, because a span whose bounds are equal is
-    refused for that instead, which is the same false red one value would have produced.
+    under test would be refused for the other's absence and prove nothing about this one.
     """
     return {
         other.alias: _hours_on(other.position)
@@ -222,7 +221,7 @@ def _aware_query(parameter: InstantParameter) -> dict[str, str]:
 
 def _hours_on(position: int) -> str:
     """An aware instant, distinct per position, rendered as a caller sends one."""
-    return (AN_HOUR + timedelta(hours=position)).isoformat().replace("+00:00", "Z")
+    return (FIRST_AWARE + timedelta(hours=position)).isoformat().replace("+00:00", "Z")
 
 
 class TestACreatedDeadlineRoundTrips:
