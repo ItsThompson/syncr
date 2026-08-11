@@ -14,9 +14,14 @@ creates a solve.
 
 ``caller`` is bound to the interactive label on both the assembler and the probe, which is what
 makes ``syncr_assembly_duration_seconds{caller="request"}`` and
-``syncr_probe_duration_seconds{caller= "request"}`` the pair a regression in either is attributable
+``syncr_probe_duration_seconds{caller="request"}`` the pair a regression in either is attributable
 through. The assembly is the dominant cost by an order of magnitude and the two are watched together
 for exactly that reason.
+
+One pin request takes TWO observations on the assembly histogram and one on the probe's, because the
+write path assembles either side of the pin row. So that histogram's p95 under this label is the
+cost of ONE of a request's two assemblies rather than of the request.
+``tests/test_pin_write_path.py`` holds both counts and the label this module binds them under.
 
 The verdict recorder is bound to the surface the request's own credential names -- ``pin`` for a
 browser's drag, ``cli`` for ``syncr block move`` -- and to whether this request states that the
