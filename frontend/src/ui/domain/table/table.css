@@ -1,10 +1,11 @@
 /* Layer 2: the table. A --h-row pitch, data-sized cells, tabular figures, a sortable header and a footer count.
  *
- * THE PITCH IS A FLOOR AND NOT A CEILING, which is the whole of what --h-row guarantees here. `height` on a table
- * row is a minimum: a row stays at the pitch for as long as its cells fit in it, and a cell that needs more than
- * that -- a name over two lines, a control taller than a row -- makes ITS OWN row taller and leaves every other
- * row at the pitch. Nothing in this sheet truncates to hold the figure, because the text in a cell is what a
- * reader picks a row by, and an end-ellipsis discards exactly the tail that tells one name from its sibling.
+ * THE PITCH IS A FLOOR AND NOT A CEILING, and that is the whole of what --h-row guarantees. The header's cells
+ * and every body row declare it, and `height` on a table row is a minimum rather than a bound: such a row is
+ * exactly the pitch while its own cells fit in it, and a cell that needs more -- a name over two lines, a control
+ * taller than a row -- makes ITS OWN row taller while no other row's height changes. Nothing in this sheet
+ * truncates to hold the figure, because the text in a cell is what a reader picks a row by, and an end-ellipsis
+ * discards exactly the tail that tells one name from its sibling.
  *
  * THE CELLS SET AT --fs-data, which is the one size in the scale for numbers a reader compares down a column.
  * That and the pitch are the reason a table is the right surface for the Backlog and the Today ledger rather than
