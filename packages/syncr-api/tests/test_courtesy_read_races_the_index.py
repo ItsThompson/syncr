@@ -23,21 +23,28 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 from sqlalchemy import insert, text
 from sqlalchemy.exc import IntegrityError
 
+from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.repository import AreaRepository
-from syncr_api.core.db import create_db_engine, create_sessionmaker
-from syncr_api.core.errors import Conflict
+from syncr_api.core.app_factory import create_app
+from syncr_api.core.db import create_database, create_db_engine, create_sessionmaker
+from syncr_api.core.errors import PROBLEM_JSON_MEDIA_TYPE, Conflict
 from syncr_api.core.principal import Principal
 from syncr_api.core.races import answered_once, refused_index
 from syncr_api.core.scopes import Scope
+from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.core.tenancy import TENANT_ID_COLUMN
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.templates.config import (
+    DAY_TYPES_PREFIX,
     ONE_DAY_TYPE_PER_NAME_INDEX,
     ONE_SHAPE_PER_DAY_TYPE_INDEX,
 )
@@ -54,14 +61,16 @@ from syncr_api.templates.service import DayTypeService, TemplateService
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 from tests.control_models import recording, table_of
-from tests.live_tenants import delete_tenant, seed_owner
+from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+    from sqlalchemy.orm import DeclarativeBase
 
     from syncr_api.accounts.records import UserRecord
+    from syncr_api.core.settings import ServiceSettings
     from syncr_api.templates.records import DayTypeRecord, TemplateRecord
     from syncr_domain.identifiers import DayTypeId, TenantId
     from tests.control_models import StatementRecorder
@@ -70,6 +79,7 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
+BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 A_NAME = "Weekday"
 A_SHAPE_NAME = "Weekday shape"
@@ -78,9 +88,11 @@ A_SHAPE_NAME = "Weekday shape"
 # nobody closes fails the test rather than hanging the suite.
 WINDOW_SECONDS = 5
 
-# Where the planner starts preferring the unique index over reading the table. Measured on this
-# schema: below a thousand rows a sequential scan really is cheaper, so a plan asserted on a
-# handful of rows would be asserting the planner's arithmetic rather than the index.
+# Enough rows that the planner prefers the unique index to reading the table whole. It decides
+# that by cost, not by a row count: a sequential scan is cheaper until the table's page count
+# makes it dearer than the index's fixed estimate, so the row count where it flips depends on how
+# wide the rows are. On this fixture it flips between 200 and 250. A plan asserted below the flip
+# would be asserting the planner's arithmetic rather than the index, so this sits well above it.
 ROWS_THE_CHOICE_IS_REAL_AT = 1000
 
 
@@ -373,7 +385,10 @@ async def test_a_refused_write_whose_row_is_already_gone_is_still_a_conflict(
                 refusal=restate_after_the_shape_goes,
             )
 
-    assert refused.value.as_problem().status == Conflict.status
+    # `HTTPStatus.CONFLICT` rather than `Conflict.status`: this test's whole point is that the
+    # answer is not a 500, and reading the status off the class that raised it would pass however
+    # that class was renumbered.
+    assert refused.value.as_problem().status == HTTPStatus.CONFLICT
 
 
 # --------------------------------------------------------------------------------
@@ -465,22 +480,46 @@ async def test_the_shape_read_is_served_by_the_index_that_guarantees_the_same_ru
     owner: UserRecord,
     statements: StatementRecorder,
 ) -> None:
-    # An index can exist and serve nothing. The claim is about the plan the database produces
-    # for the statement the repository sent, so the statement is the recorded one rather than a
-    # copy of it, and the table is grown past the size where reading it whole is cheaper.
+    # An index can exist and serve nothing. The claim is about the plan the database produces for
+    # the statement the repository sent, so the statement is the recorded one rather than a copy,
+    # and the table is grown past the size where reading it whole is cheaper.
+    #
+    # The index is named from the rule's own columns rather than from the constant the write path
+    # passes, so this describes the guarantee (one shape per tenant per day type) rather than a
+    # name, and a constant repointed at another index cannot make it agree.
+    serves_the_rule = the_unique_index_over(TemplateRow, (TENANT_ID_COLUMN, "day_type_id"))
     day_type_ids = await a_tenant_holding_many_shapes(sessions, owner)
     statements.statements.clear()
     async with sessions() as session:
         await TemplateRepository(session, owner.tenant_id).find_by_day_type(day_type_ids[0])
 
-    sent = next(one for one in statements.statements if one.startswith("SELECT templates"))
+    sent = next((one for one in statements.statements if one.startswith("SELECT templates")), None)
+    assert sent is not None, (
+        f"the read sent no statement this test recognises: {statements.statements}"
+    )
+    # The parameters are positional in the statement the driver received, so the order this test
+    # passes them in is pinned rather than assumed: swapped, both are UUIDs and nothing would
+    # complain.
+    assert sent.index(f"{TENANT_ID_COLUMN} = $1") < sent.index("day_type_id = $2"), sent
+
     async with engine.connect() as connection:
         plan = await connection.exec_driver_sql(
             f"EXPLAIN {sent}", (owner.tenant_id, day_type_ids[0])
         )
         drawn = "\n".join(str(line[0]) for line in plan)
 
-    assert ONE_SHAPE_PER_DAY_TYPE_INDEX in drawn, drawn
+    assert serves_the_rule in drawn, drawn
+
+
+def the_unique_index_over(table: type[DeclarativeBase], columns: tuple[str, ...]) -> str:
+    """The name of the one unique index this table declares over exactly ``columns``, in order."""
+    named = [
+        str(index.name)
+        for index in table_of(table).indexes
+        if index.unique and tuple(column.name for column in index.columns) == columns
+    ]
+    assert len(named) == 1, f"{table.__name__} declares {named} over {columns}"
+    return named[0]
 
 
 async def a_tenant_holding_many_shapes(
@@ -517,3 +556,99 @@ async def a_tenant_holding_many_shapes(
     async with sessions() as session:
         await session.execute(text("ANALYZE day_types, templates"))
     return day_type_ids
+
+
+# --------------------------------------------------------------------------------
+# The same race at the wire, through the app a process builds
+# --------------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def wired(
+    live_database_url: str, settings: ServiceSettings
+) -> AsyncIterator[httpx.AsyncClient]:
+    """A client over the real app: real dependencies, real transaction, real handler map.
+
+    ``raise_app_exceptions=False`` so a fault renders as the response a caller receives rather
+    than as an exception in the test, which is the difference this file is about.
+    """
+    database = create_database(live_database_url)
+    app = create_app(settings)
+    app.state.db = database
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client
+    await database.engine.dispose()
+
+
+async def signed_in(client: httpx.AsyncClient, owner: UserRecord) -> dict[str, str]:
+    """The headers a signed-in browser sends. The cookie is read off the header, not a jar.
+
+    The session cookie is ``Secure`` and a client that honors that will not send it back over
+    ``http://testserver``.
+    """
+    answered = await client.post(
+        f"{AUTH_PREFIX}/login",
+        json={"email": owner.email, "password": PASSWORD},
+        headers={"Origin": BROWSER_ORIGIN},
+    )
+    assert answered.status_code == HTTPStatus.OK, answered.text
+    cookie = answered.headers["set-cookie"]
+    token = cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
+    return {"Cookie": f"{SESSION_COOKIE_NAME}={token}", "Origin": BROWSER_ORIGIN}
+
+
+async def test_a_raced_declaration_answers_the_unraced_body_at_the_wire(
+    wired: httpx.AsyncClient,
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Every layer between the refusal and the caller: the app's own dependencies build the
+    # service, the request's transaction commits or rolls back, and the registered handler renders
+    # what the client reads. Nothing is overridden. The seam is a wrapper around the real read
+    # that holds the window open for the FIRST reader only, so the second request runs through it
+    # untouched and the restated read is not made to wait for an event already set.
+    window = Window()
+    listing = DayTypeRepository.list_all
+
+    async def list_all_inside_the_window(repository: DayTypeRepository) -> object:
+        found = await listing(repository)
+        if window.reads == 0:
+            await window.hold()
+        else:
+            window.reads += 1
+        return found
+
+    monkeypatch.setattr(DayTypeRepository, "list_all", list_all_inside_the_window)
+    headers = await signed_in(wired, owner)
+    declare = {"name": A_NAME}
+
+    async def take_the_name() -> httpx.Response:
+        await window.open.wait()
+        answered = await wired.post(DAY_TYPES_PREFIX, json=declare, headers=headers)
+        window.closed.set()
+        return answered
+
+    loser, winner = await asyncio.wait_for(
+        asyncio.gather(
+            wired.post(DAY_TYPES_PREFIX, json=declare, headers=headers), take_the_name()
+        ),
+        timeout=WINDOW_SECONDS * 2,
+    )
+
+    assert winner.status_code == HTTPStatus.CREATED, winner.text
+    assert loser.status_code == HTTPStatus.CONFLICT, loser.text
+    assert loser.headers["content-type"] == PROBLEM_JSON_MEDIA_TYPE
+    unraced = await wired.post(DAY_TYPES_PREFIX, json=declare, headers=headers)
+    assert unraced.status_code == HTTPStatus.CONFLICT, unraced.text
+    assert without_the_correlation_id(loser) == without_the_correlation_id(unraced)
+    assert loser.json()["type"] == "syncr:conflict"
+
+    listed = await wired.get(DAY_TYPES_PREFIX, headers=headers)
+    assert [row["name"] for row in listed.json()["dayTypes"]] == [A_NAME]
+
+
+def without_the_correlation_id(answered: httpx.Response) -> dict[str, Any]:
+    """A problem body without the one member that differs per request."""
+    return {key: value for key, value in answered.json().items() if key != "instance"}
