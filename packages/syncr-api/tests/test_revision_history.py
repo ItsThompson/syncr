@@ -42,6 +42,8 @@ if TYPE_CHECKING:
 TENANT = uuid4()
 AT = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 LATER = datetime(2026, 2, 9, 14, 0, tzinfo=UTC)
+# A third instant, for the week whose one concession is replaced twice.
+LATEST = datetime(2026, 2, 9, 18, 0, tzinfo=UTC)
 
 GYM = BindingRef.for_habit(uuid4(), index=0)
 LEETCODE = BindingRef.for_task(uuid4())
@@ -300,6 +302,61 @@ class TestWhichOfTheTwoThingsTheWeekDidToIt:
         first = without_the_grant.revisions[0]
         assert (first.unnamed.revoked, first.unnamed.replaced) == (1, 0)
 
+    def test_a_second_replacement_of_one_target_reports_the_earlier_one_as_revoked(self) -> None:
+        """The second bound on the discrimination, pinned in the same shape as the page bound.
+
+        A row bears the instant of the write that LAST set its figures, and only one revision can
+        bear it, so exactly one revision is ever credited with a replacement of one row. Replace the
+        same kind and target twice and the earlier replacement reports its concession as revoked,
+        which is the pre-split answer and the one the count exists to stop giving. Every revision is
+        on the page here, so this is not the window bound the test above pins.
+
+        The sum survives: the earlier revision is missing one identifier and reports one.
+
+        Neither label is exactly right for that revision. Its figures are not in force any more, so
+        `replaced` would also be false, and a third case is what the state really is. `revoked` is
+        the worse of the two available answers, because it tells a reader to act and the enumerator
+        will not re-offer a kind and target the week already holds.
+        """
+        first = uuid4()
+        granted = an_approved(
+            a_week(a_block_holding(GYM, between(9, 10)), adjustments=(first,)),
+            created_at=AT,
+            approved_at=AT,
+        )
+        replacing = an_approved(
+            a_week(a_block_holding(GYM, between(9, 10)), adjustments=(first, uuid4())),
+            created_at=LATER,
+            approved_at=LATER,
+        )
+        replacing_again = an_approved(
+            a_week(a_block_holding(GYM, between(9, 10)), adjustments=(first, uuid4())),
+            created_at=LATEST,
+            approved_at=LATEST,
+        )
+        # The row still carries the FIRST identifier. After one replacement it bears that write's
+        # instant; after the second it bears the second's, which is the whole of the difference.
+        after_one = a_concession(id=first, target_id=TARGET, created_at=LATER)
+        after_two = a_concession(id=first, target_id=TARGET, created_at=LATEST)
+
+        once = revision_page([replacing, granted], held=(after_one,), page=3)
+        twice = revision_page([replacing_again, replacing, granted], held=(after_two,), page=3)
+
+        assert [(one.unnamed.revoked, one.unnamed.replaced) for one in once.revisions] == [
+            (0, 1),
+            (0, 0),
+        ]
+        assert [(one.unnamed.revoked, one.unnamed.replaced) for one in twice.revisions] == [
+            (0, 1),
+            (1, 0),
+            (0, 0),
+        ]
+        for revision, record in zip(
+            twice.revisions, (replacing_again, replacing, granted), strict=True
+        ):
+            counted = revision.unnamed.revoked + revision.unnamed.replaced
+            assert counted == unnamed_by(plan_document(record.document), (after_two,))
+
     def test_a_revision_missing_nothing_reports_no_replacement_to_go_with_it(self) -> None:
         """The totality of the pair, over a corpus the writers cannot produce.
 
@@ -338,9 +395,9 @@ class TestWhatTheHistoryPutsOnTheWire:
     def test_each_count_reaches_the_wire_under_its_own_name(self) -> None:
         """Two integers of one type, so nothing but this would notice them exchanged.
 
-        Asserted in both directions, over a revision reporting a replacement and no revocation and
-        one reporting a revocation and no replacement, because a pair that is equal on both sides
-        cannot tell a swap from a correct mapping.
+        The discriminating assertion is the `replacedAdjustments` list: it reads 1 then 0, so a swap
+        makes it read 1 then 1. The revoked list is 1 on both revisions and cannot tell the two
+        mappings apart, and it is asserted because the swap has to be wrong about both.
         """
         revoked = uuid4()
         granted, replacing, taken_over = _a_replaced_concession(also_naming=(revoked,))
