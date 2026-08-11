@@ -23,9 +23,9 @@ from tests.live_tenants import run
 
 pytestmark = pytest.mark.integration
 
-# The relation the ``preferences`` table owns, spelled here because the point is that no column
-# anywhere in this table is named it.
-NO_PREFERENCE_IDENTIFIER = "default_preference_id"
+# The column an Area does not hold. A preference names its own owner, so the relation lives on the
+# preference rather than in a second place here.
+PREFERENCE_IDENTIFIER_COLUMN = "default_preference_id"
 
 
 def migrated_columns(database_url: str, table: str) -> set[str]:
@@ -58,4 +58,4 @@ def test_no_column_of_the_table_names_a_preference(live_database_url: str) -> No
     # The control: the reflection reached a table with columns in it, so the absence below is a
     # statement about this table rather than about an empty read.
     assert "floor_hours" in migrated
-    assert NO_PREFERENCE_IDENTIFIER not in migrated
+    assert PREFERENCE_IDENTIFIER_COLUMN not in migrated
