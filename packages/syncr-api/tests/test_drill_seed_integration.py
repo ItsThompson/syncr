@@ -280,9 +280,10 @@ class TestTheEvidenceTheFingerprintReads:
 
         assert first.materialized and first.solved and first.pinned
         assert not second.materialized and not second.solved and not second.pinned
-        assert {table: after_two.row_counts[table] for table in EVIDENCE_TABLES} == {
-            table: after_one.row_counts[table] for table in EVIDENCE_TABLES
-        }
+        # Every table rather than the five, and derived from the reading rather than listed: a
+        # convergence read that went missing would grow whatever table it guards, and a claim over
+        # the five could not see a second Area slot or a second habit.
+        assert after_two.row_counts == after_one.row_counts
 
 
 class TestTheConsoleScriptsComposition:
