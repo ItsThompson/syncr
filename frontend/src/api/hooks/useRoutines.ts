@@ -32,8 +32,10 @@ export function useRoutines(): Resource<readonly Routine[]> {
 /**
  * Changing one routine's span. The list is the only key it invalidates, because the list is the only read.
  *
- * `null` is a real argument: a caller that renders the control before it has a routine to address has no
- * row to patch, and a control that did nothing and said nothing would be worse than the refusal.
+ * `null` is a real argument, and no caller passes one today: every screen that offers this write has a routine to
+ * address before it renders a control. The branch stays because the argument is the routine's id rather than the
+ * hook's caller, so a screen that offers the write from a selection can pass nothing selected, and a control that
+ * did nothing and said nothing would be worse than the refusal. Its own case is what exercises it.
  */
 export function useRoutineEdit(routineId: string | null): Write<RoutinePatchBody> {
   const { mutate } = useSWRConfig();

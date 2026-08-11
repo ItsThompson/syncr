@@ -14,8 +14,9 @@
  * WHAT THE DENOMINATOR SUBTRACTS IS THE DURATION, NOT THIS FLOOR. A routine's duration is the frame, and the frame
  * is the first of the budget denominator's four subtrahends: `WeekOccupancy.frame` in
  * `syncr_api/budgets/occupancy.py` is the set a routine's time lands in, and `WeekOccupancyReader` is the half that
- * applies it. The set carries effective durations rather than targets, so a floor below the target is the only way
- * that subtraction can ever come out lower; nothing on this panel moves a target. */
+ * applies it, in that it is what supplies that set to the subtraction. The set carries effective durations rather
+ * than targets, so a floor below the target is the only way that subtraction can ever come out lower; nothing on
+ * this panel moves a target. */
 
 import { EmptyState } from "../../../ui/domain";
 import { Panel } from "../../../ui/layout";
