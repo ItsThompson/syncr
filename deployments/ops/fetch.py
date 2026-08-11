@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ops import crypto, environment, naming, postgres, verify
+from ops.config import ENCRYPTED_SUFFIX
 from ops.fingerprint import read as read_fingerprint
 from ops.prepare import writable_by_app
 from ops.process import run as run_command
@@ -35,6 +36,10 @@ if TYPE_CHECKING:
 # What the restore and the comparison steps read, in the scratch volume all three mount.
 FETCHED_DUMP = "restore.dump"
 FETCHED_MANIFEST = "restore.manifest.json"
+
+# The throwaway gpg home the off-host private key is imported into, under the scratch directory. One
+# name, because the WAL staging step imports the same key for the same length of time.
+GNUPG_HOME = "gnupg"
 
 EXIT_OK = 0
 EXIT_REFUSED = 1
@@ -68,13 +73,13 @@ def fetch(*, environ: Mapping[str, str], run: Run) -> str:
     # The api image writes the restored copy's fingerprint into this same directory, and it does not
     # run as root: a directory this step created would otherwise be one that step cannot write to.
     writable_by_app(scratch, environ=environ)
-    home = scratch / "gnupg"
+    home = scratch / GNUPG_HOME
     crypto.import_private_key(private_key, home=home, run=run)
 
     dump = scratch / FETCHED_DUMP
     manifest = scratch / FETCHED_MANIFEST
-    _download_and_decrypt(remote, naming.dump_object(newest), into=dump, home=home, run=run)
-    _download_and_decrypt(remote, naming.manifest_object(newest), into=manifest, home=home, run=run)
+    download_and_decrypt(remote, naming.dump_object(newest), into=dump, home=home, run=run)
+    download_and_decrypt(remote, naming.manifest_object(newest), into=manifest, home=home, run=run)
 
     reading = read_fingerprint(manifest)
     header = verify.read_header(dump)
@@ -98,10 +103,17 @@ def newest_backup(remote: Remote) -> str:
     return found[0]
 
 
-def _download_and_decrypt(
+def download_and_decrypt(
     remote: Remote, object_name: str, *, into: Path, home: Path, run: Run
 ) -> None:
-    encrypted = into.with_name(f"{into.name}.gpg")
+    """One object out of the bucket, in the clear, with the encrypted copy left nowhere.
+
+    The one step both directions of a recovery take: the dump and its manifest here, and one WAL
+    segment in ``ops.fetch_segment``. The ``finally`` is the whole reason it is one function rather
+    than two: a failed decryption otherwise leaves an encrypted file beside the plaintext one, and
+    the next run's reading of the directory cannot tell it from an object it fetched itself.
+    """
+    encrypted = into.with_name(f"{into.name}{ENCRYPTED_SUFFIX}")
     try:
         remote.download(object_name, encrypted)
         crypto.decrypt(encrypted, into=into, home=home, run=run)
