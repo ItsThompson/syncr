@@ -10,16 +10,22 @@
  * sensitive enough to catch a sentence describing one, and a check that fails on its own documentation is a check
  * people route around. Offsets survive blanking, so a reported line is the real line.
  *
- * IT DOES NOT CARE WHAT THE RECEIVER IS CALLED. `title` compared, trimmed, lower-cased, matched or switched on is a
- * hit whether it was read from `routine`, from `r`, from `it` or destructured out of a parameter. Which of those a
- * reader would write is not knowable, and an earlier version of this fence keyed on the receiver being spelled
- * `routine`, which let `(r) => r.title === "Sleep"` through: the shape the deleted code would come back as.
+ * IT DOES NOT CARE WHAT THE RECEIVER IS CALLED. `title` compared, trimmed, lower-cased, matched, switched on, or
+ * handed to a membership test is a hit whether it was read from `routine`, from `r`, from `it` or destructured out
+ * of a parameter. Which of those a reader would write is not knowable, and an earlier version of this fence keyed
+ * on the receiver being spelled `routine`, which let `(r) => r.title === "Sleep"` through: the shape the deleted
+ * code would come back as.
  *
- * THREE TITLES IN THIS TREE ARE NOT ROUTINES' and they are excused by name below rather than by file, so a new
- * comparison has to be declared here even in a file that already holds one. What the scan cannot see is a title it
- * does not meet in one expression: one copied into a local first, including a routine copied into a variable this
- * list excuses; one reached through a helper; or one compared by a test matcher rather than by an operator. It
- * reads a line of code, not the flow into it. That is the bound, stated so nobody has to discover it. */
+ * FIVE TITLE READS IN THIS TREE ARE NOT ROUTINES': four on a captured task or habit and one on a problem document,
+ * under two receiver names, in three files. They are excused by name below rather than by file, so a new comparison
+ * has to be declared here even in a file that already holds one.
+ *
+ * WHAT IT CATCHES IS ONE LINE OF CODE AT A TIME, and the operator sets below are the whole of its reach: a title
+ * compared, normalized, switched on, or passed to `includes`, `has` or `indexOf`. It does not follow a value, so a
+ * title copied into a local first, reached through a helper, or handed to a function this file does not name
+ * escapes it, as does one compared by a test matcher rather than by an operator. It is a fence against a pattern
+ * returning, not a proof that one cannot. That is the bound, and it is stated to the line rather than summarized,
+ * because a fence whose header claims more reach than it has is worse than one that claims less. */
 
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
@@ -46,12 +52,24 @@ const COMPARED = `(?:${COMPARED_TO_A_VALUE}|${NORMALIZED})`;
 
 /* `x.title ===`, `title.toLowerCase()` destructured out of a parameter, and everything between. The lookbehind is
    what keeps `subtitle` out; the receiver is captured only so it can be checked against the list below. */
+const RECEIVER = "[A-Za-z_$][\\w$]*";
 const TITLE_COMPARED = new RegExp(
-  `(?:([A-Za-z_$][\\w$]*)\\s*\\.\\s*)?(?<![\\w$])title\\s*${COMPARED}`,
+  `(?:(${RECEIVER})\\s*\\.\\s*)?(?<![\\w$])title\\s*${COMPARED}`,
+  "g",
+);
+
+/* A title in ARGUMENT position, which is a comparison with the operands the other way round:
+   `TITLES.includes(r.title)` singles out a routine as surely as `r.title === "Sleep"` does, and reads nothing off
+   the title itself for the pattern above to catch. */
+const TITLE_TESTED_FOR_MEMBERSHIP = new RegExp(
+  `(?:includes|has|indexOf|lastIndexOf)\\s*\\(\\s*(?:(${RECEIVER})\\s*\\.\\s*)?(?<![\\w$])title\\b`,
+  "g",
 );
 
 /* `switch (routine.title)`, whose cases are the comparison. */
-const TITLE_SWITCHED = /switch\s*\([^)]*(?<![\w$])title\s*\)/;
+const TITLE_SWITCHED = /switch\s*\([^)]*(?<![\w$])title\s*\)/g;
+
+const SHAPES = [TITLE_COMPARED, TITLE_TESTED_FOR_MEMBERSHIP, TITLE_SWITCHED];
 
 /**
  * Receivers whose `title` is nobody's routine, excused by name with what they are.
@@ -77,22 +95,15 @@ async function titleReads(): Promise<{ readonly files: number; readonly hits: re
   );
 
   const hits = read.flatMap((file) =>
-    file.code.split("\n").reduce<Hit[]>((found, line, index) => {
-      const compared = TITLE_COMPARED.exec(line);
-      if (compared !== null)
-        found.push({
+    file.code.split("\n").flatMap((line, index) =>
+      SHAPES.flatMap((shape) =>
+        [...line.matchAll(shape)].map((found) => ({
           at: `${relativeToRepo(file.path)}:${index + 1}`,
-          receiver: compared[1] ?? "",
+          receiver: found[1] ?? "",
           line: line.trim(),
-        });
-      else if (TITLE_SWITCHED.test(line))
-        found.push({
-          at: `${relativeToRepo(file.path)}:${index + 1}`,
-          receiver: "",
-          line: line.trim(),
-        });
-      return found;
-    }, []),
+        })),
+      ),
+    ),
   );
 
   return { files: read.length, hits };
@@ -103,7 +114,9 @@ describe("no file in the frontend matches a routine by title", () => {
     const { hits } = await titleReads();
 
     const guilty = hits.reduce<string[]>((found, hit) => {
-      if (!(hit.receiver in NOT_A_ROUTINE)) found.push(`${hit.at}  ${hit.line}`);
+      /* `Object.hasOwn` rather than `in`: `in` walks the prototype chain, so a receiver named `constructor` or
+         `toString` would be excused by a key this list never wrote. */
+      if (!Object.hasOwn(NOT_A_ROUTINE, hit.receiver)) found.push(`${hit.at}  ${hit.line}`);
       return found;
     }, []);
 
