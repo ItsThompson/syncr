@@ -128,8 +128,17 @@ def test_an_unconfirmed_row_is_neither_a_completion_nor_a_miss(state: OutcomeSta
 
 
 def test_an_occurrence_is_a_fresh_one_unless_the_row_says_otherwise() -> None:
-    """The honest default for every row written before the mark existed."""
-    assert not outcome(OutcomeState.COMPLETED).is_make_up
+    """Built without the field, because that is the row a reader of stored data constructs."""
+    unmarked = HabitOutcome(
+        habit_id=HABIT,
+        occurrence_key="00",
+        state=OutcomeState.COMPLETED,
+        occurred_at=AT,
+        confirmed_at=AT,
+    )
+
+    assert not unmarked.is_make_up
+    assert not unmarked.is_confirmed_make_up_completion
     assert outcome(OutcomeState.COMPLETED, make_up=True).is_make_up
 
 
