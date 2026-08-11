@@ -90,7 +90,8 @@ def measure_reads[ClassT: type](cls: ClassT) -> ClassT:
     """Wrap every public coroutine method this class DEFINES so each call is timed.
 
     Applied to the scoped repository base through ``__init_subclass__``, and directly to a
-    repository over an identity table, which is not scoped and so does not extend that base.
+    repository whose own read is what supplies the tenant, which therefore cannot be scoped and
+    does not extend that base.
 
     Only methods in the class's own ``__dict__`` are wrapped, so a method inherited from another
     repository is timed once, under the class that defined it.

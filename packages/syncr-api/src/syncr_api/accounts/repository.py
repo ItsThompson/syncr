@@ -18,7 +18,7 @@ leave one behind.
 
 Each class carries :func:`~syncr_api.core.db_metrics.measure_reads` explicitly, because the hook
 that applies it to every scoped repository is on the base these three do not extend. Without it the
-session lookup on the hot path of every authenticated request would be the one read
+session lookup on the hot path of every request a cookie authenticates would be the one read
 ``syncr_db_query_duration_seconds`` could not see.
 """
 
