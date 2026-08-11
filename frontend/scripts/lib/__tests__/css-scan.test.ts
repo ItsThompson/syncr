@@ -44,6 +44,18 @@ describe("scanCss", () => {
     expect(scan.dynamicVarReferences).toHaveLength(1);
   });
 
+  /* CSS substitutes a `var()` against the element the declaration is written on, so where the
+   * reference sits decides whether anything below the root can supply the value. */
+  it("records whether a reference is substituted at the root element or on a rule", () => {
+    const scan = scanCss(":root { --a: var(--b); }\n.hatched { background-image: var(--c); }");
+    expect(
+      scan.varReferences.map((reference) => [reference.name, reference.substitutedAtRoot]),
+    ).toEqual([
+      ["--b", true],
+      ["--c", false],
+    ]);
+  });
+
   it("does not let an apostrophe in prose swallow the rest of the file", () => {
     const scan = scanCss(":root {\n  a block's height is proportional\n  --a: 1px;\n}");
     expect(scan.declarations.map((declaration) => declaration.name)).toEqual(["--a"]);

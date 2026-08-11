@@ -25,6 +25,12 @@ export interface Statement extends Position {
 
 export interface VarReference extends Position {
   readonly name: string;
+  /**
+   * True when the reference sits inside a `:root` block. CSS substitutes a `var()` against the
+   * element the declaration is written on, so such a reference reads the root element's own value
+   * and nothing an element further down the tree declares can reach it.
+   */
+  readonly substitutedAtRoot: boolean;
 }
 
 export interface AtImport extends Position {
@@ -48,6 +54,12 @@ export interface CssScan {
   readonly commentProblems: readonly CommentProblem[];
   readonly imports: readonly AtImport[];
   readonly callerProvided: readonly CallerProvided[];
+}
+
+/** A scan paired with the path it came from, which is what a whole-layer check iterates. */
+export interface ScannedStylesheet {
+  readonly file: string;
+  readonly scan: CssScan;
 }
 
 const CUSTOM_PROPERTY = "--[A-Za-z0-9_-]+";
@@ -205,9 +217,11 @@ export function scanCss(text: string): CssScan {
   }
 
   const rootStatements: Statement[] = [];
+  const rootBlocks: { readonly from: number; readonly to: number }[] = [];
   for (const match of code.matchAll(ROOT_SELECTOR_PATTERN)) {
     const openBrace = match.index + match[0].length - 1;
     const closeBrace = findBlockEnd(code, openBrace);
+    rootBlocks.push({ from: openBrace, to: closeBrace });
     rootStatements.push(
       ...splitStatements(code.slice(openBrace + 1, closeBrace), openBrace + 1, at),
     );
@@ -216,8 +230,17 @@ export function scanCss(text: string): CssScan {
   const varReferences: VarReference[] = [];
   const dynamicVarReferences: Position[] = [];
   for (const match of code.matchAll(VAR_PATTERN)) {
-    if (match[1] === undefined) dynamicVarReferences.push(at(match.index));
-    else varReferences.push({ ...at(match.index), name: match[1] });
+    if (match[1] === undefined) {
+      dynamicVarReferences.push(at(match.index));
+      continue;
+    }
+    varReferences.push({
+      ...at(match.index),
+      name: match[1],
+      substitutedAtRoot: rootBlocks.some(
+        (block) => match.index > block.from && match.index < block.to,
+      ),
+    });
   }
 
   const imports: AtImport[] = [];
