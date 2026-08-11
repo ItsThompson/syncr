@@ -167,3 +167,108 @@ describe("a token promoted out of the layer and beside its component", () => {
     ]);
   });
 });
+
+/* `@caller-provided` states that the element drawing with a property supplies its value. CSS
+ * substitutes a `var()` against the element the declaration is written on, so the contract can hold
+ * on an ordinary rule and cannot hold inside `:root`: there the reference reads the root element's
+ * own value, which no caller can write. An annotation the layer resolves at `:root` therefore buys
+ * nothing, in the layer, in a consumer, or in a sheet. */
+describe("a @caller-provided contract the layer resolves itself", () => {
+  const atRoot = fixture("caller-provided-at-root.css");
+  const consumer = fixture("caller-provided-consumer.css");
+  const drawnBySheet = fixture("sheet-caller-drawn.html");
+
+  it("refuses each annotation, on the annotation, naming the site the layer resolves it at", async () => {
+    const outcome = await validate([atRoot]);
+
+    expect(
+      outcome.findings.filter((finding) => finding.check === "caller-provided-refused"),
+    ).toEqual([
+      {
+        file: atRoot,
+        line: 5,
+        column: 4,
+        check: "caller-provided-refused",
+        message:
+          "@caller-provided --hatch-ink is refused. The token layer resolves var(--hatch-ink) " +
+          "itself at frontend/scripts/validate-tokens/__fixtures__/" +
+          "caller-provided-at-root.css:10:49, inside a :root block, where CSS substitutes it " +
+          "against the root element, so no element a caller styles can supply it. Declare " +
+          "--hatch-ink, or move the reference onto the rule that paints.",
+      },
+      {
+        file: atRoot,
+        line: 6,
+        column: 4,
+        check: "caller-provided-refused",
+        message:
+          "@caller-provided --band-ink is refused. The token layer resolves var(--band-ink) " +
+          "itself at frontend/scripts/validate-tokens/__fixtures__/" +
+          "caller-provided-at-root.css:11:26, inside a :root block, where CSS substitutes it " +
+          "against the root element, so no element a caller styles can supply it. Declare " +
+          "--band-ink, or move the reference onto the rule that paints.",
+      },
+    ]);
+  });
+
+  it("reports the references the annotation had been suppressing", async () => {
+    const outcome = await validate([atRoot]);
+    const dangling = outcome.findings.filter((finding) => finding.check === "dangling-reference");
+
+    expect(dangling.map((finding) => `${finding.line}:${finding.column}`)).toEqual([
+      "10:49",
+      "11:26",
+    ]);
+    expect(dangling[0].message).toContain("var(--hatch-ink) resolves to nothing");
+    expect(dangling[1].message).toContain("var(--band-ink) resolves to nothing");
+  });
+
+  it("stops naming it in the notes as a contract the layer keeps", async () => {
+    const outcome = await validate([atRoot]);
+
+    expect(outcome.notes.filter((note) => note.startsWith("caller-provided by contract"))).toEqual(
+      [],
+    );
+  });
+
+  it("leaves a consumer's reference dangling, wherever the layer resolved it", async () => {
+    const outcome = await validate([cleanEntry, atRoot], [], [consumer]);
+
+    expect(
+      outcome.findings
+        .filter((finding) => finding.file === consumer)
+        .map((finding) => `${finding.check} ${finding.line}:${finding.column}`),
+    ).toEqual(["dangling-reference 6:54"]);
+  });
+
+  it("leaves a reference sheet's reference dangling too", async () => {
+    const outcome = await validate([cleanEntry, atRoot], [drawnBySheet]);
+
+    expect(
+      outcome.findings
+        .filter((finding) => finding.file === drawnBySheet)
+        .map((finding) => `${finding.check} ${finding.line}:${finding.column}`),
+    ).toEqual(["dangling-sheet-reference 13:11"]);
+  });
+});
+
+describe("a @caller-provided contract the drawing element can reach", () => {
+  it("holds when the layer draws with it on a rule instead of inside :root", async () => {
+    const outcome = await validate([fixture("caller-provided-in-a-rule.css")]);
+
+    expect(outcome.findings).toEqual([]);
+    expect(outcome.notes).toContain("caller-provided by contract: --hatch-ink");
+  });
+
+  it("holds for a consumer that draws with it", async () => {
+    const outcome = await validate([cleanEntry], [], [fixture("caller-provided-consumer.css")]);
+
+    expect(outcome.findings).toEqual([]);
+  });
+
+  it("holds for a reference sheet that draws with it and declares nothing itself", async () => {
+    const outcome = await validate([cleanEntry], [fixture("sheet-caller-drawn.html")]);
+
+    expect(outcome.findings).toEqual([]);
+  });
+});

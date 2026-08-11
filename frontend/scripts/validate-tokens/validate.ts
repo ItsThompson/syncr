@@ -16,6 +16,8 @@
  *   6. every stylesheet reference resolves on disk, in a token file and in a sheet
  *   7. the Area ramp's hue ledger is derived from the pigments, and neither the comment beside a pigment nor a
  *      reference sheet's own copy of it may disagree
+ *   8. a `@caller-provided` annotation excuses check 4 and check 5 only where a caller can reach the
+ *      reference, which `scripts/validate-tokens/caller-provided.ts` settles
  *
  * Check 6 is what keeps the six sheets honest: they render live from the tokens that ship,
  * and a moved file would turn them into the second copy of the values they exist to avoid.
@@ -24,12 +26,18 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { isCustomPropertyDeclaration, scanCss, type CssScan } from "../lib/css-scan.ts";
+import {
+  isCustomPropertyDeclaration,
+  scanCss,
+  type CssScan,
+  type ScannedStylesheet,
+} from "../lib/css-scan.ts";
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
 import { scanHtml, type HtmlScan } from "../lib/html-scan.ts";
 import type { Exists } from "../lib/module-graph.ts";
 import { relativeToRepo } from "../lib/paths.ts";
 import { stylesheetClosures } from "../lib/stylesheet-closure.ts";
+import { callerProvidedContracts } from "./caller-provided.ts";
 import { checkAreaHues, pigmentFile } from "./hues.ts";
 
 export interface ValidateInput {
@@ -54,14 +62,9 @@ export interface ValidateInput {
   readonly sheetFiles: readonly string[];
 }
 
-interface ScannedFile {
-  readonly file: string;
-  readonly scan: CssScan;
-}
-
 export async function validateTokenLayer(input: ValidateInput): Promise<CheckOutcome> {
   const findings: Finding[] = [];
-  const scanned: ScannedFile[] = [];
+  const scanned: ScannedStylesheet[] = [];
 
   for (const file of input.tokenFiles) {
     const scan = scanCss(await readFile(file, "utf8"));
@@ -73,8 +76,9 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
   }
 
   const declared = collectDeclaredNames(scanned);
-  const callerProvided = collectCallerProvided(scanned);
-  findings.push(...checkTokenReferences(scanned, declared, callerProvided));
+  const contracts = callerProvidedContracts(scanned);
+  findings.push(...contracts.refusals);
+  findings.push(...checkTokenReferences(scanned, declared, contracts.honored));
 
   /* The theme is the bridge that turns a token into a utility, so a dangling reference there
    * compiles to an invalid declaration and produces exactly the plausible-looking page this whole
@@ -109,7 +113,7 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
         visible.add(declaration.name);
       }
     }
-    findings.push(...checkTokenReferences([{ file, scan }], visible, callerProvided));
+    findings.push(...checkTokenReferences([{ file, scan }], visible, contracts.honored));
   }
 
   let dynamicInSheets = 0;
@@ -121,7 +125,7 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
     resolvedInSheets += scan.varReferences.length;
     const linked = namesLinkedBy(file, scan, consumerScans);
     promotedInSheets += linked.size;
-    findings.push(...checkSheetReferences(file, scan, declared, callerProvided, linked));
+    findings.push(...checkSheetReferences(file, scan, declared, contracts.honored, linked));
     findings.push(...(await checkSheetLink(file, scan, input.tokenEntry)));
   }
 
@@ -135,8 +139,8 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
     `  ${promotedInSheets} propert(ies) reached that way, which is where a promoted layer-2 token lives`,
     `${dynamicInSheets} var() reference(s) in the sheets are assembled at runtime and are not statically resolvable`,
   ];
-  if (callerProvided.size > 0) {
-    notes.push(`caller-provided by contract: ${[...callerProvided].toSorted().join(", ")}`);
+  if (contracts.honored.size > 0) {
+    notes.push(`caller-provided by contract: ${[...contracts.honored].toSorted().join(", ")}`);
   }
 
   const ramp = await checkAreaHues({ pigmentFile, sheetFiles: input.sheetFiles });
@@ -146,22 +150,10 @@ export async function validateTokenLayer(input: ValidateInput): Promise<CheckOut
   return { findings, notes };
 }
 
-function collectDeclaredNames(scanned: readonly ScannedFile[]): Set<string> {
+function collectDeclaredNames(scanned: readonly ScannedStylesheet[]): Set<string> {
   const names = new Set<string>();
   for (const { scan } of scanned) {
     for (const declaration of scan.declarations) names.add(declaration.name);
-  }
-  return names;
-}
-
-/* A property the token layer REFERENCES but deliberately does not declare, because the
- * element that draws with it supplies the value. The contract is annotated in the token file
- * that consumes it, next to the formula a caller writes, rather than in an allowlist inside
- * this script where nobody reading the token would find it. */
-function collectCallerProvided(scanned: readonly ScannedFile[]): Set<string> {
-  const names = new Set<string>();
-  for (const { scan } of scanned) {
-    for (const annotation of scan.callerProvided) names.add(annotation.name);
   }
   return names;
 }
@@ -231,7 +223,7 @@ async function checkImports(file: string, scan: CssScan): Promise<Finding[]> {
 }
 
 function checkTokenReferences(
-  scanned: readonly ScannedFile[],
+  scanned: readonly ScannedStylesheet[],
   declared: ReadonlySet<string>,
   callerProvided: ReadonlySet<string>,
 ): Finding[] {

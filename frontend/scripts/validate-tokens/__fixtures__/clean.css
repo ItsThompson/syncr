@@ -3,12 +3,13 @@
 
    @caller-provided --hatch-ink
    The element drawing the hatch owns the value, because it derives from the fill the hatch
-   sits on. */
+   sits on. The layer names the contract and leaves the reference to the rule that paints: a
+   `var()` inside `:root` is substituted against the root element, so a value declared further
+   down the tree could never reach it. */
 
 :root {
   --cobalt-700: #0d1f5c;
 
   --ink-deep: var(--cobalt-700);
   --panel-border: 1px solid var(--ink-deep);
-  --hatch-fwd: repeating-linear-gradient(45deg, var(--hatch-ink) 0 1px, transparent 1px 5px);
 }

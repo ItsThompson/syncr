@@ -1,0 +1,12 @@
+/* A token file that annotates two contracts and then resolves both itself, inside `:root`. Neither
+   annotation can hold: a `var()` there is substituted against the root element, so the element that
+   draws never gets a chance to supply the value, and both properties resolve to nothing everywhere.
+
+   @caller-provided --hatch-ink
+   @caller-provided --band-ink */
+
+:root {
+  --rule: #c8d0e8;
+  --hatch-fwd: repeating-linear-gradient(45deg, var(--hatch-ink) 0 1px, transparent 1px 5px);
+  --band-edge: 1px solid var(--band-ink);
+}

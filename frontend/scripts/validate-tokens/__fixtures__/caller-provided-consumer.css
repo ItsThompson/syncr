@@ -1,0 +1,8 @@
+/* A component sheet drawing with the property its caller supplies. The reference sits in a normal
+   property on the element that paints, so CSS substitutes it there and the caller's own value
+   reaches it. `--panel-border` comes from the layer, which is what the sheet resolves against. */
+
+.hatched {
+  background-image: repeating-linear-gradient(45deg, var(--hatch-ink) 0 1px, transparent 1px 5px);
+  border: var(--panel-border);
+}

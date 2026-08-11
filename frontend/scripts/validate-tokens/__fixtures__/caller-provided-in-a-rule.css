@@ -1,0 +1,14 @@
+/* A token file that draws with its contract instead of resolving it. The reference sits on an
+   ordinary rule rather than inside `:root`, so CSS substitutes it on the element the rule matches,
+   which is the element the annotation names. The annotation holds here.
+
+   @caller-provided --hatch-ink
+   The element drawing the hatch owns the value. */
+
+:root {
+  --rule: #c8d0e8;
+}
+
+.hatched {
+  background-image: repeating-linear-gradient(45deg, var(--hatch-ink) 0 1px, transparent 1px 5px);
+}
