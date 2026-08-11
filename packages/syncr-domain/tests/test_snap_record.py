@@ -225,7 +225,8 @@ def test_a_shipped_path_names_the_module_it_imports_as(relative: str, expected: 
 
 
 # --------------------------------------------------------------------------------
-# The controls on the reading: every shape a call of a predicate takes, and three it does not
+# The controls on the reading: the shapes a call of a predicate takes, and the shapes
+# that name a predicate without being one
 # --------------------------------------------------------------------------------
 
 CALL_SHAPES = [
