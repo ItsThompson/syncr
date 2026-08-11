@@ -15,13 +15,11 @@
 import { describe, expect, it } from "vitest";
 
 import { checkBundle } from "../scripts/check-bundle/check.ts";
-import { buildBarrelPayloads, buildStylesheets } from "../scripts/check-bundle/build.ts";
+import { buildStylesheets } from "../scripts/check-bundle/build.ts";
 
 /* ONE build for the file. Vite is invoked with `write: false`, so this leaves no `dist/` behind and
- * cannot read a stale one. The barrel probes are built the same way, and are the figures the gate
- * prints for what importing one component through a barrel loads. */
+ * cannot read a stale one. */
 const built = buildStylesheets();
-const barrels = buildBarrelPayloads();
 
 async function builtCss(): Promise<string> {
   return (await built).map((stylesheet) => stylesheet.css).join("\n");
@@ -33,8 +31,11 @@ async function builtCss(): Promise<string> {
 const NAMED_IN_A_TEST = "will-change-transform";
 
 describe("the built stylesheet", () => {
+  /* The barrel figures are the gate's other half and are judged in `ui/barrelSideEffects.test.ts`, against
+   * builds of their own. No barrel is passed here, so this case reports on declarations, which is what its
+   * name promises. */
   it("carries no declaration the design language refuses", async () => {
-    const outcome = checkBundle({ stylesheets: await built, barrels: await barrels });
+    const outcome = checkBundle({ stylesheets: await built, barrels: [] });
 
     expect(outcome.findings).toEqual([]);
   });

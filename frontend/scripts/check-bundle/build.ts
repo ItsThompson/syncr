@@ -61,7 +61,7 @@ const PROBE_ID = `\0${PROBE_SPECIFIER}`;
 function probeEntry(from: string, component: string): Plugin {
   const code = `import { ${component} } from ${JSON.stringify(from)};\nexport default ${component};\n`;
   return {
-    name: "syncr:barrel-probe",
+    name: "syncr:barrel-probe-entry",
     resolveId: (id) => (id === PROBE_SPECIFIER ? PROBE_ID : null),
     load: (id) => (id === PROBE_ID ? code : null),
   };
