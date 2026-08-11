@@ -96,11 +96,8 @@ export function useOperation(isoWeek: string): UseOperationResult {
    * handled one way when it is pushed and another when it is polled. */
   const settle = useCallback(
     (operation: Operation): void => {
-      /* `supersededBy` is optional on the wire as well as nullable, so an absent successor and an explicit null
-       * are one case: there is nothing to follow. */
-      const successor = operation.supersededBy ?? null;
-      if (operation.status === "superseded" && successor !== null) {
-        setTracked({ id: successor, record: null });
+      if (operation.status === "superseded" && operation.supersededBy !== null) {
+        setTracked({ id: operation.supersededBy, record: null });
         return;
       }
       setTracked({ id: operation.id, record: operation });
