@@ -458,10 +458,9 @@ table.dense td{height:var(--h-row-dense)}
   <div class="grp">Plan</div>
   <nav id="nav"></nav>
   <div class="grp">This week</div>
-  <nav>
-    <a href="#" tabindex="-1">Proposals<b class="c n">2</b></a>
-    <a href="#" tabindex="-1">Unconfirmed<b class="c n">3</b></a>
-  </nav>
+  <!-- Both counts are rendered from the week fixture, so the shell and the page band cannot
+       disagree about them. -->
+  <nav id="thisweek"></nav>
   <div class="foot"><b>Sun 16 Feb &middot; 20:41</b>Europe/London<br>
     Calendar written 3 min ago</div>
 </aside>
@@ -588,6 +587,18 @@ const WEEK = [
    block: * is pinned, ! is the selected block, ? is a proposal target. */
 const flag = a => ({area:(a||'').replace(/[*!?]/g,'') || null,
                     pin:/\*/.test(a||''), sel:/!/.test(a||''), prop:/\?/.test(a||'')});
+
+/* THE FIGURES THIS WEEK'S HEADERS PRINT, DERIVED FROM THE FIXTURE ABOVE RATHER THAN STATED BESIDE IT.
+
+   A WEEK HOLDS NOUGHT OR ONE PENDING PROPOSAL. `WeekViewResponse.proposal` is one optional object and
+   a later proposal supersedes the one before it, so no figure here may print more than one. The
+   targets are the blocks the proposal wants, which is what the grid draws the proposal channel on;
+   the count is their presence collapsed, which is the quantity the api answers with. */
+const PROPOSAL_TARGETS = WEEK.flatMap(d => d.rows).filter(r => flag(r.split('|')[3]).prop);
+const PENDING_PROPOSALS = PROPOSAL_TARGETS.length === 0 ? 0 : 1;
+const UNCONFIRMED_DAYS = WEEK.filter(d => d.unconf).length;
+const THIS_WEEK = [['Proposals', PENDING_PROPOSALS], ['Unconfirmed', UNCONFIRMED_DAYS]];
+const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
 /* Sweep and columns: cluster by a running maximum end, then give each block the leftmost
    column whose last block has already finished. No special case for any origin, so nothing
@@ -809,7 +820,7 @@ V['v-first'] = () => `
 V['v-week'] = () => `
 <div class="band">
   <div><div class="eyebrow on">&#9670; Mon 10 &ndash; Sun 16 February</div><h1>Week</h1></div>
-  <div class="sub">91 blocks &middot; 80.8h scheduled<br>2 proposals pending &middot; 3 days unconfirmed</div>
+  <div class="sub">91 blocks &middot; 80.8h scheduled<br>${count(PENDING_PROPOSALS, 'proposal')} pending &middot; ${count(UNCONFIRMED_DAYS, 'day')} unconfirmed</div>
   <div class="right">
     <span class="seg"><button type="button">6h</button>
       <button type="button" aria-pressed="true">12h</button>
@@ -888,7 +899,7 @@ V['v-conflict'] = () => `
 </div>
 <div class="band" style="min-height:auto">
   <div><div class="eyebrow on">&#9670; Mon 10 &ndash; Sun 16 February</div><h1>Week</h1></div>
-  <div class="sub">1 conflict &middot; must be resolved<br>2 proposals waiting quietly</div>
+  <div class="sub">1 conflict &middot; must be resolved<br>${count(PENDING_PROPOSALS, 'proposal')} waiting quietly</div>
 </div>
 ${STRIP}
 <div style="display:flex;flex:1;min-height:0">
@@ -1481,6 +1492,10 @@ function show(id){
 }
 for(const b of document.querySelectorAll('.doc button'))
   b.addEventListener('click', () => show(b.dataset.v));
+
+/* The shell's figures do not depend on the view, so they are written once rather than per switch. */
+document.getElementById('thisweek').innerHTML = THIS_WEEK.map(([l, c]) =>
+  `<a href="#" tabindex="-1">${l}<b class="c n">${c}</b></a>`).join('');
 show('v-week');
 
 /* vim-style movement, so every screen is reachable without a mouse */
