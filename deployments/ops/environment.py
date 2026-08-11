@@ -19,7 +19,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from ops.config import DUMP_PREFIX, SCRATCH_DIR, STAGING_DIR, TEXTFILE_DIR, WAL_PREFIX
+from ops.config import (
+    DUMP_PREFIX,
+    SCRATCH_DIR,
+    STAGING_DIR,
+    TEXTFILE_DIR,
+    WAL_PREFIX,
+    WAL_RESTORE_DIR,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -62,6 +69,7 @@ class Paths:
     staging: Path
     scratch: Path
     textfile: Path
+    wal_restore: Path
 
 
 def required(name: str, environ: Mapping[str, str]) -> str:
@@ -107,12 +115,13 @@ def remote_location(environ: Mapping[str, str]) -> str:
 
 
 def paths(environ: Mapping[str, str] | None = None) -> Paths:
-    """The three directories, overridable so a test drives real files in a temporary tree."""
+    """The four directories, overridable so a test drives real files in a temporary tree."""
     settings = environ if environ is not None else os.environ
     return Paths(
         staging=Path(settings.get("SYNCR_STAGING_DIR", STAGING_DIR)),
         scratch=Path(settings.get("SYNCR_SCRATCH_DIR", SCRATCH_DIR)),
         textfile=Path(settings.get("SYNCR_TEXTFILE_DIR", TEXTFILE_DIR)),
+        wal_restore=Path(settings.get("SYNCR_WAL_RESTORE_DIR", WAL_RESTORE_DIR)),
     )
 
 

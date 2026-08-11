@@ -14,7 +14,8 @@ against what the images actually run as, so a base image that renumbers its user
 rather than a backup.
 
 Modes are 0750: the staging directory holds a plaintext dump for as long as it takes to encrypt it,
-and the WAL staging directory holds complete transaction records. Neither is world-readable.
+and the WAL staging directory holds complete transaction records. Neither is world-readable, and
+neither is a staged segment waiting for a recovery to copy it.
 """
 
 from __future__ import annotations
@@ -36,6 +37,11 @@ APP_UID_VAR: Final = "SYNCR_APP_UID"
 POSTGRES_UID_VAR: Final = "SYNCR_POSTGRES_UID"
 
 DIRECTORY_MODE: Final = 0o750
+
+# One staged file's mode. Group-readable rather than 0600, because the process that writes a WAL
+# segment into the recovery volume and the process that copies it out are different users; not
+# world-readable, for the reason the directory modes are not.
+FILE_MODE: Final = 0o640
 
 EXIT_OK = 0
 EXIT_REFUSED = 1
@@ -79,17 +85,37 @@ def writable_by_postgres(path: Path, *, environ: Mapping[str, str]) -> None:
     to means Postgres retries the same segment forever, which `pg_stat_archiver` reports and
     ``ops.ship`` refuses on.
     """
-    _owned(path, uid=int(environ.get(POSTGRES_UID_VAR, "999")))
+    _owned(path, uid=_postgres_uid(environ))
+
+
+def readable_by_postgres(path: Path, *, environ: Mapping[str, str]) -> None:
+    """Give one FILE to the user Postgres runs as, so ``restore_command`` can copy it.
+
+    gpg and gzip write 0600 as the user running them, which in the ops image is root, and
+    ``restore_command`` runs as the database's own user in another container. Without this the file
+    is there and unreadable, which Postgres reports as a failed restore command and a recovery reads
+    as the end of the archive.
+    """
+    _given_to(path, uid=_postgres_uid(environ), mode=FILE_MODE)
+
+
+def _postgres_uid(environ: Mapping[str, str]) -> int:
+    return int(environ.get(POSTGRES_UID_VAR, "999"))
 
 
 def _owned(path: Path, *, uid: int) -> None:
-    """Create the directory if it is absent, and give it to ``uid``.
-
-    ``os.chown`` needs root, which this image is and the others are not. A run as a non-root user
-    leaves the directory alone rather than failing: in a test there is nothing to establish.
-    """
+    """Create the directory if it is absent, and give it to ``uid``."""
     path.mkdir(parents=True, exist_ok=True)
-    path.chmod(DIRECTORY_MODE)
+    _given_to(path, uid=uid, mode=DIRECTORY_MODE)
+
+
+def _given_to(path: Path, *, uid: int, mode: int) -> None:
+    """Set one path's mode, and its owner where this process is allowed to.
+
+    ``os.chown`` needs root, which the ops image is and the others are not. A run as a non-root user
+    leaves the ownership alone rather than failing: in a test there is nothing to establish.
+    """
+    path.chmod(mode)
     if os.geteuid() == 0:
         os.chown(path, uid, uid)
 

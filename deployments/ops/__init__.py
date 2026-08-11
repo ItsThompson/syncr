@@ -29,6 +29,7 @@ Which side each module runs on:
 | ``dump`` | in the ops image. The nightly backup, end to end |
 | ``ship`` | in the ops image. WAL segments to the same bucket |
 | ``fetch`` | in the ops image. The newest dump back out of the bucket, decrypted |
+| ``fetch_segment`` | in the ops image. One WAL segment out of the bucket, for a recovery to copy |
 | ``restore`` | in the ops image. Into a scratch database that is not the live one |
 | ``compare`` | in the ops image. The drill's verdict, over two fingerprints |
 """
