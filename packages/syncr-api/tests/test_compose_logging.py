@@ -67,6 +67,7 @@ DECIDED: Final[Mapping[str, str]] = {
 
 ANCHOR: Final = "x-log-bound: &log-bound"
 ALIAS: Final = "logging: *log-bound"
+ONE_SHOT: Final = 'restart: "no"'
 
 # A service key: exactly two spaces of indent inside the `services:` mapping. Its own keys sit at
 # four, and a comment between two services starts with `#`, so neither is read as a service.
@@ -87,7 +88,7 @@ _STACK: Final = re.compile(
 MIB_PER_GIB: Final = 1024
 
 
-def read(relative: str) -> str:
+def _text(relative: str) -> str:
     return (repo_root() / relative).read_text(encoding="utf-8")
 
 
@@ -95,7 +96,9 @@ def service_blocks(content: str) -> dict[str, list[str]]:
     """Every service the file declares, with the lines of its block, read from `services:` itself.
 
     The mapping ends at the next key in column one, which is how `networks:` and `volumes:` stay out
-    of the answer.
+    of the answer. Comment lines are dropped: a comment is prose ABOUT a service rather than a key
+    of one, and two comments in the base file mention `restart: "no"` while three mention the alias,
+    so keeping them would put a neighbour's words into a service's block.
     """
     blocks: dict[str, list[str]] = {}
     current: str | None = None
@@ -105,6 +108,8 @@ def service_blocks(content: str) -> dict[str, list[str]]:
             inside = True
             continue
         if not inside:
+            continue
+        if line.strip().startswith("#"):
             continue
         if line and not line.startswith((" ", "\t")):
             break
@@ -133,7 +138,7 @@ def declared_bound(content: str) -> dict[str, str]:
     return {found["key"]: found["value"] for found in _LEAF.finditer(anchor_block(content))}
 
 
-def unbounded(content: str) -> list[str]:
+def unbounded_services(content: str) -> list[str]:
     """Every service in the file that does not reach the file's anchor."""
     return sorted(
         name
@@ -142,8 +147,20 @@ def unbounded(content: str) -> list[str]:
     )
 
 
+def one_shot_services(content: str) -> list[str]:
+    """Every service in the file that runs once rather than staying up.
+
+    Derived from what the service declares, so no list of one-shot names exists here.
+    """
+    return sorted(
+        name
+        for name, lines in service_blocks(content).items()
+        if any(ONE_SHOT in line for line in lines)
+    )
+
+
 def declared_services() -> set[str]:
-    return {name for one in DECLARING_FILES for name in service_blocks(read(one))}
+    return {name for one in DECLARING_FILES for name in service_blocks(_text(one))}
 
 
 class TestEveryServiceEachFileDeclaresIsBounded:
@@ -151,30 +168,37 @@ class TestEveryServiceEachFileDeclaresIsBounded:
 
     @pytest.mark.parametrize("name", DECLARING_FILES)
     def test_every_service_reaches_the_files_own_anchor(self, name: str) -> None:
-        assert service_blocks(read(name)), f"{name}: no services were read, so nothing is asserted"
-        assert unbounded(read(name)) == []
+        assert service_blocks(_text(name)), f"{name}: no services were read, so nothing is asserted"
+        assert unbounded_services(_text(name)) == []
 
     @pytest.mark.parametrize("name", DECLARING_FILES)
     def test_a_service_that_loses_the_alias_is_reported(self, name: str) -> None:
         """The negative control, per file: the reading distinguishes bounded from unbounded."""
-        content = read(name)
+        content = _text(name)
         without = content.replace(f"    {ALIAS}\n", "", 1)
 
         assert without != content, f"{name}: the alias was not found, so nothing was removed"
-        assert len(unbounded(without)) == 1
+        assert len(unbounded_services(without)) == 1
 
-    @pytest.mark.parametrize("name", DECLARING_FILES)
-    def test_the_one_shots_are_in_the_reading_rather_than_exempt(self, name: str) -> None:
+    def test_the_one_shots_are_in_the_reading_rather_than_exempt(self) -> None:
         """A container that exited keeps its log, and a run that was not `--rm` keeps the container.
 
-        There is no exemption list anywhere in this module, which is what this states: the reading
-        is over what the file declares, and a service is not out of it for being short-lived.
+        Over the three files at once rather than one at a time, because two of them declare no
+        one-shot at all and a per-file reading would assert nothing for those two while looking as
+        though it did. The premise is asserted first: a reading that finds no one-shot anywhere has
+        stopped seeing them, which is a failure rather than a pass.
         """
-        assert [
-            service
-            for service, lines in service_blocks(read(name)).items()
-            if any('restart: "no"' in line for line in lines) and service in unbounded(read(name))
-        ] == []
+        found = {name: one_shot_services(_text(name)) for name in DECLARING_FILES}
+
+        assert [name for names in found.values() for name in names], (
+            "no file declares a one-shot, so this reading asserts nothing"
+        )
+        exempt = {
+            name: sorted(set(names) & set(unbounded_services(_text(name))))
+            for name, names in found.items()
+            if set(names) & set(unbounded_services(_text(name)))
+        }
+        assert exempt == {}
 
 
 class TestTheBoundIsStatedOncePerFile:
@@ -182,11 +206,11 @@ class TestTheBoundIsStatedOncePerFile:
 
     @pytest.mark.parametrize("name", DECLARING_FILES)
     def test_the_file_defines_exactly_one_anchor(self, name: str) -> None:
-        assert read(name).count(ANCHOR) == 1
+        assert _text(name).count(ANCHOR) == 1
 
     @pytest.mark.parametrize("name", DECLARING_FILES)
     def test_the_values_are_written_only_inside_that_anchor(self, name: str) -> None:
-        content = read(name)
+        content = _text(name)
 
         assert len(_LEAF.findall(content)) == len(DECIDED)
         assert len(_LEAF.findall(anchor_block(content))) == len(DECIDED)
@@ -196,24 +220,24 @@ class TestTheThreeFilesAgree:
     """An anchor does not cross a file boundary, so the same decision is written three times."""
 
     def test_the_base_file_declares_the_decided_bound(self) -> None:
-        assert declared_bound(read(ARITHMETIC)) == dict(DECIDED)
+        assert declared_bound(_text(ARITHMETIC)) == dict(DECIDED)
 
     @pytest.mark.parametrize("name", DECLARING_FILES[1:])
     def test_the_other_files_declare_what_the_base_file_does(self, name: str) -> None:
-        assert declared_bound(read(name)) == declared_bound(read(ARITHMETIC))
+        assert declared_bound(_text(name)) == declared_bound(_text(ARITHMETIC))
 
     def test_the_driver_is_named_rather_than_left_to_the_daemon(self) -> None:
         """`max-size` and `max-file` are options OF `json-file`. A host configured for `journald`
         takes both keys and bounds nothing, so the driver is part of the bound."""
-        assert declared_bound(read(ARITHMETIC))["driver"] == DECIDED["driver"]
+        assert declared_bound(_text(ARITHMETIC))["driver"] == DECIDED["driver"]
 
 
 class TestTheArithmeticReproduces:
     """Every figure recorded beside the bound, crossed against what produces it."""
 
     def test_the_per_service_footprint_is_the_anchors_own_values(self) -> None:
-        stated = _PER_SERVICE.search(read(ARITHMETIC))
-        bound = declared_bound(read(ARITHMETIC))
+        stated = _PER_SERVICE.search(_text(ARITHMETIC))
+        bound = declared_bound(_text(ARITHMETIC))
 
         assert stated is not None, "the per-service arithmetic is not recorded"
         assert f"{stated['size']}m" == bound["max-size"]
@@ -223,8 +247,8 @@ class TestTheArithmeticReproduces:
     def test_the_stack_footprint_counts_the_services_these_files_declare(self) -> None:
         """The count is DERIVED here and stated there, so a service added without a thought for the
         disk reddens this rather than being absorbed."""
-        stated = _STACK.search(read(ARITHMETIC))
-        per_service = _PER_SERVICE.search(read(ARITHMETIC))
+        stated = _STACK.search(_text(ARITHMETIC))
+        per_service = _PER_SERVICE.search(_text(ARITHMETIC))
 
         assert stated is not None, "the stack arithmetic is not recorded"
         assert per_service is not None
@@ -233,7 +257,7 @@ class TestTheArithmeticReproduces:
         assert int(stated["total"]) == int(stated["services"]) * int(stated["each"])
 
     def test_the_share_of_the_disk_is_the_quotient_it_claims_to_be(self) -> None:
-        stated = _STACK.search(read(ARITHMETIC))
+        stated = _STACK.search(_text(ARITHMETIC))
 
         assert stated is not None
         share = int(stated["total"]) / (int(stated["disk"]) * MIB_PER_GIB) * 100
@@ -242,21 +266,31 @@ class TestTheArithmeticReproduces:
     def test_the_disk_is_the_one_the_runbook_states(self) -> None:
         """The budget's own figure lives in the runbook. This is the crossing that keeps the two
         readings of the same host from disagreeing."""
-        stated = _STACK.search(read(ARITHMETIC))
+        stated = _STACK.search(_text(ARITHMETIC))
 
         assert stated is not None
-        assert f"{stated['disk']} GB" in read(DISK_RUNBOOK)
+        assert f"{stated['disk']} GB" in _text(DISK_RUNBOOK)
 
     def test_it_is_recorded_as_a_decision_rather_than_as_a_measurement(self) -> None:
         """A prose check, and it can see only the words. What it prevents is the sentence quietly
         becoming a claim about a host whose logs nobody has watched."""
         assert (
-            "decision against the disk budget rather than a measurement" in read(ARITHMETIC).lower()
+            "decision against the disk budget rather than a measurement"
+            in _text(ARITHMETIC).lower()
         )
 
-    def test_the_arithmetic_is_recorded_once(self) -> None:
-        for name in DECLARING_FILES[1:]:
-            assert _STACK.search(read(name)) is None, name
+    @pytest.mark.parametrize("name", [*DECLARING_FILES[1:], DISK_RUNBOOK])
+    def test_no_other_file_restates_the_arithmetic(self, name: str) -> None:
+        """The runbook is in this reading, and it is the reason the reading exists.
+
+        The disk budget lives there, so it is the obvious second home for these figures, and a
+        second copy is a figure that gets updated in one place. Prose stating the bound itself
+        passes: what may appear in only one file is the arithmetic, and it appears in the file that
+        carries the anchor it explains.
+        """
+        assert _STACK.search(_text(name)) is None, (
+            f"{name} restates the stack arithmetic, which {ARITHMETIC} records"
+        )
 
 
 class TestTheReadingSeesEveryDeployedService:
