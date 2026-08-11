@@ -105,8 +105,8 @@ class NotAWallTime(StrEnum):
     """The two shapes a time of day cannot take and still be wall time.
 
     Carried on the answer rather than resolved to a message here, because the message belongs to
-    the shape that was refused: a target time, a preferred window bound and a day bound each name
-    their own field and their own reason for owing the rule.
+    the shape that was refused: each one names its own field and gives its own reason for owing the
+    rule.
     """
 
     CARRIES_A_ZONE = "carries_a_zone"
@@ -121,9 +121,8 @@ def not_a_wall_time(at: time) -> NotAWallTime | None:
     duration this product declares is a count of minutes, so a value below minute resolution names
     a start no declared span could run from.
 
-    A value carrying both is named by the zone. The precedence is stated once here because it
-    decides which refusal a caller reports, and every shape that reads this rule answered the zone
-    first before the rule was stated in one place.
+    A value carrying both is named by the zone. That precedence belongs here rather than to each
+    reader, because it decides which of the two refusals a caller reports.
     """
     if at.tzinfo is not None:
         return NotAWallTime.CARRIES_A_ZONE

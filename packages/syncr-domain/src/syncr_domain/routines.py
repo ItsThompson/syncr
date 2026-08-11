@@ -33,9 +33,9 @@ The target names a time of day and nothing else. A value carrying an offset is r
 so is one carrying seconds: an offset would be dropped by any store whose column has no
 zone, leaving the frame an hour out with nothing to say so, and every duration here is a
 count of minutes, so a span starting mid-minute could not be one of them. Which values those
-are is :func:`syncr_domain.snap.not_a_wall_time`'s to say, so the shapes a template entry
-and a day bound refuse are the shapes refused here. The rule is on the span rather than only
-at an HTTP boundary, so it holds for every writer.
+are is :func:`syncr_domain.snap.not_a_wall_time`'s to say, so a target time here and a template
+entry's are refused on the same values. The rule is on the span rather than only at an HTTP
+boundary, so it holds for every writer.
 
 ## A duration is elapsed minutes, so a transition does not change it
 
