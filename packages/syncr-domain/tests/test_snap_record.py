@@ -29,6 +29,11 @@ the name alone where it does not, gated on the module importing the snap module 
 is what keeps a module's own function of the same name from reading as a call of the predicate, and
 it is why a module that imports the snap module and shadows one of these names would read as a site.
 
+A relative import resolves against the package read off the module's PATH rather than off its dotted
+name. The two differ for a package's own `__init__`, which imports AS the package and resolves
+AGAINST the package, so a name-derived package hands that one file its parent and a parent-relative
+import inside it then resolves to nothing.
+
 The alias resolution is `test_package_boundary`'s `scan`, imported rather than repeated: resolving a
 dotted call through a module's own imports is the same question there, over a narrower tree.
 """
@@ -95,8 +100,22 @@ RECORDED_CLAUSES: Final = (
 )
 
 # A planning citation, which protocol forbids in source and which this file cannot be swept for by
-# anything else: the domain sweep skips it so that a sweep cannot delete the record.
-_CITATION: Final = re.compile(r"\btickets?\b|\bSP1-[A-Z]+-\d+", re.IGNORECASE)
+# anything else: the domain sweep skips it so that a sweep cannot delete the record. Keyed to the
+# SHAPES a reader cannot resolve rather than to a vocabulary: a ticket, an input, a decision, a
+# story, a criterion, and one of the spec's own section files. A numeric reference has to be
+# introduced by the word that makes it a citation, because this module's own prose carries bare
+# four-digit years and a rule that read those as identifiers would go red on a true sentence.
+# Delivery-plan words are deliberately absent for the same reason: "slice" and "round" are ordinary
+# English here.
+_CITATION: Final = re.compile(
+    r"\btickets?\b"
+    r"|\b(?:inputs?|decisions?)\s+#?\d+"
+    r"|\bSP1-[A-Z]+-\d+"
+    r"|\bUS-[A-Z]+-\d+"
+    r"|\bAC\d+\b"
+    r"|\b\d{2}-[a-z0-9-]+\.md\b",
+    re.IGNORECASE,
+)
 
 
 def repository_root() -> Path:
@@ -139,6 +158,22 @@ def module_of(relative: str) -> str:
     return tail.removesuffix(".py").removesuffix("/__init__").replace("/", ".")
 
 
+def package_of(relative: str) -> str:
+    """The dotted package a relative import in this module resolves against.
+
+    Read off the path's parent directory rather than off the module name, because the two differ for
+    a package's ``__init__.py``: ``feasibility/__init__.py`` imports AS ``syncr_domain.feasibility``
+    and its relative imports resolve AGAINST ``syncr_domain.feasibility``, while a module beside it
+    resolves against the same package one level up from its own name. Deriving this by dropping the
+    last dotted segment of the module name hands a package's ``__init__`` its parent, and then
+    ``from ..snap import`` inside it resolves to nothing.
+    """
+    _, marker, tail = relative.partition("/src/")
+    if not marker:
+        return relative.rpartition("/")[0]
+    return tail.rpartition("/")[0].replace("/", ".")
+
+
 def predicates_read(path: Path, *, package: str) -> tuple[str, ...]:
     """Which declaration predicates this module calls, by name.
 
@@ -158,17 +193,16 @@ def enforcing_modules(root: Path) -> Mapping[str, tuple[str, ...]]:
     """Every shipped module that reads a declaration predicate, with the predicates it reads."""
     found: dict[str, tuple[str, ...]] = {}
     for relative, path in shipped_modules(root).items():
-        named = module_of(relative)
-        read = predicates_read(path, package=named.rpartition(".")[0] or named)
+        read = predicates_read(path, package=package_of(relative))
         if read:
-            found[named] = read
+            found[module_of(relative)] = read
     return found
 
 
-def reads_a_declaration_predicate(source: str, path: Path) -> tuple[str, ...]:
-    """The same reading, over source that is not in the tree yet."""
-    path.write_text(source, encoding="utf-8")
-    return predicates_read(path, package="syncr_domain")
+def predicates_read_in_source(source: str, *, written_to: Path, package: str) -> tuple[str, ...]:
+    """The same reading, over source not in the tree yet, which is written to ``written_to``."""
+    written_to.write_text(source, encoding="utf-8")
+    return predicates_read(written_to, package=package)
 
 
 # --------------------------------------------------------------------------------
@@ -210,18 +244,44 @@ def test_the_walk_reaches_a_nested_module_and_leaves_the_suites_out() -> None:
 
 
 @pytest.mark.parametrize(
-    ("relative", "expected"),
+    ("relative", "module", "package"),
     [
-        ("packages/syncr-domain/src/syncr_domain/snap.py", "syncr_domain.snap"),
-        ("packages/syncr-api/src/syncr_api/promotions/service.py", "syncr_api.promotions.service"),
-        ("packages/syncr-api/src/syncr_api/promotions/__init__.py", "syncr_api.promotions"),
-        ("cli/src/syncr_cli/main.py", "syncr_cli.main"),
-        ("deployments/ops/dump.py", "deployments/ops/dump.py"),
+        (
+            "packages/syncr-domain/src/syncr_domain/snap.py",
+            "syncr_domain.snap",
+            "syncr_domain",
+        ),
+        (
+            "packages/syncr-api/src/syncr_api/promotions/service.py",
+            "syncr_api.promotions.service",
+            "syncr_api.promotions",
+        ),
+        (
+            "packages/syncr-domain/src/syncr_domain/feasibility/__init__.py",
+            "syncr_domain.feasibility",
+            "syncr_domain.feasibility",
+        ),
+        ("cli/src/syncr_cli/main.py", "syncr_cli.main", "syncr_cli"),
+        ("deployments/ops/dump.py", "deployments/ops/dump.py", "deployments/ops"),
     ],
-    ids=["a module", "a nested module", "a package", "another member", "importable as none"],
+    ids=[
+        "a module",
+        "a nested module",
+        "a package's own __init__",
+        "another member",
+        "importable as none",
+    ],
 )
-def test_a_shipped_path_names_the_module_it_imports_as(relative: str, expected: str) -> None:
-    assert module_of(relative) == expected
+def test_a_shipped_path_names_the_module_and_the_package_it_resolves_against(
+    relative: str, module: str, package: str
+) -> None:
+    # The third case is the one that matters and the one this file got wrong: a package's `__init__`
+    # imports AS the package and resolves its own relative imports AGAINST the package, so the two
+    # columns are equal there and differ everywhere else. Deriving the second from the first by
+    # dropping a segment gives that file its parent, and a parent-relative import in it then
+    # resolves to nothing at all.
+    assert module_of(relative) == module
+    assert package_of(relative) == package
 
 
 # --------------------------------------------------------------------------------
@@ -229,49 +289,78 @@ def test_a_shipped_path_names_the_module_it_imports_as(relative: str, expected: 
 # that name a predicate without being one
 # --------------------------------------------------------------------------------
 
+# Every spelling a call of a declaration predicate takes, with the package a relative import in it
+# resolves against. A package's own `__init__` is spelled as itself, which is the case the parent-
+# relative shapes exercise.
 CALL_SHAPES = [
     (
         "an imported predicate",
+        "syncr_domain",
         "from syncr_domain.snap import is_a_snap_multiple\n"
         "def check(minutes):\n    return is_a_snap_multiple(minutes)\n",
     ),
     (
         "an aliased predicate",
+        "syncr_domain",
         "from syncr_domain.snap import is_a_snap_multiple as multiple\n"
         "def check(minutes):\n    return multiple(minutes)\n",
     ),
     (
         "the module imported from its package",
+        "syncr_domain",
         "from syncr_domain import snap\n"
         "def check(minutes):\n    return snap.is_a_snap_multiple(minutes)\n",
     ),
     (
         "the module imported by its full name",
+        "syncr_domain",
         "import syncr_domain.snap\n"
         "def check(minutes):\n    return syncr_domain.snap.is_a_snap_multiple(minutes)\n",
     ),
     (
         "an aliased module",
+        "syncr_domain",
         "import syncr_domain.snap as grid\n"
         "def check(minutes):\n    return grid.is_a_snap_multiple(minutes)\n",
     ),
     (
         "a predicate imported relatively",
+        "syncr_domain",
         "from .snap import is_a_snap_multiple\n"
         "def check(minutes):\n    return is_a_snap_multiple(minutes)\n",
     ),
     (
         "the module imported relatively from its package",
+        "syncr_domain",
         "from . import snap\ndef check(minutes):\n    return snap.is_a_snap_multiple(minutes)\n",
+    ),
+    (
+        "a predicate imported parent-relatively by a package's own __init__",
+        "syncr_domain.feasibility",
+        "from ..snap import is_a_snap_multiple\n"
+        "def check(minutes):\n    return is_a_snap_multiple(minutes)\n",
+    ),
+    (
+        "the module imported parent-relatively by a package's own __init__",
+        "syncr_domain.feasibility",
+        "from .. import snap\ndef check(minutes):\n    return snap.is_a_snap_multiple(minutes)\n",
+    ),
+    (
+        "every name taken at once",
+        "syncr_domain",
+        "from syncr_domain.snap import *\n"
+        "def check(minutes):\n    return is_a_snap_multiple(minutes)\n",
     ),
 ]
 
 
-@pytest.mark.parametrize(("shape", "source"), CALL_SHAPES, ids=[shape for shape, _ in CALL_SHAPES])
+@pytest.mark.parametrize(
+    ("shape", "package", "source"), CALL_SHAPES, ids=[shape for shape, _, _ in CALL_SHAPES]
+)
 def test_the_reading_finds_a_predicate_call_however_it_is_spelled(
-    shape: str, source: str, tmp_path: Path
+    shape: str, package: str, source: str, tmp_path: Path
 ) -> None:
-    read = reads_a_declaration_predicate(source, tmp_path / "enforces.py")
+    read = predicates_read_in_source(source, written_to=tmp_path / "enforces.py", package=package)
 
     assert read == ("is_a_snap_multiple",), f"the reading missed {shape}"
 
@@ -300,7 +389,9 @@ NOT_CALLS = [
 
 @pytest.mark.parametrize(("shape", "source"), NOT_CALLS, ids=[shape for shape, _ in NOT_CALLS])
 def test_the_reading_reports_no_enforcement_for(shape: str, source: str, tmp_path: Path) -> None:
-    read = reads_a_declaration_predicate(source, tmp_path / "quiet.py")
+    read = predicates_read_in_source(
+        source, written_to=tmp_path / "quiet.py", package="syncr_domain"
+    )
 
     assert read == (), f"the reading counted {shape} as an enforcement of the rule"
 
@@ -357,11 +448,31 @@ def test_the_record_cites_no_ticket() -> None:
     )
 
 
-def test_the_citation_reading_would_catch_one() -> None:
-    # The control on the reading above, which is a negative assertion over prose that is clean
-    # today and so passes whether or not the pattern works.
-    assert _CITATION.findall("Tickets 1142, 1151, and 1161 carry the question.") == ["Tickets"]
-    assert _CITATION.findall("SP1-INTENT-07 records it.") == ["SP1-INTENT-07"]
+# One planning citation per shape the reading claims to catch. The reading is a negative assertion
+# over prose that is clean today, so without these it would pass whether or not the pattern works.
+# Fabricated identifiers throughout, so a search for a real one stays clean.
+CITATIONS = [
+    ("Tickets 1142, 1151, and 1161 carry the question.", "Tickets"),
+    ("Inputs 1142, 1151, and 1161 carry the question.", "Inputs 1142"),
+    ("Decision 1161(b) carries the migration answer.", "Decision 1161"),
+    ("SP1-EXAMPLE-00 records it.", "SP1-EXAMPLE-00"),
+    ("US-EXAMPLE-00 is the story this satisfies.", "US-EXAMPLE-00"),
+    ("AC4 requires the crossing.", "AC4"),
+    ("See 08-intent-model.md for the seam.", "08-intent-model.md"),
+]
+
+
+@pytest.mark.parametrize(("prose", "caught"), CITATIONS, ids=[caught for _, caught in CITATIONS])
+def test_the_citation_reading_would_catch(prose: str, caught: str) -> None:
+    assert _CITATION.findall(prose) == [caught]
+
+
+def test_the_citation_reading_leaves_a_year_and_a_measurement_alone() -> None:
+    # The other half of the calibration, and the reason a numeric citation needs its introducing
+    # word: this module's own prose says a zone offset held until 1972 and that 92% of blocks began
+    # on the hour or the half hour. A reading that took a bare number as an identifier would fail
+    # the guard on the sentences the record is built from.
+    assert _CITATION.findall("Africa/Monrovia was -00:44:30 until 1972, and 92% of 1980's") == []
 
 
 def test_the_record_lists_every_module_that_enforces_the_grid_and_no_others() -> None:
