@@ -55,12 +55,12 @@ EXIT_ABSENT = 2
 # backup leaves behind, or a timeline history file. Upper-case hex because that is what Postgres
 # writes.
 #
-# Matched against the WHOLE name, which is what makes one safe to join to a path: a `%f` arriving
-# here as `../../etc/passwd` or as `wal/000...` is refused rather than staged somewhere other than
-# the one directory the database container can read.
-SEGMENT_NAME: Final = re.compile(
-    r"^(?:[0-9A-F]{24}(?:\.[0-9A-F]{8}\.backup)?|[0-9A-F]{8}\.history)$"
-)
+# `fullmatch` RATHER THAN AN ANCHORED PATTERN, and the difference is measured rather than stylistic.
+# `re.match` anchors the start on its own, and `$` matches BEFORE a single trailing newline: a name
+# ending in one was admitted with a span 24 characters long out of 25, staged under a name with the
+# newline in it, and reported staged. `restore_command` can never ask for that name, and a segment
+# Postgres cannot ask for is a segment it treats as the end of the archive.
+SEGMENT_NAME: Final = re.compile(r"(?:[0-9A-F]{24}(?:\.[0-9A-F]{8}\.backup)?|[0-9A-F]{8}\.history)")
 
 # What an incomplete segment is called while it is being fetched. Postgres never asks for a name
 # ending in this, so a file under it is invisible to `restore_command` however far it got.
@@ -98,7 +98,7 @@ def requested_segment(arguments: Sequence[str]) -> str:
             "answer about that one name."
         )
     segment = arguments[0]
-    if SEGMENT_NAME.match(segment) is None:
+    if SEGMENT_NAME.fullmatch(segment) is None:
         raise SegmentRefused(
             f"{segment!r} is not a name Postgres asks a restore command for. Those are 24 "
             "upper-case hex digits, that followed by `.<8 hex>.backup`, or 8 hex digits followed "
