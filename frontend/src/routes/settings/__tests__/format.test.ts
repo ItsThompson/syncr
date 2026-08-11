@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { NOT_YET, statedDuration, statedInstant, statedSpan } from "../format";
+import { NOT_YET, statedClock, statedDuration, statedInstant, statedSpan } from "../format";
 
 const LONDON = "Europe/London";
 
@@ -43,5 +43,18 @@ describe("a duration", () => {
     expect(statedDuration(480)).toBe("8h");
     expect(statedDuration(45)).toBe("45m");
     expect(statedDuration(0)).toBe("0m");
+  });
+});
+
+/* A wall time names no zone, which is why this one takes none: the zone comes from the day it resolves on, so the
+ * rule above does not reach it. What it drops is the seconds the api sends, and nothing else. */
+describe("a wall time", () => {
+  it("is the hour and the minute, with the api's seconds off it", () => {
+    expect(statedClock("23:00:00")).toBe("23:00");
+    expect(statedClock("07:15:00")).toBe("07:15");
+  });
+
+  it("leaves one that already carries no seconds alone", () => {
+    expect(statedClock("05:00")).toBe("05:00");
   });
 });
