@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from syncr_api.plans import injection
 from syncr_api.plans.assembler import WeekAssembler
 from syncr_api.plans.placements import StoredPlacements
+from syncr_api.solving import dispatch
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -229,6 +230,16 @@ def test_no_source_or_suite_of_this_member_denies_the_wiring(source_root: Path) 
 
     assert len(scanned) == len(sources_and_suites()) - 1, "the scan read its own statements"
     assert denying == {}, f"these deny a seam that is wired: { {str(one) for one in denying} }"
+
+
+def test_the_dispatch_names_the_reader_its_classification_rests_on() -> None:
+    """The path that classifies a candidate says which reader the plan it compares against comes
+    from.
+
+    Keyed on the reader's own name rather than on a sentence, so rewording the paragraph is free and
+    dropping the seam out of it is not.
+    """
+    assert PRODUCTION_READER in (dispatch.__doc__ or "")
 
 
 def test_the_scan_finds_every_denial_it_names(tmp_path: Path) -> None:
