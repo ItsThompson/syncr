@@ -355,10 +355,8 @@ def _where_each_call_is(method: ast.AsyncFunctionDef) -> dict[str, int]:
         if not isinstance(node, ast.Call):
             continue
         name = _called_name(node.func)
-        if name and name not in lines:
-            lines[name] = node.lineno
-        elif name:
-            lines[name] = min(lines[name], node.lineno)
+        if name:
+            lines[name] = min(lines.get(name, node.lineno), node.lineno)
     return lines
 
 
