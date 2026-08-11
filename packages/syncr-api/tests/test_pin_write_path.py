@@ -92,6 +92,17 @@ PROBE_CALLER = ProbeCaller.REQUEST
 ASSEMBLIES_PER_PIN = 2.0
 PROBES_PER_PIN = 1.0
 
+# The same two figures as counts of calls rather than of observations, which is what the frame cases
+# read: a histogram answers in floats and a list has a length.
+ASSEMBLIES = int(ASSEMBLIES_PER_PIN)
+PROBES = int(PROBES_PER_PIN)
+
+# Which assembly a frame came from, as the answer a failure prints.
+FIRST = 1
+SECOND = 2
+
+_ASSEMBLED_ONCE = "the request did not assemble twice, so neither frame is the one it claims"
+
 CALLER_LABEL = "caller"
 
 # The block the drive below pins, and where it is dragged to. Friday, so both intervals are in the
@@ -543,8 +554,8 @@ async def test_one_pin_request_takes_two_assembly_observations_and_one_probe_obs
     probes = _observations(PROBE_DURATION.collect(), PROBE_CALLER.value)
     assert assemblies - assemblies_before == ASSEMBLIES_PER_PIN
     assert probes - probes_before == PROBES_PER_PIN
-    assert len(driven.assembler.frames) == int(ASSEMBLIES_PER_PIN)
-    assert len(driven.probe.frames) == int(PROBES_PER_PIN)
+    assert len(driven.assembler.frames) == ASSEMBLIES
+    assert len(driven.probe.frames) == PROBES
 
 
 def test_the_two_labels_these_counts_are_read_under_are_the_pair_the_pin_wiring_binds(
@@ -587,34 +598,43 @@ async def test_the_price_and_the_feature_snapshot_read_the_frame_taken_before_th
     """Both consumers of the pre-pin frame, held against the assembly that produced it.
 
     The two frames of one request are different values here, because the second one reads the pin
-    row back: that is asserted first, so the identity below is a claim about which frame each
-    consumer was handed rather than a comparison of two objects that agree anyway. Re-sourcing
-    either consumer to the second frame is what this bites.
+    row back: that is asserted first, so the answer below is a claim about which frame each consumer
+    was handed rather than a comparison of two objects that agree anyway. Re-sourcing either
+    consumer to the second frame is what this bites.
+
+    Each answer is the assembly's ORDINAL rather than the frame itself, so a failure reads as "2,
+    not 1" rather than as two nearly identical dumps of a week's resolved inputs.
     """
     driven = await drive_one_pin()
 
+    assert len(driven.assembler.frames) == ASSEMBLIES, _ASSEMBLED_ONCE
     pre_pin, post_pin = driven.assembler.frames
     assert pre_pin.pins == (), (
         "the first assembly already saw a pin, so it is not the pre-pin frame"
     )
     assert len(post_pin.pins) == 1, "the second assembly did not read the pin row back"
-    assert len(driven.priced_in) == 1
-    assert len(driven.snapshotted_in) == 1
-    assert driven.priced_in[0] is pre_pin
-    assert driven.snapshotted_in[0] is pre_pin
+    assert len(driven.priced_in) == 1, "the price was not measured once"
+    assert len(driven.snapshotted_in) == 1, "the feature snapshot was not built once"
+    assert _which_assembly(driven, driven.priced_in[0]) == FIRST, "the price read the wrong frame"
+    assert _which_assembly(driven, driven.snapshotted_in[0]) == FIRST, (
+        "the feature snapshot read the wrong frame"
+    )
 
 
 async def test_the_verdict_reads_the_frame_taken_after_the_pin_row() -> None:
     """The other half: the frame the pin has entered has exactly one consumer.
 
-    Stated as identity against the second assembly and as a non-identity against the first, so a
-    path that probed the pre-pin frame fails here rather than answering a verdict about a week
-    without the pin in it.
+    Stated as the assembly's ordinal, so a path that probed the pre-pin frame fails with the frame
+    it was handed rather than with a dump of one, and answering a verdict about a week without the
+    pin in it is what that would be.
     """
     driven = await drive_one_pin()
 
-    assert driven.probe.frames[0] is driven.assembler.frames[1]
-    assert driven.probe.frames[0] is not driven.assembler.frames[0]
+    assert len(driven.assembler.frames) == ASSEMBLIES, _ASSEMBLED_ONCE
+    assert len(driven.probe.frames) == PROBES, "the week was not probed once"
+    assert _which_assembly(driven, driven.probe.frames[0]) == SECOND, (
+        "the verdict read a frame the pin had not entered"
+    )
 
 
 async def test_the_pin_row_is_held_between_the_two_assemblies_and_priced_after_the_second() -> None:
@@ -627,6 +647,18 @@ async def test_the_pin_row_is_held_between_the_two_assemblies_and_priced_after_t
     driven = await drive_one_pin()
 
     assert driven.log == THE_ORDER
+
+
+def _which_assembly(driven: Driven, frame: SolveInputs) -> int | None:
+    """Which of this request's assemblies answered with this exact frame, or nothing.
+
+    By identity, because two assemblies of one week can be equal values: the object is what says
+    which call produced it. An ordinal rather than the frame keeps a failure readable.
+    """
+    return next(
+        (index for index, one in enumerate(driven.assembler.frames, start=FIRST) if one is frame),
+        None,
+    )
 
 
 def _observations(collected: object, caller: str) -> float:
