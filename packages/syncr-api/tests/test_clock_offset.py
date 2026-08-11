@@ -42,10 +42,24 @@ from syncr_api.core.db import create_db_engine
 from syncr_api.core.settings import EnvSettings
 from syncr_api.oauth.rotation import rotate_signing_keys
 from tests.conftest import UNREACHABLE_DATABASE_URL
+from tests.source_census import (
+    INNOCENT_CALL_SPELLINGS,
+    SECOND_CLOCK_SPELLINGS,
+    SECOND_READER_SPELLINGS,
+    api_sources,
+    clock_module,
+    declared_entrypoints,
+    named,
+    reads_the_offset,
+    reads_the_wall_clock,
+    second_reader_source,
+    settings_constructors,
+    tracked_python_sources,
+)
 from tests.test_alert_rules import member_roots, repo_root
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Mapping
 
 # Long enough that no run of this suite could produce it by drifting, and stated as the
 # spelling an operator writes rather than as a number of seconds.
@@ -247,51 +261,11 @@ def test_an_unreadable_value_fails_the_boot_in_every_environment(
 # One reader, derived from the source
 # ---------------------------------------------------------------------------
 #
-# Two readings, because either alone leaves a hole the other closes. The literal scan
-# catches a second module that spells the variable out, including one that reads the whole
-# environment as a mapping and then asks it for a name. The syntax scan catches a second
-# module that reads the environment through this module's own constant, which no literal
-# scan can see.
-
-
-def tracked_python_sources() -> tuple[Path, ...]:
-    """Every Python file the index holds, which is the repository as it will be committed.
-
-    Git answers what the files are, rather than a walk with a list of directories to skip:
-    the index covers a file staged and not yet committed, it cannot see a scratch file or a
-    generated tree, and it grows a new member without anyone remembering to add it here.
-    """
-    listed = subprocess.run(
-        # `git` from the PATH the developer and CI both have.
-        ["git", "ls-files", "--cached", "-z", "*.py"],  # noqa: S607
-        cwd=repo_root(),
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    found = tuple(repo_root() / name for name in listed.stdout.split("\0") if name)
-    assert found, "git listed no Python file, so both readings below would pass over nothing"
-    return found
-
-
-def clock_module() -> Path:
-    """The one file that is allowed to read the offset, resolved from the module itself."""
-    return Path(clock.__file__).resolve()
-
-
-def offset_constant_name() -> str:
-    """The identifier the offset's name is bound to, read from the module rather than typed.
-
-    A renamed constant would otherwise leave the syntax reading below looking for a name
-    nothing uses, which is a census that passes because it can no longer see anything.
-    """
-    bound = [
-        name
-        for name, value in vars(clock).items()
-        if name.isupper() and value == CLOCK_OFFSET_ENV_VAR
-    ]
-    assert len(bound) == 1, f"the offset's name is bound {len(bound)} times in {clock.__name__}"
-    return bound[0]
+# Two readings, because either alone leaves a hole the other closes. The literal scan catches
+# a second module that spells the variable out; the syntax scan catches one that reads the
+# environment through this package's own constant, which no literal scan can see. Both live in
+# `tests/source_census.py`, which returns data rather than asserting, so each can be driven
+# against the real tree and against a deliberately planted second reader.
 
 
 def test_the_offset_is_spelled_out_in_one_source_file() -> None:
@@ -304,110 +278,6 @@ def test_the_offset_is_spelled_out_in_one_source_file() -> None:
     assert naming == {clock_module()}
 
 
-# How a Python source reads the process environment. Keyed on the mapping the read goes
-# through, so `settings["DATABASE_URL"]` on something that is not the environment does not
-# read as one.
-ENVIRONMENT_MODULE = "os"
-ENVIRONMENT_MAPPINGS = ("environ", "environb")
-GETENV_FUNCTIONS = ("getenv", "getenvb")
-
-# The mapping methods that RETURN the value at a key, so each of them is a read. `pop` and
-# `setdefault` also mutate, which is why they are easy to overlook and no less a read.
-READ_METHODS = ("get", "setdefault", "pop")
-
-
-def named(node: ast.expr) -> str | None:
-    """The trailing name of an attribute or a bare name, and nothing for anything else."""
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    if isinstance(node, ast.Name):
-        return node.id
-    return None
-
-
-def imported_as(tree: ast.Module, *, module: str, names: tuple[str, ...]) -> frozenset[str]:
-    """Every local name this source can reach one imported object by, including its own.
-
-    An ``as`` alias is a name the reading has to know, and resolving it from the file's own
-    import nodes is one mechanism whichever object is aliased: the offset's constant, the
-    environment, or `getenv`. An attribute access needs no entry, because :func:`named`
-    matches an attribute by its trailing name, so `os.environ` is found through `environ`
-    however `os` itself was imported.
-    """
-    return frozenset(names) | frozenset(
-        alias.asname or alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module == module
-        for alias in node.names
-        if alias.name in names
-    )
-
-
-def is_the_environment(node: ast.expr, environment: frozenset[str]) -> bool:
-    """Whether an expression is the process environment, or a copy or a merge of one.
-
-    A copy reads the same value, and Python spells one four ways beyond the mapping itself: a
-    call taking it (`dict(os.environ)`), a method on it (`os.environ.copy()`), an unpack
-    (`{**os.environ}`), and a merge (`os.environ | {}`). A reading that knew only the first
-    would be blind to the most ordinary of them.
-    """
-    if named(node) in environment:
-        return True
-    if isinstance(node, ast.Call):
-        if isinstance(node.func, ast.Attribute) and is_the_environment(
-            node.func.value, environment
-        ):
-            return True
-        passed = [*node.args, *(keyword.value for keyword in node.keywords)]
-        return any(is_the_environment(argument, environment) for argument in passed)
-    if isinstance(node, ast.Dict):
-        return any(
-            key is None and is_the_environment(value, environment)
-            for key, value in zip(node.keys, node.values, strict=True)
-        )
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return is_the_environment(node.left, environment) or is_the_environment(
-            node.right, environment
-        )
-    return False
-
-
-def environment_keys(tree: ast.Module) -> Iterator[ast.expr]:
-    """Every key expression a source reads the process environment with."""
-    environment = imported_as(tree, module=ENVIRONMENT_MODULE, names=ENVIRONMENT_MAPPINGS)
-    getenvs = imported_as(tree, module=ENVIRONMENT_MODULE, names=GETENV_FUNCTIONS)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Subscript) and is_the_environment(node.value, environment):
-            yield node.slice
-        if not isinstance(node, ast.Call) or not node.args:
-            continue
-        function = node.func
-        if named(function) in getenvs or (
-            isinstance(function, ast.Attribute)
-            and function.attr in READ_METHODS
-            and is_the_environment(function.value, environment)
-        ):
-            yield node.args[0]
-
-
-def keys_the_offset(key: ast.expr, offsets: frozenset[str]) -> bool:
-    """Whether one environment read is keyed to the offset, by literal or by a bound name."""
-    if isinstance(key, ast.Constant):
-        return key.value == CLOCK_OFFSET_ENV_VAR
-    return named(key) in offsets
-
-
-def reads_the_offset(tree: ast.Module) -> bool:
-    """Whether a source reads the process environment for the offset.
-
-    Keyed by the literal or by any local name the file itself binds the offset's constant to,
-    resolved from its own imports. Assuming the constant arrives under its own name is how a
-    census comes to be blind to one `as` clause.
-    """
-    offsets = imported_as(tree, module=clock.__name__, names=(offset_constant_name(),))
-    return any(keys_the_offset(key, offsets) for key in environment_keys(tree))
-
-
 def test_the_environment_is_read_for_the_offset_in_one_source_file() -> None:
     reading = {
         path
@@ -418,48 +288,15 @@ def test_the_environment_is_read_for_the_offset_in_one_source_file() -> None:
     assert reading == {clock_module()}
 
 
-# Every spelling a second reader could arrive as, which is the whole content of the control
-# below. The list is what the reading has been widened to see: a copy taken with `dict()`, a
-# copy taken any other way, the two read methods that also mutate, and the merge forms.
-SECOND_READER_SPELLINGS = (
-    'os.environ["{literal}"]',
-    "os.environ.get({constant})",
-    "os.environ.setdefault({constant}, '')",
-    "os.environ.pop({constant}, '')",
-    "os.getenv({constant}, '')",
-    "dict(os.environ)[{constant}]",
-    "dict(os.environ).get({constant})",
-    "dict(**os.environ)[{constant}]",
-    "os.environ.copy()[{constant}]",
-    "os.environ.copy().get({constant})",
-    "{{**os.environ}}[{constant}]",
-    "(os.environ | {{}})[{constant}]",
-    "({{}} | os.environ)[{constant}]",
-)
-
-
 @pytest.mark.parametrize("spelling", SECOND_READER_SPELLINGS)
 @pytest.mark.parametrize("alias", [None, "OFFSET_VAR"])
-def test_the_reading_finds_a_read_it_is_shown(
-    tmp_path: Path, spelling: str, alias: str | None
-) -> None:
+def test_the_reading_finds_a_read_it_is_shown(spelling: str, alias: str | None) -> None:
     # The positive control the census needs, and the reason both readings above can assert an
     # equality safely. A reading that found nothing at all would fail that equality loudly; a
     # reading blind to ONE spelling of a read through the constant would pass it while missing
     # the shape that matters most. Every spelling is crossed against the constant arriving
     # under its own name and under an alias, because an alias hides a read on its own.
-    constant = offset_constant_name()
-    imported = f"from {clock.__name__} import {constant}"
-    source = "\n".join(
-        (
-            "import os",
-            f"{imported} as {alias}" if alias else imported,
-            "value = " + spelling.format(literal=CLOCK_OFFSET_ENV_VAR, constant=alias or constant),
-            "",
-        )
-    )
-    planted = tmp_path / "second_reader.py"
-    planted.write_text(source, encoding="utf-8")
+    source = second_reader_source(spelling, alias)
 
     assert reads_the_offset(ast.parse(source)), source
 
@@ -467,69 +304,6 @@ def test_the_reading_finds_a_read_it_is_shown(
 # ---------------------------------------------------------------------------
 # What the one reader reaches
 # ---------------------------------------------------------------------------
-
-
-def api_sources() -> tuple[Path, ...]:
-    """This package's own Python files, which are what the offset has to reach."""
-    tree = repo_root() / member_roots()[syncr_api.__name__] / syncr_api.__name__
-    found = tuple(sorted(tree.rglob("*.py")))
-    assert found, f"no source found under {tree}"
-    return found
-
-
-# How a Python source reads the wall clock: the owners a read goes through, and the calls on
-# one that return the current instant. Keyed on a resolved owner, so `settings.now()` on
-# something that is not a clock does not read as one.
-WALL_CLOCK_OWNERS = ("datetime", "date", "time")
-WALL_CLOCK_CALLS = ("now", "utcnow", "today", "time", "time_ns")
-
-# The wall-clock readers that are functions in their own right, so a source can import one and
-# call it with no owner in front of it. `from time import time` then `time()` is ordinary
-# Python, needs no alias to hide, and `ruff`'s DTZ rules do not flag it.
-#
-# KEYED TO THE `time` MODULE, because `from datetime import time` imports the time-of-day TYPE
-# and `time(7, 0)` constructs a value rather than reading a clock. Five modules of this package
-# do exactly that, so a reading that took the name alone would report five wall-clock readers
-# that are not.
-BARE_WALL_CLOCK_MODULE = "time"
-BARE_WALL_CLOCK_READERS = ("time", "time_ns")
-
-
-def wall_clock_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
-    """Local names for a clock owner, and for a bare wall-clock function.
-
-    Three ways such a name arrives, all resolved from the file's own nodes rather than
-    assumed: the object's own name, an ``as`` alias on its import, and a local bound to it by
-    an assignment (`_clock = datetime.datetime`). One level of assignment is followed, so a
-    name bound from another bound name is not resolved.
-    """
-    owners = set(WALL_CLOCK_OWNERS)
-    bare = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                local = alias.asname or alias.name
-                if alias.name in WALL_CLOCK_OWNERS:
-                    owners.add(local)
-                if node.module == BARE_WALL_CLOCK_MODULE and alias.name in BARE_WALL_CLOCK_READERS:
-                    bare.add(local)
-        if isinstance(node, ast.Assign) and named(node.value) in owners:
-            owners.update(target.id for target in node.targets if isinstance(target, ast.Name))
-    return frozenset(owners), frozenset(bare)
-
-
-def reads_the_wall_clock(tree: ast.Module) -> bool:
-    owners, bare = wall_clock_names(tree)
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        function = node.func
-        if isinstance(function, ast.Attribute):
-            if named(function.value) in owners and function.attr in WALL_CLOCK_CALLS:
-                return True
-        elif isinstance(function, ast.Name) and function.id in bare:
-            return True
-    return False
 
 
 def test_this_package_reads_the_wall_clock_in_one_place() -> None:
@@ -545,21 +319,6 @@ def test_this_package_reads_the_wall_clock_in_one_place() -> None:
     assert reading == {clock_module()}
 
 
-# Every spelling a second wall-clock reader could arrive as. Four of these hid from the
-# reading while it required the owner to be named literally, and `from time import time` needs
-# no alias at all to do it.
-SECOND_CLOCK_SPELLINGS = (
-    "from datetime import UTC, datetime\nread = datetime.now(UTC)",
-    "from datetime import UTC, datetime as _dt\nread = _dt.now(UTC)",
-    "from datetime import UTC, date\nread = date.today()",
-    "import time\nread = time.time()",
-    "from time import time\nread = time()",
-    "from time import time as _wall\nread = _wall()",
-    "from time import time_ns\nread = time_ns()",
-    "import datetime as _d\n_clock = _d.datetime\nread = _clock.now(_d.UTC)",
-)
-
-
 @pytest.mark.parametrize("spelling", SECOND_CLOCK_SPELLINGS)
 def test_the_wall_clock_reading_finds_a_read_it_is_shown(spelling: str) -> None:
     # The same control the offset census carries, for the same reason: an equality against one
@@ -568,19 +327,26 @@ def test_the_wall_clock_reading_finds_a_read_it_is_shown(spelling: str) -> None:
     assert reads_the_wall_clock(ast.parse(spelling + "\n")), spelling
 
 
-def test_the_wall_clock_reading_does_not_read_an_ordinary_call_as_a_clock() -> None:
-    # The negative half. Without it the reading could return True for every call and both the
-    # census and the control above would still pass. The first case is not hypothetical: the
-    # widening above reported five modules of this package as wall-clock readers until the bare
-    # form was keyed to the module it comes from.
-    for innocent in (
-        "from datetime import time\nDAY_START = time(7, 0)",
-        "read = settings.now()",
-        "read = window.today()",
-        "from datetime import timedelta\nread = timedelta(days=1)",
-        "import time\nread = time.monotonic()",
-    ):
-        assert not reads_the_wall_clock(ast.parse(innocent + "\n")), innocent
+@pytest.mark.parametrize("innocent", INNOCENT_CALL_SPELLINGS)
+def test_the_wall_clock_reading_does_not_read_an_ordinary_call_as_a_clock(innocent: str) -> None:
+    # The negative half, and the only thing that catches a reading which widens to everything
+    # rather than narrowing: an always-true reading satisfies every case of the control above.
+    assert not reads_the_wall_clock(ast.parse(innocent + "\n")), innocent
+
+
+def test_every_entrypoint_of_this_package_builds_the_settings_that_refuse() -> None:
+    # Why the refusal is in `EnvSettings` rather than in the two entrypoints a scenario drives:
+    # it then covers every way this package can be started, including the migration one-shot
+    # and the console scripts that run inside the backup image. Derived from the build's own
+    # script table, so a new entrypoint that skips settings construction reddens here.
+    builders = settings_constructors()
+
+    for entrypoint, path in declared_entrypoints().items():
+        source = path.read_text(encoding="utf-8")
+        called = {
+            named(node.func) for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call)
+        }
+        assert called & builders, f"{entrypoint} builds no settings, so nothing refuses there"
 
 
 def clock_holders() -> tuple[str, ...]:
