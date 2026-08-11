@@ -557,10 +557,60 @@ describe("the routine floors", () => {
     renderAt("/settings");
     await settled();
 
-    const panel = panelNamed("Routine floors");
-    expect(within(panel).getByLabelText("Sleep · 23:00")).toHaveAttribute("max", "480");
-    expect(within(panel).getByLabelText("Lunch · 13:00")).toHaveAttribute("max", "45");
-    expect(within(panel).getByLabelText("Lunch · 13:00")).toHaveAttribute("min", "1");
+    expect(screen.getByLabelText("Sleep · 23:00")).toHaveAttribute("max", "480");
+    expect(screen.getByLabelText("Lunch · 13:00")).toHaveAttribute("max", "45");
+    expect(screen.getByLabelText("Lunch · 13:00")).toHaveAttribute("min", "1");
+    expect(panelNamed("Routine floors")).toBeVisible();
+  });
+
+  /* A TYPED FIGURE REACHES THE API UNCLAMPED, which the stepper documents as deliberate, so this control can be
+     refused by a bound the read it was drawn from no longer states. The refusal is the api's own sentence, it
+     belongs to the field that caused it, and it belongs to THAT row: the panel renders one write per row so a
+     refused floor cannot appear under a routine the reader never touched. */
+  it("states the api's refusal under the routine that caused it, and under no other", async () => {
+    const refused = {
+      type: "syncr:validation-failed",
+      title: "Validation failed",
+      status: 422,
+      detail:
+        "The routine was not accepted: a routine's minimum is above 0 and at most its target duration of 30 " +
+        "minutes, got 45. Nothing was changed, and every routine that already exists still reads as it did. A " +
+        "target and a floor are legal only with respect to each other, so send both in one request when both " +
+        "have to move.",
+      errors: [
+        {
+          field: "minDurationMinutes",
+          message:
+            "a routine's minimum is above 0 and at most its target duration of 30 minutes, got 45",
+        },
+      ],
+    };
+    apiServer.use(
+      recordingHandler("patch", SECOND_ROUTINE, { status: 422, body: refused }).handler,
+      ...settingsHandlers({ routines: [buildRoutine(), buildNap()] }),
+    );
+    renderAt("/settings");
+    await settled();
+
+    fireEvent.change(screen.getByLabelText("Sleep · 14:00"), { target: { value: "45" } });
+
+    const refusal = await screen.findByText(/at most its target duration of 30 minutes, got 45\./);
+    expect(refusal).toBeVisible();
+    expect(screen.getAllByText(/at most its target duration of 30 minutes, got 45\./)).toHaveLength(
+      1,
+    );
+
+    const refusedField = screen.getByLabelText("Sleep · 14:00");
+    expect(refusedField).toHaveAttribute("aria-invalid", "true");
+    expect(refusedField).toHaveAccessibleDescription(/at most its target duration of 30 minutes/);
+
+    /* The other row is untouched: not marked invalid, and still described by its own reading rather than by a
+       refusal it did not cause. */
+    const untouched = screen.getByLabelText("Sleep · 23:00");
+    expect(untouched).not.toHaveAttribute("aria-invalid");
+    expect(untouched).toHaveAccessibleDescription(
+      /Not negotiable: the floor equals the target of 8h/,
+    );
   });
 });
 
