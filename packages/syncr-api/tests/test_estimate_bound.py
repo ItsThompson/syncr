@@ -84,9 +84,16 @@ def a_week_owing(task: TaskRecord, *, span: Interval) -> ProbeInputs:
 
 def test_a_task_the_size_of_the_bound_fits_the_week_the_bound_is_the_length_of() -> None:
     task = a_task_owing(ESTIMATE_MINUTES_MAX, due=NOMINAL_WEEK.end)
+    inputs = a_week_owing(task, span=NOMINAL_WEEK)
 
-    verdict = probe(a_week_owing(task, span=NOMINAL_WEEK))
+    verdict = probe(inputs)
 
+    # What the probe was asked, before what it answered. A case that reports no gap because its
+    # demand never reached the probe passes for the wrong reason, and the two cases here that
+    # assert an absence are the two that reading cannot tell apart.
+    assert [demand.remaining_minutes for demand in inputs.deadline_demands] == [
+        ESTIMATE_MINUTES_MAX
+    ]
     # The equality the bound exists to state: a nominal week with nothing in it is exactly this
     # many minutes, so a task at the bound is the largest one a week can hold.
     assert verdict.discretionary_minutes == ESTIMATE_MINUTES_MAX
@@ -115,9 +122,13 @@ def test_the_hour_a_fall_back_week_gains_is_the_one_span_that_holds_the_minute_a
     refuses it in a real one is that a week's capacity is a fraction of its span.
     """
     task = a_task_owing(ESTIMATE_MINUTES_MAX + 1, due=FALL_BACK.span.end)
+    inputs = a_week_owing(task, span=FALL_BACK.span)
 
-    verdict = probe(a_week_owing(task, span=FALL_BACK.span))
+    verdict = probe(inputs)
 
+    assert [demand.remaining_minutes for demand in inputs.deadline_demands] == [
+        ESTIMATE_MINUTES_MAX + 1
+    ]
     assert verdict.discretionary_minutes == ESTIMATE_MINUTES_MAX + MINUTES_IN_AN_HOUR
     assert verdict.shortfalls == ()
     assert tasks_at_risk(verdict, [task]) == frozenset()
