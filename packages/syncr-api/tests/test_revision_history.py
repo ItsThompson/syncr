@@ -15,7 +15,8 @@ concession applies to nothing and a replaced one is still in force under another
 
 Pure, from literals, because the composition is. The route that answers with it is driven in
 ``test_week_routes_integration.py`` and the approval that fills it in
-``test_week_approval_integration.py``.
+``test_week_approval_integration.py``. The mapping onto the wire is asserted here too, because the
+two counts are two integers of the same type and nothing else would notice them exchanged.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from uuid import uuid4
 
 from syncr_api.plans.history import revision_page
 from syncr_api.plans.records import PlanRevisionRecord, WeekAdjustmentRecord
+from syncr_api.plans.schemas import WeekRevisionResponse
 from syncr_api.plans.stored_documents import plan_document, stored_document
 from syncr_domain.identity import BindingRef
 from syncr_domain.plan import AdjustmentKind
@@ -297,6 +299,59 @@ class TestWhichOfTheTwoThingsTheWeekDidToIt:
         assert without_the_grant.truncated is True
         first = without_the_grant.revisions[0]
         assert (first.unnamed.revoked, first.unnamed.replaced) == (1, 0)
+
+    def test_a_revision_missing_nothing_reports_no_replacement_to_go_with_it(self) -> None:
+        """The totality of the pair, over a corpus the writers cannot produce.
+
+        A row older than its own write, bearing this revision's instant, while the document names
+        every concession the week holds. The attribution matches and there is no absence to explain,
+        so a reading that counted the replacement on its own would answer with a pair that does not
+        sum: one replacement against nothing missing, and a negative revocation to balance it.
+
+        An approval cannot leave this state, because a document is appended naming the candidate
+        the approval wrote and a replacement is exactly the case where nothing holds that
+        identifier. The composition is pure, so the state is still reachable as an argument, and
+        what it asserts is the sentence the pair carries: the two counts sum to the identifiers the
+        week cannot name, whatever the rows say.
+        """
+        first = uuid4()
+        granted = an_approved(
+            a_week(a_block_holding(GYM, between(9, 10)), adjustments=(first,)),
+            created_at=AT,
+            approved_at=AT,
+        )
+        naming_only_what_is_held = an_approved(
+            a_week(a_block_holding(GYM, between(9, 10)), adjustments=(first,))
+        )
+        taken_over = a_concession(id=first, target_id=TARGET, created_at=LATER)
+
+        page = revision_page([naming_only_what_is_held, granted], held=(taken_over,), page=PAGE)
+
+        unnamed = page.revisions[0].unnamed
+        assert (unnamed.revoked, unnamed.replaced) == (0, 0)
+        assert unnamed.revoked + unnamed.replaced == unnamed_by(
+            plan_document(naming_only_what_is_held.document), (taken_over,)
+        )
+
+
+class TestWhatTheHistoryPutsOnTheWire:
+    def test_each_count_reaches_the_wire_under_its_own_name(self) -> None:
+        """Two integers of one type, so nothing but this would notice them exchanged.
+
+        Asserted in both directions, over a revision reporting a replacement and no revocation and
+        one reporting a revocation and no replacement, because a pair that is equal on both sides
+        cannot tell a swap from a correct mapping.
+        """
+        revoked = uuid4()
+        granted, replacing, taken_over = _a_replaced_concession(also_naming=(revoked,))
+
+        page = revision_page([replacing, granted], held=(taken_over,), page=PAGE)
+        rendered = [
+            WeekRevisionResponse.of(one).model_dump(by_alias=True) for one in page.revisions
+        ]
+
+        assert [one["replacedAdjustments"] for one in rendered] == [1, 0]
+        assert [one["revokedAdjustments"] for one in rendered] == [1, 1]
 
 
 class TestThePageIsBounded:
