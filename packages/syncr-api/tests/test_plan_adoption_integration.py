@@ -74,9 +74,10 @@ A_VERDICT: dict[str, Any] = {"feasible": True, "shortfall_minutes": 0, "provenan
 WEIGHT_SET_VERSION = 1
 
 A_FILL: StoredReason = "auto_applied_fill"
+A_HORIZON_ADVANCE: StoredReason = "horizon_advanced"
 
 # Every reason a revision may carry that this write may NOT append under, derived from the one
-# vocabulary rather than listed a second time beside the pair the module allows.
+# vocabulary rather than listed a second time beside the set the module allows.
 NOT_AN_AUTO_APPLICATION = {reason.value for reason in RevisionReason} - AUTO_APPLIED_REASONS
 
 
@@ -288,6 +289,30 @@ class TestWhatEachClassificationWrites:
         assert adopted.revision is not None
         assert adopted.revision.reason == "anchor_delta"
 
+    async def test_a_horizon_advance_appends_under_its_own_reason(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        # A week nobody has touched, planned because time passed: the same fill-only shape as a
+        # mutation's solve, so the reason cannot be worked out from what the classification did and
+        # the row carries the one the candidate names. Asserted from the literal rather than from
+        # the constant the candidate carries, so renaming the member is red here.
+        candidate = a_week(a_block_holding(LEETCODE, between(14, 15)))
+        classification = classified(None, candidate)
+
+        adopted = await adopt(
+            sessions,
+            owner.tenant_id,
+            classification,
+            a_candidate(candidate, reason=A_HORIZON_ADVANCE),
+        )
+
+        assert len(classification.auto_applicable) == 1
+        assert adopted.revision is not None
+        assert adopted.revision.reason == "horizon_advanced"
+        assert adopted.revision.status == "applied"
+        assert adopted.changed_the_live_plan()
+        assert await revisions_held(sessions, owner.tenant_id) == 1
+
 
 class TestAutoApplicationIsAllOrNothing:
     async def test_a_candidate_that_fills_and_moves_appends_nothing_and_waits_whole(
@@ -390,15 +415,10 @@ class TestWhatTheWriteRefuses:
 
         assert await revisions_held(sessions, owner.tenant_id) == 0
 
-    def test_the_complement_names_the_four_reasons_that_are_not_an_adoption(self) -> None:
+    def test_the_complement_names_the_three_reasons_that_are_not_an_adoption(self) -> None:
         # The floor beside the derivation: an empty complement would make the parametrize above
         # drive nothing while reading as a passing test.
-        assert {
-            "user_approved",
-            "tradeoff_approved",
-            "materialized",
-            "horizon_advanced",
-        } == NOT_AN_AUTO_APPLICATION
+        assert {"user_approved", "tradeoff_approved", "materialized"} == NOT_AN_AUTO_APPLICATION
 
     def test_a_candidate_states_which_auto_application_it_is(self) -> None:
         # No default, so a new write path decides which auto-application it is rather than

@@ -97,13 +97,24 @@ if TYPE_CHECKING:
 
 _log = get_logger("syncr.plans")
 
-# The reasons an `applied` revision may be appended for. Both are the authority rule letting a
-# change through without asking: one filled empty space, and one is a calendar sync that freed or
-# occupied it. The other four reasons name an approval or the maintainer, and neither of those is
-# an adoption, so a revision appended here under one of them would say the user assented to a plan
-# nobody showed them.
+# The reasons an `applied` revision may be appended for. Each is the authority rule letting a change
+# through without asking, and each names a different thing that asked: one filled empty space, one
+# is a calendar sync that freed or occupied it, and one is a week brought into range because time
+# passed. The reasons this set omits name an approval or the plan of last resort, and neither of
+# those is an adoption, so a revision appended here under one of them would say the user assented to
+# a plan nobody showed them.
+#
+# They stay separate rather than collapsing into one auto-application, because the reason is the
+# only thing a revision carries to say why the row exists, and the week's history serves it: a week
+# nobody has asked for is a different fact from a week whose empty space a solve filled after the
+# user changed something, and a reader given one word for both could no longer tell which of them
+# produced the plan it is looking at.
 AUTO_APPLIED_REASONS: Final = frozenset(
-    {DocumentReason.AUTO_APPLIED_FILL.value, DocumentReason.ANCHOR_DELTA.value}
+    {
+        DocumentReason.AUTO_APPLIED_FILL.value,
+        DocumentReason.ANCHOR_DELTA.value,
+        DocumentReason.HORIZON_ADVANCED.value,
+    }
 )
 
 
@@ -176,9 +187,10 @@ class PlanAdoption:
     ) -> Adopted:
         """Write what ``classification`` decided about ``candidate``, and answer with what landed.
 
-        ``candidate.reason`` says which auto-application this is: a fill, or a calendar sync that
-        freed or occupied space. It is refused for anything else, because the four remaining reasons
-        name an approval or the plan horizon maintainer and neither of those passes through here.
+        ``candidate.reason`` says which auto-application this is: a fill, a calendar sync that
+        freed or occupied space, or a week the horizon maintainer brought into range. It is refused
+        for anything else, because the remaining reasons name an approval or the plan of last
+        resort and none of those passes through here.
 
         Raises :class:`~syncr_api.plans.errors.RevisionRejected` for such a reason, for a
         classification describing a different week than the candidate, and for one describing
@@ -270,7 +282,7 @@ def _require_an_auto_applied_reason(reason: RevisionReason) -> None:
     spelled = ", ".join(sorted(AUTO_APPLIED_REASONS))
     raise RevisionRejected(
         f"a revision the authority rule let through is appended for {spelled}, not for "
-        f"{reason!r}: the other reasons name an approval or the horizon maintainer, so one of "
+        f"{reason!r}: the other reasons name an approval or the plan of last resort, so one of "
         "them here would say the user assented to a plan nobody showed them"
     )
 
