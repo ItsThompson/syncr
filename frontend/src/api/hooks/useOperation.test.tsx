@@ -172,9 +172,9 @@ describe("a terminal status arriving over the stream", () => {
   });
 
   it("stops at a superseded operation that names no successor, rather than following nothing", async () => {
-    /* The status word and the successor are two separate columns, so the pair can arrive with the second one
-     * empty. There is nothing to follow, so the record IS the answer: the hook holds it and reads the server's
-     * own currency, rather than waiting on an operation nobody named. */
+    /* The wire type permits it: the status word and the successor are two keys, and nothing in the generated type
+     * ties them. So the reader needs an answer for the pair, and the answer is that there is nothing to follow, so
+     * the record itself is the answer. */
     installWeek(buildWeekView({ operation: buildOperation({ status: "running" }) }));
     const stream = installStream();
     const { result } = await mountConnected(stream);
