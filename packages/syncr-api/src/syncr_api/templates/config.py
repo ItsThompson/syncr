@@ -15,11 +15,19 @@ from __future__ import annotations
 from typing import Final
 
 from syncr_api.core.settings import API_PREFIX
+from syncr_api.core.tenancy import TENANT_ID_COLUMN
 
 DAY_TYPES_TABLE: Final = "day_types"
 TEMPLATES_TABLE: Final = "templates"
 TEMPLATE_ENTRIES_TABLE: Final = "template_entries"
 WEEK_PATTERNS_TABLE: Final = "week_patterns"
+
+# Two rules each stated twice: as a read that refuses the request, and as the unique index that
+# is the guarantee when two requests pass that read together. Named here because the write path
+# names the index it may lose to, and a name spelled out at both sites could drift from the
+# index the table declares.
+ONE_DAY_TYPE_PER_NAME_INDEX: Final = f"uq_{DAY_TYPES_TABLE}_{TENANT_ID_COLUMN}_name"
+ONE_SHAPE_PER_DAY_TYPE_INDEX: Final = f"uq_{TEMPLATES_TABLE}_{TENANT_ID_COLUMN}_day_type_id"
 
 # Built from the versioned prefix rather than written out, so a change to the prefix reaches
 # this module.

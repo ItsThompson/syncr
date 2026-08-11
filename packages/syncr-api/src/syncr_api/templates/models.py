@@ -59,6 +59,8 @@ from syncr_api.core.tenancy import TENANT_ID_COLUMN, TenantScoped
 from syncr_api.templates.config import (
     DAY_TYPE_NAME_MAX_LENGTH,
     DAY_TYPES_TABLE,
+    ONE_DAY_TYPE_PER_NAME_INDEX,
+    ONE_SHAPE_PER_DAY_TYPE_INDEX,
     TEMPLATE_ENTRIES_TABLE,
     TEMPLATE_NAME_MAX_LENGTH,
     TEMPLATES_TABLE,
@@ -110,9 +112,7 @@ class DayTypeRow(Base, TenantScoped):
 
     __tablename__ = DAY_TYPES_TABLE
     __table_args__ = (
-        Index(
-            f"uq_{DAY_TYPES_TABLE}_{TENANT_ID_COLUMN}_name", TENANT_ID_COLUMN, "name", unique=True
-        ),
+        Index(ONE_DAY_TYPE_PER_NAME_INDEX, TENANT_ID_COLUMN, "name", unique=True),
         Index(
             f"ix_{DAY_TYPES_TABLE}_{TENANT_ID_COLUMN}_created_at", TENANT_ID_COLUMN, "created_at"
         ),
@@ -128,12 +128,7 @@ class TemplateRow(Base, TenantScoped):
 
     __tablename__ = TEMPLATES_TABLE
     __table_args__ = (
-        Index(
-            f"uq_{TEMPLATES_TABLE}_{TENANT_ID_COLUMN}_day_type_id",
-            TENANT_ID_COLUMN,
-            "day_type_id",
-            unique=True,
-        ),
+        Index(ONE_SHAPE_PER_DAY_TYPE_INDEX, TENANT_ID_COLUMN, "day_type_id", unique=True),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
