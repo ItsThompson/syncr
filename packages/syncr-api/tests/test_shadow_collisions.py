@@ -577,7 +577,9 @@ def _shapes_reached(
     shapes = {
         A_DROPPED_LEG: [one for one in absent if one.origin is Origin.TRANSIT],
         A_DROPPED_JOURNEY_HOME: [
-            one for one in absent if one.occurrence_key == TransitLeg.BACK.value
+            one
+            for one in absent
+            if one.origin is Origin.TRANSIT and one.occurrence_key == TransitLeg.BACK.value
         ],
         A_DROPPED_PREP: [one for one in absent if one.origin is Origin.PREP],
         A_TRUNCATED_PREP: [
@@ -611,9 +613,7 @@ def _shapes_reached(
             and [
                 kept
                 for kept in survivors
-                if kept.origin is Origin.TRANSIT
-                and kept.interval.start == one.interval.start
-                and kept.interval.overlaps(one.interval)
+                if kept.origin is Origin.TRANSIT and kept.interval.start == one.interval.start
             ]
         ],
         TWO_BLOCKS_SHARING_A_START: [
