@@ -378,11 +378,11 @@ def test_a_retried_declaration_replays_rather_than_declaring_a_second_period(
 
 
 @pytest.mark.parametrize(
-    "span",
+    ("span", "named"),
     [
-        {"start": "2026-10-23T13:00:00", "end": "2026-10-26T09:00:00Z"},
-        {"start": "2026-10-23T13:00:00Z", "end": "2026-10-26T09:00:00"},
-        {"start": "2026-10-23", "end": "2026-10-26"},
+        ({"start": "2026-10-23T13:00:00", "end": "2026-10-26T09:00:00Z"}, {"body.start"}),
+        ({"start": "2026-10-23T13:00:00Z", "end": "2026-10-26T09:00:00"}, {"body.end"}),
+        ({"start": "2026-10-23", "end": "2026-10-26"}, {"body.start", "body.end"}),
     ],
     ids=["naive_start", "naive_end", "date_only"],
 )
@@ -392,16 +392,16 @@ def test_a_bound_that_names_no_instant_is_refused(
     owner: UserRecord,
     live_database_url: str,
     span: dict[str, str],
+    named: set[str],
 ) -> None:
     # A wall time with no offset names no instant: 14:00 on the Friday the clocks change is two
     # different moments depending on the zone, and a period stored from one would subtract the
-    # wrong hour from the denominator. Every bound reaches the domain through `Interval`, whose
-    # `as_instant` refuses a naive datetime, so the rejection is a stated 422 rather than a row
-    # holding an instant the caller did not mean. A date with no time is the same case.
+    # wrong hour from the denominator. A date with no time is the same case. The refusal NAMES the
+    # bound it is about, so a caller is told which value to send again.
     answered = http.post(OFF_PLAN, json=span, headers=signed_in)
 
     assert answered.status_code == ValidationFailed.status, answered.text
-    assert "names no instant" in answered.json()["detail"]
+    assert {error["field"] for error in answered.json()["errors"]} == named
     assert period_rows(live_database_url, owner.tenant_id) == []
 
 
