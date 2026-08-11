@@ -13,7 +13,7 @@ imported from this member.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 from uuid import uuid4
 
 from syncr_domain.gaps import (
@@ -37,6 +37,9 @@ from syncr_domain.reasons import Bound, DerivationSource, ReasonRecord
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from syncr_domain.identifiers import AreaId
     from syncr_domain.zones import Date, ZoneId
 
 LONDON: ZoneId = "Europe/London"
@@ -47,6 +50,10 @@ MONDAY_MIDNIGHT = datetime(2026, 2, 9, tzinfo=UTC)
 CAREER = uuid4()
 FITNESS = uuid4()
 INTERVIEW = uuid4()
+
+# What the two Areas above were declared as, in the shape a composed response resolves a gap's Area
+# against. A plan charges its blocks and its gaps to an Area by identifier alone.
+AREA_NAMES: Final[Mapping[AreaId, str]] = {CAREER: "Career", FITNESS: "Fitness"}
 
 A_BOUND_REASON = ReasonRecord((Bound(DerivationSource.ROUTINE, "Sleep · 23:00 + 8h"),))
 

@@ -1,4 +1,4 @@
-"""The seven rejections the plan side raises, and why none is a ``SyncrError``.
+"""The rejections the plan side raises, and why none is a ``SyncrError``.
 
 A revision reaches storage from a Pydantic model that has already validated it, and every
 document-describing column is derived rather than passed in. So a document that cannot
@@ -75,4 +75,14 @@ class VerdictNotRecordable(Exception):
     anything a request carried. It is refused at construction because ``VE1`` never prunes these
     rows, so a wrong field is a permanent hole in the corpus the product metric is computed from,
     and the write is the only moment it can be caught.
+    """
+
+
+class SlotContextRejected(Exception):
+    """An empty slot charged to an Area the read composing the response did not name.
+
+    The composition side of the same rule. A response resolves each slot's Area against the Areas it
+    was read with, in one transaction, over a table no route removes a row from, so a slot those
+    names do not cover is a defect in what the caller composed the response from rather than
+    anything a request carried.
     """

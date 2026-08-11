@@ -37,13 +37,14 @@ from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from statistics import quantiles
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event
 
 from syncr_api.approvals.config import APPROVE_PATH
+from syncr_api.areas.config import AREAS_TABLE
 from syncr_api.concessions.config import WEEKS_PREFIX
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
@@ -61,6 +62,7 @@ from tests.live_weeks import (
     a_candidate_moving_one_block,
     a_packing_failure,
     append_a_full_week,
+    append_a_week_with_empty_slots,
     approve_two_concessions,
     declare_the_minimum,
     enqueue_a_solve,
@@ -704,6 +706,60 @@ def test_the_composed_read_selects_the_pending_slot_exactly_once(
     assert view["proposal"] is not None, "the slot was empty, so the read took the cheap branch"
     assert view["verdict"]["provenance"] == Provenance.SOLVER.value
     assert len(selects) == 1, selects
+
+
+# How many times one composed read selects the Areas: once for the week's denominator, and once for
+# the assembly a live verdict is computed from. The names a gap's wording needs ride on the first of
+# the two, which is what makes them free.
+AREAS_READS_PER_COMPOSED_READ = 2
+SLOTS_MEASURED = 3
+
+
+def test_a_weeks_gaps_cost_no_areas_read_of_their_own_and_none_per_gap(
+    owner: UserRecord, live_database_url: str, settings: ServiceSettings
+) -> None:
+    """One week read twice, the second time with three unfilled slots in it.
+
+    A gap in the week is stated in terms of the Area it was offered to, and the plan holds that
+    Area's identifier alone, so the words come from a read of the rows. Counted at the driver rather
+    than by reading the source: what the response resolves each slot against is a mapping the
+    composition already holds, and only a count can show that a slot added no query.
+
+    The same week and the same tenant on both reads, so the two counts differ in the slots alone.
+    """
+    database = create_database(live_database_url)
+    app = create_app(settings, lifespan=create_db_lifespan(database.engine))
+    app.state.db = database
+    reads: list[str] = []
+
+    @event.listens_for(database.engine.sync_engine, "after_cursor_execute")
+    def _count(_conn: object, _cursor: object, statement: str, *_rest: object) -> None:
+        if AREAS_TABLE in statement and statement.lstrip().upper().startswith("SELECT"):
+            reads.append(statement)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        headers = sign_in(client, owner.email)
+        set_home_zone(client, headers, LONDON)
+        area_id = declare_the_minimum(client, headers, live_database_url, owner.tenant_id)
+        week = this_week()
+        produce_a_plan(live_database_url, owner.tenant_id, week)
+        reads.clear()
+
+        planned = week_view(client, headers, week)
+        without_a_gap = len(reads)
+
+        append_a_week_with_empty_slots(
+            live_database_url, owner.tenant_id, week, area_id=UUID(area_id), slots=SLOTS_MEASURED
+        )
+        reads.clear()
+
+        gapped = week_view(client, headers, week)
+        with_gaps = len(reads)
+
+    assert planned["live"]["emptySlots"] == [], "the produced plan is the control"
+    assert [one["areaId"] for one in gapped["live"]["emptySlots"]] == [area_id] * SLOTS_MEASURED
+    assert without_a_gap == AREAS_READS_PER_COMPOSED_READ, reads
+    assert with_gaps == without_a_gap
 
 
 def test_the_two_denominators_on_one_payload_differ_by_the_occupancy_the_budget_cannot_see(

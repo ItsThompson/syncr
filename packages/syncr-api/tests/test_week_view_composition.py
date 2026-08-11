@@ -1,8 +1,9 @@
 """The week view's composition, over values rather than over a database.
 
-Five subjects, each a pure function or a pure mapping, so every case a request cannot reach is
+Six subjects, each a pure function or a pure mapping, so every case a request cannot reach is
 still driven: the eight readings, the three currency words, the three reasons a week holds no plan,
-the six reason clauses on the wire, and the response's own field set.
+the six reason clauses on the wire, the names an empty slot's Area is resolved to, and the
+response's own field set.
 
 **Note 4 from ``reviews/spec-review-5.md``**, recorded beside the work it concerns. The epic's
 done-criteria table maps "every week in the horizon has a plan, and one outside it says why" to S29
@@ -38,9 +39,11 @@ from syncr_api.plans.emptiness import (
     Horizon,
     empty_week,
 )
+from syncr_api.plans.errors import SlotContextRejected
 from syncr_api.plans.readiness import MissingInput, PlanReadiness
 from syncr_api.plans.readings import scheduled_minutes, unconfirmed_days, week_readings
 from syncr_api.plans.schemas import WeekViewResponse
+from syncr_api.plans.slot_contexts import slot_context
 from syncr_api.plans.stored_reasons import CLAUSE_KIND
 from syncr_api.solving.config import (
     FAILED,
@@ -53,6 +56,7 @@ from syncr_api.solving.config import (
 )
 from syncr_api.solving.records import OperationRecord
 from syncr_domain.budgets import BudgetReport
+from syncr_domain.gaps import SlotContext
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.plan import PlanDocument
 from syncr_domain.reasons import (
@@ -69,7 +73,19 @@ from syncr_domain.reasons import (
 from syncr_domain.weeks import IsoWeek, active_zone_by_date, local_days, week_span
 from syncr_domain.zones import ZoneProfile
 from tests.boundaries import api_routes
-from tests.plan_documents import CAREER, LONDON, WEEK, a_block, a_document, a_zone_map, at, between
+from tests.plan_documents import (
+    AREA_NAMES,
+    CAREER,
+    FITNESS,
+    LONDON,
+    WEEK,
+    a_block,
+    a_document,
+    a_slot,
+    a_zone_map,
+    at,
+    between,
+)
 
 if TYPE_CHECKING:
     from syncr_api.core.settings import ServiceSettings
@@ -531,7 +547,9 @@ def test_a_documents_zones_reach_the_wire_in_date_order_whatever_order_they_arri
     """Two reads of one week are byte-identical, down to the order the mapping's keys are in."""
     reversed_zones = dict(reversed(list(a_zone_map().items())))
 
-    rendered = PlanDocumentResponse.of(a_document(zone_by_date=reversed_zones))
+    rendered = PlanDocumentResponse.of(
+        a_document(zone_by_date=reversed_zones), area_names=AREA_NAMES
+    )
 
     assert list(rendered.zone_by_date) == [day.isoformat() for day in WEEK.dates()]
     assert set(rendered.zone_by_date.values()) == {LONDON}
@@ -542,11 +560,55 @@ def test_a_blocks_derived_identity_origin_and_chunk_reach_the_wire() -> None:
     document = a_document()
     block = document.blocks[0]
 
-    rendered = PlanDocumentResponse.of(document).blocks[0]
+    rendered = PlanDocumentResponse.of(document, area_names=AREA_NAMES).blocks[0]
 
     assert rendered.id == block.id
     assert rendered.origin == block.origin
     assert rendered.binding.split_index == block.binding.split_index
+
+
+# --------------------------------------------------------------------------------
+# The name an empty slot's Area is resolved to
+# --------------------------------------------------------------------------------
+
+
+def a_document_holding_two_slots() -> PlanDocument:
+    """A week leaving two evenings unfilled, one per Area, so a resolution can be wrong per slot."""
+    return a_document(
+        empty_slots=(
+            a_slot(area_id=CAREER, interval=between(19, 20)),
+            a_slot(area_id=FITNESS, interval=between(20, 21)),
+        )
+    )
+
+
+def test_a_slot_resolves_the_name_of_the_area_it_is_charged_to() -> None:
+    """The one thing a gap's own wording needs and a stored plan does not carry.
+
+    Compared as a whole value rather than field by field, so the period's label is pinned as
+    unnamed by this resolution: which declared period a slot borrows a word from is a question
+    about periods and is decided where they are read.
+    """
+    assert slot_context(a_slot(area_id=FITNESS), AREA_NAMES) == SlotContext(area_name="Fitness")
+
+
+def test_the_document_resolves_every_one_of_its_slots_against_the_names_it_was_read_with() -> None:
+    """Two slots, two Areas, one mapping: the read that answers one gap answers all of them."""
+    rendered = PlanDocumentResponse.of(a_document_holding_two_slots(), area_names=AREA_NAMES)
+
+    assert [one.area_id for one in rendered.empty_slots] == [CAREER, FITNESS]
+
+
+def test_a_slot_charged_to_an_area_the_read_did_not_name_is_refused_rather_than_answered() -> None:
+    """The Area nothing names is the SECOND slot's, so a resolution that stopped at the first passes
+    this only by resolving each one.
+
+    A refusal rather than a blank: a document and the Areas beside it come from one transaction over
+    a table no route removes a row from, so the two failing to cover each other is a defect in what
+    the response was composed from rather than a gap a person could read past.
+    """
+    with pytest.raises(SlotContextRejected, match=str(FITNESS)):
+        PlanDocumentResponse.of(a_document_holding_two_slots(), area_names={CAREER: "Career"})
 
 
 # --------------------------------------------------------------------------------

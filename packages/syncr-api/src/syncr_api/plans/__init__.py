@@ -29,7 +29,7 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``episodes.py`` | the episode: the unit the early-catch product metric counts |
 | ``reality.py`` | the outcome log: one row per block, recorded and corrected in place |
 | ``habit_log.py`` | the same log keyed by habit, for the rotation cursor and outstanding debt |
-| ``errors.py`` | the seven rejections a plan write or a plan read raises, none a caller's fault |
+| ``errors.py`` | the rejections a plan write, read or composition raises, none a caller's fault |
 | ``stored_values.py`` | the leaf forms a stored document is built from: an instant, a span, an id |
 | ``stored_clauses.py`` | the six reason clauses, one stored form each |
 | ``stored_reasons.py`` | a block's reason record, and which of the six kinds a stored object is |
@@ -90,6 +90,7 @@ And the week routes, which compose everything above into the Week screen's whole
 | ``confirmations.py`` | the seam answering which of a week's days the user has confirmed |
 | ``schemas.py`` | the wire shapes the five routes answer with |
 | ``document_schemas.py`` | a stored document on the wire: the blocks and the two kinds of gap |
+| ``slot_contexts.py`` | what an empty slot's own wording may name: the Area's name, resolved once |
 | ``proposal_schemas.py`` | a proposal on the wire: the changes waiting, and the slot holding them |
 | ``verdict_schemas.py`` | a verdict on the wire, and the weaker reading a probe verdict renders |
 | ``clause_schemas.py`` | the six reason clauses on the wire, discriminated by kind |

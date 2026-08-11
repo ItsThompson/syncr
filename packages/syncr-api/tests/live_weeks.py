@@ -64,12 +64,12 @@ from syncr_domain.plan import AdjustmentKind
 from syncr_domain.proposals import BlockChange, ProposalDiff
 from syncr_domain.weeks import IsoWeek, Weekday
 from tests.live_tenants import PASSWORD, run
-from tests.plan_documents import a_block, a_document, a_zone_map, between
+from tests.plan_documents import a_block, a_document, a_slot, a_zone_map, between
 
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
 
-    from syncr_domain.identifiers import TenantId
+    from syncr_domain.identifiers import AreaId, TenantId
     from syncr_domain.plan import Block, PlanDocument
 
 BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
@@ -500,6 +500,42 @@ def append_a_full_week(database_url: str, tenant_id: TenantId, iso_week: IsoWeek
                     title=f"block {index}",
                 )
                 for index in range(BLOCKS_IN_A_FULL_WEEK)
+            ),
+        )
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                await PlanRepository(session, tenant_id).append(
+                    document=stored_document(document),
+                    objective_breakdown={},
+                    status="applied",
+                    reason="horizon_advanced",
+                    weight_set_version=1,
+                    input_version=1,
+                    created_at=datetime.now(UTC),
+                )
+        finally:
+            await database.engine.dispose()
+
+    run(append())
+
+
+def append_a_week_with_empty_slots(
+    database_url: str, tenant_id: TenantId, iso_week: IsoWeek, *, area_id: AreaId, slots: int
+) -> None:
+    """A revision whose plan leaves that many evenings of the week unfilled, all on one Area.
+
+    Appended rather than solved: which slots a solve leaves empty is the materializer's business,
+    and what a suite reading a week back needs is a plan holding a stated number of them, charged to
+    an Area the tenant really declared.
+    """
+
+    async def append() -> None:
+        document = a_document(
+            week=iso_week,
+            empty_slots=tuple(
+                a_slot(area_id=area_id, interval=between(19, 20, day=day, week=iso_week))
+                for day in range(slots)
             ),
         )
         database = create_database(database_url)

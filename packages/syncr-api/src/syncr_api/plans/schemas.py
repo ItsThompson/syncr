@@ -227,7 +227,11 @@ class WeekViewResponse(WireModel):
             iso_week=str(view.iso_week),
             span=WireSpan.of(view.span),
             zone_by_date={day.isoformat(): zone for day, zone in sorted(view.zone_by_date.items())},
-            live=None if view.live is None else PlanDocumentResponse.of(view.live),
+            live=(
+                None
+                if view.live is None
+                else PlanDocumentResponse.of(view.live, area_names=view.area_names)
+            ),
             empty_reason=None if view.empty is None else view.empty.reason,
             empty_week=None if view.empty is None else EmptyWeekResponse.of(view.empty),
             proposal=(None if view.proposal is None else ProposalDiffResponse.of(view.proposal)),

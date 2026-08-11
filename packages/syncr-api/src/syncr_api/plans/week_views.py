@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     )
     from syncr_api.solving.records import OperationRecord
     from syncr_domain.feasibility import Verdict
-    from syncr_domain.identifiers import OperationId
+    from syncr_domain.identifiers import AreaId, OperationId
     from syncr_domain.intervals import Interval
     from syncr_domain.plan import PlanDocument
     from syncr_domain.proposals import ProposalDiff
@@ -51,12 +51,17 @@ class WeekView:
     but additions, every one of which is a fill the authority rule applies without asking. So a
     first solve of a planless week appends a revision and leaves the slot alone, and nothing gates
     the two fields together because no state exercises the asymmetry.
+
+    ``area_names`` names every Area this tenant holds. The plan charges its blocks and its gaps to
+    Areas by identifier and a name is the user's own word for one, so the words travel beside the
+    document rather than inside it: one read of the rows names every gap in the week.
     """
 
     iso_week: IsoWeek
     span: Interval
     zone_by_date: Mapping[Date, ZoneId]
     live: PlanDocument | None
+    area_names: Mapping[AreaId, str]
     empty: EmptyWeek | None
     proposal: ProposalDiff | None
     candidate_adjustment: WeekAdjustmentRecord | None

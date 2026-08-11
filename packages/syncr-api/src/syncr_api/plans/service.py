@@ -51,7 +51,9 @@ query parameter.
 
 **A week with no plan costs two extra reads**, the minimum inputs, and neither is on the path a week
 WITH a plan takes. The home zone the horizon is resolved in is not among them: it rides on the
-budget's view beside the zones, from the one read of the profile that both come from.
+budget's view beside the zones, from the one read of the profile that both come from. The Areas'
+names are there for the same reason and at the same price: a gap in the week is stated in terms of
+the Area it was offered to, and the budget's denominator has already read the rows the words are on.
 
 **A week whose pending slot is empty or stale costs a whole assembly**, which is the dominant cost
 of this read when it is paid. It is what a live verdict is computed from, and the alternative is a
@@ -191,6 +193,7 @@ class WeekService:
             span=budget.span,
             zone_by_date=budget.zone_by_date,
             live=document,
+            area_names=budget.area_names,
             empty=None if document is not None else await self._why_empty(week, budget, now=now),
             proposal=None if held is None else read_proposal_diff(held.proposal_diff, week),
             candidate_adjustment=None if held is None else awaiting_approval(held),

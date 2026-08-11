@@ -19,6 +19,11 @@ wire.** None has a field on the domain value, because a stored id is a cache of 
 origin is a second reading of a binding kind. On the wire they are what a client pairs a selection,
 a drag, and an outcome on, so they are rendered from the derivation rather than asking every client
 to repeat it.
+
+**An empty slot names an Area, and what that Area is CALLED is not in the document.** A name is the
+user's own word for a row they may rename, and a stored week is a fact about that week, so the name
+is resolved here against the Areas this response was read with. ``slot_contexts.py`` holds that
+resolution and the refusal it raises when the two do not cover each other.
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ from pydantic import Field
 
 from syncr_api.core.schemas import WireModel, WireSpan
 from syncr_api.plans.clause_schemas import ReasonResponse
+from syncr_api.plans.slot_contexts import slot_context
 
 # Runtime imports: each is a closed vocabulary a response field is annotated with, and pydantic
 # resolves those annotations while the app is being built.
@@ -37,7 +43,10 @@ from syncr_domain.gaps import EmptySlotReason, ForbiddenKind, ForbiddenScope  # 
 from syncr_domain.identity import BindingKind, Origin  # noqa: TC001
 
 if TYPE_CHECKING:
-    from syncr_domain.gaps import EmptySlot, ForbiddenWindow
+    from collections.abc import Mapping
+
+    from syncr_domain.gaps import EmptySlot, ForbiddenWindow, SlotContext
+    from syncr_domain.identifiers import AreaId
     from syncr_domain.identity import BindingRef
     from syncr_domain.plan import Block, PlanDocument
 
@@ -143,7 +152,13 @@ class EmptySlotResponse(WireModel):
     reason: EmptySlotReason = Field(description="Why the slot holds nothing.")
 
     @classmethod
-    def of(cls, slot: EmptySlot) -> Self:
+    def of(cls, slot: EmptySlot, context: SlotContext) -> Self:
+        """One empty slot on the wire, beside what a wording about it may name.
+
+        ``context`` carries what the slot itself cannot: the name of the Area it is charged to,
+        which :func:`syncr_domain.gaps.gutter_label` substitutes into the wordings that name one.
+        It is resolved per slot by the caller, from one read, rather than looked up here.
+        """
         return cls(interval=WireSpan.of(slot.interval), area_id=slot.area_id, reason=slot.reason)
 
 
@@ -165,11 +180,15 @@ class PlanDocumentResponse(WireModel):
     )
 
     @classmethod
-    def of(cls, document: PlanDocument) -> Self:
+    def of(cls, document: PlanDocument, *, area_names: Mapping[AreaId, str]) -> Self:
         """The wire shape of one rebuilt document, in the order the domain holds it.
 
         The zone mapping is emitted in date order rather than in the order the document's keys
         happened to arrive, so two reads of one week are byte-identical.
+
+        ``area_names`` names every Area this tenant holds, and each empty slot resolves its own
+        against it: one read of the rows answers every gap in the week, and a slot charged to an
+        Area the mapping does not name is refused rather than answered.
         """
         return cls(
             iso_week=str(document.iso_week),
@@ -180,6 +199,9 @@ class PlanDocumentResponse(WireModel):
             forbidden_windows=[
                 ForbiddenWindowResponse.of(window) for window in document.forbidden_windows
             ],
-            empty_slots=[EmptySlotResponse.of(slot) for slot in document.empty_slots],
+            empty_slots=[
+                EmptySlotResponse.of(slot, slot_context(slot, area_names))
+                for slot in document.empty_slots
+            ],
             adjustments=list(document.adjustments),
         )
