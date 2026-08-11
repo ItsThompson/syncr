@@ -153,8 +153,8 @@ def _stated_past(
     The other two directions keep the wider reading, because both are about a block the LIVE plan
     holds: dropping or moving one is a rewrite whatever its elapsed length. So what this costs is a
     block beginning exactly now reaching the plan of record without appearing in a class, which is
-    one instant of drift against a week that could not solve at all. Aligning the two boundaries
-    properly is filed as ticket 1401.
+    one instant of drift against a week that could not solve at all. The two boundaries are still
+    not aligned, and no test in this package would notice if this one moved.
     """
     return [one for one in restated.keys() - settled.keys() if has_elapsed(restated[one], now)]
 

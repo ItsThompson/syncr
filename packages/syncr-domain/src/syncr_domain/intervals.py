@@ -129,10 +129,10 @@ def has_elapsed(interval: Interval, now: Instant) -> bool:
     Exclusive, so an interval opening exactly at ``now`` has spent none of itself.
 
     **The pair disagrees at exactly one instant, and both readings are load-bearing there.**
-    At an interval's own start there is nothing spent for a record to account for, and there
-    is also nothing left for a decision to change. A rule about what a record may state takes
-    this reading; a rule about what may still be decided takes :func:`has_started`. One
-    predicate serving both makes one of the two rules wrong at that instant.
+    At an interval's own start there is nothing spent for a record to account for, and it is also no
+    longer a change the product may make. A rule about what a record may state takes this reading; a
+    rule about what may still be decided takes :func:`has_started`. One predicate serving both makes
+    one of the two rules wrong at that instant.
     """
     return interval.start < now
 
