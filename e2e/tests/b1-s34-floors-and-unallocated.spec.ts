@@ -22,7 +22,7 @@
 import { test, expect, usingFixture } from "./harness.ts";
 import type { Verdict } from "../src/api/schemas.ts";
 import { currentWeek, planWeek } from "../src/harness/subject-weeks.ts";
-import { solveAndSettle, weekView } from "../src/harness/week.ts";
+import { pendingProposal, solveAndSettle, weekView } from "../src/harness/week.ts";
 import {
   CAREER_FLOOR_MINUTES,
   DEADLINE_TASK,
@@ -49,10 +49,11 @@ usingFixture("tight_capacity");
 /* Every figure a floor reservation can move. Compared as one value, so a case asserting "unchanged"
  * cannot pass by looking at the one field that happened not to move.
  *
- * THE CONCESSIONS ARE NOT IN HERE, and the reason is a difference between two surfaces rather than a
- * field that does not matter. A week's read answers the offers beside the verdict; the pin route answers
- * a bare probe verdict and enumerates none, so a comparison over all four fields reports that difference
- * as though the pin had caused it. `withOffers` is what compares two readings from the same surface. */
+ * THE CONCESSIONS ARE NOT IN HERE, and the reason is a difference between two readings rather than a
+ * field that does not matter. A week's read answers the offers beside the verdict while no pending
+ * proposal is current; the pin route answers a bare probe verdict and enumerates none. So a comparison
+ * over all four fields reports that difference as though the pin had caused it. `withOffers` is what
+ * compares two readings that came from the same place, and the pin case asserts that they did. */
 const comparable = (verdict: Verdict | null): string =>
   JSON.stringify({
     capacityIsSufficient: verdict?.capacityIsSufficient,
@@ -65,6 +66,10 @@ const withOffers = (verdict: Verdict | null): string =>
   JSON.stringify({ verdict: comparable(verdict), tradeoffs: verdict?.tradeoffs });
 
 const FLOOR_KINDS: readonly string[] = ["floors_exceed_capacity", "area_floor_unreachable"];
+
+/** One interval in minutes. B1's own cases compute this inline and are left untouched. */
+const spanMinutes = (span: { readonly start: string; readonly end: string }): number =>
+  (Date.parse(span.end) - Date.parse(span.start)) / 60_000;
 
 /** `5h`, `1h20m`, `45m`, `0m`: the one rendering the domain gives a duration wherever it names one. */
 const renderedMinutes = (rendered: string): number => {
@@ -126,6 +131,20 @@ test("the tight-capacity week owes more before its deadline than it can hold, be
     "the week holds placed content, so this week has already been solved",
   ).toEqual([]);
   expect(seeded.verdict!.discretionaryMinutes).toBe(DISCRETIONARY_MINUTES);
+
+  // And the week declares the slot time the figure above is pinned against, crossed against the product
+  // rather than against the fixture alone: an unsolved week draws every slot it holds as an empty one, so a
+  // shape that stopped covering all seven days would leave the fixture's arithmetic saying 1260 while the
+  // week declared less. That route to staleness is invisible to the pin, which compares two figures the
+  // fixture derives.
+  const declaredSlotMinutes = seeded.live!.emptySlots.reduce(
+    (total, slot) => total + spanMinutes(slot.interval),
+    0,
+  );
+  expect(
+    declaredSlotMinutes,
+    "the week declares a different amount of slot time from the fixture's own arithmetic",
+  ).toBe(SLOT_MINUTES_A_WEEK);
 
   // THE OBSERVATION: one gap, and it is the deadline's. The whole set is compared rather than searched,
   // so a floor shortfall appearing here fails instead of hiding behind the one being looked for.
@@ -279,6 +298,19 @@ test("B1 pinning an already-placed block leaves the verdict unchanged", async ({
 
   expect(comparable(pinned.verdict)).toBe(reading);
   const after = await weekView(api, week);
+
+  // THE BRANCH THIS READ CAME FROM, ASSERTED RATHER THAN ASSUMED. A week's read serves the pending
+  // proposal's stored verdict while one is current, and a stored verdict carries whatever the solve wrote,
+  // which is no concessions; only the other branch enumerates them. The pin schedules a re-solve that
+  // leaves such a proposal a few seconds later, so the comparison below is over one branch on both sides
+  // only while that has not landed. Measured at about five seconds; a run that arrives here after it fails
+  // HERE, naming the cause, rather than at a comparison that would read as the pin having moved the
+  // verdict.
+  expect(
+    await pendingProposal(api, week),
+    "the pin's re-solve has already landed, so this read serves its stored verdict and enumerates no " +
+      "concessions: the comparison below would blame the pin for a difference between two branches",
+  ).toBeNull();
   expect(withOffers(after.verdict)).toBe(offered);
 });
 

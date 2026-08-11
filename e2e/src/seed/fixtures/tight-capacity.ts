@@ -81,13 +81,17 @@ export const DISCRETIONARY_MINUTES = 7 * DISCRETIONARY_MINUTES_A_DAY;
 /** The deadline task's own minimum chunk, which is the smallest placement that can close its gap. */
 const CHUNK_MINUTES = 90;
 
-/* One slot per discretionary window, both the same length, so the week's declared slot time follows from
- * the two of them rather than from a figure written beside them. */
+/* The slots, as the list the seed iterates rather than as calls beside a count. What the week declares
+ * follows from the list, so a slot added to it moves the figure the scenarios pin instead of leaving a
+ * second number for a reader to keep in step by hand. */
 const SLOT_MINUTES = 90;
-const SLOTS_A_DAY = 2;
+const SLOTS = [
+  { area: "Career", targetTime: "07:00:00" },
+  { area: "Fitness", targetTime: "20:30:00" },
+] as const;
 
 /** The Area slot time the week declares: what the floors are met through. */
-export const SLOT_MINUTES_A_WEEK = 7 * SLOTS_A_DAY * SLOT_MINUTES;
+export const SLOT_MINUTES_A_WEEK = 7 * SLOTS.length * SLOT_MINUTES;
 
 /** Which day of the plan week the deadline falls on, mid-week so that days precede it and follow it. */
 const DEADLINE_WEEKDAY = WEDNESDAY;
@@ -120,16 +124,13 @@ export const seedTightCapacity = async (client: ApiClient): Promise<void> => {
   });
 
   // The slots the floors are met through, one per discretionary window.
-  await declareSlot(client, templateId, {
-    areaId: areas.Career!,
-    targetTime: "07:00:00",
-    durationMinutes: SLOT_MINUTES,
-  });
-  await declareSlot(client, templateId, {
-    areaId: areas.Fitness!,
-    targetTime: "20:30:00",
-    durationMinutes: SLOT_MINUTES,
-  });
+  for (const slot of SLOTS) {
+    await declareSlot(client, templateId, {
+      areaId: areas[slot.area]!,
+      targetTime: slot.targetTime,
+      durationMinutes: SLOT_MINUTES,
+    });
+  }
 
   // Enough content per Area to fill every one of its slots, so a solved week's floors are met.
   await declareTask(client, {
