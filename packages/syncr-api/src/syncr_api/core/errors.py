@@ -15,15 +15,15 @@ it names the capabilities that survive.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from syncr_common.health import RETRY_AFTER_SECONDS
 from syncr_common.logging import current_correlation_id
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
 PROBLEM_JSON_MEDIA_TYPE = "application/problem+json"
 
@@ -35,10 +35,24 @@ class FieldError(BaseModel):
     message: str
 
 
+def _publish_the_declared_types(field_schema: dict[str, Any]) -> None:
+    """Give the ``type`` field its vocabulary when the schema is generated.
+
+    Deferred to generation time because the walk cannot run where the field is declared: the
+    classes that declare a type are all below it, and some are in modules this one does not
+    import. Pydantic calls this while building the JSON schema, by which point the
+    application has imported every one of them.
+    """
+    field_schema["enum"] = declared_problem_types()
+
+
 class Problem(BaseModel):
     """RFC 9457 problem details. Optional members are omitted from the wire."""
 
-    type: str
+    # A string rather than an enum, because one type a caller can receive is declared by no
+    # class: the handler for a status no subclass claims renders GENERIC_HTTP_ERROR_TYPE. So
+    # the vocabulary is published in the schema rather than enforced here.
+    type: str = Field(json_schema_extra=_publish_the_declared_types)
     title: str
     status: int
     detail: str
@@ -193,3 +207,21 @@ ERROR_BY_STATUS: dict[int, type[SyncrError]] = {
 
 GENERIC_HTTP_ERROR_TYPE = "syncr:http-error"
 GENERIC_HTTP_ERROR_TITLE = "HTTP error"
+
+
+def _descendants(root: type[SyncrError]) -> Iterator[type[SyncrError]]:
+    """Every subclass of ``root``, at any depth."""
+    for subclass in root.__subclasses__():
+        yield subclass
+        yield from _descendants(subclass)
+
+
+def declared_problem_types() -> list[str]:
+    """Every wire ``type`` the error hierarchy declares, sorted.
+
+    Walked rather than listed, so a new subclass reaches the published contract by existing.
+    A subclass that declares none sends its parent's, which is already a member.
+    """
+    return sorted(
+        {subclass.type for subclass in _descendants(SyncrError) if "type" in vars(subclass)}
+    )

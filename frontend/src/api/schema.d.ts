@@ -4361,8 +4361,11 @@ export interface components {
             status: number;
             /** Title */
             title: string;
-            /** Type */
-            type: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "syncr:conflict" | "syncr:dependency-unavailable" | "syncr:forbidden" | "syncr:idempotency-request-in-flight" | "syncr:internal-error" | "syncr:malformed-request" | "syncr:not-found" | "syncr:oauth-invalid-client" | "syncr:oauth-invalid-grant" | "syncr:oauth-invalid-request" | "syncr:oauth-invalid-token" | "syncr:oauth-unsupported-grant-type" | "syncr:origin-rejected" | "syncr:rate-limited" | "syncr:unauthorized" | "syncr:validation-failed";
         };
         /**
          * ProjectCreateRequest
