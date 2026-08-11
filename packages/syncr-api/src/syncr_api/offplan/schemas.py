@@ -27,7 +27,8 @@ comparable user-authored name in the product refuses the empty string the same w
 sibling being ``calendars.CalendarSourcePatchRequest.display_name``, which is also nullable and
 optional. Whether a whitespace-only value should be stripped, refused, or read as ``null`` is a
 different question, and it is deliberately not answered here: it is one policy for every text field
-on the wire, and ticket 1135 owns deciding it once in ``core/schemas.py``.
+on the wire, so it belongs beside the other shared wire readings in ``core/schemas.py`` rather than
+in this module.
 """
 
 from __future__ import annotations
