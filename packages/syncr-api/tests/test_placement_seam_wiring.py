@@ -20,6 +20,10 @@ What escapes this: a reader reached through an alias, a ``getattr`` or a subclas
 wired inside a helper that returns the reader rather than constructing it at the keyword; and any
 false sentence about the seam that is not one of the statements named below. What it catches is the
 ordinary way this goes wrong, which is a stub wired back in and a docstring left describing it.
+
+**Two shapes a stub takes in a suite are refused here as well**: a class defined in front of the
+reader's own name, and a fixture whose body does nothing, which any number of signatures can declare
+while nothing happens. Neither is visible to the suite that holds it.
 """
 
 from __future__ import annotations
@@ -154,6 +158,46 @@ def classes_named(name: str, roots: Iterable[Path]) -> frozenset[Path]:
     return frozenset(found)
 
 
+def no_op_fixtures(roots: Iterable[Path]) -> frozenset[tuple[Path, str]]:
+    """Every fixture under ``roots`` whose body does nothing at all.
+
+    A docstring, a ``pass`` or an ellipsis is a body that runs and changes nothing, so the
+    parameters such a fixture declares are the whole of it and a case declaring the fixture gets no
+    behaviour.
+    """
+    found: list[tuple[Path, str]] = []
+    for root in roots:
+        for path in sorted(root.rglob("*.py")):
+            found.extend(
+                (path, node.name)
+                for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+                and _is_a_fixture(node)
+                and _does_nothing(node)
+            )
+    return frozenset(found)
+
+
+def _is_a_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Whether pytest will treat this function as a fixture, under either decorator spelling."""
+    for one in node.decorator_list:
+        named = one.func if isinstance(one, ast.Call) else one
+        if isinstance(named, ast.Attribute) and named.attr == "fixture":
+            return True
+        if isinstance(named, ast.Name) and named.id == "fixture":
+            return True
+    return False
+
+
+def _does_nothing(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Whether every statement of this body is a bare constant or a ``pass``."""
+    return all(
+        isinstance(one, ast.Pass)
+        or (isinstance(one, ast.Expr) and isinstance(one.value, ast.Constant))
+        for one in node.body
+    )
+
+
 def test_the_one_composition_of_the_assembler_wires_the_stored_reader(source_root: Path) -> None:
     """The wiring, as an exact mapping, so a second composition is a diff a reviewer reads.
 
@@ -273,3 +317,31 @@ def test_the_class_scan_sees_a_definition_and_ignores_a_use(tmp_path: Path) -> N
     )
 
     assert classes_named(PRODUCTION_READER, (root,)) == {root / "test_defines_one.py"}
+
+
+def test_no_fixture_of_this_member_has_a_body_that_does_nothing() -> None:
+    """The other shape: a fixture a signature declares and that substitutes nothing when it runs."""
+    idle = no_op_fixtures((MEMBER / "tests",))
+
+    assert idle == frozenset(), (
+        f"{sorted((str(path), name) for path, name in idle)} run and change nothing, so a case can "
+        "declare one and get no behaviour. A fixture that only composes others returns or yields "
+        "what it composed."
+    )
+
+
+def test_the_fixture_reading_sees_an_empty_body_and_leaves_a_working_one(tmp_path: Path) -> None:
+    """Its control, both ways, and over both decorator spellings pytest accepts."""
+    (tmp_path / "test_idle.py").write_text(
+        "import pytest\nfrom pytest import fixture\n\n\n"
+        '@pytest.fixture\ndef says_only_this() -> None:\n    """A docstring and no body."""\n\n\n'
+        "@fixture()\ndef passes() -> None:\n    pass\n\n\n"
+        "@pytest.fixture\ndef reads_something() -> int:\n    return 1\n\n\n"
+        "def not_a_fixture() -> None:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    assert no_op_fixtures((tmp_path,)) == {
+        (tmp_path / "test_idle.py", "says_only_this"),
+        (tmp_path / "test_idle.py", "passes"),
+    }
