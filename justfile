@@ -687,7 +687,7 @@ lint-frontend:
     cd frontend
     failed=0
     ran=0
-    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels lint:imports lint:bundle lint:contrast lint:render; do
+    for check in lint:js lint:css lint:format lint:tokens lint:markup lint:channels lint:imports lint:contract lint:bundle lint:contrast lint:render; do
       echo "--- $check"
       ran=$((ran + 1))
       npm run --silent "$check" || failed=1

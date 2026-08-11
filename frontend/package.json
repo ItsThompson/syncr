@@ -23,6 +23,7 @@
     "lint:markup": "node scripts/lint-markup/cli.ts",
     "lint:channels": "node scripts/check-channels/cli.ts",
     "lint:imports": "node scripts/check-imports/cli.ts",
+    "lint:contract": "node scripts/check-contract/cli.ts",
     "lint:bundle": "node scripts/check-bundle/cli.ts",
     "lint:contrast": "node scripts/audit-contrast/cli.ts",
     "lint:render": "node scripts/check-render/cli.ts"
