@@ -28,6 +28,7 @@ from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 from pydantic import ConfigDict, Field, field_validator
 
 from syncr_api.core.schemas import WireModel
+from syncr_api.plans.entry_content import THE_FRAME_PLACES_A_ROUTINE
 from syncr_api.templates.declarations import ConcreteEntry, SlotEntry
 from syncr_domain.snap import SNAP_MINUTES
 from syncr_domain.templates import (
@@ -64,6 +65,11 @@ BINDING_TARGET_DESCRIPTION = (
     "Which table bindingRef names. A routine and a habit are separate tables, so the "
     "identifier alone does not say which to read."
 )
+STATEMENT_DESCRIPTION = (
+    "What the author is told about this entry, or null when there is nothing to say. Present on "
+    "an entry naming a routine, because the frame places that routine and the entry's own time "
+    "places nothing: a declaration nothing materializes is stated rather than silently ignored."
+)
 
 _NOT_NULLABLE_MESSAGE = (
     "this field cannot be cleared, so null is refused rather than read as no change. "
@@ -92,11 +98,16 @@ class TemplateEntryResponse(WireModel):
         description="The routine or habit a concrete entry names. Null on a slot, which binds "
         "its content at solve time."
     )
+    statement: str | None = Field(default=None, description=STATEMENT_DESCRIPTION)
 
     @classmethod
     def of(cls, record: TemplateEntryRecord) -> Self:
         """A stored entry as this shape. On the schema so the two routes that answer with an
-        entry -- this package's, and the promotion accept that moves one -- map it one way."""
+        entry -- this package's, and the promotion accept that moves one -- map it one way.
+
+        The statement is the charge rule's own sentence, imported from where the charge is decided,
+        so the words the author reads and the rule the assembly applies cannot drift apart.
+        """
         return cls(
             id=record.id,
             kind=record.kind,
@@ -106,6 +117,11 @@ class TemplateEntryResponse(WireModel):
             area_id=record.area_id,
             binding_target=record.binding_target,
             binding_ref=record.binding_ref,
+            statement=(
+                THE_FRAME_PLACES_A_ROUTINE
+                if record.binding_target is BindingTarget.ROUTINE
+                else None
+            ),
         )
 
 
@@ -140,7 +156,9 @@ class ConcreteEntryRequest(_EntrySpanFields):
     area_id: UUID | None = Field(
         default=None,
         description="Optional, and a statement about reporting rather than about content: the "
-        "routine or habit this entry names already says what happens.",
+        "routine or habit this entry names already says what happens. On an entry naming a "
+        "routine it reports nothing at all: the frame places that routine and its minutes "
+        "belong to the frame.",
     )
 
     def declaration(self) -> ConcreteEntry:

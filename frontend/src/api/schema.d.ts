@@ -2978,7 +2978,7 @@ export interface components {
         ConcreteEntryRequest: {
             /**
              * Areaid
-             * @description Optional, and a statement about reporting rather than about content: the routine or habit this entry names already says what happens.
+             * @description Optional, and a statement about reporting rather than about content: the routine or habit this entry names already says what happens. On an entry naming a routine it reports nothing at all: the frame places that routine and its minutes belong to the frame.
              */
             areaId?: string | null;
             /**
@@ -5515,6 +5515,11 @@ export interface components {
              */
             id: string;
             kind: components["schemas"]["TemplateEntryKind"];
+            /**
+             * Statement
+             * @description What the author is told about this entry, or null when there is nothing to say. Present on an entry naming a routine, because the frame places that routine and the entry's own time places nothing: a declaration nothing materializes is stated rather than silently ignored.
+             */
+            statement?: string | null;
             /**
              * Targettime
              * Format: time

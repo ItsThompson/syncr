@@ -552,6 +552,53 @@ def test_a_span_off_the_grid_is_refused_and_names_its_field(
     assert entry_rows(live_database_url, owner.tenant_id) == []
 
 
+def test_declaring_an_entry_that_names_a_routine_is_answered_with_the_frame(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # The declaration is accepted and stored, and nothing will ever place it: the frame places that
+    # routine at its own target time. So the response says so through the real route rather than
+    # leaving the author a warning log line in the assembly as the only evidence.
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+
+    declared = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+    moved = http.patch(
+        f"{TEMPLATES}/{shape}/entries/{declared.json()['id']}",
+        json={"targetTime": "06:45:00"},
+        headers=signed_in,
+    )
+
+    assert declared.status_code == HTTPStatus.CREATED, declared.text
+    assert moved.status_code == HTTPStatus.OK, moved.text
+    for answered in (declared, moved):
+        statement = answered.json()["statement"]
+        assert "frame" in statement, statement
+        assert "target time" in statement, statement
+    assert len(entry_rows(live_database_url, owner.tenant_id)) == 1
+
+
+def test_declaring_an_entry_that_names_a_habit_is_answered_with_nothing_to_say(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    # The control on the other edge, through the same route: a habit-bound entry materializes at the
+    # time it declares, so there is nothing for the boundary to correct.
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+
+    declared = http.post(
+        f"{TEMPLATES}/{shape}/entries",
+        json={**A_CONCRETE_ENTRY, "bindingTarget": "habit"},
+        headers=signed_in,
+    )
+
+    assert declared.status_code == HTTPStatus.CREATED, declared.text
+    assert declared.json()["statement"] is None
+    assert (
+        http.get(f"{TEMPLATES}/{shape}", headers=signed_in).json()["entries"][0]["statement"]
+        is None
+    )
+
+
 def test_an_entry_moves_and_keeps_what_it_holds(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:

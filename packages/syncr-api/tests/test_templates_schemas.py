@@ -17,6 +17,7 @@ from uuid import uuid4
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from syncr_api.plans.entry_content import THE_FRAME_PLACES_A_ROUTINE
 from syncr_api.templates.entry_schemas import (
     ConcreteEntryRequest,
     EntryPatchRequest,
@@ -32,6 +33,7 @@ from syncr_api.templates.schemas import (
 )
 from syncr_domain.templates import BindingTarget, TemplateEntryKind, WeekPattern
 from syncr_domain.weeks import Weekday
+from tests.assembly_fakes import a_concrete_entry, a_slot_entry
 
 REQUESTS: tuple[type[BaseModel], ...] = (
     DayTypeCreateRequest,
@@ -142,3 +144,36 @@ def test_no_shape_says_anything_about_a_pin() -> None:
 
     for shape in shapes:
         assert not [field for field in shape.model_fields if "pin" in field.lower()]
+
+
+def test_an_entry_naming_a_routine_is_answered_with_the_rule_the_charge_applies() -> None:
+    # The author declared a time nothing will place, so the response says what places the routine
+    # instead of leaving a warning log line as the only evidence. The sentence is defined where the
+    # charge is decided and served here, so the words a reader gets and the rule the assembly
+    # applies are one string.
+    entry = a_concrete_entry(
+        template_id=uuid4(),
+        target=BindingTarget.ROUTINE,
+        entity_id=uuid4(),
+        area_id=uuid4(),
+    )
+
+    statement = TemplateEntryResponse.of(entry).statement
+
+    assert statement == THE_FRAME_PLACES_A_ROUTINE
+    assert statement is not None
+    assert "frame" in statement
+    assert "target time" in statement
+    assert "charge" in statement
+
+
+def test_no_other_entry_carries_a_statement() -> None:
+    # The control on the other edge: the field is null wherever there is nothing to say, so a
+    # sentence asserted above cannot be one every entry gets.
+    habit_bound = a_concrete_entry(
+        template_id=uuid4(), target=BindingTarget.HABIT, entity_id=uuid4()
+    )
+    slot = a_slot_entry(template_id=uuid4(), area_id=uuid4())
+
+    assert TemplateEntryResponse.of(habit_bound).statement is None
+    assert TemplateEntryResponse.of(slot).statement is None

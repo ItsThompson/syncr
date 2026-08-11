@@ -2359,7 +2359,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional, and a statement about reporting rather than about content: the routine or habit this entry names already says what happens.",
+            "description": "Optional, and a statement about reporting rather than about content: the routine or habit this entry names already says what happens. On an entry naming a routine it reports nothing at all: the frame places that routine and its minutes belong to the frame.",
             "title": "Areaid"
           },
           "bindingRef": {
@@ -6917,6 +6917,18 @@
           },
           "kind": {
             "$ref": "#/components/schemas/TemplateEntryKind"
+          },
+          "statement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the author is told about this entry, or null when there is nothing to say. Present on an entry naming a routine, because the frame places that routine and the entry's own time places nothing: a declaration nothing materializes is stated rather than silently ignored.",
+            "title": "Statement"
           },
           "targetTime": {
             "description": "Wall time, no zone: 07:00 means 07:00 wherever the user is, resolved against the zone active on the date it materializes for. Lands on a 15-minute step of the grid, because the entry is fixed by derivation and nothing moves it onto the grid later.",
