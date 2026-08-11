@@ -88,7 +88,7 @@ DECIDES_WITHOUT_THE_STATEMENT: Final = {
     ),
     "syncr_domain.preferences": (
         "states both halves itself for a preferred window's bounds, which is the same rule in "
-        "its own words on a shape the statement does not reach yet"
+        "its own words on a shape this statement does not reach"
     ),
     "syncr_api.preferences.schemas": "the same, at the boundary that answers 422 for a window",
     "syncr_api.calendars.ics_values": (
