@@ -10,9 +10,14 @@ is shorter because it is also a legend entry beside a pie wedge.
 which is what a non-splittable task needs: an atomic task larger than a week can never be
 placed at all, so accepting one would store a task that is silently unschedulable forever. A
 splittable task genuinely larger than a week is a Project's worth of work and is expressed as
-several tasks inside one, which is what a Project is for. The figure is 168 hours for the same
-reason ``FLOOR_HOURS_MAX`` is: it rejects nonsense rather than describing a real week, and a
-real week is 167 or 169 hours whenever a zone transitions.
+several tasks inside one, which is what a Project is for. **Its failure is a reading rather than
+a placement**: it is placeable a chunk at a time and still owes more than a nominal week's whole
+capacity, so while it carries a deadline every verdict raises a ``DEADLINE_CAPACITY`` gap against
+it and :func:`syncr_api.plans.at_risk.tasks_at_risk` marks it at risk week after week, which
+leaves the backlog unable to tell it apart from a task in real trouble. Several tasks in one
+Project are asked that question one at a time, and each of those answers can change. The figure
+is 168 hours for the same reason ``FLOOR_HOURS_MAX`` is: it rejects nonsense rather than
+describing a real week, and a real week is 167 or 169 hours whenever a zone transitions.
 
 **Neither minute bound is a multiple of the grid step**, and that is deliberate. The snap grid
 governs the instants a placement starts and ends on, not the physics a task declares:
