@@ -229,8 +229,8 @@ describe("a calendar source", () => {
   });
 });
 
-/* THE SLEEP FLOOR'S ONE HOME. The hook is a routine edit rather than a sleep-floor edit, because the floor is a
- * field on every routine; what makes it the sleep floor is which routine the screen names. */
+/* A FLOOR'S ONE HOME. The hook is a routine edit and takes the routine it is addressed to, because the floor is a
+ * field on every routine and no routine carries a marker singling it out. */
 describe("useRoutineEdit", () => {
   it("patches the routine it was given", async () => {
     const write = recordingHandler("patch", `/api/v1/routines/${ROUTINE_SLEEP}`, {

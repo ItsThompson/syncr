@@ -3,10 +3,9 @@
  * The list is read for one reason, which is that a concrete template entry names a routine or a habit and
  * the form offering that choice needs both lists by name.
  *
- * THE EDIT IS GENERIC AND ITS ONE CALLER IS NOT. `PATCH /api/v1/routines/{id}` is where the sleep floor
- * lives, as `minDurationMinutes`, and the Settings screen renders a control labeled as the sleep floor that
- * calls it. The hook stays a routine edit rather than becoming a sleep-floor edit, because the floor is a
- * field on every routine and naming one caller in the hook would put the screen's framing in the api layer.
+ * THE EDIT IS GENERIC AND SO IS ITS CALLER. `PATCH /api/v1/routines/{id}` is where a routine's floor lives,
+ * as `minDurationMinutes`, and the Settings screen renders one control per routine that calls it. The floor is
+ * a field on every routine, so naming a routine in this layer would put a screen's framing in the api layer.
  * There is no settings field for the value and there is no second write here that could become one. */
 
 import useSWR, { useSWRConfig } from "swr";
@@ -33,8 +32,8 @@ export function useRoutines(): Resource<readonly Routine[]> {
 /**
  * Changing one routine's span. The list is the only key it invalidates, because the list is the only read.
  *
- * `null` is a real argument: a screen offering the sleep floor before the sleep routine has been declared
- * has no row to patch, and a control that did nothing and said nothing would be worse than the refusal.
+ * `null` is a real argument: a caller that renders the control before it has a routine to address has no
+ * row to patch, and a control that did nothing and said nothing would be worse than the refusal.
  */
 export function useRoutineEdit(routineId: string | null): Write<RoutinePatchBody> {
   const { mutate } = useSWRConfig();
