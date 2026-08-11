@@ -24,6 +24,6 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "scripts", "vite.config.ts"],
+  "include": ["src", "scripts", "probe", "vite.config.ts"],
   "exclude": ["**/__fixtures__/**"]
 }
