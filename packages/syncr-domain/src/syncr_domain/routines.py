@@ -32,8 +32,10 @@ occurrence, and its clamp to the minimum, are the week assembler's (ticket 25).
 The target names a time of day and nothing else. A value carrying an offset is refused, and
 so is one carrying seconds: an offset would be dropped by any store whose column has no
 zone, leaving the frame an hour out with nothing to say so, and every duration here is a
-count of minutes, so a span starting mid-minute could not be one of them. The rule is on the
-span rather than only at an HTTP boundary, so it holds for every writer.
+count of minutes, so a span starting mid-minute could not be one of them. Which values those
+are is :func:`syncr_domain.snap.not_a_wall_time`'s to say, so the shapes a template entry
+and a day bound refuse are the shapes refused here. The rule is on the span rather than only
+at an HTTP boundary, so it holds for every writer.
 
 ## A duration is elapsed minutes, so a transition does not change it
 
@@ -69,6 +71,7 @@ from typing import TYPE_CHECKING, Final
 
 from syncr_domain.errors import DomainError
 from syncr_domain.intervals import Interval
+from syncr_domain.snap import NotAWallTime, not_a_wall_time
 from syncr_domain.zones import to_instant
 
 if TYPE_CHECKING:
@@ -127,13 +130,14 @@ class RoutineSpan:
     flex_band_minutes: int
 
     def __post_init__(self) -> None:
-        if self.target_time.tzinfo is not None:
+        broken = not_a_wall_time(self.target_time)
+        if broken is NotAWallTime.CARRIES_A_ZONE:
             raise RoutineError(
                 SpanField.TARGET_TIME,
                 f"a target time is wall time and names no zone, got {self.target_time!r}. "
                 "The zone comes from the day the routine materializes on",
             )
-        if self.target_time.second or self.target_time.microsecond:
+        if broken is NotAWallTime.BELOW_MINUTE_RESOLUTION:
             raise RoutineError(
                 SpanField.TARGET_TIME,
                 f"a target time is minute-resolution, got {self.target_time!r}. Every "

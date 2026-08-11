@@ -21,9 +21,12 @@ into a block whose start is the target time on a date and whose end is that star
 duration, and both of those have to land on a quarter hour. The entry is fixed by derivation,
 so the solver may not move it onto the grid: an off-grid declaration would make the week
 infeasible for a reason the user never sees. :class:`EntrySpan` is therefore where the grid is
-checked, at the point where a span is first expressible. It is also where a target time carrying
-a zone is refused: the zone comes from the date the entry materializes for, and a stored target
-time holds no offset, so an offset offered here would be dropped rather than honored.
+checked, at the point where a span is first expressible. It is also where a target time that is
+not wall time is refused, and which values those are is
+:func:`syncr_domain.snap.not_a_wall_time`'s to say rather than this module's: the zone comes from
+the date the entry materializes for, and a stored target time holds no offset, so an offset
+offered here would be dropped rather than honored. A value below minute resolution is refused by
+the grid reading, because no quarter hour carries a second.
 
 :class:`WeekPattern` is the one place the seven-weekday rule lives. It is a constructor
 precondition rather than a validation step, so a partial mapping is not a pattern that fails a
@@ -37,7 +40,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.errors import DomainError
-from syncr_domain.snap import SNAP_MINUTES, is_a_snap_multiple, is_wall_time_on_snap_grid
+from syncr_domain.snap import (
+    SNAP_MINUTES,
+    NotAWallTime,
+    is_a_snap_multiple,
+    is_wall_time_on_snap_grid,
+    not_a_wall_time,
+)
 from syncr_domain.weeks import Weekday
 
 if TYPE_CHECKING:
@@ -120,7 +129,7 @@ class EntrySpan:
     flex_band_minutes: int
 
     def __post_init__(self) -> None:
-        if self.target_time.tzinfo is not None:
+        if not_a_wall_time(self.target_time) is NotAWallTime.CARRIES_A_ZONE:
             raise TemplateEntryError(
                 EntryField.TARGET_TIME,
                 f"a target time is wall time and names no zone, got {self.target_time!r}. The "
