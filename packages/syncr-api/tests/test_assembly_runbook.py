@@ -27,6 +27,7 @@ import pytest
 from syncr_api.core.db import MAX_OVERFLOW, POOL_SIZE, POOL_TIMEOUT_SECONDS
 from syncr_api.horizon import maintainer as maintainer_module
 from syncr_api.horizon.config import MaintainerDuty
+from syncr_api.plans import assembler as assembler_module
 from syncr_api.plans import injection as injection_module
 from syncr_api.plans import placements as placements_module
 from syncr_api.plans.assembler import (
@@ -39,6 +40,7 @@ from tests.repository_census import reads as defined_reads
 from tests.repository_census import repository_classes
 from tests.test_alert_rules import (
     base_family,
+    comparison_on,
     declared_labelnames,
     exported_families,
     families_in,
@@ -48,6 +50,11 @@ from tests.test_alert_rules import named as alert_named
 from tests.test_week_assembler import _awaited_collaborators
 
 RUNBOOK: Final = Path("docs/runbooks/assembly-slow.md")
+
+# The rule this runbook is the procedure for, and the family its threshold bounds. Both figures the
+# file is named after are read out of the rule rather than restated here.
+ALERT: Final = "AssemblySlow"
+ASSEMBLY_FAMILY: Final = "syncr_assembly_duration_seconds"
 
 # Read from the wiring rather than from the constructor's annotations, because an annotation names a
 # Protocol and the histogram's `repository` label carries the concrete class name.
@@ -64,7 +71,7 @@ NO_SERIES_OF_ITS_OWN: Final = {
 
 # Where a path this runbook cites is resolved from. The prose is written the way the other runbooks
 # write it, member-relative or package-relative, so a reader looking for `plans/assembler.py` finds
-# it: these are the roots that makes such a citation resolvable rather than decorative.
+# it: these are the roots that make such a citation resolvable rather than decorative.
 CITATION_ROOTS: Final = (
     Path(),
     Path("packages/syncr-api"),
@@ -76,10 +83,19 @@ CITATION_ROOTS: Final = (
 # metric, a label, a constant or a query fragment.
 CITED_SUFFIXES: Final = (".md", ".py", ".yml", ".json")
 
-_ROW = re.compile(r"^\|\s*\d+\s*\|\s*`([A-Za-z]+)\.([a-z_]+)`\s*\|")
+# The week each read of the concession table asks for, and the word the runbook's row has to tell it
+# apart with. Two rows carry one series, so prose is the only thing that distinguishes them and a
+# swap is invisible to every reading keyed on the series.
+CONCESSION_READS: Final = {"preceding": "PRECEDING", "iso_week": "this week"}
+
+_ROW = re.compile(r"^\|\s*\d+\s*\|\s*`([A-Za-z]+)\.([a-z_]+)`\s*\|(.*)\|")
 _GROUPING = re.compile(r"sum by \(([^)]*)\) \(rate\((syncr_[a-z_]+)\[")
 _CALLER = re.compile(r'caller="([a-z]+)"')
 _ASSEMBLY_SELECTOR = re.compile(r'syncr_assembly_duration_seconds_bucket\{caller="([a-z]+)"\}')
+_MILLISECONDS = re.compile(r"(\d+) ms\b")
+_HOLDS_FOR = re.compile(r"(\d+)([mh])")
+_BUDGET = re.compile(r"p95 under (\d+) ms")
+_BASIS = re.compile(r"set against a figure of ([a-z]+)")
 _WIRED_CALLER = re.compile(r"caller=AssemblyCaller\.([A-Z]+)")
 _CITATION = re.compile(r"`([\w./-]+)`")
 _ASSEMBLIES_A_DAY = re.compile(r"roughly (\d+) assemblies a day")
@@ -98,8 +114,13 @@ def one_line(text: str) -> str:
 
 def listed_reads(text: str) -> list[tuple[str, str]]:
     """The ``Class.method`` pairs the runbook's table lists, in the order it lists them."""
+    return [(name, method) for name, method, _ in listed_rows(text)]
+
+
+def listed_rows(text: str) -> list[tuple[str, str, str]]:
+    """Every row of the read table: the class, the method, and what the row says it resolves."""
     return [
-        (found.group(1), found.group(2))
+        (found.group(1), found.group(2), found.group(3).strip())
         for found in (_ROW.match(line) for line in text.splitlines())
         if found is not None
     ]
@@ -197,7 +218,12 @@ def groupings(text: str) -> list[tuple[str, frozenset[str]]]:
 
 
 def unresolvable_citations(text: str) -> list[str]:
-    """Every file the text cites that no declared root resolves."""
+    """Every file the text cites that no declared root resolves.
+
+    A token counts as a citation when it carries a directory or names a document, which is how the
+    other runbooks write one. A bare module name is not read: admitting one would make every
+    backticked word with a dot in it a path, and this file cites none that way.
+    """
     cited = [
         found
         for found in _CITATION.findall(text)
@@ -246,8 +272,99 @@ def assemblies_a_day() -> int:
     return int(found.group(1))
 
 
+def milliseconds_the_rule_bounds() -> int:
+    """The rule's threshold as the runbook writes it, which is milliseconds."""
+    return round(comparison_on(alert_named(ALERT), ASSEMBLY_FAMILY).threshold * 1000)
+
+
+def wait_in_minutes(holds_for: str) -> int:
+    """The rule's ``for:`` as minutes, which is how a runbook states a wait."""
+    found = _HOLDS_FOR.fullmatch(holds_for)
+
+    assert found is not None, f"the rule waits {holds_for!r}, which this cannot read as minutes"
+    return int(found.group(1)) * (60 if found.group(2) == "h" else 1)
+
+
+def budgeted_milliseconds() -> int:
+    """The assembly's own p95 budget, read from the pipeline that states it."""
+    found = _BUDGET.search(one_line(assembler_module.__doc__ or ""))
+
+    assert found is not None, "the pipeline no longer states the budget the runbook quotes"
+    return int(found.group(1))
+
+
+def the_count_the_budget_was_set_against() -> str:
+    """The figure the pipeline records the budget and the alert as having been calibrated to."""
+    found = _BASIS.search(one_line(assembler_module.__doc__ or ""))
+
+    assert found is not None, "the pipeline no longer records what the budget was set against"
+    return found.group(1)
+
+
+def concession_reads() -> list[str]:
+    """The week each read of the repeated collaborator asks for, in the order the assembly asks.
+
+    Read from the argument at the call site, because the two reads are one series and one method:
+    nothing but the argument distinguishes the week being assembled from the week before it.
+    """
+    held = wired_classes()
+    repeated = repeated_reads()
+    asked: list[tuple[int, int, str]] = []
+    for node in ast.walk(ast.parse(inspect.getsource(WeekAssembler))):
+        if not isinstance(node, ast.Await) or not isinstance(node.value, ast.Call):
+            continue
+        call = node.value
+        owner = call.func
+        if not isinstance(owner, ast.Attribute) or not isinstance(owner.value, ast.Attribute):
+            continue
+        if (held.get(owner.value.attr), owner.attr) not in repeated:
+            continue
+        argument = ast.unparse(call.args[0]) if call.args else ""
+        asked.append((node.lineno, node.col_offset, argument))
+
+    assert asked, "no collaborator is read twice, so the runbook has no pair to tell apart"
+    return [argument for _, _, argument in sorted(asked)]
+
+
+def repeated_reads() -> set[tuple[str, str]]:
+    """Every series one assembly reads more than once."""
+    return {pair for pair, count in Counter(reads_in_order(WeekAssembler)).items() if count > 1}
+
+
 class TestTheFiguresItQuotes:
     """Every number in the file, against the thing that decides it."""
+
+    def test_it_states_the_threshold_and_the_wait_the_rule_declares(self) -> None:
+        """The figures the file is named after, which a retune of the rule moves.
+
+        The rule and its crossing hold the threshold to one spelling between themselves, and this
+        file states it four more times: the title, the trigger block, the heading and the prose. A
+        retune that reddens the rule's own crossing, is fixed there and ships leaves an operator
+        reading the retired number under pressure.
+        """
+        rule = alert_named(ALERT)
+        bound = comparison_on(rule, ASSEMBLY_FAMILY)
+        runbook = read(RUNBOOK)
+
+        assert f"{bound.operator} {bound.threshold}" in one_line(runbook)
+        assert f"**{wait_in_minutes(rule.holds_for)} minutes**" in runbook
+
+    def test_every_millisecond_figure_it_states_is_one_the_tree_produces(self) -> None:
+        """The two figures in milliseconds, as an exact set, so a fourth copy cannot drift alone.
+
+        The threshold appears in the title, the heading and the prose, and the assembly's own budget
+        twice more. Stated as an equality rather than a containment: a copy that drifts fails, and
+        so does a figure this crossing has no producer for.
+        """
+        stated = {int(one) for one in _MILLISECONDS.findall(read(RUNBOOK))}
+
+        assert stated == {milliseconds_the_rule_bounds(), budgeted_milliseconds()}
+
+    def test_it_states_the_read_count_the_two_figures_were_set_against(self) -> None:
+        """The basis, which is not the count today and is why the threshold is not derived."""
+        basis = the_count_the_budget_was_set_against()
+
+        assert f"set against {basis} repository reads" in read(RUNBOOK)
 
     def test_it_states_the_resolution_and_read_counts_the_assembler_declares(self) -> None:
         runbook = read(RUNBOOK)
@@ -313,6 +430,35 @@ class TestTheReadsItLists:
             f"no bullet says {name} carries no series, so the panel's silence looks like a gap"
         )
 
+    def test_the_two_reads_of_one_table_are_told_apart_the_way_the_code_orders_them(self) -> None:
+        """One series appears twice, so prose is all that tells the two rows apart.
+
+        Keyed on the argument each call passes, so swapping the two descriptions fails: every other
+        reading here is keyed on the series, and a swap leaves the series list, the multiset, the
+        count and the exclusion all intact while telling the operator the opposite of the code.
+        """
+        asked = concession_reads()
+        described = [
+            description
+            for name, method, description in listed_rows(read(RUNBOOK))
+            if (name, method) in repeated_reads()
+        ]
+
+        assert len(described) == len(asked), (
+            f"{len(asked)} reads of one series, and {len(described)} rows for it"
+        )
+        for week, description in zip(asked, described, strict=True):
+            assert week in CONCESSION_READS, (
+                f"the code reads the table for {week!r}, which nothing here can tell a row apart by"
+            )
+            expected = CONCESSION_READS[week]
+            others = {word for key, word in CONCESSION_READS.items() if key != week}
+
+            assert expected in description, f"the row for {week} does not say {expected!r}"
+            assert not any(word in description for word in others), (
+                f"the row for {week} also says {sorted(others)}, so the pair cannot be told apart"
+            )
+
     def test_the_reading_sees_a_row_of_the_table(self) -> None:
         """The positive control for the row reading, over the shape the file writes."""
         table = "| 4 | `PlanRepository.latest_approved` | the churn baseline |\nnot a row\n"
@@ -320,7 +466,12 @@ class TestTheReadsItLists:
         assert listed_reads(table) == [("PlanRepository", "latest_approved")]
 
     def test_the_seam_that_carries_no_series_is_the_one_with_four_statements(self) -> None:
-        """The four statements are named in the file, because the panel shows them and not it."""
+        """The four statements are named in the file, because the panel shows them and not it.
+
+        The classes come from the seam's own annotations rather than from a wiring reading: it is
+        constructed positionally and its parameters are concrete, so an annotation here IS the
+        label. A seam that adopted Protocols would fail loudly at the lookup below.
+        """
         runbook = read(RUNBOOK)
         wired = wired_classes()
         behind = awaited_reads(
@@ -351,16 +502,23 @@ class TestTheQueriesItTellsYouToPaste:
             )
 
     def test_every_family_it_names_is_one_the_deployment_exports(self) -> None:
+        """A `syncr_`-prefixed token that is not a family, a container name for instance, would trip
+        this on a correct edit. The file holds none today, and the trip-wire is the accepted cost of
+        reading the prose as well as the queries."""
         named = families_in(read(RUNBOOK))
 
         assert named, "the runbook names no family, so an operator has nothing to paste"
-        assert named <= exported_families()
+        assert named <= exported_families(), (
+            f"{sorted(named - exported_families())} is named here and exported by nothing"
+        )
 
     def test_every_caller_it_selects_is_one_some_module_assembles_under(self) -> None:
         selected = set(_CALLER.findall(read(RUNBOOK)))
 
         assert selected, "the runbook selects no caller, and the alert is scoped to one"
-        assert selected <= wired_callers()
+        assert selected <= wired_callers(), (
+            f"{sorted(selected - wired_callers())} is selected here and assembled under by nothing"
+        )
 
     def test_the_background_comparison_selects_the_caller_the_maintainer_wires(self) -> None:
         """The comparison is the maintainer's, so it has to read the maintainer's own series.
