@@ -4,8 +4,8 @@ Four rules live here rather than anywhere else.
 
 **A pigment is dealt, never chosen.** The step a new Area takes comes from
 ``syncr_domain.pigments``, derived from how many Areas already hold one, so there is no cursor
-to drift from the rows. Past twelve the deal wraps, and the response says so: identity then
-rests on the hatch and the Area's name, which is why a duplicate name is refused.
+to drift from the rows. The ramp has no thirteenth step, so a declaration that would need one
+is refused rather than dealt a step another Area already holds.
 
 **A share that does not fit is reported, never rejected.** Percentages summing past 100 are a
 legitimate declaration. What answers for them is ``oversubscription`` on the budget report, so
@@ -51,6 +51,7 @@ from syncr_api.areas.rules import (
     find_area,
     require_a_declared_parent,
     require_an_unused_name,
+    require_room_on_the_ramp,
     unknown_area,
 )
 from syncr_api.core.errors import NotFound, ValidationFailed
@@ -58,7 +59,7 @@ from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
-from syncr_domain.pigments import is_ramp_exhausted, next_pigment_index
+from syncr_domain.pigments import next_pigment_index
 
 if TYPE_CHECKING:
     from syncr_api.areas.declarations import (
@@ -131,10 +132,15 @@ class AreaService:
         The Areas are locked first, so two declarations racing are serialized and the second
         one counts the first. Without that, both would derive the same step from the same
         count and two Areas would share a pigment before the ramp was full.
+
+        A tenant whose Areas hold every step is refused, before the name is considered: no name
+        is available to such a caller, so a refusal naming the name would send them to change
+        the one thing that cannot help.
         """
         require_scope(principal, Scope.ADMIN)
         now = self._clock()
         existing = await self._areas.lock_all()
+        require_room_on_the_ramp(existing)
         require_an_unused_name(declaration.name, existing)
         if declaration.parent_id is not None:
             require_a_declared_parent(declaration.parent_id, existing)
@@ -154,7 +160,6 @@ class AreaService:
             tenant_id=str(principal.tenant_id),
             area_id=str(created.id),
             pigment_index=created.pigment_index,
-            ramp_repeated=is_ramp_exhausted(len(existing)),
         )
         await self._bump.from_the_week_holding(now)
         return DealtArea(area=created, ramp=ramp_reading((*existing, created)))
