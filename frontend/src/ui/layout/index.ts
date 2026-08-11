@@ -24,7 +24,7 @@
  * it, and `__tests__/layerRules.test.ts` asserts the layer spends no state at all. */
 
 export { Card, type CardProps } from "./Card";
-export { FormRow, type FormRowField, type FormRowProps } from "./FormRow";
+export { FormRow, type FormRowField, type FormRowGroupField, type FormRowProps } from "./FormRow";
 export { Gutter, type GutterProps } from "./Gutter";
 export { Pane, type PaneProps } from "./Pane";
 export { Panel, type PanelProps } from "./Panel";
