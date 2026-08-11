@@ -42,9 +42,13 @@
   table-layout: fixed;
 }
 
+/* A header is a cell, so a word longer than its column breaks here for the same reason it breaks in a body cell:
+ * the neighbour keeps its declared width, so the overflow would be drawn on top of it. `overflow-wrap` inherits,
+ * which is how it reaches the text inside the sort button without a second declaration. */
 .table__header {
   height: var(--h-row);
   padding: 0 7px;
+  overflow-wrap: anywhere;
   border-bottom: var(--hairline) solid var(--rule-strong);
   color: var(--text-muted);
   font-size: var(--fs-label);
