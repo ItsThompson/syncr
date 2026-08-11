@@ -16,8 +16,8 @@ snap target for the user's own placements rather than a claim about every block.
 The interval algebra therefore never snaps on its own: an unsnapped interval is
 legal, and a producer that owes the grid applies :func:`snap_to_grid` itself.
 
-The last two predicates take no instant, because a DECLARATION carries none: a wall time and
-a duration in minutes, with no date and no zone.
+Neither :func:`is_wall_time_on_snap_grid` nor :func:`is_a_snap_multiple` takes an instant, because a
+DECLARATION carries none: a wall time and a duration in minutes, with no date and no zone.
 
 **A declared duration owes the grid, and so does a wall time the user chose.** An anchor and the
 buffers derived from it are the only exemption: nothing else is excused, and a shape that declares
