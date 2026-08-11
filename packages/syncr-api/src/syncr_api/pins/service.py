@@ -7,26 +7,36 @@ pin(week, blockId, start)
   ├── read the plan the solver last produced: the pending proposal, or the plan of record
   ├── refuse a placement the week has already reached, in either direction
   ├── ONE TRANSACTION
-  │     ├── weekVersion.bump()                          -> the version the response reports
-  │     ├── pins.hold(blockId, accepted, superseded)     the row, not yet priced
-  │     ├── assembler.assemble(week, now)                ONE assembly. Reads the pin back
-  │     ├── probe(inputs.for_probe())                    provenance = probe, sub-millisecond
-  │     ├── pins.price(delta)  +  editEvents.append(...) E1: the pair, or neither
-  │     ├── verdicts.record(week, verdict)               VE2: only if it TRANSITIONED
+  │     ├── read the deadline, the Area's floor, the pins held
+  │     ├── assembler.assemble(week, now)             PRE-PIN frame, before any write
+  │     ├── refuse a placement outside the assembled span
+  │     ├── pinPrice(produced, block, accepted)       the delta, measured in that frame
+  │     ├── weekVersion.bump()                     -> the version the response reports
+  │     ├── pins.hold(blockId, accepted, superseded)  the row, not yet priced
+  │     ├── assembler.assemble(week, now)             POST-PIN frame. Reads the pin back
+  │     ├── probe(post-pin inputs)                    provenance = probe
+  │     ├── pins.price(delta)                         the pin's second statement
+  │     ├── verdicts.record(week, verdict)            VE2: only if it TRANSITIONED
+  │     ├── editEvents.append(...)                    E1: the pair, or neither
   │     └── coordinator.request_solve(week, version)
   └── { pin, verdict, operation }
 ```
 
-**The version is bumped before the assembly, so the verdict names the input state the pin
-produced.** A verdict carries the version it was computed against, and a client reasons
-optimistically with it. Assembling first would answer with the version the week held before this
-edit, which is the one state the response is certainly not about.
+**Two assemblies, and each serves one consumer.** The price and the feature snapshot describe the
+state the proposal was made in, so both read the frame taken BEFORE the pin row exists: the terms
+that read ``eligible_tasks`` and ``placed_toward`` net a pinned binding, so a cost measured against
+a frame that already counts the pin is a difference between two different questions. The verdict
+describes the state the pin left the week in, so it is computed in the frame taken AFTER. Passing
+the pin to the assembler as an argument instead would mean restating "one pin per binding" inside
+the assembler for the week that already holds one, and the table already states that.
 
-**The pin row is written before the assembly, and priced after it.** What the user's choice cost is
-a difference of two objective evaluations over the week's resolved inputs, and the pin is what
-changes those inputs: the verdict has to be computed from an assembly that sees it. Passing the pin
-to the assembler as an argument instead would mean restating "one pin per binding" inside the
-assembler for the week that already holds one, and the table already states that.
+**The version is bumped between the two frames**, so the verdict names the input state the pin
+produced. A verdict carries the version it was computed against, and a client reasons optimistically
+with it: a verdict computed in the pre-pin frame would answer with the version the week held before
+this edit, which is the one state the response is certainly not about.
+
+``tests/test_pin_write_path.py`` drives one request and holds the order above, the consumer each
+frame serves, and the count of observations the two histograms take.
 
 **``E1``: the edit event is written in the same transaction as the pin.** A pin without its event is
 a training label with no features, and the features are a fact about an instant that has passed, so
@@ -227,11 +237,7 @@ class PinService:
     ) -> PinnedWeek:
         """The one transaction every edit performs, whichever route asked for it.
 
-        TWO assemblies, deliberately. The price and the context snapshot describe the state the
-        proposal was made in, so they must be measured in a frame the pin has not entered: the terms
-        that read `eligible_tasks` and `placed_toward` net the pinned binding, and a pin measured
-        against a frame that already counts it cannot express the cost it added. The verdict
-        describes the state the pin left the week in, so it must see the pin.
+        TWO assemblies, deliberately, and the module docstring states which consumer each serves.
 
         The first assembly runs BEFORE `pins.hold`; the second runs AFTER. Measured end to end
         at 18.6 ms (1-block week), 27.4 ms (24-block week) and 39.1 ms (84-block week), all

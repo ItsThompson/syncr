@@ -42,9 +42,8 @@ class PinToHold:
     record holds it. The two are equal for a pin that states "keep this here", which is what the
     ``p`` toggle and a partial rejection of a proposed move both are.
 
-    There is no objective delta here, and that is the ordering rather than an omission: the price is
-    derived from an assembly this pin changes, so the row is written first and priced second, inside
-    one transaction.
+    There is no objective delta here, and that is the shape of the write rather than an omission:
+    one statement holds the row and a second states its cost, inside one transaction.
     """
 
     iso_week: IsoWeek

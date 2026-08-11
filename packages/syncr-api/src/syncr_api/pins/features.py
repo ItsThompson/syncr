@@ -74,16 +74,17 @@ def edit_context(
     **Pre-edit (the state the proposal was made in):** ``document``, ``breakdown``,
     ``measurement_delta``, ``task_deadline``, ``area_floor_declared``, ``pinned_blocks_before``.
     Each describes the moment before the user acted, which is the circumstance the preference was
-    expressed inside. None of these reads ``inputs``, because the pin has already entered the
-    assembly and altered it.
+    expressed inside, and each arrives as its own parameter the caller resolved from an entity or a
+    document rather than from ``inputs``.
 
-    **Post-edit (the week's facts as the pin left them):** ``inputs``. This supplies the temporal
-    and occupancy fields: anchors, forbidden windows, off-plan spans, the week's own span. These
-    are week facts the pin does not change, so either reading would give the same answer, and
-    ``inputs`` is the one already resolved.
+    **Post-edit (the accepted placement and the week around it):** ``inputs``. This supplies the
+    local day and its zone, the Area's placed and target minutes, the anchor and forbidden-window
+    offsets, and whether the placement falls inside an off-plan period.
 
-    The split is what makes it structurally impossible for a "proposal time" field to read the
-    post-pin assembly: its source is a parameter the caller resolves before the pin is written.
+    **Both groups read a frame the pin has not entered**, because ``inputs`` is the PRE-pin
+    assembly: the caller prices the edit in it, writes the pin row after it, and computes the
+    verdict in a second assembly this function never sees. So no field here can carry a reading
+    taken after the pin, and a "proposal time" field cannot read one either.
     """
     days = local_days(inputs.iso_week, inputs.zone_by_date, inputs.span)
     day = _day_holding(accepted.start, days)

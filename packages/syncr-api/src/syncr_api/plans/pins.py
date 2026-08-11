@@ -23,14 +23,12 @@ rendered block, so a block id is the only handle a request carries; it is also a
 and the binding, so per-week uniqueness follows from it and the binding travels beside it for the
 readers that need an identity they can compare across weeks.
 
-**A pin is written in two statements and priced by the second.** What the user's choice cost is a
-difference of two objective evaluations over the week's resolved inputs, and those inputs are what
-the pin changes: the assembly that answers the response's verdict has to see the pin. So
-:meth:`hold` writes the row and :meth:`price` states its cost, both in the caller's transaction, no
-reader ever sees a pin without one. The alternative was for the assembly to take the pin as an
-argument, which would have meant restating "one pin per binding" inside it for the case where the
-week already holds one: the table already states that, so the ordering above is the cheaper of the
-two.
+**A pin is written in two statements, and the second states its cost.** :meth:`hold` writes the row
+and :meth:`price` writes the delta, both in the caller's transaction, so nothing outside it reads a
+pin without one. The delta is a difference of two objective evaluations over one assembly of the
+week, and the caller measures it in the assembly it takes BEFORE this row is written: what a pin
+cost is a fact about the state the user chose in, and a frame that already counts the pin cannot
+express it. So the caller holds the figure before it holds the row.
 
 **Nothing here reads a clock or mints an interval.** Both instants and the created instant arrive
 from the caller, so a pin written while reproducing a past state is reproducible.
@@ -102,10 +100,10 @@ class PinRepository(TenantScopedRepository):
     async def price(self, pin_id: PinId, *, objective_delta: float) -> PinRecord:
         """State what this pin's placement cost, which is what makes the row complete.
 
-        Separate from :meth:`hold` because the figure is derived from an assembly the pin changes,
-        and in the same transaction as it, so ``PN3``'s cost half is a property of what commits. The
-        row is returned rather than the caller reusing what ``hold`` answered: a record carrying a
-        null cost is one nothing should read twice.
+        Separate from :meth:`hold` rather than folded into it, and in the same transaction as it,
+        so ``PN3``'s cost half is a property of what commits. The row is returned rather than the
+        caller reusing what ``hold`` answered: a record carrying a null cost is one nothing should
+        read twice.
         """
         written = await self._session.scalars(
             self.scoped_update(Pin)
