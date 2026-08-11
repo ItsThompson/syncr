@@ -26,6 +26,11 @@ WHAT THIS WALK CANNOT SEE, stated so a green result is not read as more than it 
   enforces nothing.
 * which reading a site takes. The walk sees that a comparison is there, not whether `<` or `<=` is
   the right one for that caller. `test_intervals.py` pins the difference between the two.
+
+The second reading below covers the other half of one home: a module that imports the predicate
+from somewhere other than the algebra. `plans/settled.py` imports both and uses both, so the names
+stay bound there and `from syncr_api.plans.settled import has_started` keeps working; the
+comparison walk cannot see that, because an import is not a comparison.
 """
 
 from __future__ import annotations
@@ -55,6 +60,23 @@ COVERED_TREES: Final = (
 )
 
 ALGEBRA: Final = "packages/syncr-domain/src/syncr_domain/intervals.py"
+
+# The predicates by name, and the one module a reader may take them from.
+PREDICATES: Final = frozenset({"has_started", "has_elapsed"})
+CANONICAL_MODULE: Final = "syncr_domain.intervals"
+
+# Readers at the time this rule was written, asserted as a floor rather than an equality: a new
+# reader taking the predicate from the algebra is ordinary and must not fail. What the floor buys
+# is that a reading which resolved nothing cannot satisfy the rule by finding nothing.
+KNOWN_READERS: Final = (
+    "packages/syncr-api/src/syncr_api/plans/settled.py",
+    "packages/syncr-api/src/syncr_api/plans/netting.py",
+    "packages/syncr-api/src/syncr_api/plans/authority.py",
+    "packages/syncr-api/src/syncr_api/plans/placements.py",
+    "packages/syncr-solver/src/syncr_solver/binding.py",
+    "packages/syncr-solver/src/syncr_solver/inheritance.py",
+    "packages/syncr-solver/src/syncr_solver/state.py",
+)
 
 # The only places a comparison of an interval's start against an instant may live. The two
 # predicates are the answer this product gives to the question; `IntervalSet.before` compares the
@@ -89,6 +111,20 @@ FINDS_NO_SITE: Final = (
     "OffPlanPeriodRow.start < span.end",
     "earliest_collision - block.interval.start < SNAP",
     "day.interval.end <= now",
+)
+
+FINDS_AN_IMPORT: Final = (
+    "from syncr_domain.intervals import has_started",
+    "from syncr_domain.intervals import Interval, has_elapsed, has_started",
+    "from syncr_api.plans.settled import has_started",
+    "from .settled import has_elapsed",
+)
+
+FINDS_NO_IMPORT: Final = (
+    "from syncr_domain.intervals import IntervalSet",
+    "import syncr_domain.intervals",
+    "from syncr_api.plans.settled import require_an_unchanged_past",
+    "has_started = object()",
 )
 
 
@@ -146,6 +182,29 @@ def found_sites(root: Path) -> set[tuple[str, str]]:
     }
 
 
+def imports_in(tree: ast.Module) -> set[str]:
+    """The module each ``from ... import`` naming a predicate takes it from.
+
+    A relative import reads as the name it is written with rather than as what it resolves to,
+    which is the direction that fails: the rule allows exactly one absolute module.
+    """
+    return {
+        node.module or ""
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and any(alias.name in PREDICATES for alias in node.names)
+    }
+
+
+def found_readers(root: Path) -> set[tuple[str, str]]:
+    """Every ``(module, module it imports a predicate from)`` in the shipped tree."""
+    return {
+        (relative, source)
+        for relative, path in shipped_modules(root).items()
+        for source in imports_in(ast.parse(path.read_text(encoding="utf-8")))
+    }
+
+
 # --------------------------------------------------------------------------------
 # The controls: which tree the walk read, how far it reached, and what the reading reads
 # --------------------------------------------------------------------------------
@@ -199,6 +258,23 @@ def test_the_reading_attributes_a_comparison_to_the_scope_that_holds_it() -> Non
     assert list(sites_in(ast.parse(nested))) == ["Held.reached"]
 
 
+@pytest.mark.parametrize("spelling", FINDS_AN_IMPORT)
+def test_the_import_reading_finds_a_read_it_is_shown(spelling: str) -> None:
+    assert imports_in(ast.parse(spelling)), spelling
+
+
+@pytest.mark.parametrize("spelling", FINDS_NO_IMPORT)
+def test_the_import_reading_does_not_read_an_ordinary_import_as_one(spelling: str) -> None:
+    assert not imports_in(ast.parse(spelling)), spelling
+
+
+def test_the_import_reading_reaches_the_readers_the_tree_holds() -> None:
+    # The floor that stops the rule below being satisfied by a reading that resolves nothing.
+    reading = {relative for relative, _ in found_readers(repository_root())}
+
+    assert set(KNOWN_READERS) <= reading
+
+
 # --------------------------------------------------------------------------------
 # The rule
 # --------------------------------------------------------------------------------
@@ -206,3 +282,9 @@ def test_the_reading_attributes_a_comparison_to_the_scope_that_holds_it() -> Non
 
 def test_the_interval_algebra_is_the_only_place_a_start_is_compared_to_an_instant() -> None:
     assert found_sites(repository_root()) == CANONICAL_SITES
+
+
+def test_every_reader_takes_the_predicate_from_the_algebra_and_from_nowhere_else() -> None:
+    # `plans/settled.py` still binds both names, because it imports and uses both, so the old
+    # import path keeps resolving. This is what stops a new reader taking it from there.
+    assert {source for _, source in found_readers(repository_root())} == {CANONICAL_MODULE}
