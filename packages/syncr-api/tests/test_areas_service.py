@@ -28,6 +28,7 @@ from syncr_api.areas.declarations import (
 )
 from syncr_api.areas.records import AreaRecord, ProjectRecord
 from syncr_api.areas.repository import AreaRepository, ProjectRepository
+from syncr_api.areas.rules import FULL_RAMP_REFUSAL
 from syncr_api.areas.service import AreaService, ProjectService
 from syncr_api.core.errors import Conflict, Forbidden, NotFound, ValidationFailed
 from syncr_api.core.patches import ABSENT
@@ -37,7 +38,7 @@ from syncr_api.user_settings.config import ReviewCadence
 from syncr_api.user_settings.records import SettingsRecord
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
-from syncr_domain.pigments import PIGMENT_COUNT, PIGMENT_DEAL_ORDER
+from syncr_domain.pigments import PIGMENT_COUNT, PIGMENT_DEAL_ORDER, next_pigment_index
 from syncr_domain.projects import ProjectStatus
 from syncr_domain.weeks import IsoWeek
 
@@ -264,6 +265,24 @@ async def declare(
     return view.area
 
 
+def a_stored_area(principal: Principal, index: int) -> AreaRecord:
+    """One Area already in the rows, holding the step the deal would have dealt it.
+
+    Past the ramp that step is one another Area holds, which is the state a tenant declared
+    before the bound existed is in.
+    """
+    return AreaRecord(
+        id=uuid4(),
+        tenant_id=principal.tenant_id,
+        parent_id=None,
+        name=f"Area {index}",
+        pigment_index=next_pigment_index(index),
+        budget_percent=None,
+        floor_hours=None,
+        created_at=NOW,
+    )
+
+
 # --------------------------------------------------------------------------------
 # The pigment deal
 # --------------------------------------------------------------------------------
@@ -292,23 +311,142 @@ async def test_the_deal_is_serialized_on_the_areas_it_counts(
     assert areas.locks == 1
 
 
-async def test_the_thirteenth_area_reuses_a_pigment_and_the_response_says_so(
+# --------------------------------------------------------------------------------
+# The ramp's bound
+# --------------------------------------------------------------------------------
+
+
+async def test_an_area_the_ramp_has_no_step_for_is_refused_and_stored_nowhere(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
+    service, areas = build_areas(principal, versions)
+    for index in range(PIGMENT_COUNT):
+        await declare(service, principal, f"Area {index}")
+    versions.bumped.clear()
+
+    with pytest.raises(ValidationFailed) as refused:
+        await service.create(principal, a_declaration("Thirteenth"))
+
+    assert refused.value.detail == FULL_RAMP_REFUSAL
+    # No field is at fault: the request is refusable whatever it carries.
+    assert refused.value.errors is None
+    assert len(areas.rows) == PIGMENT_COUNT
+    # Nothing was changed, so no solve input was invalidated either.
+    assert versions.bumped == []
+
+
+async def test_the_twelfth_area_is_accepted_and_takes_the_last_unused_step(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # The control at the accepted side of the bound. A bound stated one step early would refuse
+    # this declaration, and the ramp would keep a step nothing could ever be dealt.
+    service, _ = build_areas(principal, versions)
+    for index in range(PIGMENT_COUNT - 1):
+        await declare(service, principal, f"Area {index}")
+
+    twelfth = await service.create(principal, a_declaration("Twelfth"))
+
+    assert twelfth.area.pigment_index == PIGMENT_DEAL_ORDER[-1]
+    assert twelfth.ramp.pigments_in_use == PIGMENT_COUNT
+    assert twelfth.ramp.areas_sharing_a_pigment == 0
+    assert twelfth.ramp.statement is None
+
+
+async def test_a_tenant_holding_more_areas_than_the_ramp_is_refused_as_well(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # Rows that predate the bound are left alone rather than reconciled, and the next
+    # declaration is refused rather than dealt a step a third Area would then share.
+    stored = [a_stored_area(principal, index) for index in range(PIGMENT_COUNT + 1)]
+    service, areas = build_areas(principal, versions, stored=stored)
+
+    with pytest.raises(ValidationFailed) as refused:
+        await service.create(principal, a_declaration("Fourteenth"))
+
+    assert refused.value.detail == FULL_RAMP_REFUSAL
+    assert len(areas.rows) == PIGMENT_COUNT + 1
+
+
+async def test_the_bound_counts_every_area_the_deal_deals_a_step_to(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # A nested Area is dealt a step of its own, so it uses one up. The bound is stated over the
+    # count the deal reads, which is why nesting cannot get past it.
+    service, _ = build_areas(principal, versions)
+    parent = await declare(service, principal, "Career")
+    nested = [
+        await declare(service, principal, f"Area {index}", parent_id=parent.id)
+        for index in range(PIGMENT_COUNT - 1)
+    ]
+
+    assert nested[-1].pigment_index == PIGMENT_DEAL_ORDER[-1]
+    with pytest.raises(ValidationFailed):
+        await service.create(principal, a_declaration("Thirteenth", parent_id=parent.id))
+
+
+async def test_a_full_ramp_is_refused_whatever_the_declaration_is_named(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # Both rules answer this declaration. The bound is the one that does, because at the cap no
+    # name is available and a refusal naming the name would send the caller to change the one
+    # thing that cannot help.
     service, _ = build_areas(principal, versions)
     for index in range(PIGMENT_COUNT):
         await declare(service, principal, f"Area {index}")
 
-    thirteenth = await service.create(principal, a_declaration("Thirteenth"))
+    with pytest.raises(ValidationFailed) as refused:
+        await service.create(principal, a_declaration("Area 0"))
 
-    assert thirteenth.area.pigment_index == PIGMENT_DEAL_ORDER[0]
-    assert thirteenth.ramp.pigments_in_use == PIGMENT_COUNT
-    assert thirteenth.ramp.areas_sharing_a_pigment == 2
-    statement = thirteenth.ramp.statement
-    assert statement is not None
-    # The interface has to be able to say what identity rests on now, so the response says it.
-    assert "hatch" in statement
-    assert "name" in statement
+    assert refused.value.detail == FULL_RAMP_REFUSAL
+
+
+async def test_at_the_bound_an_area_can_still_be_renamed_and_rebudgeted(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # Two of the three things the refusal says still work, so they are under test rather than
+    # asserted in prose: the bound is on declaring an Area, not on changing one.
+    service, _ = build_areas(principal, versions)
+    declared = [
+        await declare(service, principal, f"Area {index}") for index in range(PIGMENT_COUNT)
+    ]
+
+    changed = await service.update(
+        principal, declared[0].id, AreaChange("Renamed", ABSENT, Decimal(10), Decimal(3))
+    )
+
+    assert changed.area.name == "Renamed"
+    assert changed.area.budget_percent == Decimal(10)
+    assert changed.area.floor_hours == Decimal(3)
+
+
+async def test_at_the_bound_new_work_still_fits_inside_an_area_as_a_project(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # The third thing the refusal says still works. A Project carries no budget and no pigment,
+    # so nothing about the ramp bounds it.
+    service, areas = build_areas(principal, versions)
+    inside = await declare(service, principal, "Career")
+    for index in range(PIGMENT_COUNT - 1):
+        await declare(service, principal, f"Area {index}")
+    projects, stored, _ = build_projects(principal, areas=areas)
+
+    created = await projects.create(
+        principal,
+        ProjectDeclaration(
+            area_id=inside.id,
+            name="Interview prep",
+            deadline=None,
+            status=ProjectStatus.ACTIVE,
+        ),
+    )
+
+    assert created.area_id == inside.id
+    assert len(stored.rows) == 1
+
+
+# --------------------------------------------------------------------------------
+# The ramp reading, and re-picking a step
+# --------------------------------------------------------------------------------
 
 
 async def test_a_full_ramp_is_reported_before_it_is_exhausted(

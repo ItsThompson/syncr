@@ -5,8 +5,8 @@ database can: that the pigment deal survives twelve committed rows, that a refus
 is not stored, that a wire ``Decimal`` reaches the client as a number rather than a string, and
 that another tenant's identifier is a 404 rather than an edit.
 
-Two tests are worth reading. ``test_the_thirteenth_area_reuses_a_pigment_and_states_why`` is
-US-ONB-03's last criterion through HTTP, and
+Two tests are worth reading. ``test_a_thirteenth_area_is_refused_and_the_body_states_the_cap``
+is the ramp's bound through HTTP, twelve committed rows and a refusal, and
 ``test_a_share_that_does_not_fit_is_accepted_rather_than_refused`` is the rule this endpoint
 exists to hold: a percentage total past 100 is a legitimate declaration, and what answers for
 it is the budget report's ``oversubscription``.
@@ -29,6 +29,7 @@ from sqlalchemy import select
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.config import AREAS_PREFIX, PROJECTS_PREFIX
 from syncr_api.areas.models import AreaRow, ProjectRow
+from syncr_api.areas.rules import FULL_RAMP_REFUSAL
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import PROBLEM_JSON_MEDIA_TYPE, Conflict, NotFound, ValidationFailed
@@ -184,12 +185,13 @@ def test_the_first_four_areas_take_four_distinct_pigments(
     assert len(set(dealt)) == 4
 
 
-def test_the_thirteenth_area_reuses_a_pigment_and_states_why(
-    http: TestClient, signed_in: dict[str, str]
+def test_a_thirteenth_area_is_refused_and_the_body_states_the_cap(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
 ) -> None:
     for index in range(PIGMENT_COUNT):
         created = declare_area(http, signed_in, name=f"Area {index}")
-        # Until the ramp is full, nothing is shared and nothing is stated.
+        # Every step the ramp has is dealt to a declaration that is accepted, so nothing is
+        # shared and nothing is stated. The twelfth is admitted here, not refused.
         assert created["ramp"] == {
             "pigmentCount": PIGMENT_COUNT,
             "pigmentsInUse": index + 1,
@@ -197,21 +199,25 @@ def test_the_thirteenth_area_reuses_a_pigment_and_states_why(
             "statement": None,
         }
 
-    thirteenth = declare_area(http, signed_in, name="Thirteenth")
+    refused = http.post(AREAS, json={"name": "Thirteenth"}, headers=signed_in)
 
-    ramp = thirteenth["ramp"]
-    assert isinstance(ramp, dict)
-    assert thirteenth["area"]["pigmentIndex"] == PIGMENT_DEAL_ORDER[0]
-    assert ramp["pigmentsInUse"] == PIGMENT_COUNT
-    assert ramp["areasSharingAPigment"] == 2
-    assert "hatch" in str(ramp["statement"])
-    assert "name" in str(ramp["statement"])
+    assert refused.status_code == ValidationFailed.status, refused.text
+    assert refused.headers["content-type"].startswith(PROBLEM_JSON_MEDIA_TYPE)
+    problem = refused.json()
+    assert problem["type"] == ValidationFailed.type
+    # The sentence the api composes, reaching a client unaltered.
+    assert problem["detail"] == FULL_RAMP_REFUSAL
+    assert "errors" not in problem, problem
+
+    rows = area_rows(live_database_url, owner.tenant_id)
+    assert [row.name for row in rows] == [f"Area {index}" for index in range(PIGMENT_COUNT)]
+    assert sorted(row.pigment_index for row in rows) == list(range(PIGMENT_COUNT))
 
 
 def test_the_ramp_reading_states_how_many_pigments_are_in_use(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
-    # US-ONB-03's setup-screen count, which is why it is on the list read as well.
+    # The setup screen's count, which is why it is on the list read as well.
     declare_area(http, signed_in, name="Fitness")
     declare_area(http, signed_in, name="Career")
 
