@@ -52,6 +52,7 @@ from syncr_api.solving.snapshots import (
 )
 from syncr_api.solving.stored_inputs import (
     FORMS,
+    SNAPSHOT,
     UnreadableSnapshot,
     inputs_of,
     require_a_reader_for_every_field,
@@ -102,6 +103,8 @@ from tests.plan_documents import (
 )
 
 if TYPE_CHECKING:
+    from dataclasses import Field
+
     from syncr_api.core.columns import JsonObject
     from syncr_domain.plan import PlanDocument
 
@@ -377,7 +380,7 @@ def test_the_week_holds_a_member_of_every_collection() -> None:
     empty = [
         field.name
         for field in fields(SolveInputs)
-        if field.default == () and not getattr(week, field.name)
+        if _stated_default(field) == () and not getattr(week, field.name)
     ]
 
     assert not empty, f"these collections hold no member, so their reader is unexercised: {empty}"
@@ -394,10 +397,25 @@ def test_the_week_states_a_value_every_defaulting_field_would_not_default_to() -
     defaulted = [
         field.name
         for field in fields(SolveInputs)
-        if field.default is not MISSING and getattr(week, field.name) == field.default
+        if _stated_default(field) is not MISSING
+        and getattr(week, field.name) == _stated_default(field)
     ]
 
     assert not defaulted, f"these fields sit at their default, so nothing bites there: {defaulted}"
+
+
+def _stated_default(field: Field[Any]) -> Any:
+    """What a field arrives at when the document states nothing for it, however it is declared.
+
+    A factory rather than a value is the mandatory declaration for a mutable default, so a census
+    reading ``field.default`` alone is blind to exactly the fields most likely to be added next: it
+    reads ``MISSING`` for them and reports them as having no default to sit at.
+    """
+    if field.default is not MISSING:
+        return field.default
+    if field.default_factory is not MISSING:
+        return field.default_factory()
+    return MISSING
 
 
 # The two stored keys no week can make load-bearing, and the reason is one rule: a chunk index is
@@ -924,11 +942,26 @@ def test_every_collection_the_inputs_hold_is_named_by_a_refusal() -> None:
     here until a refusal names it.
     """
     named = [field.name for field in fields(SolveInputs)]
-    stated = " ".join(case.values[1] for case in REFUSALS if isinstance(case.values[1], str))
 
-    unnamed = [name for name in named if name not in stated]
+    unnamed = [name for name in named if name not in _fields_a_refusal_names()]
 
     assert not unnamed, f"no refusal is driven through these fields: {unnamed}"
+
+
+def _fields_a_refusal_names() -> set[str]:
+    """The field each refusal case is driven through, as the head of the path the case names.
+
+    A set of names rather than a search through the joined text of every case. A field name that is
+    a prefix of another field's path would otherwise count itself as covered: ``frame`` reads as
+    named by ``frame_overhang[0]``, and the collection no refusal drives is the one this census
+    exists to find. The head is taken at the first separator a path can hold, which is a dot for a
+    member's own field, a bracket for a position, and a colon for a plan carried inside the value.
+    """
+    return {
+        re.split(r"[.\[:]", case.values[1])[0]
+        for case in REFUSALS
+        if isinstance(case.values[1], str)
+    }
 
 
 # --------------------------------------------------------------------------------
@@ -1025,6 +1058,19 @@ def test_a_snapshot_stating_no_form_is_refused() -> None:
 def test_a_snapshot_whose_inputs_are_not_an_object_is_refused() -> None:
     with pytest.raises(StoredDocumentCorrupt, match=INPUTS):
         inputs_of({FORM: SNAPSHOT_FORM, INPUTS: []})
+
+
+@pytest.mark.parametrize("stored", [[], "a snapshot", 7, None, ()])
+def test_a_snapshot_that_is_not_an_object_at_all_is_refused(stored: Any) -> None:
+    """The envelope, refused the way every level below it is rather than indexed first.
+
+    The column is nullable ``JSONB`` and nothing constrains its shape, so the first caller to hold
+    what the column returned is the first thing to meet this. Indexed first, each of these answers a
+    corrupt row with an ``AttributeError`` naming a Python type, which says nothing about the
+    document and nothing an operator can act on.
+    """
+    with pytest.raises(StoredDocumentCorrupt, match=SNAPSHOT):
+        inputs_of(stored)
 
 
 def test_a_value_the_walk_holds_no_leaf_form_for_is_refused() -> None:
