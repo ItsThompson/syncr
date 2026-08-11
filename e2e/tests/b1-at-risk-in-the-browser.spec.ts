@@ -50,7 +50,8 @@ const OPEN_AND_MARKED = "/api/v1/tasks?status=open&atRisk=true";
 /** The standing the filter select narrows to, as the option's own label. */
 const AT_RISK_OPTION = "At risk";
 
-/** The smallest piece the solver may place, and the overhang that puts the demand below past reach. */
+/** The smallest piece the solver may place. Any positive legal value works here: what makes the work
+ * unmeetable is the overhang below, not this. */
 const CHUNK_MINUTES = 90;
 
 /* THE MARKED ROW IS DECLARED BY THIS FILE RATHER THAN INHERITED FROM THE FIXTURE, and the reason is measured
@@ -163,8 +164,10 @@ test("the backlog marks exactly the tasks the verdict names, says so in words, a
   assertTheMarkingDiscriminates(read.marked, read.unmarked);
 
   await page.goto("/backlog");
-  await expect(page.locator(ROWS).first()).toBeVisible();
+  // BEFORE the wait, not after it. A backlog that redirected would time the row wait out ten seconds earlier,
+  // and the run would report a missing locator rather than the reason it was missing.
   expect(page.url(), "the backlog redirected to sign-in").not.toContain("/sign-in");
+  await expect(page.locator(ROWS)).toHaveCount(read.all.length);
 
   const rows = (await page.evaluate(RENDERED_ROWS)) as RenderedRow[];
 
@@ -210,8 +213,8 @@ test("choosing the at-risk standing narrows the table to those rows, and the ban
   assertTheMarkingDiscriminates(read.marked, read.unmarked);
 
   await page.goto("/backlog");
-  await expect(page.locator(ROWS)).toHaveCount(read.all.length);
   expect(page.url(), "the backlog redirected to sign-in").not.toContain("/sign-in");
+  await expect(page.locator(ROWS)).toHaveCount(read.all.length);
 
   /* Every read the screen makes from here on, recorded before the control is driven: this case is as much about
    * WHERE the narrowing happened as about the rows it left. */
