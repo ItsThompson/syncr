@@ -328,7 +328,12 @@ def test_without_the_plan_of_record_moving_the_second_solve_proposes_nothing_to_
 
     assert refused == HTTPStatus.CONFLICT, detail
     assert len(stored_concessions(live_database_url, owner.tenant_id)) == 1
+    # The two revisions this sequence wrote, named rather than counted from the answer itself: a
+    # comparison whose expected side is built from the actual one cannot fail on length, and would
+    # pass over a history read that returned nothing at all.
     listed = history(http, headers)
+    assert [one["reason"] for one in listed] == ["tradeoff_approved", "auto_applied_fill"]
     assert [(one["revokedAdjustments"], one["replacedAdjustments"]) for one in listed] == [
-        (0, 0) for _ in listed
+        (0, 0),
+        (0, 0),
     ]
