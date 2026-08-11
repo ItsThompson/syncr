@@ -39,6 +39,7 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``stored_contexts.py`` | an edit context's stored form, both directions, over one JSONB column |
 | ``overlaps.py`` | the two overlaps nothing may settle quietly, detected against the live plan |
 | ``settled.py`` | what the week has lived, and which of it a candidate may not restate |
+| ``solved.py`` | whether a week's plan of record holds anything a solve chose the time of |
 | ``authority.py`` | the authority rule: what auto-applies, what waits, and what collides |
 | ``assent.py`` | what an approval may change: only what its own proposal diff named |
 
