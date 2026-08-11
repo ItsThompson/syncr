@@ -58,9 +58,8 @@ MAX_WINDOWS: Final = 6
 
 MINUTES_IN_A_DAY: Final = 24 * MINUTES_PER_HOUR
 
-# The wall time a window's end names when the window runs to the end of the day.
-# :class:`LocalTimeWindow` states what that means and why it is the one bound that may be earlier
-# than the start it belongs to.
+# :class:`LocalTimeWindow` states what an end of this value means and why it is the one bound that
+# may read earlier than the start it belongs to.
 END_OF_DAY: Final = time(0, 0)
 
 # A session shorter than one grid step cannot be a block at all.
@@ -136,15 +135,17 @@ class LocalTimeWindow:
 
     **An end of ``00:00`` means the END of the day, and that is the only relaxation of the rule
     that a window runs forward.** ``time`` cannot spell 24:00 and a bound is a ``time``, so the
-    day's last instant is spelled as its first, and every comparison of two bounds reads
+    day's last instant is spelled as its first, and every ORDERING comparison of two bounds reads
     :attr:`opens_at_minute` and :attr:`closes_at_minute` rather than the ``time`` values: ``00:00``
     compares as the day's first minute and means its last.
 
     A window itself still never wraps. A stretch a user authors across midnight becomes the two
     windows :func:`authored_windows` splits it into, so nothing downstream holds a pair of bounds
-    that run backwards. A window whose start equals its end stays refused, which is why ``00:00``
-    to ``00:00`` names neither the whole day nor none of it and nothing has to decide which:
-    "anytime" is said by declaring no preference at all.
+    that run backwards. A window whose start equals its end stays refused, and that one rule is
+    stated over the ``time`` values rather than over the minute coordinate: read as minutes,
+    ``00:00`` to ``00:00`` opens at the day's first minute and closes at its last, so it would pass
+    the forward rule and name every hour of the day. Refusing it keeps a whole day inexpressible as
+    one window, because "anytime" is said by declaring no preference at all.
     """
 
     start: LocalTime
