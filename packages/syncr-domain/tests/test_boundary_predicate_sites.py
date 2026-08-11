@@ -25,12 +25,17 @@ WHAT THIS WALK CANNOT SEE, stated so a green result is not read as more than it 
 
 * the comparison written through a local name. `start = interval.start` and then `start <= now`
   carries no attribute named `start` on either side, so it reads here as no comparison at all.
-  Measured empty in every shipped root, and unenforced.
+  Unenforced. The sweep that found no such site is in the changeset, where it is dated.
 * a comparison passed directly to `.where`, `.filter` or `.having`. Those are excluded on purpose,
   because a stored column compared against a span's bound is the same shape as this predicate and
   no property of the syntax separates them. The exclusion is structural rather than a list of
   names, and it is what keeps the allowed set below to the module that owns the question plus two
   stated exceptions. A copy hidden inside a query call escapes.
+* a clause the query call receives through another call, `where(and_(...))`, is NOT excluded, so it
+  reads as a site. Deliberate, and asserted below: the exclusion covers a query call's own
+  arguments and is not widened to reach through nested calls, because an exclusion that grows hides
+  a real copy. The first sibling to wrap a stored-column clause that way reddens the rule, and
+  should name the scope in the allowed set or unwrap the clause rather than widen the exclusion.
 * a reader that takes the predicate through a module import. The second reading below reads
   `from ... import` only, so `import syncr_api.plans.settled` followed by `settled.has_started(...)`
   is invisible to both readings.
@@ -164,6 +169,11 @@ FINDS_NO_SITE: Final = (
 # past the query calls, which is the direction that would hide a copy.
 HANDED_TO_AN_ORDINARY_CALL: Final = "guard.require(block.interval.start <= now)"
 
+# A stored-column clause the query call receives through another call. Not excluded, so it reads as
+# a site: the exclusion covers a query call's own arguments and is not widened to reach through
+# nested calls. No such clause is in the tree today, so this pins the behaviour a future one meets.
+WRAPPED_IN_A_NESTED_CALL: Final = "rows.where(and_(Anchor.starts_at <= span.start, other))"
+
 FINDS_AN_IMPORT: Final = (
     "from syncr_domain.intervals import has_started",
     "from syncr_domain.intervals import Interval, has_elapsed, has_started",
@@ -217,14 +227,18 @@ def _is_a_bound(node: ast.expr) -> bool:
     return isinstance(node, ast.Attribute) and node.attr in _BOUNDS
 
 
-def query_predicates(tree: ast.Module) -> set[int]:
-    """Every comparison handed straight to a query call, by node identity.
+def query_predicates(tree: ast.Module) -> set[ast.Compare]:
+    """Every comparison a query call receives as one of its own arguments.
 
-    Collected once per module and then excluded by identity rather than re-derived per comparison,
-    so the walk stays one pass over the tree.
+    The nodes themselves rather than their `id()`s: `ast.AST` hashes by identity either way, and a
+    set of ids would only be correct while the parsed tree outlives the walk.
+
+    A clause reached through a nested call, `where(and_(...))`, is not collected. The exclusion
+    covers what the query call is handed directly, because widening it to reach through calls is the
+    direction that hides a real copy.
     """
     return {
-        id(argument)
+        argument
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -239,7 +253,7 @@ def sites_in(tree: ast.Module) -> Iterator[str]:
     yield from _scoped(tree, (), query_predicates(tree))
 
 
-def _scoped(node: ast.AST, scope: tuple[str, ...], in_a_query: set[int]) -> Iterator[str]:
+def _scoped(node: ast.AST, scope: tuple[str, ...], in_a_query: set[ast.Compare]) -> Iterator[str]:
     """The scopes below ``node``, tracked on the way down rather than from a parent map.
 
     Tracking downward is what attributes a comparison inside a comprehension inside a method to the
@@ -251,7 +265,7 @@ def _scoped(node: ast.AST, scope: tuple[str, ...], in_a_query: set[int]) -> Iter
             continue
         if (
             isinstance(child, ast.Compare)
-            and id(child) not in in_a_query
+            and child not in in_a_query
             and compares_a_start_against_an_instant(child)
         ):
             yield ".".join(scope) or "<module>"
@@ -356,9 +370,9 @@ def test_the_reading_covers_every_direction_the_question_can_be_written_in(
 
 
 def test_the_reading_leaves_a_stored_column_predicate_to_the_database() -> None:
-    # The exclusion that keeps the allowed set small, held from both sides. The same comparison is
-    # a stored-column predicate when a query call is what receives it and a decision in Python
-    # otherwise, so an exclusion widened past the query calls hides a real copy: the last case is
+    # The exclusion that keeps the allowed set small, held on both of its edges. The same comparison
+    # is a stored-column predicate when a query call is what receives it and a decision in Python
+    # otherwise, so an exclusion widened past the query calls hides a real copy: the third case is
     # what fails when it is.
     handed_to_a_query = "rows.where(Anchor.ends_at > span.start)"
     standing_alone = "kept = Anchor.ends_at > span.start"
@@ -367,6 +381,15 @@ def test_the_reading_leaves_a_stored_column_predicate_to_the_database() -> None:
     assert not list(sites_in(ast.parse(handed_to_a_query)))
     assert list(sites_in(ast.parse(standing_alone)))
     assert list(sites_in(ast.parse(handed_to_an_ordinary_call)))
+
+
+def test_the_exclusion_does_not_reach_through_a_call_the_query_call_receives() -> None:
+    # The exclusion's outer edge, pinned so it cannot be widened silently. A clause wrapped in
+    # `and_()` reads as a site, which is the conservative answer: reaching through nested calls to
+    # excuse it would excuse anything a query call can be handed, and an exclusion that grows hides
+    # a real copy. Nothing in the tree is written this way, so this test is what the first sibling
+    # to write one meets.
+    assert list(sites_in(ast.parse(WRAPPED_IN_A_NESTED_CALL)))
 
 
 def test_the_reading_attributes_a_comparison_to_the_scope_that_holds_it() -> None:
@@ -401,10 +424,14 @@ def test_the_import_reading_reaches_the_readers_the_tree_holds() -> None:
 # --------------------------------------------------------------------------------
 
 
-def test_the_interval_algebra_is_the_only_place_a_start_is_compared_to_an_instant() -> None:
+def test_a_start_is_compared_to_an_instant_only_in_the_scopes_this_module_names() -> None:
     # Seven scopes: the algebra's five, and two elsewhere that ask a different question and are
     # named where the set is defined. An eighth anywhere fails, in either direction, and so does
     # any of the seven going missing.
+    #
+    # The name says "the scopes this module names" rather than "the interval algebra", because two
+    # of the seven are outside it. A test's name is what a red set prints, so it may not claim an
+    # invariant its assertion does not check.
     assert found_sites(repository_root()) == CANONICAL_SITES
 
 
