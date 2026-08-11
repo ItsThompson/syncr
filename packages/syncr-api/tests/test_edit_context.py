@@ -252,17 +252,16 @@ class TestDeadlineGuard:
 # ---------------------------------------------------------------------------
 
 # Every field of EditContext classified by its source. Pre-edit fields describe the state the
-# proposal was made in; post-edit fields describe the week's facts as the pin left them.
+# proposal was made in; post-edit fields describe the accepted placement and the week around it.
 # A field added to EditContext without appearing in one of these two sets fails
 # `test_every_field_is_classified`.
 #
 # LIMIT OF THIS GUARD: it checks MEMBERSHIP (a new field must be placed in one set) but cannot
-# check SOURCING (that the code reads it from the right assembly). A source check would require
-# tracing the data flow from `edit_context()`'s parameters through to each field assignment, which
-# is not expressible as a pure assertion over the dataclass. What prevents a re-sourcing defect is
-# the parameter split in `edit_context()`: pre-edit values arrive as explicit parameters resolved
-# BEFORE the pin, and the post-pin `inputs` object is what supplies the rest. A field on the wrong
-# side would have to read a parameter that does not carry it.
+# check SOURCING (that the code reads it from the right assembly). What holds the sourcing is that
+# `edit_context` is handed ONE assembly and it is the pre-pin one: the pin write path prices the
+# edit and builds this context in the frame taken before the pin row exists, and computes the
+# verdict in a second assembly this function never receives. `tests/test_pin_write_path.py` holds
+# which frame each consumer is handed.
 PRE_EDIT_FIELDS = frozenset(
     {
         "objective_breakdown",
