@@ -22,7 +22,6 @@ are two acts the user takes separately. An unknown field is rejected, so sending
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Self
 from uuid import UUID  # noqa: TC003 - as above
 
@@ -40,7 +39,7 @@ from syncr_api.calendars.config import (
     SourceState,
 )
 from syncr_api.core.notices import Notice  # noqa: TC001 - pydantic resolves annotations at runtime
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 
 if TYPE_CHECKING:
     from syncr_api.calendars.events import RemoteCalendar
@@ -98,8 +97,8 @@ class SyncStateResponse(WireModel):
     nobody has polled.
     """
 
-    last_success_at: datetime | None = None
-    last_attempt_at: datetime | None = None
+    last_success_at: WireInstant | None = None
+    last_attempt_at: WireInstant | None = None
     last_error: str | None = Field(
         default=None,
         description=(

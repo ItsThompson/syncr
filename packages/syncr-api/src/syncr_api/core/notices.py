@@ -21,12 +21,11 @@ rather than a fix.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import Final, Literal, Self
 
 from pydantic import Field, model_validator
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 
 type NoticeVolume = Literal["inline", "panel", "banner"]
 INLINE: Final[NoticeVolume] = "inline"
@@ -86,7 +85,7 @@ class Notice(WireModel):
             "because a notice that says only what broke leaves the reader unable to act."
         )
     )
-    since: datetime | None = Field(
+    since: WireInstant | None = Field(
         default=None,
         description=(
             "How long the condition has held, as an instant. Null while it is not known. Typed "

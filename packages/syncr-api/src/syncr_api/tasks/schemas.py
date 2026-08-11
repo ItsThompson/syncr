@@ -29,12 +29,11 @@ is accepted without changing the contract.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 from syncr_api.tasks.config import (
     ESTIMATE_MINUTES_MAX,
     ESTIMATE_MINUTES_MIN,
@@ -112,12 +111,12 @@ class TaskResponse(WireModel):
         description="Work left: the estimate less what was recorded, never negative. Recording "
         "more than was estimated reports zero rather than a negative figure."
     )
-    deadline: datetime | None = Field(description=_DEADLINE_DESCRIPTION)
+    deadline: WireInstant | None = Field(description=_DEADLINE_DESCRIPTION)
     priority: Priority = Field(description=_PRIORITY_DESCRIPTION)
     min_chunk_minutes: int = Field(description=_MIN_CHUNK_DESCRIPTION)
     splittable: bool = Field(description=_SPLITTABLE_DESCRIPTION)
     status: TaskStatus
-    completed_at: datetime | None = Field(
+    completed_at: WireInstant | None = Field(
         description="When this task was completed, null otherwise. A dropped task has no "
         "instant: nothing reports one, and a completion is what reports read."
     )
@@ -191,7 +190,7 @@ class TaskCreateRequest(WireModel):
         strict=True,
         description=_ESTIMATE_DESCRIPTION,
     )
-    deadline: datetime | None = Field(default=None, description=_DEADLINE_DESCRIPTION)
+    deadline: WireInstant | None = Field(default=None, description=_DEADLINE_DESCRIPTION)
     priority: Priority = Field(default=DEFAULT_PRIORITY, description=_PRIORITY_DESCRIPTION)
     # Null rather than a literal default, because the default is DERIVED from the estimate: one
     # grid step, clamped down to a smaller stated estimate. Filling it here would make the
@@ -232,7 +231,7 @@ class TaskPatchRequest(WireModel):
         strict=True,
         description=_ESTIMATE_DESCRIPTION,
     )
-    deadline: datetime | None = Field(default=None, description=_DEADLINE_DESCRIPTION)
+    deadline: WireInstant | None = Field(default=None, description=_DEADLINE_DESCRIPTION)
     priority: Priority | None = Field(default=None, description=_PRIORITY_DESCRIPTION)
     min_chunk_minutes: int | None = Field(
         default=None,

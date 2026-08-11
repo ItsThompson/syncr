@@ -27,7 +27,6 @@ they are what tell the reader how much of the period the figures rest on.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field
@@ -37,7 +36,7 @@ from pydantic import ConfigDict, Field
 # is being constructed.
 from syncr_api.areas.config import BUDGET_PERCENT_MAX, BUDGET_PERCENT_MIN
 from syncr_api.budgets.schemas import PeriodSpan  # noqa: TC001
-from syncr_api.core.schemas import WireDecimal, WireModel
+from syncr_api.core.schemas import WireDecimal, WireInstant, WireModel
 from syncr_domain.budget_review import ProposalBasis  # noqa: TC001
 
 _AREA_DESCRIPTION = (
@@ -249,7 +248,7 @@ class BudgetApplyResponse(WireModel):
         description="The Areas whose share this call changed, so a caller can render exactly what "
         "moved."
     )
-    changed_at: datetime | None = Field(
+    changed_at: WireInstant | None = Field(
         default=None,
         description="When the change was applied, or null when nothing changed.",
     )

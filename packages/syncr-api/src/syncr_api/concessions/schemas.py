@@ -21,13 +21,12 @@ spelling, so a client rendering "Tue, Wed and Thu" reads the same keys the serve
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Self
 from uuid import UUID  # noqa: TC003 - as above
 
 from pydantic import ConfigDict, Field
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 from syncr_domain.plan import AdjustmentKind  # noqa: TC001 - pydantic resolves at runtime
 
 if TYPE_CHECKING:
@@ -73,7 +72,7 @@ class AdjustmentResponse(WireModel):
     target_id: UUID
     reductions: dict[str, int] = Field(description=_REDUCTIONS_DESCRIPTION)
     delta_minutes: int | None = Field(description=_DELTA_DESCRIPTION)
-    created_at: datetime
+    created_at: WireInstant
     created_by_operation_id: UUID = Field(
         description="The operation whose proposal this concession was approved with."
     )

@@ -24,13 +24,12 @@ could disagree with the numbers beside it.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import Annotated, Literal
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 from syncr_api.habits.config import HABIT_TITLE_MAX_LENGTH
 from syncr_domain.habits import (
     DEFAULT_DEBT_CAP_PERIODS,
@@ -133,7 +132,7 @@ class CursorResponse(WireModel):
         description="The variant whose confirmed completion put the cursor here, or null before "
         "the first one."
     )
-    advanced_at: datetime | None = Field(
+    advanced_at: WireInstant | None = Field(
         description="When the most recent confirmed completion was confirmed, or null."
     )
     statement: str = Field(

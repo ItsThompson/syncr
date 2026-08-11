@@ -11,13 +11,12 @@ can carry it.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import Field
 
 from syncr_api.accounts.config import EMAIL_MAX_LENGTH
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 
 # A password is not validated for shape at sign-in: the only question is whether it
 # matches, and a rule here would be a second source of truth for whatever the
@@ -39,4 +38,4 @@ class SessionResponse(WireModel):
     tenant_id: UUID
     user_id: UUID
     email: str
-    expires_at: datetime
+    expires_at: WireInstant

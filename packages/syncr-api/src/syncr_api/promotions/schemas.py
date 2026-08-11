@@ -8,12 +8,11 @@ the two instants, because what the reader was told is when they will be asked ag
 from __future__ import annotations
 
 # Runtime, not type-only: pydantic resolves a field annotation when the model is built.
-from datetime import datetime  # noqa: TC003 - see above
 from typing import TYPE_CHECKING, Self
 
 from pydantic import Field
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 from syncr_api.promotions.config import DECLINE_SUPPRESSION_WEEKS
 from syncr_api.templates.entry_schemas import TemplateEntryResponse
 
@@ -50,8 +49,8 @@ class PromotionDeclinedResponse(WireModel):
     """What a decline recorded: when it was answered, and until when it stays answered."""
 
     promotion_id: str = Field(description="The pattern that will not be raised again.")
-    declined_at: datetime
-    suppressed_until: datetime = Field(
+    declined_at: WireInstant
+    suppressed_until: WireInstant = Field(
         description="The instant the pattern may be raised again. Stored rather than derived, so "
         "the promise the reader was given is the fact that is kept."
     )

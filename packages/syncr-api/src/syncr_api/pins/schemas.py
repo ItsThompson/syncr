@@ -15,13 +15,12 @@ convention throughout.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Literal, Self
 from uuid import UUID  # noqa: TC003 - as above
 
 from pydantic import Field
 
-from syncr_api.core.schemas import WireModel, WireSpan
+from syncr_api.core.schemas import WireInstant, WireModel, WireSpan
 from syncr_api.plans.verdict_schemas import VerdictResponse
 from syncr_api.solving.schemas import OperationResponse
 
@@ -37,7 +36,7 @@ class PinCreateRequest(WireModel):
         description="The block being pinned, as the week view spells its id.",
         min_length=1,
     )
-    start: datetime = Field(
+    start: WireInstant = Field(
         description="Where the block now begins. Its length is unchanged, because a drag moves and "
         "does not resize, so the pinned span is this instant plus the block's own duration."
     )
@@ -72,7 +71,7 @@ class PinResponse(WireModel):
         description="The weight set the cost was measured under. Stored rather than recomputed, "
         "because the weights it was priced against will have moved on."
     )
-    created_at: datetime = Field(description="When the user made this edit.")
+    created_at: WireInstant = Field(description="When the user made this edit.")
 
     @classmethod
     def of(cls, record: PinRecord) -> Self:

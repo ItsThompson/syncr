@@ -20,13 +20,12 @@ works, which is the rule this api's error details and its degradation notices bo
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Self
 from uuid import UUID  # noqa: TC003 - as above
 
 from pydantic import Field
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 from syncr_api.solving.config import (
     PAGE_LIMIT_DEFAULT,
     PAGE_LIMIT_MAX,
@@ -70,9 +69,9 @@ class OperationResponse(WireModel):
         default=None,
         description="The input snapshot this solve read. Null until the worker loads inputs.",
     )
-    scheduled_for: datetime = Field(description="When this operation became due.")
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
+    scheduled_for: WireInstant = Field(description="When this operation became due.")
+    started_at: WireInstant | None = None
+    finished_at: WireInstant | None = None
     result_revision_id: UUID | None = None
     superseded_by: UUID | None = None
     attempt: int = Field(description="One-based, so a retrying job reads as 'try 2 of N'.")

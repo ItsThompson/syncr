@@ -14,13 +14,12 @@ empty list is the healthy state.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Self
 
 from pydantic import Field
 
 from syncr_api.core.notices import Notice  # noqa: TC001 - pydantic resolves annotations at runtime
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 
 if TYPE_CHECKING:
     from syncr_api.google_account.connect import GoogleConsent
@@ -95,8 +94,8 @@ class GoogleConnectionResponse(WireModel):
     granted_scopes: list[str] = Field(
         description="What Google says it granted, which can be narrower than what syncr asked for."
     )
-    connected_at: datetime | None = None
-    last_refresh_at: datetime | None = None
+    connected_at: WireInstant | None = None
+    last_refresh_at: WireInstant | None = None
     notices: list[Notice] = Field(
         description=(
             "Every notice this connection's state raises. Write-target expiry raises two, a "

@@ -20,7 +20,6 @@ table cannot reach the wire by sharing a name with a schema field. That is what 
 
 from __future__ import annotations
 
-from datetime import datetime
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -53,6 +52,7 @@ from syncr_api.anchors.schemas import (
     ShadowDeclarationResponse,
 )
 from syncr_api.core.patches import stated, stated_unless_null
+from syncr_api.core.schemas import WireInstant
 from syncr_api.idempotency.injection import IdempotencyGuardDep
 
 if TYPE_CHECKING:
@@ -130,8 +130,8 @@ def _as_type(record: AnchorTypeRecord) -> AnchorTypeResponse:
 async def list_anchors(
     principal: PrincipalDep,
     service: AnchorServiceDep,
-    start: datetime = _FROM,
-    end: datetime = _TO,
+    start: WireInstant = _FROM,
+    end: WireInstant = _TO,
     cursor: str | None = _CURSOR,
     limit: int = _LIMIT,
 ) -> AnchorsResponse:

@@ -22,12 +22,12 @@ header on Today cannot disagree about the same figure.
 
 from __future__ import annotations
 
-from datetime import date, datetime  # noqa: TC003 - pydantic resolves annotations at runtime
+from datetime import date  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import Annotated
 
 from pydantic import ConfigDict, Field
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 from syncr_api.outcomes.config import (
     FROM_FIELD,
     MAX_ACTUAL_MINUTES,
@@ -73,15 +73,15 @@ class TimeRangeBody(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    start: datetime = Field(description="When it began. Carries a UTC offset.")
-    end: datetime = Field(description="When it ended, excluded. Carries a UTC offset.")
+    start: WireInstant = Field(description="When it began. Carries a UTC offset.")
+    end: WireInstant = Field(description="When it ended, excluded. Carries a UTC offset.")
 
 
 class TimeRangeResponse(WireModel):
     """A half-open span of instants, as a response carries one."""
 
-    start: datetime
-    end: datetime
+    start: WireInstant
+    end: WireInstant
 
 
 class OutcomeRequest(WireModel):
@@ -102,8 +102,8 @@ class OutcomeResponse(WireModel):
     state: OutcomeState
     actual_minutes: int | None
     actual_interval: TimeRangeResponse | None
-    occurred_at: datetime = Field(description="When the block was scheduled.")
-    confirmed_at: datetime | None = Field(
+    occurred_at: WireInstant = Field(description="When the block was scheduled.")
+    confirmed_at: WireInstant | None = Field(
         default=None,
         description=(
             "When the day this block belongs to was confirmed. Null means the day is "
@@ -156,7 +156,7 @@ class DayResponse(WireModel):
     presumed_count: int = Field(
         description="How many of the day's blocks nobody has said anything about."
     )
-    confirmed_at: datetime | None = Field(
+    confirmed_at: WireInstant | None = Field(
         description=(
             "When the day was confirmed, or null when at least one of its blocks has not been "
             "answered for. A day holding no block is never confirmed and is never counted as "

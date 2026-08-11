@@ -6,12 +6,13 @@ way a frontend expects and the Python reads the way the rest of this package doe
 
 from __future__ import annotations
 
-# Runtime, not type-only: pydantic resolves a field annotation when the model is built.
-from datetime import datetime
 from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+
+# Runtime, not type-only: pydantic resolves a field annotation when the model is built.
+from syncr_api.core.schemas import WireInstant
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -57,7 +58,7 @@ class LearnedResponse(LearnedSchema):
 
     version: int
     origin: str
-    fitted_at: datetime | None
+    fitted_at: WireInstant | None
     parameters: list[ParameterResponse]
     ready: int
     collecting: int
@@ -86,8 +87,8 @@ class WeightSetResponse(LearnedSchema):
     version: int
     origin: str
     active: bool
-    fitted_at: datetime | None
-    created_at: datetime
+    fitted_at: WireInstant | None
+    created_at: WireInstant
     ready: int
     collecting: int
 

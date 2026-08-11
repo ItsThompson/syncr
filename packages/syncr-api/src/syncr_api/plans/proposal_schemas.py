@@ -20,7 +20,6 @@ convention throughout.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Self
 from uuid import UUID  # noqa: TC003 - as above
 
@@ -29,7 +28,7 @@ from pydantic import Field
 # Runtime imports, every one of them: pydantic resolves a field's annotation while the app is being
 # built, so a nested model named in one has to be importable then.
 from syncr_api.concessions.schemas import AdjustmentResponse
-from syncr_api.core.schemas import WireModel, WireSpan
+from syncr_api.core.schemas import WireInstant, WireModel, WireSpan
 from syncr_api.plans.clause_schemas import ReasonResponse
 from syncr_api.plans.document_schemas import BindingResponse
 from syncr_api.plans.verdict_schemas import VerdictResponse
@@ -143,7 +142,7 @@ class PendingProposalResponse(WireModel):
         "approved revision says which weights produced its plan."
     )
     operation_id: UUID = Field(description="The solve that put this proposal in the slot.")
-    created_at: datetime = Field(description="When that solve landed.")
+    created_at: WireInstant = Field(description="When that solve landed.")
 
     @classmethod
     def of(cls, held: PendingProposal) -> Self:

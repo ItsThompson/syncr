@@ -24,7 +24,6 @@ row was declared in, and moving it would rewrite reported history.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
@@ -37,7 +36,7 @@ from syncr_api.areas.config import (
     FLOOR_HOURS_MIN,
     PROJECT_NAME_MAX_LENGTH,
 )
-from syncr_api.core.schemas import WireDecimal, WireModel
+from syncr_api.core.schemas import WireDecimal, WireInstant, WireModel
 from syncr_domain.pigments import PIGMENT_COUNT
 from syncr_domain.projects import ProjectStatus
 
@@ -205,7 +204,7 @@ class ProjectResponse(WireModel):
         "spent on it counts toward exactly this Area."
     )
     name: str
-    deadline: datetime | None
+    deadline: WireInstant | None
     status: ProjectStatus
 
 
@@ -222,7 +221,7 @@ class ProjectCreateRequest(WireModel):
 
     area_id: UUID
     name: str = Field(min_length=1, max_length=PROJECT_NAME_MAX_LENGTH)
-    deadline: datetime | None = None
+    deadline: WireInstant | None = None
     status: ProjectStatus = ProjectStatus.ACTIVE
 
 
@@ -238,7 +237,7 @@ class ProjectPatchRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, min_length=1, max_length=PROJECT_NAME_MAX_LENGTH)
-    deadline: datetime | None = None
+    deadline: WireInstant | None = None
     status: ProjectStatus | None = None
 
     @field_validator("name", "status")

@@ -21,13 +21,13 @@ unaffected.
 
 from __future__ import annotations
 
-from datetime import date, datetime  # noqa: TC003 - pydantic resolves annotations at runtime
+from datetime import date  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Annotated, Literal, Self, assert_never
 from uuid import UUID  # noqa: TC003 - as above
 
 from pydantic import Field
 
-from syncr_api.core.schemas import WireModel, WireSpan
+from syncr_api.core.schemas import WireInstant, WireModel, WireSpan
 
 # Every name here is used at runtime: the six clause types are matched on, ``ChurnBaseline`` is
 # constructed, and ``BoundSource`` annotates a field, which pydantic resolves while the app is being
@@ -64,7 +64,7 @@ class ChurnBaselineResponse(WireModel):
     revision_id: UUID | None = Field(
         description="The approved revision churn is the difference from."
     )
-    approved_at: datetime | None = Field(
+    approved_at: WireInstant | None = Field(
         description="When it was approved, which the clause renders as a date."
     )
 

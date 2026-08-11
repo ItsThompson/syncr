@@ -13,7 +13,6 @@ rather than having to infer it.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Self
 from uuid import UUID  # noqa: TC003 - as above
 
@@ -22,7 +21,7 @@ from pydantic import Field
 # Runtime imports: pydantic resolves a field's annotation while the app is being built, so a
 # nested model or a closed vocabulary named in one has to be importable then.
 from syncr_api.concessions.schemas import AdjustmentResponse
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 from syncr_api.plans.config import RevisionReason  # noqa: TC001
 from syncr_api.solving.schemas import OperationResponse
 
@@ -39,7 +38,7 @@ class WeekApprovedResponse(WireModel):
         description="Which approval this was: user_approved, or tradeoff_approved when the "
         "proposal carried a concession. Decided by what the slot held, never by the caller."
     )
-    approved_at: datetime = Field(description="When the user assented.")
+    approved_at: WireInstant = Field(description="When the user assented.")
     input_version: int = Field(
         description="The week's input version after this approval bumped it. A solve already "
         "running against the previous value fails its conditional write and is superseded."

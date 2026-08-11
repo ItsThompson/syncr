@@ -16,13 +16,12 @@ get there is the domain's, so two surfaces cannot word one gap differently.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Self
 from uuid import UUID  # noqa: TC003 - as above
 
 from pydantic import Field
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 from syncr_domain.feasibility import Provenance, ShortfallKind  # noqa: TC001 - as above
 from syncr_domain.plan import AdjustmentKind  # noqa: TC001 - as above
 
@@ -45,7 +44,7 @@ class ShortfallResponse(WireModel):
         description="The constraints respected while computing the gap, so a reader can see what "
         "the week was measured against rather than only the number."
     )
-    deadline: datetime | None = Field(
+    deadline: WireInstant | None = Field(
         description="Present only for a gap measured against a deadline."
     )
     area_id: UUID | None = Field(description="Present only for a gap that belongs to one Area.")
@@ -103,7 +102,7 @@ class VerdictResponse(WireModel):
         description="probe for capacity arithmetic, which proves infeasibility only, and solver "
         "for a verdict an attempted placement produced."
     )
-    computed_at: datetime = Field(
+    computed_at: WireInstant = Field(
         description="The instant the assembly this verdict was computed from was stamped with, so "
         "two verdicts over one assembly report one instant."
     )

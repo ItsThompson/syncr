@@ -17,14 +17,13 @@ carries a list of these, and its own sixteen fields are declared under the same 
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field
 
 from syncr_api.conflicts.config import ANCHOR_TYPE_FIELD
-from syncr_api.core.schemas import WireModel, WireSpan
+from syncr_api.core.schemas import WireInstant, WireModel, WireSpan
 from syncr_api.plans.config import CONFLICT_RESOLUTIONS, ConflictResolution
 from syncr_api.plans.document_schemas import BindingResponse
 from syncr_api.solving.schemas import OperationResponse
@@ -52,8 +51,8 @@ class ConflictResponse(WireModel):
         "the block, and a repeated collision is computed over the identity."
     )
     overlap: WireSpan
-    detected_at: datetime
-    resolved_at: datetime | None = Field(
+    detected_at: WireInstant
+    resolved_at: WireInstant | None = Field(
         description="Null while the conflict is still waiting for an answer."
     )
     resolution: ConflictResolution | None = Field(

@@ -32,7 +32,6 @@ matches: a request naming one position would be stating a fraction of the change
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
@@ -55,7 +54,7 @@ from syncr_api.anchors.config import (
     PostScope,
 )
 from syncr_api.anchors.identity import collapsed_text, is_control
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 
 _TYPE_SOURCE_DESCRIPTION = (
     "Where this commitment's type came from. "
@@ -155,11 +154,11 @@ class AnchorResponse(WireModel):
         "Retyping an occurrence of a series persists on the whole series."
     )
     title: str
-    starts_at: datetime = Field(
+    starts_at: WireInstant = Field(
         description="Absolute, and NOT snapped to the quarter hour: an imported commitment is a "
         "fact and keeps its real time, even at :07."
     )
-    ends_at: datetime
+    ends_at: WireInstant
     anchor_type_id: UUID | None
     anchor_type_name: str | None = Field(
         description="The matched or overridden type's name, or null when nothing typed it."

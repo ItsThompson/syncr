@@ -20,15 +20,28 @@ here, and exact ``Decimal`` arithmetic stays on the server where the budget is c
 a block, a rejected candidate window, a forbidden window, an unfilled slot. Every one of them is
 the same half-open pair of instants, and a shape declared per feature is a shape whose halves
 come to be read two ways.
+
+``WireInstant`` is here because a datetime with no offset names no instant. A bare ``datetime``
+reads ``"2026-03-08T09:00"`` and ``"2026-03-08"`` as wall time in whatever zone the process runs
+in, so a caller a zone away from the server stores a deadline hours or a day from the one it
+sent, and is told nothing. This type refuses both readings and renders the offset back, which is
+what ``format: date-time`` already promises a caller: RFC 3339 section 5.6 has no offset-less
+form.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, WithJsonSchema
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    WithJsonSchema,
+)
 from pydantic.alias_generators import to_camel
 
 if TYPE_CHECKING:
@@ -41,6 +54,11 @@ type WireDecimal = Annotated[
     PlainSerializer(float, return_type=float, when_used="json"),
     WithJsonSchema({"type": "number"}),
 ]
+
+# Every instant the api accepts or returns, in either direction. An aware value is the only one
+# this admits, and pydantic renders an aware value with its offset, so a response cannot omit
+# one.
+type WireInstant = AwareDatetime
 
 
 class WireModel(BaseModel):
@@ -58,8 +76,8 @@ class WireSpan(WireModel):
     transition is 23 or 25 hours long and a reader that needs the figure takes the difference.
     """
 
-    start: datetime = Field(description="When the span begins. Inside it.")
-    end: datetime = Field(description="When the span ends. NOT inside it.")
+    start: WireInstant = Field(description="When the span begins. Inside it.")
+    end: WireInstant = Field(description="When the span ends. NOT inside it.")
 
     @classmethod
     def of(cls, interval: Interval) -> Self:

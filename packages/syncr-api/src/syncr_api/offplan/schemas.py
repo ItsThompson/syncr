@@ -32,13 +32,12 @@ on the wire, and ticket 1135 owns deciding it once in ``core/schemas.py``.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Self
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 from syncr_api.offplan.config import LABEL_MAX_LENGTH, LABEL_MIN_LENGTH
 from syncr_domain.snap import SNAP_MINUTES
 
@@ -75,8 +74,8 @@ class OffPlanPeriodResponse(WireModel):
     """One declared span of time off."""
 
     id: UUID
-    start: datetime = Field(description=_START_DESCRIPTION)
-    end: datetime = Field(description=_END_DESCRIPTION)
+    start: WireInstant = Field(description=_START_DESCRIPTION)
+    end: WireInstant = Field(description=_END_DESCRIPTION)
     keep_frame: bool = Field(description=_KEEP_FRAME_DESCRIPTION)
     label: str | None = Field(description=_LABEL_DESCRIPTION)
 
@@ -112,8 +111,8 @@ class OffPlanCreateRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    start: datetime = Field(description=_START_DESCRIPTION)
-    end: datetime = Field(description=_END_DESCRIPTION)
+    start: WireInstant = Field(description=_START_DESCRIPTION)
+    end: WireInstant = Field(description=_END_DESCRIPTION)
     keep_frame: bool = Field(default=False, description=_KEEP_FRAME_DESCRIPTION)
     label: str | None = Field(
         default=None,
@@ -132,8 +131,8 @@ class OffPlanPatchRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    start: datetime | None = Field(default=None, description=_START_DESCRIPTION)
-    end: datetime | None = Field(default=None, description=_END_DESCRIPTION)
+    start: WireInstant | None = Field(default=None, description=_START_DESCRIPTION)
+    end: WireInstant | None = Field(default=None, description=_END_DESCRIPTION)
     keep_frame: bool | None = Field(default=None, description=_KEEP_FRAME_DESCRIPTION)
     label: str | None = Field(
         default=None,

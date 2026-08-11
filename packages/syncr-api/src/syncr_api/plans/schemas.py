@@ -23,7 +23,7 @@ never a float, so a client can add two of them without narrowing anything first.
 
 from __future__ import annotations
 
-from datetime import date, datetime  # noqa: TC003 - pydantic resolves annotations at runtime
+from datetime import date  # noqa: TC003 - pydantic resolves annotations at runtime
 from typing import TYPE_CHECKING, Self
 from uuid import UUID  # noqa: TC003 - as above
 
@@ -34,7 +34,7 @@ from pydantic import Field
 # cannot see that ``WireModel`` extends ``BaseModel`` from another module, so each import says so.
 from syncr_api.concessions.schemas import AdjustmentResponse
 from syncr_api.conflicts.schemas import ConflictResponse
-from syncr_api.core.schemas import WireModel, WireSpan
+from syncr_api.core.schemas import WireInstant, WireModel, WireSpan
 from syncr_api.offplan.schemas import OffPlanPeriodResponse
 from syncr_api.pins.schemas import PinResponse
 from syncr_api.plans.config import RevisionReason, RevisionStatus  # noqa: TC001
@@ -251,12 +251,12 @@ class WeekRevisionResponse(WireModel):
     """One appended revision of a week's plan, as the history lists it."""
 
     id: UUID
-    created_at: datetime = Field(description="When the revision was appended.")
+    created_at: WireInstant = Field(description="When the revision was appended.")
     status: RevisionStatus = Field(
         description="Whether the authority rule applied it or the user assented to it."
     )
     reason: RevisionReason = Field(description="What caused this revision to exist.")
-    approved_at: datetime | None = Field(
+    approved_at: WireInstant | None = Field(
         description="When the user assented. Null for an applied revision."
     )
     input_version: int = Field(description="The input snapshot the revision was produced from.")

@@ -21,12 +21,11 @@ because a smaller denominator explains itself.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 - pydantic resolves annotations at runtime
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import Field
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireInstant, WireModel
 
 
 class PeriodSpan(WireModel):
@@ -38,8 +37,8 @@ class PeriodSpan(WireModel):
     one.
     """
 
-    start: datetime
-    end: datetime
+    start: WireInstant
+    end: WireInstant
 
 
 class AreaBudgetReading(WireModel):
