@@ -489,10 +489,15 @@ class TestAStretchAcrossMidnightIsSplitWhereItIsAuthored:
         # The control for the overlap cases below: the halves abut at midnight, and a rule that
         # read the pre-midnight half as running to the day's end AND starting it would refuse
         # every wrap ever authored.
-        assert (
-            len(a_preference(windows=authored_windows(start=time(23, 0), end=time(1, 0))).windows)
-            == 2
-        )
+        post_midnight, pre_midnight = a_preference(
+            windows=authored_windows(start=time(23, 0), end=time(1, 0))
+        ).windows
+
+        # Midnight is the only bound the two share, read in the coordinate the overlap rule reads:
+        # the pre-midnight half closes at the day's end and the post-midnight half opens at its
+        # start. The unpacking above is what requires the pair to be exactly two.
+        assert pre_midnight.closes_at_minute == MINUTES_IN_A_DAY
+        assert post_midnight.opens_at_minute == 0
 
     def test_a_wrap_against_a_late_evening_window_whose_union_is_one_window_is_refused(
         self,
