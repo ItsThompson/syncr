@@ -1,30 +1,19 @@
 """The week the drill's tenant lived, written through the paths a person's week is written through.
 
-Five tables carry a restore drill's evidence, and every one of them is written here by the thing
-that writes it in production: the horizon maintainer materializes the week, a solve fills its slot,
-the outcome service records and confirms what happened in it, the pin service holds one block and
-writes the edit event beside it in the same transaction, and the concession repository records the
-one thing an approved tradeoff persists.
+Five tables carry a restore drill's evidence, and every one of them is written by the thing that
+writes it in production: the horizon maintainer materializes the week, a solve fills its slot, the
+outcome service records and confirms what happened in it, the pin service holds one block and writes
+the edit event beside it in the same transaction, and the concession is
+:mod:`syncr_api.recovery.drill_concession`.
 
-**The week is the one before the one holding today, and every instant is stated rather than read.**
-Two facts force that. A slot the week has already reached is left unbound, so a solve is asked for
-at an instant inside the week rather than after it, or nothing is ever placed. And a day the user
-has not lived cannot be confirmed, so the days being answered for have to be behind the real clock.
-One week satisfies both at once: it is entirely behind now, and the instant the plan is asked for is
-inside it. Nothing here depends on which weekday the drill is run on.
-
-**The concession is written through the repository an approval writes it through.** Requesting a
-tradeoff persists nothing by design: the candidate rides on the operation and only an approval makes
-it real. Reaching one through the request path needs a week short enough that syncr offers a
-concession for it, which is a fixture with a capacity budget rather than a seeder, so what is
-recorded here is the write itself, with the solve's own operation named as its cause.
+**Every step reads before it writes**, so a repeat run writes nothing at all: the plan, the solve,
+the outcomes, the pin and the concession each have a read that answers whether the thing is already
+there. Which week and which instants are :mod:`syncr_api.recovery.drill_week`'s.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from syncr_api.approvals.injection import build_approval_service
 from syncr_api.horizon.maintainer import PlanHorizonMaintainer
@@ -32,74 +21,33 @@ from syncr_api.outcomes.declarations import Recording
 from syncr_api.outcomes.injection import get_outcome_service
 from syncr_api.pins.declarations import PinRequested
 from syncr_api.pins.injection import build_pin_service
-from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.injection import build_week_service
 from syncr_api.plans.pins import PinRepository
 from syncr_api.plans.proposals import PendingProposalRepository
+from syncr_api.plans.reality import BlockOutcomeRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import plan_document
 from syncr_api.solving.config import SOLVE
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.solving.runner import SolveRunner
 from syncr_domain.identity import BindingKind
+from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import OutcomeState
-from syncr_domain.plan import AdjustmentKind
-from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
-    from datetime import date
-
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_api.core.principal import Principal
-    from syncr_api.plans.records import BlockOutcomeRecord, WeekAdjustmentRecord
+    from syncr_api.plans.records import BlockOutcomeRecord
+    from syncr_api.recovery.drill_week import DrillWeek
     from syncr_api.solving.records import OperationRecord
     from syncr_api.worker.main import WorkerContext
-    from syncr_domain.identifiers import AreaId, HabitId, OperationId, TenantId
+    from syncr_domain.identifiers import HabitId, TenantId
     from syncr_domain.plan import Block, PlanDocument
-
-# How much of the drill's Area floor the concession excuses. A figure rather than a measurement: the
-# row exists so a restore has a concession to bring back, and what a real one would excuse is
-# decided by the shortfall that offered it.
-FLOOR_BREACH_MINUTES: Final = 60
 
 
 class NothingWasPlaced(Exception):
     """The solve left the week holding no habit occurrence, so there is no cursor to move."""
-
-
-@dataclass(frozen=True, slots=True)
-class DrillWeek:
-    """The week the drill's evidence describes, and the instant each act is stated at.
-
-    Three instants rather than one, and they are ordered because the live plan is. A revision is the
-    live plan when it is the newest, and two revisions sharing an instant are ordered by their
-    identifiers, so a materialization and the solve that fills it are stated minutes apart or which
-    of the two a reader calls live is decided by a random UUID. All three are inside the week's
-    first hour, which is before every slot it holds: a slot the week has already reached is left
-    unbound, and a block that has begun cannot be pinned.
-    """
-
-    iso_week: IsoWeek
-    planned_at: datetime
-    solved_at: datetime
-    lived_at: datetime
-
-    @property
-    def dates(self) -> tuple[date, ...]:
-        return self.iso_week.dates()
-
-
-def the_week_behind(now: datetime) -> DrillWeek:
-    """The whole week before the one holding ``now``: every day of it is behind the real clock."""
-    iso_week = IsoWeek.containing(now.astimezone(UTC).date()).preceding()
-    monday = datetime.combine(iso_week.monday(), datetime.min.time(), tzinfo=UTC)
-    return DrillWeek(
-        iso_week=iso_week,
-        planned_at=monday,
-        solved_at=monday + timedelta(minutes=5),
-        lived_at=monday + timedelta(hours=1),
-    )
 
 
 async def materialize(session: AsyncSession, tenant_id: TenantId, week: DrillWeek) -> bool:
@@ -179,8 +127,8 @@ def occurrences_of(document: PlanDocument, habit_id: HabitId) -> tuple[Block, ..
     )
 
 
-def require_occurrences(occurrences: tuple[Block, ...], week: DrillWeek) -> tuple[Block, ...]:
-    """The occurrences, or the refusal a week the solve left empty has to produce.
+def require_occurrences(occurrences: tuple[Block, ...], week: DrillWeek) -> None:
+    """Refuse a week the solve left empty. Answers nothing: it is a check rather than a reading.
 
     One raiser rather than a check per caller, and it is called twice on purpose: once by the
     sequence, as soon as the solve's answer has been read, and once by the recording, which is the
@@ -189,12 +137,41 @@ def require_occurrences(occurrences: tuple[Block, ...], week: DrillWeek) -> tupl
     keeps the function answerable for its own argument.
     """
     if occurrences:
-        return occurrences
+        return
     raise NothingWasPlaced(
         f"{week.iso_week} holds no occurrence of the drill's rotation habit, so no confirmed "
         "completion can be recorded and a restore would have no cursor to re-derive. The solve "
         "placed nothing: read the week's own verdict before seeding again"
     )
+
+
+async def already_answered_for(
+    session: AsyncSession, tenant_id: TenantId, occurrences: tuple[Block, ...]
+) -> bool:
+    """Whether every occurrence already carries a CONFIRMED outcome.
+
+    The read the recording and the confirmation need, and confirmed rather than merely recorded is
+    the whole of it: a run that recorded and then stopped leaves rows a repeat has to confirm, and
+    only a confirmed completion moves the cursor. So a half-answered week is answered again and a
+    fully answered one is left alone.
+
+    Without it both steps run on every repeat, and each ends by bumping every tracked week from the
+    one holding the clock onwards. The drill's week is behind the clock, so nothing moves while
+    nothing at or after the clock is tracked, and a version counter moves the moment something is.
+
+    The span is the occurrences' own rather than the week's, so it needs no reading of the tenant's
+    zones to know which instants the week covers.
+    """
+    if not occurrences:
+        return False
+    span = Interval(
+        min(block.interval.start for block in occurrences),
+        max(block.interval.end for block in occurrences),
+    )
+    recorded = {
+        row.block_id: row for row in await BlockOutcomeRepository(session, tenant_id).for_span(span)
+    }
+    return all(block.id in recorded and recorded[block.id].is_confirmed for block in occurrences)
 
 
 async def record_what_happened(
@@ -266,43 +243,3 @@ async def already_pinned(session: AsyncSession, tenant_id: TenantId, week: Drill
     other. Reading first is what keeps a repeat run from writing either.
     """
     return bool(await PinRepository(session, tenant_id).for_week(week.iso_week))
-
-
-async def concede_a_floor_breach(
-    session: AsyncSession,
-    tenant_id: TenantId,
-    week: DrillWeek,
-    *,
-    area_id: AreaId,
-    operation_id: OperationId,
-) -> WeekAdjustmentRecord:
-    """Record the concession an approval records: this Area's floor, breached by agreement.
-
-    An upsert on the week, the kind and the target, so a first run cannot accumulate rows. What
-    keeps a REPEAT run from writing is the read beside this one: the upsert converges the row's
-    identity and not its contents, because `created_by_operation_id` is whichever solve the run had
-    in hand.
-    """
-    return await WeekAdjustmentRepository(session, tenant_id).upsert(
-        iso_week=week.iso_week,
-        kind=AdjustmentKind.BREACH_FLOOR.value,
-        target_id=area_id,
-        created_at=week.lived_at,
-        created_by_operation_id=operation_id,
-        delta_minutes=FLOOR_BREACH_MINUTES,
-    )
-
-
-async def already_conceded(
-    session: AsyncSession, tenant_id: TenantId, week: DrillWeek, *, area_id: AreaId
-) -> bool:
-    """Whether the week already holds this concession, over the kind and target that key it.
-
-    The read every sibling step has, and it is what makes a repeat run write no byte rather than the
-    same row again: an upsert would rewrite the cause with whichever solve the second run resolved,
-    and the drill's own verdict compares a table's contents rather than its count.
-    """
-    held = await WeekAdjustmentRepository(session, tenant_id).for_week(week.iso_week)
-    return any(
-        one.kind == AdjustmentKind.BREACH_FLOOR.value and one.target_id == area_id for one in held
-    )

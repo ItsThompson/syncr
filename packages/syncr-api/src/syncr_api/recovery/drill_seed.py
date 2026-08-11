@@ -12,19 +12,25 @@ paths.
 so a row it produces satisfies the invariants that path enforces, and a column that moves moves for
 this seeder too rather than leaving it writing a shape the product can no longer read.
 
-**It converges rather than accumulating.** Every step reads before it writes, including the
-concession, so a second run against a seeded database writes nothing at all and a drill can be
-repeated: not one row, and not one byte, which is the property the hand-written seed it replaces
-states about itself. No reset is needed and none is shipped: nothing here removes a row.
+**It converges rather than accumulating.** Every step reads before it writes, so a second run
+against a seeded database writes nothing at all: not one row and not one byte, which is the property
+the hand-written seed it replaces states about itself. No reset is needed and none is shipped:
+nothing here removes a row.
 
 **It refuses a database that is not the drill's own before it writes anything.** The rule, and what
 it can and cannot see, are in :mod:`syncr_api.recovery.drill_target`.
 
 Exit codes: 0 when the evidence is in place, whether this run wrote it or found it; 1 when the
 target was refused, the bootstrap command failed, or the solve placed nothing to record an outcome
-against; 2 when the database could not be reached at all. Two non-zero codes rather than one,
-because "this is the wrong database, never retry" and "the database was not up yet" are opposite
-instructions to whatever runs this.
+against; 2 when the database could not be read. Two non-zero codes rather than one, because "this is
+the wrong database, never retry" and "the database was not up yet" are opposite instructions to
+whatever runs this.
+
+**What exit 2 does and does not promise.** It is `SQLAlchemyError` or `OSError`, which is the shape
+both sibling console scripts in this package catch, and `SQLAlchemyError` is also the base of the
+constraint and programming errors no retry can fix. So 2 means "the database did not answer this
+run", not "wait and it will work": a caller that retries on 2 needs an attempt cap, and the printed
+reason is what says which of the two it was.
 The judgement of what it produced is `python3 -m ops.compare`'s and the fingerprint's, never this
 script's: it reports what it did and the drill reports whether that was enough.
 """
@@ -98,8 +104,12 @@ async def run(context: WorkerContext, *, bootstrap: Bootstrap | None = None) -> 
         print(f"refused: {refused}", file=sys.stderr)
         return EXIT_REFUSED
     except (SQLAlchemyError, OSError) as unreachable:
-        print(f"the database could not be reached: {unreachable}", file=sys.stderr)
-        print("check DATABASE_URL and that migrations have been applied", file=sys.stderr)
+        print(f"the database did not answer: {unreachable}", file=sys.stderr)
+        print(
+            "check DATABASE_URL and that migrations have been applied. A constraint or programming "
+            "error reaches this same status, so read the reason above before retrying",
+            file=sys.stderr,
+        )
         return EXIT_UNREACHABLE
     finally:
         await context.database.engine.dispose()

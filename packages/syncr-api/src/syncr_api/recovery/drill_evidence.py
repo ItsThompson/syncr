@@ -6,6 +6,10 @@ So the sequence is the design here, and it is separate from the console script f
 a test drives is this, against a database, while the script's own part is deciding whether it may
 write at all and provisioning the tenant it writes as.
 
+Every step reads before it writes, so a repeat run writes nothing. Recording an outcome and
+confirming its day share one read, because they are one answer about the week and a half-answered
+week has to be answered again.
+
 Every step is its own transaction, because two of them are not statements at all: a solve runs
 through the worker's duty, which opens sessions of its own, and the bootstrap command runs in a
 process of its own.
@@ -16,8 +20,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_api.recovery import drill_concession as concession
 from syncr_api.recovery import drill_history as history
 from syncr_api.recovery.drill_declarations import declare
+from syncr_api.recovery.drill_week import the_week_behind
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -25,6 +31,8 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_api.core.principal import Principal
+    from syncr_api.plans.records import BlockOutcomeRecord
+    from syncr_api.recovery.drill_week import DrillWeek
     from syncr_api.worker.main import WorkerContext
     from syncr_domain.identifiers import HabitId
     from syncr_domain.plan import Block
@@ -36,8 +44,8 @@ class Written:
     """What one run did, in the terms the next reader of the database asks about.
 
     A run that found everything already in place reports the same week with nothing planned, nothing
-    solved, nothing pinned and nothing conceded, which is what makes a repeat visible as a repeat
-    rather than as a second seed.
+    solved, nothing answered for, nothing pinned and nothing conceded, which is what makes a repeat
+    visible as a repeat rather than as a second seed.
     """
 
     iso_week: IsoWeek
@@ -60,7 +68,7 @@ async def write_the_evidence(
     agreed to while the day is still ahead, and what happened in it is answered for afterwards.
     """
     database = context.database
-    week = history.the_week_behind(now)
+    week = the_week_behind(now)
 
     async with database.sessionmaker() as session, session.begin():
         declarations = await declare(session, principal)
@@ -90,24 +98,31 @@ async def write_the_evidence(
 
     # Where the sequence first knows, and before the steps that index them: a week the solve left
     # empty has no confirmed completion in it, so it is not a drill and nothing further is written.
-    occurrences = history.require_occurrences(occurrences, week)
+    history.require_occurrences(occurrences, week)
 
     async with database.sessionmaker() as session, session.begin():
         pinned = not await history.already_pinned(session, principal.tenant_id, week)
         if pinned:
             await history.hold_a_pin(session, principal, week, occurrences[0])
 
-    async with database.sessionmaker() as session, session.begin():
-        recorded = await history.record_what_happened(session, principal, week, occurrences)
-    async with database.sessionmaker() as session, session.begin():
-        confirmed = await history.confirm_the_days(session, principal, occurrences[: len(recorded)])
+    recorded: tuple[BlockOutcomeRecord, ...] = ()
+    confirmed = 0
+    async with database.sessionmaker() as session:
+        answered = await history.already_answered_for(session, principal.tenant_id, occurrences)
+    if not answered:
+        async with database.sessionmaker() as session, session.begin():
+            recorded = await history.record_what_happened(session, principal, week, occurrences)
+        async with database.sessionmaker() as session, session.begin():
+            confirmed = await history.confirm_the_days(
+                session, principal, occurrences[: len(recorded)]
+            )
 
     async with database.sessionmaker() as session, session.begin():
-        conceded = not await history.already_conceded(
+        conceded = not await concession.already_conceded(
             session, principal.tenant_id, week, area_id=declarations.area_id
         )
         if conceded:
-            await history.concede_a_floor_breach(
+            await concession.concede_a_floor_breach(
                 session,
                 principal.tenant_id,
                 week,
@@ -129,7 +144,7 @@ async def write_the_evidence(
 
 
 async def _occurrences(
-    session: AsyncSession, principal: Principal, week: history.DrillWeek, habit_id: HabitId
+    session: AsyncSession, principal: Principal, week: DrillWeek, habit_id: HabitId
 ) -> tuple[Block, ...]:
     """Every occurrence of the drill's habit the week's plan of record places."""
     document = await history.live_plan(session, principal.tenant_id, week)

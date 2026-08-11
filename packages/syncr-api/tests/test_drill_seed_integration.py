@@ -44,16 +44,13 @@ from syncr_api.core.migrations import applied_revision, expected_head
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES
 from syncr_api.core.settings import WORKER_SERVICE, build_service_settings
+from syncr_api.horizon.maintainer import PlanHorizonMaintainer
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.declarations import OffPlanDeclaration
 from syncr_api.offplan.injection import get_off_plan_service
 from syncr_api.recovery.drill_declarations import VARIANTS, declare
 from syncr_api.recovery.drill_evidence import write_the_evidence
-from syncr_api.recovery.drill_history import (
-    NothingWasPlaced,
-    record_what_happened,
-    the_week_behind,
-)
+from syncr_api.recovery.drill_history import NothingWasPlaced, record_what_happened
 from syncr_api.recovery.drill_seed import (
     DRILL_EMAIL,
     EXIT_OK,
@@ -62,9 +59,11 @@ from syncr_api.recovery.drill_seed import (
 )
 from syncr_api.recovery.drill_seed import run as run_the_console_script
 from syncr_api.recovery.drill_target import NotTheDrillsDatabase, require_the_drills_own_database
+from syncr_api.recovery.drill_week import the_week_behind
 from syncr_api.recovery.fingerprint import Fingerprint, read_fingerprint
 from syncr_api.recovery.main import write_document
 from syncr_api.worker.main import WorkerContext
+from syncr_domain.weeks import IsoWeek
 from tests.conftest import UNREACHABLE_DATABASE_URL
 from tests.live_tenants import delete_tenant
 
@@ -75,8 +74,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
     from syncr_api.accounts.records import UserRecord
-    from syncr_api.recovery.drill_history import DrillWeek
-    from syncr_domain.identifiers import TenantId
+    from syncr_api.recovery.drill_week import DrillWeek
 
 pytestmark = pytest.mark.integration
 
@@ -230,15 +228,23 @@ class TestTheTargetRefusal:
     ) -> None:
         """A tenant with no user is foreign, because provisioning creates the pair in one write."""
         async with sessions() as session, session.begin():
-            await session.execute(
-                text("INSERT INTO tenants (id, created_at) VALUES (gen_random_uuid(), now())")
-            )
-        with pytest.raises(NotTheDrillsDatabase):
-            async with sessions() as session:
-                await require_the_drills_own_database(session, drill_email=DRILL_EMAIL)
-        async with sessions() as session:
-            held = await TenantRepository(session).list_ids()
-        await _delete_all_but(sessions, drill_tenant.tenant_id, held)
+            stray = (
+                await session.execute(
+                    text(
+                        "INSERT INTO tenants (id, created_at) "
+                        "VALUES (gen_random_uuid(), now()) RETURNING id"
+                    )
+                )
+            ).scalar_one()
+        try:
+            with pytest.raises(NotTheDrillsDatabase) as refused:
+                async with sessions() as session:
+                    await require_the_drills_own_database(session, drill_email=DRILL_EMAIL)
+            assert str(stray) in str(refused.value)
+        finally:
+            # By the id this test inserted, never "everything but the fixture's": the module's own
+            # rule is that emptying a shared database is the one thing it must not do.
+            await delete_tenant(sessions, stray)
 
 
 class TestTheEvidenceTheFingerprintReads:
@@ -377,6 +383,41 @@ class TestTheEvidenceTheFingerprintReads:
         # `seed-local.sql` states its property as "running it twice is running it once".
         assert after_two.content_digests == after_one.content_digests
 
+    async def test_a_second_run_writes_nothing_with_the_current_week_tracked_too(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        engine: AsyncEngine,
+        context: WorkerContext,
+        drill_tenant: UserRecord,
+    ) -> None:
+        """The state a claim over every table is still only as wide as the database it is read on.
+
+        Recording an outcome and confirming a day both end by bumping every TRACKED week from the
+        one holding the clock onwards, and the drill's week is behind the clock, so those bumps move
+        nothing while nothing at or after the clock is tracked. A database that tracks the current
+        week is where they would, and it is reachable the moment a stack with a worker in it runs
+        this seeder. So the week holding the real clock is materialized between the two runs, which
+        is what tracks it, and the claim is made after that rather than before.
+        """
+        principal = Principal(
+            tenant_id=drill_tenant.tenant_id, user_id=drill_tenant.id, scopes=ALL_SCOPES
+        )
+        await write_the_evidence(context, principal, now=NOW)
+
+        async with sessions() as session, session.begin():
+            planned = await PlanHorizonMaintainer(session, principal.tenant_id, clock=utc_now).plan(
+                IsoWeek.containing(utc_now().date()), now=utc_now()
+            )
+        assert planned.planned == 1
+        before = await _a_fingerprint(sessions, engine)
+
+        second = await write_the_evidence(context, principal, now=NOW)
+
+        after = await _a_fingerprint(sessions, engine)
+        assert second.recorded == 0 and second.confirmed == 0
+        assert after.row_counts == before.row_counts
+        assert after.content_digests == before.content_digests
+
 
 class TestTheConsoleScriptsComposition:
     """The refusal, the bootstrap command, and the write, in that order."""
@@ -438,12 +479,3 @@ class TestTheConsoleScriptsComposition:
             database=create_database(UNREACHABLE_DATABASE_URL),
         )
         assert await run_the_console_script(unreachable, bootstrap=_found_it) == EXIT_UNREACHABLE
-
-
-async def _delete_all_but(
-    sessions: async_sessionmaker[AsyncSession], keep: TenantId, held: list[TenantId]
-) -> None:
-    """Remove the tenants this module created beyond the one its fixture owns."""
-    for tenant_id in held:
-        if tenant_id != keep:
-            await delete_tenant(sessions, tenant_id)
