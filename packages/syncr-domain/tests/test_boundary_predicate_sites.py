@@ -159,6 +159,11 @@ FINDS_NO_SITE: Final = (
     "query.filter(EditEvent.created_at >= span.start)",
 )
 
+# A comparison handed to an ordinary method call is still a decision made in Python. Listed apart
+# from the spellings above because it is the case that fails when the query exclusion is widened
+# past the query calls, which is the direction that would hide a copy.
+HANDED_TO_AN_ORDINARY_CALL: Final = "guard.require(block.interval.start <= now)"
+
 FINDS_AN_IMPORT: Final = (
     "from syncr_domain.intervals import has_started",
     "from syncr_domain.intervals import Interval, has_elapsed, has_started",
@@ -351,13 +356,17 @@ def test_the_reading_covers_every_direction_the_question_can_be_written_in(
 
 
 def test_the_reading_leaves_a_stored_column_predicate_to_the_database() -> None:
-    # The exclusion that keeps the allowed set small. Same comparison, twice: handed to a query
-    # call it is a stored-column predicate, and standing alone it is a decision in Python.
+    # The exclusion that keeps the allowed set small, held from both sides. The same comparison is
+    # a stored-column predicate when a query call is what receives it and a decision in Python
+    # otherwise, so an exclusion widened past the query calls hides a real copy: the last case is
+    # what fails when it is.
     handed_to_a_query = "rows.where(Anchor.ends_at > span.start)"
     standing_alone = "kept = Anchor.ends_at > span.start"
+    handed_to_an_ordinary_call = HANDED_TO_AN_ORDINARY_CALL
 
     assert not list(sites_in(ast.parse(handed_to_a_query)))
     assert list(sites_in(ast.parse(standing_alone)))
+    assert list(sites_in(ast.parse(handed_to_an_ordinary_call)))
 
 
 def test_the_reading_attributes_a_comparison_to_the_scope_that_holds_it() -> None:
