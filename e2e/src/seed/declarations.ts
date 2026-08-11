@@ -91,7 +91,11 @@ export type RoutineSpec = {
   readonly flexBandMinutes?: number;
 };
 
-/** A routine, and the concrete template entry that puts it on every day of the shape. */
+/** A routine, and the day-shape entry that names it.
+ *
+ * THE FRAME PLACES THE ROUTINE, on every date at the routine's own target time. The entry names it and
+ * places nothing: the api answers the declaration with a statement saying so. It is declared here anyway,
+ * because a fixture that holds the state the rule governs is what makes the rule observable in the stack. */
 export const declareRoutine = async (
   client: ApiClient,
   templateId: string,
