@@ -86,6 +86,20 @@ class RouteView:
     dependant: Dependant
 
 
+@dataclass(frozen=True, slots=True)
+class SerializationView:
+    """One route, reduced to what it drops from a body it renders.
+
+    A key the model calls required is still absent from what a client reads if the route renders
+    the body with nulls or unset members excluded, and neither the model nor the generated
+    document can see that.
+    """
+
+    path: str
+    excludes_none: bool
+    excludes_unset: bool
+
+
 def api_routes(app: FastAPI) -> list[RouteView]:
     """Every route the application declares, with its inherited dependencies applied.
 
@@ -99,6 +113,25 @@ def api_routes(app: FastAPI) -> list[RouteView]:
 def route_identity(route: RouteView) -> set[tuple[str, str]]:
     """The ``(method, path)`` pairs this route answers."""
     return {(method.upper(), route.path) for method in route.methods}
+
+
+def serialization_views(app: FastAPI) -> list[SerializationView]:
+    """Every route that renders a response model, with the settings that decide what it renders.
+
+    Separate from :func:`api_routes` because these settings live on the framework's route object
+    rather than on the handler or its dependency tree, and :class:`RouteView` is stated over the
+    latter. Both read the same expansion, so a route contributed by an included router is seen by
+    each.
+    """
+    return [
+        SerializationView(
+            path=cast("str", getattr(candidate, "path")),  # noqa: B009 - duck-typed shape
+            excludes_none=bool(getattr(candidate, "response_model_exclude_none", False)),
+            excludes_unset=bool(getattr(candidate, "response_model_exclude_unset", False)),
+        )
+        for candidate in _expand(app.routes)
+        if hasattr(candidate, "response_model_exclude_none")
+    ]
 
 
 def read_paths(app: FastAPI, *, parameterized: bool) -> list[str]:
