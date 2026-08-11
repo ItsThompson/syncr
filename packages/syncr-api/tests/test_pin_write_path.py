@@ -64,9 +64,11 @@ from tests.assembly_fakes import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
     from datetime import datetime
     from pathlib import Path
+
+    from prometheus_client.metrics_core import Metric
 
     from syncr_api.areas.records import AreaRecord
     from syncr_api.core.columns import JsonDocument
@@ -139,9 +141,10 @@ RECORDED = "verdicts.record"
 APPENDED = "edits.append"
 SOLVE_REQUESTED = "coordinator.request_solve"
 
-# `_held`'s sequence, as the module docstring's call-stack table states it. The feature snapshot is
-# built inside the argument list of the append, so it is not a step of its own here; which frame it
-# was handed is asserted separately.
+# `_held`'s sequence, as the module docstring's call-stack table states it, with the three pre-edit
+# reads the table folds into one row spelled out. The feature snapshot is built inside the argument
+# list of the append, so it is not a step of its own here; which frame it was handed is asserted
+# separately.
 THE_ORDER = (
     WEIGHTS_READ,
     DEADLINE_READ,
@@ -661,12 +664,12 @@ def _which_assembly(driven: Driven, frame: SolveInputs) -> int | None:
     )
 
 
-def _observations(collected: object, caller: str) -> float:
+def _observations(collected: Iterable[Metric], caller: str) -> float:
     """How many observations this caller's histogram holds, from the samples a scraper reads."""
     return next(
         (
             sample.value
-            for metric in collected  # type: ignore[attr-defined]
+            for metric in collected
             for sample in metric.samples
             if sample.name.endswith("_count") and sample.labels.get(CALLER_LABEL) == caller
         ),
