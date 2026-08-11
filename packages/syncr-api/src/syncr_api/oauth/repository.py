@@ -20,6 +20,13 @@ simultaneous exchanges both see an unused row and both succeed, which is exactly
 single use exists to prevent. The database decides instead, and a row count of zero is what
 tells the service it lost the race.
 
+:class:`PresentedCredentialRepository` carries :func:`~syncr_api.core.db_metrics.measure_reads`
+explicitly, because the hook that applies it to every scoped repository is on the base this one
+cannot extend. What it times is the token endpoint: the authorization-code exchange and the
+refresh-token exchange, which is where a presented credential is read. It is NOT the cost of an
+authenticated request, because verifying a presented access token is arithmetic over a signed claim
+set and reads no database at all.
+
 No method commits. One request is one transaction, opened and committed by
 :func:`syncr_api.core.db.get_transaction`.
 """
@@ -31,6 +38,7 @@ from uuid import uuid4
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from syncr_api.core.db_metrics import measure_reads
 from syncr_api.core.repository import TenantScopedRepository
 from syncr_api.core.scopes import format_scopes
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
@@ -57,6 +65,7 @@ if TYPE_CHECKING:
     from syncr_api.core.scopes import Scope
 
 
+@measure_reads
 class PresentedCredentialRepository:
     """Reads what the caller presented, before a tenant is known.
 
