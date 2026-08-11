@@ -24,13 +24,11 @@ from uuid import UUID
 
 import pytest
 
-from syncr_api.plans.config import REVISION_REASONS
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.stored_documents import stored_document
 from syncr_domain.identity import block_id
 from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import OutcomeState
-from syncr_domain.plan import RevisionReason
 from syncr_domain.templates import BindingTarget, TemplateEntryKind
 from syncr_learning import features
 from syncr_learning.facts import LoggedOutcome, StoredRevision
@@ -186,9 +184,10 @@ class TestAWeekNobodyChoseIsInTheCorpus:
 class TestNothingTheCorpusReadsSaysWhatProducedARevision:
     def test_the_row_this_corpus_reads_says_what_produced_each_revision(self) -> None:
         # The crossing, and the reason the statement says the corpus DECLINES to narrow rather than
-        # that it could not: the information is on the row it already reads.
+        # that it could not: the information is on the row it already reads. Which reasons that
+        # column may carry is the api's own business and `test_horizon_maintainer.py` asserts it;
+        # what matters here is only that the column exists to be read.
         assert set(PRODUCED_A_REVISION) <= set(PlanRevision.__table__.columns.keys())
-        assert RevisionReason.MATERIALIZED.value in REVISION_REASONS
 
     def test_the_revision_projection_carries_none_of_those_columns(self) -> None:
         fields = {one.name for one in dataclasses.fields(StoredRevision)}
