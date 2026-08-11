@@ -53,7 +53,7 @@ one resolved ``SolveInputs``:
 | ``placements.py`` | the seam supplying what a week already holds, and which pins constrain |
 | ``netting.py`` | the two placement sets, and every minute count taken over them |
 | ``materialization.py`` | a declared wall time to instants per date, and what suppresses one |
-| ``entry_content.py`` | what a concrete entry's block is called, and the Area it charges |
+| ``entry_content.py`` | what a concrete entry names, and what charges it: an Area, or the frame |
 | ``overhang.py`` | the preceding week's occurrences, as the time they occupy in this one |
 | ``cadence.py`` | a habit's cadence to occurrences, with the cursor and the debt figure |
 | ``multipliers.py`` | the learned duration multiplier, its maturity gate, its two applications |
