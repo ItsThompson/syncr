@@ -36,7 +36,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -283,7 +283,32 @@ async function bundleCss(): Promise<string> {
   const sheet = names.find((name) => name.endsWith(".css"));
   if (sheet === undefined)
     throw new Error(`no built stylesheet in ${assets}: run \`npx vite build\``);
-  return readFile(path.join(assets, sheet), "utf8");
+  const built = path.join(assets, sheet);
+  await refuseAStaleBundle(built);
+  return readFile(built, "utf8");
+}
+
+/**
+ * Refuses a bundle older than the sheets it should have been built from.
+ *
+ * This file measures an ARTIFACT, so a build left over from an earlier state of the source measures that earlier
+ * state and reports it as the tree's. It has already happened once: a bundle built while a mutation was applied
+ * reported the mutation's geometry after the mutation had been reverted.
+ *
+ * Only the family's stylesheets are compared. The markup comes from the component through the transform, which is
+ * always current; the bundle is the one input that can be out of date.
+ */
+async function refuseAStaleBundle(built: string): Promise<void> {
+  const family = path.resolve(import.meta.dirname, "..", "src", "ui", "domain", "table");
+  const bundledAt = (await stat(built)).mtimeMs;
+  const sheets = (await readdir(family)).filter((name) => name.endsWith(".css"));
+  const written = await Promise.all(
+    sheets.map(async (name) => (await stat(path.join(family, name))).mtimeMs),
+  );
+  const newer = sheets.filter((_, index) => written[index] > bundledAt);
+  if (newer.length > 0) {
+    throw new Error(`${newer.join(", ")} newer than the built stylesheet: run \`npx vite build\``);
+  }
 }
 
 /**
