@@ -36,6 +36,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -369,8 +370,18 @@ async function measure(): Promise<Reading[]> {
   ].join("\n");
 
   const run = await mkdtemp(path.join(tmpdir(), "syncr-table-probe-"));
+  const css = await bundleCss();
+  /* THE IDENTITY OF WHAT WAS MEASURED, printed beside the readings. A figure from this file is only worth as much
+   * as the artifact it came from, and an mtime says the artifact is not stale rather than saying which one it is.
+   * A digest lets a reading in a changeset be traced to one exact stylesheet. */
+  process.stdout.write(
+    `measured over ${String(css.length)} bytes of built css, sha256 ${createHash("sha256")
+      .update(css)
+      .digest("hex")
+      .slice(0, 16)}\n`,
+  );
   process.stdout.write(`the page, the stylesheet and the readings are in ${run}\n`);
-  await writeFile(path.join(run, "bundle.css"), await bundleCss(), "utf8");
+  await writeFile(path.join(run, "bundle.css"), css, "utf8");
   await writeFile(path.join(run, "page.html"), page, "utf8");
 
   const dom = await dumpDom(browser, run, path.join(run, "page.html"));
